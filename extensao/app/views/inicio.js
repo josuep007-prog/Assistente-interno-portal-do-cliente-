@@ -9,6 +9,7 @@ const SEM = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
 const MES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
 let diaSel = null;   // 'atr' ou AAAA-MM-DD (padrão: hoje)
+let escopoKpi = null; // 'minhas' | 'equipe'; sem escolha, vai para a equipe quando nada está com você
 
 export function render(el, ctx) {
   const m = minhas();
@@ -23,16 +24,30 @@ export function render(el, ctx) {
   const respondeu = m.filter(clienteRespondeu);
   const nome = primeiroNome();
 
-  const kpis = [
+  // Números do topo: os seus (você como responsável no Onvio) ou os da equipe. Quem não é responsável
+  // por nenhuma pendente (gestor, coordenação) vê a equipe, para os zeros não parecerem leitura errada.
+  const todas = itens();
+  const escopo = escopoKpi || (!m.length && todas.length ? 'equipe' : 'minhas');
+  const base = escopo === 'equipe' ? todas : m;
+  const kAtraso = base.filter(i => i.nivel === 2), kHoje = base.filter(i => i.nivel === 1), kResp = base.filter(clienteRespondeu);
+  const kpis = escopo === 'equipe' ? [
+    { k: 'acao', rot: 'Com ação do escritório', val: base.filter(i => i.lado === 'esc').length, cls: '' },
+    { k: 'atraso', rot: 'Fora do prazo', val: kAtraso.length, cls: kAtraso.length ? 'late' : '' },
+    { k: 'hoje', rot: 'Vencem hoje', val: kHoje.length, cls: kHoje.length ? 'today' : '' },
+    { k: 'respondeu', rot: 'Cliente respondeu', val: kResp.length, cls: '' },
+    { k: 'semresp', rot: 'Sem analista', val: base.filter(i => !i.resp).length, cls: base.some(i => !i.resp) ? 'today' : '' }
+  ] : [
     { k: 'acao', rot: 'Com ação minha', val: esc_.length, cls: '' },
     { k: 'atraso', rot: 'Fora do prazo', val: atraso.length, cls: atraso.length ? 'late' : '' },
     { k: 'hoje', rot: 'Vencem hoje', val: venceHoje.length, cls: venceHoje.length ? 'today' : '' },
     { k: 'respondeu', rot: 'Cliente respondeu', val: respondeu.length, cls: '' },
     { k: 'lembretes', rot: 'Lembretes hoje', val: hojeL.length, cls: hojeL.some(l => sit(l) === 'atrasado') ? 'today' : '' }
   ];
-  const resumo = !estado.snap ? 'Aguardando a primeira leitura do Onvio.'
-    : !esc_.length && !hojeL.length ? 'Nada pendente com ação sua. Tudo em dia.'
-    : [plural(esc_.length, 'solicitação com ação sua', 'solicitações com ação sua'), atraso.length ? plural(atraso.length, 'fora do prazo', 'fora do prazo') : '', respondeu.length ? plural(respondeu.length, 'resposta de cliente', 'respostas de cliente') + ' para ver' : ''].filter(Boolean).join(' · ') + '.';
+  const resumo = !estado.snap ? esc('Aguardando a primeira leitura do Onvio.')
+    : !todas.length ? '<span class="late">A última leitura não trouxe nenhuma pendência em nenhuma das 10 listas.</span> Se o Onvio mostra solicitações pendentes, abra <a href="#/config">Configurações</a> > Testar a leitura e envie o resultado.'
+    : !m.length ? esc('Nenhuma pendência está com você como responsável no Onvio. ' + (escopo === 'equipe' ? 'Os números ao lado são da equipe (' + plural(todas.length, 'pendência', 'pendências') + ').' : 'A equipe tem ' + plural(todas.length, 'pendência', 'pendências') + '.'))
+    : !esc_.length && !hojeL.length ? esc('Nada pendente com ação sua. Tudo em dia.')
+    : esc([plural(esc_.length, 'solicitação com ação sua', 'solicitações com ação sua'), atraso.length ? plural(atraso.length, 'fora do prazo', 'fora do prazo') : '', respondeu.length ? plural(respondeu.length, 'resposta de cliente', 'respostas de cliente') + ' para ver' : ''].filter(Boolean).join(' · ') + '.');
 
   // semana: atrasados, hoje e os próximos 6 dias (lembretes + expectativas de conclusão minhas)
   const doDia = k => ({
@@ -81,8 +96,9 @@ export function render(el, ctx) {
 
   ctx.cab({ titulo: 'Hoje', sub: 'Seu dia no Portal do Cliente' });
   el.innerHTML =
-    '<div class="hoje-topo"><div><div class="ht-saud">' + saudacao() + (nome ? ', ' + esc(nome) : '') + '</div><h2 class="ht-data" id="ht-data">' + esc(dataExtensa()) + '</h2><p class="ht-resumo">' + esc(resumo) + '</p></div>' +
-      '<div class="ht-cont">' + kpis.map(k => '<button class="kpi ' + k.cls + '" data-kpi="' + k.k + '"><span class="rot">' + k.rot + '</span><span class="val">' + k.val + '</span></button>').join('') + '</div></div>' +
+    '<div class="hoje-topo"><div><div class="ht-saud">' + saudacao() + (nome ? ', ' + esc(nome) : '') + '</div><h2 class="ht-data" id="ht-data">' + esc(dataExtensa()) + '</h2><p class="ht-resumo" id="ht-resumo">' + resumo + '</p></div>' +
+      '<div class="ht-dir"><div class="seg seg-sm" role="group" aria-label="Números de quem" id="kpi-escopo">' + [['minhas', 'Minhas', m.length], ['equipe', 'Equipe', todas.length]].map(([v, r, n]) => '<button data-escopo="' + v + '"' + (escopo === v ? ' class="on"' : '') + '>' + r + ' · ' + n + '</button>').join('') + '</div>' +
+      '<div class="ht-cont">' + kpis.map(k => '<button class="kpi ' + k.cls + '" data-kpi="' + k.k + '"><span class="rot">' + k.rot + '</span><span class="val">' + k.val + '</span></button>').join('') + '</div></div></div>' +
     fitaHtml(fita) +
     '<h2 class="sec-tit">Equipe agora <small>todas as pendências, por analista</small></h2>' +
     equipeHtml() +
@@ -109,7 +125,13 @@ export function render(el, ctx) {
         (evs.length ? evs.map(e => '<div class="item-ag clicavel" data-ev="' + esc(e.id) + '"><svg class="ic"><use href="#i-bell"/></svg><div class="tx"><b>' + esc(e.titulo) + '</b><small>#' + esc(e.num) + ' ' + esc(e.typeLabel) + ' · ' + esc(e.cliente) + ' · ' + esc(relativo(e.em)) + '</small></div></div>').join('') : '<div class="vazio" style="padding:10px 0">As novidades das suas solicitações aparecem aqui.</div>') + '</div></section>' +
     '</div>';
 
-  $$('[data-kpi]', el).forEach(b => b.addEventListener('click', () => { const k = b.dataset.kpi; if (k === 'lembretes') ctx.navegar('lembretes'); else ctx.navegar('fila', { kpi: k }); }));
+  $$('[data-kpi]', el).forEach(b => b.addEventListener('click', () => {
+    const k = b.dataset.kpi;
+    if (k === 'lembretes') ctx.navegar('lembretes');
+    else if (k === 'semresp') ctx.navegar('fila', { escopo: 'semresp' });
+    else ctx.navegar('fila', escopo === 'equipe' ? { escopo: 'equipe', kpi: k } : { kpi: k });
+  }));
+  $$('[data-escopo]', el).forEach(b => b.addEventListener('click', () => { escopoKpi = b.dataset.escopo; render(el, ctx); }));
   $$('[data-dia]', el).forEach(b => b.addEventListener('click', () => { diaSel = b.dataset.dia; render(el, ctx); }));
   const novo = () => ctx.abrirLembrete({ dia: diaSel === 'atr' ? null : new Date(diaSel + 'T12:00:00') });
   $('#sm-add', el).onclick = novo; $('#ag-novo', el).onclick = novo;

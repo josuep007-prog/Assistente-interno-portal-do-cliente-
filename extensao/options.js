@@ -71,6 +71,7 @@
     const t = snap.tramites || {};
     l.push('Trâmites lidos neste ciclo: ' + (t.lidos || 0) + ' · falhas: ' + (t.falhas || 0) + ' · com 1º trâmite conhecido: ' + (snap.items || []).filter(i => i.ptUteis != null).length + ' de ' + (snap.items || []).length);
     l.push('Possível aba errada (Geral): ' + (snap.items || []).filter(i => i.abaProvavel).length);
+    l.push('Com você como responsável (filtro "atribuídas a mim" do Onvio): ' + (snap.items || []).filter(i => i.mine).length + ' de ' + (snap.items || []).length + (snap.user && snap.user.nome ? ' · usuário: ' + snap.user.nome : ''));
     if (snap.erros && snap.erros.length) l.push('Erros: ' + snap.erros.join(' | '));
     return l.concat(linhasPerfil(perfil)).join('\n');
   }
