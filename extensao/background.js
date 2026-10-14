@@ -70,6 +70,7 @@ async function migrarSettings() {
 
 /* ---------- acesso ao Onvio ---------- */
 class AuthError extends Error { constructor(m) { super(m || 'Sessão do Onvio não encontrada'); this.auth = true; } }
+class VisaoClienteError extends Error { constructor(m) { super(m || 'O Onvio está aberto com um acesso de cliente'); this.cliente = true; } }
 
 // Sem sessão: 401/403, redirecionamento ou página em vez de dados. Outros erros (5xx, 404...) são erro da leitura.
 // A mensagem sempre diz o que o Onvio respondeu, para o painel e o Diagnóstico mostrarem a causa real.
@@ -138,7 +139,7 @@ async function candidatosDeLeitura() {
 }
 
 // Valida a sessão com uma chamada de verdade (a lista Geral, 1 item), sem depender de endereço de sessão.
-async function escolherFetcher() {
+async function escolherFetcher(forcarPerfil) {
   const sonda = OC.urlSonda();
   const { tab, lista } = await candidatosDeLeitura();
   const falhas = [];
@@ -147,15 +148,41 @@ async function escolherFetcher() {
     const f = comoFetcher(c.bruto);
     try {
       await f(sonda);
-      await chrome.storage.local.set({ metodoLeitura: c.via });
-      return { f, via: c.via };
     } catch (e) {
-      if (e && e.auth) semSessao = true;
+      if (e && e.auth) { semSessao = true; perfilCache = null; }
       falhas.push(ROTULOS[c.via] + ': ' + (e && e.message ? e.message : e));
+      continue;
     }
+    await chrome.storage.local.set({ metodoLeitura: c.via });
+    await garantirEscritorio(f, forcarPerfil);
+    return { f, via: c.via };
   }
   const msg = (tab ? '' : 'Não há aba do Onvio aberta. ') + 'Tentativas: ' + falhas.join(' · ');
   throw semSessao || !tab ? new AuthError(msg) : new Error(msg);
+}
+
+/* ---------- só a visão do escritório ----------
+ * Com o login de um cliente as mesmas APIs respondem (com as solicitações da empresa dele). A extensão é do
+ * escritório: confere o perfil (OC.perfilDoAcesso) e, se for cliente, para tudo e apaga o que foi lido. */
+let perfilCache = null;          // { perfil, motivo, em }
+async function abaVisaoCliente() {
+  const abas = await chrome.tabs.query({ url: 'https://onvio.com.br/*' });
+  return abas.some(t => { try { return /^\/clientcenter(\/|$)/i.test(new URL(t.url).pathname); } catch (e) { return false; } });
+}
+async function garantirEscritorio(f, forcar) {
+  const validade = perfilCache && perfilCache.perfil === 'cliente' ? 60000 : 5 * 60000;
+  if (forcar || !perfilCache || Date.now() - perfilCache.em > validade) {
+    const r = await OC.perfilDoAcesso(f, { abaCliente: await abaVisaoCliente() });
+    perfilCache = { perfil: r.perfil, motivo: r.motivo, em: Date.now() };
+    await chrome.storage.local.set({ perfilSessao: { perfil: r.perfil, motivo: r.motivo, formato: r.formato, em: new Date().toISOString() } });
+  }
+  if (perfilCache.perfil === 'cliente') throw new VisaoClienteError('O Onvio está aberto com um acesso de cliente (' + perfilCache.motivo + '). O Control Onvio é só para a visão do escritório.');
+}
+// Acesso de cliente: nada do que foi lido fica guardado nem aparece (lembretes pessoais ficam).
+async function bloquearVisaoCliente(e) {
+  await chrome.storage.local.remove(['snapshot', 'assinaturas', 'tramites', 'eventos', 'serie', 'ultimaVerificacao', 'notifMap']);
+  await chrome.storage.local.set({ status: { estado: 'visao_cliente', em: new Date().toISOString(), msg: e.message } });
+  await chrome.action.setBadgeText({ text: '' });
 }
 
 // Para o botão "Testar a leitura" das configurações: mostra o que cada jeito recebeu (sem dados de clientes).
@@ -181,7 +208,7 @@ async function coletar(manual) {
     const { snapshot: anterior, tramites: cacheTramites } = await chrome.storage.local.get(['snapshot', 'tramites']);
     await chrome.storage.local.set({ status: { estado: 'lendo', em: new Date().toISOString(), etapa: '' } });
     try {
-      const { f, via } = await escolherFetcher();
+      const { f, via } = await escolherFetcher(manual);
       const assin = await OC.assinaturas(f).catch(() => null);     // antes da leitura: o que mudar depois será notado
       const snap = await OC.collect(f, s, (i, n, rot) => chrome.storage.local.set({ status: { estado: 'lendo', etapa: i + '/' + n + ' · ' + rot } }), { tramites: cacheTramites || {} });
       snap.via = via;
@@ -195,6 +222,7 @@ async function coletar(manual) {
       await atualizarBadge(snap);
       return snap;
     } catch (e) {
+      if (e && e.cliente) { await bloquearVisaoCliente(e); if (manual) throw e; return null; }
       await chrome.storage.local.set({ status: { estado: e.auth ? 'sem_sessao' : 'erro', em: new Date().toISOString(), msg: e.message || String(e) } });
       await chrome.action.setBadgeText({ text: '!' });
       await chrome.action.setBadgeBackgroundColor({ color: '#5F6D77' });
@@ -228,7 +256,7 @@ async function verificarAoVivo(forcar) {
     const novas = await OC.assinaturas(f);
     if (OC.assinaturasDiferem(assinaturas, novas)) await coletar(false);
     else await chrome.storage.local.set({ ultimaVerificacao: new Date().toISOString() });
-  })().catch(() => {}).finally(() => { verificando = null; });
+  })().catch(e => { if (e && e.cliente) return bloquearVisaoCliente(e); }).finally(() => { verificando = null; });
   await verificando;
   return { ok: true, proximoEmSeg };
 }
@@ -418,7 +446,10 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'abrirOnvio') { await irParaOnvio(); reply({ ok: true }); }
       else if (msg.cmd === 'fecharPainel') { if (sender.tab && sender.tab.id != null) await mensagemParaPainel(sender.tab.id, 'fechar').catch(() => {}); reply({ ok: true }); }
       else reply({ ok: false, erro: 'comando desconhecido' });
-    } catch (e) { reply({ ok: false, erro: e.message || String(e), auth: !!e.auth }); }
+    } catch (e) {
+      if (e && e.cliente) await bloquearVisaoCliente(e).catch(() => {});
+      reply({ ok: false, erro: e.message || String(e), auth: !!e.auth, cliente: !!(e && e.cliente) });
+    }
   })();
   return true;
 });
