@@ -45,11 +45,15 @@
     12: ['Respondido pelo cliente', 'esc']
   };
 
+  // pendentes: lista de códigos (filtro IN). excluir: pendente = qualquer código fora da lista
+  // (filtro NE), que também pega códigos novos; se o Onvio recusar, volta para o IN.
+  // clienteGrava: códigos de situação que um trâmite do CLIENTE grava (usado para achar o 1º trâmite do escritório).
   const FAMILIAS = {
-    padrao: { st: ST_PADRAO, pendentes: '1,2,3,4,7,8,9', prescreve: true },
-    cadastro: { st: ST_CADASTRO, pendentes: '1,2,3,4,5', prescreve: false },
-    rubricas: { st: ST_RUBRICAS, pendentes: '0,1,2,3,4,5,6,7,9,11,12', prescreve: true }
+    padrao: { st: ST_PADRAO, pendentes: '1,2,3,4,7,8,9', prescreve: true, clienteGrava: [1, 3] },
+    cadastro: { st: ST_CADASTRO, pendentes: '1,2,3,4,5', prescreve: false, clienteGrava: [1, 2, 4] },
+    rubricas: { st: ST_RUBRICAS, pendentes: '0,1,2,3,4,5,6,7,9,11,12', excluir: ['8', '10'], prescreve: true, clienteGrava: [0, 1, 11, 12] }
   };
+  const DESCONHECIDO = code => ['Situação desconhecida (código ' + code + ')', 'desc'];
 
   const EXP_PADRAO = 'clientEmployeeExpanded,clientExpanded,staffResponsibleExpanded';
   const EXP_SIMPLES = 'clientExpanded,staffResponsibleExpanded';
@@ -77,6 +81,7 @@
     parada: 15,               // dias corridos sem movimentação
     prescricaoDias: 30,       // regra do Onvio
     prescricaoAviso: 20,      // a partir de quantos dias parada vira alerta vermelho
+    guiaDias: 5,              // guias não visualizadas: alerta a partir de quantos dias do vencimento
     notificar: true,
     modoGestor: false,
     feriados: [
@@ -125,8 +130,11 @@
     if (o.expand !== false) p.set('expand', t.expand);
     if (o.search) p.set('searchText', o.search);
     if (o.pendentes) {
-      const f = FAMILIAS[t.familia].pendentes;
-      p.set('filter', JSON.stringify({ groups: [{ useOr: false, items: [{ by: 'firmStatus', op: 'IN', value: f }] }] }));
+      const fam = FAMILIAS[t.familia];
+      const itens = fam.excluir && o.pendentes !== 'alt'
+        ? fam.excluir.map(v => ({ by: 'firmStatus', op: 'NE', value: v }))
+        : [{ by: 'firmStatus', op: 'IN', value: fam.pendentes }];
+      p.set('filter', JSON.stringify({ groups: [{ useOr: false, items: itens }] }));
     }
     return API + t.path + '?' + p.toString();
   }
@@ -150,7 +158,8 @@
   function normalize(t, r, mineSet) {
     const fam = FAMILIAS[t.familia];
     const code = r.genericStatus;
-    const st = fam.st[code] || ['Situação ' + code, 'esc'];
+    const conhecido = Object.prototype.hasOwnProperty.call(fam.st, code);
+    const st = conhecido ? fam.st[code] : DESCONHECIDO(code);
     const cli = r.clientExpanded || {};
     let detalhe = '';
     if (t.key === 'geral') detalhe = r.subject || '';
@@ -168,6 +177,7 @@
       code,
       status: st[0],
       lado: st[1],
+      desconhecido: !conhecido,
       created: r.created || r.lastStatusChanged || null,
       last: r.lastUpdated || r.genericLastUpdated || r.changed || null,
       due: r.dueDate || null,
@@ -211,6 +221,8 @@
         if (due < now) alerta(2, 'Expectativa vencida em ' + fmtData(due));
         else if (diasUteis(now, due, hol) <= 1) alerta(1, 'Expectativa vence ' + fmtData(due));
       }
+    } else if (it.lado === 'desc') {
+      alerta(1, it.status + ': avise quem mantém a extensão');
     } else if (it.lado === 'cli') {
       if (fam.prescreve) {
         prescreveEm = Math.max(0, s.prescricaoDias - parado);
@@ -221,7 +233,19 @@
         else if (uteisParado > s.clienteSemRetorno) alerta(1, 'Cliente sem retorno há ' + uteisParado + ' d.u.');
       }
     }
-    return { nivel, motivos, parado, uteisAberto, prescreveEm };
+    return { nivel, motivos, parado, uteisAberto, prescreveEm, grav: gravidade(it, t, s, { nivel, parado, uteisAberto, prescreveEm }) };
+  }
+
+  /* Gravidade para o painel do gestor. 0 em dia | 1 atenção | 2 fora do prazo |
+   * 3 crítica: fora do prazo e (prescreve em até 5 dias, parada há 2x o limite de parada,
+   * ou aberta há 2x o prazo de conclusão). Definição em um lugar só para ajustar depois. */
+  function gravidade(it, t, s, e) {
+    if (e.nivel < 2) return e.nivel;
+    const lim = t.calculo ? s.conclusaoCalculo : s.conclusaoSimples;
+    if (e.prescreveEm != null && e.prescreveEm <= 5) return 3;
+    if (e.parado >= 2 * s.parada) return 3;
+    if (it.lado === 'esc' && e.uteisAberto >= 2 * lim) return 3;
+    return 2;
   }
 
   /* ---------- coleta ---------- */
@@ -233,22 +257,35 @@
     } catch (e) { return null; }
   }
 
-  async function collect(fetcher, settings, onProgress) {
+  // Lê as pendentes de um tipo. Se o filtro por exclusão (NE) for recusado, repete com a lista (IN).
+  async function lerPendentes(fetcher, t, out) {
+    const fam = FAMILIAS[t.familia];
+    const ler = modo => Promise.all([
+      paginar(fetcher, t, { pendentes: modo }),
+      paginar(fetcher, t, { pendentes: modo, mine: true, expand: false })
+    ]);
+    try { return await ler(true); }
+    catch (e) {
+      if ((e && e.auth) || !fam.excluir) throw e;
+      out.filtroAlternativo.push(t.label);
+      return ler('alt');
+    }
+  }
+
+  async function collect(fetcher, settings, onProgress, extra) {
     const s = Object.assign({}, DEFAULTS, settings || {});
     const now = new Date();
-    const out = { items: [], erros: [], porTipo: {}, fetchedAt: now.toISOString(), user: null };
+    const out = { items: [], erros: [], porTipo: {}, desconhecidos: {}, filtroAlternativo: [], fetchedAt: now.toISOString(), user: null, tramites: { lidos: 0, falhas: 0, cache: {} } };
     out.user = await usuario(fetcher);
     let i = 0;
     for (const t of TYPES) {
       i++;
       if (onProgress) onProgress(i, TYPES.length, t.label);
       try {
-        const [todas, minhas] = await Promise.all([
-          paginar(fetcher, t, { pendentes: true }),
-          paginar(fetcher, t, { pendentes: true, mine: true, expand: false })
-        ]);
+        const [todas, minhas] = await lerPendentes(fetcher, t, out);
         const mineSet = new Set(minhas.map(r => r.id));
         const norm = todas.map(r => normalize(t, r, mineSet)).filter(x => x.lado !== 'fim');
+        norm.filter(x => x.desconhecido).forEach(x => { const d = out.desconhecidos[t.key] || (out.desconhecidos[t.key] = {}); d[x.code] = (d[x.code] || 0) + 1; });
         norm.forEach(x => Object.assign(x, evaluate(x, s, now)));
         out.items = out.items.concat(norm);
         out.porTipo[t.key] = norm.length;
@@ -257,8 +294,68 @@
         out.erros.push(t.label + ': ' + (e && e.message ? e.message : e));
       }
     }
+    if (extra && extra.tramites) {
+      if (onProgress) onProgress(TYPES.length, TYPES.length, 'trâmites');
+      await enriquecer(fetcher, out, extra.tramites, s, now);
+    }
     out.items.sort((a, b) => (b.nivel - a.nivel) || (b.parado - a.parado));
     return out;
+  }
+
+  /* ---------- primeiro trâmite do escritório (estimativa) ----------
+   * A lista não traz o histórico. Para cada pendência que já saiu de "Sem análise", lê os trâmites
+   * uma única vez (o resultado fica em cache) e procura o primeiro trâmite depois da abertura cuja
+   * situação NÃO seja uma que o cliente grava. É uma estimativa: confirme com a aba Trâmites. */
+  function urlTramites(t, id) {
+    return API + t.path + '/' + encodeURIComponent(id) + '/topics?expand=all&itemsPerPage=1000&orderBy=' + encodeURIComponent('created asc') + '&pageIndex=0';
+  }
+  function primeiroTramiteEsc(topicos, t) {
+    const grava = new Set(FAMILIAS[t.familia].clienteGrava);
+    const ord = (topicos || []).filter(x => x && x.created).sort((a, b) => String(a.created).localeCompare(String(b.created)));
+    for (let i = 1; i < ord.length; i++) if (!grava.has(Number(ord[i].status))) return ord[i].created;
+    return null;
+  }
+  async function enriquecer(fetcher, out, cache, s, now) {
+    const LIMITE = 60, PARALELO = 4;
+    const hol = new Set(s.feriados || []);
+    const novo = {};
+    const fila = [];
+    for (const it of out.items) {
+      const c = cache[it.k];
+      if (c && c.pt) { novo[it.k] = c; continue; }
+      if (c && c.erro && now - new Date(c.erro) < 864e5) continue;       // não insiste por 1 dia
+      if (/^Sem análise/.test(it.status) || it.desconhecido) continue;     // ainda sem trâmite do escritório
+      fila.push(it);
+    }
+    const falhou = {};
+    let i = 0;
+    async function worker() {
+      while (i < fila.length && i < LIMITE) {
+        const it = fila[i++];
+        const t = TYPE_BY_KEY[it.type];
+        if (falhou[t.key] >= 3) continue;                                  // endpoint do tipo não responde
+        try {
+          const d = await fetcher(urlTramites(t, it.id));
+          const pt = primeiroTramiteEsc((d && d.items) || (Array.isArray(d) ? d : []), t);
+          out.tramites.lidos++;
+          if (pt) novo[it.k] = { pt }; // sem achar, tenta de novo no próximo ciclo
+        } catch (e) {
+          if (e && e.auth) throw e;
+          out.tramites.falhas++;
+          falhou[t.key] = (falhou[t.key] || 0) + 1;
+          novo[it.k] = { erro: now.toISOString() };
+        }
+      }
+    }
+    await Promise.all(Array.from({ length: PARALELO }, worker));
+    for (const it of out.items) {
+      const c = novo[it.k];
+      if (c && c.pt) {
+        it.primeiroTramite = c.pt;
+        it.ptUteis = diasUteis(parseDate(it.created), parseDate(c.pt), hol);
+      }
+    }
+    out.tramites.cache = novo; // só o que ainda está pendente: o cache não cresce
   }
 
   async function search(fetcher, q, settings) {
@@ -277,12 +374,47 @@
     const m = {};
     for (const it of items) {
       const k = it.resp || '(sem responsável)';
-      const r = m[k] || (m[k] = { resp: k, esc: 0, cli: 0, vermelho: 0, amarelo: 0, total: 0 });
-      r.total++; r[it.lado]++;
+      const r = m[k] || (m[k] = { resp: k, esc: 0, cli: 0, desc: 0, vermelho: 0, amarelo: 0, total: 0, g1: 0, g2: 0, g3: 0, semPrimeiro: 0, ptSoma: 0, ptN: 0 });
+      r.total++; r[it.lado === 'esc' || it.lado === 'cli' ? it.lado : 'desc']++;
       if (it.nivel === 2) r.vermelho++; else if (it.nivel === 1) r.amarelo++;
+      if (it.grav >= 1 && it.grav <= 3) r['g' + it.grav]++;
+      if (it.lado === 'esc' && /^Sem análise/.test(it.status)) r.semPrimeiro++;
+      if (it.ptUteis != null) { r.ptSoma += it.ptUteis; r.ptN++; }
     }
-    return Object.values(m).sort((a, b) => (b.vermelho - a.vermelho) || (b.total - a.total));
+    for (const r of Object.values(m)) r.ptMedia = r.ptN ? Math.round(r.ptSoma / r.ptN * 10) / 10 : null;
+    return Object.values(m).sort((a, b) => (b.g3 - a.g3) || (b.vermelho - a.vermelho) || (b.total - a.total));
   }
 
-  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData };
+  /* ---------- guias não visualizadas pelo cliente (Documentos do Onvio Gestão) ---------- */
+  // Item de storage/v2/{Folders|Projects}/{id}/children. Pasta traz documentCount/hasFiles/readUserCount.
+  function ehDocumento(x) {
+    return !!x && typeof x === 'object' && typeof x.isReadByClientUser === 'boolean' &&
+      !('documentCount' in x) && !('hasFiles' in x) && !('readUserCount' in x);
+  }
+  function parseVencimento(v) {
+    if (!v || typeof v !== 'string') return null;
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(v);
+    if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    const d = new Date(v);
+    return isNaN(d) ? null : new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  }
+  // Devolve null quando não é alerta (lida, sem vencimento ou longe do vencimento).
+  function avaliarGuia(guia, settings, now) {
+    const s = Object.assign({}, DEFAULTS, settings || {});
+    if (!guia || guia.lido) return null;
+    const venc = parseVencimento(guia.due);
+    if (!venc) return null;
+    now = now || new Date();
+    const hoje = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const dias = Math.round((venc - hoje) / 864e5);
+    if (dias > s.guiaDias) return null;
+    let nivel = 1, motivo;
+    if (dias < 0) { nivel = 2; motivo = 'Venceu há ' + (-dias) + ' dia(s)'; }
+    else if (dias === 0) { nivel = 2; motivo = 'Vence hoje'; }
+    else if (dias === 1) { nivel = 2; motivo = 'Vence amanhã'; }
+    else motivo = 'Vence em ' + dias + ' dias';
+    return { dias, nivel, motivo, venc: ymd(venc) };
+  }
+
+  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, ehDocumento, parseVencimento, avaliarGuia };
 })(typeof self !== 'undefined' ? self : this);

@@ -38,6 +38,13 @@
     </div>
   </section>
   <section class="sec">
+    <h2>Guias não visualizadas</h2>
+    <p>Alerta guias de Documentos que o cliente ainda não abriu e vencem em até este prazo (ou já venceram).</p>
+    <div class="grid2">
+      <label class="field">Avisar a partir de (dias antes do vencimento)<input type="number" id="guiaDias" min="0" max="60"></label>
+    </div>
+  </section>
+  <section class="sec">
     <h2>Avisos</h2>
     <div class="grid2">
       <label class="check"><input type="checkbox" id="notificar"> Notificações do Chrome</label>
@@ -48,6 +55,11 @@
     <h2>Feriados</h2>
     <p>Uma data por linha, no formato AAAA-MM-DD. Já vêm os nacionais de 2026 e 2027; inclua os estaduais e municipais.</p>
     <label class="field"><textarea id="feriados" rows="8" class="mono"></textarea></label>
+  </section>
+  <section class="sec">
+    <h2>Diagnóstico</h2>
+    <p>Para conferir a leitura com o Onvio e informar problemas.</p>
+    <pre class="mono" id="diag" style="margin:0;white-space:pre-wrap;font-size:12px"></pre>
   </section>
   <div class="foot" style="padding:0 14px; align-items:center">
     <button class="btn btn-primary" id="salvar">Salvar</button>

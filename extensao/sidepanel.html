@@ -40,6 +40,7 @@
   <button class="tab" role="tab" data-aba="semresp" title="Sem responsável">Sem resp. <span class="tab-badge" id="b-semresp"></span></button>
   <button class="tab" role="tab" data-aba="equipe">Equipe <span class="tab-badge" id="b-equipe"></span></button>
   <button class="tab" role="tab" data-aba="analistas">Analistas</button>
+  <button class="tab" role="tab" data-aba="guias" title="Guias não visualizadas pelo cliente">Guias <span class="tab-badge" id="b-guias"></span></button>
   <button class="tab" role="tab" data-aba="buscar"><svg class="ic ic-sm"><use href="#i-search"/></svg> Buscar</button>
 </nav>
 
@@ -63,8 +64,17 @@
 
 <section id="v-analistas" hidden>
   <div class="toolbar"><span class="count" id="count-an" style="margin-left:0"></span></div>
-  <div class="list-card"><table class="tbl" id="tbl-an"><thead><tr><th>Responsável</th><th title="Ação do escritório">Escr.</th><th title="Vez do cliente">Cli.</th><th title="Fora do prazo">Atraso</th><th title="Vence hoje ou cliente sem retorno">Alerta</th></tr></thead><tbody></tbody></table></div>
-  <div class="legenda">Clique numa linha para ver as solicitações daquela pessoa na aba Equipe.</div>
+  <div class="list-card"><table class="tbl" id="tbl-an"><thead><tr><th>Responsável</th><th title="Ação do escritório">Escr.</th><th title="Vez do cliente">Cli.</th><th title="G1 atenção">G1</th><th title="G2 fora do prazo">G2</th><th title="G3 crítica: prescreve em até 5 dias ou parada há o dobro do limite">G3</th><th title="Aguardando o primeiro trâmite">S/ 1º</th><th title="Média, em dias úteis, até o primeiro trâmite do escritório (estimativa)">1º trâm.</th></tr></thead><tbody></tbody></table></div>
+  <div class="legenda">Clique numa linha para ver as solicitações daquela pessoa na aba Equipe. G1 atenção, G2 fora do prazo, G3 crítica (prescreve em até 5 dias, parada há 2x o limite ou aberta há 2x o prazo). S/ 1º: ainda "Sem análise". 1º trâm.: média em d.u., estimada pelos trâmites; confirme na aba Trâmites do Onvio.</div>
+</section>
+
+<section id="v-guias" hidden>
+  <div class="toolbar">
+    <input type="search" id="f-guia" placeholder="Filtrar por cliente ou nome do arquivo…" autocomplete="off">
+    <span class="count" id="count-guias"></span>
+  </div>
+  <div class="list-card" id="lista-guias"></div>
+  <div class="legenda">Guias que o cliente ainda não visualizou e vencem em até o número de dias definido nas configurações. A lista é montada com as pastas de Documentos que você abre no Onvio Gestão: abra a pasta do cliente para a guia entrar aqui.</div>
 </section>
 
 <section id="v-buscar" hidden>

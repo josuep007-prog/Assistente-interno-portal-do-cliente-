@@ -22,11 +22,14 @@ async function agendar() {
 /* ---------- acesso ao Onvio ---------- */
 class AuthError extends Error { constructor(m) { super(m || 'Sessão do Onvio não encontrada'); this.auth = true; } }
 
+// 401/403 ou página de login (HTML com status 200) = sem sessão.
+// Erro do servidor (5xx, 404, 400...) é erro da leitura e não deve pedir login.
 async function lerResposta(status, ct, texto) {
   if (status === 401 || status === 403) throw new AuthError();
-  if (!/json/i.test(ct || '')) throw new AuthError();
+  if (status >= 300 && status < 400) throw new AuthError();
   if (status < 200 || status >= 300) throw new Error('HTTP ' + status);
-  return JSON.parse(texto);
+  if (!/json/i.test(ct || '')) throw new AuthError();
+  try { return JSON.parse(texto); } catch (e) { throw new Error('Resposta inválida do Onvio'); }
 }
 
 // 1ª opção: direto do service worker, com o cookie da sessão
@@ -76,12 +79,15 @@ async function coletar(manual) {
   if (rodando) return rodando;
   rodando = (async () => {
     const s = await getSettings();
-    const { snapshot: anterior } = await chrome.storage.local.get('snapshot');
+    const { snapshot: anterior, tramites: cacheTramites } = await chrome.storage.local.get(['snapshot', 'tramites']);
     await chrome.storage.local.set({ status: { estado: 'lendo', em: new Date().toISOString(), etapa: '' } });
     try {
       const { f, via } = await escolherFetcher();
-      const snap = await OC.collect(f, s, (i, n, rot) => chrome.storage.local.set({ status: { estado: 'lendo', etapa: i + '/' + n + ' · ' + rot } }));
+      const snap = await OC.collect(f, s, (i, n, rot) => chrome.storage.local.set({ status: { estado: 'lendo', etapa: i + '/' + n + ' · ' + rot } }), { tramites: cacheTramites || {} });
       snap.via = via;
+      snap.versao = chrome.runtime.getManifest().version;
+      const novoCache = snap.tramites.cache; delete snap.tramites.cache;   // o cache fica fora do resumo
+      await chrome.storage.local.set({ tramites: novoCache });
       await notificar(anterior, snap, s);
       await chrome.storage.local.set({ snapshot: snap, status: { estado: 'ok', em: snap.fetchedAt, erros: snap.erros } });
       await atualizarBadge(snap);
@@ -129,6 +135,7 @@ async function notificar(anterior, snap, s) {
   }
   if (!avisos.length) return;
   const mapa = {};
+  const agora = Date.now();
   if (avisos.length > 3) {
     const id = 'resumo-' + Date.now();
     await chrome.notifications.create(id, {
@@ -137,13 +144,23 @@ async function notificar(anterior, snap, s) {
     });
   } else {
     for (const a of avisos) {
-      const id = 'it-' + a.it.k + '-' + Date.now();
-      mapa[id] = a.it;
+      const id = 'it-' + a.it.k + '-' + agora;
+      mapa[id] = { type: a.it.type, num: String(a.it.num), ts: agora };
       await chrome.notifications.create(id, { type: 'basic', iconUrl: 'icons/128.png', title: a.t, message: a.m, priority: 1 });
     }
   }
+  await guardarNotifMap(mapa);
+}
+
+// Guarda só o que é preciso para abrir a solicitação (tipo e número) e descarta o que tem mais de 24 h.
+async function guardarNotifMap(novos, remover) {
   const { notifMap } = await chrome.storage.local.get('notifMap');
-  await chrome.storage.local.set({ notifMap: Object.assign({}, notifMap || {}, mapa) });
+  const corte = Date.now() - 864e5;
+  const m = {};
+  for (const [id, v] of Object.entries(Object.assign({}, notifMap || {}, novos || {}))) {
+    if (id !== remover && v && v.ts > corte) m[id] = v;
+  }
+  await chrome.storage.local.set({ notifMap: m });
 }
 
 chrome.notifications.onClicked.addListener(async id => {
@@ -152,6 +169,7 @@ chrome.notifications.onClicked.addListener(async id => {
   if (it) await abrir(it);
   chrome.notifications.clear(id);
 });
+chrome.notifications.onClosed.addListener(id => { guardarNotifMap(null, id); });
 
 /* ---------- abrir solicitação no Onvio ---------- */
 async function abrir(it) {

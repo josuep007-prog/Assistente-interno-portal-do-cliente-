@@ -2,9 +2,9 @@
 
 Ferramentas internas da ControlTax para facilitar o uso e o controle do **Portal do Cliente Onvio** por analistas e gestores.
 
-## Control Onvio (extensão do Chrome) · v0.1.0
+## Control Onvio (extensão do Chrome) · v0.2.0
 
-Junta numa fila só as solicitações pendentes das 10 listas do Portal do Cliente (Geral, Cadastro de empregado, contribuinte e estagiário, Aviso e Cálculo de férias, Aviso e Cálculo de rescisão, Afastamento e Lançamento de rubricas), com semáforo de prazo, contagem para a prescrição e notificações.
+Junta numa fila só as solicitações pendentes das 10 listas do Portal do Cliente (Geral, Cadastro de empregado, contribuinte e estagiário, Aviso e Cálculo de férias, Aviso e Cálculo de rescisão, Afastamento e Lançamento de rubricas), com semáforo de prazo, contagem para a prescrição e notificações. Também marca os dias parados na grade do Onvio, avisa guias não visualizadas pelo cliente perto do vencimento e traz o painel do gestor (G1/G2/G3 e 1º trâmite por analista).
 
 Fase 1: **somente leitura**. A extensão usa a sessão do Onvio de quem está logado e não altera nada no Onvio.
 
@@ -29,6 +29,8 @@ Para atualizar: baixe de novo, substitua a pasta e clique em **Recarregar** no c
 | `sidepanel.html/js` | Painel lateral (Minhas, Sem resp., Equipe, Analistas, Buscar, exportar CSV) |
 | `content.js` | Filtra a grade do Onvio pelo ID ao abrir uma solicitação pelo painel |
 | `options.html/js` | Prazos, intervalo de leitura, notificações e feriados |
+| `grade.js` | Marca "Nd parada" na grade das listas de Solicitações de Serviço |
+| `docs-hook.js`, `docs-ponte.js` | Guias não visualizadas: escutam a tela de Documentos (Onvio Gestão) sem chamadas extras |
 | `ui.css`, `tema.js`, `logo.svg`, `icons/` | Visual no padrão Control Hub, modo claro e escuro |
 
 ### Mapeamento do portal
@@ -36,8 +38,17 @@ Para atualizar: baixe de novo, substitua a pasta e clique em **Recarregar** no c
 * [`mapeamento/portal-do-cliente.md`](mapeamento/portal-do-cliente.md): rotas, telas, APIs, códigos de situação, pendências de 13/10/2026 e riscos do Portal do Cliente Onvio e dos Documentos (Onvio Gestão).
 * [`mapeamento/capturar-mapa-onvio.js`](mapeamento/capturar-mapa-onvio.js): script de console que captura a estrutura das telas (seletores, colunas, botões) sem gravar dados de clientes. Útil para a coluna extra na grade nativa e para as telas de Documentos.
 
+### Testes
+
+```
+node --test testes/extensao.test.js
+```
+
+Cobrem as regras de prazo, situação desconhecida, filtro de Rubricas, gravidade, 1º trâmite, métricas por analista, guias e o tratamento de erros do `background.js`. Não precisam de instalação.
+
 ### Próximos passos previstos
 
-- Guias não visualizadas pelo cliente perto do vencimento (Onvio Gestão, Documentos).
 - Aviso de competência no nome do arquivo antes do upload.
+- Testar a busca global de documentos (`storage/v1/containers/documents/search`) para varrer as guias de todos os clientes.
+- Confirmar o caminho dos trâmites da lista Geral e validar a estimativa de 1º trâmite com casos reais.
 - Ações em lote (definir responsável, alterar expectativa de conclusão), na fase 2.

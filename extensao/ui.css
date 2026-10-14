@@ -148,6 +148,9 @@ input:focus,select:focus,textarea:focus{border-color:var(--blue-deep); box-shado
 .empty{padding:22px 14px; text-align:center; color:var(--ink-3); font-size:12.5px}
 .mais{display:block; width:100%; border:0; border-top:1px solid var(--rule); background:var(--surface-2); padding:9px; font-size:12px; font-weight:600; color:var(--blue-deep); cursor:pointer}
 
+/* guias */
+.grupo{display:flex; align-items:center; gap:8px; padding:8px 12px; background:var(--surface-2); border-bottom:1px solid var(--rule); font-size:11.5px; font-weight:700; color:var(--ink-2); text-transform:uppercase; letter-spacing:.03em}
+
 /* tabela analistas */
 .tbl{width:100%; border-collapse:collapse; font-size:12.5px; table-layout:fixed}
 .tbl th{font-size:10.5px; font-weight:600; color:var(--ink-3); text-transform:uppercase; letter-spacing:.04em; text-align:right; padding:7px 8px; background:var(--surface-2); line-height:1.25; border-bottom:1px solid var(--rule)}
@@ -158,7 +161,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--blue-deep); box-shado
 .tbl tbody tr:hover{background:var(--surface-2)}
 .tbl .late{color:var(--late); font-weight:700}
 .tbl .today{color:var(--today); font-weight:600}
-.tbl th:first-child{width:38%}
+.tbl th:first-child{width:28%}
 .tbl td:first-child{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600}
 
 /* rodapé */
