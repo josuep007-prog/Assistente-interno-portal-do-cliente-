@@ -1,7 +1,9 @@
-/* Hoje · visão do analista (desenho do "Hoje" do Portal do Cliente no Control Hub):
- * saudação e números, faixa ao vivo, a semana, "Para fazer agora", "Precisa de atenção", agenda e atividade. */
-import { estado, minhas, clienteRespondeu, primeiroNome, salvarLembretes } from '../estado.js';
-import { esc, plural, miniItem, ligarItens, relativo, fmtDataHora, fmtHoraS, saudacao, dataExtensa, $, $$ } from '../util.js';
+/* Hoje (desenho do "Hoje" do Portal do Cliente no Control Hub): saudação e números, barra viva da equipe,
+ * solicitações por analista e placar, a semana, "Para fazer agora", idade da fila e prescrição,
+ * sugestão de distribuição, "Precisa de atenção", agenda e atividade. */
+import { estado, itens, minhas, clienteRespondeu, primeiroNome, salvarLembretes } from '../estado.js';
+import { esc, plural, miniItem, ligarItens, relativo, fmtDataHora, saudacao, dataExtensa, $, $$ } from '../util.js';
+import { porPrioridade, fitaHtml, equipeHtml, filaEquipeHtml, distribuicaoHtml, ligarPainel, desenharGraficos } from './painel-equipe.js';
 const OC = window.OC;
 const SEM = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
 const MES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
@@ -67,7 +69,6 @@ export function render(el, ctx) {
   // colunas
   const ord = l => l.slice().sort((a, b) => ((b.grav || 0) - (a.grav || 0)) || (b.parado - a.parado));
   const jaListadas = new Set(atraso.concat(venceHoje, respondeu).map(i => i.k));
-  const prescreve = m.filter(i => i.prescreveEm != null && i.prescreveEm <= 5).sort((a, b) => a.prescreveEm - b.prescreveEm);
   const paradas = esc_.filter(i => !jaListadas.has(i.k)).sort((a, b) => b.parado - a.parado);
   const aba = m.filter(i => i.abaProvavel);
   const listas = {};
@@ -76,18 +77,16 @@ export function render(el, ctx) {
     (l.length > 5 && kpi ? '<a class="ver" href="#/fila?kpi=' + kpi + '">Ver todas (' + l.length + ')</a>' : '') + '</div>'; };
 
   const evs = (estado.eventos || []).filter(e => e.mine).slice(0, 8);
-  const ultimoEv = evs[0];
-  const ver = estado.ultima || (estado.snap && estado.snap.fetchedAt);
-  const vivo = (estado.settings.tempoRealSeg > 0) && ver && Date.now() - new Date(ver) < Math.max(120, estado.settings.tempoRealSeg * 4) * 1000;
+  const fita = porPrioridade(itens());
 
   ctx.cab({ titulo: 'Hoje', sub: 'Seu dia no Portal do Cliente' });
   el.innerHTML =
     '<div class="hoje-topo"><div><div class="ht-saud">' + saudacao() + (nome ? ', ' + esc(nome) : '') + '</div><h2 class="ht-data" id="ht-data">' + esc(dataExtensa()) + '</h2><p class="ht-resumo">' + esc(resumo) + '</p></div>' +
       '<div class="ht-cont">' + kpis.map(k => '<button class="kpi ' + k.cls + '" data-kpi="' + k.k + '"><span class="rot">' + k.rot + '</span><span class="val">' + k.val + '</span></button>').join('') + '</div></div>' +
-    '<div class="ticker' + (vivo ? '' : ' parado') + '"><span class="tk-live"><i></i>' + (vivo ? 'Ao vivo' : 'Parado') + '</span><div class="tk-tx">' +
-      (ultimoEv ? '<button data-ev="' + esc(ultimoEv.id) + '"><b>' + esc(ultimoEv.titulo) + '</b> · #' + esc(ultimoEv.num) + ' ' + esc(ultimoEv.typeLabel) + ' · ' + esc(ultimoEv.cliente) + '</button><span class="sep">|</span><span>' + esc(relativo(ultimoEv.em)) + '</span>'
-        : '<span>Nenhuma novidade nas suas solicitações. Quando o cliente responder ou chegar algo para você, aparece aqui.</span>') +
-      '</div><span class="tk-hora">' + (ver ? 'lido ' + fmtHoraS(ver) : '') + '</span></div>' +
+    fitaHtml(fita) +
+    '<h2 class="sec-tit">Equipe agora <small>todas as pendências, por analista</small></h2>' +
+    equipeHtml() +
+    '<h2 class="sec-tit">Sua semana</h2>' +
     semana +
     '<h2 class="sec-tit">Para fazer agora</h2>' +
     '<div class="trio" id="agora">' +
@@ -95,9 +94,11 @@ export function render(el, ctx) {
       col('c-today', 'Vencem hoje', ord(venceHoje), 'hoje', 'Nada vence hoje.') +
       col('c-soon', 'Cliente respondeu', ord(respondeu), 'respondeu', 'Nenhuma resposta esperando você.') +
     '</div>' +
-    '<h2 class="sec-tit">Precisa de atenção</h2>' +
-    '<div class="trio solto" id="atencao">' +
-      col('', 'Prescrevem em breve', prescreve, 'prescreve', 'Nada perto de prescrever.', { lado: 'prescreve' }) +
+    '<h2 class="sec-tit">Fila da equipe <small>idade e prescrição</small></h2>' +
+    filaEquipeHtml() +
+    '<div style="margin-top:16px">' + distribuicaoHtml() + '</div>' +
+    '<h2 class="sec-tit">Precisa de atenção <small>suas solicitações</small></h2>' +
+    '<div class="trio solto duo" id="atencao">' +
       col('', 'Paradas há mais tempo', paradas, null, 'Nada parado com você.') +
       col('', 'Possível aba errada', aba, 'abaErrada', 'Nenhuma suspeita de aba errada.') +
     '</div>' +
@@ -113,6 +114,9 @@ export function render(el, ctx) {
   const novo = () => ctx.abrirLembrete({ dia: diaSel === 'atr' ? null : new Date(diaSel + 'T12:00:00') });
   $('#sm-add', el).onclick = novo; $('#ag-novo', el).onclick = novo;
   for (const [id, l] of Object.entries(listas)) ligarItens($('#' + id, el), l, ctx.abrirDetalhe);
+  ligarPainel(el, ctx, fita);
+  desenharGraficos(el);
+  ctx.aoRedimensionar(() => desenharGraficos(el));
   $$('[data-ev]', el).forEach(d => d.addEventListener('click', () => { const e = evs.find(x => x.id === d.dataset.ev); if (e) ctx.abrirDetalhe(e); }));
   $$('[data-ag]', el).forEach(d => d.addEventListener('click', ev => {
     const [tipo, id] = d.dataset.ag.split('|');
