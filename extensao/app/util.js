@@ -43,33 +43,58 @@ export function motivosHtml(i) {
     (i.motivos || []).map(m => '<span class="pill ' + (m.n === 2 ? 'pill-late' : 'pill-today') + '">' + esc(m.m) + '</span>').join('') +
     (i.abaProvavel ? '<span class="pill pill-muted" title="O assunto lembra uma solicitação específica (palavra: ' + esc(i.abaProvavel.palavra) + ')">Pode ser: ' + esc(i.abaProvavel.label) + '</span>' : '');
 }
-// Linha de lista (mesmo desenho do painel antigo).
-export function linhaItem(i, mostrarResp) {
-  const sub = [i.detalhe, mostrarResp ? (i.resp || 'sem responsável') : i.solicitante].filter(Boolean).join(' · ');
+const nomeCli = i => i.apelido || i.cliente || 'Cliente não informado';
+// Prazo em uma linha: o motivo mais grave, ou "em dia".
+export function prazoHtml(i) {
+  const m = (i.motivos || [])[0];
+  return m ? '<span class="c-prazo ' + (m.n === 2 ? 'late' : 'today') + '">' + (i.grav === 3 ? 'G3 · ' : '') + esc(m.m) + '</span>' : '<span class="fraco">em dia</span>';
+}
+// Linha compacta (colunas do Hoje e cartões do painel): ID, tipo, cliente, assunto e dias parada.
+export function miniItem(i, o) {
+  o = o || {};
+  const sub = [i.detalhe, o.resp ? (i.resp || 'sem responsável') : ''].filter(Boolean).join(' · ');
+  const d = o.lado === 'prescreve' && i.prescreveEm != null ? { v: i.prescreveEm + 'd', r: 'prescreve', c: 'late' } : { v: (i.parado || 0) + 'd', r: 'parada', c: i.nivel === 2 ? 'late' : i.nivel === 1 ? 'today' : '' };
+  return '<div class="mini" tabindex="0" data-k="' + esc(i.k) + '"><div class="m-tx">' +
+    '<div class="m-top"><span class="mono">#' + esc(i.num) + '</span><span>' + esc(i.typeLabel) + '</span></div>' +
+    '<div class="m-cli">' + esc(nomeCli(i)) + '</div>' + (sub ? '<div class="m-sub">' + esc(sub) + '</div>' : '') +
+    '</div><div class="m-d ' + d.c + '">' + d.v + '<small>' + d.r + '</small></div></div>';
+}
+// Cartão de solicitação (visão "Cartões" das filas).
+export function cartaoItem(i) {
   const mot = motivosHtml(i);
-  return '<div class="row lvl-' + (i.nivel || 0) + '" tabindex="0" data-k="' + esc(i.k) + '">' +
-    '<div><div class="row-top"><span class="num mono">#' + esc(i.num) + '</span><span>' + esc(i.typeLabel) + '</span>' + pillSituacao(i) + '</div>' +
-    '<div class="cell-main">' + esc(i.apelido || i.cliente || 'Cliente não informado') + '</div>' +
-    '<div class="cell-sub">' + esc(sub) + '</div></div>' +
-    '<div class="row-side"><span class="dias mono">' + (i.parado || 0) + 'd</span><span>parada</span><span>vez: ' + ladoTexto(i) + '</span></div>' +
-    (mot ? '<div class="motivos">' + mot + '</div>' : '') + '</div>';
+  return '<div class="sc lvl-' + (i.nivel || 0) + '" tabindex="0" data-k="' + esc(i.k) + '">' +
+    '<div class="sc-top"><span class="mono">#' + esc(i.num) + '</span><span>' + esc(i.typeLabel) + '</span>' + pillSituacao(i) + '</div>' +
+    '<div class="sc-cli" title="' + esc(i.cliente) + '">' + esc(nomeCli(i)) + '</div>' +
+    '<div class="sc-sub">' + esc(i.detalhe || '—') + '</div>' +
+    (mot ? '<div class="motivos">' + mot + '</div>' : '') +
+    '<div class="sc-pe"><span><b>' + (i.parado || 0) + 'd</b> parada</span><span>vez: ' + ladoTexto(i) + '</span><span class="resp">' + (i.resp ? esc(i.resp) : '<span class="today">sem responsável</span>') + '</span></div></div>';
 }
 
 let toastT = null;
 export function toast(msg, erro) {
   const t = $('#toast');
-  t.textContent = msg; t.classList.toggle('err', !!erro); t.classList.add('show');
+  t.textContent = msg; t.classList.toggle('err', !!erro); t.classList.toggle('ok', !erro); t.classList.add('show');
   clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 3800);
 }
 
-// Liga clique/Enter em linhas [data-k] para abrir o detalhe.
+// Liga clique/Enter em [data-k] para abrir o detalhe (com a lista, para "anterior/próxima")
+// e ↑/↓ para andar entre as linhas.
 export function ligarItens(el, fonte, abrir) {
-  $$('[data-k]', el).forEach(r => {
-    const go = () => { const it = fonte.find(x => x.k === r.dataset.k); if (it) abrir(it); };
+  const linhas = $$('[data-k]', el);
+  linhas.forEach((r, n) => {
+    const go = () => { const it = fonte.find(x => x.k === r.dataset.k); if (it) abrir(it, fonte); };
     r.addEventListener('click', go);
-    r.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+    r.addEventListener('keydown', e => {
+      if (e.key === 'Enter') go();
+      else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); const p = linhas[n + (e.key === 'ArrowDown' ? 1 : -1)]; if (p) p.focus(); }
+    });
   });
 }
+// Sem acento e em minúsculas, para buscar "joao" e achar "João".
+export const normal = s => String(s == null ? '' : s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+export const iniciais = n => String(n || '').split(/\s+/).filter(Boolean).slice(0, 2).map(x => x[0].toUpperCase()).join('');
+export const saudacao = () => { const h = new Date().getHours(); return h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite'; };
+export const dataExtensa = d => { const s = (d || new Date()).toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }); return s[0].toUpperCase() + s.slice(1); };
 
 // CSV no formato do Excel brasileiro (; e BOM).
 export function baixarCsv(nome, cabecalho, linhas) {

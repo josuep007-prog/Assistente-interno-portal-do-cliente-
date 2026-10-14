@@ -128,20 +128,34 @@ assert.equal(await cheia(portal), true);
 const caixa = await (await app.frameElement()).boundingBox();
 assert.deepEqual([caixa.width, caixa.height], [1440, 900], 'tela cheia');
 await foto(portal, '1-inicio.png');
-for (const rota of ['fila', 'equipe', 'clientes', 'lembretes']) {
+for (const rota of ['fila', 'fila?escopo=equipe', 'equipe', 'equipe?aba=resp', 'clientes', 'clientes?aba=empresas', 'lembretes', 'lembretes?aba=lista']) {
   await app.evaluate(r => { location.hash = '#/' + r; }, rota);
-  await app.waitForSelector('#vista .cab h1');
+  await app.waitForFunction(() => document.querySelector('#vista').children.length > 0);
   await new Promise(r => setTimeout(r, 300));
-  await foto(portal, '2-' + rota + '.png');
+  await foto(portal, '2-' + rota.replace(/[?=&]/g, '-') + '.png');
 }
+// busca em janela central e lembrete com repetição
+await app.evaluate(() => { location.hash = '#/inicio'; });
+await new Promise(r => setTimeout(r, 300));
+await portal.keyboard.press('Control+k');
+await app.waitForSelector('#cmdk:not([hidden])');
+await app.fill('#busca-q', 'acme');
+await new Promise(r => setTimeout(r, 400));
+await foto(portal, '2-busca.png');
+await portal.keyboard.press('Escape');
+await app.click('#sm-add');
+await app.waitForSelector('#dlg-lembrete:not([hidden])');
+await new Promise(r => setTimeout(r, 400));
+await foto(portal, '2-novo-lembrete.png');
+await portal.keyboard.press('Escape');
 // solicitações: consulta na hora pela aba do Onvio
 await app.evaluate(() => { location.hash = '#/solicitacoes'; });
-await app.waitForSelector('#corpo tr[data-k]', { timeout: 8000 });
+await app.waitForSelector('#corpo [data-k]', { timeout: 8000 });
 await foto(portal, '3-solicitacoes.png');
 // detalhe: lê dados e trâmites na hora (API simulada)
 await app.evaluate(() => { location.hash = '#/fila?escopo=equipe'; });
-await app.waitForSelector('#corpo tr[data-k]');
-await app.click('#corpo tr[data-k="calcFerias:v1"]');
+await app.waitForSelector('#corpo [data-k]');
+await app.click('#corpo [data-k="calcFerias:v1"]');
 await app.waitForSelector('#gaveta .tl-item', { timeout: 8000 });
 assert.equal(await app.$$eval('#gaveta .tl-item', e => e.length), 2);
 await foto(portal, '4-detalhe.png');
@@ -169,10 +183,12 @@ await esperar(async () => !(await cheia(portal)));
 await sw.evaluate(i => aoClicarNoIcone({ id: i, url: 'https://onvio.com.br/br-portal-do-cliente/painel-teste' }), idPortal);
 await esperar(() => cheia(portal));
 await app.evaluate(() => { location.hash = '#/fila?escopo=equipe'; });
-await app.waitForSelector('#corpo tr[data-k="calcFerias:v1"]');
-await app.click('#corpo tr[data-k="calcFerias:v1"]');
+await app.waitForSelector('#corpo [data-k="calcFerias:v1"]');
+await app.click('#corpo [data-k="calcFerias:v1"]');
 await app.waitForSelector('#gaveta .tl-item', { timeout: 8000 });         // espera os dados chegarem (a gaveta se redesenha)
-await app.click('#g-onvio');
+// clique por script: neste navegador de teste a janela real é menor que a área emulada e os ~120 px de baixo
+// não chegam ao iframe por mouse (também acontecia com a versão anterior)
+await app.$eval('#g-onvio', b => b.click());
 await esperar(() => /vacation\/calculation$/.test(portal.url()));
 await portal.waitForLoadState('load');
 await new Promise(r => setTimeout(r, 800));

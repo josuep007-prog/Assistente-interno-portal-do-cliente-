@@ -1,94 +1,149 @@
-/* Fila · minhas, equipe, sem responsável, de um analista ou de um cliente (pendências lidas ao vivo) */
-import { estado, itens, minhas, clienteRespondeu } from '../estado.js';
-import { esc, pillSituacao, ligarItens, csvItens, fmtDataCurta, ladoTexto, $ } from '../util.js';
+/* Fila · minhas, equipe, sem responsável, de um analista ou de um cliente (pendências lidas ao vivo).
+ * Barra como a de Empresas no Departamento Pessoal: busca, vez, Filtros, Ordenar, Lista/Cartões e Mais. */
+import { estado, itens, minhas, clienteRespondeu, enviar } from '../estado.js';
+import { esc, pillSituacao, prazoHtml, cartaoItem, ligarItens, csvItens, fmtDataCurta, ladoTexto, normal, $, $$ } from '../util.js';
 const OC = window.OC;
 
 const KPI = {
-  acao: { rot: 'com ação do escritório', f: i => i.lado === 'esc' },
-  hoje: { rot: 'que vencem hoje', f: i => i.nivel === 1 },
-  atraso: { rot: 'fora do prazo', f: i => i.nivel === 2 },
-  g3: { rot: 'críticas (G3)', f: i => i.grav === 3 },
-  respondeu: { rot: 'em que o cliente respondeu', f: clienteRespondeu },
-  prescreve: { rot: 'que prescrevem em até 5 dias', f: i => i.prescreveEm != null && i.prescreveEm <= 5 },
-  abaErrada: { rot: 'que podem estar na aba errada', f: i => !!i.abaProvavel },
-  cli: { rot: 'na vez do cliente', f: i => i.lado === 'cli' }
+  acao: { rot: 'Com ação do escritório', f: i => i.lado === 'esc' },
+  hoje: { rot: 'Vencem hoje', f: i => i.nivel === 1 },
+  atraso: { rot: 'Fora do prazo', f: i => i.nivel === 2 },
+  g3: { rot: 'Críticas (G3)', f: i => i.grav === 3 },
+  respondeu: { rot: 'Cliente respondeu', f: clienteRespondeu },
+  prescreve: { rot: 'Prescrevem em até 5 dias', f: i => i.prescreveEm != null && i.prescreveEm <= 5 },
+  abaErrada: { rot: 'Possível aba errada', f: i => !!i.abaProvavel },
+  cli: { rot: 'Na vez do cliente', f: i => i.lado === 'cli' }
 };
 
 const COLUNAS = [
   { k: 'num', rot: 'ID', v: i => Number(i.num) || 0 },
   { k: 'tipo', rot: 'Tipo', v: i => i.typeLabel },
   { k: 'status', rot: 'Situação', v: i => i.status },
-  { k: 'cliente', rot: 'Cliente', v: i => (i.apelido || i.cliente || '').toLowerCase() },
-  { k: 'detalhe', rot: 'Empregado / assunto', v: i => (i.detalhe || '').toLowerCase() },
-  { k: 'resp', rot: 'Responsável', v: i => (i.resp || '').toLowerCase() },
+  { k: 'cliente', rot: 'Cliente', v: i => normal(i.apelido || i.cliente) },
+  { k: 'detalhe', rot: 'Empregado / assunto', v: i => normal(i.detalhe) },
+  { k: 'resp', rot: 'Responsável', v: i => normal(i.resp) },
   { k: 'parado', rot: 'Parada', v: i => i.parado || 0, num: true },
   { k: 'nivel', rot: 'Prazo', v: i => (i.nivel || 0) * 10 + (i.grav || 0) }
 ];
+const COLS = '64px 132px 168px minmax(0,1.1fr) minmax(0,1.3fr) 130px 60px minmax(0,1.4fr)';
+const ORDENS = [['nivel', 'Prazo (mais grave primeiro)'], ['parado', 'Mais tempo parada'], ['num', 'ID (mais nova primeiro)'], ['cliente', 'Cliente (A–Z)'], ['tipo', 'Tipo'], ['resp', 'Responsável']];
 
 let ord = { k: 'nivel', desc: true };
-let filtros = { texto: '', tipo: '', lado: '' };
+let filtros = { texto: '', tipo: '', lado: '', grav: '', resp: '' };
+let vis = (() => { try { return localStorage.getItem('controlonvio-fila-vis') || 'lista'; } catch (e) { return 'lista'; } })();
 
 export function render(el, ctx, params) {
   params = params || {};
   const escopo = params.escopo || 'minhas';
-  let base = escopo === 'equipe' ? itens() : escopo === 'semresp' ? itens().filter(i => !i.resp) : minhas();
+  const todas = itens();
+  let base = escopo === 'equipe' ? todas : escopo === 'semresp' ? todas.filter(i => !i.resp) : minhas();
   let titulo = escopo === 'equipe' ? 'Fila da equipe' : escopo === 'semresp' ? 'Sem responsável' : 'Minha fila';
-  if (params.analista) { base = itens().filter(i => (i.resp || '(sem responsável)') === params.analista); titulo = params.analista; }
-  if (params.cliente) { base = itens().filter(i => (i.cliente || i.apelido || '(cliente não informado)') === params.cliente); titulo = params.cliente; }
+  let sub = 'Pendências lidas do Onvio, ao vivo';
+  if (params.analista) { base = todas.filter(i => (i.resp || '(sem responsável)') === params.analista); titulo = params.analista; sub = 'Fila do responsável · <a href="#/equipe">voltar à Equipe</a>'; }
+  if (params.cliente) { base = todas.filter(i => (i.cliente || i.apelido || '(cliente não informado)') === params.cliente); titulo = params.cliente; sub = 'Pendências do cliente · <a href="#/clientes">voltar a Clientes</a>'; }
   const kpi = KPI[params.kpi];
   if (kpi) base = base.filter(kpi.f);
+  const umaPessoa = escopo === 'minhas' && !params.analista && !params.cliente;
+  if (umaPessoa) filtros.resp = '';
+
+  const n = { minhas: minhas().length, equipe: todas.length, semresp: todas.filter(i => !i.resp).length };
+  const abaAtiva = params.analista || params.cliente ? '' : escopo;
+  ctx.cab({
+    titulo, sub,
+    abas: [
+      { id: 'minhas', rot: 'Minhas', href: '#/fila', n: n.minhas },
+      { id: 'equipe', rot: 'Equipe toda', href: '#/fila?escopo=equipe', n: n.equipe },
+      { id: 'semresp', rot: 'Sem responsável', href: '#/fila?escopo=semresp', n: n.semresp, late: n.semresp > 0 }
+    ],
+    aba: abaAtiva
+  });
+
+  const resps = [...new Set(base.map(i => i.resp || '(sem responsável)'))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const sel = (id, rot, ops, v) => '<label class="field">' + rot + '<select id="' + id + '">' + ops.map(([k, r]) => '<option value="' + esc(k) + '"' + (v === k ? ' selected' : '') + '>' + esc(r) + '</option>').join('') + '</select></label>';
+
+  el.innerHTML =
+    '<div class="barra">' +
+      '<input type="search" id="f-texto" placeholder="Filtrar por ID, cliente, empregado, assunto ou responsável…" value="' + esc(filtros.texto) + '" aria-label="Filtrar">' +
+      '<div class="seg" role="group" aria-label="De quem é a vez">' + [['', 'Todas'], ['esc', 'Escritório'], ['cli', 'Cliente']].map(([v, r]) => '<button data-lado="' + v + '"' + (filtros.lado === v ? ' class="on"' : '') + '>' + r + '</button>').join('') + '</div>' +
+      '<details class="menu" id="m-filtros"><summary class="btn btn-sm" id="b-filtros"><svg class="ic ic-sm"><use href="#i-filter"/></svg> Filtros <span class="menu-n" id="n-filtros"></span></summary>' +
+        '<div class="menu-list form">' +
+          sel('f-tipo', 'Tipo de solicitação', [['', 'Todos os tipos']].concat(OC.TYPES.map(t => [t.key, t.label])), filtros.tipo) +
+          sel('f-grav', 'Gravidade', [['', 'Todas'], ['2', 'Fora do prazo'], ['1', 'Atenção (vence hoje)'], ['0', 'Em dia'], ['g3', 'Só críticas (G3)']], filtros.grav) +
+          (umaPessoa ? '' : sel('f-resp', 'Responsável', [['', 'Todos']].concat(resps.map(r => [r, r])), filtros.resp)) +
+          '<div class="menu-pe"><button class="btn btn-sm" id="f-limpar">Limpar filtros</button><button class="btn btn-sm btn-primary" id="f-ok">Pronto</button></div>' +
+        '</div></details>' +
+      '<span class="rotulo">Ordenar</span><select id="f-ord" aria-label="Ordenar">' + ORDENS.map(([k, r]) => '<option value="' + k + '"' + (ord.k === k ? ' selected' : '') + '>' + r + '</option>').join('') + '</select>' +
+      '<span class="count" id="cont"></span>' +
+      '<div class="seg" role="group" aria-label="Visualização"><button data-vis="lista"' + (vis === 'lista' ? ' class="on"' : '') + ' title="Lista"><svg class="ic"><use href="#i-list"/></svg> Lista</button><button data-vis="cartoes"' + (vis === 'cartoes' ? ' class="on"' : '') + ' title="Cartões"><svg class="ic"><use href="#i-grid"/></svg> Cartões</button></div>' +
+      '<details class="menu"><summary class="btn btn-sm" aria-label="Mais"><svg class="ic ic-sm"><use href="#i-more"/></svg> Mais</summary><div class="menu-list"><button class="menu-item" id="csv"><svg class="ic"><use href="#i-download"/></svg> Exportar CSV (o que está na tela)</button><button class="menu-item" id="m-onvio"><svg class="ic"><use href="#i-eye"/></svg> Ver a lista no Onvio</button></div></details>' +
+    '</div>' +
+    '<div class="ativos" id="ativos"></div>' +
+    '<div id="corpo"></div>';
 
   const filtrar = () => {
-    const q = filtros.texto.trim().toLowerCase();
-    let l = base.filter(i => (!filtros.tipo || i.type === filtros.tipo) && (!filtros.lado || i.lado === filtros.lado) &&
-      (!q || [i.num, i.apelido, i.cliente, i.detalhe, i.resp, i.status, i.typeLabel].join(' ').toLowerCase().includes(q)));
+    const q = normal(filtros.texto.trim());
+    const l = base.filter(i => (!filtros.tipo || i.type === filtros.tipo) && (!filtros.lado || i.lado === filtros.lado) &&
+      (!filtros.grav || (filtros.grav === 'g3' ? i.grav === 3 : String(i.nivel || 0) === filtros.grav)) &&
+      (!filtros.resp || (i.resp || '(sem responsável)') === filtros.resp) &&
+      (!q || normal([i.num, i.apelido, i.cliente, i.detalhe, i.resp, i.status, i.typeLabel].join(' ')).includes(q)));
     const col = COLUNAS.find(c => c.k === ord.k) || COLUNAS[COLUNAS.length - 1];
     l.sort((a, b) => { const x = col.v(a), y = col.v(b); const r = x < y ? -1 : x > y ? 1 : 0; return (ord.desc ? -r : r) || (b.parado - a.parado); });
     return l;
   };
-
-  el.innerHTML =
-    '<div class="cab"><div><h1>' + esc(titulo) + '</h1><div class="sub">' + (kpi ? 'Só as ' + esc(kpi.rot) + ' · <a href="#/fila' + (params.escopo ? '?escopo=' + encodeURIComponent(params.escopo) : '') + '">ver todas</a>' : 'Pendências lidas do Onvio, atualizadas ao vivo') + '</div></div>' +
-      '<div class="acoes"><button class="btn btn-sm" id="csv"><svg class="ic ic-sm"><use href="#i-download"/></svg> Exportar CSV</button></div></div>' +
-    '<div class="filtros">' +
-      '<input type="search" id="f-texto" placeholder="Filtrar por ID, cliente, empregado, assunto ou responsável…" value="' + esc(filtros.texto) + '">' +
-      '<select id="f-tipo" aria-label="Tipo"><option value="">Todos os tipos</option>' + OC.TYPES.map(t => '<option value="' + t.key + '"' + (filtros.tipo === t.key ? ' selected' : '') + '>' + esc(t.label) + '</option>').join('') + '</select>' +
-      '<div class="seg" role="group" aria-label="De quem é a vez">' + [['', 'Todas'], ['esc', 'Escritório'], ['cli', 'Cliente']].map(([v, r]) => '<button data-lado="' + v + '"' + (filtros.lado === v ? ' class="on"' : '') + '>' + r + '</button>').join('') + '</div>' +
-      '<span class="count" id="cont"></span>' +
-    '</div>' +
-    '<div class="tabela-wrap"><table class="tabela"><thead><tr><th class="sem" aria-label="Semáforo"></th>' +
-      COLUNAS.map(c => '<th class="ord' + (c.num ? ' num' : '') + (ord.k === c.k ? ' on' + (ord.desc ? '' : ' asc') : '') + '" data-col="' + c.k + '">' + c.rot + '</th>').join('') +
-    '</tr></thead><tbody id="corpo"></tbody></table></div>';
-
+  const chips = () => {
+    const c = [];
+    if (kpi) c.push(['kpi', 'Só: ' + kpi.rot]);
+    if (filtros.tipo) c.push(['tipo', OC.TYPE_BY_KEY[filtros.tipo].label]);
+    if (filtros.grav) c.push(['grav', { 2: 'Fora do prazo', 1: 'Atenção', 0: 'Em dia', g3: 'Só G3' }[filtros.grav]]);
+    if (filtros.resp) c.push(['resp', filtros.resp]);
+    $('#ativos', el).innerHTML = c.map(([k, r]) => '<span class="chip-f">' + esc(r) + '<button data-tira="' + k + '" aria-label="Tirar filtro"><svg class="ic"><use href="#i-x"/></svg></button></span>').join('');
+    const nf = ['tipo', 'grav', 'resp'].filter(k => filtros[k]).length;
+    $('#n-filtros', el).textContent = nf || '';
+    $('#b-filtros', el).classList.toggle('filtro-on', nf > 0);
+    $$('[data-tira]', el).forEach(b => b.onclick = () => {
+      if (b.dataset.tira === 'kpi') { const p = Object.assign({}, params); delete p.kpi; ctx.navegar('fila', p); return; }
+      filtros[b.dataset.tira] = ''; const s = $('#f-' + b.dataset.tira, el); if (s) s.value = ''; desenhar();
+    });
+  };
   const desenhar = () => {
     const l = filtrar();
+    chips();
     $('#cont', el).textContent = l.length + (l.length === 1 ? ' solicitação' : ' solicitações');
-    $('#corpo', el).innerHTML = l.length ? l.map(linha).join('') : '<tr><td colspan="9" class="vazio">' + (estado.snap ? 'Nada aqui com esses filtros.' : 'Aguardando a primeira leitura do Onvio.') + '</td></tr>';
+    const vazio = '<div class="vazio">' + (!estado.snap ? '<b>Aguardando a primeira leitura do Onvio</b>' : base.length ? '<b>Nada com esses filtros</b>Tire um filtro acima para ver mais.' : '<b>Nada pendente aqui</b>Quando chegar solicitação, ela aparece sozinha.') + '</div>';
+    if (vis === 'cartoes') $('#corpo', el).innerHTML = l.length ? '<div class="cards">' + l.map(cartaoItem).join('') + '</div>' : '<div class="list-card">' + vazio + '</div>';
+    else $('#corpo', el).innerHTML = '<div class="list-card" style="--cols:' + COLS + '"><div class="lh" role="row">' +
+      COLUNAS.map(c => '<button data-col="' + c.k + '" class="' + (c.num ? 'num ' : '') + (ord.k === c.k ? 'on' + (ord.desc ? '' : ' asc') : '') + '">' + c.rot + '</button>').join('') + '</div>' +
+      (l.length ? l.map(linha).join('') : vazio) + '</div>';
     ligarItens($('#corpo', el), l, ctx.abrirDetalhe);
+    $$('[data-col]', el).forEach(b => b.addEventListener('click', () => {
+      ord = ord.k === b.dataset.col ? { k: ord.k, desc: !ord.desc } : { k: b.dataset.col, desc: ['nivel', 'parado', 'num'].includes(b.dataset.col) };
+      $('#f-ord', el).value = ord.k; desenhar();
+    }));
   };
   $('#f-texto', el).addEventListener('input', e => { filtros.texto = e.target.value; desenhar(); });
-  $('#f-tipo', el).addEventListener('change', e => { filtros.tipo = e.target.value; desenhar(); });
-  el.querySelectorAll('[data-lado]').forEach(b => b.addEventListener('click', () => { filtros.lado = b.dataset.lado; el.querySelectorAll('[data-lado]').forEach(x => x.classList.toggle('on', x === b)); desenhar(); }));
-  el.querySelectorAll('[data-col]').forEach(th => th.addEventListener('click', () => {
-    ord = ord.k === th.dataset.col ? { k: ord.k, desc: !ord.desc } : { k: th.dataset.col, desc: th.dataset.col === 'nivel' || th.dataset.col === 'parado' };
-    el.querySelectorAll('[data-col]').forEach(x => { x.classList.toggle('on', x.dataset.col === ord.k); x.classList.toggle('asc', x.dataset.col === ord.k && !ord.desc); });
-    desenhar();
+  $('#f-texto', el).addEventListener('keydown', e => { if (e.key === 'ArrowDown') { const p = $('#corpo [data-k]', el); if (p) { e.preventDefault(); p.focus(); } } });
+  for (const k of ['tipo', 'grav', 'resp']) { const s = $('#f-' + k, el); if (s) s.addEventListener('change', e => { filtros[k] = e.target.value; desenhar(); }); }
+  $('#f-limpar', el).onclick = () => { filtros.tipo = filtros.grav = filtros.resp = ''; $$('.menu-list.form select', el).forEach(s => { s.value = ''; }); desenhar(); };
+  $('#f-ok', el).onclick = () => { $('#m-filtros', el).open = false; };
+  $('#f-ord', el).addEventListener('change', e => { ord = { k: e.target.value, desc: ['nivel', 'parado', 'num'].includes(e.target.value) }; desenhar(); });
+  $$('[data-lado]', el).forEach(b => b.addEventListener('click', () => { filtros.lado = b.dataset.lado; $$('[data-lado]', el).forEach(x => x.classList.toggle('on', x === b)); desenhar(); }));
+  $$('[data-vis]', el).forEach(b => b.addEventListener('click', () => {
+    vis = b.dataset.vis; try { localStorage.setItem('controlonvio-fila-vis', vis); } catch (e) {}
+    $$('[data-vis]', el).forEach(x => x.classList.toggle('on', x === b)); desenhar();
   }));
-  $('#csv', el).addEventListener('click', () => { const d = new Date(); csvItens('onvio-' + (params.escopo || 'minhas') + '-' + OC.ymd(d) + '.csv', filtrar()); });
+  $('#csv', el).addEventListener('click', () => { csvItens('onvio-' + (params.escopo || 'minhas') + '-' + OC.ymd(new Date()) + '.csv', filtrar()); });
+  $('#m-onvio', el).addEventListener('click', () => enviar({ cmd: 'fecharPainel' }));
   desenhar();
 }
 
 function linha(i) {
-  const prazo = (i.motivos || [])[0];
-  return '<tr data-k="' + esc(i.k) + '" tabindex="0">' +
-    '<td class="sem"><span class="lvl-c-' + (i.nivel || 0) + '"></span></td>' +
-    '<td class="mono">#' + esc(i.num) + '</td>' +
-    '<td>' + esc(i.typeLabel) + '</td>' +
-    '<td>' + pillSituacao(i) + '<div class="fraco">vez: ' + ladoTexto(i) + '</div></td>' +
-    '<td class="trunc" title="' + esc(i.cliente) + '">' + esc(i.apelido || i.cliente || '—') + '</td>' +
-    '<td class="trunc" title="' + esc(i.detalhe) + '">' + esc(i.detalhe || '—') + (i.abaProvavel ? '<div class="fraco">pode ser: ' + esc(i.abaProvavel.label) + '</div>' : '') + '</td>' +
-    '<td class="trunc">' + (i.resp ? esc(i.resp) : '<span class="today">sem responsável</span>') + '</td>' +
-    '<td class="num">' + (i.parado || 0) + 'd<div class="fraco">' + (i.last ? fmtDataCurta(i.last) : '') + '</div></td>' +
-    '<td>' + (prazo ? '<span class="' + (prazo.n === 2 ? 'late' : 'today') + '">' + (i.grav === 3 ? 'G3 · ' : '') + esc(prazo.m) + '</span>' : '<span class="fraco">em dia</span>') + '</td>' +
-    '</tr>';
+  return '<div class="lr lvl-' + (i.nivel || 0) + '" tabindex="0" data-k="' + esc(i.k) + '" role="row">' +
+    '<span class="mono">#' + esc(i.num) + '</span>' +
+    '<span class="c-sub" style="color:var(--ink-2)">' + esc(i.typeLabel) + '</span>' +
+    '<span>' + pillSituacao(i) + '<div class="c-sub">vez: ' + ladoTexto(i) + '</div></span>' +
+    '<span><div class="c-main" title="' + esc(i.cliente) + '">' + esc(i.apelido || i.cliente || '—') + '</div>' + (i.apelido && i.cliente && i.apelido !== i.cliente ? '<div class="c-sub">' + esc(i.cliente) + '</div>' : '') + '</span>' +
+    '<span><div class="c-sub" style="color:var(--ink)" title="' + esc(i.detalhe) + '">' + esc(i.detalhe || '—') + '</div>' + (i.abaProvavel ? '<div class="c-sub">pode ser: ' + esc(i.abaProvavel.label) + '</div>' : '') + '</span>' +
+    '<span class="c-sub" style="color:var(--ink-2)">' + (i.resp ? esc(i.resp) : '<span class="today">sem responsável</span>') + '</span>' +
+    '<span class="num"><b class="mono">' + (i.parado || 0) + 'd</b><div class="c-sub">' + (i.last ? fmtDataCurta(i.last) : '') + '</div></span>' +
+    '<span>' + prazoHtml(i) + '</span></div>';
 }

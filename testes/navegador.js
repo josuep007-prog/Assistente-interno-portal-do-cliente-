@@ -309,43 +309,72 @@ async function abrirApp(rota, extra) {
   await p.setViewportSize({ width: 1360, height: 860 });
   await semear(p, Object.assign({}, ESTADO_APP, extra || {}));
   await p.goto(URL_APP + (rota || ''));
-  await p.waitForSelector('#vista .cab h1', { timeout: 5000 });
+  await p.waitForFunction(() => document.querySelector('#vista').children.length > 0, null, { timeout: 5000 });
   return p;
 }
+const linhas = (p, sel) => p.$$eval(sel || '#corpo [data-k]', e => e.map(x => x.dataset.k));
 
-await passo('app · Início (analista): cartões, prioridades, agenda com lembrete atrasado e atividade', async () => {
+await passo('app · Hoje (analista): saudação, números, semana, colunas "para fazer agora", agenda com lembrete atrasado e atividade', async () => {
   const p = await abrirApp('#/inicio');
-  assert.equal(await p.textContent('#vista h1'), 'Olá, Ana');
-  const kpis = await p.$$eval('.kpi', e => e.map(x => x.querySelector('.rot').textContent + '=' + x.querySelector('.val').textContent));
-  assert.deepEqual(kpis, ['Com ação minha=2', 'Vencem hoje=1', 'Fora do prazo=1', 'Cliente respondeu=1', 'Lembretes hoje=1']);
-  assert.equal(await p.$$eval('#prio .row', e => e.length), 2);
+  assert.equal(await p.textContent('#titulo'), 'Hoje');
+  assert.match(await p.textContent('.ht-saud'), /, Ana$/);
+  const kpis = await p.$$eval('.ht-cont .kpi', e => e.map(x => x.querySelector('.rot').textContent + '=' + x.querySelector('.val').textContent));
+  assert.deepEqual(kpis, ['Com ação minha=2', 'Fora do prazo=1', 'Vencem hoje=1', 'Cliente respondeu=1', 'Lembretes hoje=1']);
+  assert.deepEqual(await linhas(p, '#agora [data-k]'), ['calcFerias:a', 'geral:b', 'geral:b'], 'fora do prazo, vence hoje e cliente respondeu');
   assert.match(await p.textContent('#agenda'), /Cobrar o BETA/);
   assert.match(await p.textContent('#ativ'), /Cliente respondeu/);
+  assert.match(await p.textContent('.ticker'), /Ao vivo.*Cliente respondeu · #102/);
+  assert.equal(await p.$$eval('.semana .sm-dia', e => e.length), 9, 'atrasados, 7 dias e "novo lembrete"');
+  await p.click('.sm-atr');
+  assert.match(await p.textContent('#agenda'), /Cobrar o BETA[\s\S]*Parada há 31 dias/, 'atrasados: lembrete e fora do prazo');
   assert.equal(await p.textContent('#n-fila'), '2');
   assert.equal(await p.textContent('#sino-cont'), '1');
   assert.match(await p.textContent('#aovivo-tx'), /^Ao vivo · \d\d:\d\d:\d\d$/);
+  await p.click('.ht-cont [data-kpi="atraso"]');
+  await p.waitForFunction(() => location.hash === '#/fila?kpi=atraso');
   assert.deepEqual(p.erros, []);
 });
 
-await passo('app · Minha fila e Equipe: filtros, ordenação, só as fora do prazo pelo cartão, sem responsável', async () => {
+await passo('app · Fila: abas Minhas/Equipe/Sem responsável, filtros e chips, ordenação, cartões, ↑↓ e Enter', async () => {
   const p = await abrirApp('#/fila');
-  assert.equal(await p.$$eval('#corpo tr', e => e.length), 2);
-  await p.click('.kpi', { trial: true }).catch(() => {});
-  await p.goto(URL_APP + '#/fila?kpi=atraso'); await p.waitForSelector('#corpo tr');
-  assert.deepEqual(await p.$$eval('#corpo tr', e => e.map(x => x.dataset.k)), ['calcFerias:a']);
-  await p.goto(URL_APP + '#/fila?escopo=equipe'); await p.waitForSelector('#corpo tr');
-  assert.equal(await p.$$eval('#corpo tr', e => e.length), 4);
+  assert.equal(await p.textContent('#titulo'), 'Minha fila');
+  assert.deepEqual(await p.$$eval('#abas .aba', e => e.map(x => x.textContent)), ['Minhas2', 'Equipe toda4', 'Sem responsável1']);
+  assert.equal((await linhas(p)).length, 2);
+  await p.goto(URL_APP + '#/fila?kpi=atraso'); await p.waitForSelector('#corpo [data-k]');
+  assert.deepEqual(await linhas(p), ['calcFerias:a']);
+  assert.match(await p.textContent('#ativos'), /Só: Fora do prazo/);
+  await p.click('#ativos [data-tira="kpi"]');
+  await p.waitForFunction(() => location.hash === '#/fila');
+  await p.click('#abas [data-aba="equipe"]'); await p.waitForFunction(() => document.querySelectorAll('#corpo [data-k]').length === 4);
   await p.fill('#f-texto', 'acme');
-  assert.equal(await p.$$eval('#corpo tr', e => e.length), 2);
+  assert.equal((await linhas(p)).length, 2);
   await p.fill('#f-texto', '');
   await p.click('[data-lado="cli"]');
-  assert.deepEqual(await p.$$eval('#corpo tr', e => e.map(x => x.dataset.k)), ['avisoRescisao:c']);
-  await p.goto(URL_APP + '#/fila?escopo=semresp'); await p.waitForSelector('#vista h1');
-  assert.equal(await p.textContent('#vista h1'), 'Sem responsável');
+  assert.deepEqual(await linhas(p), ['avisoRescisao:c']);
+  await p.click('[data-lado=""]');
+  await p.click('#b-filtros'); await p.selectOption('#f-resp', 'Bia');
+  assert.deepEqual(await linhas(p), ['rubricas:d']);
+  assert.equal(await p.textContent('#n-filtros'), '1');
+  await p.click('#f-limpar');
+  assert.equal((await linhas(p)).length, 4);
+  await p.click('#vista .lh [data-col="num"]');
+  assert.deepEqual(await linhas(p), ['rubricas:d', 'avisoRescisao:c', 'geral:b', 'calcFerias:a'], 'ID, mais nova primeiro');
+  await p.click('[data-vis="cartoes"]');
+  assert.equal(await p.$$eval('#corpo .sc', e => e.length), 4);
+  await p.click('[data-vis="lista"]');
+  await p.focus('#corpo [data-k="rubricas:d"]'); await p.keyboard.press('ArrowDown'); await p.keyboard.press('Enter');
+  await p.waitForSelector('#gaveta .dlg-nav');
+  assert.match(await p.textContent('#gaveta .dlg-nav'), /2 de 4/);
+  assert.match(await p.textContent('#gaveta h2'), /GAMA/);
+  await p.keyboard.press('ArrowRight');
+  await p.waitForFunction(() => /BETA/.test(document.querySelector('#gaveta h2').textContent));
+  await p.keyboard.press('Escape');
+  await p.goto(URL_APP + '#/fila?escopo=semresp'); await p.waitForSelector('#corpo [data-k]');
+  assert.equal(await p.textContent('#titulo'), 'Sem responsável');
   assert.deepEqual(p.erros, []);
 });
 
-await passo('app · Equipe (gestor): cartões, 4 gráficos com dicas e tabela por responsável que leva à fila da pessoa', async () => {
+await passo('app · Equipe (gestor): números, 4 gráficos com dicas; aba Responsáveis leva à fila da pessoa', async () => {
   const p = await abrirApp('#/equipe');
   const kpis = await p.$$eval('.kpi', e => e.map(x => x.querySelector('.rot').textContent + '=' + x.querySelector('.val').textContent));
   assert.deepEqual(kpis, ['Pendências=4', 'Sem responsável=1', 'Fora do prazo=2', 'Prescrevem em 5 dias=1', '1º trâmite (média)=1', 'Hoje=3 / 1']);
@@ -353,43 +382,54 @@ await passo('app · Equipe (gestor): cartões, 4 gráficos com dicas e tabela po
   assert.match(await p.textContent('#g-carga .legenda-viz'), /Em dia.*G1 atenção.*G2 fora do prazo.*G3 crítica/);
   await p.hover('#g-carga [data-tip]');
   assert.equal(await p.isVisible('#dica'), true, 'dica ao passar o mouse');
+  await p.click('#abas [data-aba="resp"]');
+  await p.waitForSelector('tr[data-resp="Ana Teste"]');
   await p.click('tr[data-resp="Ana Teste"]');
   await p.waitForFunction(() => location.hash.startsWith('#/fila?analista='));
-  assert.equal(await p.$$eval('#corpo tr', e => e.length), 2);
+  assert.equal((await linhas(p)).length, 2);
   assert.deepEqual(p.erros, []);
 });
 
-await passo('app · Clientes: ranking, mais tempo sem responder e tabela que leva às pendências do cliente', async () => {
+await passo('app · Clientes: painel com ranking e mais tempo sem responder; empresas em cartões e lista levam às pendências', async () => {
   const p = await abrirApp('#/clientes');
   assert.ok(await p.$('#g-top svg'));
   assert.match(await p.textContent('#l-lentos'), /GAMA/);
-  assert.equal(await p.$$eval('#corpo tr', e => e.length), 3);
+  await p.click('#abas [data-aba="empresas"]');
+  await p.waitForSelector('#corpo [data-cli]');
+  assert.equal(await p.$$eval('#corpo .sc[data-cli]', e => e.length), 3);
+  await p.click('[data-vis="lista"]');
+  assert.equal(await p.$$eval('#corpo tr[data-cli]', e => e.length), 3);
   await p.fill('#f', 'beta');
-  assert.equal(await p.$$eval('#corpo tr', e => e.length), 1);
-  await p.click('#corpo tr');
+  assert.equal(await p.$$eval('#corpo tr[data-cli]', e => e.length), 1);
+  await p.click('#corpo tr[data-cli]');
   await p.waitForFunction(() => location.hash.startsWith('#/fila?cliente='));
-  assert.equal(await p.$$eval('#corpo tr', e => e.length), 1);
+  assert.equal((await linhas(p)).length, 1);
   assert.deepEqual(p.erros, []);
 });
 
-await passo('app · detalhe: abre na gaveta, pede dados e trâmites, mostra a linha do tempo e cria lembrete ligado à solicitação', async () => {
+await passo('app · detalhe: janela com dados e trâmites lidos na hora; lembrete ligado à solicitação aparece na aba Lembretes', async () => {
   const p = await abrirApp('#/fila', {});
   await p.evaluate(() => { window.__respostas = { detalhe: { ok: true, item: { assunto: 'Férias do João', descricao: '<p>Segue <b>pedido</b></p>', meio: 'WEB' }, tramites: [{ n: 1, em: '2026-10-10T10:00:00', situacao: 'Sem análise', autor: 'Cliente BETA', texto: 'Abertura', anexos: ['aviso.pdf'] }, { n: 2, em: '2026-10-12T10:00:00', situacao: 'Aguardando resposta', autor: 'Cliente BETA', texto: 'Alguma novidade?', anexos: [] }] } }; });
-  await p.click('#corpo tr[data-k="geral:b"]');
+  await p.click('#corpo [data-k="geral:b"]');
   await p.waitForSelector('#gaveta .tl-item');
   assert.equal(await p.$$eval('#gaveta .tl-item', e => e.length), 2);
-  assert.match(await p.textContent('#gaveta .gav-cab h2'), /BETA/);
+  assert.match(await p.textContent('#gaveta .dlg-head h2'), /BETA/);
   assert.match(await p.textContent('#gaveta'), /aviso\.pdf/);
+  assert.match(await p.textContent('#gaveta [data-aba="tramites"]'), /Trâmites2/);
   const pedido = await p.evaluate(() => window.__msgs.find(m => m.cmd === 'detalhe'));
   assert.deepEqual([pedido.type, String(pedido.num)], ['geral', '102']);
-  await p.click('[data-aba="dados"]');
+  await p.click('#gaveta [data-aba="dados"]');
   assert.match(await p.textContent('#g-corpo'), /Segue pedido/, 'HTML do Onvio vira texto puro');
   await p.click('#g-lembrete');
   await p.fill('#lt', 'Ligar para o João');
+  await p.selectOption('#lr', 'semanal');
   await p.click('#ls');
   await p.waitForFunction(() => JSON.parse(localStorage.getItem('__mem')).lembretes.length === 2);
   const l = await p.evaluate(() => JSON.parse(localStorage.getItem('__mem')).lembretes[1]);
-  assert.deepEqual([l.texto, l.type, l.num], ['Ligar para o João', 'geral', '102']);
+  assert.deepEqual([l.texto, l.type, l.num, l.rep], ['Ligar para o João', 'geral', '102', 'semanal']);
+  assert.equal(await p.isHidden('#dlg-lembrete'), true);
+  await p.click('#gaveta [data-aba="lembretes"]');
+  await p.waitForFunction(() => /Ligar para o João/.test(document.querySelector('#g-corpo').textContent) && /Cobrar o BETA/.test(document.querySelector('#g-corpo').textContent));
   await p.click('#g-onvio');
   assert.ok(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'abrir' && m.item.num === '102')));
   await p.keyboard.press('Escape');
@@ -397,20 +437,36 @@ await passo('app · detalhe: abre na gaveta, pede dados e trâmites, mostra a li
   assert.deepEqual(p.erros, []);
 });
 
-await passo('app · Solicitações e busca consultam o Onvio na hora; Lembretes: criar, adiar e concluir; sino; Ver Onvio', async () => {
+await passo('app · Solicitações e busca (janela central) consultam o Onvio na hora; Agenda e lembretes; sino; Ver Onvio', async () => {
   const p = await abrirApp('#/solicitacoes');
   await p.evaluate(() => { window.__respostas = { consultar: { ok: true, total: 1, paginas: 1, itens: [{ k: 'geral:z', type: 'geral', typeLabel: 'Geral', num: 900, status: 'Concluído', lado: 'fim', nivel: 0, cliente: 'ZETA', apelido: 'ZETA', detalhe: 'Antiga', resp: 'Ana', last: '2026-01-02T10:00:00' }] }, buscar: { ok: true, itens: [] } }; });
-  await p.click('[data-t="rubricas"]');
-  await p.waitForSelector('#corpo tr[data-k="geral:z"]');
+  await p.click('#abas [data-aba="rubricas"]');
+  await p.waitForSelector('#corpo [data-k="geral:z"]');
   const c = await p.evaluate(() => window.__msgs.filter(m => m.cmd === 'consultar').pop());
   assert.deepEqual([c.type, c.filtro, c.page], ['rubricas', 'pendentes', 1]);
   await p.click('[data-f="todas"]');
   await p.waitForFunction(() => window.__msgs.filter(m => m.cmd === 'consultar').pop().filtro === 'todas');
-  await p.fill('#busca-q', 'joão'); await p.press('#busca-q', 'Enter');
+  // busca: "/" abre a janela; o que já foi lido aparece na hora; Enter busca nas 10 listas
+  await p.keyboard.press('/');
+  await p.waitForSelector('#cmdk:not([hidden])');
+  await p.fill('#busca-q', 'joão');
+  assert.match(await p.textContent('#cmdk-res'), /Buscar “joão” no Onvio[\s\S]*#102 · BETA/);
+  await p.press('#busca-q', 'Enter');
   await p.waitForFunction(() => window.__msgs.some(m => m.cmd === 'buscar' && m.q === 'joão'));
-  await p.goto(URL_APP + '#/lembretes'); await p.waitForSelector('#lt');
+  assert.equal(await p.textContent('#titulo'), 'Busca');
+  await p.keyboard.press('Control+k');
+  await p.fill('#busca-q', '101');
+  await p.press('#busca-q', 'Enter');
+  await p.waitForSelector('#gaveta:not([hidden])');
+  assert.match(await p.textContent('#gaveta h2'), /ACME/, 'ID exato abre a solicitação');
+  await p.keyboard.press('Escape');
+  // agenda do mês e lista
+  await p.goto(URL_APP + '#/lembretes'); await p.waitForSelector('.cal .cal-d.hoje');
+  assert.match(await p.textContent('#ag-dia'), /Cobrar o BETA/, 'hoje mostra o lembrete atrasado');
+  await p.click('#novo-lembrete');
   await p.fill('#lt', 'Revisar folha'); await p.click('#ls');
   await p.waitForFunction(() => JSON.parse(localStorage.getItem('__mem')).lembretes.length === 2);
+  await p.click('#abas [data-aba="lista"]'); await p.waitForSelector('[data-l="l1"]');
   await p.click('[data-l="l1"] [data-a="amanha"]');
   await p.waitForFunction(() => JSON.parse(localStorage.getItem('__mem')).lembretes.find(x => x.id === 'l1').disparado === false);
   await p.click('[data-l="l1"] [data-a="feito"]');

@@ -2,9 +2,9 @@
 
 Ferramentas internas da ControlTax para facilitar o uso e o controle do **Portal do Cliente Onvio** por analistas e gestores.
 
-## Control Onvio (extensão do Chrome) · v0.7.0
+## Control Onvio (extensão do Chrome) · v0.8.0
 
-Página de trabalho em tela cheia **por cima do Onvio Portal do Cliente**: filas das 10 listas de solicitações, dashboards em tempo real para analistas (Início) e gestores (Equipe, Clientes), detalhe com trâmites, alertas e lembretes pessoais. O Onvio continua aberto por trás e mantém a sessão.
+Página de trabalho em tela cheia **por cima do Onvio Portal do Cliente**: filas das 10 listas de solicitações, dashboards em tempo real para analistas (Hoje) e gestores (Equipe, Clientes), agenda, detalhe com trâmites, alertas e lembretes pessoais. O Onvio continua aberto por trás e mantém a sessão.
 
 Por enquanto **somente leitura**. As ações (responder, definir responsável, anexar) entram depois do mapeamento feito com o modo "Aprender ações".
 
@@ -26,6 +26,7 @@ Para atualizar: baixe de novo, substitua a pasta e clique em **Recarregar** no c
 | `manifest.json` | Configuração da extensão (Manifest V3) |
 | `core.js` | Tipos de solicitação, códigos de situação, coleta na API do Onvio e regras de prazo |
 | `background.js` | Leitura periódica, contador no ícone, notificações e abertura da solicitação no Onvio |
+| `app/` | O app em si: trilho lateral, telas (Hoje, Minha fila, Agenda e lembretes, Equipe, Clientes, Todas as solicitações), detalhe e busca. Visual do Control Hub (Departamento Pessoal e Portal do Cliente) |
 | `shell.js` | Camada em tela cheia com o app dentro do Onvio, botão "Voltar ao Control Onvio", verificação ao vivo, modo aprender |
 | `acao-hook.js` | Percebe ações que alteram solicitações na página e pede leitura imediata (sem ler conteúdo) |
 | `app/` | O app: `app.html/css/js`, `estado.js` (espelho do armazenamento), `graficos.js` (SVG), `views/` (Início, fila, Equipe, Clientes, Solicitações, detalhe, Lembretes, Configurações) |

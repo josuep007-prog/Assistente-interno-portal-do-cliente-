@@ -562,8 +562,35 @@
     return {
       id: 'l' + now.getTime().toString(36) + Math.random().toString(36).slice(2, 6),
       texto, quando: quando.toISOString(), criadoEm: now.toISOString(), feito: false, disparado: false,
-      k: dados.k || null, type: dados.type || null, num: dados.num != null ? String(dados.num) : null, cliente: String(dados.cliente || '').slice(0, 120)
+      k: dados.k || null, type: dados.type || null, num: dados.num != null ? String(dados.num) : null, cliente: String(dados.cliente || '').slice(0, 120),
+      rep: REPETICOES[dados.rep] ? dados.rep : 'nao'
     };
+  }
+  // Repetição de lembrete (igual à do Control Hub, sem o "a cada N").
+  const REPETICOES = { nao: 'Não repete', diaria: 'Todo dia', util: 'Todo dia útil', semanal: 'Toda semana', mensal: 'Todo mês' };
+  // diaMes: dia do mês original (um lembrete do dia 31 volta ao 31 depois de fevereiro).
+  function proximaOcorrencia(quando, rep, feriados, diaMes) {
+    const d = new Date(quando);
+    if (rep === 'diaria') d.setDate(d.getDate() + 1);
+    else if (rep === 'semanal') d.setDate(d.getDate() + 7);
+    else if (rep === 'mensal') {
+      const dia = diaMes || d.getDate();
+      d.setDate(1); d.setMonth(d.getMonth() + 1);
+      d.setDate(Math.min(dia, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
+    } else if (rep === 'util') {
+      const hol = new Set(feriados || []);
+      do d.setDate(d.getDate() + 1); while (d.getDay() === 0 || d.getDay() === 6 || hol.has(ymd(d)));
+    } else return null;
+    return d;
+  }
+  // "Feito": o que repete pula para a próxima vez que ainda não passou; o resto é concluído.
+  function concluirLembrete(l, now, feriados) {
+    now = now || new Date();
+    if (!l.rep || l.rep === 'nao') return Object.assign({}, l, { feito: true });
+    const diaMes = l.diaMes || new Date(l.quando).getDate();
+    let q = proximaOcorrencia(l.quando, l.rep, feriados, diaMes);
+    for (let i = 0; q && q <= now && i < 800; i++) q = proximaOcorrencia(q, l.rep, feriados, diaMes);
+    return Object.assign({}, l, { quando: q.toISOString(), feito: false, disparado: false }, l.rep === 'mensal' ? { diaMes } : {});
   }
   // modo: '1h' | 'amanha' (amanhã às 9h, pulando fim de semana)
   function adiarLembrete(l, modo, now) {
@@ -630,5 +657,5 @@
     }));
   }
 
-  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, novoLembrete, adiarLembrete, situacaoLembrete, urlConsulta, detalheDe, tramitesDe, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, novoLembrete, adiarLembrete, situacaoLembrete, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);

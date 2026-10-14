@@ -657,6 +657,24 @@ test('lembretes: criar valida texto e data; adiar 1 h ou amanhã 9h (pulando fim
   assert.equal(OC.situacaoLembrete(Object.assign({}, l, { feito: true }), agora), 'feito');
 });
 
+test('lembretes que repetem: feito pula para a próxima vez que ainda não passou; sem repetição conclui', () => {
+  const agora = new Date('2026-10-16T15:00:00');                                      // sexta
+  const base = OC.novoLembrete({ texto: 'conferir folha', quando: '2026-10-16T09:00:00', rep: 'util' }, agora);
+  assert.equal(base.rep, 'util');
+  assert.equal(OC.novoLembrete({ texto: 'x', quando: '2026-10-16T09:00:00', rep: 'qualquer' }, agora).rep, 'nao', 'repetição desconhecida vira "não repete"');
+  const q = l => { const d = new Date(l.quando); return OC.ymd(d) + ' ' + d.getHours(); };
+  assert.equal(q(OC.concluirLembrete(base, agora)), '2026-10-19 9', 'dia útil: sexta → segunda');
+  assert.equal(q(OC.concluirLembrete(base, agora, ['2026-10-19'])), '2026-10-20 9', 'pula feriado');
+  assert.equal(q(OC.concluirLembrete(Object.assign({}, base, { rep: 'diaria' }), agora)), '2026-10-17 9');
+  assert.equal(q(OC.concluirLembrete(Object.assign({}, base, { rep: 'semanal' }), agora)), '2026-10-23 9');
+  assert.equal(q(OC.concluirLembrete(Object.assign({}, base, { rep: 'mensal', quando: '2026-01-31T09:00:00' }), agora)), '2026-10-31 9', 'mensal no dia 31 alcança o presente sem perder o dia 31');
+  assert.equal(q(OC.concluirLembrete(Object.assign({}, base, { rep: 'mensal', quando: '2026-10-31T09:00:00' }), new Date('2026-11-01'))), '2026-11-30 9', 'em mês de 30 dias cai no último dia');
+  const r = OC.concluirLembrete(Object.assign({}, base, { disparado: true }), agora);
+  assert.deepEqual([r.feito, r.disparado], [false, false], 'volta a avisar na próxima vez');
+  assert.equal(OC.concluirLembrete(Object.assign({}, base, { rep: 'nao' }), agora).feito, true);
+  assert.equal(OC.concluirLembrete({ id: 'antigo', texto: 'sem rep', quando: '2026-10-16T09:00:00' }, agora).feito, true, 'lembrete de versão anterior');
+});
+
 test('consulta sob demanda: pendentes, todas, busca e uma solicitação pelo número', () => {
   const f = u => JSON.parse(new URL(u).searchParams.get('filter') || '{"groups":[{"items":[]}]}').groups[0].items.map(i => i.by + ' ' + i.op + ' ' + i.value);
   const g = OC.TYPE_BY_KEY.geral, r = OC.TYPE_BY_KEY.rubricas;
