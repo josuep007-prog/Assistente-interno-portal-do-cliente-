@@ -216,7 +216,16 @@ function carregarBackground(opcoes = {}) {
       sendMessage: async (id, m) => { chamadas.push(['mensagem', id, m.type]); if (opcoes.abaAntiga && !injetado) throw new Error('Receiving end does not exist'); }
     },
     windows: { update: async (id, p) => { chamadas.push(['janela', id, p]); } },
-    scripting: { executeScript: async o => { chamadas.push(['injetar', o.target.tabId, o.files[0]]); injetado = true; } }
+    scripting: {
+      executeScript: async o => {
+        if (o.func) {            // leitura dentro da aba: cada "mundo" pode ter o seu fetch
+          const original = ctx.fetch, doMundo = opcoes.fetchPorMundo && opcoes.fetchPorMundo[o.world || 'ISOLATED'];
+          if (doMundo) ctx.fetch = doMundo;
+          try { return [{ result: await o.func(...(o.args || [])) }]; } finally { ctx.fetch = original; }
+        }
+        chamadas.push(['injetar', o.target.tabId, o.files[0]]); injetado = true;
+      }
+    }
   };
   const ctx = { console, URL, URLSearchParams, AbortController, setTimeout, clearTimeout, chrome, fetch: opcoes.fetch || (async () => { throw new Error('sem rede'); }) };
   ctx.self = ctx;
@@ -460,4 +469,165 @@ test('manifesto: painel só no Onvio, sem painel lateral do Chrome, ícone sem p
   for (const w of m.web_accessible_resources) assert.deepEqual(w.matches, ['https://onvio.com.br/*']);
   // tudo que o manifesto cita existe
   for (const f of m.content_scripts.flatMap(c => c.js).concat(war, ['background.js', 'options.html'])) assert.ok(fs.existsSync(path.join(EXT, f)), 'falta ' + f);
+});
+
+
+/* ================= v0.5.0: leitura robusta e em tempo real ================= */
+const respHttp = (status, ct, corpo) => ({ status, headers: { get: () => ct }, text: async () => corpo });
+
+function apiSimulada(estado) {
+  const chamadas = { listas: 0, leves: 0, topicos: 0, urls: [] };
+  const fn = async url => {
+    const u = new URL(url);
+    chamadas.urls.push(u.pathname);
+    if (estado.status) return respHttp(estado.status, estado.ct || 'application/json', estado.corpo || '{}');
+    const json = obj => respHttp(200, 'application/json; charset=utf-8', JSON.stringify(obj));
+    if (u.pathname.endsWith('/topics')) { chamadas.topicos++; return json({ items: [] }); }
+    const t = OC.TYPES.find(x => u.pathname.endsWith('/' + x.path.split('/').pop()));
+    if (!t) return json({});
+    const por = Number(u.searchParams.get('itemsPerPage'));
+    if (por === 1) chamadas.leves++; else chamadas.listas++;
+    const todos = (estado.itens && estado.itens[t.key]) || [];
+    const itens = u.searchParams.get('assignedtome') === 'true' ? todos.filter(i => i.staffResponsibleExpanded && i.staffResponsibleExpanded.name === 'Ana') : todos;
+    return json({ items: itens.slice(0, por), totalItems: itens.length, totalPages: 1 });
+  };
+  fn.chamadas = chamadas;
+  return fn;
+}
+const pend = (id, num, extra) => Object.assign({ id, identifier: num, genericStatus: 1, created: new Date(Date.now() - 864e5).toISOString().slice(0, 19), lastUpdated: new Date(Date.now() - 864e5).toISOString().slice(0, 19), subject: 'x', clientExpanded: { name: 'ACME' }, staffResponsibleExpanded: { name: 'Ana' } }, extra || {});
+
+test('leitura: valida a sessão com a lista de verdade (e não com um endereço de sessão), pela página do Onvio', async () => {
+  const api = apiSimulada({ itens: {} });
+  const { ctx, store } = carregarBackground({ abas: [aba(5, ONVIO_PORTAL)], fetchPorMundo: { MAIN: api, ISOLATED: async () => respHttp(401, 'application/json', '{}') }, fetch: async () => respHttp(401, 'text/html', '') });
+  const r = await ctx.escolherFetcher();
+  assert.equal(r.via, 'pagina');
+  assert.equal(store.metodoLeitura, 'pagina');
+  assert.ok(api.chamadas.urls.every(u => !/session-and-bindings/.test(u)));
+  assert.match(api.chamadas.urls[0], /tickets\/generic$/);
+});
+
+test('leitura: se a página não serve, tenta a extensão na aba; lembra o que funcionou e começa por ele', async () => {
+  const api = apiSimulada({ itens: {} });
+  const { ctx, store } = carregarBackground({ abas: [aba(5, ONVIO_PORTAL)], fetchPorMundo: { MAIN: async () => respHttp(401, 'application/json', '{}'), ISOLATED: api }, fetch: async () => respHttp(403, 'text/html', '') });
+  assert.equal((await ctx.escolherFetcher()).via, 'extensao');
+  assert.equal(store.metodoLeitura, 'extensao');
+  const antes = api.chamadas.urls.length;
+  assert.equal((await ctx.escolherFetcher()).via, 'extensao');
+  assert.equal(api.chamadas.urls.length - antes, 1, 'na segunda vez vai direto ao que funcionou');
+});
+
+test('leitura: sem sessão em todos os jeitos, a mensagem diz o que cada um recebeu', async () => {
+  const { ctx } = carregarBackground({ abas: [aba(5, ONVIO_PORTAL)], fetchPorMundo: { MAIN: async () => respHttp(401, 'application/json', '{}'), ISOLATED: async () => respHttp(403, 'application/json', '{}') }, fetch: async () => respHttp(200, 'text/html; charset=utf-8', '<html>login</html>') });
+  await assert.rejects(ctx.escolherFetcher(), e => e.auth === true &&
+    /página do Onvio: HTTP 401 · extensão na aba: HTTP 403 · direto: o Onvio devolveu uma página \(text\/html\) em vez de dados/.test(e.message));
+});
+
+test('leitura: erro do servidor em todos os jeitos não vira "sem sessão"; sem aba aberta pede para abrir o Onvio', async () => {
+  const quebrado = async () => respHttp(500, 'text/html', 'erro');
+  const a = carregarBackground({ abas: [aba(5, ONVIO_PORTAL)], fetchPorMundo: { MAIN: quebrado, ISOLATED: quebrado }, fetch: quebrado });
+  await assert.rejects(a.ctx.escolherFetcher(), e => !e.auth && /HTTP 500/.test(e.message));
+  const b = carregarBackground({ abas: [], fetch: async () => respHttp(401, 'application/json', '{}') });
+  await assert.rejects(b.ctx.escolherFetcher(), e => e.auth === true && /Não há aba do Onvio aberta/.test(e.message));
+});
+
+test('testarLeitura mostra o que cada jeito recebeu, sem dados de clientes', async () => {
+  const api = apiSimulada({ itens: { geral: [pend('g1', 1)] } });
+  const { ctx } = carregarBackground({ abas: [aba(5, ONVIO_PORTAL)], fetchPorMundo: { MAIN: api, ISOLATED: async () => respHttp(401, 'application/json', '{}') }, fetch: async () => respHttp(200, 'text/html', '<html>') });
+  const linhas = await ctx.testarLeitura();
+  const texto = linhas.join('\n');
+  assert.match(texto, /Aba do Onvio: sim/);
+  assert.match(texto, /página do Onvio: HTTP 200 · application\/json · campos: items, totalItems, totalPages · total 1/);
+  assert.match(texto, /extensão na aba: HTTP 401/);
+  assert.match(texto, /direto: HTTP 200 · text\/html/);
+  assert.doesNotMatch(texto, /ACME/);
+});
+
+test('ao vivo: sem mudança só faz a checagem leve; com mudança lê tudo; passado o intervalo lê tudo', async () => {
+  const estado = { itens: { geral: [pend('g1', 1)] } };
+  const api = apiSimulada(estado);
+  const { ctx, store } = carregarBackground({ abas: [aba(5, ONVIO_PORTAL)], fetchPorMundo: { MAIN: api, ISOLATED: api }, fetch: api });
+  const velha = () => { store.ultimaVerificacao = new Date(Date.now() - 60000).toISOString(); };   // fora da janela de 10 s
+
+  let r = await ctx.verificarAoVivo(false);                       // primeira vez: sem leitura anterior
+  assert.equal(r.proximoEmSeg, 30);
+  assert.equal(store.snapshot.items.length, 1);
+  assert.ok(store.assinaturas.geral);
+  const cheias = () => api.chamadas.listas;
+  const base = cheias();
+
+  velha(); await ctx.verificarAoVivo(false);                      // nada mudou
+  assert.equal(cheias(), base, 'não leu tudo de novo');
+  assert.ok(Date.now() - new Date(store.ultimaVerificacao) < 5000, 'mas registrou que verificou');
+
+  estado.itens.geral.push(pend('g2', 2, { lastUpdated: new Date().toISOString().slice(0, 19) }));   // chegou uma solicitação
+  velha(); await ctx.verificarAoVivo(false);
+  assert.ok(cheias() > base, 'mudou: leu tudo');
+  assert.equal(store.snapshot.items.length, 2);
+
+  const base2 = cheias();
+  velha(); await ctx.verificarAoVivo(false);
+  assert.equal(cheias(), base2, 'estável de novo');
+
+  store.snapshot.fetchedAt = new Date(Date.now() - 6 * 60000).toISOString();   // leitura completa com mais de 5 min
+  velha(); await ctx.verificarAoVivo(false);
+  assert.ok(cheias() > base2, 'passou o intervalo: lê tudo mesmo sem mudança');
+});
+
+test('ao vivo: mudança de situação na mesma solicitação também é percebida', async () => {
+  const estado = { itens: { calcFerias: [pend('v1', 7)] } };
+  const api = apiSimulada(estado);
+  const { ctx, store } = carregarBackground({ abas: [aba(5, ONVIO_PORTAL)], fetchPorMundo: { MAIN: api }, fetch: api });
+  await ctx.verificarAoVivo(false);
+  assert.equal(store.snapshot.items[0].status, 'Sem análise');
+  estado.itens.calcFerias[0] = pend('v1', 7, { genericStatus: 2, lastUpdated: new Date().toISOString().slice(0, 19) });
+  store.ultimaVerificacao = new Date(Date.now() - 60000).toISOString();
+  await ctx.verificarAoVivo(false);
+  assert.equal(store.snapshot.items[0].status, 'Em análise');
+});
+
+test('ao vivo: não verifica de novo dentro de 10 s (várias abas), mas "forçar" lê na hora', async () => {
+  const estado = { itens: { geral: [pend('g1', 1)] } };
+  const api = apiSimulada(estado);
+  const { ctx, store } = carregarBackground({ abas: [aba(5, ONVIO_PORTAL)], fetchPorMundo: { MAIN: api }, fetch: api });
+  await ctx.verificarAoVivo(false);
+  const n = api.chamadas.urls.length;
+  await ctx.verificarAoVivo(false);
+  assert.equal(api.chamadas.urls.length, n, 'segunda aba logo em seguida não repete');
+  estado.itens.geral.push(pend('g2', 2));
+  await ctx.verificarAoVivo(true);                                 // ação do usuário no Onvio
+  assert.equal(store.snapshot.items.length, 2);
+});
+
+test('ao vivo: com o tempo real desligado (0) as checagens param, mas a ação do usuário ainda atualiza', async () => {
+  const api = apiSimulada({ itens: { geral: [pend('g1', 1)] } });
+  const { ctx, store } = carregarBackground({ abas: [aba(5, ONVIO_PORTAL)], fetchPorMundo: { MAIN: api }, fetch: api });
+  store.settings = { __v: 2, tempoRealSeg: 0 };
+  const r = await ctx.verificarAoVivo(false);
+  assert.equal(r.proximoEmSeg, 60);
+  assert.equal(api.chamadas.urls.length, 0);
+  await ctx.verificarAoVivo(true);
+  assert.equal(store.snapshot.items.length, 1);
+});
+
+test('ao vivo: o intervalo mínimo de 15 s vale mesmo se a regra pedir menos', async () => {
+  const api = apiSimulada({ itens: {} });
+  const { ctx, store } = carregarBackground({ abas: [aba(5, ONVIO_PORTAL)], fetchPorMundo: { MAIN: api }, fetch: api });
+  store.settings = { __v: 2, tempoRealSeg: 5 };
+  assert.equal((await ctx.verificarAoVivo(false)).proximoEmSeg, 15);
+});
+
+test('o pedido de verificação chega pelo canal do painel (tick) e responde o próximo horário', async () => {
+  const api = apiSimulada({ itens: {} });
+  const { ouvintes } = carregarBackground({ abas: [aba(5, ONVIO_PORTAL)], fetchPorMundo: { MAIN: api }, fetch: api });
+  const resp = await new Promise(res => ouvintes[0]({ cmd: 'tick', forcar: false }, { tab: { id: 5 } }, res));
+  assert.deepEqual(plano(resp), { ok: true, proximoEmSeg: 30 });
+});
+
+test('assinaturas: só diferem quando o total ou a última movimentação mudam; lista que falhou não conta', () => {
+  const a = { geral: '3|a|2026-10-01|1', rubricas: '9|r|2026-10-02|4' };
+  assert.equal(OC.assinaturasDiferem(a, Object.assign({}, a)), false);
+  assert.equal(OC.assinaturasDiferem(a, { geral: '4|b|2026-10-03|1', rubricas: a.rubricas }), true);
+  assert.equal(OC.assinaturasDiferem(a, { geral: '3|a|2026-10-01|2', rubricas: a.rubricas }), true, 'mudou a situação');
+  assert.equal(OC.assinaturasDiferem(a, { geral: null, rubricas: a.rubricas }), false, 'lista que não respondeu');
+  assert.equal(OC.assinaturasDiferem(null, a), true);
 });

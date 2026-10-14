@@ -105,6 +105,30 @@
   });
   chrome.storage.onChanged.addListener((ch, area) => { if (area === 'local' && ch.snapshot) atualizarContador(ch.snapshot.newValue); });
 
+  /* ---------- tempo real ----------
+   * Enquanto esta aba do Onvio está visível, pede ao service worker uma verificação leve a cada poucos
+   * segundos (o intervalo vem das configurações). Também verifica ao voltar para a aba e logo depois de
+   * qualquer ação que altere solicitações na página (acao-hook.js). */
+  let relogio = null, aviso = null;
+  const visivel = () => document.visibilityState === 'visible';
+  function agendar(seg) { clearTimeout(relogio); relogio = setTimeout(() => verificar(false), Math.max(15, seg || 30) * 1000); }
+  async function verificar(forcar) {
+    clearTimeout(relogio);
+    let prox = 30;
+    if (viva() && visivel()) {
+      try { const r = await chrome.runtime.sendMessage({ cmd: 'tick', forcar: !!forcar }); if (r && r.proximoEmSeg != null) prox = r.proximoEmSeg; } catch (e) { prox = 60; }
+    }
+    if (viva()) agendar(prox);
+  }
+  document.addEventListener('visibilitychange', () => { if (visivel() && viva()) verificar(false); });
+  addEventListener('message', ev => {
+    const d = ev.data;
+    if (ev.source !== window || ev.origin !== location.origin || !d || d.src !== 'controlonvio' || d.tipo !== 'mudanca') return;
+    clearTimeout(aviso);
+    aviso = setTimeout(() => verificar(true), 1500);          // junta várias chamadas seguidas numa leitura só
+  });
+  verificar(false);
+
   /* ---------- estado inicial ---------- */
   chrome.storage.local.get(['snapshot', 'abrirPainelAoCarregar'], d => {
     atualizarContador(d.snapshot);

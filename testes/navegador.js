@@ -21,7 +21,7 @@ const STUB = `
       set(o, cb) { carregar(); const ch = {}; for (const [k, v] of Object.entries(o)) { ch[k] = { oldValue: mem[k], newValue: v }; mem[k] = v; } salvar(); ouvintes.forEach(f => f(ch, 'local')); if (cb) cb(); return Promise.resolve(); },
       remove(k) { (window.__removidos ||= []).push(k); carregar(); delete mem[k]; salvar(); return Promise.resolve(); }
     }, onChanged: { addListener(f) { ouvintes.push(f); } } },
-    runtime: { id: 'teste', getURL: p => 'https://onvio.com.br/__ext__/' + p, onMessage: { addListener(f) { (window.__ouvintes ||= []).push(f); } }, sendMessage(m, cb) { (window.__msgs ||= []).push(m); if (cb) cb({ ok: true }); }, lastError: null, openOptionsPage() {}, getManifest: () => ({ version: '0.2.0' }) },
+    runtime: { id: 'teste', getURL: p => 'https://onvio.com.br/__ext__/' + p, onMessage: { addListener(f) { (window.__ouvintes ||= []).push(f); } }, sendMessage(m, cb) { (window.__msgs ||= []).push(m); if (cb) cb({ ok: true }); return Promise.resolve({ ok: true, proximoEmSeg: 60 }); }, lastError: null, openOptionsPage() {}, getManifest: () => ({ version: '0.2.0' }) },
     tabs: { create(o) { (window.__tabs ||= []).push(o); } } };
 })();`;
 
@@ -175,6 +175,57 @@ await passo('shell: em tela estreita o painel cobre em vez de empurrar; o pedido
   await q.addScriptTag({ content: lerExt('shell.js') });
   await q.waitForTimeout(600);
   assert.equal(temPainel(q), false);
+});
+
+/* ---------- tempo real: ciclo do shell e aviso de ação na página ---------- */
+const ticks = p => p.evaluate(() => (window.__msgs || []).filter(m => m.cmd === 'tick'));
+await passo('tempo real: o shell pede verificação ao abrir, e logo depois de uma ação da página (junta várias)', async () => {
+  const p = await pagina(URL_PORTAL, '<!doctype html><body>Onvio</body>');
+  await p.addInitScript(lerExt('acao-hook.js'));                       // o hook roda no mundo da página, antes do resto
+  await semear(p);
+  await p.route('**/api/service-requesting/**', r => r.fulfill({ status: r.request().url().includes('falha') ? 500 : 200, contentType: 'application/json', body: '{}' }));
+  await p.goto(URL_PORTAL);
+  await p.addScriptTag({ content: lerExt('shell.js') });
+  await esperar(async () => (await ticks(p)).length >= 1);
+  assert.equal((await ticks(p))[0].forcar, false, 'a primeira é uma verificação comum');
+  const antes = (await ticks(p)).length;
+  // GET não é ação; POST com erro também não
+  await p.evaluate(() => fetch('/api/service-requesting/v1/tickets/generic'));
+  await p.evaluate(() => fetch('/api/service-requesting/v1/falha', { method: 'POST' }));
+  await p.waitForTimeout(2200);
+  assert.equal((await ticks(p)).length, antes, 'leitura e ação que falhou não disparam nada');
+  // vários POST/PUT seguidos (fetch e XHR) viram uma verificação forçada só
+  await p.evaluate(() => { fetch('/api/service-requesting/v1/tickets/generic/1/topics', { method: 'POST' }); fetch('/api/br-payroll-sr/v1/vacation-calculations/2/assign-staff', { method: 'PUT' }); const x = new XMLHttpRequest(); x.open('PATCH', '/api/br-payroll-sr/v1/employee-leave/3'); x.send(); });
+  await esperar(async () => (await ticks(p)).length > antes, 5000);
+  await p.waitForTimeout(500);
+  const novos = (await ticks(p)).slice(antes);
+  assert.equal(novos.length, 1, 'uma verificação só, e não três');
+  assert.equal(novos[0].forcar, true);
+  assert.deepEqual(p.erros, []);
+});
+
+await passo('tempo real: aba escondida não verifica; ao voltar para a aba, verifica', async () => {
+  const p = await pagina(URL_PORTAL, '<!doctype html><body>Onvio</body>');
+  await p.addInitScript(() => { Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => window.__oculta ? 'hidden' : 'visible' }); window.__oculta = true; });
+  await semear(p);
+  await p.goto(URL_PORTAL);
+  await p.addScriptTag({ content: lerExt('shell.js') });
+  await p.waitForTimeout(700);
+  assert.equal((await ticks(p)).length, 0, 'escondida: nada');
+  await p.evaluate(() => { window.__oculta = false; document.dispatchEvent(new Event('visibilitychange')); });
+  await esperar(async () => (await ticks(p)).length === 1);
+});
+
+await passo('tempo real: script órfão (extensão atualizada) para de verificar', async () => {
+  const p = await pagina(URL_PORTAL, '<!doctype html><body>Onvio</body>');
+  await semear(p);
+  await p.goto(URL_PORTAL);
+  await p.addScriptTag({ content: lerExt('shell.js') });
+  await esperar(async () => (await ticks(p)).length === 1);
+  await p.evaluate(() => { window.chrome.runtime.id = undefined; document.dispatchEvent(new Event('visibilitychange')); });
+  await p.waitForTimeout(600);
+  assert.equal((await ticks(p)).length, 1);
+  assert.deepEqual(p.erros, []);
 });
 
 /* ---------- guias: hook + ponte + aviso ---------- */

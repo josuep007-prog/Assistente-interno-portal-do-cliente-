@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   const $ = s => document.querySelector(s);
-  const NUM = ['intervalo', 'primeiroTramite', 'conclusaoSimples', 'conclusaoCalculo', 'clienteSemRetorno', 'parada', 'prescricaoDias', 'prescricaoAviso', 'guiaDias'];
+  const NUM = ['tempoRealSeg', 'intervalo', 'primeiroTramite', 'conclusaoSimples', 'conclusaoCalculo', 'clienteSemRetorno', 'parada', 'prescricaoDias', 'prescricaoAviso', 'guiaDias'];
   const BOOL = ['notificar', 'modoGestor'];
   const URL_CLIENTE = 'https://raw.githubusercontent.com/josuep007-prog/assistente-portal-regras/main/regras.json';
   let regras = null;          // regras do escritório guardadas (arquivo)
@@ -19,7 +19,8 @@
   function ler() {
     const s = {};
     NUM.forEach(k => { const v = Number($('#' + k).value); s[k] = Number.isFinite(v) && v >= 0 ? v : OC.DEFAULTS[k]; });
-    s.intervalo = Math.max(5, s.intervalo);
+    s.intervalo = Math.max(1, s.intervalo);
+    if (s.tempoRealSeg > 0) s.tempoRealSeg = Math.max(15, s.tempoRealSeg);
     BOOL.forEach(k => { s[k] = $('#' + k).checked; });
     s.feriados = $('#feriados').value.split(/\s+/).map(x => x.trim()).filter(x => /^\d{4}-\d{2}-\d{2}$/.test(x));
     s.regrasUrl = $('#regrasUrl').value.trim();
@@ -53,6 +54,7 @@
   function diagnostico(snap) {
     if (!snap) return 'Ainda sem leitura do Onvio.';
     const l = ['Versão: ' + (snap.versao || chrome.runtime.getManifest().version) + ' · leitura: ' + snap.fetchedAt + ' · via ' + (snap.via || '?'),
+      'Leitura: ' + ((snap && snap.via) || '?') + ' · ao vivo a cada ' + (OC.combinarSettings(regras, {}).tempoRealSeg || 0) + ' s',
       'Regras do escritório: ' + (regras && regras.regras ? 'arquivo versão ' + (regras.versao || '?') : 'embutidas') + (regras && regras.erro ? ' (falha na última atualização)' : ''),
       'Pendências por lista:'];
     OC.TYPES.forEach(t => l.push('  ' + t.label + ': ' + (snap.porTipo && snap.porTipo[t.key] != null ? snap.porTipo[t.key] : '—')));
@@ -96,6 +98,13 @@
     const r = await new Promise(res => chrome.runtime.sendMessage({ cmd: 'atualizarRegras' }, x => res(x || {})));
     await carregar();
     estado(r.ok ? 'Regras atualizadas.' : 'Não foi possível atualizar (veja a mensagem acima).', !!r.ok);
+  });
+
+  $('#testar-leitura').addEventListener('click', async () => {
+    const box = $('#teste-leitura');
+    box.hidden = false; box.textContent = 'Testando…';
+    const r = await new Promise(res => chrome.runtime.sendMessage({ cmd: 'testarLeitura' }, x => res(x || {})));
+    box.textContent = r.ok ? r.linhas.join('\n') : 'Não foi possível testar: ' + (r.erro || chrome.runtime.lastError || 'sem resposta');
   });
 
   $('#copiar-diag').addEventListener('click', async () => {

@@ -73,7 +73,8 @@
   const TYPE_BY_KEY = Object.fromEntries(TYPES.map(t => [t.key, t]));
 
   const DEFAULTS = {
-    intervalo: 10,            // minutos entre leituras
+    intervalo: 5,             // minutos entre leituras completas (a verificação ao vivo lê tudo antes se algo mudar)
+    tempoRealSeg: 30,         // segundos entre verificações leves enquanto o Onvio está na tela (0 desliga)
     primeiroTramite: 1,       // dias úteis para o primeiro trâmite
     conclusaoSimples: 3,      // dias úteis para concluir demanda simples
     conclusaoCalculo: 5,      // dias úteis para concluir cálculo
@@ -281,6 +282,35 @@
   }
 
   /* ---------- coleta ---------- */
+  // Uma chamada de verdade, pequena: serve para validar a sessão (não depende de nenhum endereço de sessão).
+  function urlSonda() { return listUrl(TYPE_BY_KEY.geral, { per: 1, expand: false }); }
+
+  // Assinatura leve de cada lista: total de pendentes + última movimentação. Se não mudou, não precisa ler tudo.
+  async function assinaturaDe(fetcher, t) {
+    const fam = FAMILIAS[t.familia];
+    let d;
+    try { d = await fetcher(listUrl(t, { per: 1, pendentes: true, expand: false })); }
+    catch (e) {
+      if ((e && e.auth) || !fam.excluir) throw e;
+      d = await fetcher(listUrl(t, { per: 1, pendentes: 'alt', expand: false }));     // mesmo recuo de lerPendentes
+    }
+    const x = ((d && d.items) || [])[0];
+    return String(d && d.totalItems != null ? d.totalItems : '?') + '|' + (x ? [x.id, x.lastUpdated || x.genericLastUpdated || '', x.genericStatus != null ? x.genericStatus : ''].join('|') : '-');
+  }
+  async function assinaturas(fetcher) {
+    const out = {};
+    await Promise.all(TYPES.map(async t => {
+      try { out[t.key] = await assinaturaDe(fetcher, t); }
+      catch (e) { if (e && e.auth) throw e; out[t.key] = null; }                       // lista que não respondeu: não conta como mudança
+    }));
+    return out;
+  }
+  function assinaturasDiferem(antes, depois) {
+    if (!antes || !depois) return true;
+    return Object.keys(depois).some(k => depois[k] != null && antes[k] != null && depois[k] !== antes[k]) ||
+      Object.keys(depois).some(k => depois[k] != null && antes[k] == null);
+  }
+
   async function usuario(fetcher) {
     try {
       const s = await fetcher(API + 'security/v1/session-and-bindings');
@@ -425,7 +455,7 @@
    * Tudo é validado: número dentro de limites, datas AAAA-MM-DD, textos curtos. Nada é executado. */
   const LIMITES = {
     primeiroTramite: [0, 30], conclusaoSimples: [1, 60], conclusaoCalculo: [1, 60], clienteSemRetorno: [1, 60],
-    parada: [1, 90], prescricaoDias: [1, 120], prescricaoAviso: [1, 120], guiaDias: [0, 60]
+    parada: [1, 90], prescricaoDias: [1, 120], prescricaoAviso: [1, 120], guiaDias: [0, 60], tempoRealSeg: [0, 600]
   };
   const inteiro = (v, [min, max]) => (typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max ? v : undefined);
 
@@ -495,5 +525,5 @@
     return { dias, nivel, motivo, venc: ymd(venc) };
   }
 
-  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, ehDocumento, parseVencimento, avaliarGuia, abaProvavel, normalizarRegras, combinarSettings, LIMITES };
+  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, ehDocumento, parseVencimento, avaliarGuia, abaProvavel, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);

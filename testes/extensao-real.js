@@ -8,6 +8,8 @@ const fs = require('node:fs');
 const os = require('node:os');
 const EXT = path.join(__dirname, '..', 'extensao');
 (async () => {
+const sleepMs = ms => new Promise(r => setTimeout(r, ms));
+const esperarReal = async (cond, ms = 8000) => { const fim = Date.now() + ms; while (Date.now() < fim) { if (await cond()) return; await sleepMs(150); } throw new Error('tempo esgotado: ' + cond); };
 const perfil = fs.mkdtempSync(path.join(os.tmpdir(), 'controlonvio-'));
 const ctx = await chromium.launchPersistentContext(perfil, {
   headless: false, channel: 'chromium',
@@ -61,6 +63,7 @@ assert.ok(snap.snapshot, 'snapshot gravado');
 const s = snap.snapshot;
 console.log('versão', s.versao, '| via', s.via, '| porTipo', JSON.stringify(s.porTipo), '| desconhecidos', JSON.stringify(s.desconhecidos), '| tramites', JSON.stringify(s.tramites), '| erros', JSON.stringify(s.erros));
 assert.equal(s.versao, require(path.join(EXT, 'manifest.json')).version);
+assert.ok(['pagina', 'extensao'].includes(s.via), 'leu pela aba do Onvio: ' + s.via);
 assert.deepEqual(s.desconhecidos, { geral: { 66: 1 } });
 assert.equal(s.items.find(i => i.num === 101).ptUteis != null, true, '1º trâmite estimado');
 assert.equal(s.tramites.cache, undefined, 'cache fora do resumo');
@@ -105,6 +108,20 @@ await docs.waitForSelector('#controlonvio-guias', { timeout: 8000 });
 console.log('aviso de guias:', (await docs.textContent('#controlonvio-guias')).slice(0, 90));
 const g = await pagina.evaluate(() => chrome.storage.local.get('guias'));
 assert.ok(g.guias.pasta9);
+
+// ---- tempo real: ação do usuário na página do Onvio atualiza o painel na hora ----
+const idxP = await ctx.newPage();
+await idxP.goto('https://onvio.com.br/br-portal-do-cliente/tempo-real');
+await sleepMs(1500);
+itensPorRota['tickets/generic'].push({ id: 'g777', identifier: 777, genericStatus: 1, created: iso(0), lastUpdated: iso(0), subject: 'Chegou agora', clientExpanded: { name: 'NOVA' }, staffResponsibleExpanded: { name: 'Ana Teste' } });
+await idxP.evaluate(() => fetch('/api/service-requesting/v1/tickets/generic/g1/topics', { method: 'POST', body: '{}' }));   // o analista respondeu algo no Onvio
+await esperarReal(async () => ((await pagina.evaluate(() => chrome.storage.local.get('snapshot'))).snapshot || { items: [] }).items.some(i => i.num === 777), 20000);
+console.log('ação na página -> o painel já tem a solicitação nova (#777)');
+await idxP.close();
+
+// "Testar a leitura" das configurações mostra o que cada jeito recebeu
+const teste = await pagina.evaluate(() => new Promise(res => chrome.runtime.sendMessage({ cmd: 'testarLeitura' }, res)));
+assert.ok(teste.ok && /página do Onvio: HTTP 200 · application\/json/.test(teste.linhas.join('\n')), teste.linhas.join(' | '));
 
 // ---- ícone da extensão e atalho: dentro do Onvio abrem o painel; fora dele levam ao Onvio ----
 const CAPTURAS = process.env.CAPTURAS || '';

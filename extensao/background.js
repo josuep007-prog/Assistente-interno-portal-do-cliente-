@@ -71,31 +71,34 @@ async function migrarSettings() {
 /* ---------- acesso ao Onvio ---------- */
 class AuthError extends Error { constructor(m) { super(m || 'Sessão do Onvio não encontrada'); this.auth = true; } }
 
-// 401/403 ou página de login (HTML com status 200) = sem sessão.
-// Erro do servidor (5xx, 404, 400...) é erro da leitura e não deve pedir login.
+// Sem sessão: 401/403, redirecionamento ou página em vez de dados. Outros erros (5xx, 404...) são erro da leitura.
+// A mensagem sempre diz o que o Onvio respondeu, para o painel e o Diagnóstico mostrarem a causa real.
 async function lerResposta(status, ct, texto) {
-  if (status === 401 || status === 403) throw new AuthError();
-  if (status >= 300 && status < 400) throw new AuthError();
+  const tipo = String(ct || '').split(';')[0] || 'sem tipo';
+  if (status === 401 || status === 403) throw new AuthError('HTTP ' + status);
+  if (status >= 300 && status < 400) throw new AuthError('redirecionou (HTTP ' + status + ')');
   if (status < 200 || status >= 300) throw new Error('HTTP ' + status);
-  if (!/json/i.test(ct || '')) throw new AuthError();
-  try { return JSON.parse(texto); } catch (e) { throw new Error('Resposta inválida do Onvio'); }
+  if (!/json/i.test(ct || '')) throw new AuthError('o Onvio devolveu uma página (' + tipo + ') em vez de dados');
+  try { return JSON.parse(texto); } catch (e) { throw new Error('resposta inválida do Onvio'); }
 }
 
-// 1ª opção: direto do service worker, com o cookie da sessão
-async function fetcherDireto(url) {
-  const r = await fetch(url, { credentials: 'include', redirect: 'follow' });
-  return lerResposta(r.status, r.headers.get('content-type'), await r.text());
+/* Três jeitos de falar com a API, do mais fiel à sessão do usuário para o menos:
+ *  pagina   = fetch no mundo da própria aba do Onvio (o mesmo que a página faz);
+ *  extensao = fetch no mundo isolado da extensão, dentro da aba;
+ *  direto   = fetch do service worker (pode não levar o cookie de sessão). */
+const ROTULOS = { pagina: 'página do Onvio', extensao: 'extensão na aba', direto: 'direto' };
+
+async function brutoDireto(url) {
+  try {
+    const r = await fetch(url, { credentials: 'include', redirect: 'follow' });
+    return { status: r.status, ct: r.headers.get('content-type'), body: await r.text() };
+  } catch (e) { return { status: 0, ct: '', body: String(e) }; }
 }
 
-// 2ª opção: de dentro de uma aba do Onvio já aberta
-async function abaOnvio() {
-  const tabs = await chrome.tabs.query({ url: 'https://onvio.com.br/*' });
-  return tabs.find(t => !t.discarded && t.status === 'complete') || tabs[0] || null;
-}
-function fetcherPorAba(tabId) {
+function brutoPorAba(tabId, mundo) {
   return async url => {
     const [res] = await chrome.scripting.executeScript({
-      target: { tabId },
+      target: { tabId }, world: mundo,
       func: async u => {
         try {
           const r = await fetch(u, { credentials: 'include' });
@@ -104,23 +107,70 @@ function fetcherPorAba(tabId) {
       },
       args: [url]
     });
-    const v = res && res.result;
-    if (!v || v.status === 0) throw new Error('Falha de rede na aba do Onvio');
-    return lerResposta(v.status, v.ct, v.body);
+    return (res && res.result) || { status: 0, ct: '', body: 'sem resposta da aba' };
   };
 }
 
-async function escolherFetcher() {
-  try {
-    await fetcherDireto(OC.API + 'security/v1/session-and-bindings');
-    return { f: fetcherDireto, via: 'direto' };
-  } catch (e) {
-    const tab = await abaOnvio();
-    if (!tab) throw new AuthError('Abra o Onvio e faça login para a extensão conseguir ler as solicitações.');
-    const f = fetcherPorAba(tab.id);
-    await f(OC.API + 'security/v1/session-and-bindings');
-    return { f, via: 'aba' };
+const comoFetcher = bruto => async url => {
+  const v = await bruto(url);
+  if (v.status === 0) throw new Error('falha de rede (' + String(v.body).slice(0, 80) + ')');
+  return lerResposta(v.status, v.ct, v.body);
+};
+
+// Prefere a aba que o usuário está olhando; senão qualquer aba do Onvio já carregada.
+async function abaOnvio() {
+  const ativas = await chrome.tabs.query({ url: 'https://onvio.com.br/*', active: true, lastFocusedWindow: true });
+  const todas = ativas.length ? ativas : await chrome.tabs.query({ url: 'https://onvio.com.br/*' });
+  return todas.find(t => !t.discarded && t.status === 'complete') || todas[0] || null;
+}
+
+async function candidatosDeLeitura() {
+  const tab = await abaOnvio();
+  const lista = [];
+  if (tab) {
+    lista.push({ via: 'pagina', bruto: brutoPorAba(tab.id, 'MAIN') });
+    lista.push({ via: 'extensao', bruto: brutoPorAba(tab.id, 'ISOLATED') });
   }
+  lista.push({ via: 'direto', bruto: brutoDireto });
+  const { metodoLeitura } = await chrome.storage.local.get('metodoLeitura');
+  lista.sort((a, b) => (b.via === metodoLeitura) - (a.via === metodoLeitura));   // o que funcionou da última vez vai primeiro
+  return { tab, lista };
+}
+
+// Valida a sessão com uma chamada de verdade (a lista Geral, 1 item), sem depender de endereço de sessão.
+async function escolherFetcher() {
+  const sonda = OC.urlSonda();
+  const { tab, lista } = await candidatosDeLeitura();
+  const falhas = [];
+  let semSessao = false;
+  for (const c of lista) {
+    const f = comoFetcher(c.bruto);
+    try {
+      await f(sonda);
+      await chrome.storage.local.set({ metodoLeitura: c.via });
+      return { f, via: c.via };
+    } catch (e) {
+      if (e && e.auth) semSessao = true;
+      falhas.push(ROTULOS[c.via] + ': ' + (e && e.message ? e.message : e));
+    }
+  }
+  const msg = (tab ? '' : 'Não há aba do Onvio aberta. ') + 'Tentativas: ' + falhas.join(' · ');
+  throw semSessao || !tab ? new AuthError(msg) : new Error(msg);
+}
+
+// Para o botão "Testar a leitura" das configurações: mostra o que cada jeito recebeu (sem dados de clientes).
+async function testarLeitura() {
+  const { tab, lista } = await candidatosDeLeitura();
+  const linhas = ['Aba do Onvio: ' + (tab ? 'sim (' + new URL(tab.url).pathname.slice(0, 60) + ')' : 'não')];
+  const url = OC.urlSonda();
+  linhas.push('Endereço testado: ' + new URL(url).pathname);
+  for (const c of lista) {
+    const v = await c.bruto(url);
+    let extra = '';
+    if (/json/i.test(v.ct || '')) { try { const j = JSON.parse(v.body); extra = ' · campos: ' + Object.keys(j).slice(0, 8).join(', ') + (j.totalItems != null ? ' · total ' + j.totalItems : ''); } catch (e) { extra = ' · JSON inválido'; } }
+    linhas.push(ROTULOS[c.via] + ': ' + (v.status ? 'HTTP ' + v.status + ' · ' + (String(v.ct || '').split(';')[0] || 'sem tipo') + extra : 'falha de rede'));
+  }
+  return linhas;
 }
 
 /* ---------- coleta ---------- */
@@ -132,13 +182,14 @@ async function coletar(manual) {
     await chrome.storage.local.set({ status: { estado: 'lendo', em: new Date().toISOString(), etapa: '' } });
     try {
       const { f, via } = await escolherFetcher();
+      const assin = await OC.assinaturas(f).catch(() => null);     // antes da leitura: o que mudar depois será notado
       const snap = await OC.collect(f, s, (i, n, rot) => chrome.storage.local.set({ status: { estado: 'lendo', etapa: i + '/' + n + ' · ' + rot } }), { tramites: cacheTramites || {} });
       snap.via = via;
       snap.versao = chrome.runtime.getManifest().version;
       const novoCache = snap.tramites.cache; delete snap.tramites.cache;   // o cache fica fora do resumo
       await chrome.storage.local.set({ tramites: novoCache });
       await notificar(anterior, snap, s);
-      await chrome.storage.local.set({ snapshot: snap, status: { estado: 'ok', em: snap.fetchedAt, erros: snap.erros } });
+      await chrome.storage.local.set({ snapshot: snap, assinaturas: assin, ultimaVerificacao: new Date().toISOString(), status: { estado: 'ok', em: snap.fetchedAt, erros: snap.erros } });
       await atualizarBadge(snap);
       return snap;
     } catch (e) {
@@ -152,6 +203,32 @@ async function coletar(manual) {
     }
   })();
   return rodando;
+}
+
+/* ---------- tempo real ----------
+ * O Onvio aberto pede uma verificação a cada poucos segundos (shell.js) e logo depois de qualquer ação
+ * que altere solicitações na página (acao-hook.js). A verificação é leve: 1 item por lista, só para ver se
+ * o total ou a última movimentação mudou. Só se mudou (ou a cada "intervalo" minutos) lê tudo de novo. */
+let verificando = null;
+const ULTIMA_VERIFICACAO_MIN_MS = 10000;
+
+async function verificarAoVivo(forcar) {
+  const s = await getSettings();
+  const proximoEmSeg = s.tempoRealSeg > 0 ? Math.max(15, s.tempoRealSeg) : 60;
+  if (!(s.tempoRealSeg > 0) && !forcar) return { ok: true, proximoEmSeg };
+  if (rodando || verificando) return { ok: true, proximoEmSeg };
+  verificando = (async () => {
+    const { snapshot, assinaturas, ultimaVerificacao } = await chrome.storage.local.get(['snapshot', 'assinaturas', 'ultimaVerificacao']);
+    if (!forcar && ultimaVerificacao && Date.now() - new Date(ultimaVerificacao) < ULTIMA_VERIFICACAO_MIN_MS) return;   // outra aba acabou de verificar
+    const idadeMs = snapshot ? Date.now() - new Date(snapshot.fetchedAt) : Infinity;
+    if (!snapshot || forcar || idadeMs > Math.max(1, Number(s.intervalo) || 5) * 60000) { await coletar(false); return; }
+    const { f } = await escolherFetcher();
+    const novas = await OC.assinaturas(f);
+    if (OC.assinaturasDiferem(assinaturas, novas)) await coletar(false);
+    else await chrome.storage.local.set({ ultimaVerificacao: new Date().toISOString() });
+  })().catch(() => {}).finally(() => { verificando = null; });
+  await verificando;
+  return { ok: true, proximoEmSeg };
 }
 
 /* ---------- badge ---------- */
@@ -285,6 +362,8 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       } else if (msg.cmd === 'abrir') { await abrir(msg.item, sender.tab && sender.tab.id); reply({ ok: true }); }
       else if (msg.cmd === 'reagendar') { await agendar(); reply({ ok: true }); }
       else if (msg.cmd === 'atualizarRegras') { reply(await atualizarRegras()); }
+      else if (msg.cmd === 'tick') { reply(await verificarAoVivo(!!msg.forcar)); }
+      else if (msg.cmd === 'testarLeitura') { reply({ ok: true, linhas: await testarLeitura() }); }
       else if (msg.cmd === 'abrirOnvio') { await irParaOnvio(); reply({ ok: true }); }
       else if (msg.cmd === 'fecharPainel') { if (sender.tab && sender.tab.id != null) await mensagemParaPainel(sender.tab.id, 'fechar').catch(() => {}); reply({ ok: true }); }
       else reply({ ok: false, erro: 'comando desconhecido' });
