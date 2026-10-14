@@ -478,8 +478,9 @@ test('leitura: valida a sessão com a lista de verdade (e não com um endereço 
   const r = await ctx.escolherFetcher();
   assert.equal(r.via, 'pagina');
   assert.equal(store.metodoLeitura, 'pagina');
-  assert.ok(api.chamadas.urls.every(u => !/session-and-bindings/.test(u)));
-  assert.match(api.chamadas.urls[0], /tickets\/generic$/);
+  assert.match(api.chamadas.urls[0], /tickets\/generic$/, 'a sessão vale pela lista de verdade');
+  assert.ok(api.chamadas.urls.indexOf('/api/security/v1/session-and-bindings') > 0, 'o perfil (escritório x cliente) só é conferido depois');
+  assert.equal(store.perfilSessao.perfil, 'escritorio');
 });
 
 test('leitura: se a página não serve, tenta a extensão na aba; lembra o que funcionou e começa por ele', async () => {
@@ -504,6 +505,64 @@ test('leitura: erro do servidor em todos os jeitos não vira "sem sessão"; sem 
   await assert.rejects(a.ctx.escolherFetcher(), e => !e.auth && /HTTP 500/.test(e.message));
   const b = carregarBackground({ abas: [], fetch: async () => respHttp(401, 'application/json', '{}') });
   await assert.rejects(b.ctx.escolherFetcher(), e => e.auth === true && /Não há aba do Onvio aberta/.test(e.message));
+});
+
+/* ---------- só a visão do escritório ---------- */
+test('perfil da sessão: campos de tipo/papel dizem se é cliente ou escritório; nome e e-mail não contam', () => {
+  assert.equal(OC.perfilDaSessao({ UdsSession: { FirstName: 'Cliente', UserType: 'ClientUser' } }), 'cliente');
+  assert.equal(OC.perfilDaSessao({ UdsSession: { UserType: 'Staff' } }), 'escritorio');
+  assert.equal(OC.perfilDaSessao({ UdsSession: { IsClientUser: true } }), 'cliente');
+  assert.equal(OC.perfilDaSessao({ Bindings: [{ Product: 'ClientCenter' }] }), 'cliente');
+  assert.equal(OC.perfilDaSessao({ Bindings: [{ Product: 'Staff' }, { Product: 'ClientCenter' }] }), null, 'sinais dos dois lados: não decide');
+  assert.equal(OC.perfilDaSessao({ UdsSession: { FirstName: 'Ana', LastName: 'Cliente', EmailAddress: 'cliente@acme.com' } }), null);
+  assert.equal(OC.perfilDaSessao(null), null);
+  const f = OC.formatoSessao({ UdsSession: { FirstName: 'Ana', EmailAddress: 'a@b.c', UserType: 'Staff', Ativo: true } });
+  assert.deepEqual(plano(f), ['UdsSession:objeto', 'UdsSession.FirstName:string', 'UdsSession.EmailAddress:string', 'UdsSession.UserType:string=Staff', 'UdsSession.Ativo:boolean=true'], 'sem nomes nem e-mails');
+});
+
+test('perfil do acesso: sessão, aba da visão do cliente e um acesso que só o escritório tem', async () => {
+  const erroAuth = () => Object.assign(new Error('HTTP 403'), { auth: true });
+  const f = (sessao, escritorio) => async url => {
+    if (/session-and-bindings/.test(url)) { if (sessao instanceof Error) throw sessao; return sessao; }
+    if (url === OC.URL_SO_ESCRITORIO()) { if (escritorio instanceof Error) throw escritorio; return escritorio; }
+    return { items: [] };
+  };
+  const ana = { UdsSession: { FirstName: 'Ana' } };
+  assert.equal((await OC.perfilDoAcesso(f(ana, []))).perfil, 'escritorio');
+  assert.equal((await OC.perfilDoAcesso(f(ana, erroAuth()))).perfil, 'cliente', 'recusado com sessão válida');
+  assert.equal((await OC.perfilDoAcesso(f(ana, new Error('HTTP 404')))).perfil, null, 'endereço mudou: não bloqueia, fica "não confirmado"');
+  assert.equal((await OC.perfilDoAcesso(f(new Error('x'), erroAuth()))).perfil, null, 'sem sessão não conclui nada');
+  assert.equal((await OC.perfilDoAcesso(f(ana, []), { abaCliente: true })).perfil, 'cliente');
+  assert.equal((await OC.perfilDoAcesso(f({ UdsSession: { UserType: 'Staff' } }, []), { abaCliente: true })).perfil, 'escritorio', 'a sessão manda');
+  const r = await OC.perfilDoAcesso(f({ UdsSession: { UserType: 'Client' } }, []));
+  assert.deepEqual([r.perfil, r.motivo], ['cliente', 'sessão do Onvio']);
+});
+
+test('acesso de cliente: a extensão não lê, apaga o que tinha e responde às telas com "cliente"', async () => {
+  const api = apiSimulada({ itens: { geral: [pend('g1', 1)] } });
+  const cliente = async url => /company-department-access/.test(url) ? respHttp(403, 'application/json', '{}')
+    : /session-and-bindings/.test(url) ? respHttp(200, 'application/json', JSON.stringify({ UdsSession: { FirstName: 'Cli' } })) : api(url);
+  const { ctx, store, ouvintes } = carregarBackground({ abas: [aba(5, ONVIO_PORTAL)], fetchPorMundo: { MAIN: cliente, ISOLATED: cliente }, fetch: cliente });
+  Object.assign(store, { snapshot: { items: [{ k: 'x' }] }, eventos: [{ id: 'e' }], serie: { a: 1 }, tramites: { x: 1 }, lembretes: [{ id: 'l1' }] });
+  await ctx.coletar(false);
+  assert.equal(store.status.estado, 'visao_cliente');
+  assert.match(store.status.msg, /acesso de cliente/);
+  assert.deepEqual([store.snapshot, store.eventos, store.serie, store.tramites], [undefined, undefined, undefined, undefined], 'nada do que foi lido fica');
+  assert.equal(store.lembretes.length, 1, 'lembretes pessoais ficam');
+  assert.equal(api.chamadas.listas, 0, 'nenhuma lista completa foi lida');
+  const r = await new Promise(res => ouvintes[0]({ cmd: 'consultar', type: 'geral', page: 1 }, {}, res));
+  assert.deepEqual([r.ok, r.cliente], [false, true]);
+  // aba da visão do cliente aberta também bloqueia
+  const b = carregarBackground({ abas: [aba(7, 'https://onvio.com.br/clientcenter/pt/home')], fetchPorMundo: { MAIN: api, ISOLATED: api }, fetch: api });
+  await b.ctx.coletar(false);
+  assert.equal(b.store.status.estado, 'visao_cliente');
+  assert.match(b.store.perfilSessao.motivo, /clientcenter/);
+  // login do escritório: volta ao normal
+  const c = carregarBackground({ abas: [aba(5, ONVIO_PORTAL)], fetchPorMundo: { MAIN: api, ISOLATED: api }, fetch: api });
+  c.store.status = { estado: 'visao_cliente' };
+  await c.ctx.coletar(true);
+  assert.equal(c.store.status.estado, 'ok');
+  assert.equal(c.store.snapshot.items.length, 1);
 });
 
 test('testarLeitura mostra o que cada jeito recebeu, sem dados de clientes', async () => {
@@ -703,7 +762,7 @@ test('background: consultar lista na hora e devolve itens avaliados, sem gravar 
   assert.equal(r.total, 2);
   assert.equal(r.itens[0].typeLabel, 'Geral');
   assert.ok('nivel' in r.itens[0], 'vem com o semáforo calculado');
-  assert.deepEqual(Object.keys(store).filter(k => !['metodoLeitura'].includes(k)), [], 'consulta não grava nada');
+  assert.deepEqual(Object.keys(store).filter(k => !['metodoLeitura', 'perfilSessao'].includes(k)), [], 'consulta não grava nada');
 });
 
 test('background: detalhe acha pelo número e traz os trâmites; trâmites que falham não derrubam o detalhe', async () => {

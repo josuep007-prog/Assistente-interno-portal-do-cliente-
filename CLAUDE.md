@@ -14,6 +14,7 @@ Existe uma extensão irmã, para o **cliente**: `josuep007-prog/assistente-porta
 ## Segurança no portal real (inegociável)
 
 - A extensão é **somente leitura**. Nunca chamar nem automatizar: Excluir, Definir responsável, Alterar Expectativa de Conclusão, Encaminhar, incluir trâmite ou anexo, `assign-staff`, `change-due-date` e qualquer POST/PUT/DELETE. Ações em lote são a fase 2 e só com pedido explícito do Josué.
+- **Só a visão do escritório.** As APIs são as mesmas na visão do cliente: com login de cliente a extensão não lê nada, apaga o que tinha lido e mostra só o aviso (`OC.perfilDoAcesso` + `garantirEscritorio`/`bloquearVisaoCliente` em `background.js`, estado `visao_cliente`). Toda leitura nova passa por `escolherFetcher`, que faz essa conferência.
 - Testes automatizados nunca falam com o Onvio real: usam API e páginas simuladas.
 - Nada de dados de cliente em testes, logs ou commits. A extensão guarda só ID, situação, datas, cliente, empregado/assunto e responsável (resumo), eventos de alerta (tipo, ID, cliente, motivo, hora), série do dia (contagens) e lembretes pessoais. Detalhes e trâmites são lidos na hora e **nunca** gravados. **Nunca** CPF, salário, CID, descrição, observações nem anexos no armazenamento.
 - Sem telemetria, sem API externa, sem IA em nuvem. O único acesso de rede além do Onvio é o arquivo de regras que o próprio usuário indicar (https, sem credenciais, só JSON de dados, validado em `OC.normalizarRegras`).

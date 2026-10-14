@@ -51,8 +51,15 @@
       : (regras.erro || 'Ainda não baixado.');
   }
 
-  function diagnostico(snap) {
-    if (!snap) return 'Ainda sem leitura do Onvio.';
+  function linhasPerfil(p, status) {
+    const rot = { escritorio: 'escritório', cliente: 'CLIENTE (o Control Onvio fica bloqueado)' };
+    if (!p) return [];
+    return ['Perfil da sessão: ' + (rot[p.perfil] || 'não confirmado') + ' · ' + (p.motivo || '') + ' · ' + (p.em || ''),
+      'Formato da sessão (só nomes de campos): ' + ((p.formato || []).join(', ') || '—')];
+  }
+  function diagnostico(snap, perfil, status) {
+    if (status && status.estado === 'visao_cliente') return ['O Onvio está aberto com um acesso de cliente: nada é lido nem guardado.'].concat(linhasPerfil(perfil)).join('\n');
+    if (!snap) return ['Ainda sem leitura do Onvio.'].concat(linhasPerfil(perfil)).join('\n');
     const l = ['Versão: ' + (snap.versao || chrome.runtime.getManifest().version) + ' · leitura: ' + snap.fetchedAt + ' · via ' + (snap.via || '?'),
       'Leitura: ' + ((snap && snap.via) || '?') + ' · ao vivo a cada ' + (OC.combinarSettings(regras, {}).tempoRealSeg || 0) + ' s',
       'Regras do escritório: ' + (regras && regras.regras ? 'arquivo versão ' + (regras.versao || '?') : 'embutidas') + (regras && regras.erro ? ' (falha na última atualização)' : ''),
@@ -65,15 +72,15 @@
     l.push('Trâmites lidos neste ciclo: ' + (t.lidos || 0) + ' · falhas: ' + (t.falhas || 0) + ' · com 1º trâmite conhecido: ' + (snap.items || []).filter(i => i.ptUteis != null).length + ' de ' + (snap.items || []).length);
     l.push('Possível aba errada (Geral): ' + (snap.items || []).filter(i => i.abaProvavel).length);
     if (snap.erros && snap.erros.length) l.push('Erros: ' + snap.erros.join(' | '));
-    return l.join('\n');
+    return l.concat(linhasPerfil(perfil)).join('\n');
   }
 
   async function carregar() {
-    const d = await chrome.storage.local.get(['settings', 'snapshot', 'regrasEscritorio']);
+    const d = await chrome.storage.local.get(['settings', 'snapshot', 'regrasEscritorio', 'perfilSessao', 'status']);
     regras = d.regrasEscritorio || null;
     preencher(OC.combinarSettings(regras, d.settings));
     mostrarRegras();
-    $('#diag').textContent = diagnostico(d.snapshot);
+    $('#diag').textContent = diagnostico(d.snapshot, d.perfilSessao, d.status);
   }
   carregar();
 

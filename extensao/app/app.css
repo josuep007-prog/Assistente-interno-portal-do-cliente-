@@ -476,3 +476,13 @@ a{color:var(--blue-deep)}
 .btn-danger{background:var(--brand-red); border-color:var(--brand-red); color:#fff}
 .btn-danger:hover{filter:brightness(1.06); color:#fff; border-color:var(--brand-red)}
 .toast.ok{border-left-color:var(--status-green)}
+
+/* acesso de cliente: o app mostra só o aviso */
+body.bloqueado .trilho .ti:not(#btn-tema), body.bloqueado .trilho .ti-rot, body.bloqueado .trilho .ti-sep,
+body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualizar, body.bloqueado #abas{display:none!important}
+.bloqueio{max-width:620px; margin:8vh auto 0; padding:32px 34px; border:1px solid var(--rule); border-top:3px solid var(--brand-red); border-radius:var(--r); background:var(--surface); box-shadow:var(--shadow-1)}
+.bloqueio h2{font:700 22px/1.2 "Archivo",sans-serif; margin:14px 0 10px}
+.bloqueio p{margin:0 0 12px; color:var(--ink-2); line-height:1.55}
+.bl-ic{width:48px; height:48px; border-radius:6px; display:grid; place-items:center; background:var(--brand-red-soft); color:var(--brand-red)}
+.bl-ic .ic{width:24px; height:24px}
+.bl-acoes{display:flex; gap:10px; flex-wrap:wrap; margin-top:20px}

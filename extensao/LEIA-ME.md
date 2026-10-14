@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.8.0)
+# Control Onvio · ControlTax (v0.8.1)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Nesta versão a extensão ainda **só lê**: as ações (responder, definir responsável, anexar) chegam na próxima, depois do mapeamento.
 
@@ -41,6 +41,18 @@ Vez do escritório: sem primeiro trâmite após 1 dia útil; aberta além de 3 d
 Vez do cliente: sem retorno há mais de 5 dias úteis (laranja); a partir de 20 dias parada fica vermelho com a contagem até a prescrição de 30 dias.
 
 Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardando resposta** = o escritório precisa responder; **Respondido** = vez do cliente.
+
+## Novidades da v0.8.1 (só a visão do escritório)
+
+As APIs de solicitações são as mesmas na visão do cliente e na do escritório, então, com o login de um **cliente**, a leitura "funcionava" e mostrava as solicitações da empresa dele. Agora a extensão confere o perfil do acesso antes de ler:
+
+1. pela própria sessão do Onvio, quando ela diz o tipo do usuário;
+2. por uma aba do Onvio na visão do cliente (`onvio.com.br/clientcenter/...`);
+3. por um endereço que só o escritório acessa (acesso por departamento): se o Onvio recusa com a sessão válida, é cliente.
+
+Com acesso de cliente: nada é lido, o que já tinha sido lido é apagado (os lembretes pessoais ficam), o app não abre sozinho e, se aberto pelo ícone, mostra só o aviso "Este é um acesso de cliente". Ao entrar com o login do escritório, o botão "Já entrei com o login do escritório" (ou a próxima verificação) volta ao normal.
+
+**A confirmar no Onvio real:** qual dos três sinais aparece no login de cliente. Configurações > Diagnóstico mostra "Perfil da sessão" e o formato da sessão (só nomes de campos, sem valores); copie e envie, com um login de cliente de teste, para fixarmos a regra. Se nenhum sinal aparecer, o Diagnóstico diz "não confirmado" e a extensão não bloqueia (para não travar o escritório por uma mudança do Onvio).
 
 ## Novidades da v0.8.0 (visual e usabilidade do Control Hub)
 

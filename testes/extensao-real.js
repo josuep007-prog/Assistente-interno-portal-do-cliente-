@@ -35,11 +35,13 @@ const itensPorRota = {
   ]
 };
 const chamadas = [];
+let modoCliente = false;      // simula o login de um cliente: o Onvio recusa o que só o escritório acessa
 await ctx.route('https://onvio.com.br/**', async r => {
   const u = new URL(r.request().url());
   chamadas.push(u.pathname + (u.searchParams.get('filter') ? ' ' + u.searchParams.get('filter') : ''));
   if (u.pathname.endsWith('/security/v1/session-and-bindings')) return r.fulfill({ contentType: 'application/json', body: JSON.stringify({ UdsSession: { FirstName: 'Ana', LastName: 'Teste', EmailAddress: 'a@b.c' } }) });
   if (u.pathname.endsWith('/topics')) return r.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [{ created: iso(9), status: 1, description: '<p>Bom dia, segue o pedido de <b>cálculo de férias</b> do Fulano a partir de 03/11.</p>', createdByContactExpanded: { name: 'Cliente ACME' }, attachmentsExpanded: [{ name: 'aviso-ferias-fulano.pdf' }] }, { created: iso(7), status: 2, description: 'Recebido, estamos calculando.', createdByContactExpanded: { name: 'Ana Teste' } }] }) });
+  if (modoCliente && u.pathname.endsWith('/company-department-access')) return r.fulfill({ status: 403, contentType: 'application/json', body: '{}' });
   const k = Object.keys(itensPorRota).find(x => u.pathname.endsWith('/' + x));
   if (u.pathname.startsWith('/api/')) {
     const mine = u.searchParams.get('assignedtome') === 'true';
@@ -211,6 +213,20 @@ await esperar(() => ctx.pages().length > antes);
 const nova = ctx.pages().find(pg => /onvio\.com\.br\/br-portal-do-cliente/.test(pg.url()));
 assert.ok(nova, 'abriu uma aba do Onvio');
 await esperar(() => appDe(nova));
+
+// login de cliente: a extensão para, apaga o que leu e o app mostra só o aviso
+modoCliente = true;
+const rc = await pagina.evaluate(() => new Promise(res => chrome.runtime.sendMessage({ cmd: 'atualizar' }, res)));
+assert.equal(rc.cliente, true, 'atualizar responde "acesso de cliente"');
+const depois = await pagina.evaluate(() => chrome.storage.local.get(['status', 'snapshot', 'eventos']));
+assert.deepEqual([depois.status.estado, depois.snapshot, depois.eventos], ['visao_cliente', undefined, undefined]);
+await appDe(nova).waitForSelector('#bloqueio', { timeout: 8000 });
+await foto(nova, '8-acesso-de-cliente.png');
+modoCliente = false;
+const ro = await pagina.evaluate(() => new Promise(res => chrome.runtime.sendMessage({ cmd: 'atualizar' }, res)));
+assert.equal(ro.ok, true, 'de volta ao login do escritório, lê de novo');
+await appDe(nova).waitForFunction(() => !document.querySelector('#bloqueio'));
+console.log('acesso de cliente -> bloqueado; escritório -> volta a ler');
 
 // atalho Alt+Shift+O tem o mesmo efeito do ícone
 const man = require(path.join(EXT, 'manifest.json'));

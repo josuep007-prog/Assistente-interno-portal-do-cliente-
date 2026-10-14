@@ -185,6 +185,7 @@ Arquivos previstos: `manifest.json`, `background.js` (coleta e regras), `onvio-a
 - [ ] **Códigos não observados.** Cadastro 1 e 4 e Rubricas 1 a 3 não apareceram nos dados; a extensão deve mostrar "situação desconhecida (código N)" em vez de errar.
 - [ ] **Busca global de documentos.** Testar `storage/v1/containers/documents/search`. Sem ela, a checagem de guias exige percorrer pastas de cerca de 500 clientes, o que é lento.
 - [ ] **Trâmites da Geral.** Confirmar o caminho de `topics` para `tickets/generic`.
+- [ ] **Login de cliente x escritório.** As APIs de solicitações respondem às duas visões. A extensão bloqueia o acesso de cliente pela sessão (`security/v1/session-and-bindings`, campo de tipo/papel ainda não visto), por aba em `/clientcenter/` ou por `br-payroll-sr/v1/company-department-access` recusado. Confirmar com um login de cliente de teste qual sinal aparece (Diagnóstico > Perfil da sessão).
 - [ ] **Perfil do usuário.** Cada pessoa só vê o que seu perfil no Onvio permite; o painel do gestor depende de um perfil com acesso a todos os departamentos.
 - [ ] **Carga.** Atualizar a cada 5 a 10 minutos, só com o filtro de pendentes e 200 itens por página, nunca a base inteira.
 - [ ] **LGPD.** As listas trazem CPF, salário e observações de empregados. Guardar em cache local só ID, situação, datas, cliente e responsável.

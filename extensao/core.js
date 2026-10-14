@@ -319,6 +319,69 @@
     } catch (e) { return null; }
   }
 
+  /* ---------- visão do escritório x visão do cliente ----------
+   * As APIs de solicitações são as mesmas nas duas visões: com o login de um cliente a leitura "funciona" e
+   * traz as solicitações da empresa dele. A extensão é só do escritório, então confere o perfil da sessão:
+   *  1. a própria sessão (security/v1/session-and-bindings), quando traz um campo de tipo/papel do usuário;
+   *  2. uma aba do Onvio na visão do cliente (onvio.com.br/clientcenter/...), decidido no service worker;
+   *  3. um endereço que só o escritório usa (acesso por departamento): recusado (401/403) com sessão válida = cliente.
+   * Sem nenhum sinal claro, não bloqueia (para não travar o escritório por uma mudança do Onvio) e o
+   * Diagnóstico mostra "perfil não confirmado" com o formato da sessão (só nomes de campos, sem valores). */
+  const URL_SO_ESCRITORIO = () => API + 'br-payroll-sr/v1/company-department-access';
+  const CHAVE_TIPO = /^(user)?(type|kind|role|roles|profile|perfil|tipo|audience|usertype|accounttype|persona|context|product|application|app)$/i;
+  const EH_CLIENTE = /\b(client|cliente|clientes|customer|contact|clientcenter|client_?user|portal_?client)\b/i;
+  const EH_ESCRITORIO = /\b(staff|firm|escrit[oó]rio|employee|accountant|contador|professional|onvio_?staff|staffcenter)\b/i;
+  function perfilDaSessao(s) {
+    if (!s || typeof s !== 'object') return null;
+    let cli = false, esc = false;
+    const ver = (o, prof) => {
+      if (!o || typeof o !== 'object' || prof > 4) return;
+      for (const [k, v] of Object.entries(o)) {
+        const kn = k.replace(/[_\s-]/g, '');
+        if (typeof v === 'boolean' && v === true) {
+          if (/^is(client|clientuser|contact|customer|cliente)$/i.test(kn)) cli = true;
+          if (/^is(staff|staffuser|firm|firmuser|employee|escritorio)$/i.test(kn)) esc = true;
+        } else if ((typeof v === 'string' || Array.isArray(v)) && CHAVE_TIPO.test(kn)) {
+          const txt = [].concat(v).filter(x => typeof x === 'string').join(' ').replace(/([a-z])([A-Z])/g, '$1 $2');
+          if (EH_CLIENTE.test(txt)) cli = true;
+          if (EH_ESCRITORIO.test(txt)) esc = true;
+        } else if (v && typeof v === 'object') ver(v, prof + 1);
+      }
+    };
+    ver(s, 0);
+    return cli && !esc ? 'cliente' : esc && !cli ? 'escritorio' : null;
+  }
+  // Formato da sessão para o Diagnóstico: nomes e tipos dos campos; valor só dos campos de tipo/papel (curtos).
+  function formatoSessao(s) {
+    const out = [];
+    const ver = (o, cam, prof) => {
+      if (!o || typeof o !== 'object' || prof > 3 || out.length > 60) return;
+      for (const [k, v] of Object.entries(o)) {
+        const c = cam ? cam + '.' + k : k;
+        if (v && typeof v === 'object' && !Array.isArray(v)) { out.push(c + ':objeto'); ver(v, c, prof + 1); }
+        else if (Array.isArray(v)) out.push(c + ':lista(' + v.length + ')' + (CHAVE_TIPO.test(k.replace(/[_\s-]/g, '')) ? '=' + v.filter(x => typeof x === 'string').map(x => x.slice(0, 30)).join('|') : ''));
+        else out.push(c + ':' + typeof v + ((typeof v === 'string' && CHAVE_TIPO.test(k.replace(/[_\s-]/g, '')) && v.length <= 30) || typeof v === 'boolean' ? '=' + v : ''));
+      }
+    };
+    ver(s, '', 0);
+    return out;
+  }
+  // { perfil: 'escritorio' | 'cliente' | null, motivo, formato }. abaCliente: há aba do Onvio na visão do cliente.
+  async function perfilDoAcesso(fetcher, o) {
+    o = o || {};
+    let sessao = null;
+    try { sessao = await fetcher(API + 'security/v1/session-and-bindings'); } catch (e) { sessao = null; }
+    const formato = formatoSessao(sessao);
+    const pelaSessao = perfilDaSessao(sessao);
+    if (pelaSessao) return { perfil: pelaSessao, motivo: 'sessão do Onvio', formato };
+    if (o.abaCliente) return { perfil: 'cliente', motivo: 'aba do Onvio na visão do cliente (clientcenter)', formato };
+    try { await fetcher(URL_SO_ESCRITORIO()); return { perfil: 'escritorio', motivo: 'acesso de escritório', formato }; }
+    catch (e) {
+      if (e && e.auth && sessao) return { perfil: 'cliente', motivo: 'o Onvio recusou um acesso que só o escritório tem', formato };
+      return { perfil: null, motivo: 'não confirmado (' + (e && e.message ? e.message : e) + ')', formato };
+    }
+  }
+
   // Lê as pendentes de um tipo. Se o filtro por exclusão (NE) for recusado, repete com a lista (IN).
   async function lerPendentes(fetcher, t, out) {
     const fam = FAMILIAS[t.familia];
@@ -657,5 +720,5 @@
     }));
   }
 
-  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, novoLembrete, adiarLembrete, situacaoLembrete, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);
