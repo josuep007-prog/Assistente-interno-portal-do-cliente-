@@ -39,7 +39,7 @@ await ctx.route('https://onvio.com.br/**', async r => {
   const u = new URL(r.request().url());
   chamadas.push(u.pathname + (u.searchParams.get('filter') ? ' ' + u.searchParams.get('filter') : ''));
   if (u.pathname.endsWith('/security/v1/session-and-bindings')) return r.fulfill({ contentType: 'application/json', body: JSON.stringify({ UdsSession: { FirstName: 'Ana', LastName: 'Teste', EmailAddress: 'a@b.c' } }) });
-  if (u.pathname.endsWith('/topics')) return r.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [{ created: iso(9), status: 1 }, { created: iso(7), status: 2 }] }) });
+  if (u.pathname.endsWith('/topics')) return r.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [{ created: iso(9), status: 1, description: '<p>Bom dia, segue o pedido de <b>cálculo de férias</b> do Fulano a partir de 03/11.</p>', createdByContactExpanded: { name: 'Cliente ACME' }, attachmentsExpanded: [{ name: 'aviso-ferias-fulano.pdf' }] }, { created: iso(7), status: 2, description: 'Recebido, estamos calculando.', createdByContactExpanded: { name: 'Ana Teste' } }] }) });
   const k = Object.keys(itensPorRota).find(x => u.pathname.endsWith('/' + x));
   if (u.pathname.startsWith('/api/')) {
     const mine = u.searchParams.get('assignedtome') === 'true';
@@ -55,7 +55,7 @@ const aba = await ctx.newPage();
 await aba.goto('https://onvio.com.br/br-portal-do-cliente/home');
 // dispara a coleta pelo mesmo caminho do painel
 const pagina = await ctx.newPage();
-await pagina.goto('chrome-extension://' + id + '/painel.html');
+await pagina.goto('chrome-extension://' + id + '/options.html');
 const r = await pagina.evaluate(() => new Promise(res => chrome.runtime.sendMessage({ cmd: 'atualizar' }, res)));
 console.log('atualizar ->', r.ok, r.erro || '');
 const snap = await pagina.evaluate(() => chrome.storage.local.get(['snapshot', 'tramites', 'status']));
@@ -77,10 +77,6 @@ await pagina.evaluate(() => new Promise(res => chrome.runtime.sendMessage({ cmd:
 const s2 = (await pagina.evaluate(() => chrome.storage.local.get('snapshot'))).snapshot;
 const v1 = s2.items.find(i => i.num === 101);
 assert.ok(v1.motivos.some(m => /limite 1\)/.test(m.m)), 'o prazo do arquivo de regras vale no semáforo: ' + JSON.stringify(v1.motivos));
-// painel mostra
-await pagina.reload();
-await pagina.waitForSelector('#kpis .kpi-card');
-console.log('aviso do painel:', (await pagina.textContent('#aviso')).trim().slice(0, 140));
 // opções com diagnóstico
 await pagina.goto('chrome-extension://' + id + '/options.html');
 await pagina.waitForFunction(() => document.getElementById('diag').textContent.length > 20);
@@ -99,16 +95,6 @@ await grade.goto('https://onvio.com.br/br-portal-do-cliente/service-requesting/v
 await grade.waitForSelector('.controlonvio-marca', { timeout: 8000 });
 console.log('marca na grade real:', await grade.textContent('.controlonvio-marca'));
 
-const docs = await ctx.newPage();
-await docs.route('https://onvio.com.br/staff/**', r => r.fulfill({ contentType: 'text/html; charset=utf-8', body: '<!doctype html><body>docs</body>' }));
-await docs.route('https://onvio.com.br/api/storage/**', r => r.fulfill({ contentType: 'application/json', body: JSON.stringify({ data: { items: [{ id: 'd1', name: 'DARF.pdf', isReadByClientUser: false, customFields: { dueDate: new Date(Date.now() + 864e5).toISOString().slice(0, 10), clientId: 'c1' } }] } }) }));
-await docs.goto('https://onvio.com.br/staff/');
-await docs.evaluate(() => fetch('/api/storage/v2/Folders/pasta9/children?from=0').then(r => r.json()));
-await docs.waitForSelector('#controlonvio-guias', { timeout: 8000 });
-console.log('aviso de guias:', (await docs.textContent('#controlonvio-guias')).slice(0, 90));
-const g = await pagina.evaluate(() => chrome.storage.local.get('guias'));
-assert.ok(g.guias.pasta9);
-
 // ---- tempo real: ação do usuário na página do Onvio atualiza o painel na hora ----
 const idxP = await ctx.newPage();
 await idxP.goto('https://onvio.com.br/br-portal-do-cliente/tempo-real');
@@ -123,58 +109,92 @@ await idxP.close();
 const teste = await pagina.evaluate(() => new Promise(res => chrome.runtime.sendMessage({ cmd: 'testarLeitura' }, res)));
 assert.ok(teste.ok && /página do Onvio: HTTP 200 · application\/json/.test(teste.linhas.join('\n')), teste.linhas.join(' | '));
 
-// ---- ícone da extensão e atalho: dentro do Onvio abrem o painel; fora dele levam ao Onvio ----
+// ---- o app em tela cheia por cima do Onvio; ícone e atalho; telas para revisão visual ----
 const CAPTURAS = process.env.CAPTURAS || '';
 const foto = async (pg, nome) => { if (CAPTURAS) { fs.mkdirSync(CAPTURAS, { recursive: true }); await pg.screenshot({ path: path.join(CAPTURAS, nome) }); } };
 const PORTAL_TESTE = 'https://onvio.com.br/br-portal-do-cliente/painel-teste';
-const portal = await ctx.newPage();
-await portal.setViewportSize({ width: 1360, height: 820 });
-await portal.goto(PORTAL_TESTE);
 const idDaAba = url => sw.evaluate(async u => (await chrome.tabs.query({ url: u }))[0].id, url);
-const painelDe = pg => pg.frames().find(f => f.url() === 'chrome-extension://' + id + '/painel.html');
-const dockado = pg => pg.evaluate(() => document.documentElement.classList.contains('controlonvio-docked'));
+const appDe = pg => pg.frames().find(f => f.url().startsWith('chrome-extension://' + id + '/app/app.html'));
+const cheia = pg => pg.evaluate(() => document.documentElement.classList.contains('controlonvio-cheia'));
 const esperar = async (cond, ms = 8000) => { const fim = Date.now() + ms; while (Date.now() < fim) { if (await cond()) return; await new Promise(r => setTimeout(r, 100)); } throw new Error('tempo esgotado: ' + cond); };
 
-await foto(portal, '1-onvio-botao.png');
-assert.equal(painelDe(portal), undefined, 'com o painel fechado a página não carrega o iframe');
-const idPortal = await idDaAba(PORTAL_TESTE);
-await sw.evaluate(i => aoClicarNoIcone({ id: i, url: 'https://onvio.com.br/br-portal-do-cliente/painel-teste' }), idPortal);
-await esperar(() => painelDe(portal));
-const painel = painelDe(portal);
-await painel.waitForSelector('#kpis .kpi-card', { timeout: 8000 });
-await esperar(async () => (await portal.evaluate(() => getComputedStyle(document.documentElement).marginRight)) === '420px');
-assert.equal(await portal.evaluate(() => innerWidth), 1360 - 0, 'a janela continua do mesmo tamanho; só a página encolhe');
-await foto(portal, '2-painel-aberto.png');
-for (const aba of ['equipe', 'analistas', 'guias']) { await painel.click('[data-aba="' + aba + '"]'); await foto(portal, '3-aba-' + aba + '.png'); }
-await painel.click('[data-aba="minhas"]');
-// ícone de novo: fecha
-await sw.evaluate(i => aoClicarNoIcone({ id: i, url: 'https://onvio.com.br/br-portal-do-cliente/painel-teste' }), idPortal);
-await esperar(async () => !(await dockado(portal)));
-// botão de fechar dentro do painel
-await sw.evaluate(i => aoClicarNoIcone({ id: i, url: 'https://onvio.com.br/br-portal-do-cliente/painel-teste' }), idPortal);
-await esperar(() => dockado(portal));
-await painel.click('#btn-fechar');
-await esperar(async () => !(await dockado(portal)));
+const portal = await ctx.newPage();
+await portal.setViewportSize({ width: 1440, height: 900 });
+await portal.goto(PORTAL_TESTE);
+await esperar(() => appDe(portal));                                   // ao entrar no Onvio, o app já ocupa a tela
+const app = appDe(portal);
+await app.waitForSelector('#vista .kpi', { timeout: 8000 });
+assert.equal(await cheia(portal), true);
+const caixa = await (await app.frameElement()).boundingBox();
+assert.deepEqual([caixa.width, caixa.height], [1440, 900], 'tela cheia');
+await foto(portal, '1-inicio.png');
+for (const rota of ['fila', 'equipe', 'clientes', 'lembretes']) {
+  await app.evaluate(r => { location.hash = '#/' + r; }, rota);
+  await app.waitForSelector('#vista .cab h1');
+  await new Promise(r => setTimeout(r, 300));
+  await foto(portal, '2-' + rota + '.png');
+}
+// solicitações: consulta na hora pela aba do Onvio
+await app.evaluate(() => { location.hash = '#/solicitacoes'; });
+await app.waitForSelector('#corpo tr[data-k]', { timeout: 8000 });
+await foto(portal, '3-solicitacoes.png');
+// detalhe: lê dados e trâmites na hora (API simulada)
+await app.evaluate(() => { location.hash = '#/fila?escopo=equipe'; });
+await app.waitForSelector('#corpo tr[data-k]');
+await app.click('#corpo tr[data-k="calcFerias:v1"]');
+await app.waitForSelector('#gaveta .tl-item', { timeout: 8000 });
+assert.equal(await app.$$eval('#gaveta .tl-item', e => e.length), 2);
+await foto(portal, '4-detalhe.png');
+await portal.keyboard.press('Escape');
+// sino
+await app.click('#btn-sino');
+await foto(portal, '5-sino.png');
+await app.click('#btn-sino');
+// tema escuro
+await app.click('#btn-tema');
+await app.evaluate(() => { location.hash = '#/equipe'; });
+await new Promise(r => setTimeout(r, 400));
+await foto(portal, '6-equipe-escuro.png');
+await app.click('#btn-tema');
 
-// fora do Onvio: leva ao Onvio que já está aberto e abre o painel lá
+// "Ver Onvio" esconde; o ícone alterna; o detalhe "Abrir no Onvio" chega com a camada escondida
+const idPortal = await idDaAba(PORTAL_TESTE);
+await app.click('#btn-ver-onvio');
+await esperar(async () => !(await cheia(portal)));
+await foto(portal, '7-ver-onvio.png');
+await sw.evaluate(i => aoClicarNoIcone({ id: i, url: 'https://onvio.com.br/br-portal-do-cliente/painel-teste' }), idPortal);
+await esperar(() => cheia(portal));
+await sw.evaluate(i => aoClicarNoIcone({ id: i, url: 'https://onvio.com.br/br-portal-do-cliente/painel-teste' }), idPortal);
+await esperar(async () => !(await cheia(portal)));
+await sw.evaluate(i => aoClicarNoIcone({ id: i, url: 'https://onvio.com.br/br-portal-do-cliente/painel-teste' }), idPortal);
+await esperar(() => cheia(portal));
+await app.evaluate(() => { location.hash = '#/fila?escopo=equipe'; });
+await app.waitForSelector('#corpo tr[data-k="calcFerias:v1"]');
+await app.click('#corpo tr[data-k="calcFerias:v1"]');
+await app.waitForSelector('#gaveta .tl-item', { timeout: 8000 });         // espera os dados chegarem (a gaveta se redesenha)
+await app.click('#g-onvio');
+await esperar(() => /vacation\/calculation$/.test(portal.url()));
+await portal.waitForLoadState('load');
+await new Promise(r => setTimeout(r, 800));
+assert.equal(await cheia(portal), false, 'chegou na tela nativa do Onvio, com o app escondido');
+
+// fora do Onvio: leva ao Onvio que já está aberto e abre o app lá
 const fora = await ctx.newPage();
 await fora.route('https://exemplo.com/**', r => r.fulfill({ contentType: 'text/html; charset=utf-8', body: '<!doctype html><body>outro site</body>' }));
 await fora.goto('https://exemplo.com/');
 const idFora = await idDaAba('https://exemplo.com/*');
 await sw.evaluate(i => aoClicarNoIcone({ id: i, url: 'https://exemplo.com/' }), idFora);
-await esperar(async () => (await Promise.all(ctx.pages().map(async pg => (/onvio\.com\.br/.test(pg.url()) && (await dockado(pg)))))).some(Boolean));
-assert.equal(painelDe(fora), undefined, 'em outro site nunca aparece painel');
-assert.equal(await fora.evaluate(() => document.documentElement.classList.contains('controlonvio-docked')), false);
+await esperar(async () => (await Promise.all(ctx.pages().map(async pg => (/onvio\.com\.br/.test(pg.url()) && (await cheia(pg)))))).some(Boolean));
+assert.equal(appDe(fora), undefined, 'em outro site nunca aparece o app');
 
-// sem nenhuma aba do Onvio: o ícone cria uma aba do Onvio e o painel abre quando ela carregar
+// sem nenhuma aba do Onvio: o ícone cria uma aba do Onvio e o app abre quando ela carregar
 for (const pg of ctx.pages()) if (/onvio\.com\.br/.test(pg.url())) await pg.close();
 const antes = ctx.pages().length;
 await sw.evaluate(i => aoClicarNoIcone({ id: i, url: 'https://exemplo.com/' }), idFora);
 await esperar(() => ctx.pages().length > antes);
 const nova = ctx.pages().find(pg => /onvio\.com\.br\/br-portal-do-cliente/.test(pg.url()));
 assert.ok(nova, 'abriu uma aba do Onvio');
-await esperar(() => painelDe(nova));
-await foto(nova, '4-aba-criada-pelo-icone.png');
+await esperar(() => appDe(nova));
 
 // atalho Alt+Shift+O tem o mesmo efeito do ícone
 const man = require(path.join(EXT, 'manifest.json'));

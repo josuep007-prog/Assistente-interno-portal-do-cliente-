@@ -1,22 +1,20 @@
 /* Control Onvio · a extensão dentro do Onvio
- * Mostra um botão flutuante no canto da tela e, ao abrir, o painel como uma coluna fixa à direita
- * (a página encolhe em telas largas, então nada fica escondido atrás dele).
- * Só existe no Onvio: não há painel em nenhum outro site. O painel em si é painel.html (iframe da extensão).
- * O ícone da extensão e o atalho Alt+Shift+O falam com este script pelo service worker.
+ * O Control Onvio é uma página em TELA CHEIA por cima do Onvio (app/app.html, iframe da extensão). O Onvio
+ * continua carregado por trás e mantém a sessão: é por ele que a extensão lê e, nas próximas versões, grava.
+ * "Ver Onvio" esconde a camada e deixa um botão flutuante para voltar.
+ * Só existe no Onvio. O ícone da extensão e o atalho Alt+Shift+O falam com este script pelo service worker.
  */
 (function () {
   'use strict';
   if (window.__controlOnvioShell) return;
   window.__controlOnvioShell = true;
 
-  const LARGURA = 420;           // largura da coluna do painel (px)
-  const LARGURA_MINIMA_PARA_EMPURRAR = 1000;
   const CHAVE_ABERTO = 'controlonvio-painel-aberto';
 
   const viva = () => { try { return !!(chrome.runtime && chrome.runtime.id); } catch (e) { return false; } };
   const url = p => chrome.runtime.getURL(p);
 
-  /* ---------- interface (Shadow DOM fechado, como a página não precisa mexer nela) ---------- */
+  /* ---------- interface (Shadow DOM fechado: a página não precisa mexer nela) ---------- */
   const host = document.createElement('div');
   host.id = 'controlonvio-host';
   host.style.cssText = 'all:initial;position:fixed;inset:auto 0 0 auto;z-index:2147483000;';
@@ -39,31 +37,30 @@
       .launcher .badge.today{background:#B5530C}
       .launcher .badge[hidden]{display:none}
       .launcher.hidden{display:none}
-      .frame-wrap{position:fixed;top:0;right:0;height:100vh;width:min(${LARGURA}px,100vw);transform:translateX(105%);visibility:hidden;
-        transition:transform .22s cubic-bezier(.2,.7,.2,1), visibility 0s linear .22s;
-        box-shadow:-2px 0 6px rgba(16,24,32,.08),-18px 0 40px rgba(16,24,32,.16)}
-      .frame-wrap.open{transform:none;visibility:visible;transition:transform .22s cubic-bezier(.2,.7,.2,1)}
+      .camada{position:fixed;inset:0;width:100vw;height:100vh;opacity:0;visibility:hidden;transition:opacity .16s ease, visibility 0s linear .16s;background:#EDF0F3}
+      .camada.open{opacity:1;visibility:visible;transition:opacity .16s ease}
       iframe{border:0;width:100%;height:100%;display:block;background:#EDF0F3;color-scheme:normal}
-      @media (prefers-reduced-motion: reduce){.frame-wrap,.frame-wrap.open,.launcher{transition:none}}
+      @media (prefers-reduced-motion: reduce){.camada,.camada.open,.launcher{transition:none}}
       @media print{:host{display:none}}
     </style>
-    <button class="launcher" type="button" aria-label="Abrir o Control Onvio">
+    <button class="launcher" type="button" aria-label="Voltar ao Control Onvio">
       <span class="mark"><img alt="" src="${url('logo.svg')}"></span>
-      <span class="lbl">Control Onvio</span><span class="badge" hidden></span>
+      <span class="lbl">Voltar ao Control Onvio</span><span class="badge" hidden></span>
     </button>
-    <div class="frame-wrap" aria-hidden="true"></div>`;
+    <div class="camada" aria-hidden="true"></div>`;
   const launcher = raiz.querySelector('.launcher');
   const badge = raiz.querySelector('.badge');
-  const wrap = raiz.querySelector('.frame-wrap');
+  const wrap = raiz.querySelector('.camada');
   let iframe = null;
   let aberto = false;
 
-  // O iframe só é criado na primeira abertura: com o painel fechado a página não carrega nada a mais.
+  // O app só é carregado na primeira vez que a camada aparece.
   function garantirIframe() {
     if (iframe) return;
     iframe = document.createElement('iframe');
     iframe.title = 'Control Onvio';
-    iframe.src = url('painel.html');
+    iframe.allow = 'clipboard-write';
+    iframe.src = url('app/app.html');
     wrap.appendChild(iframe);
   }
 
@@ -74,18 +71,17 @@
     wrap.classList.toggle('open', abrir);
     wrap.setAttribute('aria-hidden', String(!abrir));
     launcher.classList.toggle('hidden', abrir);
-    // telas largas: o painel vira uma coluna e a página encolhe
-    document.documentElement.classList.toggle('controlonvio-docked', abrir && innerWidth >= LARGURA_MINIMA_PARA_EMPURRAR);
+    // com a camada aberta a página do Onvio por trás não rola nem recebe o foco
+    document.documentElement.classList.toggle('controlonvio-cheia', abrir);
+    if (abrir && iframe) setTimeout(() => { try { iframe.focus(); } catch (e) {} }, 50);
     try { sessionStorage.setItem(CHAVE_ABERTO, abrir ? '1' : '0'); } catch (e) {}   // só nesta aba
   }
   launcher.addEventListener('click', () => definirPainel(true));
 
   const estilo = document.createElement('style');
-  estilo.textContent = `html.controlonvio-docked{margin-right:${LARGURA}px!important;transition:margin-right .22s ease}
-    @media (prefers-reduced-motion: reduce){html.controlonvio-docked{transition:none}}`;
+  estilo.textContent = 'html.controlonvio-cheia,html.controlonvio-cheia body{overflow:hidden!important}';
   document.documentElement.appendChild(estilo);
   (document.body || document.documentElement).appendChild(host);
-  addEventListener('resize', () => document.documentElement.classList.toggle('controlonvio-docked', aberto && innerWidth >= LARGURA_MINIMA_PARA_EMPURRAR));
 
   /* ---------- contador no botão: minhas solicitações com ação do escritório ---------- */
   function atualizarContador(snap) {
@@ -93,7 +89,7 @@
     badge.hidden = !minhas.length;
     badge.textContent = minhas.length > 99 ? '99+' : String(minhas.length);
     badge.className = 'badge' + (minhas.some(i => i.nivel === 2) ? ' late' : minhas.some(i => i.nivel === 1) ? ' today' : '');
-    launcher.setAttribute('aria-label', 'Abrir o Control Onvio' + (minhas.length ? ' · ' + minhas.length + ' minha(s) com ação do escritório' : ''));
+    launcher.setAttribute('aria-label', 'Voltar ao Control Onvio' + (minhas.length ? ' · ' + minhas.length + ' minha(s) com ação do escritório' : ''));
   }
 
   /* ---------- mensagens do service worker (ícone da extensão, atalho) ---------- */
@@ -159,13 +155,20 @@
   chrome.storage.onChanged.addListener((ch, area) => { if (area === 'local' && ch.aprender) avisarHook(ch.aprender.newValue); });
   chrome.storage.local.get('aprender', d => avisarHook(d.aprender));
 
-  /* ---------- estado inicial ---------- */
-  chrome.storage.local.get(['snapshot', 'abrirPainelAoCarregar'], d => {
+  /* ---------- estado inicial ----------
+   * Abre ao entrar no Onvio (configurável). Fica escondido se nesta aba a pessoa escolheu "Ver Onvio", ou se
+   * chegou aqui por "Abrir no Onvio" (quer ver a tela nativa). O pedido do ícone fora do Onvio sempre abre. */
+  chrome.storage.local.get(['snapshot', 'abrirPainelAoCarregar', 'verOnvioAoCarregar', 'settings', 'regrasEscritorio'], d => {
     atualizarContador(d.snapshot);
-    let reabrir = false;
-    try { reabrir = sessionStorage.getItem(CHAVE_ABERTO) === '1'; } catch (e) {}
-    const pedido = d.abrirPainelAoCarregar && Date.now() - d.abrirPainelAoCarregar < 120000;
+    let naAba = null;
+    try { naAba = sessionStorage.getItem(CHAVE_ABERTO); } catch (e) {}
+    const recente = ts => ts && Date.now() - ts < 120000;
+    const pedido = recente(d.abrirPainelAoCarregar);
+    const verOnvio = recente(d.verOnvioAoCarregar);
     if (pedido) chrome.storage.local.remove('abrirPainelAoCarregar');
-    if (reabrir || pedido) definirPainel(true);
+    if (verOnvio) chrome.storage.local.remove('verOnvioAoCarregar');
+    const abrirAoEntrar = !(d.settings && d.settings.abrirAoEntrar === false);
+    const abrir = pedido || (!verOnvio && (naAba === '1' || (naAba === null && abrirAoEntrar)));
+    definirPainel(abrir);
   });
 })();

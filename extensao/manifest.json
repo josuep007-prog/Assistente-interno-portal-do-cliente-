@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Control Onvio · ControlTax",
   "short_name": "Control Onvio",
-  "version": "0.6.0",
-  "description": "Fila única das solicitações do Portal do Cliente Onvio, com prazos, prescrição e alertas para analistas e gestores.",
+  "version": "0.7.0",
+  "description": "Página de trabalho por cima do Onvio Portal do Cliente: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores.",
   "permissions": [
     "storage",
     "alarms",
@@ -72,26 +72,6 @@
       ],
       "run_at": "document_start",
       "world": "MAIN"
-    },
-    {
-      "matches": [
-        "https://onvio.com.br/staff/*"
-      ],
-      "js": [
-        "docs-hook.js"
-      ],
-      "run_at": "document_start",
-      "world": "MAIN"
-    },
-    {
-      "matches": [
-        "https://onvio.com.br/staff/*"
-      ],
-      "js": [
-        "core.js",
-        "docs-ponte.js"
-      ],
-      "run_at": "document_start"
     }
   ],
   "minimum_chrome_version": "114",
@@ -109,7 +89,7 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "painel.html",
+        "app/app.html",
         "logo.svg",
         "fonts/archivo-latin-600-normal.woff2",
         "fonts/ibm-plex-sans-latin-500-normal.woff2"
