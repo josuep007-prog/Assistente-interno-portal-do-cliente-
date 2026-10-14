@@ -129,6 +129,36 @@
   });
   verificar(false);
 
+  /* ---------- modo aprender (mapeamento das ações) ----------
+   * Liga o registro de formatos no acao-hook.js (mundo da página) e guarda o que ele mandar.
+   * Desliga sozinho depois de 2 horas, para ninguém esquecer ligado. */
+  const APRENDER_MAX_MS = 2 * 3600 * 1000, APRENDIZADO_MAX = 300;
+  const aprenderAtivo = a => !!(a && a.ligado && Date.now() - (a.desde || 0) < APRENDER_MAX_MS);
+  const avisarHook = a => { try { window.postMessage({ src: 'controlonvio', tipo: 'aprender', ligado: aprenderAtivo(a) }, location.origin); } catch (e) {} };
+  let filaAprendido = Promise.resolve();
+  function guardarAprendido(r) {
+    let txt;
+    try { txt = JSON.stringify(r); } catch (e) { return; }
+    if (!r || typeof r !== 'object' || txt.length > 40000) return;               // nada enorme ou estranho
+    const chave = [r.metodo, r.caminho, JSON.stringify(r.corpo || null), r.status].join(' ');
+    filaAprendido = filaAprendido.then(async () => {
+      const { aprender, aprendizado } = await chrome.storage.local.get(['aprender', 'aprendizado']);
+      if (!aprenderAtivo(aprender)) return;
+      const lista = Array.isArray(aprendizado) ? aprendizado : [];
+      const igual = lista.find(x => x.chave === chave);
+      if (igual) { igual.vezes = (igual.vezes || 1) + 1; igual.ultimaEm = r.em; igual.rotas = [...new Set((igual.rotas || []).concat(r.rota))].slice(0, 10); }
+      else lista.push({ chave, vezes: 1, primeiraEm: r.em, ultimaEm: r.em, rotas: [r.rota], metodo: String(r.metodo).slice(0, 10), caminho: String(r.caminho).slice(0, 300), query: r.query, status: r.status, contentTypePedido: r.contentTypePedido, corpo: r.corpo, resposta: r.resposta, via: r.via });
+      await chrome.storage.local.set({ aprendizado: lista.slice(-APRENDIZADO_MAX) });
+    }).catch(() => {});
+  }
+  addEventListener('message', ev => {
+    const d = ev.data;
+    if (ev.source !== window || ev.origin !== location.origin || !d || d.src !== 'controlonvio' || d.tipo !== 'aprendido') return;
+    if (viva()) guardarAprendido(d.registro);
+  });
+  chrome.storage.onChanged.addListener((ch, area) => { if (area === 'local' && ch.aprender) avisarHook(ch.aprender.newValue); });
+  chrome.storage.local.get('aprender', d => avisarHook(d.aprender));
+
   /* ---------- estado inicial ---------- */
   chrome.storage.local.get(['snapshot', 'abrirPainelAoCarregar'], d => {
     atualizarContador(d.snapshot);

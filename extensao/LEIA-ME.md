@@ -1,10 +1,10 @@
-# Control Onvio · ControlTax (v0.5.0)
+# Control Onvio · ControlTax (v0.6.0)
 
 Extensão do Chrome que junta numa fila só as solicitações pendentes do Portal do Cliente Onvio, com prazos, alerta de prescrição e notificações. Fase 1: **somente leitura**, nada é alterado no Onvio.
 
 ## Instalar (piloto)
 
-1. Baixe o repositório (Code > Download ZIP) ou o arquivo `ControlOnvio_v0.5.0.zip` e descompacte numa pasta fixa (ex.: `C:\ControlTax\ControlOnvio`). Não apague a pasta depois.
+1. Baixe o repositório (Code > Download ZIP) ou o arquivo `ControlOnvio_v0.6.0.zip` e descompacte numa pasta fixa (ex.: `C:\ControlTax\ControlOnvio`). Não apague a pasta depois.
 2. No Chrome, abra `chrome://extensions`.
 3. Ligue o **Modo do desenvolvedor** (canto superior direito).
 4. Clique em **Carregar sem compactação** e escolha a pasta que contém o `manifest.json` (no repositório, a pasta `extensao`).
@@ -39,6 +39,12 @@ Vez do escritório: sem primeiro trâmite após 1 dia útil; aberta além de 3 d
 Vez do cliente: sem retorno há mais de 5 dias úteis (laranja); a partir de 20 dias parada fica vermelho com a contagem até a prescrição de 30 dias.
 
 Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardando resposta** = o escritório precisa responder; **Respondido** = vez do cliente.
+
+## Novidades da v0.6.0 (aprender as ações do Onvio)
+
+Primeiro passo para a extensão virar a tela de trabalho e fazer as ações (responder, definir responsável, anexar...). Para isso ela precisa conhecer o formato das chamadas que o Onvio faz, e esse formato não é público.
+
+**Aprender ações** (Configurações): com o modo ligado, a extensão anota o **formato** das chamadas que o próprio Onvio faz enquanto você trabalha (método, endereço com os números trocados por `{id}`, nomes e tipos dos campos enviados e recebidos). **Nunca anota valores**: textos, nomes, CPF, datas e números viram só o tipo ("texto", "texto:data", "number"). Em anexos, só o nome do campo e o tipo do arquivo. Desliga sozinho depois de 2 horas. A tela traz o roteiro de ações; use **só na empresa de teste** e depois clique em "Copiar o que foi aprendido".
 
 ## Novidades da v0.5.0 (leitura em tempo real e mais robusta)
 

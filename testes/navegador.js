@@ -228,6 +228,57 @@ await passo('tempo real: script órfão (extensão atualizada) para de verificar
   assert.deepEqual(p.erros, []);
 });
 
+/* ---------- modo aprender: formato das chamadas, nunca valores ---------- */
+await passo('aprender: registra método, caminho e formato (sem valores); desligado ou vencido não registra nada', async () => {
+  const montar = async aprender => {
+    const p = await pagina(URL_PORTAL, '<!doctype html><body>Onvio</body>');
+    await p.addInitScript(lerExt('acao-hook.js'));
+    await semear(p, aprender ? { aprender } : {});
+    await p.route('**/api/**', r => r.fulfill({ contentType: 'application/json', body: JSON.stringify({ id: 'abc', nome: 'Fulano de Tal', cpf: '123.456.789-00', itens: [{ valor: 2500.5 }] }) }));
+    await p.goto(URL_PORTAL);
+    await p.addScriptTag({ content: lerExt('shell.js') });
+    await p.waitForTimeout(300);
+    await p.evaluate(async () => {
+      const guid = '0f8fad5b-d9cb-469f-a165-70867728950e';
+      // XHR com JSON (como o Angular do Onvio faz)
+      await new Promise(res => { const x = new XMLHttpRequest(); x.open('POST', '/api/br-payroll-sr/v1/vacation-calculations/' + guid + '/topics'); x.setRequestHeader('Content-Type', 'application/json'); x.onload = res; x.send(JSON.stringify({ description: 'Prezado cliente, segue o cálculo do João', status: 4, dueDate: '2026-10-20T00:00:00', staffId: guid })); });
+      // de novo a mesma chamada: conta 2x
+      await new Promise(res => { const x = new XMLHttpRequest(); x.open('POST', '/api/br-payroll-sr/v1/vacation-calculations/' + guid + '/topics'); x.setRequestHeader('Content-Type', 'application/json'); x.onload = res; x.send(JSON.stringify({ description: 'Outro texto', status: 2, dueDate: '2026-10-21T00:00:00', staffId: guid })); });
+      // anexo em multipart
+      const fd = new FormData(); fd.append('file', new File(['%PDF-1.4 conteudo'], 'atestado-joao.pdf', { type: 'application/pdf' })); fd.append('description', 'Atestado do João');
+      await fetch('/api/br-payroll-sr/v1/employee-leave/123/attachments', { method: 'POST', body: fd });
+      // leitura com query (expand fica; busca e filtro com dados não)
+      await fetch('/api/service-requesting/v1/tickets/generic?expand=clientExpanded&searchText=Fulano&filter=' + encodeURIComponent(JSON.stringify({ groups: [{ items: [{ by: 'clientName', op: 'CT', value: 'ACME' }] }] })));
+      // fora da API de solicitações: ignorado
+      await fetch('/api/storage/v2/Folders/1/children');
+    });
+    await p.waitForTimeout(600);
+    return { p, mem: await p.evaluate(() => JSON.parse(localStorage.getItem('__mem'))) };
+  };
+
+  const { p, mem } = await montar({ ligado: true, desde: Date.now() });
+  const ap = mem.aprendizado || [];
+  const txt = JSON.stringify(ap);
+  assert.equal(ap.length, 3, 'POST de trâmite (deduplicado), anexo e leitura: ' + ap.map(a => a.metodo + ' ' + a.caminho).join(' | '));
+  const tramite = ap.find(a => /topics$/.test(a.caminho));
+  assert.equal(tramite.caminho, '/api/br-payroll-sr/v1/vacation-calculations/{id}/topics');
+  assert.equal(tramite.vezes, 2);
+  assert.equal(tramite.contentTypePedido, 'application/json');
+  assert.deepEqual(tramite.corpo, { json: { description: 'texto', status: 'number', dueDate: 'texto:data-hora', staffId: 'texto:guid' } });
+  assert.deepEqual(tramite.resposta, { json: { id: 'texto', nome: 'texto', cpf: 'texto', itens: [{ valor: 'number' }] } });
+  assert.deepEqual(tramite.rotas, ['/br-portal-do-cliente/service-requesting/general']);
+  const anexo = ap.find(a => /attachments$/.test(a.caminho));
+  assert.equal(anexo.caminho, '/api/br-payroll-sr/v1/employee-leave/{id}/attachments');
+  assert.deepEqual(anexo.corpo, { multipart: { file: 'arquivo(application/pdf)', description: 'texto' } });
+  const leitura = ap.find(a => a.metodo === 'GET');
+  assert.deepEqual(leitura.query, { expand: 'clientExpanded', searchText: '…', filter: [['clientName CT']] });
+  for (const proibido of ['Fulano', 'João', '123.456', 'ACME', 'atestado-joao', 'Prezado', '2026-10-20', '0f8fad5b', '2500']) assert.ok(!txt.includes(proibido), 'vazou um valor: ' + proibido);
+  assert.deepEqual(p.erros, []);
+
+  assert.equal((await montar(null)).mem.aprendizado, undefined, 'desligado: nada');
+  assert.equal((await montar({ ligado: true, desde: Date.now() - 3 * 3600 * 1000 })).mem.aprendizado, undefined, 'ligado há mais de 2 h: desligou sozinho');
+});
+
 /* ---------- guias: hook + ponte + aviso ---------- */
 const URL_DOCS = 'https://onvio.com.br/staff/';
 const hoje = new Date(); const d = n => { const x = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() + n); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
