@@ -19,16 +19,16 @@ const STUB = `
   window.chrome = { storage: { local: {
       get(k, cb) { carregar(); const r = pick(k); if (cb) { cb(r); return; } return Promise.resolve(r); },
       set(o, cb) { carregar(); const ch = {}; for (const [k, v] of Object.entries(o)) { ch[k] = { oldValue: mem[k], newValue: v }; mem[k] = v; } salvar(); ouvintes.forEach(f => f(ch, 'local')); if (cb) cb(); return Promise.resolve(); },
-      remove(k) { carregar(); delete mem[k]; salvar(); return Promise.resolve(); }
+      remove(k) { (window.__removidos ||= []).push(k); carregar(); delete mem[k]; salvar(); return Promise.resolve(); }
     }, onChanged: { addListener(f) { ouvintes.push(f); } } },
-    runtime: { id: 'teste', sendMessage(m, cb) { (window.__msgs ||= []).push(m); if (cb) cb({ ok: true }); }, lastError: null, openOptionsPage() {}, getManifest: () => ({ version: '0.2.0' }) },
+    runtime: { id: 'teste', getURL: p => 'https://onvio.com.br/__ext__/' + p, onMessage: { addListener(f) { (window.__ouvintes ||= []).push(f); } }, sendMessage(m, cb) { (window.__msgs ||= []).push(m); if (cb) cb({ ok: true }); }, lastError: null, openOptionsPage() {}, getManifest: () => ({ version: '0.2.0' }) },
     tabs: { create(o) { (window.__tabs ||= []).push(o); } } };
 })();`;
 
 (async () => {
 const navegador = await chromium.launch();
 const falhas = [];
-const passo = async (nome, fn) => { try { await fn(); console.log('ok   ' + nome); } catch (e) { falhas.push(nome); console.log('FALHA ' + nome + '\n     ' + String(e.message).split('\n')[0]); } };
+const passo = async (nome, fn) => { try { await fn(); console.log('ok   ' + nome); } catch (e) { falhas.push(nome); console.log('FALHA ' + nome + '\n     ' + String(e.message).split('\n').slice(0, 5).join(' | ')); } };
 
 async function pagina(url, html, semStub) {
   const ctx = await navegador.newContext();
@@ -37,11 +37,16 @@ async function pagina(url, html, semStub) {
   p.on('pageerror', e => erros.push(String(e)));
   await p.route('**/*', r => {
     const u = r.request().url();
+    if (u.startsWith('https://onvio.com.br/__ext__/')) {          // arquivos da extensão (iframe do painel, fontes, ícones)
+      const f = path.join(EXT, new URL(u).pathname.replace('/__ext__/', ''));
+      const tipos = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.woff2': 'font/woff2', '.svg': 'image/svg+xml', '.png': 'image/png' };
+      return fs.existsSync(f) ? r.fulfill({ body: fs.readFileSync(f), contentType: tipos[path.extname(f)] || 'application/octet-stream' }) : r.fulfill({ status: 404, body: '' });
+    }
     if (u === url || u.startsWith(url.split('#')[0])) return r.fulfill({ contentType: 'text/html; charset=utf-8', body: html });
     if (/\/api\//.test(u)) return r.fulfill({ status: 404, body: '{}' });
     return r.abort();
   });
-  if (!semStub) await p.addInitScript(STUB);
+  if (!semStub) { await p.addInitScript('window.__EXT = ' + JSON.stringify(EXT) + ';'); await p.addInitScript(STUB); }
   p.erros = erros;
   return p;
 }
@@ -128,6 +133,50 @@ await passo('grade: com a extensão atualizada (script órfão) as marcas somem 
   assert.deepEqual(p.erros, []);
 });
 
+/* ---------- shell: botão flutuante e painel encaixado ---------- */
+const URL_PORTAL = 'https://onvio.com.br/br-portal-do-cliente/service-requesting/general';
+const temPainel = p => p.frames().some(f => /painel\.html$/.test(f.url()));
+const esperar = async (cond, ms = 4000) => { const fim = Date.now() + ms; while (Date.now() < fim) { if (await cond()) return; await new Promise(r => setTimeout(r, 50)); } throw new Error('tempo esgotado esperando: ' + cond); };
+await passo('shell: botão abre o painel (iframe) e encolhe a página; fechar e reabrir após recarregar', async () => {
+  const p = await pagina(URL_PORTAL, '<!doctype html><body><main id="m" style="width:100%">Onvio</main></body>');
+  await p.setViewportSize({ width: 1360, height: 800 });
+  await semear(p);
+  await p.goto(URL_PORTAL);
+  await p.addScriptTag({ content: lerExt('shell.js') });
+  assert.equal(temPainel(p), false, 'fechado: nada carregado a mais na página');
+  await p.mouse.click(1255, 755);                       // botão flutuante, canto inferior direito
+  await p.waitForFunction(() => document.documentElement.classList.contains('controlonvio-docked'), null, { timeout: 4000 });
+  assert.equal(temPainel(p), true);
+  await p.waitForFunction(() => getComputedStyle(document.documentElement).marginRight === '420px', null, { timeout: 4000 });   // espera a animação
+  // fechar (o service worker manda 'fechar' à aba) e o estado fica na sessão da aba
+  await p.evaluate(() => window.__ouvintes.forEach(f => f({ type: 'fechar' })));
+  await p.waitForFunction(() => !document.documentElement.classList.contains('controlonvio-docked'));
+  await p.evaluate(() => window.__ouvintes.forEach(f => f({ type: 'alternar' })));
+  await p.waitForFunction(() => document.documentElement.classList.contains('controlonvio-docked'));
+  await p.reload();
+  await p.addScriptTag({ content: lerExt('shell.js') });
+  await p.waitForFunction(() => document.documentElement.classList.contains('controlonvio-docked'), null, { timeout: 4000 });
+  assert.deepEqual(p.erros, []);
+});
+
+await passo('shell: em tela estreita o painel cobre em vez de empurrar; o pedido do ícone abre ao carregar', async () => {
+  const p = await pagina(URL_PORTAL, '<!doctype html><body>Onvio</body>');
+  await p.setViewportSize({ width: 800, height: 700 });
+  await semear(p, { abrirPainelAoCarregar: Date.now() });
+  await p.goto(URL_PORTAL);
+  await p.addScriptTag({ content: lerExt('shell.js') });
+  await esperar(() => temPainel(p));
+  assert.equal(await p.evaluate(() => document.documentElement.classList.contains('controlonvio-docked')), false);
+  assert.ok((await p.evaluate(() => window.__removidos || [])).includes('abrirPainelAoCarregar'), 'o pedido é consumido');
+  // pedido antigo (mais de 2 minutos) não abre nada
+  const q = await pagina(URL_PORTAL, '<!doctype html><body>Onvio</body>');
+  await semear(q, { abrirPainelAoCarregar: Date.now() - 5 * 60 * 1000 });
+  await q.goto(URL_PORTAL);
+  await q.addScriptTag({ content: lerExt('shell.js') });
+  await q.waitForTimeout(600);
+  assert.equal(temPainel(q), false);
+});
+
 /* ---------- guias: hook + ponte + aviso ---------- */
 const URL_DOCS = 'https://onvio.com.br/staff/';
 const hoje = new Date(); const d = n => { const x = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() + n); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
@@ -203,7 +252,7 @@ await passo('guias: mensagens forjadas pela página são ignoradas se mal formad
 });
 
 /* ---------- painel lateral ---------- */
-const SP = 'file://' + EXT + 'sidepanel.html';
+const SP = 'file://' + EXT + 'painel.html';
 await passo('painel: abas Analistas (G1/G2/G3, 1º trâmite) e Guias, aviso de código desconhecido', async () => {
   const ctx = await navegador.newContext();
   const p = await ctx.newPage();

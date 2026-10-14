@@ -72,7 +72,7 @@
     else if (snap) tx = 'Atualizado ' + fmtHora(snap.fetchedAt) + ' · a cada ' + st.settings.intervalo + ' min';
     else tx = 'Ainda sem leitura';
     $('#sync-tx').textContent = tx;
-    $('#quem').textContent = snap && snap.user ? snap.user.nome : '';
+    $('#quem').textContent = snap && snap.user && snap.user.nome ? snap.user.nome + ' · ControlTax' : 'Portal do Cliente · ControlTax';
     const av = $('#aviso');
     if (s.estado === 'sem_sessao' || s.estado === 'erro') {
       av.hidden = false;
@@ -207,7 +207,7 @@
   function trocarAba(a) {
     st.aba = a; st.kpi = ''; st.limite = 60;
     if (a !== 'equipe') st.resp = '';
-    $$('.tab').forEach(t => t.classList.toggle('active', t.dataset.aba === a));
+    $$('.tab').forEach(t => { const on = t.dataset.aba === a; t.classList.toggle('active', on); t.setAttribute('aria-selected', String(on)); });
     render();
   }
 
@@ -220,6 +220,8 @@
   $('#f-resp').addEventListener('change', e => { st.resp = e.target.value; render(); });
   $$('#f-lado button').forEach(b => b.addEventListener('click', () => { st.lado = b.dataset.lado; $$('#f-lado button').forEach(x => x.classList.toggle('on', x === b)); render(); }));
   $('#btn-config').addEventListener('click', () => chrome.runtime.openOptionsPage());
+  $('#btn-fechar').addEventListener('click', () => enviar({ cmd: 'fecharPainel' }));
+  addEventListener('keydown', e => { if (e.key === 'Escape' && !e.defaultPrevented && !/^(INPUT|SELECT|TEXTAREA)$/.test((e.target || {}).tagName || '')) enviar({ cmd: 'fecharPainel' }); });
   $('#btn-atualizar').addEventListener('click', async () => {
     st.status = { estado: 'lendo' }; renderSync();
     const r = await enviar({ cmd: 'atualizar' });

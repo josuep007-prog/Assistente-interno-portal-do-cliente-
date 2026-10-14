@@ -2,7 +2,7 @@
 
 Ferramentas internas da ControlTax para facilitar o uso e o controle do **Portal do Cliente Onvio** por analistas e gestores.
 
-## Control Onvio (extensão do Chrome) · v0.3.0
+## Control Onvio (extensão do Chrome) · v0.4.0
 
 Junta numa fila só as solicitações pendentes das 10 listas do Portal do Cliente (Geral, Cadastro de empregado, contribuinte e estagiário, Aviso e Cálculo de férias, Aviso e Cálculo de rescisão, Afastamento e Lançamento de rubricas), com semáforo de prazo, contagem para a prescrição e notificações. Também marca os dias parados na grade do Onvio, avisa guias não visualizadas pelo cliente perto do vencimento e traz o painel do gestor (G1/G2/G3 e 1º trâmite por analista).
 
@@ -15,7 +15,7 @@ O código fica na pasta [`extensao/`](extensao/). Detalhes de uso, regras do sem
 1. Baixe o repositório: botão **Code** > **Download ZIP**, e descompacte numa pasta fixa (ex.: `C:\ControlTax\ControlOnvio`).
 2. No Chrome, abra `chrome://extensions` e ligue o **Modo do desenvolvedor**.
 3. Clique em **Carregar sem compactação** e escolha a pasta `extensao` que veio no ZIP.
-4. Fixe o ícone na barra, entre no Onvio e clique no ícone para abrir o painel.
+4. Fixe o ícone na barra. Clique nele: se você estiver no Onvio, o painel abre; em qualquer outro site, ele leva direto ao Onvio. Também há o botão **Control Onvio** no canto da tela do Onvio e o atalho **Alt+Shift+O**.
 
 Para atualizar: baixe de novo, substitua a pasta e clique em **Recarregar** no card da extensão.
 
@@ -26,7 +26,8 @@ Para atualizar: baixe de novo, substitua a pasta e clique em **Recarregar** no c
 | `manifest.json` | Configuração da extensão (Manifest V3) |
 | `core.js` | Tipos de solicitação, códigos de situação, coleta na API do Onvio e regras de prazo |
 | `background.js` | Leitura periódica, contador no ícone, notificações e abertura da solicitação no Onvio |
-| `sidepanel.html/js` | Painel lateral (Minhas, Sem resp., Equipe, Analistas, Buscar, exportar CSV) |
+| `shell.js` | Botão flutuante e coluna do painel dentro do Onvio (a página encolhe em telas largas) |
+| `painel.html/js` | Painel (Minhas, Sem resp., Equipe, Analistas, Guias, Buscar, exportar CSV), exibido em iframe pelo `shell.js` |
 | `content.js` | Filtra a grade do Onvio pelo ID ao abrir uma solicitação pelo painel |
 | `options.html/js` | Prazos, intervalo de leitura, notificações e feriados |
 | `grade.js` | Marca "Nd parada" na grade das listas de Solicitações de Serviço |

@@ -53,7 +53,7 @@ const aba = await ctx.newPage();
 await aba.goto('https://onvio.com.br/br-portal-do-cliente/home');
 // dispara a coleta pelo mesmo caminho do painel
 const pagina = await ctx.newPage();
-await pagina.goto('chrome-extension://' + id + '/sidepanel.html');
+await pagina.goto('chrome-extension://' + id + '/painel.html');
 const r = await pagina.evaluate(() => new Promise(res => chrome.runtime.sendMessage({ cmd: 'atualizar' }, res)));
 console.log('atualizar ->', r.ok, r.erro || '');
 const snap = await pagina.evaluate(() => chrome.storage.local.get(['snapshot', 'tramites', 'status']));
@@ -105,6 +105,66 @@ await docs.waitForSelector('#controlonvio-guias', { timeout: 8000 });
 console.log('aviso de guias:', (await docs.textContent('#controlonvio-guias')).slice(0, 90));
 const g = await pagina.evaluate(() => chrome.storage.local.get('guias'));
 assert.ok(g.guias.pasta9);
+
+// ---- ícone da extensão e atalho: dentro do Onvio abrem o painel; fora dele levam ao Onvio ----
+const CAPTURAS = process.env.CAPTURAS || '';
+const foto = async (pg, nome) => { if (CAPTURAS) { fs.mkdirSync(CAPTURAS, { recursive: true }); await pg.screenshot({ path: path.join(CAPTURAS, nome) }); } };
+const PORTAL_TESTE = 'https://onvio.com.br/br-portal-do-cliente/painel-teste';
+const portal = await ctx.newPage();
+await portal.setViewportSize({ width: 1360, height: 820 });
+await portal.goto(PORTAL_TESTE);
+const idDaAba = url => sw.evaluate(async u => (await chrome.tabs.query({ url: u }))[0].id, url);
+const painelDe = pg => pg.frames().find(f => f.url() === 'chrome-extension://' + id + '/painel.html');
+const dockado = pg => pg.evaluate(() => document.documentElement.classList.contains('controlonvio-docked'));
+const esperar = async (cond, ms = 8000) => { const fim = Date.now() + ms; while (Date.now() < fim) { if (await cond()) return; await new Promise(r => setTimeout(r, 100)); } throw new Error('tempo esgotado: ' + cond); };
+
+await foto(portal, '1-onvio-botao.png');
+assert.equal(painelDe(portal), undefined, 'com o painel fechado a página não carrega o iframe');
+const idPortal = await idDaAba(PORTAL_TESTE);
+await sw.evaluate(i => aoClicarNoIcone({ id: i, url: 'https://onvio.com.br/br-portal-do-cliente/painel-teste' }), idPortal);
+await esperar(() => painelDe(portal));
+const painel = painelDe(portal);
+await painel.waitForSelector('#kpis .kpi-card', { timeout: 8000 });
+await esperar(async () => (await portal.evaluate(() => getComputedStyle(document.documentElement).marginRight)) === '420px');
+assert.equal(await portal.evaluate(() => innerWidth), 1360 - 0, 'a janela continua do mesmo tamanho; só a página encolhe');
+await foto(portal, '2-painel-aberto.png');
+for (const aba of ['equipe', 'analistas', 'guias']) { await painel.click('[data-aba="' + aba + '"]'); await foto(portal, '3-aba-' + aba + '.png'); }
+await painel.click('[data-aba="minhas"]');
+// ícone de novo: fecha
+await sw.evaluate(i => aoClicarNoIcone({ id: i, url: 'https://onvio.com.br/br-portal-do-cliente/painel-teste' }), idPortal);
+await esperar(async () => !(await dockado(portal)));
+// botão de fechar dentro do painel
+await sw.evaluate(i => aoClicarNoIcone({ id: i, url: 'https://onvio.com.br/br-portal-do-cliente/painel-teste' }), idPortal);
+await esperar(() => dockado(portal));
+await painel.click('#btn-fechar');
+await esperar(async () => !(await dockado(portal)));
+
+// fora do Onvio: leva ao Onvio que já está aberto e abre o painel lá
+const fora = await ctx.newPage();
+await fora.route('https://exemplo.com/**', r => r.fulfill({ contentType: 'text/html; charset=utf-8', body: '<!doctype html><body>outro site</body>' }));
+await fora.goto('https://exemplo.com/');
+const idFora = await idDaAba('https://exemplo.com/*');
+await sw.evaluate(i => aoClicarNoIcone({ id: i, url: 'https://exemplo.com/' }), idFora);
+await esperar(async () => (await Promise.all(ctx.pages().map(async pg => (/onvio\.com\.br/.test(pg.url()) && (await dockado(pg)))))).some(Boolean));
+assert.equal(painelDe(fora), undefined, 'em outro site nunca aparece painel');
+assert.equal(await fora.evaluate(() => document.documentElement.classList.contains('controlonvio-docked')), false);
+
+// sem nenhuma aba do Onvio: o ícone cria uma aba do Onvio e o painel abre quando ela carregar
+for (const pg of ctx.pages()) if (/onvio\.com\.br/.test(pg.url())) await pg.close();
+const antes = ctx.pages().length;
+await sw.evaluate(i => aoClicarNoIcone({ id: i, url: 'https://exemplo.com/' }), idFora);
+await esperar(() => ctx.pages().length > antes);
+const nova = ctx.pages().find(pg => /onvio\.com\.br\/br-portal-do-cliente/.test(pg.url()));
+assert.ok(nova, 'abriu uma aba do Onvio');
+await esperar(() => painelDe(nova));
+await foto(nova, '4-aba-criada-pelo-icone.png');
+
+// atalho Alt+Shift+O tem o mesmo efeito do ícone
+const man = require(path.join(EXT, 'manifest.json'));
+assert.equal(man.commands['alternar-painel'].suggested_key.default, 'Alt+Shift+O');
+assert.ok(!man.permissions.includes('sidePanel') && !man.side_panel, 'sem painel lateral do Chrome: o painel só existe no Onvio');
+assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br/*']);
+
 console.log('\ntudo certo com a extensão carregada de verdade');
 await ctx.close();
 fs.rmSync(perfil, { recursive: true, force: true });

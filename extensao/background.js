@@ -220,16 +220,55 @@ chrome.notifications.onClicked.addListener(async id => {
 });
 chrome.notifications.onClosed.addListener(id => { guardarNotifMap(null, id); });
 
+/* ---------- o painel só existe no Onvio ---------- */
+// Ícone da extensão e atalho: dentro do Onvio abrem/fecham o painel; fora dele levam ao Onvio.
+const ehOnvio = u => { try { return new URL(u).hostname === 'onvio.com.br'; } catch (e) { return false; } };
+
+// Fala com o script do painel (shell.js). Se a aba é anterior à instalação/atualização, injeta o script antes.
+async function mensagemParaPainel(tabId, type) {
+  try { return await chrome.tabs.sendMessage(tabId, { type }); }
+  catch (e) {
+    await chrome.scripting.executeScript({ target: { tabId }, files: ['shell.js'] });
+    return chrome.tabs.sendMessage(tabId, { type });
+  }
+}
+
+// Leva a pessoa ao Onvio com o painel aberto: usa uma aba do Onvio que já esteja aberta, ou cria uma.
+async function irParaOnvio() {
+  const tabs = await chrome.tabs.query({ url: 'https://onvio.com.br/*' });
+  const alvo = tabs.find(t => /\/br-portal-do-cliente\//.test(t.url)) || tabs.find(t => /\/staff\//.test(t.url)) || tabs[0];
+  if (alvo) {
+    await chrome.tabs.update(alvo.id, { active: true });
+    await chrome.windows.update(alvo.windowId, { focused: true });
+    await mensagemParaPainel(alvo.id, 'abrir').catch(() => {});
+    return alvo.id;
+  }
+  await chrome.storage.local.set({ abrirPainelAoCarregar: Date.now() });
+  const t = await chrome.tabs.create({ url: OC.PORTAL + 'service-requesting/general' });
+  return t.id;
+}
+
+async function aoClicarNoIcone(tab) {
+  if (tab && tab.id != null && ehOnvio(tab.url)) await mensagemParaPainel(tab.id, 'alternar').catch(() => {});
+  else await irParaOnvio();
+}
+chrome.action.onClicked.addListener(aoClicarNoIcone);
+chrome.commands.onCommand.addListener(async (cmd, tab) => { if (cmd === 'alternar-painel') await aoClicarNoIcone(tab); });
+
 /* ---------- abrir solicitação no Onvio ---------- */
-async function abrir(it) {
+// tabPreferida: a aba onde o painel está aberto (o painel continua aberto lá depois de trocar de página).
+async function abrir(it, tabPreferida) {
   const t = OC.TYPE_BY_KEY[it.type];
   const url = OC.PORTAL + t.route;
   await chrome.storage.local.set({ abrir: { route: t.route, num: String(it.num), ts: Date.now() } });
+  const pref = tabPreferida != null ? await chrome.tabs.get(tabPreferida).catch(() => null) : null;
   const tabs = await chrome.tabs.query({ url: 'https://onvio.com.br/br-portal-do-cliente/*' });
-  if (tabs.length) {
-    await chrome.tabs.update(tabs[0].id, { url, active: true });
-    await chrome.windows.update(tabs[0].windowId, { focused: true });
+  const alvo = pref && ehOnvio(pref.url) ? pref : tabs[0];
+  if (alvo) {
+    await chrome.tabs.update(alvo.id, { url, active: true });
+    await chrome.windows.update(alvo.windowId, { focused: true });
   } else {
+    await chrome.storage.local.set({ abrirPainelAoCarregar: Date.now() });
     await chrome.tabs.create({ url });
   }
 }
@@ -243,10 +282,11 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         const s = await getSettings();
         const { f } = await escolherFetcher();
         reply({ ok: true, itens: await OC.search(f, msg.q, s) });
-      } else if (msg.cmd === 'abrir') { await abrir(msg.item); reply({ ok: true }); }
+      } else if (msg.cmd === 'abrir') { await abrir(msg.item, sender.tab && sender.tab.id); reply({ ok: true }); }
       else if (msg.cmd === 'reagendar') { await agendar(); reply({ ok: true }); }
       else if (msg.cmd === 'atualizarRegras') { reply(await atualizarRegras()); }
-      else if (msg.cmd === 'abrirOnvio') { await chrome.tabs.create({ url: OC.PORTAL + 'service-requesting/general' }); reply({ ok: true }); }
+      else if (msg.cmd === 'abrirOnvio') { await irParaOnvio(); reply({ ok: true }); }
+      else if (msg.cmd === 'fecharPainel') { if (sender.tab && sender.tab.id != null) await mensagemParaPainel(sender.tab.id, 'fechar').catch(() => {}); reply({ ok: true }); }
       else reply({ ok: false, erro: 'comando desconhecido' });
     } catch (e) { reply({ ok: false, erro: e.message || String(e), auth: !!e.auth }); }
   })();
@@ -260,10 +300,7 @@ async function iniciar() {
   await atualizarRegras();
   await agendar();
 }
-chrome.runtime.onInstalled.addListener(async () => {
-  await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
-  await iniciar();
-});
+chrome.runtime.onInstalled.addListener(iniciar);
 chrome.runtime.onStartup.addListener(iniciar);
 chrome.alarms.onAlarm.addListener(a => {
   if (a.name === ALARME) coletar(false);

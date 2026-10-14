@@ -1,15 +1,15 @@
-# Control Onvio · ControlTax (v0.3.0)
+# Control Onvio · ControlTax (v0.4.0)
 
 Extensão do Chrome que junta numa fila só as solicitações pendentes do Portal do Cliente Onvio, com prazos, alerta de prescrição e notificações. Fase 1: **somente leitura**, nada é alterado no Onvio.
 
 ## Instalar (piloto)
 
-1. Baixe o repositório (Code > Download ZIP) ou o arquivo `ControlOnvio_v0.3.0.zip` e descompacte numa pasta fixa (ex.: `C:\ControlTax\ControlOnvio`). Não apague a pasta depois.
+1. Baixe o repositório (Code > Download ZIP) ou o arquivo `ControlOnvio_v0.4.0.zip` e descompacte numa pasta fixa (ex.: `C:\ControlTax\ControlOnvio`). Não apague a pasta depois.
 2. No Chrome, abra `chrome://extensions`.
 3. Ligue o **Modo do desenvolvedor** (canto superior direito).
 4. Clique em **Carregar sem compactação** e escolha a pasta que contém o `manifest.json` (no repositório, a pasta `extensao`).
 5. Fixe o ícone da extensão na barra (ícone de quebra-cabeça > alfinete).
-6. Entre no Onvio normalmente. Clique no ícone: o painel lateral abre e faz a primeira leitura.
+6. Entre no Onvio normalmente e clique no ícone: o painel abre à direita e faz a primeira leitura. Se você clicar no ícone em outro site, a extensão leva direto ao Onvio. No Onvio também há o botão **Control Onvio** no canto inferior direito e o atalho **Alt+Shift+O**. Precisa do Chrome 114 ou mais novo.
 
 Para atualizar a versão: substitua os arquivos da pasta e clique em **Recarregar** no card da extensão em `chrome://extensions`.
 
@@ -17,8 +17,8 @@ Para atualizar a versão: substitua os arquivos da pasta e clique em **Recarrega
 
 | Recurso | Onde |
 | --- | --- |
-| Fila única das 10 listas (Geral, Cadastro x3, Férias x2, Rescisão x2, Afastamento, Rubricas) | Painel lateral |
-| Abas Minhas, Sem resp., Equipe, Analistas e Buscar | Painel lateral |
+| Fila única das 10 listas (Geral, Cadastro x3, Férias x2, Rescisão x2, Afastamento, Rubricas) | Painel |
+| Abas Minhas, Sem resp., Equipe, Analistas, Guias e Buscar | Painel |
 | Semáforo por solicitação (faixa vermelha ou laranja, com o motivo) | Cada linha |
 | Contagem para prescrição (30 dias) | Linhas na vez do cliente |
 | Contador no ícone: minhas solicitações com ação do escritório | Ícone da extensão |
@@ -27,7 +27,7 @@ Para atualizar a versão: substitua os arquivos da pasta e clique em **Recarrega
 | Exportar a visão atual em CSV (abre no Excel) | Rodapé do painel |
 | Prazos, intervalo e feriados editáveis | Engrenagem do painel |
 | Marca "Nd parada" (com a prescrição, quando for vez do cliente) dentro da célula Último Trâmite da grade do Onvio | Listas de Solicitações de Serviço |
-| Aba **Guias**: guias não visualizadas pelo cliente que vencem em até N dias (padrão 5) ou já venceram, por cliente | Painel lateral e aviso na tela de Documentos |
+| Aba **Guias**: guias não visualizadas pelo cliente que vencem em até N dias (padrão 5) ou já venceram, por cliente | Painel e aviso na tela de Documentos |
 | Painel do gestor: G1/G2/G3 por analista, quantas aguardam o 1º trâmite e a média até o 1º trâmite | Aba Analistas |
 | Diagnóstico da leitura (contagem por lista, códigos desconhecidos, filtro usado), com botão Copiar | Engrenagem do painel |
 | "Pode ser: Aviso de férias" nas solicitações da lista Geral cujo assunto lembra uma solicitação específica | Painel (cada linha) e CSV |
@@ -39,6 +39,15 @@ Vez do escritório: sem primeiro trâmite após 1 dia útil; aberta além de 3 d
 Vez do cliente: sem retorno há mais de 5 dias úteis (laranja); a partir de 20 dias parada fica vermelho com a contagem até a prescrição de 30 dias.
 
 Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardando resposta** = o escritório precisa responder; **Respondido** = vez do cliente.
+
+## Novidades da v0.4.0 (a extensão passa a viver dentro do Onvio)
+
+**Só no Onvio.** O painel deixou de ser o painel lateral do Chrome e passou a ser uma coluna dentro das páginas do Onvio, como no Assistente do Portal do Cliente. Em outros sites a extensão não aparece.
+**O ícone leva ao Onvio.** Dentro do Onvio, o ícone abre e fecha o painel. Em qualquer outro site, ele leva direto ao Onvio: reaproveita uma aba do Onvio que já esteja aberta ou cria uma, e abre o painel nela. O atalho **Alt+Shift+O** faz o mesmo.
+**Botão flutuante.** No canto inferior direito do Onvio, a pílula "Control Onvio" mostra quantas solicitações suas aguardam ação do escritório (vermelha se alguma está fora do prazo, laranja se há atenção). Clique para abrir.
+**Disposição na tela.** O painel é uma coluna fixa de 420 px à direita e, em telas de 1000 px ou mais, a página do Onvio encolhe para nada ficar escondido atrás dele (em telas menores ele cobre). Cabeçalho escuro com atualizar, tema, configurações e fechar (também fecha com Esc); abas escuras com ícone; só o conteúdo rola; rodapé com "Somente leitura" e o horário da última leitura.
+**Continuidade.** O painel lembra se estava aberto na aba: ao clicar numa solicitação, a lista do Onvio abre na mesma aba e o painel continua aberto. Com o painel fechado, a página não carrega nada a mais.
+**Sem permissão de painel lateral.** A permissão `sidePanel` saiu do manifesto.
 
 ## Novidades da v0.3.0 (inspiradas no Assistente do Portal do Cliente)
 

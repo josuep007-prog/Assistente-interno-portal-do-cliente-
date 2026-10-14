@@ -2,13 +2,12 @@
   "manifest_version": 3,
   "name": "Control Onvio · ControlTax",
   "short_name": "Control Onvio",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Fila única das solicitações do Portal do Cliente Onvio, com prazos, prescrição e alertas para analistas e gestores.",
   "permissions": [
     "storage",
     "alarms",
     "notifications",
-    "sidePanel",
     "scripting",
     "tabs"
   ],
@@ -17,9 +16,6 @@
   ],
   "background": {
     "service_worker": "background.js"
-  },
-  "side_panel": {
-    "default_path": "sidepanel.html"
   },
   "action": {
     "default_title": "Control Onvio",
@@ -59,6 +55,16 @@
     },
     {
       "matches": [
+        "https://onvio.com.br/br-portal-do-cliente/*",
+        "https://onvio.com.br/staff/*"
+      ],
+      "js": [
+        "shell.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
         "https://onvio.com.br/staff/*"
       ],
       "js": [
@@ -81,5 +87,26 @@
   "minimum_chrome_version": "114",
   "optional_host_permissions": [
     "https://*/*"
+  ],
+  "commands": {
+    "alternar-painel": {
+      "suggested_key": {
+        "default": "Alt+Shift+O"
+      },
+      "description": "Abrir ou fechar o Control Onvio (leva ao Onvio se você estiver em outro site)"
+    }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "painel.html",
+        "logo.svg",
+        "fonts/archivo-latin-600-normal.woff2",
+        "fonts/ibm-plex-sans-latin-500-normal.woff2"
+      ],
+      "matches": [
+        "https://onvio.com.br/*"
+      ]
+    }
   ]
 }

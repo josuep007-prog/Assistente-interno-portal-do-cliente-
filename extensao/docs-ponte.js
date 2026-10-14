@@ -84,7 +84,7 @@
     if (!box) {
       box = document.createElement('div');
       box.id = 'controlonvio-guias';
-      box.style.cssText = 'position:fixed;z-index:2147483646;right:16px;bottom:16px;max-width:360px;background:#101820;color:#EDF0F3;border-left:4px solid #C2000C;border-radius:4px;box-shadow:0 2px 4px rgba(16,24,32,.08),0 14px 32px rgba(16,24,32,.25);font:13px/1.45 "IBM Plex Sans",system-ui,sans-serif';
+      box.style.cssText = 'position:fixed;z-index:2147483646;left:16px;bottom:16px;max-width:360px;background:#101820;color:#EDF0F3;border-left:4px solid #C2000C;border-radius:4px;box-shadow:0 2px 4px rgba(16,24,32,.08),0 14px 32px rgba(16,24,32,.25);font:13px/1.45 "IBM Plex Sans",system-ui,sans-serif';
       document.body.appendChild(box);
     }
     box.textContent = '';

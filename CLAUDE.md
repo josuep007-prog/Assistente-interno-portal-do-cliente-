@@ -20,13 +20,18 @@ Existe uma extensão irmã, para o **cliente**: `josuep007-prog/assistente-porta
 - Chamadas à API do Onvio são não oficiais: se mudarem, a extensão deve falhar de forma visível (aviso no painel, Diagnóstico) e nunca mostrar número errado em silêncio. Código de situação desconhecido aparece como tal.
 - Não há acesso ao Chrome do Josué nem ao Onvio real neste ambiente. O que depender da tela real (grade Wijmo, trâmites da lista Geral, estimativa de 1º trâmite) fica como "a confirmar" no `LEIA-ME` até ser conferido numa sessão com o Chrome dele.
 
+## Onde a extensão aparece
+
+**Só no Onvio.** Não usamos o painel lateral do Chrome (`sidePanel`): o painel é uma coluna dentro das páginas `onvio.com.br/br-portal-do-cliente/*` e `onvio.com.br/staff/*`, como no Assistente do cliente. O ícone da extensão (e o atalho Alt+Shift+O) abre/fecha o painel quando a aba é do Onvio e, em qualquer outro site, **leva ao Onvio** (reaproveita uma aba aberta ou cria uma) com o painel aberto (`aoClicarNoIcone` em `background.js`). Abas abertas antes da instalação recebem o `shell.js` por injeção. Qualquer recurso que a página do Onvio precise carregar da extensão (iframe, logo, fontes do botão) tem de estar em `web_accessible_resources`.
+
 ## Arquitetura
 
 | Arquivo | Papel |
 |---|---|
 | `extensao/core.js` | Núcleo sem `chrome.*`: tipos e códigos de situação, URLs, coleta, regras de prazo, gravidade (G1 a G3), 1º trâmite, métricas por analista, guias, aba errada, validação e combinação das regras. Roda no service worker, nos scripts de conteúdo e nos testes. |
 | `extensao/background.js` | Service worker: leitura periódica, cache de trâmites, contador no ícone, notificações, regras do escritório (download + cache), migração das configurações. |
-| `extensao/sidepanel.*` | Painel lateral: Minhas, Sem resp., Equipe, Analistas, Guias, Buscar; exporta CSV. |
+| `extensao/shell.js` | Dentro do Onvio: botão flutuante (com contador) e coluna fixa de 420 px à direita com o painel em iframe; em telas de 1000 px ou mais a página encolhe (`html.controlonvio-docked`). Lembra aberto/fechado na sessão da aba. |
+| `extensao/painel.*` | O painel (iframe de `painel.html`): cabeçalho, abas, conteúdo rolável e rodapé de status, no mesmo desenho do Assistente do cliente. Minhas, Sem resp., Equipe, Analistas, Guias, Buscar; exporta CSV. |
 | `extensao/grade.js` | Marca "Nd parada" na grade das listas (Wijmo ou tabela). Diagnóstico: `document.dispatchEvent(new CustomEvent('controlonvio-diagnosticar'))`. |
 | `extensao/docs-hook.js` (mundo da página) + `docs-ponte.js` | Guias não visualizadas, a partir das respostas que a tela de Documentos já carrega. Sem chamadas extras. |
 | `extensao/content.js` | Abre a lista certa já filtrada pelo ID. |
