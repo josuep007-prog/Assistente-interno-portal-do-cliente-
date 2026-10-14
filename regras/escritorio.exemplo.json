@@ -1,0 +1,21 @@
+{
+  "versao": "2026.10.14",
+  "descricao": "Exemplo de arquivo de regras do escritório para o Control Onvio. Publique uma cópia (https) e informe o endereço em Configurações > Regras do escritório. Só dados: números, datas e palavras. Tudo é validado antes de valer; o que estiver fora dos limites é ignorado.",
+  "prazos": {
+    "primeiroTramite": 1,
+    "conclusaoSimples": 3,
+    "conclusaoCalculo": 5,
+    "clienteSemRetorno": 5,
+    "parada": 15,
+    "prescricaoDias": 30,
+    "prescricaoAviso": 20,
+    "guiaDias": 5
+  },
+  "feriados": ["2026-12-24", "2026-12-31"],
+  "abaErrada": [
+    { "tipo": "calcFerias", "palavras": ["cálculo de férias", "recibo de férias", "pagar férias"] },
+    { "tipo": "avisoFerias", "palavras": ["férias", "aviso de férias", "programar férias"] },
+    { "tipo": "avisoRescisao", "palavras": ["demissão", "pedido de demissão", "desligamento", "aviso prévio", "justa causa"] },
+    { "tipo": "afastamento", "palavras": ["atestado", "afastamento", "licença maternidade", "inss"] }
+  ]
+}

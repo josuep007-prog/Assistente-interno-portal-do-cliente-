@@ -1,10 +1,10 @@
-# Control Onvio · ControlTax (v0.2.0)
+# Control Onvio · ControlTax (v0.3.0)
 
 Extensão do Chrome que junta numa fila só as solicitações pendentes do Portal do Cliente Onvio, com prazos, alerta de prescrição e notificações. Fase 1: **somente leitura**, nada é alterado no Onvio.
 
 ## Instalar (piloto)
 
-1. Baixe o repositório (Code > Download ZIP) ou o arquivo `ControlOnvio_v0.2.0.zip` e descompacte numa pasta fixa (ex.: `C:\ControlTax\ControlOnvio`). Não apague a pasta depois.
+1. Baixe o repositório (Code > Download ZIP) ou o arquivo `ControlOnvio_v0.3.0.zip` e descompacte numa pasta fixa (ex.: `C:\ControlTax\ControlOnvio`). Não apague a pasta depois.
 2. No Chrome, abra `chrome://extensions`.
 3. Ligue o **Modo do desenvolvedor** (canto superior direito).
 4. Clique em **Carregar sem compactação** e escolha a pasta que contém o `manifest.json` (no repositório, a pasta `extensao`).
@@ -29,7 +29,9 @@ Para atualizar a versão: substitua os arquivos da pasta e clique em **Recarrega
 | Marca "Nd parada" (com a prescrição, quando for vez do cliente) dentro da célula Último Trâmite da grade do Onvio | Listas de Solicitações de Serviço |
 | Aba **Guias**: guias não visualizadas pelo cliente que vencem em até N dias (padrão 5) ou já venceram, por cliente | Painel lateral e aviso na tela de Documentos |
 | Painel do gestor: G1/G2/G3 por analista, quantas aguardam o 1º trâmite e a média até o 1º trâmite | Aba Analistas |
-| Diagnóstico da leitura (contagem por lista, códigos desconhecidos, filtro usado) | Engrenagem do painel |
+| Diagnóstico da leitura (contagem por lista, códigos desconhecidos, filtro usado), com botão Copiar | Engrenagem do painel |
+| "Pode ser: Aviso de férias" nas solicitações da lista Geral cujo assunto lembra uma solicitação específica | Painel (cada linha) e CSV |
+| Regras do escritório: prazos, feriados e palavras vindos de um arquivo publicado, sem reinstalar | Engrenagem do painel |
 
 ## Regras do semáforo (padrão, editáveis)
 
@@ -37,6 +39,15 @@ Vez do escritório: sem primeiro trâmite após 1 dia útil; aberta além de 3 d
 Vez do cliente: sem retorno há mais de 5 dias úteis (laranja); a partir de 20 dias parada fica vermelho com a contagem até a prescrição de 30 dias.
 
 Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardando resposta** = o escritório precisa responder; **Respondido** = vez do cliente.
+
+## Novidades da v0.3.0 (inspiradas no Assistente do Portal do Cliente)
+
+**Regras do escritório.** Prazos, feriados e as palavras da "aba errada" podem vir de um arquivo JSON publicado em um endereço https (Configurações > Regras do escritório). O arquivo só traz dados e é validado: número fora do limite, data inválida ou texto longo demais são ignorados, e nada é executado. Se o download falhar, vale a última cópia boa; sem endereço, valem as regras embutidas. `regras/escritorio.exemplo.json` mostra o formato. A extensão também entende o `regras.json` do Assistente do cliente (usa `prazoInternoDiasUteis` e `feriados`), então os dois lados podem prometer os mesmos prazos; o botão "Usar o arquivo do portal do cliente" preenche esse endereço. Na primeira vez o Chrome pede permissão para acessar o endereço.
+**Ordem de prioridade:** padrões do código, depois o arquivo do escritório, depois o que você mudar nas configurações. A tela passa a gravar só o que você realmente mudou, para uma atualização do arquivo continuar valendo. Configurações antigas são migradas na atualização.
+**Possível aba errada.** Na lista Geral, se o assunto lembra férias, rescisão, atestado, admissão, estágio ou rubricas, a linha mostra "Pode ser: …". É só uma pista (casa palavra inteira, sem acento e sem maiúsculas) e as palavras ficam nas regras.
+**Fontes empacotadas.** O painel e as configurações não pedem mais nada ao Google Fonts.
+**Página aberta durante a atualização.** Se a extensão for atualizada com o Onvio aberto, a marca de dias parada e o aviso de guias se desligam e pedem para recarregar (F5), em vez de falhar em silêncio.
+**Copiar diagnóstico** (Configurações): texto sem nomes nem valores, para enviar ao suporte.
 
 ## Novidades da v0.2.0
 

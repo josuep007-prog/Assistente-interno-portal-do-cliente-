@@ -4,11 +4,17 @@
   const $ = s => document.querySelector(s);
   const NUM = ['intervalo', 'primeiroTramite', 'conclusaoSimples', 'conclusaoCalculo', 'clienteSemRetorno', 'parada', 'prescricaoDias', 'prescricaoAviso', 'guiaDias'];
   const BOOL = ['notificar', 'modoGestor'];
+  const URL_CLIENTE = 'https://raw.githubusercontent.com/josuep007-prog/assistente-portal-regras/main/regras.json';
+  let regras = null;          // regras do escritório guardadas (arquivo)
+
+  // O que vale sem ajustes pessoais: padrões do código + regras do escritório.
+  const base = () => OC.combinarSettings(regras, {});
 
   function preencher(s) {
     NUM.forEach(k => { $('#' + k).value = s[k]; });
     BOOL.forEach(k => { $('#' + k).checked = !!s[k]; });
     $('#feriados').value = (s.feriados || []).join('\n');
+    $('#regrasUrl').value = s.regrasUrl || '';
   }
   function ler() {
     const s = {};
@@ -16,13 +22,38 @@
     s.intervalo = Math.max(5, s.intervalo);
     BOOL.forEach(k => { s[k] = $('#' + k).checked; });
     s.feriados = $('#feriados').value.split(/\s+/).map(x => x.trim()).filter(x => /^\d{4}-\d{2}-\d{2}$/.test(x));
+    s.regrasUrl = $('#regrasUrl').value.trim();
     return s;
+  }
+  // Grava só o que difere do padrão em vigor: assim, mudanças futuras do arquivo de regras continuam valendo.
+  function soAjustes(s) {
+    const b = base(), out = { __v: 2 };
+    for (const [k, v] of Object.entries(s)) if (JSON.stringify(v) !== JSON.stringify(b[k])) out[k] = v;
+    return out;
   }
   function estado(msg, ok) { const e = $('#estado'); e.textContent = msg; e.classList.toggle('ok', !!ok); }
 
-  function diagnostico(snap, tr) {
+  async function permitirOrigem(url) {
+    if (!url) return true;
+    let u; try { u = new URL(url); } catch (e) { return false; }
+    if (u.protocol !== 'https:') return false;
+    const origins = [u.origin + '/*'];
+    return (await chrome.permissions.contains({ origins })) || chrome.permissions.request({ origins });
+  }
+
+  function mostrarRegras() {
+    const e = $('#regras-estado');
+    if (!regras || !regras.url) { e.textContent = 'Usando as regras embutidas na extensão.'; return; }
+    const quando = d => (d ? new Date(d).toLocaleString('pt-BR') : '—');
+    e.textContent = regras.regras
+      ? 'Arquivo em uso: versão ' + (regras.versao || '?') + ', atualizado em ' + quando(regras.atualizadoEm) + '.' + (regras.erro ? ' Última tentativa falhou: ' + regras.erro : '')
+      : (regras.erro || 'Ainda não baixado.');
+  }
+
+  function diagnostico(snap) {
     if (!snap) return 'Ainda sem leitura do Onvio.';
     const l = ['Versão: ' + (snap.versao || chrome.runtime.getManifest().version) + ' · leitura: ' + snap.fetchedAt + ' · via ' + (snap.via || '?'),
+      'Regras do escritório: ' + (regras && regras.regras ? 'arquivo versão ' + (regras.versao || '?') : 'embutidas') + (regras && regras.erro ? ' (falha na última atualização)' : ''),
       'Pendências por lista:'];
     OC.TYPES.forEach(t => l.push('  ' + t.label + ': ' + (snap.porTipo && snap.porTipo[t.key] != null ? snap.porTipo[t.key] : '—')));
     const desc = snap.desconhecidos || {};
@@ -30,18 +61,46 @@
     l.push('Filtro por lista (Rubricas): ' + (snap.filtroAlternativo && snap.filtroAlternativo.length ? 'o Onvio recusou o filtro por exclusão e a extensão usou a lista de códigos (' + snap.filtroAlternativo.join(', ') + ')' : 'por exclusão (tudo menos Concluído e Prescrita)'));
     const t = snap.tramites || {};
     l.push('Trâmites lidos neste ciclo: ' + (t.lidos || 0) + ' · falhas: ' + (t.falhas || 0) + ' · com 1º trâmite conhecido: ' + (snap.items || []).filter(i => i.ptUteis != null).length + ' de ' + (snap.items || []).length);
+    l.push('Possível aba errada (Geral): ' + (snap.items || []).filter(i => i.abaProvavel).length);
     if (snap.erros && snap.erros.length) l.push('Erros: ' + snap.erros.join(' | '));
     return l.join('\n');
   }
 
-  chrome.storage.local.get(['settings', 'snapshot'], d => {
-    preencher(Object.assign({}, OC.DEFAULTS, d.settings || {}));
+  async function carregar() {
+    const d = await chrome.storage.local.get(['settings', 'snapshot', 'regrasEscritorio']);
+    regras = d.regrasEscritorio || null;
+    preencher(OC.combinarSettings(regras, d.settings));
+    mostrarRegras();
     $('#diag').textContent = diagnostico(d.snapshot);
-  });
+  }
+  carregar();
+
   $('#salvar').addEventListener('click', async () => {
-    await chrome.storage.local.set({ settings: ler() });
+    const s = ler();
+    if (s.regrasUrl && !(await permitirOrigem(s.regrasUrl))) { estado('Sem permissão para acessar o endereço das regras (use https e aceite o pedido do Chrome).'); return; }
+    await chrome.storage.local.set({ settings: soAjustes(s) });
     estado('Salvo. Vale a partir da próxima leitura.', true);
     chrome.runtime.sendMessage({ cmd: 'atualizar' });
   });
-  $('#padrao').addEventListener('click', () => { preencher(OC.DEFAULTS); estado('Padrão carregado; clique em Salvar para aplicar.'); });
+  $('#padrao').addEventListener('click', () => {
+    preencher(Object.assign({}, base(), { regrasUrl: $('#regrasUrl').value.trim() }));
+    estado('Padrão do escritório carregado; clique em Salvar para aplicar.');
+  });
+
+  $('#regras-cliente').addEventListener('click', () => { $('#regrasUrl').value = URL_CLIENTE; estado('Endereço preenchido; clique em Salvar e depois em Atualizar agora.'); });
+  $('#regras-agora').addEventListener('click', async () => {
+    const url = $('#regrasUrl').value.trim();
+    if (url && !(await permitirOrigem(url))) { estado('Sem permissão para acessar o endereço das regras.'); return; }
+    const { settings } = await chrome.storage.local.get('settings');
+    await chrome.storage.local.set({ settings: Object.assign({ __v: 2 }, settings || {}, { regrasUrl: url }) });
+    const r = await new Promise(res => chrome.runtime.sendMessage({ cmd: 'atualizarRegras' }, x => res(x || {})));
+    await carregar();
+    estado(r.ok ? 'Regras atualizadas.' : 'Não foi possível atualizar (veja a mensagem acima).', !!r.ok);
+  });
+
+  $('#copiar-diag').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText($('#diag').textContent); $('#copiado').textContent = 'Copiado'; }
+    catch (e) { $('#copiado').textContent = 'Não foi possível copiar; selecione o texto.'; }
+    setTimeout(() => { $('#copiado').textContent = ''; }, 2500);
+  });
 })();

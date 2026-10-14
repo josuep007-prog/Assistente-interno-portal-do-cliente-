@@ -8,15 +8,64 @@ const ALARME = 'controlOnvio.coleta';
 let rodando = null;
 
 /* ---------- configurações ---------- */
+// Padrões do código < regras do escritório (arquivo) < ajustes da pessoa. Ver OC.combinarSettings.
 async function getSettings() {
-  const { settings } = await chrome.storage.local.get('settings');
-  return Object.assign({}, OC.DEFAULTS, settings || {});
+  const { settings, regrasEscritorio } = await chrome.storage.local.get(['settings', 'regrasEscritorio']);
+  return OC.combinarSettings(regrasEscritorio, settings);
 }
 
 async function agendar() {
   const s = await getSettings();
   await chrome.alarms.clear(ALARME);
   chrome.alarms.create(ALARME, { periodInMinutes: Math.max(5, Number(s.intervalo) || 10), delayInMinutes: 0.1 });
+}
+
+/* ---------- regras do escritório (arquivo JSON, só dados) ---------- */
+const ALARME_REGRAS = 'controlOnvio.regras';
+
+function urlRegrasValida(u) {
+  try { const x = new URL(u); return x.protocol === 'https:' && !x.username && !x.password ? x : null; } catch (e) { return null; }
+}
+
+// Baixa o arquivo indicado em Configurações, valida e guarda. Se falhar, mantém a última cópia boa.
+async function atualizarRegras() {
+  const { settings, regrasEscritorio: atual } = await chrome.storage.local.get(['settings', 'regrasEscritorio']);
+  const url = settings && settings.regrasUrl;
+  if (!url) { if (atual) await chrome.storage.local.remove('regrasEscritorio'); return { ok: true, origem: 'embutidas' }; }
+  const guardar = async extra => chrome.storage.local.set({ regrasEscritorio: Object.assign({}, atual || {}, { url, tentativaEm: new Date().toISOString() }, extra) });
+  const u = urlRegrasValida(url);
+  if (!u) { await guardar({ erro: 'O endereço das regras precisa começar com https://' }); return { ok: false }; }
+  try {
+    if (!(await chrome.permissions.contains({ origins: [u.origin + '/*'] }))) throw new Error('falta a permissão para acessar ' + u.host + ' (salve de novo em Configurações)');
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 8000);
+    let raw;
+    try {
+      const r = await fetch(u.href, { cache: 'no-store', credentials: 'omit', signal: ctl.signal });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      raw = await r.json();
+    } finally { clearTimeout(t); }
+    const regras = OC.normalizarRegras(raw);
+    if (!regras) throw new Error('o arquivo não tem prazos, feriados nem palavras válidas');
+    await chrome.storage.local.set({ regrasEscritorio: { url, regras, versao: regras.versao, atualizadoEm: new Date().toISOString(), tentativaEm: new Date().toISOString() } });
+    return { ok: true, origem: 'arquivo' };
+  } catch (e) {
+    await guardar({ erro: 'Não foi possível atualizar as regras (' + (e && e.message ? e.message : e) + '). Vale a última cópia boa.' });
+    return { ok: false, erro: e && e.message };
+  }
+}
+
+// Versões 0.1 e 0.2 gravavam TODOS os campos. Tira o que for igual ao padrão do código, para as
+// regras do escritório poderem valer; o que a pessoa realmente mudou continua como ajuste dela.
+async function migrarSettings() {
+  const { settings } = await chrome.storage.local.get('settings');
+  if (!settings || settings.__v === 2) return;
+  const novo = { __v: 2 };
+  for (const [k, v] of Object.entries(settings)) {
+    if (k === '__v') continue;
+    if (JSON.stringify(v) !== JSON.stringify(OC.DEFAULTS[k])) novo[k] = v;
+  }
+  await chrome.storage.local.set({ settings: novo });
 }
 
 /* ---------- acesso ao Onvio ---------- */
@@ -196,6 +245,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         reply({ ok: true, itens: await OC.search(f, msg.q, s) });
       } else if (msg.cmd === 'abrir') { await abrir(msg.item); reply({ ok: true }); }
       else if (msg.cmd === 'reagendar') { await agendar(); reply({ ok: true }); }
+      else if (msg.cmd === 'atualizarRegras') { reply(await atualizarRegras()); }
       else if (msg.cmd === 'abrirOnvio') { await chrome.tabs.create({ url: OC.PORTAL + 'service-requesting/general' }); reply({ ok: true }); }
       else reply({ ok: false, erro: 'comando desconhecido' });
     } catch (e) { reply({ ok: false, erro: e.message || String(e), auth: !!e.auth }); }
@@ -204,10 +254,26 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
 });
 
 /* ---------- ciclo de vida ---------- */
+async function iniciar() {
+  await migrarSettings();
+  chrome.alarms.create(ALARME_REGRAS, { periodInMinutes: 60, delayInMinutes: 1 });
+  await atualizarRegras();
+  await agendar();
+}
 chrome.runtime.onInstalled.addListener(async () => {
   await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
-  await agendar();
+  await iniciar();
 });
-chrome.runtime.onStartup.addListener(agendar);
-chrome.alarms.onAlarm.addListener(a => { if (a.name === ALARME) coletar(false); });
-chrome.storage.onChanged.addListener((ch, area) => { if (area === 'local' && ch.settings) agendar(); });
+chrome.runtime.onStartup.addListener(iniciar);
+chrome.alarms.onAlarm.addListener(a => {
+  if (a.name === ALARME) coletar(false);
+  else if (a.name === ALARME_REGRAS) atualizarRegras();
+});
+chrome.storage.onChanged.addListener((ch, area) => {
+  if (area !== 'local') return;
+  if (ch.settings) {
+    const a = ch.settings.oldValue || {}, b = ch.settings.newValue || {};
+    if (a.regrasUrl !== b.regrasUrl) atualizarRegras();
+    if (a.intervalo !== b.intervalo) agendar();      // não reagenda (nem lê o Onvio) por qualquer ajuste
+  }
+});

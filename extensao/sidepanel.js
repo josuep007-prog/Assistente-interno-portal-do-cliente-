@@ -5,7 +5,7 @@
   const $$ = s => [...document.querySelectorAll(s)];
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-  const st = { snap: null, status: null, settings: Object.assign({}, OC.DEFAULTS), aba: 'minhas', texto: '', tipo: '', lado: '', resp: '', kpi: '', limite: 60, busca: [], guias: {}, clientes: {}, fguia: '' };
+  const st = { snap: null, status: null, settings: Object.assign({}, OC.DEFAULTS), regras: null, usuario: {}, aba: 'minhas', texto: '', tipo: '', lado: '', resp: '', kpi: '', limite: 60, busca: [], guias: {}, clientes: {}, fguia: '' };
 
   /* ---------- utilidades ---------- */
   function fmtHora(iso) {
@@ -118,13 +118,14 @@
     const pillSt = i.lado === 'esc' ? 'pill-soon' : i.lado === 'cli' ? '' : 'pill-muted';
     const sub = [i.detalhe, st.aba === 'minhas' ? i.solicitante : (i.resp || 'sem responsável')].filter(Boolean).join(' · ');
     const mot = (i.grav === 3 ? '<span class="pill pill-late" title="Crítica">G3</span>' : '').concat((i.motivos || []).map(m => '<span class="pill ' + (m.n === 2 ? 'pill-late' : 'pill-today') + '">' + esc(m.m) + '</span>').join(''));
+    const aba = i.abaProvavel ? '<span class="pill pill-muted" title="O assunto lembra uma solicitação específica (palavra: ' + esc(i.abaProvavel.palavra) + '). Pode ter sido aberta na aba errada.">Pode ser: ' + esc(i.abaProvavel.label) + '</span>' : '';
     const lado = i.lado === 'esc' ? 'escritório' : i.lado === 'cli' ? 'cliente' : '';
     return '<div class="row lvl-' + (i.nivel || 0) + '" tabindex="0" data-k="' + esc(i.k) + '" title="Abrir no Onvio">' +
       '<div><div class="row-top"><span class="num mono">#' + esc(i.num) + '</span><span>' + esc(i.typeLabel) + '</span><span class="pill ' + pillSt + '">' + esc(i.status) + '</span></div>' +
       '<div class="cell-main">' + esc(i.apelido || i.cliente || 'Cliente não informado') + '</div>' +
       '<div class="cell-sub">' + esc(sub) + '</div></div>' +
       '<div class="row-side"><span class="dias mono">' + (i.parado || 0) + 'd</span><span>parada</span>' + (lado ? '<span>vez: ' + lado + '</span>' : '') + '</div>' +
-      (mot ? '<div class="motivos">' + mot + '</div>' : '') + '</div>';
+      ((mot || aba) ? '<div class="motivos">' + mot + aba + '</div>' : '') + '</div>';
   }
 
   function ligarLinhas(container, fonte) {
@@ -228,9 +229,9 @@
   // exportação
   $('#btn-csv').addEventListener('click', () => {
     const l = filtrar(base());
-    const cab = ['Tipo', 'ID', 'Situação', 'Vez de', 'Cliente', 'Apelido', 'Empregado/Assunto', 'Responsável', 'Solicitante', 'Aberta em', 'Último trâmite', 'Expectativa', 'Dias parada', 'Dias úteis aberta', 'Prescreve em (dias)', 'Alerta', 'Gravidade', '1º trâmite (d.u., estimativa)', 'Motivos'];
+    const cab = ['Tipo', 'ID', 'Situação', 'Vez de', 'Cliente', 'Apelido', 'Empregado/Assunto', 'Responsável', 'Solicitante', 'Aberta em', 'Último trâmite', 'Expectativa', 'Dias parada', 'Dias úteis aberta', 'Prescreve em (dias)', 'Alerta', 'Gravidade', '1º trâmite (d.u., estimativa)', 'Possível aba certa', 'Motivos'];
     const cel = v => { const s = String(v == null ? '' : v); return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
-    const linhas = l.map(i => [i.typeLabel, i.num, i.status, i.lado === 'esc' ? 'Escritório' : i.lado === 'cli' ? 'Cliente' : 'Situação desconhecida', i.cliente, i.apelido, i.detalhe, i.resp, i.solicitante, fmtHora(OC.parseDate(i.created)), fmtHora(OC.parseDate(i.last)), i.due || '', i.parado, i.uteisAberto, i.prescreveEm == null ? '' : i.prescreveEm, ['', 'Atenção', 'Fora do prazo'][i.nivel || 0], i.grav ? 'G' + i.grav : '', i.ptUteis == null ? '' : i.ptUteis, (i.motivos || []).map(m => m.m).join(' | ')].map(cel).join(';'));
+    const linhas = l.map(i => [i.typeLabel, i.num, i.status, i.lado === 'esc' ? 'Escritório' : i.lado === 'cli' ? 'Cliente' : 'Situação desconhecida', i.cliente, i.apelido, i.detalhe, i.resp, i.solicitante, fmtHora(OC.parseDate(i.created)), fmtHora(OC.parseDate(i.last)), i.due || '', i.parado, i.uteisAberto, i.prescreveEm == null ? '' : i.prescreveEm, ['', 'Atenção', 'Fora do prazo'][i.nivel || 0], i.grav ? 'G' + i.grav : '', i.ptUteis == null ? '' : i.ptUteis, i.abaProvavel ? i.abaProvavel.label : '', (i.motivos || []).map(m => m.m).join(' | ')].map(cel).join(';'));
     const blob = new Blob(['﻿' + [cab.join(';')].concat(linhas).join('\r\n')], { type: 'text/csv;charset=utf-8' });
     const a = document.createElement('a');
     const d = new Date();
@@ -256,9 +257,10 @@
   $('#q').addEventListener('keydown', e => { if (e.key === 'Enter') buscar(); });
 
   /* ---------- carga inicial e atualizações ---------- */
-  chrome.storage.local.get(['snapshot', 'status', 'settings', 'guias', 'clientes'], d => {
+  const combinar = () => { st.settings = OC.combinarSettings(st.regras, st.usuario); };
+  chrome.storage.local.get(['snapshot', 'status', 'settings', 'regrasEscritorio', 'guias', 'clientes'], d => {
     st.snap = d.snapshot || null; st.status = d.status || null; st.guias = d.guias || {}; st.clientes = d.clientes || {};
-    st.settings = Object.assign({}, OC.DEFAULTS, d.settings || {});
+    st.regras = d.regrasEscritorio || null; st.usuario = d.settings || {}; combinar();
     render();
     if (!st.snap && (!st.status || st.status.estado !== 'lendo')) enviar({ cmd: 'atualizar' });
   });
@@ -266,10 +268,12 @@
     if (area !== 'local') return;
     if (ch.snapshot) st.snap = ch.snapshot.newValue;
     if (ch.status) st.status = ch.status.newValue;
-    if (ch.settings) st.settings = Object.assign({}, OC.DEFAULTS, ch.settings.newValue || {});
+    if (ch.settings) st.usuario = ch.settings.newValue || {};
+    if (ch.regrasEscritorio) st.regras = ch.regrasEscritorio.newValue || null;
+    if (ch.settings || ch.regrasEscritorio) combinar();
     if (ch.guias) st.guias = ch.guias.newValue || {};
     if (ch.clientes) st.clientes = ch.clientes.newValue || {};
-    if (ch.snapshot || ch.settings || ch.guias || ch.clientes) render(); else renderSync();
+    if (ch.snapshot || ch.settings || ch.regrasEscritorio || ch.guias || ch.clientes) render(); else renderSync();
   });
   setInterval(renderSync, 60000);
 })();

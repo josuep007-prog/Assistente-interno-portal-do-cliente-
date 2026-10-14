@@ -15,6 +15,20 @@
   const norm = t => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
   let snap = null;
   let agendado = null;
+  let observador = null, relogio = null;
+
+  // Depois que a extensão é atualizada, o script desta aba fica órfão: o Chrome nega o acesso à extensão.
+  const viva = () => { try { return !!(chrome.runtime && chrome.runtime.id); } catch (e) { return false; } };
+  function desligar() {
+    if (observador) observador.disconnect();
+    clearInterval(relogio);
+    document.querySelectorAll('.controlonvio-marca').forEach(m => m.remove());
+    const d = document.createElement('div');
+    d.textContent = 'O Control Onvio foi atualizado. Recarregue esta página (F5) para voltar a ver os dias parada.';
+    d.style.cssText = 'position:fixed;z-index:2147483647;bottom:22px;left:50%;transform:translateX(-50%);background:#101820;color:#EDF0F3;padding:11px 16px;border-radius:4px;border-left:4px solid #6BAAC9;font:600 13px/1.4 "IBM Plex Sans",system-ui,sans-serif';
+    document.body.appendChild(d);
+    setTimeout(() => d.remove(), 8000);
+  }
 
   function tipoAtual() {
     const p = location.pathname.replace(/\/+$/, '');
@@ -86,6 +100,7 @@
 
   function aplicar() {
     agendado = null;
+    if (!viva()) { desligar(); return; }
     const tipo = tipoAtual();
     if (!tipo || !snap || !snap.items) return;
     const mapa = new Map();
@@ -112,9 +127,10 @@
   function iniciar() {
     chrome.storage.local.get('snapshot', d => { snap = d.snapshot || null; agendar(); });
     chrome.storage.onChanged.addListener((ch, area) => { if (area === 'local' && ch.snapshot) { snap = ch.snapshot.newValue || null; agendar(); } });
-    new MutationObserver(agendar).observe(document.body, { childList: true, subtree: true, characterData: true });
+    observador = new MutationObserver(agendar);
+    observador.observe(document.body, { childList: true, subtree: true, characterData: true });
     let ultima = location.href;
-    setInterval(() => { if (location.href !== ultima) { ultima = location.href; agendar(); } }, 1000); // o portal troca de lista sem recarregar
+    relogio = setInterval(() => { if (!viva()) { desligar(); return; } if (location.href !== ultima) { ultima = location.href; agendar(); } }, 1000); // o portal troca de lista sem recarregar
     window.addEventListener('scroll', agendar, true);
     // O console da página não enxerga as variáveis da extensão; este evento chega até ela.
     document.addEventListener('controlonvio-diagnosticar', () => window.__controlOnvioGrade.diagnosticar());

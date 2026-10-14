@@ -188,22 +188,24 @@ test('reconhece documento e descarta pasta', () => {
 });
 
 /* ---------- background.js (com chrome simulado) ---------- */
-function carregarBackground() {
+function carregarBackground(opcoes = {}) {
   const store = {};
   const chrome = {
     storage: {
       local: {
         async get(k) { const ks = Array.isArray(k) ? k : [k]; const o = {}; ks.forEach(x => { if (x in store) o[x] = store[x]; }); return o; },
-        async set(o) { Object.assign(store, o); }
+        async set(o) { Object.assign(store, o); },
+        async remove(k) { (Array.isArray(k) ? k : [k]).forEach(x => delete store[x]); }
       },
       onChanged: { addListener() {} }
     },
     alarms: { clear: async () => {}, create() {}, onAlarm: { addListener() {} } },
     runtime: { onMessage: { addListener() {} }, onInstalled: { addListener() {} }, onStartup: { addListener() {} }, getManifest: () => ({ version: 'teste' }) },
     notifications: { onClicked: { addListener() {} }, onClosed: { addListener() {} }, create: async () => {}, clear() {} },
+    permissions: { contains: async () => opcoes.permitido !== false },
     sidePanel: {}, action: {}, tabs: {}, windows: {}, scripting: {}
   };
-  const ctx = { console, URL, URLSearchParams, chrome, fetch: async () => { throw new Error('sem rede'); } };
+  const ctx = { console, URL, URLSearchParams, AbortController, setTimeout, clearTimeout, chrome, fetch: opcoes.fetch || (async () => { throw new Error('sem rede'); }) };
   ctx.self = ctx;
   ctx.importScripts = f => vm.runInContext(src(f), ctx);
   vm.createContext(ctx);
@@ -229,4 +231,141 @@ test('background: notifMap descarta o que passou de 24 h e o que foi fechado', a
   await ctx.guardarNotifMap({ novo: { type: 'rubricas', num: '4', ts: agora } }, 'fechado');
   assert.deepEqual(Object.keys(store.notifMap).sort(), ['novo', 'ok']);
   assert.deepEqual(Object.keys(store.notifMap.novo).sort(), ['num', 'ts', 'type'], 'guarda só o necessário para abrir');
+});
+
+
+/* ================= v0.3.0: regras do escritório ================= */
+test('aba errada: acha pelo assunto, sem depender de acento nem de maiúscula, e só palavra inteira', () => {
+  const ab = a => OC.abaProvavel(a, OC.DEFAULTS.abaErrada);
+  assert.equal(ab('Férias do João em Dezembro').tipo, 'avisoFerias');
+  assert.equal(ab('RECIBO DE FÉRIAS da Maria').tipo, 'calcFerias', 'a entrada mais específica vence');
+  assert.equal(ab('Pedido de demissão - Pedro').tipo, 'avisoRescisao');
+  assert.equal(ab('Atestado médico').tipo, 'afastamento');
+  assert.equal(ab('Admissão de novo funcionário').tipo, 'cadEmpregado');
+  assert.equal(ab('Dúvida sobre guia de ICMS'), null);
+  assert.equal(ab('Triagem do estágio probatório').tipo, 'cadEstagiario');
+  assert.equal(ab('Compartilhamento de pastas'), null, '"inss" não casa dentro de outra palavra');
+  assert.equal(ab('Sobre o inssumo'), null);
+  assert.equal(ab(''), null);
+  assert.equal(ab(null), null);
+});
+
+test('aba errada: só a lista Geral recebe a sugestão', () => {
+  const geral = OC.normalize(OC.TYPE_BY_KEY.geral, { id: 'a', identifier: 1, genericStatus: 1, subject: 'Férias do João' }, null);
+  const ferias = OC.normalize(OC.TYPE_BY_KEY.calcFerias, { id: 'b', identifier: 2, genericStatus: 1, subject: 'Férias do João' }, null);
+  assert.equal(geral.abaProvavel.label, 'Aviso de férias');
+  assert.equal(ferias.abaProvavel, null);
+});
+
+test('regras: aceita o formato do escritório e valida limites', () => {
+  const r = OC.normalizarRegras({
+    versao: '2026.10.14', prazos: { conclusaoSimples: 2, conclusaoCalculo: 99, parada: 'x', guiaDias: 7, primeiroTramite: 0 },
+    feriados: ['2026-12-24', '24/12/2026', 'abc', '2026-12-24'], abaErrada: [{ tipo: 'avisoFerias', palavras: ['Férias', '', 'x'.repeat(80)] }, { tipo: 'geral', palavras: ['qualquer'] }, { tipo: 'inexistente', palavras: ['a'] }]
+  });
+  assert.deepEqual(plano(r.config), { conclusaoSimples: 2, guiaDias: 7, primeiroTramite: 0 }, 'fora do limite ou não numérico é ignorado');
+  assert.deepEqual(plano(r.feriados), ['2026-12-24']);
+  assert.deepEqual(plano(r.abaErrada), [{ tipo: 'avisoFerias', palavras: ['ferias'] }]);
+  assert.equal(r.versao, '2026.10.14');
+});
+
+test('regras: lê os prazos do arquivo do Assistente do cliente (mesmos números dos dois lados)', () => {
+  const r = OC.normalizarRegras({ versao: 'c-1', config: { prazoInternoDiasUteis: { simples: 4, calculo: 6 } }, feriados: ['2026-11-20'], tipos: {}, documentos: [] });
+  assert.deepEqual(plano(r.config), { conclusaoSimples: 4, conclusaoCalculo: 6 });
+  // o formato do escritório tem prioridade sobre o do cliente
+  const r2 = OC.normalizarRegras({ prazos: { conclusaoSimples: 2 }, config: { prazoInternoDiasUteis: { simples: 4, calculo: 6 } } });
+  assert.deepEqual(plano(r2.config), { conclusaoSimples: 2, conclusaoCalculo: 6 });
+});
+
+test('regras: arquivo sem nada aproveitável, ou que não é objeto, é recusado', () => {
+  for (const ruim of [null, [], 'texto', 5, {}, { prazos: { parada: 9999 } }, { feriados: ['x'] }, { abaErrada: [{ tipo: 'geral', palavras: ['a'] }] }]) assert.equal(OC.normalizarRegras(ruim), null);
+});
+
+test('regras: não executa nem copia nada além do que valida (campos extras e "__proto__" são ignorados)', () => {
+  const r = OC.normalizarRegras(JSON.parse('{"prazos":{"parada":10,"__proto__":{"x":1},"constructor":5},"script":"alert(1)","feriados":["2026-12-24"]}'));
+  assert.deepEqual(plano(r.config), { parada: 10 });
+  assert.equal(r.script, undefined);
+  assert.equal(({}).x, undefined);
+});
+
+test('configurações: código < arquivo do escritório < ajuste da pessoa', () => {
+  const regras = { regras: OC.normalizarRegras({ prazos: { conclusaoSimples: 2, parada: 10 }, feriados: ['2026-12-24'] }) };
+  const s = OC.combinarSettings(regras, { parada: 20 });
+  assert.equal(s.conclusaoSimples, 2, 'vem do arquivo');
+  assert.equal(s.parada, 20, 'a pessoa manda');
+  assert.equal(s.conclusaoCalculo, OC.DEFAULTS.conclusaoCalculo, 'o que o arquivo não diz fica no padrão');
+  assert.ok(s.feriados.includes('2026-12-24') && s.feriados.includes('2026-12-25'), 'feriados: soma os embutidos e os do arquivo');
+  assert.equal(OC.combinarSettings(null, null).parada, OC.DEFAULTS.parada);
+  assert.equal(OC.combinarSettings(null, null).abaErrada.length, OC.DEFAULTS.abaErrada.length);
+});
+
+test('as regras do arquivo mudam de fato o semáforo', () => {
+  const it = { type: 'avisoFerias', lado: 'esc', status: 'Em análise', created: '2026-10-08T12:00:00', last: '2026-10-13T12:00:00', due: null };
+  const rigido = OC.combinarSettings({ regras: OC.normalizarRegras({ prazos: { conclusaoSimples: 1 } }) }, {});
+  const folgado = OC.combinarSettings({ regras: OC.normalizarRegras({ prazos: { conclusaoSimples: 10 } }) }, {});
+  assert.equal(OC.evaluate(it, rigido, AGORA).nivel, 2);
+  assert.equal(OC.evaluate(it, folgado, AGORA).nivel, 0);
+});
+
+const regrasOk = { versao: '2026.10.14', prazos: { conclusaoSimples: 2 }, feriados: ['2026-12-24'] };
+const respJson = (obj, status = 200) => async () => ({ ok: status >= 200 && status < 300, status, json: async () => obj });
+
+test('background: baixa o arquivo, valida e guarda; erro depois mantém a última cópia boa', async () => {
+  let resposta = respJson(regrasOk);
+  const { ctx, store } = carregarBackground({ fetch: (u, o) => resposta(u, o) });
+  store.settings = { regrasUrl: 'https://exemplo.com/regras.json' };
+  const r = await ctx.atualizarRegras();
+  assert.equal(r.ok, true);
+  assert.equal(store.regrasEscritorio.versao, '2026.10.14');
+  assert.equal(store.regrasEscritorio.regras.config.conclusaoSimples, 2);
+  assert.equal((await ctx.getSettings()).conclusaoSimples, 2);
+
+  resposta = respJson({}, 500);
+  assert.equal((await ctx.atualizarRegras()).ok, false);
+  assert.match(store.regrasEscritorio.erro, /HTTP 500/);
+  assert.equal(store.regrasEscritorio.regras.config.conclusaoSimples, 2, 'continua com a última cópia boa');
+
+  resposta = respJson({ qualquer: 'coisa' });
+  assert.equal((await ctx.atualizarRegras()).ok, false);
+  assert.match(store.regrasEscritorio.erro, /não tem prazos/);
+  assert.equal(store.regrasEscritorio.regras.config.conclusaoSimples, 2);
+});
+
+test('background: sem permissão, endereço http e sem endereço', async () => {
+  let chamou = 0;
+  const { ctx, store } = carregarBackground({ permitido: false, fetch: async () => { chamou++; return respJson(regrasOk)(); } });
+  store.settings = { regrasUrl: 'https://exemplo.com/regras.json' };
+  assert.equal((await ctx.atualizarRegras()).ok, false);
+  assert.match(store.regrasEscritorio.erro, /falta a permissão/);
+  assert.equal(chamou, 0, 'não chama a rede sem permissão');
+
+  store.settings = { regrasUrl: 'http://exemplo.com/regras.json' };
+  assert.equal((await ctx.atualizarRegras()).ok, false);
+  assert.match(store.regrasEscritorio.erro, /https/);
+
+  store.settings = { regrasUrl: 'https://u:p@exemplo.com/r.json' };
+  assert.equal((await ctx.atualizarRegras()).ok, false, 'endereço com usuário e senha é recusado');
+
+  store.settings = {};
+  assert.equal((await ctx.atualizarRegras()).ok, true);
+  assert.equal(store.regrasEscritorio, undefined, 'sem endereço, volta para as regras embutidas');
+});
+
+test('background: migra configurações antigas tirando o que era só o padrão', async () => {
+  const { ctx, store } = carregarBackground();
+  store.settings = Object.assign({}, JSON.parse(JSON.stringify(OC.DEFAULTS)), { parada: 21, modoGestor: true });
+  await ctx.migrarSettings();
+  assert.deepEqual(plano(store.settings), { __v: 2, parada: 21, modoGestor: true });
+  await ctx.migrarSettings();                          // idempotente
+  assert.deepEqual(plano(store.settings), { __v: 2, parada: 21, modoGestor: true });
+  assert.equal((await ctx.getSettings()).parada, 21);
+});
+
+test('o arquivo de regras de exemplo é válido e cobre prazos, feriados e palavras', () => {
+  const ex = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'regras', 'escritorio.exemplo.json'), 'utf8'));
+  const r = OC.normalizarRegras(ex);
+  assert.ok(r);
+  assert.equal(Object.keys(r.config).length, 8, 'todos os prazos do exemplo passam na validação');
+  assert.equal(r.feriados.length, 2);
+  assert.equal(r.abaErrada.length, 4);
+  assert.equal(r.abaErrada[0].palavras[0], 'calculo de ferias', 'palavras ficam sem acento');
 });

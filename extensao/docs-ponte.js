@@ -19,9 +19,23 @@
 
   function guardar(fn) { fila = fila.then(fn).catch(() => {}); return fila; }
 
+  const viva = () => { try { return !!(chrome.runtime && chrome.runtime.id); } catch (e) { return false; } };
+  let avisouOrfa = false;
+
   window.addEventListener('message', ev => {
     const d = ev.data;
     if (ev.source !== window || ev.origin !== location.origin || !d || d.src !== 'controlonvio') return;
+    if (!viva()) {                      // extensão atualizada com a página aberta: avisa uma vez
+      if (!avisouOrfa) {
+        avisouOrfa = true;
+        const a = document.createElement('div');
+        a.textContent = 'O Control Onvio foi atualizado. Recarregue esta página (F5) para continuar avisando as guias.';
+        a.style.cssText = 'position:fixed;z-index:2147483647;bottom:22px;left:50%;transform:translateX(-50%);background:#101820;color:#EDF0F3;padding:11px 16px;border-radius:4px;border-left:4px solid #6BAAC9;font:600 13px/1.4 "IBM Plex Sans",system-ui,sans-serif';
+        document.body.appendChild(a);
+        setTimeout(() => a.remove(), 8000);
+      }
+      return;
+    }
     if (d.tipo === 'filhos' && Array.isArray(d.docs)) guardar(() => receberPasta(d));
     else if (d.tipo === 'clientes' && Array.isArray(d.cli)) guardar(() => receberClientes(d.cli));
   });
@@ -30,7 +44,7 @@
     const pasta = str(d.pasta, 80);
     if (!pasta) return;
     pastaAtual = pasta;
-    const { guias, settings } = await chrome.storage.local.get(['guias', 'settings']);
+    const { guias, settings, regrasEscritorio } = await chrome.storage.local.get(['guias', 'settings', 'regrasEscritorio']);
     const g = guias || {};
     const agora = Date.now();
     const atual = g[pasta] && d.from > 0 ? g[pasta].docs : [];            // páginas seguintes somam à primeira
@@ -45,7 +59,7 @@
     const chaves = Object.keys(g).sort((a, b) => g[b].ts - g[a].ts);
     chaves.slice(MAX_PASTAS).forEach(k => delete g[k]);
     await chrome.storage.local.set({ guias: g });
-    mostrar(g, settings);
+    mostrar(g, OC.combinarSettings(regrasEscritorio, settings));
   }
 
   async function receberClientes(lista) {
@@ -97,6 +111,6 @@
 
   // Ao mudar o ajuste de dias no painel, reavalia sem esperar outra pasta.
   chrome.storage.onChanged.addListener((ch, area) => {
-    if (area === 'local' && ch.settings) chrome.storage.local.get(['guias', 'settings']).then(d => mostrar(d.guias || {}, d.settings));
+    if (area === 'local' && (ch.settings || ch.regrasEscritorio)) chrome.storage.local.get(['guias', 'settings', 'regrasEscritorio']).then(d => mostrar(d.guias || {}, OC.combinarSettings(d.regrasEscritorio, d.settings)));
   });
 })();

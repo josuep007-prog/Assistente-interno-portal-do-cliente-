@@ -82,6 +82,19 @@
     prescricaoDias: 30,       // regra do Onvio
     prescricaoAviso: 20,      // a partir de quantos dias parada vira alerta vermelho
     guiaDias: 5,              // guias não visualizadas: alerta a partir de quantos dias do vencimento
+    regrasUrl: '',            // endereço (https) de um arquivo de regras do escritório; vazio = só as embutidas
+    // Geral: palavras do assunto que sugerem uma solicitação específica ("possível aba errada").
+    // Sem acento e em minúsculas. A primeira entrada que casar vence, então as mais específicas vêm antes.
+    abaErrada: [
+      { tipo: 'calcFerias', palavras: ['calculo de ferias', 'recibo de ferias', 'pagar ferias'] },
+      { tipo: 'avisoFerias', palavras: ['ferias', 'aviso de ferias', 'programar ferias'] },
+      { tipo: 'calcRescisao', palavras: ['calculo de rescisao', 'verbas rescisorias', 'termo de rescisao', 'trct'] },
+      { tipo: 'avisoRescisao', palavras: ['demissao', 'pedido de demissao', 'desligamento', 'aviso previo', 'justa causa', 'demitir'] },
+      { tipo: 'afastamento', palavras: ['atestado', 'afastamento', 'licenca maternidade', 'licenca paternidade', 'inss', 'acidente de trabalho'] },
+      { tipo: 'cadEmpregado', palavras: ['admissao', 'admitir', 'novo funcionario', 'nova contratacao', 'contratar'] },
+      { tipo: 'cadEstagiario', palavras: ['estagio', 'estagiario', 'estagiaria'] },
+      { tipo: 'rubricas', palavras: ['hora extra', 'horas extras', 'comissao', 'rubrica', 'variaveis da folha'] }
+    ],
     notificar: true,
     modoGestor: false,
     feriados: [
@@ -155,7 +168,7 @@
   /* ---------- normalização ---------- */
   const ENTRY = { MONTHLY: 'Mensal', ADVANCE: 'Adiantamento', THIRTEENTH: '13º', VACATION: 'Férias', TERMINATION: 'Rescisão' };
 
-  function normalize(t, r, mineSet) {
+  function normalize(t, r, mineSet, regras) {
     const fam = FAMILIAS[t.familia];
     const code = r.genericStatus;
     const conhecido = Object.prototype.hasOwnProperty.call(fam.st, code);
@@ -187,8 +200,27 @@
       detalhe,
       resp: (r.staffResponsibleExpanded && r.staffResponsibleExpanded.name) || '',
       solicitante: (r.requesterExpanded && r.requesterExpanded.name) || '',
-      mine: mineSet ? mineSet.has(r.id) : false
+      mine: mineSet ? mineSet.has(r.id) : false,
+      abaProvavel: t.key === 'geral' ? abaProvavel(detalhe, regras || DEFAULTS.abaErrada) : null
     };
+  }
+
+  /* ---------- "possível aba errada" (Geral) ---------- */
+  const semAcento = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const escRe = t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // Devolve { tipo, label, palavra } da primeira entrada cujas palavras aparecem no assunto, ou null.
+  function abaProvavel(assunto, regras) {
+    const alvo = semAcento(assunto);
+    if (!alvo.trim()) return null;
+    for (const e of (Array.isArray(regras) ? regras : [])) {
+      const t = TYPE_BY_KEY[e && e.tipo];
+      if (!t || t.key === 'geral') continue;
+      for (const p of e.palavras || []) {
+        const w = semAcento(p).trim();
+        if (w && new RegExp('(^|[^a-z0-9])' + escRe(w) + '([^a-z0-9]|$)').test(alvo)) return { tipo: t.key, label: t.label, palavra: w };
+      }
+    }
+    return null;
   }
 
   /* ---------- regras ---------- */
@@ -284,7 +316,7 @@
       try {
         const [todas, minhas] = await lerPendentes(fetcher, t, out);
         const mineSet = new Set(minhas.map(r => r.id));
-        const norm = todas.map(r => normalize(t, r, mineSet)).filter(x => x.lado !== 'fim');
+        const norm = todas.map(r => normalize(t, r, mineSet, s.abaErrada)).filter(x => x.lado !== 'fim');
         norm.filter(x => x.desconhecido).forEach(x => { const d = out.desconhecidos[t.key] || (out.desconhecidos[t.key] = {}); d[x.code] = (d[x.code] || 0) + 1; });
         norm.forEach(x => Object.assign(x, evaluate(x, s, now)));
         out.items = out.items.concat(norm);
@@ -364,7 +396,7 @@
     const res = await Promise.all(TYPES.map(async t => {
       try {
         const d = await fetcher(listUrl(t, { search: q, per: 20 }));
-        return ((d && d.items) || []).map(r => { const x = normalize(t, r, null); Object.assign(x, evaluate(x, s, now)); return x; });
+        return ((d && d.items) || []).map(r => { const x = normalize(t, r, null, s.abaErrada); Object.assign(x, evaluate(x, s, now)); return x; });
       } catch (e) { if (e && e.auth) throw e; return []; }
     }));
     return [].concat(...res).sort((a, b) => String(b.last).localeCompare(String(a.last)));
@@ -383,6 +415,53 @@
     }
     for (const r of Object.values(m)) r.ptMedia = r.ptN ? Math.round(r.ptSoma / r.ptN * 10) / 10 : null;
     return Object.values(m).sort((a, b) => (b.g3 - a.g3) || (b.vermelho - a.vermelho) || (b.total - a.total));
+  }
+
+  /* ---------- regras do escritório (arquivo editável, só dados) ----------
+   * Aceita dois formatos de JSON:
+   *  1. o do escritório:  { versao, prazos: {...}, feriados: [...], abaErrada: [...] }
+   *  2. o do Assistente do Portal do Cliente (visão do cliente): usa config.prazoInternoDiasUteis
+   *     (simples e calculo) e feriados, para os dois lados prometerem os mesmos prazos.
+   * Tudo é validado: número dentro de limites, datas AAAA-MM-DD, textos curtos. Nada é executado. */
+  const LIMITES = {
+    primeiroTramite: [0, 30], conclusaoSimples: [1, 60], conclusaoCalculo: [1, 60], clienteSemRetorno: [1, 60],
+    parada: [1, 90], prescricaoDias: [1, 120], prescricaoAviso: [1, 120], guiaDias: [0, 60]
+  };
+  const inteiro = (v, [min, max]) => (typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max ? v : undefined);
+
+  function normalizarRegras(raw) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    const out = { versao: String(raw.versao == null ? '' : raw.versao).slice(0, 40), config: {}, feriados: [], abaErrada: [] };
+    const prazos = raw.prazos && typeof raw.prazos === 'object' ? raw.prazos : {};
+    for (const k of Object.keys(LIMITES)) { const v = inteiro(prazos[k], LIMITES[k]); if (v !== undefined) out.config[k] = v; }
+    const cli = raw.config && raw.config.prazoInternoDiasUteis;           // formato do Assistente do cliente
+    if (cli && typeof cli === 'object') {
+      const a = inteiro(cli.simples, LIMITES.conclusaoSimples), b = inteiro(cli.calculo, LIMITES.conclusaoCalculo);
+      if (a !== undefined && out.config.conclusaoSimples === undefined) out.config.conclusaoSimples = a;
+      if (b !== undefined && out.config.conclusaoCalculo === undefined) out.config.conclusaoCalculo = b;
+    }
+    if (Array.isArray(raw.feriados)) out.feriados = [...new Set(raw.feriados.filter(d => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)))].slice(0, 600);
+    if (Array.isArray(raw.abaErrada)) {
+      for (const e of raw.abaErrada.slice(0, 30)) {
+        const t = e && TYPE_BY_KEY[e.tipo];
+        const palavras = Array.isArray(e && e.palavras) ? e.palavras.filter(p => typeof p === 'string' && p.trim() && p.length <= 60).map(p => semAcento(p).trim()).slice(0, 40) : [];
+        if (t && t.key !== 'geral' && palavras.length) out.abaErrada.push({ tipo: t.key, palavras });
+      }
+    }
+    const util = Object.keys(out.config).length || out.feriados.length || out.abaErrada.length;
+    return util ? out : null;
+  }
+
+  // Ordem de precedência: padrões do código < regras do escritório < ajustes que a pessoa fez nas configurações.
+  function combinarSettings(regrasGuardadas, usuario) {
+    const base = Object.assign({}, DEFAULTS);
+    const r = regrasGuardadas && regrasGuardadas.regras;
+    if (r) {
+      Object.assign(base, r.config || {});
+      if (r.feriados && r.feriados.length) base.feriados = [...new Set(DEFAULTS.feriados.concat(r.feriados))].sort();
+      if (r.abaErrada && r.abaErrada.length) base.abaErrada = r.abaErrada;
+    }
+    return Object.assign(base, usuario || {});
   }
 
   /* ---------- guias não visualizadas pelo cliente (Documentos do Onvio Gestão) ---------- */
@@ -416,5 +495,5 @@
     return { dias, nivel, motivo, venc: ymd(venc) };
   }
 
-  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, ehDocumento, parseVencimento, avaliarGuia };
+  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, ehDocumento, parseVencimento, avaliarGuia, abaProvavel, normalizarRegras, combinarSettings, LIMITES };
 })(typeof self !== 'undefined' ? self : this);

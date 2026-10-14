@@ -4,7 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Control Onvio · Configurações</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="ui.css">
 <script src="tema.js"></script>
 </head>
@@ -23,6 +22,16 @@
     <div class="grid2">
       <label class="field">Intervalo entre leituras (min)<input type="number" id="intervalo" min="5" max="120"></label>
     </div>
+  </section>
+  <section class="sec">
+    <h2>Regras do escritório</h2>
+    <p>Os prazos, feriados e palavras de "possível aba errada" podem vir de um arquivo JSON publicado pelo escritório, sem reinstalar a extensão. O arquivo só traz dados (números, datas e textos) e é validado antes de valer. O que você mudar nesta tela tem prioridade sobre o arquivo.</p>
+    <label class="field">Endereço do arquivo de regras (https), opcional<input type="url" id="regrasUrl" placeholder="https://raw.githubusercontent.com/…/regras.json" autocomplete="off"></label>
+    <div class="foot" style="padding:10px 0 0">
+      <button class="btn btn-sm" id="regras-cliente" title="Usa o mesmo arquivo do Assistente do Portal do Cliente: os prazos e feriados passam a ser iguais aos que o cliente vê">Usar o arquivo do portal do cliente</button>
+      <button class="btn btn-sm" id="regras-agora">Atualizar agora</button>
+    </div>
+    <p id="regras-estado" style="margin:10px 0 0"></p>
   </section>
   <section class="sec">
     <h2>Prazos do escritório</h2>
@@ -59,7 +68,8 @@
   <section class="sec">
     <h2>Diagnóstico</h2>
     <p>Para conferir a leitura com o Onvio e informar problemas.</p>
-    <pre class="mono" id="diag" style="margin:0;white-space:pre-wrap;font-size:12px"></pre>
+    <pre class="mono" id="diag" style="margin:0 0 10px;white-space:pre-wrap;font-size:12px"></pre>
+    <button class="btn btn-sm" id="copiar-diag">Copiar diagnóstico</button> <span class="save-state" id="copiado"></span>
   </section>
   <div class="foot" style="padding:0 14px; align-items:center">
     <button class="btn btn-primary" id="salvar">Salvar</button>
