@@ -1,0 +1,4 @@
+Archivo, IBM Plex Sans e IBM Plex Mono (subconjunto latino, woff2).
+Licença: SIL Open Font License 1.1 (https://openfontlicense.org).
+Origem: pacotes @fontsource, os mesmos usados pelo Assistente do Portal do Cliente.
+Não edite estes arquivos.

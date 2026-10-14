@@ -8,9 +8,10 @@ const ALARME = 'controlOnvio.coleta';
 let rodando = null;
 
 /* ---------- configurações ---------- */
+// Padrões do código < regras do escritório (arquivo) < ajustes da pessoa. Ver OC.combinarSettings.
 async function getSettings() {
-  const { settings } = await chrome.storage.local.get('settings');
-  return Object.assign({}, OC.DEFAULTS, settings || {});
+  const { settings, regrasEscritorio } = await chrome.storage.local.get(['settings', 'regrasEscritorio']);
+  return OC.combinarSettings(regrasEscritorio, settings);
 }
 
 async function agendar() {
@@ -19,14 +20,65 @@ async function agendar() {
   chrome.alarms.create(ALARME, { periodInMinutes: Math.max(5, Number(s.intervalo) || 10), delayInMinutes: 0.1 });
 }
 
+/* ---------- regras do escritório (arquivo JSON, só dados) ---------- */
+const ALARME_REGRAS = 'controlOnvio.regras';
+
+function urlRegrasValida(u) {
+  try { const x = new URL(u); return x.protocol === 'https:' && !x.username && !x.password ? x : null; } catch (e) { return null; }
+}
+
+// Baixa o arquivo indicado em Configurações, valida e guarda. Se falhar, mantém a última cópia boa.
+async function atualizarRegras() {
+  const { settings, regrasEscritorio: atual } = await chrome.storage.local.get(['settings', 'regrasEscritorio']);
+  const url = settings && settings.regrasUrl;
+  if (!url) { if (atual) await chrome.storage.local.remove('regrasEscritorio'); return { ok: true, origem: 'embutidas' }; }
+  const guardar = async extra => chrome.storage.local.set({ regrasEscritorio: Object.assign({}, atual || {}, { url, tentativaEm: new Date().toISOString() }, extra) });
+  const u = urlRegrasValida(url);
+  if (!u) { await guardar({ erro: 'O endereço das regras precisa começar com https://' }); return { ok: false }; }
+  try {
+    if (!(await chrome.permissions.contains({ origins: [u.origin + '/*'] }))) throw new Error('falta a permissão para acessar ' + u.host + ' (salve de novo em Configurações)');
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 8000);
+    let raw;
+    try {
+      const r = await fetch(u.href, { cache: 'no-store', credentials: 'omit', signal: ctl.signal });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      raw = await r.json();
+    } finally { clearTimeout(t); }
+    const regras = OC.normalizarRegras(raw);
+    if (!regras) throw new Error('o arquivo não tem prazos, feriados nem palavras válidas');
+    await chrome.storage.local.set({ regrasEscritorio: { url, regras, versao: regras.versao, atualizadoEm: new Date().toISOString(), tentativaEm: new Date().toISOString() } });
+    return { ok: true, origem: 'arquivo' };
+  } catch (e) {
+    await guardar({ erro: 'Não foi possível atualizar as regras (' + (e && e.message ? e.message : e) + '). Vale a última cópia boa.' });
+    return { ok: false, erro: e && e.message };
+  }
+}
+
+// Versões 0.1 e 0.2 gravavam TODOS os campos. Tira o que for igual ao padrão do código, para as
+// regras do escritório poderem valer; o que a pessoa realmente mudou continua como ajuste dela.
+async function migrarSettings() {
+  const { settings } = await chrome.storage.local.get('settings');
+  if (!settings || settings.__v === 2) return;
+  const novo = { __v: 2 };
+  for (const [k, v] of Object.entries(settings)) {
+    if (k === '__v') continue;
+    if (JSON.stringify(v) !== JSON.stringify(OC.DEFAULTS[k])) novo[k] = v;
+  }
+  await chrome.storage.local.set({ settings: novo });
+}
+
 /* ---------- acesso ao Onvio ---------- */
 class AuthError extends Error { constructor(m) { super(m || 'Sessão do Onvio não encontrada'); this.auth = true; } }
 
+// 401/403 ou página de login (HTML com status 200) = sem sessão.
+// Erro do servidor (5xx, 404, 400...) é erro da leitura e não deve pedir login.
 async function lerResposta(status, ct, texto) {
   if (status === 401 || status === 403) throw new AuthError();
-  if (!/json/i.test(ct || '')) throw new AuthError();
+  if (status >= 300 && status < 400) throw new AuthError();
   if (status < 200 || status >= 300) throw new Error('HTTP ' + status);
-  return JSON.parse(texto);
+  if (!/json/i.test(ct || '')) throw new AuthError();
+  try { return JSON.parse(texto); } catch (e) { throw new Error('Resposta inválida do Onvio'); }
 }
 
 // 1ª opção: direto do service worker, com o cookie da sessão
@@ -76,12 +128,15 @@ async function coletar(manual) {
   if (rodando) return rodando;
   rodando = (async () => {
     const s = await getSettings();
-    const { snapshot: anterior } = await chrome.storage.local.get('snapshot');
+    const { snapshot: anterior, tramites: cacheTramites } = await chrome.storage.local.get(['snapshot', 'tramites']);
     await chrome.storage.local.set({ status: { estado: 'lendo', em: new Date().toISOString(), etapa: '' } });
     try {
       const { f, via } = await escolherFetcher();
-      const snap = await OC.collect(f, s, (i, n, rot) => chrome.storage.local.set({ status: { estado: 'lendo', etapa: i + '/' + n + ' · ' + rot } }));
+      const snap = await OC.collect(f, s, (i, n, rot) => chrome.storage.local.set({ status: { estado: 'lendo', etapa: i + '/' + n + ' · ' + rot } }), { tramites: cacheTramites || {} });
       snap.via = via;
+      snap.versao = chrome.runtime.getManifest().version;
+      const novoCache = snap.tramites.cache; delete snap.tramites.cache;   // o cache fica fora do resumo
+      await chrome.storage.local.set({ tramites: novoCache });
       await notificar(anterior, snap, s);
       await chrome.storage.local.set({ snapshot: snap, status: { estado: 'ok', em: snap.fetchedAt, erros: snap.erros } });
       await atualizarBadge(snap);
@@ -129,6 +184,7 @@ async function notificar(anterior, snap, s) {
   }
   if (!avisos.length) return;
   const mapa = {};
+  const agora = Date.now();
   if (avisos.length > 3) {
     const id = 'resumo-' + Date.now();
     await chrome.notifications.create(id, {
@@ -137,13 +193,23 @@ async function notificar(anterior, snap, s) {
     });
   } else {
     for (const a of avisos) {
-      const id = 'it-' + a.it.k + '-' + Date.now();
-      mapa[id] = a.it;
+      const id = 'it-' + a.it.k + '-' + agora;
+      mapa[id] = { type: a.it.type, num: String(a.it.num), ts: agora };
       await chrome.notifications.create(id, { type: 'basic', iconUrl: 'icons/128.png', title: a.t, message: a.m, priority: 1 });
     }
   }
+  await guardarNotifMap(mapa);
+}
+
+// Guarda só o que é preciso para abrir a solicitação (tipo e número) e descarta o que tem mais de 24 h.
+async function guardarNotifMap(novos, remover) {
   const { notifMap } = await chrome.storage.local.get('notifMap');
-  await chrome.storage.local.set({ notifMap: Object.assign({}, notifMap || {}, mapa) });
+  const corte = Date.now() - 864e5;
+  const m = {};
+  for (const [id, v] of Object.entries(Object.assign({}, notifMap || {}, novos || {}))) {
+    if (id !== remover && v && v.ts > corte) m[id] = v;
+  }
+  await chrome.storage.local.set({ notifMap: m });
 }
 
 chrome.notifications.onClicked.addListener(async id => {
@@ -152,17 +218,57 @@ chrome.notifications.onClicked.addListener(async id => {
   if (it) await abrir(it);
   chrome.notifications.clear(id);
 });
+chrome.notifications.onClosed.addListener(id => { guardarNotifMap(null, id); });
+
+/* ---------- o painel só existe no Onvio ---------- */
+// Ícone da extensão e atalho: dentro do Onvio abrem/fecham o painel; fora dele levam ao Onvio.
+const ehOnvio = u => { try { return new URL(u).hostname === 'onvio.com.br'; } catch (e) { return false; } };
+
+// Fala com o script do painel (shell.js). Se a aba é anterior à instalação/atualização, injeta o script antes.
+async function mensagemParaPainel(tabId, type) {
+  try { return await chrome.tabs.sendMessage(tabId, { type }); }
+  catch (e) {
+    await chrome.scripting.executeScript({ target: { tabId }, files: ['shell.js'] });
+    return chrome.tabs.sendMessage(tabId, { type });
+  }
+}
+
+// Leva a pessoa ao Onvio com o painel aberto: usa uma aba do Onvio que já esteja aberta, ou cria uma.
+async function irParaOnvio() {
+  const tabs = await chrome.tabs.query({ url: 'https://onvio.com.br/*' });
+  const alvo = tabs.find(t => /\/br-portal-do-cliente\//.test(t.url)) || tabs.find(t => /\/staff\//.test(t.url)) || tabs[0];
+  if (alvo) {
+    await chrome.tabs.update(alvo.id, { active: true });
+    await chrome.windows.update(alvo.windowId, { focused: true });
+    await mensagemParaPainel(alvo.id, 'abrir').catch(() => {});
+    return alvo.id;
+  }
+  await chrome.storage.local.set({ abrirPainelAoCarregar: Date.now() });
+  const t = await chrome.tabs.create({ url: OC.PORTAL + 'service-requesting/general' });
+  return t.id;
+}
+
+async function aoClicarNoIcone(tab) {
+  if (tab && tab.id != null && ehOnvio(tab.url)) await mensagemParaPainel(tab.id, 'alternar').catch(() => {});
+  else await irParaOnvio();
+}
+chrome.action.onClicked.addListener(aoClicarNoIcone);
+chrome.commands.onCommand.addListener(async (cmd, tab) => { if (cmd === 'alternar-painel') await aoClicarNoIcone(tab); });
 
 /* ---------- abrir solicitação no Onvio ---------- */
-async function abrir(it) {
+// tabPreferida: a aba onde o painel está aberto (o painel continua aberto lá depois de trocar de página).
+async function abrir(it, tabPreferida) {
   const t = OC.TYPE_BY_KEY[it.type];
   const url = OC.PORTAL + t.route;
   await chrome.storage.local.set({ abrir: { route: t.route, num: String(it.num), ts: Date.now() } });
+  const pref = tabPreferida != null ? await chrome.tabs.get(tabPreferida).catch(() => null) : null;
   const tabs = await chrome.tabs.query({ url: 'https://onvio.com.br/br-portal-do-cliente/*' });
-  if (tabs.length) {
-    await chrome.tabs.update(tabs[0].id, { url, active: true });
-    await chrome.windows.update(tabs[0].windowId, { focused: true });
+  const alvo = pref && ehOnvio(pref.url) ? pref : tabs[0];
+  if (alvo) {
+    await chrome.tabs.update(alvo.id, { url, active: true });
+    await chrome.windows.update(alvo.windowId, { focused: true });
   } else {
+    await chrome.storage.local.set({ abrirPainelAoCarregar: Date.now() });
     await chrome.tabs.create({ url });
   }
 }
@@ -176,9 +282,11 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         const s = await getSettings();
         const { f } = await escolherFetcher();
         reply({ ok: true, itens: await OC.search(f, msg.q, s) });
-      } else if (msg.cmd === 'abrir') { await abrir(msg.item); reply({ ok: true }); }
+      } else if (msg.cmd === 'abrir') { await abrir(msg.item, sender.tab && sender.tab.id); reply({ ok: true }); }
       else if (msg.cmd === 'reagendar') { await agendar(); reply({ ok: true }); }
-      else if (msg.cmd === 'abrirOnvio') { await chrome.tabs.create({ url: OC.PORTAL + 'service-requesting/general' }); reply({ ok: true }); }
+      else if (msg.cmd === 'atualizarRegras') { reply(await atualizarRegras()); }
+      else if (msg.cmd === 'abrirOnvio') { await irParaOnvio(); reply({ ok: true }); }
+      else if (msg.cmd === 'fecharPainel') { if (sender.tab && sender.tab.id != null) await mensagemParaPainel(sender.tab.id, 'fechar').catch(() => {}); reply({ ok: true }); }
       else reply({ ok: false, erro: 'comando desconhecido' });
     } catch (e) { reply({ ok: false, erro: e.message || String(e), auth: !!e.auth }); }
   })();
@@ -186,10 +294,23 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
 });
 
 /* ---------- ciclo de vida ---------- */
-chrome.runtime.onInstalled.addListener(async () => {
-  await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+async function iniciar() {
+  await migrarSettings();
+  chrome.alarms.create(ALARME_REGRAS, { periodInMinutes: 60, delayInMinutes: 1 });
+  await atualizarRegras();
   await agendar();
+}
+chrome.runtime.onInstalled.addListener(iniciar);
+chrome.runtime.onStartup.addListener(iniciar);
+chrome.alarms.onAlarm.addListener(a => {
+  if (a.name === ALARME) coletar(false);
+  else if (a.name === ALARME_REGRAS) atualizarRegras();
 });
-chrome.runtime.onStartup.addListener(agendar);
-chrome.alarms.onAlarm.addListener(a => { if (a.name === ALARME) coletar(false); });
-chrome.storage.onChanged.addListener((ch, area) => { if (area === 'local' && ch.settings) agendar(); });
+chrome.storage.onChanged.addListener((ch, area) => {
+  if (area !== 'local') return;
+  if (ch.settings) {
+    const a = ch.settings.oldValue || {}, b = ch.settings.newValue || {};
+    if (a.regrasUrl !== b.regrasUrl) atualizarRegras();
+    if (a.intervalo !== b.intervalo) agendar();      // não reagenda (nem lê o Onvio) por qualquer ajuste
+  }
+});

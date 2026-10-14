@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="pt-BR" class="painel">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Control Onvio</title>
+<link rel="stylesheet" href="ui.css">
+<script src="tema.js"></script>
+</head>
+<body class="painel">
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+    <symbol id="i-user-x" viewBox="0 0 24 24"><circle cx="10" cy="8" r="4"/><path d="M2.5 21a7.5 7.5 0 0 1 15 0M17 8l5 5M22 8l-5 5"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2 21a7 7 0 0 1 14 0M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.5A7 7 0 0 1 22 21"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M2 20h20"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H6.5A1.5 1.5 0 0 0 5 4.5v15A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V8Z"/><path d="M14 3v5h5"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
+  </defs>
+</svg>
+
+<div class="app">
+<header class="mast">
+  <div class="logo"><img src="logo.svg" alt=""></div>
+  <div class="ttl">
+    <h1><span class="wm-a">Control</span> <span class="wm-b">Onvio</span></h1>
+    <div class="emp" id="quem">Portal do Cliente · ControlTax</div>
+  </div>
+  <div class="acts">
+    <button class="icon-btn" id="btn-atualizar" type="button" title="Atualizar agora" aria-label="Atualizar agora"><svg class="ic"><use href="#i-refresh"/></svg></button>
+    <button class="icon-btn" id="btn-tema" type="button" title="Alternar tema" aria-label="Alternar tema claro/escuro"><svg class="ic"><use href="#i-moon"/></svg></button>
+    <button class="icon-btn" id="btn-config" type="button" title="Configurações" aria-label="Configurações"><svg class="ic"><use href="#i-gear"/></svg></button>
+    <button class="icon-btn" id="btn-fechar" type="button" title="Fechar o painel" aria-label="Fechar o painel"><svg class="ic"><use href="#i-x"/></svg></button>
+  </div>
+</header>
+
+<nav class="tabs" role="tablist" aria-label="Seções do Control Onvio">
+  <button class="tab active" role="tab" aria-selected="true" data-aba="minhas"><svg class="ic"><use href="#i-user"/></svg>Minhas<span class="dot" id="b-minhas"></span></button>
+  <button class="tab" role="tab" aria-selected="false" data-aba="semresp" title="Sem responsável"><svg class="ic"><use href="#i-user-x"/></svg>Sem resp.<span class="dot" id="b-semresp"></span></button>
+  <button class="tab" role="tab" aria-selected="false" data-aba="equipe"><svg class="ic"><use href="#i-users"/></svg>Equipe<span class="dot" id="b-equipe"></span></button>
+  <button class="tab" role="tab" aria-selected="false" data-aba="analistas"><svg class="ic"><use href="#i-chart"/></svg>Analistas</button>
+  <button class="tab" role="tab" aria-selected="false" data-aba="guias" title="Guias não visualizadas pelo cliente"><svg class="ic"><use href="#i-file"/></svg>Guias<span class="dot" id="b-guias"></span></button>
+  <button class="tab" role="tab" aria-selected="false" data-aba="buscar"><svg class="ic"><use href="#i-search"/></svg>Buscar</button>
+</nav>
+
+<main class="conteudo" id="conteudo" tabindex="-1">
+<div id="aviso" hidden></div>
+
+<section id="v-lista">
+  <div class="kpi-grid" id="kpis"></div>
+  <div class="toolbar">
+    <input type="search" id="f-texto" placeholder="Filtrar: ID, cliente, empregado…" autocomplete="off">
+    <select id="f-tipo" aria-label="Tipo de solicitação"><option value="">Todos os tipos</option></select>
+    <div class="seg" id="f-lado" role="group" aria-label="De quem é a vez">
+      <button data-lado="" class="on">Todas</button><button data-lado="esc">Escritório</button><button data-lado="cli">Cliente</button>
+    </div>
+    <select id="f-resp" aria-label="Responsável" hidden><option value="">Todos os responsáveis</option></select>
+    <span class="count" id="count"></span>
+  </div>
+  <div class="list-card" id="lista"></div>
+  <div class="foot">
+    <button class="btn btn-sm" id="btn-csv"><svg class="ic ic-sm"><use href="#i-download"/></svg> Exportar CSV</button>
+  </div>
+  <div class="legenda">Faixa vermelha: fora do prazo ou perto de prescrever. Laranja: vence hoje ou cliente sem retorno. Prazos em dias úteis (d.u.) conforme as configurações.</div>
+</section>
+
+<section id="v-analistas" hidden>
+  <div class="toolbar"><span class="count" id="count-an" style="margin-left:0"></span></div>
+  <div class="list-card"><table class="tbl" id="tbl-an"><thead><tr><th>Responsável</th><th title="Ação do escritório">Escr.</th><th title="Vez do cliente">Cli.</th><th title="G1 atenção">G1</th><th title="G2 fora do prazo">G2</th><th title="G3 crítica: prescreve em até 5 dias ou parada há o dobro do limite">G3</th><th title="Aguardando o primeiro trâmite">S/ 1º</th><th title="Média, em dias úteis, até o primeiro trâmite do escritório (estimativa)">1º tr.</th></tr></thead><tbody></tbody></table></div>
+  <div class="legenda">Clique numa linha para ver as solicitações daquela pessoa na aba Equipe. G1 atenção, G2 fora do prazo, G3 crítica (prescreve em até 5 dias, parada há 2x o limite ou aberta há 2x o prazo). S/ 1º: ainda "Sem análise". 1º trâm.: média em d.u., estimada pelos trâmites; confirme na aba Trâmites do Onvio.</div>
+</section>
+
+<section id="v-guias" hidden>
+  <div class="toolbar">
+    <input type="search" id="f-guia" placeholder="Filtrar por cliente ou nome do arquivo…" autocomplete="off">
+    <span class="count" id="count-guias"></span>
+  </div>
+  <div class="list-card" id="lista-guias"></div>
+  <div class="legenda">Guias que o cliente ainda não visualizou e vencem em até o número de dias definido nas configurações. A lista é montada com as pastas de Documentos que você abre no Onvio Gestão: abra a pasta do cliente para a guia entrar aqui.</div>
+</section>
+
+<section id="v-buscar" hidden>
+  <div class="toolbar">
+    <input type="search" id="q" placeholder="ID, empregado, cliente ou assunto (inclui concluídas)" autocomplete="off">
+    <button class="btn btn-primary btn-sm" id="btn-buscar"><svg class="ic ic-sm"><use href="#i-search"/></svg> Buscar no Onvio</button>
+  </div>
+  <div class="list-card" id="res-busca"><div class="empty">Busca nas 10 listas de solicitações, inclusive as concluídas.</div></div>
+</section>
+
+</main>
+
+<footer class="statusbar">
+  <svg class="ic ic-sm"><use href="#i-lock"/></svg><span>Somente leitura</span>
+  <span class="sp"></span><span id="sync-tx">Carregando…</span>
+</footer>
+</div>
+
+<div class="toast" id="toast" role="status"></div>
+<script src="core.js"></script>
+<script src="painel.js"></script>
+</body>
+</html>
