@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Control Onvio · Configurações</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="ui.css">
+<script src="tema.js"></script>
+</head>
+<body>
+<header class="masthead">
+  <img src="logo.svg" alt="ControlTax">
+  <div class="brand">
+    <div class="wordmark"><span class="wm-a">Control</span><span class="wm-b">Onvio</span></div>
+    <small>Configurações</small>
+  </div>
+</header>
+<main class="page">
+  <section class="sec">
+    <h2>Leitura do Onvio</h2>
+    <p>A extensão só lê. Usa a sua sessão do Onvio e vê apenas o que o seu perfil já vê.</p>
+    <div class="grid2">
+      <label class="field">Intervalo entre leituras (min)<input type="number" id="intervalo" min="5" max="120"></label>
+    </div>
+  </section>
+  <section class="sec">
+    <h2>Prazos do escritório</h2>
+    <p>Usados no semáforo de cada solicitação. Dias úteis desconsideram fins de semana e os feriados abaixo.</p>
+    <div class="grid2">
+      <label class="field">Primeiro trâmite (dias úteis)<input type="number" id="primeiroTramite" min="0" max="30"></label>
+      <label class="field">Conclusão de demanda simples (dias úteis)<input type="number" id="conclusaoSimples" min="1" max="60"></label>
+      <label class="field">Conclusão de cálculo (dias úteis)<input type="number" id="conclusaoCalculo" min="1" max="60"></label>
+      <label class="field">Cliente sem retorno (dias úteis)<input type="number" id="clienteSemRetorno" min="1" max="60"></label>
+      <label class="field">Solicitação parada (dias corridos)<input type="number" id="parada" min="1" max="90"></label>
+      <label class="field">Prescrição no Onvio (dias)<input type="number" id="prescricaoDias" min="1" max="120"></label>
+      <label class="field">Alerta de prescrição a partir de (dias parada)<input type="number" id="prescricaoAviso" min="1" max="120"></label>
+    </div>
+  </section>
+  <section class="sec">
+    <h2>Avisos</h2>
+    <div class="grid2">
+      <label class="check"><input type="checkbox" id="notificar"> Notificações do Chrome</label>
+      <label class="check"><input type="checkbox" id="modoGestor"> Modo gestor (avisar novas sem responsável)</label>
+    </div>
+  </section>
+  <section class="sec">
+    <h2>Feriados</h2>
+    <p>Uma data por linha, no formato AAAA-MM-DD. Já vêm os nacionais de 2026 e 2027; inclua os estaduais e municipais.</p>
+    <label class="field"><textarea id="feriados" rows="8" class="mono"></textarea></label>
+  </section>
+  <div class="foot" style="padding:0 14px; align-items:center">
+    <button class="btn btn-primary" id="salvar">Salvar</button>
+    <button class="btn" id="padrao">Restaurar padrão</button>
+    <span class="save-state" id="estado"></span>
+  </div>
+</main>
+<script src="core.js"></script>
+<script src="options.js"></script>
+</body>
+</html>

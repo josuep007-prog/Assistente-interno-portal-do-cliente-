@@ -1,200 +1,191 @@
-# Mapeamento do Onvio Portal do Cliente
+# Mapeamento do Portal do Cliente Onvio para a extensão
 
-Base para a extensão de navegador que ajuda analistas e gestores do escritório no
-uso e no controle do Portal do Cliente.
+Oct 13, 2026 · @Josué
 
-**Situação do mapeamento:** versão 0. Este documento junta o que já foi
-observado em uso real (processos registrados entre 08/2026 e 09/2026). Os
-seletores CSS, os endpoints de API e o formato das respostas ainda **não** foram
-levantados. Para isso existe o script `capturar-mapa-onvio.js` (ver no fim).
-Os itens marcados com ❓ são lacunas a confirmar na captura.
+## Resumo
 
-## 1. Aplicações e URLs
+A extensão é viável e pode ser construída só com leitura: todas as listas de solicitações e de documentos vêm de APIs JSON que respondem com a sessão do usuário logado, sem token extra.
 
-| Aplicação | URL base | Para que serve |
-|---|---|---|
-| Onvio Gestão (staff) | `https://onvio.com.br/staff/` | Tarefas, Documentos do Cliente (árvore de pastas), relatórios internos |
-| Onvio Portal do Cliente | `https://onvio.com.br/br-portal-do-cliente/` | Solicitações de serviço, documentos, notícias, usuários de cliente |
+Foram mapeados os 6 menus de Solicitações de Serviço (10 listas no total, contando as abas), o módulo Documentos do Onvio Gestão (abas, colunas e API) e os códigos de situação de cada tipo.
 
-Caminho até o portal: entrar no Onvio. Ele abre no Gestão. Menu sanduíche
-(canto superior esquerdo) > **Portal do Cliente**, que abre em **aba nova**.
+Principais achados para a extensão:
 
-Rotas conhecidas do Portal do Cliente:
+- Toda lista aceita filtro e ordenação por parâmetro (`filter`, `orderBy`, `searchText`, `assignedtome`), então um painel único consegue consolidar as 10 filas em poucas chamadas.
+- A regra de prescrição está ativa no escritório: solicitação pendente prescreve com 30 dias (`prescribePendingTicketsDays: 30`). A extensão pode avisar antes disso.
+- Muitas solicitações pendentes estão sem responsável definido (ex.: 9 de 12 nas Gerais, 8 de 10 no Cálculo de Rescisão no dia do mapeamento).
+- Cada documento traz `isReadByClientUser` e `customFields.dueDate`, o que permite alertar guia não visualizada pelo cliente perto do vencimento.
+- O filtro nativo "Apenas pendentes" não serve para Lançamento de Rubricas (devolve concluídas); a extensão precisa calcular pendência por tipo.
 
-| Rota | Tela |
-|---|---|
-| `/br-portal-do-cliente/service-requesting/payroll-registration/employee` | Solicitações > Cadastro de Funcionários > Empregados |
-| `/br-portal-do-cliente/settings/clients-users` | Configurações > Usuários de cliente |
-| `/br-portal-do-cliente/settings/clients-users/edit/{guid}` | Edição de usuário de cliente (wizard de 5 etapas) |
-| `/br-portal-do-cliente/reporting/users/client` | Relatórios > Usuários > Cliente (gera PDF) |
-| ❓ | Rotas das demais listas de solicitação (Geral, Férias, Rescisão, Afastamento, Rubricas) |
-| ❓ | Rotas de Documentos |
+## Navegação e rotas
 
-Endpoint conhecido: `GET /api/dominio/integration/v1/reports/client/user?status=Active&issueDate=<ISO>&timezone=-3`.
-Ele devolve `application/pdf`. Isso sugere que as listas também carregam dados de
-`/api/...` em JSON. ❓ Confirmar quais endpoints alimentam as listas.
+O Portal do Cliente é uma aplicação Angular em `https://onvio.com.br/br-portal-do-cliente/`. O menu superior tem: Notícias, Solicitações de Serviço, Documentos, CND, Manifestação de NF-e, Relatórios e Configurações. O item Documentos não fica no Portal: ele leva ao Onvio Gestão em `https://onvio.com.br/staff/#/documents/all`.
 
-## 2. Solicitações de Serviço
+| Menu | Aba | Rota (após /br-portal-do-cliente/) |
+| --- | --- | --- |
+| Geral |  | `service-requesting/general` |
+| Cadastro de Funcionários | Empregados | `service-requesting/payroll-registration/employee` |
+| Cadastro de Funcionários | Contribuintes | `service-requesting/payroll-registration/partner` |
+| Cadastro de Funcionários | Estagiários | `service-requesting/payroll-registration/intern` |
+| Férias | Aviso prévio de férias | `service-requesting/vacation/prior-notice` |
+| Férias | Cálculo de férias | `service-requesting/vacation/calculation` |
+| Rescisão | Aviso prévio de rescisão | `service-requesting/termination/prior-notice` |
+| Rescisão | Cálculo de rescisão | `service-requesting/termination/calculation` |
+| Afastamento de Empregado |  | `service-requesting/employee-leave` |
+| Lançamento de Rubricas |  | `service-requesting/payroll-entries` |
 
-### 2.1 Estrutura do menu
+Outras rotas existentes no código: `settings/clients-users` (usuários dos clientes), `settings/parameters`, `settings/notifications`, `settings/employee-clients`, `reporting`, `da-reports`, `cnd`, `news`, `boxe/*` (caixa de NF) e `manifesto/*`. Há também um espelho `contabil-service-requesting/*` com os mesmos tipos, não exposto no menu atual.
 
-Não é uma lista única. São **10 listas independentes**, cada uma com
-contagem, paginação e filtros próprios:
+A tela de detalhe de uma solicitação abre como sobreposição ("Visualização de Solicitação de Serviço", abas Dados da Solicitação e Trâmites) sem mudar a URL. Não existe link direto por ID; a extensão terá que abrir a lista já filtrada pelo ID.
 
-```
-Solicitações de Serviço
-├── Geral
-├── Cadastro de Funcionários
-│   ├── Empregados        ← payroll-registration/employee
-│   ├── Contribuintes
-│   └── Estagiários
-├── Férias
-│   ├── Aviso Prévio de Férias
-│   └── Cálculo de Férias
-├── Rescisão
-│   ├── Aviso Prévio de Rescisão
-│   └── Cálculo de Rescisão
-├── Afastamento de Empregado
-└── Lançamento de Rubricas na Folha
-```
+## Solicitações de Serviço: telas e ações
 
-### 2.2 Colunas por lista
+Todas as listas seguem o mesmo padrão de grade (Wijmo), com Atualizar, Exportar, Adicionar, pesquisa livre, seletor de colunas, paginação (10 por página por padrão) e duas caixas no topo: "Solicitações que sou responsável" e "Apenas pendentes".
 
-| Lista | Colunas |
-|---|---|
-| Geral | ID, Situação, Último Trâmite, Departamento, Assunto, Apelido, Cliente, Responsável, Expectativa de Conclusão |
-| Cadastro de Funcionários | ID, Situação, Último Trâmite, **Empregado**, **Data de admissão**, Apelido, Cliente, Responsável, Expectativa de Conclusão |
-| Férias, Rescisão | ID, Situação, Último Trâmite, Empregado, Apelido, Cliente, Responsável, Expectativa de Conclusão |
-| Afastamento, Rubricas | ❓ |
+| Lista | Colunas da grade | Ações no botão MAIS |
+| --- | --- | --- |
+| Geral | ID, Ações, Situação, Último Trâmite, Departamento, Assunto, Apelido, Cliente, Responsável, Expectativa de Conclusão | Excluir, Copiar link da solicitação para envio ao cliente, Encaminhar para, Definir responsável, Alterar Expectativa de Conclusão, Imprimir |
+| Cadastro (Empregados, Contribuintes, Estagiários) | ID, Ações, Situação, Último Trâmite, Empregado, Apelido, Cliente, Responsável, Data de admissão | Excluir, Encaminhado para outro usuário, Definir responsável, Imprimir |
+| Férias e Rescisão (aviso e cálculo) | ID, Ações, Situação, Último Trâmite, Empregado, Apelido, Cliente, Responsável, Expectativa de Conclusão | Excluir, Encaminhado para outro usuário, Definir responsável, Expectativa de Conclusão |
+| Afastamento | ID, Ações, Situação, Último Trâmite, Empregado, Apelido, Cliente, Responsável, Expectativa de Conclusão | mesmas de Férias |
+| Lançamento de Rubricas | ID, Ações, Situação, Último Trâmite, Competência, Tipo de Lançamento, Apelido, Cliente, Responsável | mesmas de Férias |
 
-Coluna **Ações** em todas: ícone **"i"** abre o modal de visualização.
+Na coluna Ações há ainda dois ícones: o de setas abre o **Trâmite Rápido** (histórico resumido + caixa para incluir trâmite com anexo e mudança de situação) e o ícone de informação abre a visualização completa.
 
-**Nenhuma lista mostra data de abertura nem data de conclusão.** Para tempo de
-atendimento real é preciso abrir a aba Trâmites de cada solicitação.
+A visualização completa mostra no cabeçalho Solicitação, Apelido, Cliente, Solicitante e Expectativa de Conclusão; na aba Dados aparecem Departamento, Cadastrado por, Assunto, Descrição, Meio de Solicitação e Anexos; a aba Trâmites traz a conversa completa.
 
-### 2.3 Situações (variam por lista)
+## Situações por tipo
 
-| Lista | Situações observadas | O que conta como "pendente" no filtro |
-|---|---|---|
-| Geral | Sem análise, Respondido, Em análise interna, Concluído, Prescrita | ❓ |
-| Férias | idem | Sem análise |
-| Cálculo de Rescisão | Aguardando resposta, Em análise, Concluído, Prescrita | inclui Aguardando resposta |
-| Rubricas | idem Geral | inclui Respondido e Em análise |
-| Cadastro (visão no Domínio) | "Enviado para o escritório" | ❓ |
+O campo `genericStatus` da API tem significado diferente conforme o tipo de solicitação. A extensão precisa de um dicionário por tipo.
 
-**Prescrita** = mais de 30 dias sem resposta. Uma rotina noturna marca a
-prescrição, com Último Trâmite entre 02:00 e 02:02. Nesses casos o Último Trâmite
-mede a prescrição, não a inatividade. Algumas listas (Aviso Prévio de Férias)
-têm itens "Sem análise" com mais de 120 dias que nunca prescreveram.
+| Código | Geral, Férias, Rescisão, Afastamento | Cadastro de Funcionários | Lançamento de Rubricas |
+| --- | --- | --- | --- |
+| 1 | Sem análise | não observado | não observado |
+| 2 | Em análise | Enviado para o escritório | não observado |
+| 3 | Aguardando resposta | Aguardando o cliente | não observado |
+| 4 | Respondido | não observado | Respondido |
+| 5 | Concluído | Cadastro efetuado | Aguardando resposta |
+| 6 | Prescrita | Concluído | Aguardando correção |
+| 8 |  |  | Concluído |
+| 10 |  |  | Prescrita |
 
-### 2.4 Filtros e paginação
+**Correção de 14/10/2026:** pelos trâmites, "Aguardando resposta" (3) significa que o cliente escreveu e o escritório precisa responder; "Respondido" (4) é a vez do cliente, e é sobre ele que corre a prescrição de 30 dias. O campo `firmStatus` usado nos filtros tem os mesmos códigos de `genericStatus`.
 
-* Ícone de filtro abre uma linha de filtro por coluna (Situação, Último Trâmite,
-  Departamento, Assunto, Apelido, Cliente, Responsável, Expectativa).
-* **Último Trâmite** filtra por **data exata**, não por intervalo. Um valor
-  parcial ("07/2026") reseta o filtro sem aviso.
-* **Departamento** tem entradas duplicadas ("PESSOAL" e "Pessoal (sistema)").
-* **Apenas pendentes**: o checkbox só responde ao clique **no texto do rótulo**.
-  Depois é preciso clicar em **Atualizar**. O estado **persiste entre listas**.
-  **Não inclui Prescritas.**
-* **Itens por página**: máximo 100. Campo **Ir a página**. Rodapé
-  "Exibindo X a Y de N".
-* **Exportar** gera .xlsx **só da página visível**, apenas com os campos de
-  cabeçalho (sem descrição nem trâmites).
-* Spinner de cerca de 1 s após cada ação.
+Todos os pares acima foram conferidos comparando a API com a grade na tela, exceto Prescrita em Férias e Rescisão (deduzida por seguir o mesmo padrão de Geral e Afastamento).
 
-### 2.5 Modal de visualização
+O código do portal tem ainda estas situações, que podem aparecer: Em análise interna, Encaminhado para outro usuário, Importação realizada e Respondido pelo Cliente. As cores usadas pelo portal: Sem análise cinza, Em análise laranja, Aguardando cinza claro, Respondido azul, Concluído verde, Prescrita vermelho, Enviado para o escritório amarelo.
 
-"Visualização de Solicitação de Serviço" (ou "...de Cadastro" para Cadastro de
-Funcionários). Tem duas abas:
+O filtro nativo "Apenas pendentes" usa outro campo, `firmStatus IN 1,2,3,7,8`, que não vem no JSON da lista.
 
-* **DADOS DA SOLICITAÇÃO**: Departamento (selo "Departamento do Sistema",
-  **inferido pelo responsável**, não escolhido pelo cliente), Cadastrado por,
-  Assunto, Descrição, Meio de Solicitação, Anexos. Em Cadastro de Funcionários
-  há sub-abas Geral, Profissionais, Pessoais, Dependentes e Observações.
-* **TRÂMITES**: histórico `#01, #02...` com status, autor, data/hora e texto.
-  Padrão comum: só "#01 Sem análise" e depois "Concluído" semanas depois, sinal de
-  fila represada.
+## API das solicitações
 
-Fecha pelo botão **FECHAR** (canto superior direito).
+Todas as chamadas abaixo responderam 200 com `fetch` simples a partir da página do Onvio (cookie de sessão). Base: `https://onvio.com.br/api/`.
 
-### 2.6 Volumes (referência de 14/08/2026, acumulado)
+| Lista | Endpoint (GET) | expand usado pela tela | Total em 13/10/2026 |
+| --- | --- | --- | --- |
+| Geral | `service-requesting/v1/tickets/generic` | clientExpanded, staffResponsibleExpanded, requesterExpanded | 1.366 |
+| Cadastro: Empregados | `br-payroll-sr/v1/employees-registrations` | clientExpanded, staffResponsibleExpanded | 1.527 |
+| Cadastro: Contribuintes | `br-payroll-sr/v1/taxpayers-registrations` | idem | 2 |
+| Cadastro: Estagiários | `br-payroll-sr/v1/interns-registrations` | idem | 83 |
+| Aviso de férias | `br-payroll-sr/v1/prior-notice-vacations` | clientEmployeeExpanded, clientExpanded, staffResponsibleExpanded | 906 |
+| Cálculo de férias | `br-payroll-sr/v1/vacation-calculations` | idem | 1.039 |
+| Aviso de rescisão | `br-payroll-sr/v1/prior-notice-terminations` | idem | 603 |
+| Cálculo de rescisão | `br-payroll-sr/v1/termination-calculations` | idem | 1.122 |
+| Afastamento | `br-payroll-sr/v1/employee-leave` | idem | 1.442 |
+| Rubricas | `br-payroll-sr/v1/payroll-entries` | clientExpanded, staffResponsibleExpanded | 1.722 |
 
-| Lista | Total | Pendentes pelo filtro |
-|---|---|---|
-| Geral | 400 | 22 |
-| Cadastro, Empregados | 1396 | 0 |
-| Cadastro, Contribuintes | 2 | 0 |
-| Cadastro, Estagiários | 79 | 0 |
-| Férias, Aviso Prévio | 833 | 9 |
-| Férias, Cálculo | 949 | 17 |
-| Rescisão, Aviso Prévio | 562 | 0 (com prescritas escondidas) |
-| Rescisão, Cálculo | 1025 | 9 (4 sem responsável) |
-| Afastamento | 1344 | 0 |
-| Rubricas | 1579 | 13 |
+**Parâmetros de lista:** `itemsPerPage` (aceitou 200), `pageIndex` (começa em 1), `startIndex`, `orderBy` (ex.: `lastUpdated desc`), `assignedtome` (true/false), `searchText` e `filter`. O `filter` é um JSON: `{"groups":[{"useOr":false,"items":[{"by":"firmStatus","op":"IN","value":"1,2,3,7,8"}]}]}`. Operadores vistos no código: EQ, NE, GT, GE, LT, LE, BW, EW, CT, NC, IN. Campos filtráveis declarados: identifier, firmStatus, clientStatus, lastUpdated, name, clientName, staffName, admissionDate, searchText.
 
-A lista Geral é menos de 6% do total. O relatório "Por Departamento" só cobre a
-Geral. Os relatórios "Por Meio" e "Por Situação" não filtram por departamento.
+**Resposta:** `{items:[…], itemsPerPage, pageIndex, startIndex, totalItems, totalPages}`.
 
-## 3. Documentos
+**Campos úteis por item:** `id` (GUID), `identifier` (ID da tela), `genericStatus`, `lastUpdated`, `created`, `dueDate` (Expectativa de Conclusão, existe em Geral, Cálculo de férias, Cálculo de rescisão e Afastamento), `subject`, `description`, `departmentId`, `requestWay` (WEB), `clientExpanded.{code,name,nickname}`, `staffResponsibleExpanded.name`, `requesterExpanded.name`. Cadastro traz também nome, CPF, salário, admissão, experiência e observações. Rubricas traz `effectiveDate`, `entryType` e `genericLastUpdated` no lugar de `lastUpdated`.
 
-Menu **Documentos** com 5 guias:
+**Trâmites:** `GET br-payroll-sr/v1/{tipo}/{id}/topics?expand=all&itemsPerPage=1000&orderBy=created asc&pageIndex=0` (testado em Cadastro; para Geral o código segue o mesmo padrão, a confirmar: `service-requesting/v1/tickets/generic/{id}/topics`). Cada trâmite traz `created`, `status`, `description`, `createdByContactExpanded.name` e `attachmentsExpanded`.
 
-| Guia | Quem vê | Uso |
-|---|---|---|
-| Documentos do Cliente | escritório + cliente | Pastas Globais, por Departamento e por Usuário do cliente. Recebe a integração com o Domínio |
-| Documentos do Escritório | só escritório | Internos |
-| Meus Documentos | só o funcionário | Pessoal |
-| Lixeira | escritório | Restaurar, mostra quem excluiu e quando |
-| Comunicações | escritório → cliente | Solicitar documentos, pedir aprovação, publicar para um cliente |
+**Ações (encontradas no código, não executadas):** `{tipo}/assign-staff` (definir responsável), `{tipo}/change-due-date`, `{tipo}/{id}/print-detail`, download em lote de anexos `…/{id}/attachments/batch-download/{tipo}`, inclusão e exclusão de trâmite e de anexo.
 
-* Seletor **Cliente** no topo (busca por nome ou código). Árvore de pastas à
-  esquerda e conteúdo à direita.
-* **Novo** abre Pasta, Scan, Documento do Word e Planilha do Excel.
-  **Gerenciar** abre Abrir, Excluir, Mover etc.
-* Clicar no **nome** do PDF abre o visualizador inline. "Abrir" pede o
-  aplicativo Onvio Link.
-* Documentos com cadeado (bloqueados) existem. ❓ Regras.
-* Pastas por ano são criadas automaticamente pelo sistema (`2026/01..12`).
-* Padrão interno na pasta Pessoal: subpastas por tipo e, dentro delas,
-  competência `MM-AAAA`.
-* Arquivos até 500 MB. pdf, doc, txt, csv abrem no navegador. xls, zip e
-  imagens só por download.
-* O usuário de cliente com Departamento do Sistema habilitado recebe a pasta do
-  departamento automaticamente. Pastas customizadas precisam de compartilhamento
-  manual.
-* ❓ A tela de Documentos existe nas duas URLs (`/staff` e `/br-portal-do-cliente`)?
-  Confirmar qual o analista usa no dia a dia.
+**Apoio:** `br-default-department/v1/department` (22 departamentos), `service-requesting/v1/ticket-prescriptions` e `br-payroll-sr/v1/ticket-prescriptions` (regra de prescrição: ativa, 30 dias), `br-payroll-sr/v1/company-department-access`, `core/v3/companies/{id}/employees/search` (funcionários do escritório) e `service-requesting/v1/gestta/task/service-order` (integração com o Gestta, não testada).
 
-## 4. Usuários de cliente
+## Documentos (Onvio Gestão)
 
-`Configurações > Usuários de cliente`. O campo Cliente é obrigatório (o primeiro
-clique após carregar costuma não registrar). O wizard tem 5 etapas: Geral,
-Departamentos (DP01 a DP07 do sistema mais os customizados, toggle Habilitar,
-nível Revisor/Contribuinte/Proprietário), Clientes, Permissões e Notificações.
+O módulo de documentos roda em `https://onvio.com.br/staff/#/documents/…` (AngularJS, título "Onvio Gestão"). Abas: Documentos do Cliente, Documentos do Escritório, Meus Documentos, Lixeira e Comunicações.
 
-## 5. Dores observadas, candidatas a funções da extensão
+**Documentos do Cliente:** seletor "Ao Cliente" no topo, árvore de pastas à esquerda (Administrativo, Certidão Negativa de Débito, Contabilidade, Financeiro, Fiscal, Patrimônio, Pessoal, Registro de Empresas) e grade com Tipo, Nome, Visualizado pelo Cliente, Compartilhado, Vencimento, Comentários, Histórico, Data de Modificação, Data de Criação e Tamanho. Há filtro rápido Todos / Não Visualizados / Visualizados e os botões Novo, Upload, Abrir, Gerenciar, Nuvem e Subir um nível.
 
-| # | Dor | Ideia para a extensão |
-|---|---|---|
-| 1 | 10 listas separadas, sem visão consolidada | Painel único com contagem de pendentes, prescritas e paradas por lista |
-| 2 | "Apenas pendentes" esconde Prescritas e cada lista define pendência de um jeito | Situação normalizada (aberta / aguardando cliente / concluída / prescrita) |
-| 3 | Sem data de abertura nem conclusão na lista | Ler os trâmites em segundo plano e mostrar "dias em aberto" e "dias sem movimento" |
-| 4 | Filtro de data só exato, sem intervalo | Filtro por período e por "parado há mais de N dias" |
-| 5 | Exportar só traz a página visível e só o cabeçalho | Exportar todas as páginas com campos de trâmite (CSV/XLSX) |
-| 6 | Checkbox e itens por página difíceis de usar | Preferência fixa: 100 itens e pendentes sempre visíveis |
-| 7 | Solicitações sem responsável | Destaque visual e lista "sem dono" |
-| 8 | Gestor não vê carga por analista | Visão por responsável: abertas, média de dias e prescritas no mês |
-| 9 | Documentos soltos fora do padrão de pastas | Verificador de padrão (Pessoal > tipo > MM-AAAA) por cliente |
-| 10 | Departamento duplicado e inferido | Aviso visual quando o departamento diverge da categoria |
+**Comunicações:** grade com Tipo, Cliente, Data de Envio, Vencimento, Expiração, Andamento, Status, Destinatário, Adicionado Por e Alterado Por.
 
-## 6. Próximo passo: captura
+| Uso | Endpoint | Observação |
+| --- | --- | --- |
+| Pasta raiz do cliente | `GET storage/v1/projects?primaryAssociationId=…&primaryAssociationType=Client` | devolve o projeto (raiz) do cliente |
+| Conteúdo da raiz | `GET storage/v2/Projects/{id}/children` | params: from, pageSize, sort=name:asc, containersOnly, trashed, countDocuments, calculateLocks |
+| Conteúdo de pasta | `GET storage/v2/Folders/{id}/children` | mesmos params; resposta em `data.items`, com `hasMore` |
+| Caminho da pasta | `GET storage/v1/folders/{id}/ancestors` |  |
+| Comunicações | `GET storage/v2/requests?requestTypes=Approval&requestTypes=Informational&requestTypes=Send&requestTypes=Outlook&sort=createdDate:desc` |  |
+| Busca global de documentos | `storage/v1/containers/documents/search` e `/count` | encontrado no código, não testado |
+| Clientes | `core/v3/companies/{id}/clients/search` |  |
 
-1. Abrir o portal logado, F12 > Console, colar `capturar-mapa-onvio.js`.
-2. Navegar por todas as listas de 2.1 e pelas guias de Documentos. Abrir um modal
-   e trocar Dados/Trâmites (com modal aberto, rodar `__mapaOnvio.capturar('modal')`).
-   Usar filtro, paginação e "Apenas pendentes".
-3. `__mapaOnvio.exportar()` e enviar o JSON.
+**Campos de um documento:** `name`, `mimeType`, `originalItemSize`, `createdDate`, `modifiedDate`, `isReadByClientUser` (visualizado pelo cliente), `customFields.dueDate` (vencimento), `customFields.clientId`, `userTags`, `permissions.*`, `staffCenterViewPath` e `clientCenterViewPath` (links prontos para abrir). Pastas trazem `readUserCount`, `isShared`, `hasFiles` e `documentCount`.
 
-Se a página recarregar (F5), o script se perde e precisa ser colado de novo. O que
-já foi capturado também se perde, então exporte antes de recarregar.
+**Campos de uma comunicação:** `subject`, `clientName`, `sendDate`, `expirationDate`, `isViewed`, `status`, `communicationStatus`, `requestType`, `recipients`, `createdBy.name`.
+
+## Retrato das pendências em 13/10/2026
+
+No dia do mapeamento havia 82 solicitações pendentes no filtro nativo, 32 delas sem responsável e 52 sem movimentação há mais de 5 dias corridos. É exatamente o que a extensão deve mostrar sem o analista precisar abrir 10 telas.
+
+| Lista | Pendentes | Sem responsável | Parada há mais de 5 dias |
+| --- | --- | --- | --- |
+| Cadastro: Empregados | 25 | 3 | 18 |
+| Cálculo de férias | 19 | 8 | 15 |
+| Geral | 12 | 9 | 3 |
+| Aviso de férias | 10 | 3 | 8 |
+| Cálculo de rescisão | 10 | 8 | 4 |
+| Cadastro: Estagiários | 3 | 0 | 3 |
+| Aviso de rescisão | 3 | 1 | 1 |
+| Afastamento | 0 | 0 | 0 |
+
+Lançamento de Rubricas ficou fora: o filtro "Apenas pendentes" devolveu 1.574 itens, quase todos concluídos, porque os códigos desse tipo são outros.
+
+## Proposta de funcionalidades
+
+A proposta é começar só com leitura (fase 1), que já cobre o controle, e deixar ações que alteram dados para a fase 2. Os prazos usados nos alertas são os critérios internos já definidos no projeto: primeiro trâmite em 1 dia útil, conclusão em 3 dias úteis (simples) ou 5 (cálculo), "Aguardando o cliente" abandonado após 5 dias úteis, parada após 15 dias e prescrição em 30.
+
+| Funcionalidade | Para quem | Dado que usa | Fase |
+| --- | --- | --- | --- |
+| Fila única: todas as pendências das 10 listas numa só tela, com filtro "só minhas" | Analista | listas + `assignedtome` | 1 |
+| Contador no ícone da extensão com o total de pendências do usuário | Analista | idem | 1 |
+| Semáforo de prazo por solicitação (verde, amarelo, vermelho) pelas regras internas | Analista e gestor | `created`, `lastUpdated`, `dueDate`, situação | 1 |
+| Contagem regressiva para prescrição, com alerta aos 20 e aos 25 dias | Analista | `lastUpdated` + regra de 30 dias | 1 |
+| Notificação do Chrome quando chega solicitação nova ou o cliente responde | Analista | comparação entre duas leituras | 1 |
+| Busca universal por ID, empregado, cliente ou assunto em todos os tipos | Analista | `searchText` em cada lista | 1 |
+| Coluna extra na grade nativa com "dias parada" e cor por gravidade | Analista | mesma resposta da grade | 1 |
+| Lista de solicitações sem responsável | Gestor | `staffResponsibleExpanded` vazio | 1 |
+| Painel por analista: pendentes, atrasadas por gravidade G1/G2/G3, tempo até o primeiro trâmite | Gestor | listas + trâmites | 1 |
+| Exportar o consolidado em planilha (CSV) | Gestor | idem | 1 |
+| Guias não visualizadas pelo cliente que vencem em até X dias, por cliente | Analista e gestor | `isReadByClientUser`, `customFields.dueDate` | 1 |
+| Aviso no upload quando o nome do arquivo não traz a competência | Analista | nome do arquivo antes de enviar | 1 |
+| Modelos de resposta prontos inseridos no Trâmite Rápido | Analista | tela do Trâmite Rápido | 2 |
+| Definir responsável e alterar expectativa em lote | Gestor | `assign-staff`, `change-due-date` | 2 |
+| Resumo pronto para WhatsApp de uma solicitação ou da fila | Analista | listas + trâmites | 2 |
+
+Para o MVP sugiro as 5 primeiras linhas mais "sem responsável": resolvem o problema do dia a dia e não alteram nada no Onvio.
+
+## Arquitetura técnica
+
+Extensão Chrome em Manifest V3, em JavaScript puro (sem build), com permissão só para `https://onvio.com.br/*`. O service worker faz a coleta, o painel lateral (`chrome.sidePanel`) mostra a fila e o content script melhora as telas nativas.
+
+
+O service worker usa `chrome.alarms` para ler as 10 listas com o filtro de pendentes, traduz cada `genericStatus` pelo dicionário do tipo, calcula prazo e gravidade e grava um resumo em `chrome.storage.local`. Painel, badge e content script leem só esse resumo, então abrir o painel não gera chamadas novas ao Onvio.
+
+Arquivos previstos: `manifest.json`, `background.js` (coleta e regras), `onvio-api.js` (todas as URLs e o dicionário de situações), `sidepanel.html/js`, `content.js` e `options.html` (regras de prazo, intervalo e modo gestor).
+
+## Pontos a validar e riscos
+
+- [ ] **API não oficial.** São as chamadas internas do Onvio (versão do app em produção: 2025.09.18.1). Podem mudar sem aviso; isolar todas as URLs num único arquivo de configuração.
+- [ ] **Cookies no service worker.** O teste foi feito de dentro da página. Confirmar que o `fetch` do service worker da extensão (com `host_permissions` para onvio.com.br) leva a sessão; se não levar, as leituras passam para o content script com a aba do Onvio aberta.
+- [ ] **Pendência de Rubricas.** Definir o filtro próprio (provável: situação diferente de 8 Concluído e 10 Prescrita) e conferir na tela.
+- [ ] **Códigos não observados.** Cadastro 1 e 4 e Rubricas 1 a 3 não apareceram nos dados; a extensão deve mostrar "situação desconhecida (código N)" em vez de errar.
+- [ ] **Busca global de documentos.** Testar `storage/v1/containers/documents/search`. Sem ela, a checagem de guias exige percorrer pastas de cerca de 500 clientes, o que é lento.
+- [ ] **Trâmites da Geral.** Confirmar o caminho de `topics` para `tickets/generic`.
+- [ ] **Perfil do usuário.** Cada pessoa só vê o que seu perfil no Onvio permite; o painel do gestor depende de um perfil com acesso a todos os departamentos.
+- [ ] **Carga.** Atualizar a cada 5 a 10 minutos, só com o filtro de pendentes e 200 itens por página, nunca a base inteira.
+- [ ] **LGPD.** As listas trazem CPF, salário e observações de empregados. Guardar em cache local só ID, situação, datas, cliente e responsável.
+- [ ] **Distribuição.** Para os 80 funcionários, publicar como extensão privada na Chrome Web Store (visível só ao domínio, exige Google Workspace) ou instalar por política do Chrome; modo desenvolvedor serve só para o piloto.
