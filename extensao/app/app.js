@@ -50,9 +50,25 @@ function cab(o) {
 }
 const ctx = { navegar, abrirDetalhe, abrirLembrete, cab, aoRedimensionar: fn => { aoRedim = fn; } };
 
+// Onvio aberto com login de cliente: o app não mostra nada (o service worker já apagou o que foi lido).
+const bloqueado = () => (estado.status || {}).estado === 'visao_cliente';
+function telaBloqueio(v) {
+  cab({ titulo: 'Control Onvio', sub: 'Só para a visão do escritório' });
+  v.innerHTML = '<div class="bloqueio" id="bloqueio"><div class="bl-ic"><svg class="ic"><use href="#i-lock"/></svg></div>' +
+    '<h2>Este é um acesso de cliente</h2>' +
+    '<p>O Control Onvio é uma ferramenta interna da ControlTax e só funciona com o login de um analista ou gestor do escritório. Com o acesso de cliente nada é lido nem guardado.</p>' +
+    '<p class="fraco">' + esc((estado.status || {}).msg || '') + '</p>' +
+    '<p>Para usar: saia do Onvio e entre com o seu usuário do escritório. Se a aba da visão do cliente (Client Center) estiver aberta, feche-a.</p>' +
+    '<div class="bl-acoes"><button class="btn btn-primary" id="bl-tentar"><svg class="ic ic-sm"><use href="#i-refresh"/></svg> Já entrei com o login do escritório</button><button class="btn" id="bl-onvio"><svg class="ic ic-sm"><use href="#i-eye"/></svg> Ver Onvio</button></div></div>';
+  $('#bl-tentar', v).onclick = async () => { const r = await enviar({ cmd: 'atualizar' }); if (r.ok) toast('Acesso do escritório confirmado'); else toast(r.cliente ? 'Continua um acesso de cliente' : (r.erro || 'Não foi possível ler o Onvio'), true); };
+  $('#bl-onvio', v).onclick = () => enviar({ cmd: 'fecharPainel' });
+}
+
 function desenhar() {
   rota = lerRota();
   aoRedim = null;
+  document.body.classList.toggle('bloqueado', bloqueado());
+  if (bloqueado()) { fecharDetalhe(); fecharLembrete(); fecharBusca(); abrirSino(false); $$('.trilho [data-rota]').forEach(a => a.classList.remove('on')); telaBloqueio($('#vista')); return; }
   const p = rota.params;
   const ativo = rota.nome === 'busca' ? '' : rota.nome === 'fila' && p.cliente ? 'clientes' : rota.nome === 'fila' && p.analista ? 'equipe' : rota.nome;
   $$('.trilho [data-rota]').forEach(a => { a.classList.toggle('on', a.dataset.rota === ativo); if (a.dataset.rota === ativo) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
@@ -86,6 +102,7 @@ function aoVivo() {
   el.classList.remove('ok', 'parado', 'erro');
   $('#btn-atualizar').classList.toggle('girando', s.estado === 'lendo');
   if (s.estado === 'lendo') { tx.textContent = 'Lendo o Onvio' + (s.etapa ? ' · ' + s.etapa : '…'); return; }
+  if (s.estado === 'visao_cliente') { el.classList.add('erro'); tx.textContent = 'Acesso de cliente'; return; }
   if (s.estado === 'sem_sessao' || s.estado === 'erro') { el.classList.add('erro'); tx.textContent = s.estado === 'sem_sessao' ? 'Sem sessão no Onvio' : 'Falha na leitura'; return; }
   const ver = estado.ultima || (estado.snap && estado.snap.fetchedAt);
   if (!ver) { tx.textContent = 'Aguardando a primeira leitura'; return; }
@@ -152,6 +169,7 @@ const TELAS = [
 ];
 let opcoes = [], marcada = 0;
 function abrirBusca() {
+  if (bloqueado()) return;
   const c = $('#cmdk');
   c.hidden = false;
   const q = $('#busca-q'); q.value = ''; resultados(''); q.focus();
@@ -207,7 +225,7 @@ async function atualizar() {
     const ocupado = detalheAberto() || lembreteAberto() || !$('#cmdk').hidden || document.activeElement.matches('input, select, textarea') || document.querySelector('#vista details[open]');
     if (quais.some(q => ['snap', 'settings', 'regras', 'lembretes', 'serie', 'eventos'].includes(q)) && AO_VIVO.has(rota.nome) && !ocupado) {
       const rolagem = $('#vista').scrollTop; desenhar(); $('#vista').scrollTop = rolagem;
-    } else if (quais.includes('status')) avisoSessao();
+    } else if (quais.includes('status')) { if (bloqueado() !== document.body.classList.contains('bloqueado')) desenhar(); else if (!bloqueado()) avisoSessao(); }
     if (quais.includes('eventos')) avisarNovos();
     aoVivo(); contadores();
   });

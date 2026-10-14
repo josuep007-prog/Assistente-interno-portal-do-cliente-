@@ -53,6 +53,7 @@
   const wrap = raiz.querySelector('.camada');
   let iframe = null;
   let aberto = false;
+  let visaoCliente = false;      // Onvio com login de cliente: não abre sozinho nem mostra o botão
 
   // O app só é carregado na primeira vez que a camada aparece.
   function garantirIframe() {
@@ -70,7 +71,7 @@
     aberto = abrir;
     wrap.classList.toggle('open', abrir);
     wrap.setAttribute('aria-hidden', String(!abrir));
-    launcher.classList.toggle('hidden', abrir);
+    launcher.classList.toggle('hidden', abrir || visaoCliente);
     // com a camada aberta a página do Onvio por trás não rola nem recebe o foco
     document.documentElement.classList.toggle('controlonvio-cheia', abrir);
     if (abrir && iframe) setTimeout(() => { try { iframe.focus(); } catch (e) {} }, 50);
@@ -99,7 +100,11 @@
     else if (m.type === 'abrir') definirPainel(true);
     else if (m.type === 'fechar') definirPainel(false);
   });
-  chrome.storage.onChanged.addListener((ch, area) => { if (area === 'local' && ch.snapshot) atualizarContador(ch.snapshot.newValue); });
+  chrome.storage.onChanged.addListener((ch, area) => {
+    if (area !== 'local') return;
+    if (ch.snapshot) atualizarContador(ch.snapshot.newValue);
+    if (ch.status) { visaoCliente = !!(ch.status.newValue && ch.status.newValue.estado === 'visao_cliente'); launcher.classList.toggle('hidden', aberto || visaoCliente); }
+  });
 
   /* ---------- tempo real ----------
    * Enquanto esta aba do Onvio está visível, pede ao service worker uma verificação leve a cada poucos
@@ -158,8 +163,9 @@
   /* ---------- estado inicial ----------
    * Abre ao entrar no Onvio (configurável). Fica escondido se nesta aba a pessoa escolheu "Ver Onvio", ou se
    * chegou aqui por "Abrir no Onvio" (quer ver a tela nativa). O pedido do ícone fora do Onvio sempre abre. */
-  chrome.storage.local.get(['snapshot', 'abrirPainelAoCarregar', 'verOnvioAoCarregar', 'settings', 'regrasEscritorio'], d => {
+  chrome.storage.local.get(['snapshot', 'status', 'abrirPainelAoCarregar', 'verOnvioAoCarregar', 'settings', 'regrasEscritorio'], d => {
     atualizarContador(d.snapshot);
+    visaoCliente = !!(d.status && d.status.estado === 'visao_cliente');
     let naAba = null;
     try { naAba = sessionStorage.getItem(CHAVE_ABERTO); } catch (e) {}
     const recente = ts => ts && Date.now() - ts < 120000;
@@ -168,7 +174,8 @@
     if (pedido) chrome.storage.local.remove('abrirPainelAoCarregar');
     if (verOnvio) chrome.storage.local.remove('verOnvioAoCarregar');
     const abrirAoEntrar = !(d.settings && d.settings.abrirAoEntrar === false);
-    const abrir = pedido || (!verOnvio && (naAba === '1' || (naAba === null && abrirAoEntrar)));
+    // com acesso de cliente só abre a pedido (ícone), para mostrar o aviso; nunca sozinho
+    const abrir = pedido || (!visaoCliente && !verOnvio && (naAba === '1' || (naAba === null && abrirAoEntrar)));
     definirPainel(abrir);
   });
 })();
