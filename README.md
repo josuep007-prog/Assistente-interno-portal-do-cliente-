@@ -2,11 +2,11 @@
 
 Ferramentas internas da ControlTax para facilitar o uso e o controle do **Portal do Cliente Onvio** por analistas e gestores.
 
-## Control Onvio (extensão do Chrome) · v0.6.0
+## Control Onvio (extensão do Chrome) · v0.7.0
 
-Junta numa fila só as solicitações pendentes das 10 listas do Portal do Cliente (Geral, Cadastro de empregado, contribuinte e estagiário, Aviso e Cálculo de férias, Aviso e Cálculo de rescisão, Afastamento e Lançamento de rubricas), com semáforo de prazo, contagem para a prescrição e notificações. Também marca os dias parados na grade do Onvio, avisa guias não visualizadas pelo cliente perto do vencimento e traz o painel do gestor (G1/G2/G3 e 1º trâmite por analista).
+Página de trabalho em tela cheia **por cima do Onvio Portal do Cliente**: filas das 10 listas de solicitações, dashboards em tempo real para analistas (Início) e gestores (Equipe, Clientes), detalhe com trâmites, alertas e lembretes pessoais. O Onvio continua aberto por trás e mantém a sessão.
 
-Fase 1: **somente leitura**. A extensão usa a sessão do Onvio de quem está logado e não altera nada no Onvio.
+Por enquanto **somente leitura**. As ações (responder, definir responsável, anexar) entram depois do mapeamento feito com o modo "Aprender ações".
 
 O código fica na pasta [`extensao/`](extensao/). Detalhes de uso, regras do semáforo e privacidade estão em [`extensao/LEIA-ME.md`](extensao/LEIA-ME.md).
 
@@ -15,7 +15,7 @@ O código fica na pasta [`extensao/`](extensao/). Detalhes de uso, regras do sem
 1. Baixe o repositório: botão **Code** > **Download ZIP**, e descompacte numa pasta fixa (ex.: `C:\ControlTax\ControlOnvio`).
 2. No Chrome, abra `chrome://extensions` e ligue o **Modo do desenvolvedor**.
 3. Clique em **Carregar sem compactação** e escolha a pasta `extensao` que veio no ZIP.
-4. Fixe o ícone na barra. Clique nele: se você estiver no Onvio, o painel abre; em qualquer outro site, ele leva direto ao Onvio. Também há o botão **Control Onvio** no canto da tela do Onvio e o atalho **Alt+Shift+O**.
+4. Fixe o ícone na barra e entre no Onvio: o Control Onvio abre por cima, em tela cheia. O ícone e o atalho **Alt+Shift+O** alternam entre o app e a tela do Onvio; em outro site, levam ao Onvio.
 
 Para atualizar: baixe de novo, substitua a pasta e clique em **Recarregar** no card da extensão.
 
@@ -26,13 +26,12 @@ Para atualizar: baixe de novo, substitua a pasta e clique em **Recarregar** no c
 | `manifest.json` | Configuração da extensão (Manifest V3) |
 | `core.js` | Tipos de solicitação, códigos de situação, coleta na API do Onvio e regras de prazo |
 | `background.js` | Leitura periódica, contador no ícone, notificações e abertura da solicitação no Onvio |
-| `shell.js` | Botão flutuante e coluna do painel dentro do Onvio (a página encolhe em telas largas); pede a verificação ao vivo |
+| `shell.js` | Camada em tela cheia com o app dentro do Onvio, botão "Voltar ao Control Onvio", verificação ao vivo, modo aprender |
 | `acao-hook.js` | Percebe ações que alteram solicitações na página e pede leitura imediata (sem ler conteúdo) |
-| `painel.html/js` | Painel (Minhas, Sem resp., Equipe, Analistas, Guias, Buscar, exportar CSV), exibido em iframe pelo `shell.js` |
-| `content.js` | Filtra a grade do Onvio pelo ID ao abrir uma solicitação pelo painel |
+| `app/` | O app: `app.html/css/js`, `estado.js` (espelho do armazenamento), `graficos.js` (SVG), `views/` (Início, fila, Equipe, Clientes, Solicitações, detalhe, Lembretes, Configurações) |
+| `content.js` | Filtra a grade do Onvio pelo ID quando a solicitação é aberta por "Abrir no Onvio" |
 | `options.html/js` | Prazos, intervalo de leitura, notificações e feriados |
 | `grade.js` | Marca "Nd parada" na grade das listas de Solicitações de Serviço |
-| `docs-hook.js`, `docs-ponte.js` | Guias não visualizadas: escutam a tela de Documentos (Onvio Gestão) sem chamadas extras |
 | `fonts/` | Archivo e IBM Plex empacotadas (licença OFL), sem dependência de serviço externo |
 | `ui.css`, `tema.js`, `logo.svg`, `icons/` | Visual no padrão Control Hub, modo claro e escuro |
 
@@ -47,8 +46,8 @@ Para atualizar: baixe de novo, substitua a pasta e clique em **Recarregar** no c
 ### Testes
 
 ```
-node --test testes/extensao.test.js      # regras, prazos, guias, regras do escritório (sem dependências)
-node testes/navegador.js                 # grade, guias e painel em páginas simuladas
+node --test testes/extensao.test.js      # regras, prazos, dashboards, alertas, lembretes, consultas (sem dependências)
+node testes/navegador.js                 # grade, camada em tela cheia e telas do app em páginas simuladas
 node testes/extensao-real.js             # carrega a extensão no Chromium, com API simulada
 ```
 
@@ -56,9 +55,9 @@ Os dois últimos precisam do Playwright (`npm i -D playwright`, ou `NODE_PATH` p
 
 ### Próximos passos previstos
 
+- Mapear as ações com o modo "Aprender ações" (empresa de teste) e implementar responder, definir responsável, expectativa, encaminhar e anexos.
 - Publicar o arquivo de regras do escritório e apontar a extensão para ele (ou para o `regras.json` do Assistente do cliente, para os prazos serem os mesmos).
 - Prazos legais por solicitação (aviso de férias com 30 dias, rescisão em 10 dias) e fim de experiência, que exigem ler as datas de cada solicitação.
 - Aviso de competência no nome do arquivo antes do upload.
-- Testar a busca global de documentos (`storage/v1/containers/documents/search`) para varrer as guias de todos os clientes.
 - Confirmar o caminho dos trâmites da lista Geral e validar a estimativa de 1º trâmite com casos reais.
 - Ações em lote (definir responsável, alterar expectativa de conclusão), na fase 2.

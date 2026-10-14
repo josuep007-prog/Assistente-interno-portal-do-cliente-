@@ -82,7 +82,7 @@
     parada: 15,               // dias corridos sem movimentação
     prescricaoDias: 30,       // regra do Onvio
     prescricaoAviso: 20,      // a partir de quantos dias parada vira alerta vermelho
-    guiaDias: 5,              // guias não visualizadas: alerta a partir de quantos dias do vencimento
+    abrirAoEntrar: true,      // ao entrar no Onvio, o Control Onvio já ocupa a tela
     regrasUrl: '',            // endereço (https) de um arquivo de regras do escritório; vazio = só as embutidas
     // Geral: palavras do assunto que sugerem uma solicitação específica ("possível aba errada").
     // Sem acento e em minúsculas. A primeira entrada que casar vence, então as mais específicas vêm antes.
@@ -455,7 +455,7 @@
    * Tudo é validado: número dentro de limites, datas AAAA-MM-DD, textos curtos. Nada é executado. */
   const LIMITES = {
     primeiroTramite: [0, 30], conclusaoSimples: [1, 60], conclusaoCalculo: [1, 60], clienteSemRetorno: [1, 60],
-    parada: [1, 90], prescricaoDias: [1, 120], prescricaoAviso: [1, 120], guiaDias: [0, 60], tempoRealSeg: [0, 600]
+    parada: [1, 90], prescricaoDias: [1, 120], prescricaoAviso: [1, 120], tempoRealSeg: [0, 600]
   };
   const inteiro = (v, [min, max]) => (typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max ? v : undefined);
 
@@ -494,36 +494,141 @@
     return Object.assign(base, usuario || {});
   }
 
-  /* ---------- guias não visualizadas pelo cliente (Documentos do Onvio Gestão) ---------- */
-  // Item de storage/v2/{Folders|Projects}/{id}/children. Pasta traz documentCount/hasFiles/readUserCount.
-  function ehDocumento(x) {
-    return !!x && typeof x === 'object' && typeof x.isReadByClientUser === 'boolean' &&
-      !('documentCount' in x) && !('hasFiles' in x) && !('readUserCount' in x);
-  }
-  function parseVencimento(v) {
-    if (!v || typeof v !== 'string') return null;
-    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(v);
-    if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-    const d = new Date(v);
-    return isNaN(d) ? null : new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  }
-  // Devolve null quando não é alerta (lida, sem vencimento ou longe do vencimento).
-  function avaliarGuia(guia, settings, now) {
-    const s = Object.assign({}, DEFAULTS, settings || {});
-    if (!guia || guia.lido) return null;
-    const venc = parseVencimento(guia.due);
-    if (!venc) return null;
-    now = now || new Date();
-    const hoje = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const dias = Math.round((venc - hoje) / 864e5);
-    if (dias > s.guiaDias) return null;
-    let nivel = 1, motivo;
-    if (dias < 0) { nivel = 2; motivo = 'Venceu há ' + (-dias) + ' dia(s)'; }
-    else if (dias === 0) { nivel = 2; motivo = 'Vence hoje'; }
-    else if (dias === 1) { nivel = 2; motivo = 'Vence amanhã'; }
-    else motivo = 'Vence em ' + dias + ' dias';
-    return { dias, nivel, motivo, venc: ymd(venc) };
+  /* ---------- painel por cliente (dashboard Clientes) ---------- */
+  function porCliente(items) {
+    const m = {};
+    for (const it of items || []) {
+      const k = it.cliente || it.apelido || '(cliente não informado)';
+      const r = m[k] || (m[k] = { cliente: k, apelido: it.apelido || '', total: 0, esc: 0, cli: 0, atraso: 0, prescreve: 0, abaErrada: 0, diasCliSoma: 0, diasCliN: 0 });
+      r.total++;
+      if (it.lado === 'esc') r.esc++;
+      if (it.lado === 'cli') { r.cli++; r.diasCliSoma += it.parado || 0; r.diasCliN++; }
+      if (it.nivel === 2) r.atraso++;
+      if (it.prescreveEm != null && it.prescreveEm <= 5) r.prescreve++;
+      if (it.abaProvavel) r.abaErrada++;
+    }
+    for (const r of Object.values(m)) r.diasCliMedia = r.diasCliN ? Math.round(r.diasCliSoma / r.diasCliN * 10) / 10 : null;
+    return Object.values(m).sort((a, b) => (b.atraso - a.atraso) || (b.prescreve - a.prescreve) || (b.total - a.total));
   }
 
-  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, ehDocumento, parseVencimento, avaliarGuia, abaProvavel, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  /* ---------- série do dia (gráficos do gestor) ----------
+   * serie = { 'AAAA-MM-DD': { entradas, saidas, horas: { 'HH': pendentes } } }, 60 dias.
+   * Entrada = pendência que não estava na leitura anterior; saída = a que sumiu (concluída, prescrita ou movida). */
+  function atualizarSerie(serie, anterior, snap, now) {
+    now = now || new Date();
+    const out = Object.assign({}, serie || {});
+    const dia = ymd(now), hora = String(now.getHours()).padStart(2, '0');
+    const d = out[dia] = Object.assign({ entradas: 0, saidas: 0, horas: {} }, out[dia] || {});
+    d.horas = Object.assign({}, d.horas, { [hora]: ((snap && snap.items) || []).length });
+    if (anterior && anterior.items && snap && snap.items) {
+      const antes = new Set(anterior.items.map(i => i.k)), agora = new Set(snap.items.map(i => i.k));
+      for (const k of agora) if (!antes.has(k)) d.entradas++;
+      for (const k of antes) if (!agora.has(k)) d.saidas++;
+    }
+    for (const k of Object.keys(out).sort().slice(0, -60)) delete out[k];
+    return out;
+  }
+
+  /* ---------- eventos (alertas do sino e notificações) ----------
+   * Compara duas leituras. Guarda só tipo, ID, cliente, motivo e hora: nada de descrição nem dados pessoais. */
+  function eventos(anterior, snap, s, now) {
+    s = Object.assign({}, DEFAULTS, s || {});
+    if (!anterior || !anterior.items || !snap || !snap.items) return [];   // primeira leitura vira base
+    const em = (now || new Date()).toISOString();
+    const antes = new Map(anterior.items.map(i => [i.k, i]));
+    const out = [];
+    const ev = (tipo, it, titulo) => out.push({ id: tipo + ':' + it.k + ':' + em, tipo, titulo, k: it.k, type: it.type, num: String(it.num), typeLabel: it.typeLabel, cliente: it.apelido || it.cliente || '', mine: !!it.mine, em });
+    for (const it of snap.items) {
+      const a = antes.get(it.k);
+      if (!a) {
+        if (it.mine) ev('nova', it, 'Nova solicitação para você');
+        else if (!it.resp) ev('semresp', it, 'Nova solicitação sem responsável');
+        continue;
+      }
+      if (it.mine && a.lado === 'cli' && it.lado === 'esc') ev('respondeu', it, 'Cliente respondeu');
+      if (it.mine && it.prescreveEm != null && it.prescreveEm <= 5 && (a.prescreveEm == null || a.prescreveEm > 5)) ev('prescreve', it, 'Prescreve em ' + it.prescreveEm + ' dia(s)');
+      if (it.mine && it.nivel === 2 && (a.nivel || 0) < 2) ev('atrasou', it, 'Ficou fora do prazo');
+    }
+    return out;
+  }
+
+  /* ---------- lembretes (pessoais, no Chrome de cada um) ---------- */
+  function novoLembrete(dados, now) {
+    now = now || new Date();
+    const quando = new Date(dados.quando);
+    if (isNaN(quando)) throw new Error('data inválida');
+    const texto = String(dados.texto || '').trim().slice(0, 300);
+    if (!texto) throw new Error('escreva o lembrete');
+    return {
+      id: 'l' + now.getTime().toString(36) + Math.random().toString(36).slice(2, 6),
+      texto, quando: quando.toISOString(), criadoEm: now.toISOString(), feito: false, disparado: false,
+      k: dados.k || null, type: dados.type || null, num: dados.num != null ? String(dados.num) : null, cliente: String(dados.cliente || '').slice(0, 120)
+    };
+  }
+  // modo: '1h' | 'amanha' (amanhã às 9h, pulando fim de semana)
+  function adiarLembrete(l, modo, now) {
+    now = now || new Date();
+    let q;
+    if (modo === '1h') q = new Date(now.getTime() + 3600000);
+    else {
+      q = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 9, 0, 0);
+      while (q.getDay() === 0 || q.getDay() === 6) q.setDate(q.getDate() + 1);
+    }
+    return Object.assign({}, l, { quando: q.toISOString(), disparado: false, feito: false });
+  }
+  function situacaoLembrete(l, now) {
+    now = now || new Date();
+    if (l.feito) return 'feito';
+    const q = new Date(l.quando);
+    if (q <= now) return 'atrasado';
+    return ymd(q) === ymd(now) ? 'hoje' : 'proximo';
+  }
+
+  /* ---------- consultas sob demanda (tela Solicitações e detalhe) ---------- */
+  // filtro: 'pendentes' | 'todas'; uma solicitação específica: { numero }
+  function urlConsulta(t, o) {
+    o = o || {};
+    const p = new URLSearchParams();
+    const per = Math.min(200, Math.max(1, o.per || 50)), page = Math.max(1, o.page || 1);
+    p.set('itemsPerPage', per); p.set('pageIndex', page); p.set('startIndex', (page - 1) * per);
+    p.set('orderBy', o.orderBy || 'lastUpdated desc');
+    p.set('assignedtome', o.mine ? 'true' : 'false');
+    p.set('expand', t.expand);
+    if (o.search) p.set('searchText', String(o.search).slice(0, 100));
+    const itens = [];
+    if (o.numero != null) itens.push({ by: 'identifier', op: 'EQ', value: String(o.numero) });
+    if (o.filtro === 'pendentes') {
+      const fam = FAMILIAS[t.familia];
+      if (fam.excluir) fam.excluir.forEach(v => itens.push({ by: 'firmStatus', op: 'NE', value: v }));
+      else itens.push({ by: 'firmStatus', op: 'IN', value: fam.pendentes });
+    }
+    if (itens.length) p.set('filter', JSON.stringify({ groups: [{ useOr: false, items: itens }] }));
+    return API + t.path + '?' + p.toString();
+  }
+  // Campos para a tela de detalhe. Só o que a pessoa precisa ver; nada disso é guardado.
+  function detalheDe(t, r) {
+    const base = normalize(t, r, null);
+    return Object.assign(base, {
+      assunto: r.subject || '',
+      descricao: typeof r.description === 'string' ? r.description : '',
+      meio: r.requestWay || '',
+      departamento: (r.departmentExpanded && r.departmentExpanded.name) || '',
+      admissao: r.admissionDate || null,
+      competencia: r.effectiveDate || null
+    });
+  }
+  function tramitesDe(t, d) {
+    const fam = FAMILIAS[t.familia];
+    const lista = (d && d.items) || (Array.isArray(d) ? d : []);
+    return lista.filter(x => x && x.created).sort((a, b) => String(a.created).localeCompare(String(b.created))).map((x, i) => ({
+      n: i + 1,
+      em: x.created,
+      situacao: (fam.st[x.status] || DESCONHECIDO(x.status))[0],
+      autor: (x.createdByContactExpanded && x.createdByContactExpanded.name) || (x.createdByExpanded && x.createdByExpanded.name) || '',
+      texto: typeof x.description === 'string' ? x.description : '',
+      anexos: ((x.attachmentsExpanded || []).map(a => a && (a.name || a.fileName)).filter(Boolean)).slice(0, 30)
+    }));
+  }
+
+  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, novoLembrete, adiarLembrete, situacaoLembrete, urlConsulta, detalheDe, tramitesDe, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);

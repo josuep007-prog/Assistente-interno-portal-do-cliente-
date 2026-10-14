@@ -8,14 +8,47 @@
     "clienteSemRetorno": 5,
     "parada": 15,
     "prescricaoDias": 30,
-    "prescricaoAviso": 20,
-    "guiaDias": 5
+    "prescricaoAviso": 20
   },
-  "feriados": ["2026-12-24", "2026-12-31"],
+  "feriados": [
+    "2026-12-24",
+    "2026-12-31"
+  ],
   "abaErrada": [
-    { "tipo": "calcFerias", "palavras": ["cálculo de férias", "recibo de férias", "pagar férias"] },
-    { "tipo": "avisoFerias", "palavras": ["férias", "aviso de férias", "programar férias"] },
-    { "tipo": "avisoRescisao", "palavras": ["demissão", "pedido de demissão", "desligamento", "aviso prévio", "justa causa"] },
-    { "tipo": "afastamento", "palavras": ["atestado", "afastamento", "licença maternidade", "inss"] }
+    {
+      "tipo": "calcFerias",
+      "palavras": [
+        "cálculo de férias",
+        "recibo de férias",
+        "pagar férias"
+      ]
+    },
+    {
+      "tipo": "avisoFerias",
+      "palavras": [
+        "férias",
+        "aviso de férias",
+        "programar férias"
+      ]
+    },
+    {
+      "tipo": "avisoRescisao",
+      "palavras": [
+        "demissão",
+        "pedido de demissão",
+        "desligamento",
+        "aviso prévio",
+        "justa causa"
+      ]
+    },
+    {
+      "tipo": "afastamento",
+      "palavras": [
+        "atestado",
+        "afastamento",
+        "licença maternidade",
+        "inss"
+      ]
+    }
   ]
 }

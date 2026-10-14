@@ -21,7 +21,7 @@ const STUB = `
       set(o, cb) { carregar(); const ch = {}; for (const [k, v] of Object.entries(o)) { ch[k] = { oldValue: mem[k], newValue: v }; mem[k] = v; } salvar(); ouvintes.forEach(f => f(ch, 'local')); if (cb) cb(); return Promise.resolve(); },
       remove(k) { (window.__removidos ||= []).push(k); carregar(); delete mem[k]; salvar(); return Promise.resolve(); }
     }, onChanged: { addListener(f) { ouvintes.push(f); } } },
-    runtime: { id: 'teste', getURL: p => 'https://onvio.com.br/__ext__/' + p, onMessage: { addListener(f) { (window.__ouvintes ||= []).push(f); } }, sendMessage(m, cb) { (window.__msgs ||= []).push(m); if (cb) cb({ ok: true }); return Promise.resolve({ ok: true, proximoEmSeg: 60 }); }, lastError: null, openOptionsPage() {}, getManifest: () => ({ version: '0.2.0' }) },
+    runtime: { id: 'teste', getURL: p => 'https://onvio.com.br/__ext__/' + p, onMessage: { addListener(f) { (window.__ouvintes ||= []).push(f); } }, sendMessage(m, cb) { (window.__msgs ||= []).push(m); const r = (window.__respostas && window.__respostas[m.cmd]) || { ok: true, proximoEmSeg: 60 }; if (cb) setTimeout(() => cb(r), 0); return Promise.resolve(r); }, lastError: null, openOptionsPage() {}, lastErrorX: null, getManifest: () => ({ version: '0.2.0' }) },
     tabs: { create(o) { (window.__tabs ||= []).push(o); } } };
 })();`;
 
@@ -137,45 +137,7 @@ await passo('grade: com a extensão atualizada (script órfão) as marcas somem 
 const URL_PORTAL = 'https://onvio.com.br/br-portal-do-cliente/service-requesting/general';
 const temPainel = p => p.frames().some(f => /painel\.html$/.test(f.url()));
 const esperar = async (cond, ms = 4000) => { const fim = Date.now() + ms; while (Date.now() < fim) { if (await cond()) return; await new Promise(r => setTimeout(r, 50)); } throw new Error('tempo esgotado esperando: ' + cond); };
-await passo('shell: botão abre o painel (iframe) e encolhe a página; fechar e reabrir após recarregar', async () => {
-  const p = await pagina(URL_PORTAL, '<!doctype html><body><main id="m" style="width:100%">Onvio</main></body>');
-  await p.setViewportSize({ width: 1360, height: 800 });
-  await semear(p);
-  await p.goto(URL_PORTAL);
-  await p.addScriptTag({ content: lerExt('shell.js') });
-  assert.equal(temPainel(p), false, 'fechado: nada carregado a mais na página');
-  await p.mouse.click(1255, 755);                       // botão flutuante, canto inferior direito
-  await p.waitForFunction(() => document.documentElement.classList.contains('controlonvio-docked'), null, { timeout: 4000 });
-  assert.equal(temPainel(p), true);
-  await p.waitForFunction(() => getComputedStyle(document.documentElement).marginRight === '420px', null, { timeout: 4000 });   // espera a animação
-  // fechar (o service worker manda 'fechar' à aba) e o estado fica na sessão da aba
-  await p.evaluate(() => window.__ouvintes.forEach(f => f({ type: 'fechar' })));
-  await p.waitForFunction(() => !document.documentElement.classList.contains('controlonvio-docked'));
-  await p.evaluate(() => window.__ouvintes.forEach(f => f({ type: 'alternar' })));
-  await p.waitForFunction(() => document.documentElement.classList.contains('controlonvio-docked'));
-  await p.reload();
-  await p.addScriptTag({ content: lerExt('shell.js') });
-  await p.waitForFunction(() => document.documentElement.classList.contains('controlonvio-docked'), null, { timeout: 4000 });
-  assert.deepEqual(p.erros, []);
-});
 
-await passo('shell: em tela estreita o painel cobre em vez de empurrar; o pedido do ícone abre ao carregar', async () => {
-  const p = await pagina(URL_PORTAL, '<!doctype html><body>Onvio</body>');
-  await p.setViewportSize({ width: 800, height: 700 });
-  await semear(p, { abrirPainelAoCarregar: Date.now() });
-  await p.goto(URL_PORTAL);
-  await p.addScriptTag({ content: lerExt('shell.js') });
-  await esperar(() => temPainel(p));
-  assert.equal(await p.evaluate(() => document.documentElement.classList.contains('controlonvio-docked')), false);
-  assert.ok((await p.evaluate(() => window.__removidos || [])).includes('abrirPainelAoCarregar'), 'o pedido é consumido');
-  // pedido antigo (mais de 2 minutos) não abre nada
-  const q = await pagina(URL_PORTAL, '<!doctype html><body>Onvio</body>');
-  await semear(q, { abrirPainelAoCarregar: Date.now() - 5 * 60 * 1000 });
-  await q.goto(URL_PORTAL);
-  await q.addScriptTag({ content: lerExt('shell.js') });
-  await q.waitForTimeout(600);
-  assert.equal(temPainel(q), false);
-});
 
 /* ---------- tempo real: ciclo do shell e aviso de ação na página ---------- */
 const ticks = p => p.evaluate(() => (window.__msgs || []).filter(m => m.cmd === 'tick'));
@@ -279,130 +241,194 @@ await passo('aprender: registra método, caminho e formato (sem valores); deslig
   assert.equal((await montar({ ligado: true, desde: Date.now() - 3 * 3600 * 1000 })).mem.aprendizado, undefined, 'ligado há mais de 2 h: desligou sozinho');
 });
 
-/* ---------- guias: hook + ponte + aviso ---------- */
-const URL_DOCS = 'https://onvio.com.br/staff/';
-const hoje = new Date(); const d = n => { const x = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() + n); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
-const FILHOS = { data: { hasMore: false, items: [
-  { id: 'd1', name: 'DARF 09-2026.pdf', mimeType: 'application/pdf', isReadByClientUser: false, customFields: { dueDate: d(1), clientId: 'cli-111' }, staffCenterViewPath: '/staff/#/documents/view/d1' },
-  { id: 'd2', name: 'GPS.pdf', isReadByClientUser: true, customFields: { dueDate: d(1), clientId: 'cli-111' } },
-  { id: 'd3', name: 'FGTS.pdf', isReadByClientUser: false, customFields: { dueDate: d(30), clientId: 'cli-111' } },
-  { id: 'd4', name: 'Sem vencimento.pdf', isReadByClientUser: false, customFields: {} },
-  { id: 'd5', name: 'Vencida.pdf', isReadByClientUser: false, customFields: { dueDate: d(-2), clientId: 'cli-222' }, staffCenterViewPath: 'https://evil.example.com/x' },
-  { id: 'p1', name: 'Subpasta', isReadByClientUser: false, documentCount: 4, hasFiles: true, customFields: { dueDate: d(0) } }
-] } };
-const CLIENTES = { items: [{ id: 'cli-111', nickname: 'ACME LTDA' }, { id: 'cli-222', name: 'BETA SA' }] };
-const PAGINA_DOCS = `<!doctype html><body><div id="app">Documentos</div></body>`;
 
-await passo('guias: capta fetch e XHR, guarda só não lidas com vencimento, mostra o aviso', async () => {
-  const p = await pagina(URL_DOCS, PAGINA_DOCS);
-  await p.route('**/api/storage/v2/Folders/*/children*', r => r.fulfill({ contentType: 'application/json', body: JSON.stringify(FILHOS) }));
-  await p.route('**/api/core/v3/companies/*/clients/search*', r => r.fulfill({ contentType: 'application/json', body: JSON.stringify(CLIENTES) }));
-  await p.addInitScript(lerExt('docs-hook.js'));
-  await p.goto(URL_DOCS);
-  await p.addScriptTag({ content: lerExt('core.js') });
-  await p.addScriptTag({ content: lerExt('docs-ponte.js') });
-  await p.evaluate(() => fetch('/api/core/v3/companies/9/clients/search?x=1').then(r => r.json()));
-  // a página usa XHR (AngularJS)
-  await p.evaluate(() => new Promise(res => { const x = new XMLHttpRequest(); x.open('GET', '/api/storage/v2/Folders/pasta-1/children?from=0&pageSize=50'); x.onload = res; x.send(); }));
-  await p.waitForSelector('#controlonvio-guias', { timeout: 4000 });
-  const mem = await p.evaluate(() => JSON.parse(localStorage.getItem('__mem')));
-  const docs = mem.guias['pasta-1'].docs;
-  assert.deepEqual(docs.map(x => x.id).sort(), ['d1', 'd3', 'd5'], 'guarda não lidas com vencimento; descarta lida, sem vencimento e pasta');
-  assert.equal(docs.find(x => x.id === 'd1').link, 'https://onvio.com.br/staff/#/documents/view/d1');
-  assert.equal(docs.find(x => x.id === 'd5').link, '', 'link de outro domínio é descartado');
-  assert.equal(mem.clientes['cli-111'], 'ACME LTDA');
-  assert.equal(mem.clientes['cli-222'], 'BETA SA');
-  const aviso = await p.$eval('#controlonvio-guias', e => e.textContent);
-  assert.match(aviso, /^2 guia\(s\) sem visualização do cliente perto do vencimento · 2 urgente\(s\)/);
-  assert.match(aviso, /Vence amanhã/); assert.match(aviso, /Venceu há 2 dia\(s\)/);
-  assert.doesNotMatch(aviso, /FGTS/, 'd3 vence em 30 dias: fica guardada, mas sem alerta');
-  assert.deepEqual(p.erros, []);
-  // reabrir a pasta com o DARF já lido: ele sai da lista
-  await p.unroute('**/api/storage/v2/Folders/*/children*');
-  const lido = JSON.parse(JSON.stringify(FILHOS)); lido.data.items[0].isReadByClientUser = true;
-  await p.route('**/api/storage/v2/Folders/*/children*', r => r.fulfill({ contentType: 'application/json', body: JSON.stringify(lido) }));
-  await p.evaluate(() => fetch('/api/storage/v2/Folders/pasta-1/children?from=0').then(r => r.json()));
-  await p.waitForFunction(() => !/Vence amanhã/.test(document.getElementById('controlonvio-guias')?.textContent || ''), null, { timeout: 4000 });
-  const mem2 = await p.evaluate(() => JSON.parse(localStorage.getItem('__mem')));
-  assert.deepEqual(mem2.guias['pasta-1'].docs.map(x => x.id).sort(), ['d3', 'd5']);
-});
 
-await passo('guias: segunda página da mesma pasta (from>0) soma, não substitui', async () => {
-  const p = await pagina(URL_DOCS, PAGINA_DOCS);
-  const pag = n => ({ data: { hasMore: n === 0, items: [{ id: 'q' + n, name: 'arq' + n, isReadByClientUser: false, customFields: { dueDate: d(2), clientId: 'c' } }] } });
-  await p.route('**/api/storage/v2/Folders/*/children*', r => r.fulfill({ contentType: 'application/json', body: JSON.stringify(pag(new URL(r.request().url()).searchParams.get('from') === '0' ? 0 : 1)) }));
-  await p.addInitScript(lerExt('docs-hook.js'));
-  await p.goto(URL_DOCS);
-  await p.addScriptTag({ content: lerExt('core.js') });
-  await p.addScriptTag({ content: lerExt('docs-ponte.js') });
-  await p.evaluate(() => fetch('/api/storage/v2/Folders/pz/children?from=0').then(r => r.json()));
-  await p.evaluate(() => fetch('/api/storage/v2/Folders/pz/children?from=50').then(r => r.json()));
-  await p.waitForFunction(() => (JSON.parse(localStorage.getItem('__mem') || '{}').guias?.pz?.docs || []).length === 2, null, { timeout: 4000 });
-});
-
-await passo('guias: mensagens forjadas pela página são ignoradas se mal formadas e não quebram', async () => {
-  const p = await pagina(URL_DOCS, PAGINA_DOCS);
-  await p.goto(URL_DOCS);
-  await p.addScriptTag({ content: lerExt('core.js') });
-  await p.addScriptTag({ content: lerExt('docs-ponte.js') });
-  await p.evaluate(() => { window.postMessage({ src: 'controlonvio', tipo: 'filhos', pasta: 'x', docs: [{ id: 'z', nome: 'a'.repeat(5000), lido: false, due: '2999-01-01', link: 'javascript:alert(1)' }] }, location.origin); window.postMessage({ src: 'outro' }, location.origin); window.postMessage('texto', location.origin); });
-  await p.waitForFunction(() => JSON.parse(localStorage.getItem('__mem') || '{}').guias?.x, null, { timeout: 4000 });
-  const g = await p.evaluate(() => JSON.parse(localStorage.getItem('__mem')).guias.x.docs[0]);
-  assert.equal(g.nome.length, 200);
-  assert.equal(g.link, '');
+/* ---------- shell: camada em tela cheia por cima do Onvio ---------- */
+const appFrame = p => p.frames().find(f => /\/app\/app\.html$/.test(f.url()));
+const cheia = p => p.evaluate(() => document.documentElement.classList.contains('controlonvio-cheia'));
+await passo('shell: ao entrar no Onvio o app cobre a tela inteira; "Ver Onvio" esconde e o botão volta; lembra na aba', async () => {
+  const p = await pagina(URL_PORTAL, '<!doctype html><body style="height:3000px">Onvio</body>');
+  await p.setViewportSize({ width: 1360, height: 800 });
+  await semear(p);
+  await p.goto(URL_PORTAL);
+  await p.addScriptTag({ content: lerExt('shell.js') });
+  await esperar(() => appFrame(p));
+  assert.equal(await cheia(p), true);
+  const caixa = await (await appFrame(p).frameElement()).boundingBox();
+  assert.deepEqual([caixa.x, caixa.y, caixa.width, caixa.height], [0, 0, 1360, 800], 'cobre a tela toda');
+  assert.equal(await p.evaluate(() => getComputedStyle(document.documentElement).overflow), 'hidden', 'a página do Onvio por trás não rola');
+  await p.evaluate(() => window.__ouvintes.forEach(f => f({ type: 'fechar' })));       // "Ver Onvio"
+  await p.waitForFunction(() => !document.documentElement.classList.contains('controlonvio-cheia'));
+  await p.waitForTimeout(300);                                                            // fim da animação de saída
+  await p.mouse.click(1220, 755);                                                         // botão "Voltar ao Control Onvio"
+  await p.waitForFunction(() => document.documentElement.classList.contains('controlonvio-cheia'));
+  await p.evaluate(() => window.__ouvintes.forEach(f => f({ type: 'fechar' })));
+  await p.reload();
+  await p.addScriptTag({ content: lerExt('shell.js') });
+  await p.waitForTimeout(500);
+  assert.equal(await cheia(p), false, 'nesta aba a pessoa escolheu ver o Onvio');
+  await p.evaluate(() => window.__ouvintes.forEach(f => f({ type: 'alternar' })));
+  await p.waitForFunction(() => document.documentElement.classList.contains('controlonvio-cheia'));
   assert.deepEqual(p.erros, []);
 });
 
-/* ---------- painel lateral ---------- */
-const SP = 'file://' + EXT + 'painel.html';
-await passo('painel: abas Analistas (G1/G2/G3, 1º trâmite) e Guias, aviso de código desconhecido', async () => {
-  const ctx = await navegador.newContext();
-  const p = await ctx.newPage();
-  const erros = []; p.on('pageerror', e => erros.push(String(e)));
-  await p.route(/^https?:/, r => r.abort());
-  await p.addInitScript(STUB);
-  await p.addInitScript(`localStorage.setItem('__mem', ${JSON.stringify(JSON.stringify({
-    snapshot, status: { estado: 'ok', erros: [] },
-    guias: { pz: { ts: Date.now(), docs: [
-      { id: 'a', nome: 'DARF.pdf', due: '${d(1)}', clientId: 'cli-111', link: 'https://onvio.com.br/staff/#/x' },
-      { id: 'b', nome: 'Vencida.pdf', due: '${d(-3)}', clientId: 'zzzzzzzz-9', link: '' },
-      { id: 'c', nome: 'Longe.pdf', due: '${d(40)}', clientId: 'cli-111', link: '' } ] } },
-    clientes: { 'cli-111': 'ACME LTDA' }
-  }).replace(/\$\{d\((-?\d+)\)\}/g, (_, n) => d(Number(n))))});`.replace(/\$\{d\((-?\d+)\)\}/g, (_, n) => d(Number(n))));
-  await p.goto(SP);
-  await p.waitForSelector('#kpis .kpi-card');
-  const aviso = await p.$eval('#aviso', e => e.textContent);
-  assert.match(aviso, /Situação que a extensão não conhece/);
-  assert.match(aviso, /Geral: código 77 \(1\)/);
-  assert.equal(await p.$eval('#b-guias', e => e.textContent), '2');
-  await p.click('[data-aba="analistas"]');
-  const linhas = await p.$$eval('#tbl-an tbody tr', trs => trs.map(tr => [...tr.children].map(td => td.textContent)));
-  const ana = linhas.find(l => l[0] === 'Ana');
-  assert.deepEqual(ana, ['Ana', '1', '0', '0', '1', '0', '0', '2']);
-  const sem = linhas.find(l => l[0] === '(sem responsável)');
-  assert.deepEqual(sem.slice(0, 6), ['(sem responsável)', '0', '1', '0', '0', '1']);
-  await p.click('[data-aba="guias"]');
-  await p.waitForSelector('#lista-guias .row');
-  const guias = await p.$$eval('#lista-guias .row, #lista-guias .grupo', els => els.map(e => e.textContent.replace(/\s+/g, ' ').trim()));
-  assert.equal(guias.length, 4, '2 grupos + 2 guias (a de 40 dias fica de fora)');
-  assert.match(guias[0], /^Cliente zzzzzzzz/); // vencida primeiro, cliente sem nome conhecido
-  assert.match(guias.join('|'), /ACME LTDA/);
-  assert.match(guias.join('|'), /Venceu há 3 dia\(s\)/);
-  await p.fill('#f-guia', 'acme');
-  assert.equal(await p.$$eval('#lista-guias .row', e => e.length), 1);
-  // clicar numa guia com link abre aba; sem link avisa
-  await p.click('#lista-guias .row');
-  assert.equal(await p.evaluate(() => (window.__tabs || []).length), 1);
-  assert.equal(await p.evaluate(() => window.__tabs[0].url), 'https://onvio.com.br/staff/#/x');
-  // aba Equipe: G3 aparece na linha
-  await p.click('[data-aba="equipe"]');
-  assert.ok((await p.$$eval('#lista .pill-late', e => e.map(x => x.textContent))).includes('G3'));
-  assert.ok((await p.$$eval('#lista .pill-muted', e => e.map(x => x.textContent))).includes('Pode ser: Aviso de férias'), 'sugestão de aba certa na lista Geral');
-  // fontes empacotadas: carregam do disco, sem serviço externo
-  await p.evaluate(() => document.fonts.ready);
-  const fontes = await p.evaluate(() => [...document.fonts].filter(f => f.status === 'loaded').map(f => f.family.replace(/"/g, '')));
-  assert.ok(fontes.includes('Archivo') && fontes.includes('IBM Plex Sans'), 'fontes locais carregadas: ' + fontes);
-  assert.deepEqual(erros, []);
+await passo('shell: "Abrir no Onvio" chega com a camada escondida; desligar "abrir ao entrar" respeita; pedido do ícone abre', async () => {
+  const caso = async extra => {
+    const p = await pagina(URL_PORTAL, '<!doctype html><body>Onvio</body>');
+    await semear(p, extra);
+    await p.goto(URL_PORTAL);
+    await p.addScriptTag({ content: lerExt('shell.js') });
+    await p.waitForTimeout(500);
+    return cheia(p);
+  };
+  assert.equal(await caso({ verOnvioAoCarregar: Date.now() }), false);
+  assert.equal(await caso({ settings: { abrirAoEntrar: false } }), false);
+  assert.equal(await caso({ settings: { abrirAoEntrar: false }, abrirPainelAoCarregar: Date.now() }), true);
+  assert.equal(await caso({ verOnvioAoCarregar: Date.now() - 10 * 60000 }), true, 'pedido antigo não vale');
+});
+
+/* ---------- app: telas com dados simulados ---------- */
+const URL_APP = 'https://onvio.com.br/__ext__/app/app.html';
+const agoraIso = (d = 0) => new Date(Date.now() - d * 864e5).toISOString().slice(0, 19);
+const ITENS_APP = [
+  { k: 'calcFerias:a', type: 'calcFerias', typeLabel: 'Cálculo de férias', id: 'a', num: 101, status: 'Em análise', lado: 'esc', nivel: 2, grav: 3, parado: 31, motivos: [{ n: 2, m: 'Parada há 31 dias' }], resp: 'Ana Teste', mine: true, apelido: 'ACME', cliente: 'ACME LTDA', detalhe: 'Fulano', created: agoraIso(40), last: agoraIso(31) },
+  { k: 'geral:b', type: 'geral', typeLabel: 'Geral', id: 'b', num: 102, status: 'Aguardando resposta', lado: 'esc', nivel: 1, grav: 1, parado: 2, motivos: [{ n: 1, m: 'Prazo de conclusão vence hoje' }], resp: 'Ana Teste', mine: true, apelido: 'BETA', cliente: 'BETA SA', detalhe: 'Férias do João', abaProvavel: { tipo: 'avisoFerias', label: 'Aviso de férias', palavra: 'ferias' }, created: agoraIso(3), last: agoraIso(2) },
+  { k: 'avisoRescisao:c', type: 'avisoRescisao', typeLabel: 'Aviso de rescisão', id: 'c', num: 103, status: 'Respondido', lado: 'cli', nivel: 2, grav: 3, parado: 26, prescreveEm: 4, motivos: [{ n: 2, m: 'Prescreve em 4 dia(s)' }], resp: '', mine: false, apelido: 'GAMA', cliente: 'GAMA ME', detalhe: 'Ciclano', created: agoraIso(30), last: agoraIso(26) },
+  { k: 'rubricas:d', type: 'rubricas', typeLabel: 'Lançamento de rubricas', id: 'd', num: 104, status: 'Sem análise', lado: 'esc', nivel: 0, grav: 0, parado: 0, motivos: [], resp: 'Bia', mine: false, apelido: 'ACME', cliente: 'ACME LTDA', detalhe: '09/2026 · Mensal', created: agoraIso(0), last: agoraIso(0), ptUteis: 1 }
+];
+const hojeK = (() => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); })();
+const ESTADO_APP = {
+  snapshot: { fetchedAt: new Date().toISOString(), user: { nome: 'Ana Teste' }, items: ITENS_APP, porTipo: {}, erros: [], desconhecidos: {} },
+  status: { estado: 'ok' }, ultimaVerificacao: new Date().toISOString(),
+  eventos: [{ id: 'e1', tipo: 'respondeu', titulo: 'Cliente respondeu', k: 'geral:b', type: 'geral', num: '102', typeLabel: 'Geral', cliente: 'BETA', mine: true, em: new Date().toISOString() }],
+  lembretes: [{ id: 'l1', texto: 'Cobrar o BETA', quando: new Date(Date.now() - 3600e3).toISOString(), criadoEm: new Date().toISOString(), feito: false, disparado: true, k: 'geral:b', type: 'geral', num: '102', cliente: 'BETA' }],
+  serie: { [hojeK]: { entradas: 3, saidas: 1, horas: { '08': 3, '09': 4, '10': 4 } } }
+};
+async function abrirApp(rota, extra) {
+  const p = await pagina(URL_APP, '');
+  await p.setViewportSize({ width: 1360, height: 860 });
+  await semear(p, Object.assign({}, ESTADO_APP, extra || {}));
+  await p.goto(URL_APP + (rota || ''));
+  await p.waitForSelector('#vista .cab h1', { timeout: 5000 });
+  return p;
+}
+
+await passo('app · Início (analista): cartões, prioridades, agenda com lembrete atrasado e atividade', async () => {
+  const p = await abrirApp('#/inicio');
+  assert.equal(await p.textContent('#vista h1'), 'Olá, Ana');
+  const kpis = await p.$$eval('.kpi', e => e.map(x => x.querySelector('.rot').textContent + '=' + x.querySelector('.val').textContent));
+  assert.deepEqual(kpis, ['Com ação minha=2', 'Vencem hoje=1', 'Fora do prazo=1', 'Cliente respondeu=1', 'Lembretes hoje=1']);
+  assert.equal(await p.$$eval('#prio .row', e => e.length), 2);
+  assert.match(await p.textContent('#agenda'), /Cobrar o BETA/);
+  assert.match(await p.textContent('#ativ'), /Cliente respondeu/);
+  assert.equal(await p.textContent('#n-fila'), '2');
+  assert.equal(await p.textContent('#sino-cont'), '1');
+  assert.match(await p.textContent('#aovivo-tx'), /^Ao vivo · \d\d:\d\d:\d\d$/);
+  assert.deepEqual(p.erros, []);
+});
+
+await passo('app · Minha fila e Equipe: filtros, ordenação, só as fora do prazo pelo cartão, sem responsável', async () => {
+  const p = await abrirApp('#/fila');
+  assert.equal(await p.$$eval('#corpo tr', e => e.length), 2);
+  await p.click('.kpi', { trial: true }).catch(() => {});
+  await p.goto(URL_APP + '#/fila?kpi=atraso'); await p.waitForSelector('#corpo tr');
+  assert.deepEqual(await p.$$eval('#corpo tr', e => e.map(x => x.dataset.k)), ['calcFerias:a']);
+  await p.goto(URL_APP + '#/fila?escopo=equipe'); await p.waitForSelector('#corpo tr');
+  assert.equal(await p.$$eval('#corpo tr', e => e.length), 4);
+  await p.fill('#f-texto', 'acme');
+  assert.equal(await p.$$eval('#corpo tr', e => e.length), 2);
+  await p.fill('#f-texto', '');
+  await p.click('[data-lado="cli"]');
+  assert.deepEqual(await p.$$eval('#corpo tr', e => e.map(x => x.dataset.k)), ['avisoRescisao:c']);
+  await p.goto(URL_APP + '#/fila?escopo=semresp'); await p.waitForSelector('#vista h1');
+  assert.equal(await p.textContent('#vista h1'), 'Sem responsável');
+  assert.deepEqual(p.erros, []);
+});
+
+await passo('app · Equipe (gestor): cartões, 4 gráficos com dicas e tabela por responsável que leva à fila da pessoa', async () => {
+  const p = await abrirApp('#/equipe');
+  const kpis = await p.$$eval('.kpi', e => e.map(x => x.querySelector('.rot').textContent + '=' + x.querySelector('.val').textContent));
+  assert.deepEqual(kpis, ['Pendências=4', 'Sem responsável=1', 'Fora do prazo=2', 'Prescrevem em 5 dias=1', '1º trâmite (média)=1', 'Hoje=3 / 1']);
+  for (const id of ['#g-carga', '#g-dias', '#g-horas', '#g-tipo']) assert.ok(await p.$(id + ' svg'), 'gráfico ' + id);
+  assert.match(await p.textContent('#g-carga .legenda-viz'), /Em dia.*G1 atenção.*G2 fora do prazo.*G3 crítica/);
+  await p.hover('#g-carga [data-tip]');
+  assert.equal(await p.isVisible('#dica'), true, 'dica ao passar o mouse');
+  await p.click('tr[data-resp="Ana Teste"]');
+  await p.waitForFunction(() => location.hash.startsWith('#/fila?analista='));
+  assert.equal(await p.$$eval('#corpo tr', e => e.length), 2);
+  assert.deepEqual(p.erros, []);
+});
+
+await passo('app · Clientes: ranking, mais tempo sem responder e tabela que leva às pendências do cliente', async () => {
+  const p = await abrirApp('#/clientes');
+  assert.ok(await p.$('#g-top svg'));
+  assert.match(await p.textContent('#l-lentos'), /GAMA/);
+  assert.equal(await p.$$eval('#corpo tr', e => e.length), 3);
+  await p.fill('#f', 'beta');
+  assert.equal(await p.$$eval('#corpo tr', e => e.length), 1);
+  await p.click('#corpo tr');
+  await p.waitForFunction(() => location.hash.startsWith('#/fila?cliente='));
+  assert.equal(await p.$$eval('#corpo tr', e => e.length), 1);
+  assert.deepEqual(p.erros, []);
+});
+
+await passo('app · detalhe: abre na gaveta, pede dados e trâmites, mostra a linha do tempo e cria lembrete ligado à solicitação', async () => {
+  const p = await abrirApp('#/fila', {});
+  await p.evaluate(() => { window.__respostas = { detalhe: { ok: true, item: { assunto: 'Férias do João', descricao: '<p>Segue <b>pedido</b></p>', meio: 'WEB' }, tramites: [{ n: 1, em: '2026-10-10T10:00:00', situacao: 'Sem análise', autor: 'Cliente BETA', texto: 'Abertura', anexos: ['aviso.pdf'] }, { n: 2, em: '2026-10-12T10:00:00', situacao: 'Aguardando resposta', autor: 'Cliente BETA', texto: 'Alguma novidade?', anexos: [] }] } }; });
+  await p.click('#corpo tr[data-k="geral:b"]');
+  await p.waitForSelector('#gaveta .tl-item');
+  assert.equal(await p.$$eval('#gaveta .tl-item', e => e.length), 2);
+  assert.match(await p.textContent('#gaveta .gav-cab h2'), /BETA/);
+  assert.match(await p.textContent('#gaveta'), /aviso\.pdf/);
+  const pedido = await p.evaluate(() => window.__msgs.find(m => m.cmd === 'detalhe'));
+  assert.deepEqual([pedido.type, String(pedido.num)], ['geral', '102']);
+  await p.click('[data-aba="dados"]');
+  assert.match(await p.textContent('#g-corpo'), /Segue pedido/, 'HTML do Onvio vira texto puro');
+  await p.click('#g-lembrete');
+  await p.fill('#lt', 'Ligar para o João');
+  await p.click('#ls');
+  await p.waitForFunction(() => JSON.parse(localStorage.getItem('__mem')).lembretes.length === 2);
+  const l = await p.evaluate(() => JSON.parse(localStorage.getItem('__mem')).lembretes[1]);
+  assert.deepEqual([l.texto, l.type, l.num], ['Ligar para o João', 'geral', '102']);
+  await p.click('#g-onvio');
+  assert.ok(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'abrir' && m.item.num === '102')));
+  await p.keyboard.press('Escape');
+  assert.equal(await p.isHidden('#gaveta'), true);
+  assert.deepEqual(p.erros, []);
+});
+
+await passo('app · Solicitações e busca consultam o Onvio na hora; Lembretes: criar, adiar e concluir; sino; Ver Onvio', async () => {
+  const p = await abrirApp('#/solicitacoes');
+  await p.evaluate(() => { window.__respostas = { consultar: { ok: true, total: 1, paginas: 1, itens: [{ k: 'geral:z', type: 'geral', typeLabel: 'Geral', num: 900, status: 'Concluído', lado: 'fim', nivel: 0, cliente: 'ZETA', apelido: 'ZETA', detalhe: 'Antiga', resp: 'Ana', last: '2026-01-02T10:00:00' }] }, buscar: { ok: true, itens: [] } }; });
+  await p.click('[data-t="rubricas"]');
+  await p.waitForSelector('#corpo tr[data-k="geral:z"]');
+  const c = await p.evaluate(() => window.__msgs.filter(m => m.cmd === 'consultar').pop());
+  assert.deepEqual([c.type, c.filtro, c.page], ['rubricas', 'pendentes', 1]);
+  await p.click('[data-f="todas"]');
+  await p.waitForFunction(() => window.__msgs.filter(m => m.cmd === 'consultar').pop().filtro === 'todas');
+  await p.fill('#busca-q', 'joão'); await p.press('#busca-q', 'Enter');
+  await p.waitForFunction(() => window.__msgs.some(m => m.cmd === 'buscar' && m.q === 'joão'));
+  await p.goto(URL_APP + '#/lembretes'); await p.waitForSelector('#lt');
+  await p.fill('#lt', 'Revisar folha'); await p.click('#ls');
+  await p.waitForFunction(() => JSON.parse(localStorage.getItem('__mem')).lembretes.length === 2);
+  await p.click('[data-l="l1"] [data-a="amanha"]');
+  await p.waitForFunction(() => JSON.parse(localStorage.getItem('__mem')).lembretes.find(x => x.id === 'l1').disparado === false);
+  await p.click('[data-l="l1"] [data-a="feito"]');
+  await p.waitForFunction(() => JSON.parse(localStorage.getItem('__mem')).lembretes.find(x => x.id === 'l1').feito === true);
+  await p.click('#btn-sino');
+  assert.match(await p.textContent('#sino-painel'), /Cliente respondeu/);
+  await p.waitForFunction(() => !!JSON.parse(localStorage.getItem('__mem')).alertasVistosEm);
+  await p.click('#btn-ver-onvio');
+  assert.ok(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'fecharPainel')));
+  assert.deepEqual(p.erros, []);
+});
+
+await passo('app · sem sessão: faixa no topo com "Tentar de novo" e o indicador fica vermelho', async () => {
+  const p = await abrirApp('#/inicio', { status: { estado: 'sem_sessao', msg: 'Tentativas: página do Onvio: HTTP 401' } });
+  assert.match(await p.textContent('#aviso-sessao'), /Sem sessão no Onvio\. Tentativas: página do Onvio: HTTP 401/);
+  assert.equal(await p.getAttribute('#aovivo', 'class'), 'aovivo erro');
+  await p.click('#av-tentar');
+  assert.ok(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'atualizar')));
 });
 
 await navegador.close();

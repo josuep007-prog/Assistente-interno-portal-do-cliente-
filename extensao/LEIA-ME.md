@@ -1,37 +1,37 @@
-# Control Onvio · ControlTax (v0.6.0)
+# Control Onvio · ControlTax (v0.7.0)
 
-Extensão do Chrome que junta numa fila só as solicitações pendentes do Portal do Cliente Onvio, com prazos, alerta de prescrição e notificações. Fase 1: **somente leitura**, nada é alterado no Onvio.
+Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Nesta versão a extensão ainda **só lê**: as ações (responder, definir responsável, anexar) chegam na próxima, depois do mapeamento.
 
 ## Instalar (piloto)
 
-1. Baixe o repositório (Code > Download ZIP) ou o arquivo `ControlOnvio_v0.6.0.zip` e descompacte numa pasta fixa (ex.: `C:\ControlTax\ControlOnvio`). Não apague a pasta depois.
-2. No Chrome, abra `chrome://extensions`.
-3. Ligue o **Modo do desenvolvedor** (canto superior direito).
-4. Clique em **Carregar sem compactação** e escolha a pasta que contém o `manifest.json` (no repositório, a pasta `extensao`).
-5. Fixe o ícone da extensão na barra (ícone de quebra-cabeça > alfinete).
-6. Entre no Onvio normalmente e clique no ícone: o painel abre à direita e faz a primeira leitura. Se você clicar no ícone em outro site, a extensão leva direto ao Onvio. No Onvio também há o botão **Control Onvio** no canto inferior direito e o atalho **Alt+Shift+O**. Precisa do Chrome 114 ou mais novo.
+1. Baixe o repositório (Code > Download ZIP) e descompacte numa pasta fixa (ex.: `C:\ControlTax\ControlOnvio`). Não apague a pasta depois.
+2. No Chrome, abra `chrome://extensions` e ligue o **Modo do desenvolvedor** (canto superior direito).
+3. Clique em **Carregar sem compactação** e escolha a pasta **`extensao`** (a que tem o `manifest.json`).
+4. Fixe o ícone da extensão na barra (ícone de quebra-cabeça > alfinete).
+5. Entre no Onvio: o Control Onvio abre por cima, em tela cheia. Precisa do Chrome 114 ou mais novo.
 
-Para atualizar a versão: substitua os arquivos da pasta e clique em **Recarregar** no card da extensão em `chrome://extensions`.
+Para atualizar a versão: substitua os arquivos da pasta, clique em **Recarregar** no card da extensão e dê F5 na aba do Onvio.
 
-## O que tem
+## Como usar
 
-| Recurso | Onde |
-| --- | --- |
-| Fila única das 10 listas (Geral, Cadastro x3, Férias x2, Rescisão x2, Afastamento, Rubricas) | Painel |
-| Abas Minhas, Sem resp., Equipe, Analistas, Guias e Buscar | Painel |
-| Semáforo por solicitação (faixa vermelha ou laranja, com o motivo) | Cada linha |
-| Contagem para prescrição (30 dias) | Linhas na vez do cliente |
-| Contador no ícone: minhas solicitações com ação do escritório | Ícone da extensão |
-| Notificações: nova para você, cliente respondeu, prescreve em 5 dias, nova sem responsável (modo gestor) | Chrome |
-| Clique na linha abre a lista certa do Onvio já filtrada pelo ID | Onvio |
-| Exportar a visão atual em CSV (abre no Excel) | Rodapé do painel |
-| Prazos, intervalo e feriados editáveis | Engrenagem do painel |
-| Marca "Nd parada" (com a prescrição, quando for vez do cliente) dentro da célula Último Trâmite da grade do Onvio | Listas de Solicitações de Serviço |
-| Aba **Guias**: guias não visualizadas pelo cliente que vencem em até N dias (padrão 5) ou já venceram, por cliente | Painel e aviso na tela de Documentos |
-| Painel do gestor: G1/G2/G3 por analista, quantas aguardam o 1º trâmite e a média até o 1º trâmite | Aba Analistas |
-| Diagnóstico da leitura (contagem por lista, códigos desconhecidos, filtro usado), com botão Copiar | Engrenagem do painel |
-| "Pode ser: Aviso de férias" nas solicitações da lista Geral cujo assunto lembra uma solicitação específica | Painel (cada linha) e CSV |
-| Regras do escritório: prazos, feriados e palavras vindos de um arquivo publicado, sem reinstalar | Engrenagem do painel |
+- **Ver Onvio** (canto superior direito) mostra a tela nativa do Onvio; o botão **Voltar ao Control Onvio**, no canto inferior direito, traz o app de volta. O ícone da extensão e o atalho **Alt+Shift+O** fazem o mesmo, e em qualquer outro site levam ao Onvio.
+- A busca do topo procura em todas as listas, inclusive concluídas. Atalho: tecla **/**.
+- Clique numa solicitação para abrir o detalhe (dados e trâmites lidos na hora). "Abrir no Onvio" leva à lista certa do Onvio já filtrada pelo ID.
+- Em Configurações dá para desligar "Abrir o Control Onvio ao entrar no Onvio".
+
+## Telas
+
+| Tela | Para quem | O que mostra |
+| --- | --- | --- |
+| **Início** | Analista | Cartões (com ação minha, vencem hoje, fora do prazo, cliente respondeu, lembretes de hoje), prioridades, agenda do dia e atividade recente |
+| **Minha fila** | Analista | Minhas pendências em tabela, com filtros, ordenação, semáforo e exportação CSV |
+| **Equipe** | Gestor | Pendências, sem responsável, fora do prazo, prescrições em 5 dias, média até o 1º trâmite, entradas x saídas do dia; gráficos de carga por responsável (G1/G2/G3), entradas e saídas dos últimos 14 dias, pendências ao longo do dia e por tipo; tabela por responsável |
+| **Clientes** | Gestor e analista | Ranking por pendências, quem mais demora a responder, aba errada e prescrição por empresa |
+| **Solicitações** | Todos | As 10 listas do Onvio, inclusive concluídas, consultadas na hora, com busca e paginação |
+| **Lembretes** | Cada um | Lembretes pessoais (neste computador), com aviso na hora, adiar 1 h ou para amanhã 9h, concluir |
+| **Configurações** | Todos | Prazos, leitura ao vivo, regras do escritório, aprender ações e diagnóstico |
+
+O **sino** do topo junta os alertas: nova solicitação para você, cliente respondeu, prescreve em até 5 dias, ficou fora do prazo, nova sem responsável e lembretes. Novidades das suas solicitações também aparecem como aviso na tela.
 
 ## Regras do semáforo (padrão, editáveis)
 
@@ -39,6 +39,17 @@ Vez do escritório: sem primeiro trâmite após 1 dia útil; aberta além de 3 d
 Vez do cliente: sem retorno há mais de 5 dias úteis (laranja); a partir de 20 dias parada fica vermelho com a contagem até a prescrição de 30 dias.
 
 Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardando resposta** = o escritório precisa responder; **Respondido** = vez do cliente.
+
+## Novidades da v0.7.0 (a página por cima do Onvio)
+
+- O painel de canto virou um **app em tela cheia** por cima do Onvio, com menu lateral, busca, indicador ao vivo, sino de alertas e o botão "Ver Onvio".
+- **Dashboards em tempo real:** Início (analista), Equipe (gestor) e Clientes. Os gráficos usam uma paleta validada para daltonismo, com legenda e dica ao passar o mouse.
+- **Detalhe da solicitação** com dados e linha do tempo dos trâmites, lidos na hora e **não guardados**.
+- **Lembretes pessoais** com aviso do Chrome na hora marcada, mesmo com o Onvio fechado.
+- **Alertas** guardados (os 300 mais recentes): só tipo, ID, cliente, motivo e hora.
+- **Série do dia** (entradas, saídas e pendentes por hora, 60 dias) para os gráficos do gestor.
+- **Guias removidas** (aba, aviso na tela de Documentos e scripts).
+- Ainda **somente leitura**: os botões Responder, Definir responsável, Alterar expectativa e Anexar aparecem desabilitados até as ações serem mapeadas (Configurações > Aprender ações).
 
 ## Novidades da v0.6.0 (aprender as ações do Onvio)
 
@@ -89,7 +100,7 @@ Primeiro passo para a extensão virar a tela de trabalho e fazer as ações (res
 
 ## Privacidade
 
-A extensão usa a sessão do Onvio de quem está logado e só vê o que o perfil da pessoa já vê. Guarda no computador apenas ID, situação, datas, cliente, empregado/assunto e responsável. Das guias de Documentos, guarda nome do arquivo, vencimento, código do cliente e o link (só se for do onvio.com.br), por até 30 dias. Não guarda CPF, salário nem anexos.
+A extensão usa a sessão do Onvio de quem está logado e só vê o que o perfil da pessoa já vê. Guarda no computador apenas: o resumo das pendências (ID, situação, datas, cliente, empregado/assunto e responsável), os alertas (tipo, ID, cliente, motivo e hora), a série do dia (só contagens) e os seus lembretes. O detalhe e os trâmites de uma solicitação são lidos na hora e não são gravados. Não guarda CPF, salário, descrição, observações nem anexos.
 
 ## Problemas comuns
 

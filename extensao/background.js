@@ -189,6 +189,8 @@ async function coletar(manual) {
       const novoCache = snap.tramites.cache; delete snap.tramites.cache;   // o cache fica fora do resumo
       await chrome.storage.local.set({ tramites: novoCache });
       await notificar(anterior, snap, s);
+      const { serie } = await chrome.storage.local.get('serie');
+      await chrome.storage.local.set({ serie: OC.atualizarSerie(serie, anterior, snap) });
       await chrome.storage.local.set({ snapshot: snap, assinaturas: assin, ultimaVerificacao: new Date().toISOString(), status: { estado: 'ok', em: snap.fetchedAt, erros: snap.erros } });
       await atualizarBadge(snap);
       return snap;
@@ -231,6 +233,57 @@ async function verificarAoVivo(forcar) {
   return { ok: true, proximoEmSeg };
 }
 
+/* ---------- lembretes (pessoais) ----------
+ * Ficam em chrome.storage.local ("lembretes"). Cada um pendente tem um alarme "lembrete:<id>". */
+const PREFIXO_LEMBRETE = 'lembrete:';
+async function sincronizarLembretes() {
+  const { lembretes } = await chrome.storage.local.get('lembretes');
+  const ativos = (lembretes || []).filter(l => !l.feito && !l.disparado);
+  const existentes = (await chrome.alarms.getAll()).filter(a => a.name.startsWith(PREFIXO_LEMBRETE));
+  const querido = new Map(ativos.map(l => [PREFIXO_LEMBRETE + l.id, new Date(l.quando).getTime()]));
+  for (const a of existentes) if (!querido.has(a.name) || Math.abs(a.scheduledTime - querido.get(a.name)) > 1000) await chrome.alarms.clear(a.name);
+  const ainda = new Set((await chrome.alarms.getAll()).map(a => a.name));
+  for (const [nome, quando] of querido) if (!ainda.has(nome)) chrome.alarms.create(nome, { when: Math.max(Date.now() + 1000, quando) });
+}
+async function dispararLembrete(id) {
+  const { lembretes } = await chrome.storage.local.get('lembretes');
+  const l = (lembretes || []).find(x => x.id === id);
+  if (!l || l.feito || l.disparado) return;
+  l.disparado = true;
+  await chrome.storage.local.set({ lembretes });
+  const em = new Date().toISOString();
+  await registrarEventos([{ id: 'lembrete:' + l.id + ':' + em, tipo: 'lembrete', titulo: 'Lembrete: ' + l.texto, k: l.k, type: l.type, num: l.num, typeLabel: l.type && OC.TYPE_BY_KEY[l.type] ? OC.TYPE_BY_KEY[l.type].label : '', cliente: l.cliente || '', mine: true, em }]);
+  const nid = 'lembrete-' + l.id;
+  if (l.type && l.num) await guardarNotifMap({ [nid]: { type: l.type, num: l.num, ts: Date.now() } });
+  await chrome.notifications.create(nid, { type: 'basic', iconUrl: 'icons/128.png', title: 'Lembrete', message: l.texto + (l.num ? ' · #' + l.num : ''), priority: 2, requireInteraction: true });
+}
+
+/* ---------- consultas sob demanda (o app pede; nada disso é guardado) ---------- */
+async function consultar(msg) {
+  const t = OC.TYPE_BY_KEY[msg.type];
+  if (!t) throw new Error('tipo desconhecido');
+  const s = await getSettings();
+  const { f } = await escolherFetcher();
+  const d = await f(OC.urlConsulta(t, { page: msg.page, per: msg.per, search: msg.search, filtro: msg.filtro, mine: msg.mine, orderBy: msg.orderBy }));
+  const now = new Date();
+  const itens = ((d && d.items) || []).map(r => { const x = OC.normalize(t, r, null, s.abaErrada); return Object.assign(x, OC.evaluate(x, s, now)); });
+  return { itens, total: d && d.totalItems != null ? d.totalItems : itens.length, paginas: (d && d.totalPages) || 1 };
+}
+async function detalhe(msg) {
+  const t = OC.TYPE_BY_KEY[msg.type];
+  if (!t) throw new Error('tipo desconhecido');
+  const s = await getSettings();
+  const { f } = await escolherFetcher();
+  const d = await f(OC.urlConsulta(t, { numero: msg.num, per: 5 }));
+  const r = ((d && d.items) || []).find(x => String(x.identifier) === String(msg.num));
+  if (!r) throw new Error('solicitação #' + msg.num + ' não encontrada em ' + t.label);
+  const x = OC.detalheDe(t, r);
+  Object.assign(x, OC.evaluate(x, s, new Date()));
+  let tramites = null, erroTramites = null;
+  try { tramites = OC.tramitesDe(t, await f(OC.urlTramites(t, r.id))); } catch (e) { erroTramites = e.message || String(e); }
+  return { item: x, tramites, erroTramites };
+}
+
 /* ---------- badge ---------- */
 async function atualizarBadge(snap) {
   const minhas = snap.items.filter(i => i.mine && i.lado === 'esc');
@@ -243,22 +296,18 @@ async function atualizarBadge(snap) {
 }
 
 /* ---------- notificações ---------- */
+const EVENTOS_MAX = 300;
+// Grava os eventos (sino do app) e mostra as notificações do Chrome.
+async function registrarEventos(novos) {
+  if (!novos.length) return;
+  const { eventos } = await chrome.storage.local.get('eventos');
+  await chrome.storage.local.set({ eventos: novos.concat(eventos || []).slice(0, EVENTOS_MAX) });
+}
 async function notificar(anterior, snap, s) {
-  if (!s.notificar || !anterior || !anterior.items) return; // primeira leitura vira base
-  const antes = new Map(anterior.items.map(i => [i.k, i]));
-  const avisos = [];
-  for (const it of snap.items) {
-    const a = antes.get(it.k);
-    const ref = '#' + it.num + ' ' + it.typeLabel + ' · ' + (it.apelido || it.cliente);
-    if (!a) {
-      if (it.mine) avisos.push({ it, t: 'Nova solicitação para você', m: ref });
-      else if (!it.resp && s.modoGestor) avisos.push({ it, t: 'Nova solicitação sem responsável', m: ref });
-      continue;
-    }
-    if (it.mine && a.lado === 'cli' && it.lado === 'esc') avisos.push({ it, t: 'Cliente respondeu', m: ref });
-    if (it.mine && it.prescreveEm != null && it.prescreveEm <= 5 && (a.prescreveEm == null || a.prescreveEm > 5))
-      avisos.push({ it, t: 'Prescreve em ' + it.prescreveEm + ' dia(s)', m: ref });
-  }
+  const evs = OC.eventos(anterior, snap, s);
+  await registrarEventos(evs);
+  if (!s.notificar) return;
+  const avisos = evs.filter(e => e.mine || (e.tipo === 'semresp' && s.modoGestor)).map(e => ({ e, t: e.titulo, m: '#' + e.num + ' ' + e.typeLabel + ' · ' + e.cliente }));
   if (!avisos.length) return;
   const mapa = {};
   const agora = Date.now();
@@ -266,12 +315,12 @@ async function notificar(anterior, snap, s) {
     const id = 'resumo-' + Date.now();
     await chrome.notifications.create(id, {
       type: 'list', iconUrl: 'icons/128.png', title: avisos.length + ' novidades no Onvio',
-      message: 'Abra o painel para ver tudo', items: avisos.slice(0, 5).map(a => ({ title: a.t, message: a.m }))
+      message: 'Abra o Control Onvio para ver tudo', items: avisos.slice(0, 5).map(a => ({ title: a.t, message: a.m }))
     });
   } else {
     for (const a of avisos) {
-      const id = 'it-' + a.it.k + '-' + agora;
-      mapa[id] = { type: a.it.type, num: String(a.it.num), ts: agora };
+      const id = 'it-' + a.e.k + '-' + agora;
+      mapa[id] = { type: a.e.type, num: a.e.num, ts: agora };
       await chrome.notifications.create(id, { type: 'basic', iconUrl: 'icons/128.png', title: a.t, message: a.m, priority: 1 });
     }
   }
@@ -337,7 +386,7 @@ chrome.commands.onCommand.addListener(async (cmd, tab) => { if (cmd === 'alterna
 async function abrir(it, tabPreferida) {
   const t = OC.TYPE_BY_KEY[it.type];
   const url = OC.PORTAL + t.route;
-  await chrome.storage.local.set({ abrir: { route: t.route, num: String(it.num), ts: Date.now() } });
+  await chrome.storage.local.set({ abrir: { route: t.route, num: String(it.num), ts: Date.now() }, verOnvioAoCarregar: Date.now() });
   const pref = tabPreferida != null ? await chrome.tabs.get(tabPreferida).catch(() => null) : null;
   const tabs = await chrome.tabs.query({ url: 'https://onvio.com.br/br-portal-do-cliente/*' });
   const alvo = pref && ehOnvio(pref.url) ? pref : tabs[0];
@@ -363,6 +412,8 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'reagendar') { await agendar(); reply({ ok: true }); }
       else if (msg.cmd === 'atualizarRegras') { reply(await atualizarRegras()); }
       else if (msg.cmd === 'tick') { reply(await verificarAoVivo(!!msg.forcar)); }
+      else if (msg.cmd === 'consultar') { reply(Object.assign({ ok: true }, await consultar(msg))); }
+      else if (msg.cmd === 'detalhe') { reply(Object.assign({ ok: true }, await detalhe(msg))); }
       else if (msg.cmd === 'testarLeitura') { reply({ ok: true, linhas: await testarLeitura() }); }
       else if (msg.cmd === 'abrirOnvio') { await irParaOnvio(); reply({ ok: true }); }
       else if (msg.cmd === 'fecharPainel') { if (sender.tab && sender.tab.id != null) await mensagemParaPainel(sender.tab.id, 'fechar').catch(() => {}); reply({ ok: true }); }
@@ -375,6 +426,8 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
 /* ---------- ciclo de vida ---------- */
 async function iniciar() {
   await migrarSettings();
+  await chrome.storage.local.remove(['guias', 'clientes']);      // dados das guias (removidas na v0.7)
+  await sincronizarLembretes();
   chrome.alarms.create(ALARME_REGRAS, { periodInMinutes: 60, delayInMinutes: 1 });
   await atualizarRegras();
   await agendar();
@@ -383,10 +436,12 @@ chrome.runtime.onInstalled.addListener(iniciar);
 chrome.runtime.onStartup.addListener(iniciar);
 chrome.alarms.onAlarm.addListener(a => {
   if (a.name === ALARME) coletar(false);
+  else if (a.name.startsWith(PREFIXO_LEMBRETE)) dispararLembrete(a.name.slice(PREFIXO_LEMBRETE.length));
   else if (a.name === ALARME_REGRAS) atualizarRegras();
 });
 chrome.storage.onChanged.addListener((ch, area) => {
   if (area !== 'local') return;
+  if (ch.lembretes) sincronizarLembretes();
   if (ch.settings) {
     const a = ch.settings.oldValue || {}, b = ch.settings.newValue || {};
     if (a.regrasUrl !== b.regrasUrl) atualizarRegras();
