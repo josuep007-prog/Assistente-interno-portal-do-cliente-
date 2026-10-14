@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.7.0)
+# Control Onvio · ControlTax (v0.8.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Nesta versão a extensão ainda **só lê**: as ações (responder, definir responsável, anexar) chegam na próxima, depois do mapeamento.
 
@@ -14,21 +14,23 @@ Para atualizar a versão: substitua os arquivos da pasta, clique em **Recarregar
 
 ## Como usar
 
+- **Trilho lateral** (à esquerda, escuro, como no Control Hub): Hoje, Minha fila, Agenda e lembretes, Equipe, Clientes e Todas as solicitações. Passe o mouse num ícone para ver o nome; os números vermelhos/azuis são o que pede atenção.
 - **Ver Onvio** (canto superior direito) mostra a tela nativa do Onvio; o botão **Voltar ao Control Onvio**, no canto inferior direito, traz o app de volta. O ícone da extensão e o atalho **Alt+Shift+O** fazem o mesmo, e em qualquer outro site levam ao Onvio.
-- A busca do topo procura em todas as listas, inclusive concluídas. Atalho: tecla **/**.
-- Clique numa solicitação para abrir o detalhe (dados e trâmites lidos na hora). "Abrir no Onvio" leva à lista certa do Onvio já filtrada pelo ID.
+- **Busca** em janela central: tecla **/** ou **Ctrl+K**. Já mostra, enquanto você digita, as pendências lidas e os clientes; **Enter** busca em todas as listas do Onvio, inclusive concluídas (ou abre direto a solicitação, se você digitou o ID exato).
+- Clique numa solicitação para abrir o **detalhe** (dados e trâmites lidos na hora). Setas **← →** passam para a anterior/próxima da mesma lista sem fechar. "Abrir no Onvio" leva à lista certa do Onvio já filtrada pelo ID.
+- Nas listas: **↑ ↓** andam entre as linhas e **Enter** abre.
 - Em Configurações dá para desligar "Abrir o Control Onvio ao entrar no Onvio".
 
 ## Telas
 
 | Tela | Para quem | O que mostra |
 | --- | --- | --- |
-| **Início** | Analista | Cartões (com ação minha, vencem hoje, fora do prazo, cliente respondeu, lembretes de hoje), prioridades, agenda do dia e atividade recente |
-| **Minha fila** | Analista | Minhas pendências em tabela, com filtros, ordenação, semáforo e exportação CSV |
-| **Equipe** | Gestor | Pendências, sem responsável, fora do prazo, prescrições em 5 dias, média até o 1º trâmite, entradas x saídas do dia; gráficos de carga por responsável (G1/G2/G3), entradas e saídas dos últimos 14 dias, pendências ao longo do dia e por tipo; tabela por responsável |
-| **Clientes** | Gestor e analista | Ranking por pendências, quem mais demora a responder, aba errada e prescrição por empresa |
-| **Solicitações** | Todos | As 10 listas do Onvio, inclusive concluídas, consultadas na hora, com busca e paginação |
-| **Lembretes** | Cada um | Lembretes pessoais (neste computador), com aviso na hora, adiar 1 h ou para amanhã 9h, concluir |
+| **Hoje** | Analista | Saudação, data e números (com ação minha, fora do prazo, vencem hoje, cliente respondeu, lembretes); faixa **ao vivo** com a última novidade; **a semana** (atrasados, hoje e próximos 6 dias com lembretes e expectativas de conclusão); "Para fazer agora" (fora do prazo, vencem hoje, cliente respondeu); "Precisa de atenção" (prescrevem em breve, paradas há mais tempo, possível aba errada); agenda do dia escolhido e atividade |
+| **Minha fila** | Analista e gestor | Abas Minhas / Equipe toda / Sem responsável. Busca, vez (escritório/cliente), **Filtros** (tipo, gravidade, responsável), **Ordenar**, **Lista ou Cartões**, **Mais** (exportar CSV). Os filtros ativos aparecem como etiquetas que se tiram com um clique |
+| **Agenda e lembretes** | Cada um | Calendário do mês com lembretes e expectativas de conclusão das suas solicitações; lista (atrasados, hoje, próximos, concluídos). Lembretes podem **repetir** (todo dia, todo dia útil, toda semana, todo mês) |
+| **Equipe** | Gestor | Aba Painel (números, carga por responsável G1/G2/G3, entradas e saídas de 14 dias, pendências ao longo do dia, por tipo, sem responsável, prescrições) e aba Responsáveis (carga de cada pessoa) |
+| **Clientes** | Gestor e analista | Aba Painel (ranking e quem mais demora a responder) e aba Empresas (cartões ou lista, com fora do prazo, prescrição e aba errada) |
+| **Todas as solicitações** | Todos | As 10 listas do Onvio (uma aba para cada), inclusive concluídas, consultadas na hora, com busca e paginação |
 | **Configurações** | Todos | Prazos, leitura ao vivo, regras do escritório, aprender ações e diagnóstico |
 
 O **sino** do topo junta os alertas: nova solicitação para você, cliente respondeu, prescreve em até 5 dias, ficou fora do prazo, nova sem responsável e lembretes. Novidades das suas solicitações também aparecem como aviso na tela.
@@ -39,6 +41,19 @@ Vez do escritório: sem primeiro trâmite após 1 dia útil; aberta além de 3 d
 Vez do cliente: sem retorno há mais de 5 dias úteis (laranja); a partir de 20 dias parada fica vermelho com a contagem até a prescrição de 30 dias.
 
 Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardando resposta** = o escritório precisa responder; **Respondido** = vez do cliente.
+
+## Novidades da v0.8.0 (visual e usabilidade do Control Hub)
+
+Desenho tirado dos módulos **Departamento Pessoal** e **Portal do Cliente** do Control Hub:
+
+- **Trilho lateral escuro** com ícones e contadores, no lugar do menu claro; o cabeçalho de cada tela tem título, **abas** e as ferramentas (busca, ao vivo, sino, Ver Onvio).
+- **Hoje** no formato do Portal do Cliente: números grandes, faixa ao vivo, semana clicável, colunas "Para fazer agora" e "Precisa de atenção".
+- **Barra de ferramentas** do DP nas filas: Filtros num menu com contador, Ordenar, Lista/Cartões, Mais; etiquetas dos filtros ativos.
+- **Detalhe** em janela grande com abas (Trâmites, Dados, **Lembretes** da solicitação), resumo (responsável, último trâmite, dias parada, expectativa) e **anterior/próxima** sem fechar.
+- **Busca em janela central** (/ ou Ctrl+K) com resultados enquanto digita.
+- **Agenda do mês** e **lembretes que repetem** (janela "Novo lembrete" igual à do Hub).
+- Equipe e Clientes ganharam abas (Painel / Responsáveis, Painel / Empresas em cartões).
+- Continua **somente leitura**; as ações ficam para a próxima versão, depois do mapeamento.
 
 ## Novidades da v0.7.0 (a página por cima do Onvio)
 
