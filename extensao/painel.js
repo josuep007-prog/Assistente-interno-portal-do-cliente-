@@ -5,7 +5,7 @@
   const $$ = s => [...document.querySelectorAll(s)];
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-  const st = { snap: null, status: null, settings: Object.assign({}, OC.DEFAULTS), regras: null, usuario: {}, aba: 'minhas', texto: '', tipo: '', lado: '', resp: '', kpi: '', limite: 60, busca: [], guias: {}, clientes: {}, fguia: '' };
+  const st = { snap: null, status: null, settings: Object.assign({}, OC.DEFAULTS), regras: null, usuario: {}, aba: 'minhas', texto: '', tipo: '', lado: '', resp: '', kpi: '', limite: 60, busca: [], guias: {}, clientes: {}, fguia: '', ultima: null };
 
   /* ---------- utilidades ---------- */
   function fmtHora(iso) {
@@ -62,6 +62,7 @@
   }
 
   /* ---------- render ---------- */
+  const fmtHoraS = iso => { const d = iso ? new Date(iso) : null; return d && !isNaN(d) ? [d.getHours(), d.getMinutes(), d.getSeconds()].map(n => String(n).padStart(2, '0')).join(':') : ''; };
   function renderSync() {
     const s = st.status || {};
     const snap = st.snap;
@@ -69,7 +70,11 @@
     btn.classList.toggle('girando', s.estado === 'lendo');
     let tx = '';
     if (s.estado === 'lendo') tx = 'Lendo o Onvio' + (s.etapa ? ' · ' + s.etapa : '…');
-    else if (snap) tx = 'Atualizado ' + fmtHora(snap.fetchedAt) + ' · a cada ' + st.settings.intervalo + ' min';
+    else if (snap && st.settings.tempoRealSeg > 0) {
+      const ver = st.ultima || snap.fetchedAt;
+      const velha = Date.now() - new Date(ver) > Math.max(120, st.settings.tempoRealSeg * 4) * 1000;
+      tx = (velha ? 'Sem verificar desde ' : 'Ao vivo · verificado ') + fmtHoraS(ver);
+    } else if (snap) tx = 'Atualizado ' + fmtHora(snap.fetchedAt) + ' · a cada ' + st.settings.intervalo + ' min';
     else tx = 'Ainda sem leitura';
     $('#sync-tx').textContent = tx;
     $('#quem').textContent = snap && snap.user && snap.user.nome ? snap.user.nome + ' · ControlTax' : 'Portal do Cliente · ControlTax';
@@ -260,7 +265,8 @@
 
   /* ---------- carga inicial e atualizações ---------- */
   const combinar = () => { st.settings = OC.combinarSettings(st.regras, st.usuario); };
-  chrome.storage.local.get(['snapshot', 'status', 'settings', 'regrasEscritorio', 'guias', 'clientes'], d => {
+  chrome.storage.local.get(['snapshot', 'status', 'settings', 'regrasEscritorio', 'guias', 'clientes', 'ultimaVerificacao'], d => {
+    st.ultima = d.ultimaVerificacao || null;
     st.snap = d.snapshot || null; st.status = d.status || null; st.guias = d.guias || {}; st.clientes = d.clientes || {};
     st.regras = d.regrasEscritorio || null; st.usuario = d.settings || {}; combinar();
     render();
@@ -273,9 +279,10 @@
     if (ch.settings) st.usuario = ch.settings.newValue || {};
     if (ch.regrasEscritorio) st.regras = ch.regrasEscritorio.newValue || null;
     if (ch.settings || ch.regrasEscritorio) combinar();
+    if (ch.ultimaVerificacao) st.ultima = ch.ultimaVerificacao.newValue;
     if (ch.guias) st.guias = ch.guias.newValue || {};
     if (ch.clientes) st.clientes = ch.clientes.newValue || {};
     if (ch.snapshot || ch.settings || ch.regrasEscritorio || ch.guias || ch.clientes) render(); else renderSync();
   });
-  setInterval(renderSync, 60000);
+  setInterval(renderSync, 5000);
 })();

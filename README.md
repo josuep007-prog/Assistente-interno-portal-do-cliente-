@@ -2,7 +2,7 @@
 
 Ferramentas internas da ControlTax para facilitar o uso e o controle do **Portal do Cliente Onvio** por analistas e gestores.
 
-## Control Onvio (extensão do Chrome) · v0.4.0
+## Control Onvio (extensão do Chrome) · v0.5.0
 
 Junta numa fila só as solicitações pendentes das 10 listas do Portal do Cliente (Geral, Cadastro de empregado, contribuinte e estagiário, Aviso e Cálculo de férias, Aviso e Cálculo de rescisão, Afastamento e Lançamento de rubricas), com semáforo de prazo, contagem para a prescrição e notificações. Também marca os dias parados na grade do Onvio, avisa guias não visualizadas pelo cliente perto do vencimento e traz o painel do gestor (G1/G2/G3 e 1º trâmite por analista).
 
@@ -26,7 +26,8 @@ Para atualizar: baixe de novo, substitua a pasta e clique em **Recarregar** no c
 | `manifest.json` | Configuração da extensão (Manifest V3) |
 | `core.js` | Tipos de solicitação, códigos de situação, coleta na API do Onvio e regras de prazo |
 | `background.js` | Leitura periódica, contador no ícone, notificações e abertura da solicitação no Onvio |
-| `shell.js` | Botão flutuante e coluna do painel dentro do Onvio (a página encolhe em telas largas) |
+| `shell.js` | Botão flutuante e coluna do painel dentro do Onvio (a página encolhe em telas largas); pede a verificação ao vivo |
+| `acao-hook.js` | Percebe ações que alteram solicitações na página e pede leitura imediata (sem ler conteúdo) |
 | `painel.html/js` | Painel (Minhas, Sem resp., Equipe, Analistas, Guias, Buscar, exportar CSV), exibido em iframe pelo `shell.js` |
 | `content.js` | Filtra a grade do Onvio pelo ID ao abrir uma solicitação pelo painel |
 | `options.html/js` | Prazos, intervalo de leitura, notificações e feriados |

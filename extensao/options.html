@@ -20,8 +20,14 @@
     <h2>Leitura do Onvio</h2>
     <p>A extensão só lê. Usa a sua sessão do Onvio e vê apenas o que o seu perfil já vê.</p>
     <div class="grid2">
-      <label class="field">Intervalo entre leituras (min)<input type="number" id="intervalo" min="5" max="120"></label>
+      <label class="field">Verificação ao vivo (segundos; 0 desliga)<input type="number" id="tempoRealSeg" min="0" max="600"></label>
+      <label class="field">Leitura completa a cada (min)<input type="number" id="intervalo" min="1" max="120"></label>
     </div>
+    <p style="margin:10px 0 0">Com o Onvio aberto e visível, a extensão confere a cada poucos segundos se algo mudou (uma chamada leve por lista) e lê tudo de novo quando muda, ou a cada tantos minutos. Depois de qualquer ação sua que altere solicitações no Onvio, a leitura é imediata. Mínimo de 15 segundos.</p>
+    <div class="foot" style="padding:10px 0 0">
+      <button class="btn btn-sm" id="testar-leitura">Testar a leitura agora</button>
+    </div>
+    <pre class="mono" id="teste-leitura" style="margin:10px 0 0;white-space:pre-wrap;font-size:12px" hidden></pre>
   </section>
   <section class="sec">
     <h2>Regras do escritório</h2>
