@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.9.0)
+# Control Onvio · ControlTax (v0.9.1)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Nesta versão a extensão ainda **só lê**: as ações (responder, definir responsável, anexar) chegam na próxima, depois do mapeamento.
 
@@ -41,6 +41,17 @@ Vez do escritório: sem primeiro trâmite após 1 dia útil; aberta além de 3 d
 Vez do cliente: sem retorno há mais de 5 dias úteis (laranja); a partir de 20 dias parada fica vermelho com a contagem até a prescrição de 30 dias.
 
 Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardando resposta** = o escritório precisa responder; **Respondido** = vez do cliente.
+
+## Novidades da v0.9.1 (números do Hoje: seus ou da equipe)
+
+Os números do topo do Hoje contavam só as solicitações em que **você é o responsável** no Onvio. Quem não é responsável por nenhuma pendente (gestor, coordenação, processos) via tudo zerado, mesmo com o Onvio cheio. Agora:
+
+- há um seletor **Minhas · N / Equipe · N** em cima dos números; sem nada com você, ele já abre na **Equipe** (com ação do escritório, fora do prazo, vencem hoje, cliente respondeu, sem analista);
+- a frase embaixo da data explica de onde vêm os números;
+- se a leitura voltar vazia nas 10 listas, a tela diz isso em vermelho e aponta para "Testar a leitura" (nunca zero em silêncio);
+- o Diagnóstico mostra quantas pendências estão com você ("atribuídas a mim" do Onvio) e com qual usuário a leitura foi feita.
+
+**A confirmar no Onvio real:** se o filtro "atribuídas a mim" (`assignedtome=true`) devolve as suas solicitações. Se você é responsável por alguma pendente e o Diagnóstico mostra 0 com você, me envie o Diagnóstico.
 
 ## Novidades da v0.9.0 (Hoje com a equipe)
 
