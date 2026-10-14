@@ -71,6 +71,32 @@
     <p>Uma data por linha, no formato AAAA-MM-DD. Já vêm os nacionais de 2026 e 2027; inclua os estaduais e municipais.</p>
     <label class="field"><textarea id="feriados" rows="8" class="mono"></textarea></label>
   </section>
+  <section class="sec" id="sec-aprender">
+    <h2>Aprender ações (mapeamento)</h2>
+    <p>Para a extensão passar a fazer as ações do Onvio, ela precisa conhecer o formato de cada chamada. Com este modo ligado, ela anota o <b>formato</b> das chamadas que o próprio Onvio faz enquanto você trabalha: endereço, nomes e tipos dos campos. <b>Nunca anota valores</b> (textos, nomes, CPF, datas e números viram só o tipo). Desliga sozinho depois de 2 horas.</p>
+    <p><b>Use só na empresa de teste</b> (EMPRESA EXEMPLO SIMPLES NACIONAL LTDA) e, com o modo ligado, faça uma vez cada ação abaixo no Onvio, em cada tipo de solicitação que puder (Geral, Cadastro, Férias, Rescisão, Afastamento, Rubricas):</p>
+    <ol class="roteiro">
+      <li>Abrir a visualização (ícone "i") e trocar entre Dados e Trâmites</li>
+      <li>Incluir um trâmite só com texto (Trâmite Rápido e tela completa)</li>
+      <li>Incluir trâmite mudando a situação (ex.: Em análise, Aguardando cliente)</li>
+      <li>Concluir uma solicitação</li>
+      <li>Definir responsável (uma e várias de uma vez)</li>
+      <li>Alterar a expectativa de conclusão</li>
+      <li>Encaminhar para outro usuário</li>
+      <li>Anexar um arquivo fictício ao trâmite e excluí-lo</li>
+      <li>Baixar os anexos</li>
+      <li>Imprimir</li>
+      <li>Copiar o link da solicitação para o cliente (Geral)</li>
+      <li>Excluir uma solicitação criada só para o teste</li>
+    </ol>
+    <p>Depois clique em <b>Copiar o que foi aprendido</b> e envie o texto.</p>
+    <div class="foot" style="padding:6px 0 0; align-items:center">
+      <button class="btn btn-sm btn-primary" id="aprender-ligar">Ligar</button>
+      <button class="btn btn-sm" id="aprender-copiar">Copiar o que foi aprendido</button>
+      <button class="btn btn-sm" id="aprender-limpar">Limpar</button>
+      <span class="save-state" id="aprender-estado"></span>
+    </div>
+  </section>
   <section class="sec">
     <h2>Diagnóstico</h2>
     <p>Para conferir a leitura com o Onvio e informar problemas.</p>

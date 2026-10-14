@@ -107,6 +107,45 @@
     box.textContent = r.ok ? r.linhas.join('\n') : 'Não foi possível testar: ' + (r.erro || chrome.runtime.lastError || 'sem resposta');
   });
 
+  /* ---------- aprender ações ---------- */
+  const APRENDER_MAX_MS = 2 * 3600 * 1000;
+  const ativo = a => !!(a && a.ligado && Date.now() - (a.desde || 0) < APRENDER_MAX_MS);
+  const compacto = v => { const s = JSON.stringify(v); return s && s.length > 1500 ? s.slice(0, 1500) + '…' : s; };
+  function textoAprendido(lista) {
+    const l = ['Control Onvio · ações aprendidas · versão ' + chrome.runtime.getManifest().version + ' · ' + new Date().toLocaleString('pt-BR'), ''];
+    (lista || []).forEach((r, i) => {
+      l.push((i + 1) + '. ' + r.metodo + ' ' + r.caminho + ' → ' + r.status + (r.vezes > 1 ? ' (' + r.vezes + 'x)' : '') + ' · telas: ' + (r.rotas || []).join(', '));
+      if (r.query && Object.keys(r.query).length) l.push('   query: ' + compacto(r.query));
+      if (r.contentTypePedido) l.push('   envia: ' + r.contentTypePedido);
+      if (r.corpo) l.push('   corpo: ' + compacto(r.corpo));
+      if (r.resposta) l.push('   resposta: ' + compacto(r.resposta));
+    });
+    if (!(lista || []).length) l.push('(nada registrado ainda)');
+    return l.join('\n');
+  }
+  async function mostrarAprender() {
+    const { aprender, aprendizado } = await chrome.storage.local.get(['aprender', 'aprendizado']);
+    const ligado = ativo(aprender);
+    const n = (aprendizado || []).length;
+    $('#aprender-ligar').textContent = ligado ? 'Desligar' : 'Ligar';
+    const resta = ligado ? Math.max(0, Math.round((APRENDER_MAX_MS - (Date.now() - aprender.desde)) / 60000)) : 0;
+    $('#aprender-estado').textContent = (ligado ? 'Ligado · desliga em ' + resta + ' min · ' : 'Desligado · ') + n + ' chamada(s) diferente(s) registrada(s). Abas do Onvio abertas antes de atualizar a extensão precisam de F5.';
+  }
+  $('#aprender-ligar').addEventListener('click', async () => {
+    const { aprender } = await chrome.storage.local.get('aprender');
+    await chrome.storage.local.set({ aprender: ativo(aprender) ? { ligado: false } : { ligado: true, desde: Date.now() } });
+    mostrarAprender();
+  });
+  $('#aprender-copiar').addEventListener('click', async () => {
+    const { aprendizado } = await chrome.storage.local.get('aprendizado');
+    const txt = textoAprendido(aprendizado);
+    try { await navigator.clipboard.writeText(txt); $('#aprender-estado').textContent = 'Copiado (' + (aprendizado || []).length + ' chamadas).'; }
+    catch (e) { $('#diag').textContent = txt; $('#aprender-estado').textContent = 'Não consegui copiar: o texto foi para o Diagnóstico abaixo.'; }
+  });
+  $('#aprender-limpar').addEventListener('click', async () => { await chrome.storage.local.remove('aprendizado'); mostrarAprender(); });
+  mostrarAprender();
+  setInterval(mostrarAprender, 30000);
+
   $('#copiar-diag').addEventListener('click', async () => {
     try { await navigator.clipboard.writeText($('#diag').textContent); $('#copiado').textContent = 'Copiado'; }
     catch (e) { $('#copiado').textContent = 'Não foi possível copiar; selecione o texto.'; }

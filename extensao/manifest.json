@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Control Onvio · ControlTax",
   "short_name": "Control Onvio",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Fila única das solicitações do Portal do Cliente Onvio, com prazos, prescrição e alertas para analistas e gestores.",
   "permissions": [
     "storage",

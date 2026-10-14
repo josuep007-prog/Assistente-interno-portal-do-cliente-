@@ -2,7 +2,7 @@
 
 Ferramentas internas da ControlTax para facilitar o uso e o controle do **Portal do Cliente Onvio** por analistas e gestores.
 
-## Control Onvio (extensão do Chrome) · v0.5.0
+## Control Onvio (extensão do Chrome) · v0.6.0
 
 Junta numa fila só as solicitações pendentes das 10 listas do Portal do Cliente (Geral, Cadastro de empregado, contribuinte e estagiário, Aviso e Cálculo de férias, Aviso e Cálculo de rescisão, Afastamento e Lançamento de rubricas), com semáforo de prazo, contagem para a prescrição e notificações. Também marca os dias parados na grade do Onvio, avisa guias não visualizadas pelo cliente perto do vencimento e traz o painel do gestor (G1/G2/G3 e 1º trâmite por analista).
 

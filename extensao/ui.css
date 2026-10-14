@@ -210,6 +210,8 @@ body.painel{overflow:hidden}
 .toast.err{border-left-color:var(--brand-red)}
 
 /* opções */
+.roteiro{margin:0 0 12px; padding-left:20px; font-size:12.5px; color:var(--ink-2)}
+.roteiro li{margin:2px 0}
 .page{max-width:720px; margin:0 auto; padding:0 0 40px}
 .sec{background:var(--surface); border:1px solid var(--rule); border-radius:var(--r); margin:14px; padding:14px 16px}
 .sec h2{font-size:14px; font-weight:700; margin-bottom:4px}
