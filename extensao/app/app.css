@@ -18,7 +18,7 @@
 
 html.app-html, .app-body{height:100%}
 .app-body{overflow:hidden; font-size:13.5px}
-.app{height:100%; padding-left:var(--trilho)}
+.app{display:block; height:100%; padding-left:var(--trilho)}     /* ui.css tem um .app em grade, do painel antigo */
 kbd{font:600 10.5px "IBM Plex Mono",monospace; border:1px solid var(--rule-strong); border-radius:3px; padding:0 5px; color:var(--ink-3); background:var(--surface)}
 a{color:var(--blue-deep)}
 
@@ -159,19 +159,6 @@ a{color:var(--blue-deep)}
 .ht-cont .kpi.late{border-left-width:1px; border-color:var(--brand-red)}
 .ht-cont .kpi.today{border-left-width:1px; border-color:var(--status-warn)}
 .ht-cont .kpi.ok{border-left-width:1px}
-
-.ticker{display:flex; align-items:stretch; margin-bottom:18px; border-radius:var(--r); overflow:hidden; background:#0E151B; color:#B9C5CF; box-shadow:inset 0 0 0 1px rgba(255,255,255,.06); min-height:42px}
-.tk-live{flex:none; display:flex; align-items:center; gap:7px; padding:0 14px; font:800 10.5px "Archivo",sans-serif; letter-spacing:.12em; text-transform:uppercase; color:#fff; background:linear-gradient(90deg, #C2000C, #8E0A10)}
-.tk-live i{width:7px; height:7px; border-radius:50%; background:#fff; animation:pisca 1.4s ease-in-out infinite}
-.ticker.parado .tk-live{background:#35434E}
-.ticker.parado .tk-live i{animation:none; opacity:.5}
-@keyframes pisca{50%{opacity:.25}}
-.tk-tx{flex:1; min-width:0; display:flex; align-items:center; gap:10px; padding:0 16px; font-size:13px; overflow:hidden; white-space:nowrap}
-.tk-tx b{color:#fff; font-weight:600}
-.tk-tx .sep{color:#55687A}
-.tk-tx button{all:unset; cursor:pointer; overflow:hidden; text-overflow:ellipsis}
-.tk-tx button:hover b{text-decoration:underline}
-.tk-hora{flex:none; display:flex; align-items:center; padding:0 16px; font:500 12px "IBM Plex Mono",monospace; color:#7D8E9B}
 
 .semana{display:grid; grid-template-columns:repeat(8,minmax(0,1fr)) minmax(96px,.9fr); margin-bottom:6px; border:1px solid var(--rule); border-radius:var(--r); background:var(--surface); overflow:hidden}
 .sm-dia{display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; padding:12px 6px 11px; border:0; border-left:1px solid var(--rule); background:none; color:inherit; font:inherit; cursor:pointer; min-width:0; transition:background .12s}
@@ -486,3 +473,107 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .bl-ic{width:48px; height:48px; border-radius:6px; display:grid; place-items:center; background:var(--brand-red-soft); color:var(--brand-red)}
 .bl-ic .ic{width:24px; height:24px}
 .bl-acoes{display:flex; gap:10px; flex-wrap:wrap; margin-top:20px}
+
+/* ============ painel da equipe no Hoje ============ */
+/* rampa sequencial de um só tom (azul, paleta da skill dataviz): claro → escuro; no tema escuro, o perto de zero
+   fica perto do fundo. --viz-seq-ink-* = cor do número dentro da célula (contraste ≥ 4,5:1). */
+:root{
+  --viz-seq-1:#b7d3f6; --viz-seq-2:#86b6ef; --viz-seq-3:#5598e7; --viz-seq-4:#256abf; --viz-seq-5:#1c5cab;
+  --viz-seq-ink-1:#101820; --viz-seq-ink-2:#101820; --viz-seq-ink-3:#101820; --viz-seq-ink-4:#fff; --viz-seq-ink-5:#fff;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){ --viz-seq-1:#104281; --viz-seq-2:#1c5cab; --viz-seq-3:#256abf; --viz-seq-4:#5598e7; --viz-seq-5:#86b6ef;
+    --viz-seq-ink-1:#fff; --viz-seq-ink-2:#fff; --viz-seq-ink-3:#fff; --viz-seq-ink-4:#0B1015; --viz-seq-ink-5:#0B1015 }
+}
+:root[data-theme="dark"]{ --viz-seq-1:#104281; --viz-seq-2:#1c5cab; --viz-seq-3:#256abf; --viz-seq-4:#5598e7; --viz-seq-5:#86b6ef;
+  --viz-seq-ink-1:#fff; --viz-seq-ink-2:#fff; --viz-seq-ink-3:#fff; --viz-seq-ink-4:#0B1015; --viz-seq-ink-5:#0B1015 }
+
+/* barra viva: só a bolinha (verde pulsando = ao vivo, cinza = parado, vermelho = sem leitura) e a fita */
+.fita{display:flex; align-items:center; gap:12px; height:46px; margin-bottom:22px; padding-left:16px; border-radius:var(--r); background:#0E151B; box-shadow:inset 0 0 0 1px rgba(255,255,255,.06); overflow:hidden}
+.ft-bola{flex:none; width:10px; height:10px; border-radius:50%; background:#4ECC8B; animation:bola 2s ease-out infinite}
+@keyframes bola{0%{box-shadow:0 0 0 0 rgba(78,204,139,.6)} 70%,100%{box-shadow:0 0 0 8px rgba(78,204,139,0)}}
+.fita.parado .ft-bola{background:#7D8E9B; animation:none}
+.fita.erro .ft-bola{background:#E8474B; animation:none}
+.ft-janela{flex:1; min-width:0; height:100%; overflow:hidden; -webkit-mask-image:linear-gradient(90deg, transparent, #000 3%, #000 97%, transparent); mask-image:linear-gradient(90deg, transparent, #000 3%, #000 97%, transparent)}
+.ft-trilho{display:flex; width:max-content; height:100%; animation:fita var(--ft-tempo, 60s) linear infinite}
+.fita:hover .ft-trilho, .fita:focus-within .ft-trilho{animation-play-state:paused}
+@keyframes fita{to{transform:translateX(-50%)}}
+.ft-grupo{display:flex; height:100%}
+.ft-i{all:unset; box-sizing:border-box; display:inline-flex; align-items:center; gap:8px; height:100%; padding:0 18px; border-right:1px solid rgba(255,255,255,.08); color:#B9C5CF; font-size:13px; white-space:nowrap; cursor:pointer}
+.ft-i:hover, .ft-i:focus-visible{background:rgba(255,255,255,.07)}
+.ft-i b{color:#E9EEF2; font-weight:600}
+.ft-p{width:8px; height:8px; border-radius:50%; flex:none; background:#4ECC8B}
+.ft-p.n1{background:#FF9D42} .ft-p.n2{background:#FF6B6B}
+.ft-c{color:#fff; font-weight:600}
+.ft-y{color:#7D8E9B}
+.ft-d{font:500 12.5px "IBM Plex Mono",monospace; color:#E9EEF2}
+.ft-d.late{color:#FF8070} .ft-d.today{color:#FFB366}
+.ft-t{font-size:11px; font-weight:700}
+.ft-t.sobe{color:#FF6B6B} .ft-t.desce{color:#4ECC8B}
+.ft-t.nova{font-size:9.5px; letter-spacing:.08em; color:#8CC6EC; border:1px solid rgba(140,198,236,.5); border-radius:3px; padding:0 4px}
+.ft-vazia{display:flex; align-items:center; color:#7D8E9B; font-size:13px; -webkit-mask-image:none; mask-image:none}
+@media (prefers-reduced-motion: reduce){
+  .ft-trilho{animation:none}
+  .ft-janela{overflow-x:auto; -webkit-mask-image:none; mask-image:none; scrollbar-width:thin}
+  .ft-grupo[aria-hidden]{display:none}
+}
+
+/* seletor pequeno no cabeçalho do cartão; rótulos destacados (sua linha, "Sem analista") */
+.seg-sm button{padding:3px 9px; font-size:11.5px}
+.viz .rot-destaque{fill:var(--ink); font-weight:700}
+.viz .rot-alerta{fill:var(--late); font-weight:700}
+.viz text[data-id]{cursor:pointer}
+.rot-destaque{color:var(--ink)!important; font-weight:700!important}
+.rot-alerta{color:var(--late)!important; font-weight:700!important}
+
+/* placar do dia (estilo cotação: ▲ a fila cresceu, ▼ diminuiu) */
+.placar{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-bottom:10px}
+.placar > div{display:flex; flex-direction:column; gap:2px; padding:10px 12px; border:1px solid var(--rule); border-radius:var(--r); background:var(--surface-2)}
+.placar span, .pl-fila span{font-size:11px; font-weight:600; color:var(--ink-3); text-transform:uppercase; letter-spacing:.04em}
+.placar b{font:600 22px/1.15 "IBM Plex Mono",monospace}
+.sobe{color:var(--late)} .desce{color:var(--ok)}
+.pl-fila{display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; padding:8px 0 4px; border-top:1px solid var(--rule)}
+.pl-fila > b{font:600 18px "IBM Plex Mono",monospace}
+.pl-fila small{font-size:12px; color:var(--ink-3)}
+.pl-fila small b{font:600 12px "IBM Plex Mono",monospace}
+
+/* mapa de calor: analista × dias parada */
+.mapa-calor{display:grid; grid-template-columns:minmax(100px,170px) repeat(var(--mc-cols),minmax(42px,1fr)) 52px; gap:2px}
+.mc-c{display:flex; align-items:center; justify-content:center; min-height:30px; font-size:12.5px; min-width:0}
+.mc-h{min-height:22px; font-size:10.5px; font-weight:600; color:var(--ink-3); text-transform:uppercase; letter-spacing:.03em}
+.mc-r{display:block; padding-right:8px; line-height:30px; color:var(--ink-2); font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.mc-v{all:unset; box-sizing:border-box; display:flex; align-items:center; justify-content:center; min-height:30px; border-radius:3px; font:600 12.5px "IBM Plex Mono",monospace; cursor:pointer}
+.mc-v:not(:disabled):hover{box-shadow:inset 0 0 0 2px var(--ink)}
+.mc-v:focus-visible{outline:2px solid var(--blue-deep); outline-offset:1px}
+.mc-v:disabled{cursor:default}
+.mc-t{justify-content:flex-end; padding-right:4px; font:600 12.5px "IBM Plex Mono",monospace; color:var(--ink-2)}
+.mc-h.mc-t{font-family:"IBM Plex Sans",sans-serif; font-size:10.5px}
+.mapa-calor .s0{background:var(--surface-2)}
+.mapa-calor .s1, .mc-leg .s1{background:var(--viz-seq-1); color:var(--viz-seq-ink-1)}
+.mapa-calor .s2, .mc-leg .s2{background:var(--viz-seq-2); color:var(--viz-seq-ink-2)}
+.mapa-calor .s3, .mc-leg .s3{background:var(--viz-seq-3); color:var(--viz-seq-ink-3)}
+.mapa-calor .s4, .mc-leg .s4{background:var(--viz-seq-4); color:var(--viz-seq-ink-4)}
+.mapa-calor .s5, .mc-leg .s5{background:var(--viz-seq-5); color:var(--viz-seq-ink-5)}
+.mc-leg{display:flex; align-items:center; gap:3px; margin-top:10px; font-size:11.5px; color:var(--ink-3)}
+.mc-leg i{width:18px; height:10px; border-radius:2px}
+.mc-leg span:first-child{margin-right:4px} .mc-leg span:last-child{margin-left:4px}
+
+/* próximas a prescrever: contagem regressiva */
+.presc .cd{flex:none; width:44px; display:flex; flex-direction:column; align-items:center; font-size:10px; font-weight:600; color:var(--ink-3); text-transform:uppercase; letter-spacing:.04em}
+.presc .cd b{font:700 19px/1.05 "Archivo",sans-serif; color:var(--today)}
+.presc .cd.late b{color:var(--late)}
+
+/* sem analista: sugestão de distribuição */
+.dist-res{margin:0 0 10px; font-size:12.5px; color:var(--ink-2)}
+.dist{display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:8px}
+.dist-i{display:flex; align-items:center; gap:10px; padding:10px 12px; border:1px solid var(--rule); border-left:3px solid var(--ok); border-radius:var(--r); cursor:pointer; min-width:0}
+.dist-i.lvl-1{border-left-color:var(--today)} .dist-i.lvl-2{border-left-color:var(--late)}
+.dist-i:hover{background:var(--surface-2)}
+.dist-i:focus-visible{outline:2px solid var(--blue-deep); outline-offset:-2px}
+.dist-i .tx{flex:1; min-width:0}
+.dist-i .tx b{display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.sug{flex:none; text-align:right; font-size:12px; color:var(--ink-3)}
+.sug b{color:var(--blue-deep)}
+.sug small{display:block; font-size:11px}
+.trio.duo{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media (max-width:1100px){ .trio.duo{grid-template-columns:minmax(0,1fr)} }
