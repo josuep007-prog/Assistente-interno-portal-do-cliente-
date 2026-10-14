@@ -592,6 +592,72 @@
     return out;
   }
 
+  /* ---------- painel da equipe na tela Hoje ---------- */
+  // Tendência de cada pendência desde a leitura anterior (setas da barra viva). A marca vale por 2 horas.
+  const TENDENCIA_MS = 2 * 3600000;
+  function tendencias(anterior, snap, now) {
+    now = now || new Date();
+    if (!anterior || !anterior.items || !snap || !snap.items) return snap;   // primeira leitura: sem setas
+    const antes = new Map(anterior.items.map(i => [i.k, i]));
+    for (const it of snap.items) {
+      const a = antes.get(it.k);
+      const peso = x => (x.nivel || 0) * 10 + (x.grav || 0);
+      let t = null;
+      if (!a) t = 'nova';
+      else if (peso(it) > peso(a)) t = 'piorou';
+      else if (peso(it) < peso(a)) t = 'melhorou';
+      if (t) { it.tend = t; it.tendEm = now.toISOString(); }
+      else if (a.tend && a.tendEm && now - new Date(a.tendEm) < TENDENCIA_MS) { it.tend = a.tend; it.tendEm = a.tendEm; }
+    }
+    return snap;
+  }
+  // Faixas de dias parada do mapa de calor.
+  const FAIXAS_IDADE = [{ de: 0, ate: 2, rot: '0–2 d' }, { de: 3, ate: 5, rot: '3–5 d' }, { de: 6, ate: 15, rot: '6–15 d' }, { de: 16, ate: 30, rot: '16–30 d' }, { de: 31, ate: null, rot: '31+ d' }];
+  const faixaDe = parado => FAIXAS_IDADE.findIndex(f => (parado || 0) >= f.de && (f.ate == null || (parado || 0) <= f.ate));
+  function mapaIdade(items) {
+    const ordem = porAnalista(items).map(r => r.resp);
+    const sem = '(sem responsável)';
+    const resps = (ordem.includes(sem) ? [sem] : []).concat(ordem.filter(r => r !== sem));
+    const linhas = resps.map(resp => ({ resp, por: FAIXAS_IDADE.map(() => 0), total: 0 }));
+    const idx = new Map(linhas.map(l => [l.resp, l]));
+    const totais = FAIXAS_IDADE.map(() => 0);
+    for (const it of items) {
+      const l = idx.get(it.resp || sem), f = faixaDe(it.parado);
+      l.por[f]++; l.total++; totais[f]++;
+    }
+    return { linhas, totais };
+  }
+  // Para cada pendência sem responsável (da mais grave para a menos), quem está menos carregado.
+  // Carga = pendências na vez do escritório, pesadas pela gravidade. Só sugestão: nada é atribuído.
+  const pesoCarga = it => ({ 3: 4, 2: 3, 1: 2 }[it.grav] || 1);
+  function cargaEscritorio(items) {
+    const carga = new Map();
+    for (const it of items) if (it.resp) carga.set(it.resp, (carga.get(it.resp) || 0) + (it.lado === 'esc' ? pesoCarga(it) : 0));
+    return carga;
+  }
+  function sugerirDistribuicao(items) {
+    const peso = pesoCarga;
+    const carga = cargaEscritorio(items);
+    if (!carga.size) return [];
+    const sem = items.filter(i => !i.resp).sort((a, b) => ((b.nivel || 0) - (a.nivel || 0)) || ((b.grav || 0) - (a.grav || 0)) || ((b.parado || 0) - (a.parado || 0)));
+    return sem.map(it => {
+      const [quem, c] = [...carga.entries()].sort((a, b) => (a[1] - b[1]) || a[0].localeCompare(b[0], 'pt-BR'))[0];
+      carga.set(quem, c + peso(it));
+      return { k: it.k, sugerido: quem, carga: c };
+    });
+  }
+  // Placar do dia: entradas, saídas, saldo e a fila agora comparada com o fim de ontem.
+  function placarDoDia(serie, items, now) {
+    now = now || new Date();
+    const hoje = (serie || {})[ymd(now)] || {};
+    const d = new Date(now); d.setDate(d.getDate() - 1);
+    const ontem = (serie || {})[ymd(d)];
+    const horas = ontem && ontem.horas ? Object.keys(ontem.horas).sort() : [];
+    const filaOntem = horas.length ? ontem.horas[horas[horas.length - 1]] : null;
+    const fila = (items || []).length;
+    return { entradas: hoje.entradas || 0, saidas: hoje.saidas || 0, saldo: (hoje.entradas || 0) - (hoje.saidas || 0), fila, filaOntem, variacao: filaOntem == null ? null : fila - filaOntem };
+  }
+
   /* ---------- eventos (alertas do sino e notificações) ----------
    * Compara duas leituras. Guarda só tipo, ID, cliente, motivo e hora: nada de descrição nem dados pessoais. */
   function eventos(anterior, snap, s, now) {
@@ -720,5 +786,5 @@
     }));
   }
 
-  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);

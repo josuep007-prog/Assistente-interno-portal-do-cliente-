@@ -212,6 +212,7 @@ async function coletar(manual) {
       const assin = await OC.assinaturas(f).catch(() => null);     // antes da leitura: o que mudar depois será notado
       const snap = await OC.collect(f, s, (i, n, rot) => chrome.storage.local.set({ status: { estado: 'lendo', etapa: i + '/' + n + ' · ' + rot } }), { tramites: cacheTramites || {} });
       snap.via = via;
+      OC.tendencias(anterior, snap);                                  // setas ▲▼ da barra viva
       snap.versao = chrome.runtime.getManifest().version;
       const novoCache = snap.tramites.cache; delete snap.tramites.cache;   // o cache fica fora do resumo
       await chrome.storage.local.set({ tramites: novoCache });
