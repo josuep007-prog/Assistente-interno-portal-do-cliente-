@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.8.1)
+# Control Onvio · ControlTax (v0.9.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Nesta versão a extensão ainda **só lê**: as ações (responder, definir responsável, anexar) chegam na próxima, depois do mapeamento.
 
@@ -25,7 +25,7 @@ Para atualizar a versão: substitua os arquivos da pasta, clique em **Recarregar
 
 | Tela | Para quem | O que mostra |
 | --- | --- | --- |
-| **Hoje** | Analista | Saudação, data e números (com ação minha, fora do prazo, vencem hoje, cliente respondeu, lembretes); faixa **ao vivo** com a última novidade; **a semana** (atrasados, hoje e próximos 6 dias com lembretes e expectativas de conclusão); "Para fazer agora" (fora do prazo, vencem hoje, cliente respondeu); "Precisa de atenção" (prescrevem em breve, paradas há mais tempo, possível aba errada); agenda do dia escolhido e atividade |
+| **Hoje** | Todos | Saudação, data e números (com ação minha, fora do prazo, vencem hoje, cliente respondeu, lembretes); **barra viva** com as pendências da equipe passando por prioridade (bolinha verde = lendo ao vivo, ▲ piorou, ▼ melhorou, NOVA); **solicitações por analista e sem analista** (por gravidade, clique leva à fila; seletor de vez); **placar do dia** (entraram, saíram, saldo, fila × ontem); **a semana** (atrasados, hoje e próximos 6 dias com lembretes e expectativas de conclusão); "Para fazer agora" (fora do prazo, vencem hoje, cliente respondeu); **idade da fila** (mapa de calor analista × dias parada, clique leva às solicitações); **próximas a prescrever** (equipe, contagem regressiva); **sem analista: sugestão de distribuição** (só sugestão, a extensão não atribui); "Precisa de atenção" (paradas há mais tempo, possível aba errada); agenda do dia escolhido e atividade |
 | **Minha fila** | Analista e gestor | Abas Minhas / Equipe toda / Sem responsável. Busca, vez (escritório/cliente), **Filtros** (tipo, gravidade, responsável), **Ordenar**, **Lista ou Cartões**, **Mais** (exportar CSV). Os filtros ativos aparecem como etiquetas que se tiram com um clique |
 | **Agenda e lembretes** | Cada um | Calendário do mês com lembretes e expectativas de conclusão das suas solicitações; lista (atrasados, hoje, próximos, concluídos). Lembretes podem **repetir** (todo dia, todo dia útil, toda semana, todo mês) |
 | **Equipe** | Gestor | Aba Painel (números, carga por responsável G1/G2/G3, entradas e saídas de 14 dias, pendências ao longo do dia, por tipo, sem responsável, prescrições) e aba Responsáveis (carga de cada pessoa) |
@@ -41,6 +41,15 @@ Vez do escritório: sem primeiro trâmite após 1 dia útil; aberta além de 3 d
 Vez do cliente: sem retorno há mais de 5 dias úteis (laranja); a partir de 20 dias parada fica vermelho com a contagem até a prescrição de 30 dias.
 
 Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardando resposta** = o escritório precisa responder; **Respondido** = vez do cliente.
+
+## Novidades da v0.9.0 (Hoje com a equipe)
+
+- **Barra viva** no lugar da faixa "Ao vivo": as pendências da equipe passam como cotações da bolsa, da mais grave para a menos grave, com a bolinha de leitura (verde ao vivo, cinza parada, vermelha sem leitura) e setas ▲/▼ quando a solicitação piorou ou melhorou nas últimas 2 horas. Para ao passar o mouse; o clique abre o detalhe.
+- **Solicitações por analista**, com "Sem analista" sempre em cima, barras por gravidade, sua linha em negrito e seletor Todas / Escritório / Cliente. Clique leva à fila da pessoa.
+- **Placar do dia**: entraram, saíram, saldo e o tamanho da fila comparado com o fim de ontem, com a linha do dia.
+- **Idade da fila**: mapa de calor analista × dias parada (0–2, 3–5, 6–15, 16–30, 31+). O clique abre a fila com o filtro "Parada há …".
+- **Próximas a prescrever** (equipe toda, até 7 dias) e **sugestão de distribuição** das sem analista para quem está menos carregado (carga = pendências na vez do escritório, pesadas pela gravidade). É só sugestão: o responsável continua sendo definido no Onvio.
+- Correção: a tela agora rola até o fim (um estilo antigo do painel lateral esticava a página e cortava as últimas seções).
 
 ## Novidades da v0.8.1 (só a visão do escritório)
 

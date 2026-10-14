@@ -22,6 +22,7 @@ export function legenda(series) {
 
 // Barras horizontais empilhadas: uma linha por categoria (ex.: analista), segmentos por série (ex.: G1/G2/G3).
 // dados: [{ rotulo, valores: { chave: n }, id? }]  series: [{ chave, nome, cor }]
+// o.destaque: ids com rótulo em negrito (ex.: a própria pessoa); o.fixo: id com rótulo de alerta (ex.: sem analista).
 export function barrasEmpilhadas(dados, series, o) {
   o = Object.assign({ largura: 560, rotuloL: 150, linha: 26, barra: 16 }, o || {});
   if (!dados.length) return '<div class="vazio">Sem dados.</div>';
@@ -32,7 +33,8 @@ export function barrasEmpilhadas(dados, series, o) {
   let svg = '<svg class="viz" viewBox="0 0 ' + o.largura + ' ' + alt + '" width="100%" role="img" aria-label="' + esc(o.titulo || 'gráfico de barras') + '">';
   dados.forEach((d, i) => {
     const y = i * o.linha + 4;
-    svg += '<text x="' + (o.rotuloL - 8) + '" y="' + (y + o.barra / 2 + 4) + '" text-anchor="end" class="rot-forte">' + esc(d.rotulo.length > 22 ? d.rotulo.slice(0, 21) + '…' : d.rotulo) + '</text>';
+    const cls = d.id != null && o.fixo === d.id ? 'rot-forte rot-alerta' : d.id != null && (o.destaque || []).includes(d.id) ? 'rot-forte rot-destaque' : 'rot-forte';
+    svg += '<text x="' + (o.rotuloL - 8) + '" y="' + (y + o.barra / 2 + 4) + '" text-anchor="end" class="' + cls + '"' + (d.id ? ' data-id="' + esc(d.id) + '"' : '') + '>' + esc(d.rotulo.length > 22 ? d.rotulo.slice(0, 21) + '…' : d.rotulo) + '</text>';
     let x = o.rotuloL;
     const segs = series.filter(s => (d.valores[s.chave] || 0) > 0);
     segs.forEach((s, j) => {
@@ -96,6 +98,22 @@ export function linhaDoDia(pontos, o) {
       '<rect class="alvo" x="' + (X(p.x) - larg / 32).toFixed(1) + '" y="8" width="' + (larg / 16).toFixed(1) + '" height="' + area + '" data-tip="' + esc(p.x + 'h · ' + o.nome + ': ' + num(p.y)) + '"/>';
   });
   return svg + '</svg>';
+}
+
+// Mapa de calor (grade linha × coluna) com o número dentro da célula. Cor sequencial de um só tom
+// (--viz-seq-1..5, do claro ao escuro; zero fica neutro), tinta do texto conforme o fundo (--viz-seq-ink-*).
+// linhas: [{ id, rotulo, valores: [n...] }]  colunas: [{ id, rotulo }]
+export function mapaDeCalor(linhas, colunas, o) {
+  o = o || {};
+  if (!linhas.length) return '<div class="vazio">Sem dados.</div>';
+  const max = Math.max(1, ...linhas.flatMap(l => l.valores));
+  const passo = v => (v > 0 ? Math.max(1, Math.ceil(v / max * 5)) : 0);
+  const cab = '<div class="mc-c mc-h"></div>' + colunas.map(c => '<div class="mc-c mc-h">' + esc(c.rotulo) + '</div>').join('') + '<div class="mc-c mc-h mc-t">Total</div>';
+  const corpo = linhas.map(l => '<div class="mc-c mc-r' + (o.fixo === l.id ? ' rot-alerta' : (o.destaque || []).includes(l.id) ? ' rot-destaque' : '') + '" title="' + esc(l.rotulo) + '">' + esc(l.rotulo) + '</div>' +
+    l.valores.map((v, j) => '<button type="button" class="mc-c mc-v s' + passo(v) + '"' + (v ? '' : ' disabled') + ' data-id="' + esc(l.id) + '" data-col="' + esc(colunas[j].id) + '" data-tip="' + esc(l.rotulo + ' · ' + colunas[j].rotulo + '\n' + num(v) + (v === 1 ? ' solicitação' : ' solicitações')) + '">' + (v ? num(v) : '') + '</button>').join('') +
+    '<div class="mc-c mc-t">' + num(l.valores.reduce((a, b) => a + b, 0)) + '</div>').join('');
+  return '<div class="mapa-calor" role="table" aria-label="' + esc(o.titulo || 'mapa de calor') + '" style="--mc-cols:' + colunas.length + '">' + cab + corpo + '</div>' +
+    '<div class="mc-leg"><span>menos</span>' + [1, 2, 3, 4, 5].map(i => '<i class="s' + i + '"></i>').join('') + '<span>mais</span></div>';
 }
 
 /* ---------- dica (tooltip) compartilhada ---------- */

@@ -734,6 +734,55 @@ test('lembretes que repetem: feito pula para a próxima vez que ainda não passo
   assert.equal(OC.concluirLembrete({ id: 'antigo', texto: 'sem rep', quando: '2026-10-16T09:00:00' }, agora).feito, true, 'lembrete de versão anterior');
 });
 
+test('painel do Hoje: tendência (nova, piorou, melhorou) e a marca dura 2 horas', () => {
+  const t0 = new Date('2026-10-14T10:00:00');
+  const ant = { items: [{ k: 'a', nivel: 0, grav: 0 }, { k: 'b', nivel: 2, grav: 2 }, { k: 'c', nivel: 1, grav: 1 }] };
+  const snap = { items: [{ k: 'a', nivel: 1, grav: 1 }, { k: 'b', nivel: 1, grav: 1 }, { k: 'c', nivel: 1, grav: 1 }, { k: 'd', nivel: 0 }] };
+  OC.tendencias(ant, snap, t0);
+  assert.deepEqual(snap.items.map(i => i.tend), ['piorou', 'melhorou', undefined, 'nova']);
+  const depois = { items: snap.items.map(i => ({ k: i.k, nivel: i.nivel, grav: i.grav })) };
+  OC.tendencias(snap, depois, new Date('2026-10-14T11:00:00'));
+  assert.equal(depois.items[0].tend, 'piorou', 'continua por 2 h');
+  const mais = { items: depois.items.map(i => ({ k: i.k, nivel: i.nivel, grav: i.grav })) };
+  OC.tendencias(depois, mais, new Date('2026-10-14T12:30:00'));
+  assert.equal(mais.items[0].tend, undefined, 'depois de 2 h some');
+  const primeira = { items: [{ k: 'x' }] };
+  OC.tendencias(null, primeira, t0);
+  assert.equal(primeira.items[0].tend, undefined, 'primeira leitura não tem seta');
+});
+
+test('painel do Hoje: mapa de calor por idade com "sem responsável" primeiro', () => {
+  const it = [
+    { resp: 'Ana', parado: 1, grav: 3, nivel: 2 }, { resp: 'Ana', parado: 20 }, { resp: '', parado: 40 },
+    { resp: 'Bia', parado: 4 }, { resp: 'Bia', parado: 6 }, { resp: 'Bia', parado: 15 }
+  ];
+  const m = OC.mapaIdade(it);
+  assert.deepEqual(plano(m.linhas.map(l => l.resp)), ['(sem responsável)', 'Ana', 'Bia']);
+  assert.deepEqual(plano(m.linhas.map(l => l.por)), [[0, 0, 0, 0, 1], [1, 0, 0, 1, 0], [0, 1, 2, 0, 0]]);
+  assert.deepEqual(plano(m.totais), [1, 1, 2, 1, 1]);
+  assert.equal(OC.faixaDe(2), 0); assert.equal(OC.faixaDe(3), 1); assert.equal(OC.faixaDe(31), 4); assert.equal(OC.faixaDe(undefined), 0);
+});
+
+test('painel do Hoje: sugestão de distribuição equilibra a carga e não manda tudo para a mesma pessoa', () => {
+  const it = [
+    { k: 'a1', resp: 'Ana', lado: 'esc', grav: 3 }, { k: 'a2', resp: 'Ana', lado: 'esc', grav: 0 },
+    { k: 'b1', resp: 'Bia', lado: 'esc', grav: 0 }, { k: 'b2', resp: 'Bia', lado: 'cli', grav: 0 },
+    { k: 's1', resp: '', nivel: 2, grav: 3, parado: 9 }, { k: 's2', resp: '', nivel: 0, parado: 1 }, { k: 's3', resp: '', nivel: 1, grav: 1 }
+  ];
+  const r = OC.sugerirDistribuicao(it);
+  assert.deepEqual(plano(r.map(x => x.k)), ['s1', 's3', 's2'], 'mais grave primeiro');
+  assert.deepEqual(plano(r.map(x => x.sugerido)), ['Bia', 'Ana', 'Bia'], 'Bia (1) recebe a G3, passa a 5; Ana (5) empata e vence pelo nome; depois Bia');
+  assert.equal(r[0].carga, 1, 'carga só conta a vez do escritório');
+  assert.deepEqual(plano(OC.sugerirDistribuicao([{ k: 's', resp: '' }])), [], 'sem ninguém da equipe, sem sugestão');
+});
+
+test('painel do Hoje: placar do dia com saldo e comparação com o fim de ontem', () => {
+  const now = new Date('2026-10-14T15:00:00');
+  const serie = { '2026-10-13': { entradas: 2, saidas: 1, horas: { '09': 7, '17': 9 } }, '2026-10-14': { entradas: 5, saidas: 2, horas: { '10': 10 } } };
+  assert.deepEqual(plano(OC.placarDoDia(serie, new Array(12).fill({}), now)), { entradas: 5, saidas: 2, saldo: 3, fila: 12, filaOntem: 9, variacao: 3 });
+  assert.deepEqual(plano(OC.placarDoDia({}, [], now)), { entradas: 0, saidas: 0, saldo: 0, fila: 0, filaOntem: null, variacao: null });
+});
+
 test('consulta sob demanda: pendentes, todas, busca e uma solicitação pelo número', () => {
   const f = u => JSON.parse(new URL(u).searchParams.get('filter') || '{"groups":[{"items":[]}]}').groups[0].items.map(i => i.by + ' ' + i.op + ' ' + i.value);
   const g = OC.TYPE_BY_KEY.geral, r = OC.TYPE_BY_KEY.rubricas;
