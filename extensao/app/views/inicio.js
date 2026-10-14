@@ -1,71 +1,137 @@
-/* Início · visão do analista: o que fazer agora */
+/* Hoje · visão do analista (desenho do "Hoje" do Portal do Cliente no Control Hub):
+ * saudação e números, faixa ao vivo, a semana, "Para fazer agora", "Precisa de atenção", agenda e atividade. */
 import { estado, minhas, clienteRespondeu, primeiroNome, salvarLembretes } from '../estado.js';
-import { esc, plural, linhaItem, ligarItens, hojeExtenso, relativo, fmtDataHora, $ } from '../util.js';
+import { esc, plural, miniItem, ligarItens, relativo, fmtDataHora, fmtHoraS, saudacao, dataExtensa, $, $$ } from '../util.js';
 const OC = window.OC;
+const SEM = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+const MES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+
+let diaSel = null;   // 'atr' ou AAAA-MM-DD (padrão: hoje)
 
 export function render(el, ctx) {
   const m = minhas();
+  const hojeK = OC.ymd(new Date());
+  if (!diaSel || (diaSel !== 'atr' && diaSel < hojeK)) diaSel = hojeK;
   const esc_ = m.filter(i => i.lado === 'esc');
-  const hojeL = estado.lembretes.filter(l => ['hoje', 'atrasado'].includes(OC.situacaoLembrete(l)));
-  const kpis = [
-    { k: 'acao', rot: 'Com ação minha', val: esc_.length, det: 'vez do escritório', cls: 'soon' },
-    { k: 'hoje', rot: 'Vencem hoje', val: m.filter(i => i.nivel === 1).length, det: 'atenção', cls: 'today' },
-    { k: 'atraso', rot: 'Fora do prazo', val: m.filter(i => i.nivel === 2).length, det: plural(m.filter(i => i.grav === 3).length, 'crítica (G3)', 'críticas (G3)'), cls: 'late' },
-    { k: 'respondeu', rot: 'Cliente respondeu', val: m.filter(clienteRespondeu).length, det: 'aguardando você', cls: 'soon' },
-    { k: 'lembretes', rot: 'Lembretes hoje', val: hojeL.length, det: plural(hojeL.filter(l => OC.situacaoLembrete(l) === 'atrasado').length, 'atrasado', 'atrasados'), cls: hojeL.length ? 'today' : 'ok' }
-  ];
-
-  // prioridade: fora do prazo, crítica, mais tempo parada
-  const prioridades = esc_.slice().sort((a, b) => (b.nivel - a.nivel) || ((b.grav || 0) - (a.grav || 0)) || (b.parado - a.parado)).slice(0, 12);
-
-  // agenda do dia: lembretes, expectativas que vencem hoje e prescrições próximas (minhas)
-  const ag = [];
-  hojeL.sort((a, b) => a.quando.localeCompare(b.quando)).forEach(l => ag.push({ tipo: 'lembrete', l }));
-  m.filter(i => i.due && OC.ymd(OC.parseDate(i.due)) === OC.ymd(new Date())).forEach(i => ag.push({ tipo: 'expectativa', i }));
-  m.filter(i => i.prescreveEm != null && i.prescreveEm <= 3).forEach(i => ag.push({ tipo: 'prescreve', i }));
-
-  const eventos = estado.eventos.filter(e => e.mine).slice(0, 8);
+  const lems = (estado.lembretes || []).filter(l => !l.feito);
+  const sit = l => OC.situacaoLembrete(l);
+  const hojeL = lems.filter(l => ['hoje', 'atrasado'].includes(sit(l)));
+  const atraso = m.filter(i => i.nivel === 2);
+  const venceHoje = m.filter(i => i.nivel === 1);
+  const respondeu = m.filter(clienteRespondeu);
   const nome = primeiroNome();
 
+  const kpis = [
+    { k: 'acao', rot: 'Com ação minha', val: esc_.length, cls: '' },
+    { k: 'atraso', rot: 'Fora do prazo', val: atraso.length, cls: atraso.length ? 'late' : '' },
+    { k: 'hoje', rot: 'Vencem hoje', val: venceHoje.length, cls: venceHoje.length ? 'today' : '' },
+    { k: 'respondeu', rot: 'Cliente respondeu', val: respondeu.length, cls: '' },
+    { k: 'lembretes', rot: 'Lembretes hoje', val: hojeL.length, cls: hojeL.some(l => sit(l) === 'atrasado') ? 'today' : '' }
+  ];
+  const resumo = !estado.snap ? 'Aguardando a primeira leitura do Onvio.'
+    : !esc_.length && !hojeL.length ? 'Nada pendente com ação sua. Tudo em dia.'
+    : [plural(esc_.length, 'solicitação com ação sua', 'solicitações com ação sua'), atraso.length ? plural(atraso.length, 'fora do prazo', 'fora do prazo') : '', respondeu.length ? plural(respondeu.length, 'resposta de cliente', 'respostas de cliente') + ' para ver' : ''].filter(Boolean).join(' · ') + '.';
+
+  // semana: atrasados, hoje e os próximos 6 dias (lembretes + expectativas de conclusão minhas)
+  const doDia = k => ({
+    l: lems.filter(l => OC.ymd(new Date(l.quando)) === k),
+    i: m.filter(i => i.due && OC.ymd(OC.parseDate(i.due)) === k)
+  });
+  const dias = [];
+  for (let n = 0; n < 7; n++) { const d = new Date(); d.setDate(d.getDate() + n); dias.push(d); }
+  const atrasadosN = lems.filter(l => sit(l) === 'atrasado').length + atraso.length;
+  const hol = new Set(estado.settings.feriados || []);
+  const semana = '<div class="semana" role="tablist" aria-label="Semana">' +
+    '<button class="sm-dia sm-atr' + (atrasadosN ? ' tem' : '') + (diaSel === 'atr' ? ' on' : '') + '" data-dia="atr"><span class="sm-sem">Atrasados</span><span class="sm-num">' + (atrasadosN ? '▼' : '✓') + '</span><span class="sm-cont">' + (atrasadosN ? '<b>' + atrasadosN + '</b> ' + (atrasadosN === 1 ? 'item' : 'itens') : 'nada') + '</span></button>' +
+    dias.map((d, n) => {
+      const k = OC.ymd(d), x = doDia(k), q = x.l.length + x.i.length;
+      const fds = d.getDay() === 0 || d.getDay() === 6 || hol.has(k);
+      return '<button class="sm-dia' + (fds ? ' fds' : '') + (diaSel === k ? ' on' : '') + '" data-dia="' + k + '"><span class="sm-sem">' + (n === 0 ? 'Hoje' : SEM[d.getDay()]) + '</span><span class="sm-num">' + d.getDate() + '<small>' + MES[d.getMonth()] + '</small></span><span class="sm-cont">' + (q ? '<b>' + q + '</b> ' + (q === 1 ? 'item' : 'itens') : 'livre') + '</span></button>';
+    }).join('') +
+    '<button class="sm-dia sm-add" id="sm-add"><svg class="ic"><use href="#i-plus"/></svg>Novo lembrete</button></div>';
+
+  // agenda do dia escolhido
+  const ag = [];
+  if (diaSel === 'atr') {
+    lems.filter(l => sit(l) === 'atrasado').sort((a, b) => a.quando.localeCompare(b.quando)).forEach(l => ag.push({ tipo: 'lembrete', l }));
+    atraso.forEach(i => ag.push({ tipo: 'atraso', i }));
+  } else {
+    const x = doDia(diaSel);
+    x.l.sort((a, b) => a.quando.localeCompare(b.quando)).forEach(l => ag.push({ tipo: 'lembrete', l }));
+    x.i.forEach(i => ag.push({ tipo: 'expectativa', i }));
+    if (diaSel === hojeK) m.filter(i => i.prescreveEm != null && i.prescreveEm <= 3).forEach(i => ag.push({ tipo: 'prescreve', i }));
+  }
+  const dSel = diaSel === 'atr' ? null : new Date(diaSel + 'T12:00:00');
+  const tituloAg = diaSel === 'atr' ? 'Atrasados' : diaSel === hojeK ? 'Agenda de hoje' : 'Agenda de ' + dSel.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
+
+  // colunas
+  const ord = l => l.slice().sort((a, b) => ((b.grav || 0) - (a.grav || 0)) || (b.parado - a.parado));
+  const jaListadas = new Set(atraso.concat(venceHoje, respondeu).map(i => i.k));
+  const prescreve = m.filter(i => i.prescreveEm != null && i.prescreveEm <= 5).sort((a, b) => a.prescreveEm - b.prescreveEm);
+  const paradas = esc_.filter(i => !jaListadas.has(i.k)).sort((a, b) => b.parado - a.parado);
+  const aba = m.filter(i => i.abaProvavel);
+  const listas = {};
+  const col = (cls, tit, l, kpi, vazio, o) => { const id = 'c' + Object.keys(listas).length; listas[id] = l.slice(0, 5); return '<div class="col ' + cls + '" id="' + id + '"><div class="col-h"><h3>' + tit + '</h3><span class="q">' + l.length + '</span></div>' +
+    (l.length ? l.slice(0, 5).map(i => miniItem(i, o)).join('') : '<div class="vazio">' + vazio + '</div>') +
+    (l.length > 5 && kpi ? '<a class="ver" href="#/fila?kpi=' + kpi + '">Ver todas (' + l.length + ')</a>' : '') + '</div>'; };
+
+  const evs = (estado.eventos || []).filter(e => e.mine).slice(0, 8);
+  const ultimoEv = evs[0];
+  const ver = estado.ultima || (estado.snap && estado.snap.fetchedAt);
+  const vivo = (estado.settings.tempoRealSeg > 0) && ver && Date.now() - new Date(ver) < Math.max(120, estado.settings.tempoRealSeg * 4) * 1000;
+
+  ctx.cab({ titulo: 'Hoje', sub: 'Seu dia no Portal do Cliente' });
   el.innerHTML =
-    '<div class="cab"><div><h1>' + (nome ? 'Olá, ' + esc(nome) : 'Início') + '</h1><div class="sub">' + esc(hojeExtenso()) + ' · ' + plural(m.length, 'solicitação sua pendente', 'solicitações suas pendentes') + '</div></div></div>' +
-    '<div class="grade g-kpi" style="margin-bottom:14px">' + kpis.map(k => '<button class="kpi ' + k.cls + '" data-kpi="' + k.k + '"><span class="rot">' + k.rot + '</span><span class="val">' + k.val + '</span><span class="det">' + esc(k.det) + '</span></button>').join('') + '</div>' +
-    '<div class="grade g-2">' +
-      '<section class="card flush"><h2><span class="tt">Prioridades agora</span><a class="ver-mais" href="#/fila">Ver minha fila</a></h2><div class="lista" id="prio">' +
-        (prioridades.length ? prioridades.map(i => linhaItem(i, false)).join('') : '<div class="vazio">' + (estado.snap ? 'Nada pendente com ação sua. Bom trabalho.' : 'Aguardando a primeira leitura do Onvio.') + '</div>') + '</div></section>' +
-      '<div class="grade">' +
-        '<section class="card"><h2><span class="tt">Hoje</span><a class="ver-mais" href="#/lembretes">Lembretes</a></h2><div id="agenda">' +
-          (ag.length ? ag.map(agendaItem).join('') : '<div class="vazio" style="padding:12px 0">Nada marcado para hoje.</div>') + '</div></section>' +
-        '<section class="card"><h2>Atividade</h2><div id="ativ">' +
-          (eventos.length ? eventos.map(e => '<div class="item-ag clicavel" data-ev="' + esc(e.id) + '"><svg class="ic"><use href="#i-bell"/></svg><div class="tx"><b>' + esc(e.titulo) + '</b><small>#' + esc(e.num) + ' ' + esc(e.typeLabel) + ' · ' + esc(e.cliente) + ' · ' + esc(relativo(e.em)) + '</small></div></div>').join('') : '<div class="vazio" style="padding:12px 0">As novidades das suas solicitações aparecem aqui.</div>') + '</div></section>' +
-      '</div>' +
+    '<div class="hoje-topo"><div><div class="ht-saud">' + saudacao() + (nome ? ', ' + esc(nome) : '') + '</div><h2 class="ht-data" id="ht-data">' + esc(dataExtensa()) + '</h2><p class="ht-resumo">' + esc(resumo) + '</p></div>' +
+      '<div class="ht-cont">' + kpis.map(k => '<button class="kpi ' + k.cls + '" data-kpi="' + k.k + '"><span class="rot">' + k.rot + '</span><span class="val">' + k.val + '</span></button>').join('') + '</div></div>' +
+    '<div class="ticker' + (vivo ? '' : ' parado') + '"><span class="tk-live"><i></i>' + (vivo ? 'Ao vivo' : 'Parado') + '</span><div class="tk-tx">' +
+      (ultimoEv ? '<button data-ev="' + esc(ultimoEv.id) + '"><b>' + esc(ultimoEv.titulo) + '</b> · #' + esc(ultimoEv.num) + ' ' + esc(ultimoEv.typeLabel) + ' · ' + esc(ultimoEv.cliente) + '</button><span class="sep">|</span><span>' + esc(relativo(ultimoEv.em)) + '</span>'
+        : '<span>Nenhuma novidade nas suas solicitações. Quando o cliente responder ou chegar algo para você, aparece aqui.</span>') +
+      '</div><span class="tk-hora">' + (ver ? 'lido ' + fmtHoraS(ver) : '') + '</span></div>' +
+    semana +
+    '<h2 class="sec-tit">Para fazer agora</h2>' +
+    '<div class="trio" id="agora">' +
+      col('c-late', 'Fora do prazo', ord(atraso), 'atraso', 'Nada fora do prazo.') +
+      col('c-today', 'Vencem hoje', ord(venceHoje), 'hoje', 'Nada vence hoje.') +
+      col('c-soon', 'Cliente respondeu', ord(respondeu), 'respondeu', 'Nenhuma resposta esperando você.') +
+    '</div>' +
+    '<h2 class="sec-tit">Precisa de atenção</h2>' +
+    '<div class="trio solto" id="atencao">' +
+      col('', 'Prescrevem em breve', prescreve, 'prescreve', 'Nada perto de prescrever.', { lado: 'prescreve' }) +
+      col('', 'Paradas há mais tempo', paradas, null, 'Nada parado com você.') +
+      col('', 'Possível aba errada', aba, 'abaErrada', 'Nenhuma suspeita de aba errada.') +
+    '</div>' +
+    '<div class="grade g-2" style="margin-top:26px">' +
+      '<section class="card"><div class="card-h"><h3>' + esc(tituloAg) + '</h3><button class="lk" id="ag-novo">+ Lembrete</button><a href="#/lembretes">Agenda do mês</a></div><div class="card-b" id="agenda">' +
+        (ag.length ? ag.map(agendaItem).join('') : '<div class="vazio" style="padding:10px 0">Nada marcado para este dia.</div>') + '</div></section>' +
+      '<section class="card"><div class="card-h"><h3>Atividade</h3><span class="sub">suas solicitações</span></div><div class="card-b" id="ativ">' +
+        (evs.length ? evs.map(e => '<div class="item-ag clicavel" data-ev="' + esc(e.id) + '"><svg class="ic"><use href="#i-bell"/></svg><div class="tx"><b>' + esc(e.titulo) + '</b><small>#' + esc(e.num) + ' ' + esc(e.typeLabel) + ' · ' + esc(e.cliente) + ' · ' + esc(relativo(e.em)) + '</small></div></div>').join('') : '<div class="vazio" style="padding:10px 0">As novidades das suas solicitações aparecem aqui.</div>') + '</div></section>' +
     '</div>';
 
-  el.querySelectorAll('[data-kpi]').forEach(b => b.addEventListener('click', () => {
-    const k = b.dataset.kpi;
-    if (k === 'lembretes') ctx.navegar('lembretes');
-    else ctx.navegar('fila', { kpi: k });
-  }));
-  ligarItens($('#prio', el), prioridades, ctx.abrirDetalhe);
-  el.querySelectorAll('[data-ev]').forEach(d => d.addEventListener('click', () => { const e = eventos.find(x => x.id === d.dataset.ev); if (e) ctx.abrirDetalhe(e); }));
-  el.querySelectorAll('[data-ag]').forEach(d => d.addEventListener('click', ev => {
+  $$('[data-kpi]', el).forEach(b => b.addEventListener('click', () => { const k = b.dataset.kpi; if (k === 'lembretes') ctx.navegar('lembretes'); else ctx.navegar('fila', { kpi: k }); }));
+  $$('[data-dia]', el).forEach(b => b.addEventListener('click', () => { diaSel = b.dataset.dia; render(el, ctx); }));
+  const novo = () => ctx.abrirLembrete({ dia: diaSel === 'atr' ? null : new Date(diaSel + 'T12:00:00') });
+  $('#sm-add', el).onclick = novo; $('#ag-novo', el).onclick = novo;
+  for (const [id, l] of Object.entries(listas)) ligarItens($('#' + id, el), l, ctx.abrirDetalhe);
+  $$('[data-ev]', el).forEach(d => d.addEventListener('click', () => { const e = evs.find(x => x.id === d.dataset.ev); if (e) ctx.abrirDetalhe(e); }));
+  $$('[data-ag]', el).forEach(d => d.addEventListener('click', ev => {
     const [tipo, id] = d.dataset.ag.split('|');
-    if (ev.target.closest('[data-feito]')) {
-      ev.stopPropagation();
-      salvarLembretes(estado.lembretes.map(l => l.id === id ? Object.assign({}, l, { feito: true }) : l));
-      return;
-    }
-    if (tipo === 'lembrete') { const l = estado.lembretes.find(x => x.id === id); if (l && l.type && l.num) ctx.abrirDetalhe(l); else ctx.navegar('lembretes'); }
-    else { const it = m.find(x => x.k === id); if (it) ctx.abrirDetalhe(it); }
+    if (tipo === 'lembrete') {
+      const l = estado.lembretes.find(x => x.id === id);
+      if (!l) return;
+      if (ev.target.closest('[data-feito]')) { ev.stopPropagation(); salvarLembretes(estado.lembretes.map(x => x.id === id ? OC.concluirLembrete(x, new Date(), estado.settings.feriados) : x)); return; }
+      if (l.type && l.num) ctx.abrirDetalhe(l); else ctx.abrirLembrete({ l });
+    } else { const it = m.find(x => x.k === id); if (it) ctx.abrirDetalhe(it, m); }
   }));
 }
 
 function agendaItem(a) {
   if (a.tipo === 'lembrete') {
     const l = a.l, atrasado = OC.situacaoLembrete(l) === 'atrasado';
-    return '<div class="item-ag clicavel ' + (atrasado ? 'late' : 'today') + '" data-ag="lembrete|' + esc(l.id) + '"><svg class="ic"><use href="#i-clock"/></svg><div class="tx"><b>' + esc(l.texto) + '</b><small>' + (atrasado ? 'Atrasado · ' : '') + fmtDataHora(l.quando) + (l.num ? ' · #' + esc(l.num) + ' ' + esc(l.cliente) : '') + '</small></div><div class="acts"><button class="btn btn-sm" data-feito title="Marcar como feito"><svg class="ic ic-sm"><use href="#i-check"/></svg></button></div></div>';
+    const h = new Date(l.quando);
+    return '<div class="item-ag clicavel ' + (atrasado ? 'late' : 'today') + '" data-ag="lembrete|' + esc(l.id) + '"><span class="hora">' + String(h.getHours()).padStart(2, '0') + ':' + String(h.getMinutes()).padStart(2, '0') + '</span><div class="tx"><b>' + esc(l.texto) + '</b><small>' + (atrasado ? 'Atrasado · ' + fmtDataHora(l.quando) : 'Lembrete') + (l.rep && l.rep !== 'nao' ? ' · ' + esc(OC.REPETICOES[l.rep]) : '') + (l.num ? ' · #' + esc(l.num) + ' ' + esc(l.cliente) : '') + '</small></div><div class="acts"><button class="btn btn-sm" data-feito title="Marcar como feito"><svg class="ic ic-sm"><use href="#i-check"/></svg> Feito</button></div></div>';
   }
   const i = a.i;
-  const t = a.tipo === 'prescreve' ? 'Prescreve em ' + i.prescreveEm + ' dia(s)' : 'Expectativa de conclusão vence hoje';
-  return '<div class="item-ag clicavel ' + (a.tipo === 'prescreve' ? 'late' : 'today') + '" data-ag="item|' + esc(i.k) + '"><svg class="ic"><use href="#i-alert"/></svg><div class="tx"><b>' + esc(t) + '</b><small>#' + esc(i.num) + ' ' + esc(i.typeLabel) + ' · ' + esc(i.apelido || i.cliente) + '</small></div></div>';
+  const t = a.tipo === 'prescreve' ? 'Prescreve em ' + i.prescreveEm + ' dia(s)' : a.tipo === 'atraso' ? ((i.motivos || [])[0] || { m: 'Fora do prazo' }).m : 'Expectativa de conclusão';
+  return '<div class="item-ag clicavel ' + (a.tipo === 'expectativa' ? 'soon' : 'late') + '" data-ag="item|' + esc(i.k) + '"><svg class="ic"><use href="#i-alert"/></svg><div class="tx"><b>' + esc(t) + '</b><small>#' + esc(i.num) + ' ' + esc(i.typeLabel) + ' · ' + esc(i.apelido || i.cliente) + '</small></div></div>';
 }
