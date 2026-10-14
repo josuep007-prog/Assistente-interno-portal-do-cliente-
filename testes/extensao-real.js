@@ -130,6 +130,13 @@ assert.equal(await cheia(portal), true);
 const caixa = await (await app.frameElement()).boundingBox();
 assert.deepEqual([caixa.width, caixa.height], [1440, 900], 'tela cheia');
 await foto(portal, '1-inicio.png');
+await portal.mouse.move(800, 500); await portal.mouse.wheel(0, 800);
+await new Promise(r => setTimeout(r, 500));
+await foto(portal, '1-inicio-2.png');
+await portal.mouse.wheel(0, 900);
+await new Promise(r => setTimeout(r, 500));
+await foto(portal, '1-inicio-3.png');
+await app.evaluate(() => document.querySelector('#vista').scrollTo(0, 0));
 for (const rota of ['fila', 'fila?escopo=equipe', 'equipe', 'equipe?aba=resp', 'clientes', 'clientes?aba=empresas', 'lembretes', 'lembretes?aba=lista']) {
   await app.evaluate(r => { location.hash = '#/' + r; }, rota);
   await app.waitForFunction(() => document.querySelector('#vista').children.length > 0);
@@ -139,17 +146,19 @@ for (const rota of ['fila', 'fila?escopo=equipe', 'equipe', 'equipe?aba=resp', '
 // busca em janela central e lembrete com repetição
 await app.evaluate(() => { location.hash = '#/inicio'; });
 await new Promise(r => setTimeout(r, 300));
-await portal.keyboard.press('Control+k');
+await app.click('#btn-busca');                                       // o botão da busca (o atalho depende de onde está o foco)
 await app.waitForSelector('#cmdk:not([hidden])');
 await app.fill('#busca-q', 'acme');
 await new Promise(r => setTimeout(r, 400));
 await foto(portal, '2-busca.png');
-await portal.keyboard.press('Escape');
+await app.click('#cmdk', { position: { x: 20, y: 20 } });              // clique fora fecha a busca
+await app.waitForSelector('#cmdk', { state: 'hidden' });
 await app.click('#sm-add');
 await app.waitForSelector('#dlg-lembrete:not([hidden])');
 await new Promise(r => setTimeout(r, 400));
 await foto(portal, '2-novo-lembrete.png');
-await portal.keyboard.press('Escape');
+await app.click('#lc');                                                 // Cancelar
+await app.waitForSelector('#dlg-lembrete', { state: 'hidden' });
 // solicitações: consulta na hora pela aba do Onvio
 await app.evaluate(() => { location.hash = '#/solicitacoes'; });
 await app.waitForSelector('#corpo [data-k]', { timeout: 8000 });
@@ -161,7 +170,8 @@ await app.click('#corpo [data-k="calcFerias:v1"]');
 await app.waitForSelector('#gaveta .tl-item', { timeout: 8000 });
 assert.equal(await app.$$eval('#gaveta .tl-item', e => e.length), 2);
 await foto(portal, '4-detalhe.png');
-await portal.keyboard.press('Escape');
+await app.click('#g-fechar');
+await app.waitForSelector('#gaveta', { state: 'hidden' });
 // sino
 await app.click('#btn-sino');
 await foto(portal, '5-sino.png');
@@ -171,6 +181,12 @@ await app.click('#btn-tema');
 await app.evaluate(() => { location.hash = '#/equipe'; });
 await new Promise(r => setTimeout(r, 400));
 await foto(portal, '6-equipe-escuro.png');
+await app.evaluate(() => { location.hash = '#/inicio'; });
+await new Promise(r => setTimeout(r, 500));
+await foto(portal, '6-inicio-escuro.png');
+await portal.mouse.move(800, 500); await portal.mouse.wheel(0, 1500);
+await new Promise(r => setTimeout(r, 500));
+await foto(portal, '6-inicio-escuro-2.png');
 await app.click('#btn-tema');
 
 // "Ver Onvio" esconde; o ícone alterna; o detalhe "Abrir no Onvio" chega com a camada escondida

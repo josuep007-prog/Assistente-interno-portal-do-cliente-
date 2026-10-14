@@ -325,15 +325,47 @@ await passo('app · Hoje (analista): saudação, números, semana, colunas "para
   assert.deepEqual(await linhas(p, '#agora [data-k]'), ['calcFerias:a', 'geral:b', 'geral:b'], 'fora do prazo, vence hoje e cliente respondeu');
   assert.match(await p.textContent('#agenda'), /Cobrar o BETA/);
   assert.match(await p.textContent('#ativ'), /Cliente respondeu/);
-  assert.match(await p.textContent('.ticker'), /Ao vivo.*Cliente respondeu · #102/);
+  // barra viva: todas as pendências da equipe em ordem de prioridade, só com a bolinha (sem "Ao vivo")
+  assert.deepEqual(await p.$$eval('#fita .ft-grupo:first-child [data-k]', e => e.map(x => x.dataset.k)), ['calcFerias:a', 'avisoRescisao:c', 'geral:b', 'rubricas:d']);
+  assert.equal(await p.getAttribute('#fita', 'class'), 'fita ok');
+  assert.doesNotMatch(await p.textContent('#fita'), /ao vivo/i);
+  // solicitações por analista: "Sem analista" primeiro; o seletor de vez redesenha
+  assert.deepEqual(await p.$$eval('#g-analistas text.rot-forte', e => e.map(x => x.textContent)), ['Sem analista', 'Ana Teste', 'Bia']);
+  await p.click('[data-vez="esc"]');
+  assert.deepEqual(await p.$$eval('#g-analistas text.rot-forte', e => e.map(x => x.textContent)), ['Ana Teste', 'Bia'], 'só a vez do escritório');
+  await p.click('[data-vez=""]');
+  // placar do dia, mapa de calor, prescrição e distribuição
+  assert.match(await p.textContent('#placar'), /Entraram3Saíram1Saldo▲ 2/);
+  assert.match(await p.textContent('#l-presc'), /4dias[\s\S]*GAMA/);
+  assert.match(await p.textContent('#distribuicao'), /GAMA[\s\S]*sugerido: Bia/);
+  assert.equal(await p.$$eval('#mapa-idade .mc-v:not(:disabled)', e => e.length), 4);
   assert.equal(await p.$$eval('.semana .sm-dia', e => e.length), 9, 'atrasados, 7 dias e "novo lembrete"');
   await p.click('.sm-atr');
   assert.match(await p.textContent('#agenda'), /Cobrar o BETA[\s\S]*Parada há 31 dias/, 'atrasados: lembrete e fora do prazo');
+  // a área de conteúdo rola (antes o .app em grade do ui.css esticava a tela e cortava o fim)
+  const rol = await p.evaluate(() => { const v = document.querySelector('#vista'); v.scrollTop = 400; return [v.scrollHeight > v.clientHeight, v.scrollTop > 0, Math.round(v.getBoundingClientRect().bottom) <= innerHeight]; });
+  assert.deepEqual(rol, [true, true, true], 'Hoje rola dentro da janela');
+  await p.evaluate(() => { document.querySelector('#vista').scrollTop = 0; });
   assert.equal(await p.textContent('#n-fila'), '2');
   assert.equal(await p.textContent('#sino-cont'), '1');
   assert.match(await p.textContent('#aovivo-tx'), /^Ao vivo · \d\d:\d\d:\d\d$/);
   await p.click('.ht-cont [data-kpi="atraso"]');
   await p.waitForFunction(() => location.hash === '#/fila?kpi=atraso');
+  // mapa de calor → fila da pessoa naquela faixa de dias parada, com a etiqueta que sai com um clique
+  await p.goto(URL_APP + '#/inicio'); await p.waitForSelector('#mapa-idade .mc-v');
+  await p.click('#mapa-idade .mc-v[data-id="Ana Teste"][data-col="31-"]');
+  await p.waitForFunction(() => location.hash.startsWith('#/fila?analista=Ana+Teste&idade=31-') && document.querySelector('#ativos .chip-f'));
+  assert.deepEqual(await linhas(p), ['calcFerias:a']);
+  assert.match(await p.textContent('#ativos'), /Parada há 31\+ dias/);
+  // clique na fita abre o detalhe; clique em "Sem analista" leva à fila sem responsável
+  await p.goto(URL_APP + '#/inicio'); await p.waitForSelector('#fita [data-k]');
+  await p.hover('#fita .ft-janela');                                  // a fita para ao passar o mouse
+  await p.click('#fita .ft-grupo:first-child [data-k="geral:b"]');
+  await p.waitForSelector('#gaveta:not([hidden])');
+  assert.match(await p.textContent('#gaveta h2'), /BETA/);
+  await p.keyboard.press('Escape');
+  await p.click('#g-analistas [data-id="(sem responsável)"]');
+  await p.waitForFunction(() => location.hash === '#/fila?escopo=semresp');
   assert.deepEqual(p.erros, []);
 });
 
@@ -387,7 +419,7 @@ await passo('app · Equipe (gestor): números, 4 gráficos com dicas; aba Respon
   await p.click('#abas [data-aba="resp"]');
   await p.waitForSelector('tr[data-resp="Ana Teste"]');
   await p.click('tr[data-resp="Ana Teste"]');
-  await p.waitForFunction(() => location.hash.startsWith('#/fila?analista='));
+  await p.waitForFunction(() => location.hash.startsWith('#/fila?analista=') && document.querySelectorAll('#corpo [data-k]').length > 0);
   assert.equal((await linhas(p)).length, 2);
   assert.deepEqual(p.erros, []);
 });
@@ -404,7 +436,7 @@ await passo('app · Clientes: painel com ranking e mais tempo sem responder; emp
   await p.fill('#f', 'beta');
   assert.equal(await p.$$eval('#corpo tr[data-cli]', e => e.length), 1);
   await p.click('#corpo tr[data-cli]');
-  await p.waitForFunction(() => location.hash.startsWith('#/fila?cliente='));
+  await p.waitForFunction(() => location.hash.startsWith('#/fila?cliente=') && document.querySelectorAll('#corpo [data-k]').length > 0);
   assert.equal((await linhas(p)).length, 1);
   assert.deepEqual(p.erros, []);
 });
