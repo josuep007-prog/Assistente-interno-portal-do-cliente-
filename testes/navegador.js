@@ -285,6 +285,8 @@ await passo('shell: "Abrir no Onvio" chega com a camada escondida; desligar "abr
   assert.equal(await caso({ settings: { abrirAoEntrar: false } }), false);
   assert.equal(await caso({ settings: { abrirAoEntrar: false }, abrirPainelAoCarregar: Date.now() }), true);
   assert.equal(await caso({ verOnvioAoCarregar: Date.now() - 10 * 60000 }), true, 'pedido antigo não vale');
+  assert.equal(await caso({ status: { estado: 'visao_cliente' } }), false, 'acesso de cliente: não abre sozinho');
+  assert.equal(await caso({ status: { estado: 'visao_cliente' }, abrirPainelAoCarregar: Date.now() }), true, 'pelo ícone abre (para mostrar o aviso)');
 });
 
 /* ---------- app: telas com dados simulados ---------- */
@@ -476,6 +478,21 @@ await passo('app · Solicitações e busca (janela central) consultam o Onvio na
   await p.waitForFunction(() => !!JSON.parse(localStorage.getItem('__mem')).alertasVistosEm);
   await p.click('#btn-ver-onvio');
   assert.ok(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'fecharPainel')));
+  assert.deepEqual(p.erros, []);
+});
+
+await passo('app · acesso de cliente: só o aviso, sem menu, busca nem dados; "Já entrei com o login do escritório" pede nova leitura', async () => {
+  const p = await abrirApp('#/fila?escopo=equipe', { status: { estado: 'visao_cliente', msg: 'O Onvio está aberto com um acesso de cliente (sessão do Onvio).' } });
+  await p.waitForSelector('#bloqueio');
+  assert.match(await p.textContent('#bloqueio'), /Este é um acesso de cliente[\s\S]*sessão do Onvio/);
+  assert.equal(await p.$$eval('#vista [data-k]', e => e.length), 0, 'nenhuma solicitação aparece');
+  assert.equal(await p.isHidden('.trilho [data-rota="fila"]'), true);
+  assert.equal(await p.isHidden('#btn-busca'), true);
+  assert.equal(await p.textContent('#aovivo-tx'), 'Acesso de cliente');
+  await p.keyboard.press('/');
+  assert.equal(await p.isHidden('#cmdk'), true, 'a busca não abre');
+  await p.click('#bl-tentar');
+  assert.ok(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'atualizar')));
   assert.deepEqual(p.erros, []);
 });
 
