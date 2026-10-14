@@ -369,6 +369,23 @@ await passo('app · Hoje (analista): saudação, números, semana, colunas "para
   assert.deepEqual(p.erros, []);
 });
 
+await passo('app · Hoje sem nada com você: os números vão para a equipe e a frase explica; leitura vazia avisa', async () => {
+  const semMinhas = ITENS_APP.map(i => Object.assign({}, i, { mine: false }));
+  const p = await abrirApp('#/inicio', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: semMinhas }) });
+  assert.match(await p.textContent('#kpi-escopo .on'), /Equipe · 4/);
+  const kpis = await p.$$eval('.ht-cont .kpi', e => e.map(x => x.querySelector('.rot').textContent + '=' + x.querySelector('.val').textContent));
+  assert.deepEqual(kpis, ['Com ação do escritório=3', 'Fora do prazo=2', 'Vencem hoje=1', 'Cliente respondeu=1', 'Sem analista=1']);
+  assert.match(await p.textContent('#ht-resumo'), /Nenhuma pendência está com você como responsável.*equipe \(4 pendências\)/);
+  await p.click('[data-escopo="minhas"]');
+  assert.match(await p.textContent('.ht-cont .kpi'), /Com ação minha/, 'dá para voltar aos seus números');
+  await p.click('[data-escopo="equipe"]');
+  await p.click('.ht-cont [data-kpi="atraso"]');
+  await p.waitForFunction(() => location.hash === '#/fila?escopo=equipe&kpi=atraso' && document.querySelectorAll('#corpo [data-k]').length === 2);
+  const vazio = await abrirApp('#/inicio', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: [] }) });
+  assert.match(await vazio.textContent('#ht-resumo'), /não trouxe nenhuma pendência em nenhuma das 10 listas.*Testar a leitura/);
+  assert.deepEqual(p.erros.concat(vazio.erros), []);
+});
+
 await passo('app · Fila: abas Minhas/Equipe/Sem responsável, filtros e chips, ordenação, cartões, ↑↓ e Enter', async () => {
   const p = await abrirApp('#/fila');
   assert.equal(await p.textContent('#titulo'), 'Minha fila');
