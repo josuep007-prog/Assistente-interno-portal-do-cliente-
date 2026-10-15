@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.9.1)
+# Control Onvio · ControlTax (v0.10.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Nesta versão a extensão ainda **só lê**: as ações (responder, definir responsável, anexar) chegam na próxima, depois do mapeamento.
 
@@ -25,10 +25,10 @@ Para atualizar a versão: substitua os arquivos da pasta, clique em **Recarregar
 
 | Tela | Para quem | O que mostra |
 | --- | --- | --- |
-| **Hoje** | Todos | Saudação, data e números (com ação minha, fora do prazo, vencem hoje, cliente respondeu, lembretes); **barra viva** com as pendências da equipe passando por prioridade (bolinha verde = lendo ao vivo, ▲ piorou, ▼ melhorou, NOVA); **solicitações por analista e sem analista** (por gravidade, clique leva à fila; seletor de vez); **placar do dia** (entraram, saíram, saldo, fila × ontem); **a semana** (atrasados, hoje e próximos 6 dias com lembretes e expectativas de conclusão); "Para fazer agora" (fora do prazo, vencem hoje, cliente respondeu); **idade da fila** (mapa de calor analista × dias parada, clique leva às solicitações); **próximas a prescrever** (equipe, contagem regressiva); **sem analista: sugestão de distribuição** (só sugestão, a extensão não atribui); "Precisa de atenção" (paradas há mais tempo, possível aba errada); agenda do dia escolhido e atividade |
+| **Hoje** | Analista (todos veem) | **Painel escuro** no topo: **barra viva** (pendências da equipe passando por prioridade; bolinha verde = lendo ao vivo, ▲ piorou, ▼ melhorou, NOVA), **anel de prioridades** (fora do prazo, perto de prescrever, vence hoje, cliente respondeu, em dia; clique filtra), **radar da fila** (cada solicitação é um ponto em "dias parada", escritório e cliente, com as linhas de parada e prescrição; clique abre o detalhe) e **pulso do dia** (fila ao longo do dia, ▲/▼ desde a primeira leitura, entraram e saíram). Embaixo: **lista única de prioridades** (10 primeiras, cada uma com o motivo; "Ver fila completa"), **mosaico da equipe** (um bloco por analista e "Sem analista": tamanho = pendências, cor = pior caso; clique filtra) e **agenda de hoje** (lembretes e expectativas de conclusão, com "Feito"). Seletor **Minhas / Equipe** no cabeçalho |
 | **Minha fila** | Analista e gestor | Abas Minhas / Equipe toda / Sem responsável. Busca, vez (escritório/cliente), **Filtros** (tipo, gravidade, responsável), **Ordenar**, **Lista ou Cartões**, **Mais** (exportar CSV). Os filtros ativos aparecem como etiquetas que se tiram com um clique |
 | **Agenda e lembretes** | Cada um | Calendário do mês com lembretes e expectativas de conclusão das suas solicitações; lista (atrasados, hoje, próximos, concluídos). Lembretes podem **repetir** (todo dia, todo dia útil, toda semana, todo mês) |
-| **Equipe** | Gestor | Aba Painel (números, carga por responsável G1/G2/G3, entradas e saídas de 14 dias, pendências ao longo do dia, por tipo, sem responsável, prescrições) e aba Responsáveis (carga de cada pessoa) |
+| **Equipe** | Gestor | Aba Painel (números, carga por responsável G1/G2/G3, entradas e saídas de 14 dias, pendências ao longo do dia, por tipo, **sugestão de distribuição** das sem analista e **próximas a prescrever**) e aba Responsáveis (**idade da fila**: mapa de calor analista × dias parada, e a carga de cada pessoa) |
 | **Clientes** | Gestor e analista | Aba Painel (ranking e quem mais demora a responder) e aba Empresas (cartões ou lista, com fora do prazo, prescrição e aba errada) |
 | **Todas as solicitações** | Todos | As 10 listas do Onvio (uma aba para cada), inclusive concluídas, consultadas na hora, com busca e paginação |
 | **Configurações** | Todos | Prazos, leitura ao vivo, regras do escritório, aprender ações e diagnóstico |
@@ -41,6 +41,20 @@ Vez do escritório: sem primeiro trâmite após 1 dia útil; aberta além de 3 d
 Vez do cliente: sem retorno há mais de 5 dias úteis (laranja); a partir de 20 dias parada fica vermelho com a contagem até a prescrição de 30 dias.
 
 Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardando resposta** = o escritório precisa responder; **Respondido** = vez do cliente.
+
+## Novidades da v0.10.0 (Hoje enxuto e visual)
+
+O Hoje tinha 11 blocos empilhados e ficou confuso. Agora ele responde uma pergunta só, "o que eu faço agora?", e o resto mudou de lugar (nada sumiu):
+
+- **Painel escuro de controle** no topo, com a barra viva e três gráficos interativos:
+  - **Anel de prioridades** no lugar dos números: cada fatia é um motivo (fora do prazo, perto de prescrever, vence hoje, cliente respondeu, em dia), com o total no centro e legenda com o número. Clicar numa fatia ou na legenda filtra a lista; o segundo clique desliga.
+  - **Radar da fila**: cada solicitação é um ponto na régua de dias parada (0 a 30+), em duas faixas (escritório e cliente), com linhas tracejadas de "parada" e de prescrição tiradas das suas regras. Com filtro ativo, os pontos que não combinam apagam. Clique abre o detalhe.
+  - **Pulso do dia**: a fila da equipe ao longo do dia, como cotação (▲ cresceu, ▼ diminuiu desde a primeira leitura), com entraram e saíram.
+- **Lista única de prioridades** no lugar de "Para fazer agora" e "Precisa de atenção": cada solicitação aparece uma vez, com o motivo mais forte, na ordem fora do prazo → perto de prescrever → vence hoje → cliente respondeu → as demais por dias parada. Os filtros do anel e do mosaico aparecem como etiquetas com ×.
+- **Mosaico da equipe** no lugar das barras por analista: um bloco por analista e um para "Sem analista" (hachurado), com tamanho proporcional às pendências e cor do pior caso. Clique filtra a lista por aquela pessoa.
+- **Agenda de hoje** só com o que é de hoje (lembretes atrasados e de hoje, expectativas de conclusão), com "Feito".
+- Mudaram de lugar: o mapa de calor de idade foi para **Equipe > Responsáveis**; prescrição e sugestão de distribuição, para **Equipe > Painel**; a semana fica em **Agenda**; a atividade, no **sino**.
+- A **Minha fila** aceita o filtro por motivo vindo do Hoje ("Só: Fora do prazo", etc.).
 
 ## Novidades da v0.9.1 (números do Hoje: seus ou da equipe)
 
