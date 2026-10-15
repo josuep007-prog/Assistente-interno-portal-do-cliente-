@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.11.3)
+# Control Onvio · ControlTax (v0.12.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Nesta versão a extensão ainda **só lê**: as ações (responder, definir responsável, anexar) chegam na próxima, depois do mapeamento.
 
@@ -42,10 +42,18 @@ Vez do cliente: sem retorno há mais de 5 dias úteis (laranja); a partir de 20 
 
 Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardando resposta** = o escritório precisa responder; **Respondido** = vez do cliente.
 
-## Novidades da v0.11.3 (descobrir o caminho dos trâmites)
+## Novidades da v0.12.0 (pronta de primeira: caminhos do Onvio mapeados)
 
-- Em algumas listas (ex.: Aviso de férias) a extensão não aprendia o caminho dos trâmites sozinha: o Onvio provavelmente busca os trâmites em outro serviço, que a extensão não observava.
-- O **modo aprender** (Configurações > Aprender ações) agora anota o formato de **qualquer chamada à API do Onvio**, não só das de solicitações. Continua sem anotar valores. Para descobrir o caminho: ligue o modo, abra os trâmites de uma solicitação de Aviso de férias no Onvio, clique em "Copiar o que foi aprendido" e envie o texto.
+Mapeamento feito no Onvio real em 15/10/2026 (`mapeamento/onvio-2026-10-15.md`). Ninguém precisa mais "ensinar" nada à extensão.
+
+- **Trâmites em todas as listas, sem aprender nada.** O Onvio não lê os trâmites no caminho da lista: Geral usa `service-requesting/v1/tickets`, os 3 Cadastros usam `employees-registrations`, Férias, Rescisão e Afastamento usam `br-payroll-sr/v1/tickets` e Rubricas usa `payroll-entries`. Esses caminhos agora são fixos. O "aprender a rota" da 0.11.1 saiu (aviso, botão "Esquecer rotas" e o envio do caminho pelo Onvio).
+- Ao atualizar, a extensão esquece as rotas antigas e os erros de trâmites guardados, então o **1º trâmite** volta a ser estimado já na próxima leitura.
+- **Rubricas sem HTTP 500.** O filtro de pendentes por exclusão (diferente de 8 e 10) dava erro 500 em toda leitura antes de cair na alternativa. Agora vai direto pela lista de códigos.
+- **Cadastro:** o código 7 (**Encaminhado para outro usuário**) agora é pendente do escritório (antes ficava fora da fila). Em Geral, Férias, Rescisão e Afastamento o 7 passou a aparecer com o nome completo.
+- **Escritório x cliente:** a sessão do Onvio traz a permissão `Platform.OnvioStaffAccess` para o usuário do escritório; a extensão usa isso para confirmar o acesso do escritório.
+- O **modo aprender** (Configurações > Aprender ações) anota o formato de qualquer chamada à API do Onvio, não só das de solicitações (continua sem valores). Serve para mapear as ações da fase 2.
+
+**Confirmado no Onvio real:** caminhos dos trâmites das 10 listas, códigos de situação, grade Wijmo com a coluna "Último Trâmite". **A confirmar:** como a sessão aparece com um login de cliente (só o do escritório foi visto).
 
 ## Novidades da v0.11.2 (cabeçalho padronizado)
 
@@ -61,7 +69,7 @@ Em algumas listas (como **Aviso de férias**) o detalhe mostrava "Não foi poss�
 - Com o caminho aprendido, o **1º trâmite** dessa lista também volta a ser estimado na próxima leitura.
 - Configurações > Diagnóstico mostra "**Trâmites por lista**": padrão, aprendido ou "a aprender (404)". O botão "Esquecer rotas de trâmites aprendidas" volta ao padrão.
 
-**A confirmar no Onvio real:** abra os trâmites de uma solicitação de Aviso de férias (e de cada lista que mostrar "a aprender") e depois o detalhe no Control Onvio. Se continuar falhando, envie o Diagnóstico.
+Substituído na v0.12.0: os caminhos de trâmites passaram a ser fixos.
 
 ## Novidades da v0.11.0 (Hoje no formato de Convenções)
 
