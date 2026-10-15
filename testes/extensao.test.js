@@ -879,3 +879,16 @@ test('background: cada leitura grava eventos (máx. 300) e a série do dia, sem 
   const tudo = JSON.stringify(store);
   assert.ok(!tudo.includes('123.456.789'), 'descrição com CPF não é guardada');
 });
+
+test('Hoje: próximo passo de cada motivo e anel do prazo (escritório × cliente, teto em 100%)', () => {
+  assert.equal(OC.acaoDe({ lado: 'esc', nivel: 2, parado: 31 }), 'Fora do prazo · parada há 31 dias');
+  assert.equal(OC.acaoDe({ lado: 'cli', nivel: 2, prescreveEm: 4, parado: 26 }), 'Cobrar o cliente · prescreve em 4 dias');
+  assert.equal(OC.acaoDe({ lado: 'esc', nivel: 1, parado: 2 }), 'Concluir hoje · o prazo vence hoje');
+  assert.equal(OC.acaoDe({ lado: 'cli', nivel: 1, parado: 8 }), 'Cobrar o cliente · sem retorno');
+  assert.equal(OC.acaoDe({ lado: 'esc', nivel: 0, status: 'Aguardando resposta', parado: 1 }), 'Responder o cliente');
+  assert.equal(OC.acaoDe({ lado: 'esc', nivel: 0, parado: 1 }), 'Em dia · parada há 1 dia');
+  assert.equal(OC.acaoDe({ lado: 'cli', nivel: 0, parado: 3 }), 'Aguardando o cliente · 3 dias');
+  assert.deepEqual(plano(OC.progressoPrazo({ lado: 'esc', parado: 6 }, { parada: 15 })), { pct: 40, dias: 6, limite: 15 });
+  assert.deepEqual(plano(OC.progressoPrazo({ lado: 'cli', parado: 15 }, { prescricaoDias: 30 })), { pct: 50, dias: 15, limite: 30 });
+  assert.equal(OC.progressoPrazo({ lado: 'esc', parado: 40 }, {}).pct, 100, 'nunca passa de 100%');
+});

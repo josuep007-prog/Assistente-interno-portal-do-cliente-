@@ -1,4 +1,4 @@
-/* Peças da equipe: barra viva e mosaico (Hoje); mapa de calor por idade, próximas a prescrever e
+/* Peças da equipe: bolinha da leitura ao vivo (Hoje); mapa de calor por idade, próximas a prescrever e
  * sugestão de distribuição (Equipe). Tudo lido do resumo (estado.snap); nada aqui grava no Onvio:
  * a distribuição é só sugestão. */
 import { estado, itens } from '../estado.js';
@@ -13,40 +13,17 @@ export const porPrioridade = l => l.slice().sort((a, b) => ((b.nivel || 0) - (a.
 const eu = () => (itens().find(i => i.mine) || {}).resp || '';
 const nomeResp = r => (r === SEM ? 'Sem analista' : r);
 
-/* ---------- barra viva (estilo cotações): só a bolinha, sem rótulo ---------- */
-function estadoLeitura() {
+/* ---------- bolinha da leitura ao vivo (Hoje): verde = ao vivo, cinza = parada, vermelha = sem leitura ---------- */
+export function estadoLeitura() {
   const s = estado.status || {};
   if (s.estado === 'sem_sessao' || s.estado === 'erro') return 'erro';
   const ver = estado.ultima || (estado.snap && estado.snap.fetchedAt);
   const seg = estado.settings.tempoRealSeg;
   return ver && seg > 0 && Date.now() - new Date(ver) < Math.max(120, seg * 4) * 1000 ? 'ok' : 'parado';
 }
-const TEND = { piorou: '<span class="ft-t sobe" title="Piorou desde a leitura anterior">▲</span>', melhorou: '<span class="ft-t desce" title="Melhorou desde a leitura anterior">▼</span>', nova: '<span class="ft-t nova">NOVA</span>' };
-function itemFita(i) {
-  return '<button type="button" class="ft-i" data-k="' + esc(i.k) + '" tabindex="-1"><i class="ft-p n' + (i.nivel || 0) + '"></i><b class="mono">#' + esc(i.num) + '</b><span class="ft-c">' + esc(i.apelido || i.cliente || '—') + '</span><span class="ft-y">' + esc(i.typeLabel) + '</span><span class="mono ft-d' + (i.nivel === 2 ? ' late' : i.nivel === 1 ? ' today' : '') + '">' + (i.parado || 0) + 'd</span>' + (TEND[i.tend] || '') + '</button>';
-}
-export function fitaHtml(lista) {
-  const e = estadoLeitura();
+export function dicaLeitura(e) {
   const ver = estado.ultima || (estado.snap && estado.snap.fetchedAt);
-  const dica = e === 'ok' ? 'Lendo o Onvio ao vivo · última leitura ' + fmtHoraS(ver) : e === 'erro' ? 'Sem leitura do Onvio agora' : 'Leitura parada' + (ver ? ' · última ' + fmtHoraS(ver) : '');
-  const tempo = Math.max(30, lista.length * 4);
-  return '<div class="fita ' + e + '" id="fita" role="region" aria-label="Pendências da equipe por prioridade">' +
-    '<span class="ft-bola" title="' + esc(dica) + '" aria-label="' + esc(dica) + '"></span>' +
-    (lista.length
-      ? '<div class="ft-janela"><div class="ft-trilho" style="--ft-tempo:' + tempo + 's"><div class="ft-grupo">' + lista.map(itemFita).join('') + '</div><div class="ft-grupo" aria-hidden="true">' + lista.map(itemFita).join('') + '</div></div></div>'
-      : '<div class="ft-janela ft-vazia">' + (estado.snap ? 'Nenhuma pendência na equipe agora.' : 'Aguardando a primeira leitura do Onvio.') + '</div>') +
-    '</div>';
-}
-
-/* ---------- mosaico da equipe (dados) ---------- */
-// Um bloco por analista e um para "Sem analista": total e o pior caso (G3, fora do prazo, atenção, em dia).
-export function blocosEquipe(lista) {
-  const meu = eu();
-  return OC.porAnalista(lista || itens()).map(r => ({
-    id: r.resp, rot: nomeResp(r.resp), n: r.total, sem: r.resp === SEM, eu: !!meu && r.resp === meu,
-    nivel: r.g3 ? 'g3' : r.vermelho ? 'g2' : r.amarelo ? 'g1' : 'ok',
-    det: [r.vermelho ? r.vermelho + ' fora do prazo' : '', r.g3 ? r.g3 + ' crítica(s)' : '', !r.vermelho && r.amarelo ? r.amarelo + ' em atenção' : ''].filter(Boolean).join(' · ')
-  }));
+  return e === 'ok' ? 'Lendo o Onvio ao vivo · última leitura ' + fmtHoraS(ver) : e === 'erro' ? 'Sem leitura do Onvio agora' : 'Leitura parada' + (ver ? ' · última ' + fmtHoraS(ver) : '');
 }
 
 /* ---------- prescrição e mapa de calor (tela Equipe) ---------- */

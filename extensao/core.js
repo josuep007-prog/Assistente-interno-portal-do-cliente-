@@ -625,6 +625,24 @@
     return c;
   }
 
+  // Próximo passo de uma pendência, em poucas palavras (Hoje: próximos passos, carrossel e rodapé dos cartões).
+  function acaoDe(i, motivo) {
+    const d = i.parado || 0, dias = n => n + (n === 1 ? ' dia' : ' dias');
+    switch (motivo || motivoDe(i)) {
+      case 'atraso': return 'Fora do prazo · parada há ' + dias(d);
+      case 'prescreve': return i.prescreveEm != null ? 'Cobrar o cliente · prescreve em ' + dias(i.prescreveEm) : 'Cobrar o cliente antes de prescrever';
+      case 'hoje': return i.lado === 'cli' ? 'Cobrar o cliente · sem retorno' : 'Concluir hoje · o prazo vence hoje';
+      case 'respondeu': return 'Responder o cliente';
+      default: return i.lado === 'cli' ? 'Aguardando o cliente · ' + dias(d) : 'Em dia · parada há ' + dias(d);
+    }
+  }
+  // Anel do cartão: quanto do limite já passou (vez do cliente: prescrição; do escritório: "parada").
+  function progressoPrazo(i, s) {
+    s = Object.assign({}, DEFAULTS, s || {});
+    const limite = i.lado === 'cli' ? s.prescricaoDias : s.parada, d = Math.max(0, i.parado || 0);
+    return { pct: Math.min(100, Math.round(d / Math.max(1, limite) * 100)), dias: d, limite };
+  }
+
   /* ---------- painel da equipe na tela Hoje ---------- */
   // Tendência de cada pendência desde a leitura anterior (setas da barra viva). A marca vale por 2 horas.
   const TENDENCIA_MS = 2 * 3600000;
@@ -819,5 +837,5 @@
     }));
   }
 
-  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, motivoDe, prioridades, contarMotivos, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);

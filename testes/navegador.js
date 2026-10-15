@@ -316,114 +316,112 @@ async function abrirApp(rota, extra) {
 }
 const linhas = (p, sel) => p.$$eval(sel || '#corpo [data-k]', e => e.map(x => x.dataset.k));
 
-await passo('app · Hoje (analista): painel escuro com barra viva, anel, radar e pulso; lista única de prioridades, mosaico e agenda', async () => {
+await passo('app · Hoje (analista): destaque com rosca, carrossel e próximos passos; situações e cartões por situação (formato Convenções)', async () => {
   const p = await abrirApp('#/inicio');
   assert.equal(await p.textContent('#titulo'), 'Hoje');
   assert.match(await p.textContent('#subtitulo'), /, Ana · /);
-  // o que saiu do Hoje (mudou de lugar): semana, placar, mapa de calor, prescrição, distribuição e atividade
-  for (const sel of ['.semana', '#placar', '#mapa-idade', '#l-presc', '#distribuicao', '#ativ', '.ht-cont']) assert.equal(await p.$(sel), null, sel + ' não fica no Hoje');
-  assert.ok(await p.$('#painel.painel-ctrl #fita'), 'barra viva dentro do painel escuro');
-  assert.equal(await p.textContent('#kpi-escopo .on'), 'Minhas · 2');
-  // barra viva: todas as pendências da equipe em ordem de prioridade, só com a bolinha (sem "Ao vivo")
-  assert.deepEqual(await p.$$eval('#fita .ft-grupo:first-child [data-k]', e => e.map(x => x.dataset.k)), ['calcFerias:a', 'avisoRescisao:c', 'geral:b', 'rubricas:d']);
-  assert.equal(await p.getAttribute('#fita', 'class'), 'fita ok');
-  assert.doesNotMatch(await p.textContent('#fita'), /ao vivo/i);
-  // anel: as fatias somam o total do centro; legenda com texto e número
-  await p.waitForFunction(() => document.querySelector('.an-total').textContent === '2');   // o número sobe animado
-  const anel = await p.evaluate(() => ({ total: document.querySelector('.an-total').textContent, fatias: [...document.querySelectorAll('.an-f')].map(c => c.dataset.motivo), leg: [...document.querySelectorAll('.an-l')].map(b => b.dataset.motivo + '=' + b.querySelector('b').dataset.conta) }));
-  assert.deepEqual(anel, { total: '2', fatias: ['atraso', 'hoje'], leg: ['atraso=1', 'prescreve=0', 'hoje=1', 'respondeu=0', 'emdia=0'] });
-  // lista única de prioridades, em ordem, com a etiqueta do motivo
-  assert.deepEqual(await linhas(p, '#prio [data-k]'), ['calcFerias:a', 'geral:b']);
-  assert.deepEqual(await p.$$eval('#prio .pr-tag', e => e.map(x => x.textContent)), ['Fora do prazo', 'Vence hoje']);
-  // radar: um ponto por pendência, com dica; pulso com o saldo da série
-  assert.equal(await p.$$eval('#g-radar .rd-p', e => e.length), 2);
-  assert.match(await p.getAttribute('#g-radar .rd-p[data-k="calcFerias:a"]', 'data-tip'), /#101 · ACME[\s\S]*31 d parada[\s\S]*Fora do prazo/);
-  assert.ok(await p.$('#g-pulso svg .ps-linha'), 'pulso desenhado');
-  await p.waitForFunction(() => /^4▲ \+1 desde 8h$/.test(document.querySelector('.ps-cab').textContent));
-  assert.match(await p.textContent('.ps-pe'), /▲ 3 entraram▼ 1 saíram/);
-  // agenda de hoje: lembrete atrasado com "Feito"
-  assert.match(await p.textContent('#agenda'), /Cobrar o BETA[\s\S]*Atrasado/);
-  // clique numa fatia (ou na legenda) filtra a lista e apaga os pontos do radar que não combinam; o × desfaz
-  await p.click('.an-l[data-motivo="hoje"]');
-  await p.waitForSelector('#prio-card .chip-f');
-  assert.deepEqual(await linhas(p, '#prio [data-k]'), ['geral:b']);
-  assert.deepEqual(await p.$$eval('#g-radar .rd-p.apagado', e => e.map(x => x.dataset.k)), ['calcFerias:a']);
-  assert.match(await p.getAttribute('#ver-fila', 'href'), /motivo=hoje/);
-  await p.click('#prio-card [data-tira="motivo"]');
-  await p.waitForFunction(() => document.querySelectorAll('#prio [data-k]').length === 2 && !document.querySelector('#prio-card .chip-f'));
-  // a fatia "fora do prazo" é a metade direita do anel: clica no traço, à direita do centro
-  const ponto = await p.evaluate(() => { const r = document.querySelector('.an-svg').getBoundingClientRect(), k = r.width / 168; return [r.left + (84 + 73) * k, r.top + 84 * k]; });
+  for (const sel of ['.painel-ctrl', '#fita', '#g-radar', '#g-pulso', '.mosaico', '.semana', '#mapa-idade']) assert.equal(await p.$(sel), null, sel + ' saiu do Hoje');
+  // carteira: abre na sua
+  assert.equal(await p.$eval('#hj-carteira', s => s.value), '__minha');
+  assert.deepEqual(await p.$$eval('#hj-carteira option', o => o.map(x => x.textContent)), ['Minha carteira (2)', 'Equipe toda (4)', 'Ana Teste (2)', 'Bia (1)', 'Sem analista (1)']);
+  // destaque: rosca (% em dia no centro), título com quantas pedem atenção, resumo e legenda
+  await p.waitForFunction(() => document.querySelector('.hj-donut .an-total').textContent === '0%' && document.querySelector('#hj-titulo em').textContent === '2');
+  assert.deepEqual(await p.$$eval('.hj-donut .an-f', e => e.map(x => x.dataset.motivo)), ['atraso', 'hoje']);
+  assert.match(await p.textContent('#hj-titulo'), /^2 solicitações pedem sua atenção$/);
+  assert.match(await p.textContent('.hj-hero-tx p'), /^2 pendências · 2 com o escritório · 0 com o cliente$/);
+  assert.match(await p.textContent('.hj-eyebrow'), /^Minha carteira · Ana · ver equipe toda$/);
+  assert.match(await p.textContent('.hj-legenda'), /Fora do prazo 1.*Vence hoje 1/);
+  // carrossel: uma pendência por vez, com a bolinha da leitura ao vivo; troca sozinho
+  assert.equal(await p.getAttribute('#hj-tick', 'class'), 'hj-tick ok');
+  assert.deepEqual(await p.$$eval('.hj-tk', e => e.map(x => x.querySelector('.hj-tk-tag').textContent)), ['Lembrete atrasado', 'Urgente', 'Atenção']);
+  assert.equal(await p.$$eval('.hj-tk.on', e => e.length), 1);
+  assert.match(await p.textContent('.hj-tk[data-k="calcFerias:a"] b'), /#101 ACME: fora do prazo · parada há 31 dias/);
+  await p.waitForFunction(() => document.querySelector('.hj-tk.on').dataset.k === 'calcFerias:a', null, { timeout: 8000 });
+  // próximos passos: lembrete atrasado primeiro, depois a lista de prioridades
+  assert.deepEqual(await p.$$eval('#hj-passos .hj-step b', e => e.map(x => x.textContent)), ['Cobrar o BETA', 'Fora do prazo · parada há 31 dias', 'Concluir hoje · o prazo vence hoje']);
+  // situações: números iguais aos da rosca; sem "Sem analista" na sua carteira
+  await p.waitForFunction(() => [...document.querySelectorAll('.hj-sit b')].map(b => b.textContent).join() === '1,0,1,0,0');
+  assert.deepEqual(await p.$$eval('.hj-sit', e => e.map(x => x.dataset.sit)), ['atraso', 'prescreve', 'hoje', 'respondeu', 'emdia']);
+  // cartões: grupos que pedem atenção, cada cartão com etiqueta, anel, estatísticas e o próximo passo
+  assert.deepEqual(await p.$$eval('.hj-sec', e => e.map(x => x.dataset.grupo)), ['atraso', 'hoje']);
+  const card = await p.$eval('.hj-card[data-k="calcFerias:a"]', c => ({ chip: c.querySelector('.hj-chip').textContent.trim(), num: c.querySelector('.hj-num').textContent, dias: c.querySelector('.ap-c b').textContent, cli: c.querySelector('h4').textContent, sub: c.querySelector('.hj-sub').textContent, stats: [...c.querySelectorAll('.hj-stats dd')].map(d => d.textContent), cta: c.querySelector('.hj-cta').textContent }));
+  assert.deepEqual(card, { chip: 'Fora do prazo', num: '#101', dias: '31', cli: 'ACME', sub: 'Cálculo de férias · Fulano', stats: ['Em análise', 'Escritório', 'Ana Teste'], cta: 'Fora do prazo · parada há 31 dias' });
+  // situação filtra: só o grupo dela; a fatia da rosca acende; segundo clique desliga
+  await p.click('.hj-sit[data-sit="hoje"]');
+  assert.deepEqual(await p.$$eval('.hj-sec', e => e.map(x => x.dataset.grupo)), ['hoje']);
+  assert.match(await p.getAttribute('.hj-donut .an-f[data-motivo="hoje"]', 'class'), /ativo/);
+  assert.match(await p.getAttribute('.hj-donut .an-f[data-motivo="atraso"]', 'class'), /apagado/);
+  await p.click('.hj-sit[data-sit="hoje"]');
+  assert.deepEqual(await p.$$eval('.hj-sec', e => e.map(x => x.dataset.grupo)), ['atraso', 'hoje']);
+  // a fatia "fora do prazo" é a metade direita da rosca: clica no traço, à direita do centro
+  const ponto = await p.evaluate(() => { const r = document.querySelector('.hj-donut .an-svg').getBoundingClientRect(), k = r.width / 150; return [r.left + (75 + 64) * k, r.top + 75 * k]; });
   await p.mouse.click(ponto[0], ponto[1]);
-  assert.deepEqual(await linhas(p, '#prio [data-k]'), ['calcFerias:a']);
-  await p.click('.an-l[data-motivo="atraso"]');                      // segundo clique desliga
-  assert.equal((await linhas(p, '#prio [data-k]')).length, 2);
-  // mosaico: um bloco por analista e "Sem analista", área proporcional às pendências; sua linha com contorno
-  const mo = await p.$$eval('.mosaico .mo-b', e => e.map(x => ({ id: x.dataset.id, n: Number(x.dataset.n), a: Number(x.dataset.area), cls: x.className })));
-  assert.deepEqual(mo.map(b => b.id + '=' + b.n).sort(), ['(sem responsável)=1', 'Ana Teste=2', 'Bia=1']);
-  assert.equal(mo[0].id, 'Ana Teste', 'o maior bloco primeiro');
-  const somaA = mo.reduce((x, b) => x + b.a, 0);
-  for (const b of mo) assert.ok(Math.abs(b.a / somaA - b.n / 4) < 0.02, 'área proporcional: ' + b.id);
-  assert.match(mo[0].cls, /mo-g3/); assert.match(mo[0].cls, /mo-eu/); assert.match(mo.find(b => b.id === '(sem responsável)').cls, /mo-sem/);
-  // clique no mosaico filtra pelo analista e passa para Equipe
-  await p.click('.mosaico [data-id="Bia"]');
-  await p.waitForFunction(() => /Equipe/.test(document.querySelector('#kpi-escopo .on').textContent));
-  assert.deepEqual(await linhas(p, '#prio [data-k]'), ['rubricas:d']);
-  assert.match(await p.textContent('#prio .pr-tag'), /Parada há 0 d/);
-  assert.match(await p.getAttribute('#ver-fila', 'href'), /escopo=equipe&analista=Bia/);
-  await p.click('#prio-card [data-tira="resp"]');
-  await p.click('[data-escopo="equipe"]');
-  assert.deepEqual(await linhas(p, '#prio [data-k]'), ['calcFerias:a', 'avisoRescisao:c', 'geral:b', 'rubricas:d'], 'equipe: prescrição antes de vence hoje');
-  assert.equal(await p.textContent('#prio [data-k="avisoRescisao:c"] .pr-tag'), 'Prescreve em 4 d');
-  assert.match(await p.textContent('#prio [data-k="avisoRescisao:c"] .pr-resp'), /sem analista/);
-  await p.click('[data-escopo="minhas"]');
-  // a primeira tela cabe: o painel e o começo da lista aparecem sem rolar
-  const cabe = await p.evaluate(() => [document.querySelector('#painel').getBoundingClientRect().bottom < innerHeight, document.querySelector('#prio [data-k]').getBoundingClientRect().top < innerHeight]);
-  assert.deepEqual(cabe, [true, true], 'painel e começo da lista visíveis em 1360×860');
-  // a área de conteúdo rola (antes o .app em grade do ui.css esticava a tela e cortava o fim)
-  const rol = await p.evaluate(() => { const v = document.querySelector('#vista'); return Math.round(v.getBoundingClientRect().bottom) <= innerHeight; });
-  assert.equal(rol, true, 'Hoje rola dentro da janela');
-  assert.equal(await p.textContent('#n-fila'), '2');
-  assert.equal(await p.textContent('#sino-cont'), '1');
-  assert.match(await p.textContent('#aovivo-tx'), /^Ao vivo · \d\d:\d\d:\d\d$/);
-  // lembrete "Feito" sai da agenda de hoje
-  await p.click('#agenda [data-feito]');
-  await p.waitForFunction(() => !/Cobrar o BETA/.test(document.querySelector('#agenda').textContent));
-  // clique num ponto do radar e na fita abre o detalhe
-  await p.click('#g-radar .rd-p[data-k="geral:b"]');
+  assert.deepEqual(await p.$$eval('.hj-sec', e => e.map(x => x.dataset.grupo)), ['atraso']);
+  assert.match(await p.getAttribute('.hj-sit[data-sit="atraso"]', 'class'), /on/);
+  await p.click('.hj-sit[data-sit="atraso"]');
+  // busca na carteira: só os cartões mudam e a busca não perde o foco
+  await p.fill('#hj-busca', 'beta');
+  assert.deepEqual(await linhas(p, '#hj-cartoes [data-k]'), ['geral:b']);
+  assert.equal(await p.evaluate(() => document.activeElement.id), 'hj-busca');
+  await p.fill('#hj-busca', '');
+  // visão Lista: as mesmas pendências em linhas, agrupadas
+  await p.click('[data-vis="lista"]');
+  assert.deepEqual(await linhas(p, '#hj-cartoes .prio'), ['calcFerias:a', 'geral:b']);
+  await p.click('[data-vis="cartoes"]');
+  // clique no cartão, no passo e no carrossel abre o detalhe
+  await p.click('.hj-card[data-k="geral:b"]');
   await p.waitForSelector('#gaveta:not([hidden])');
   assert.match(await p.textContent('#gaveta h2'), /BETA/);
   await p.keyboard.press('Escape');
   await p.waitForSelector('#gaveta', { state: 'hidden' });
-  await p.hover('#fita .ft-janela');                                  // a fita para ao passar o mouse
-  await p.click('#fita .ft-grupo:first-child [data-k="calcFerias:a"]');
+  await p.click('#hj-passos [data-k="calcFerias:a"]');
   await p.waitForFunction(() => /ACME/.test(document.querySelector('#gaveta h2').textContent));
   await p.keyboard.press('Escape');
-  // "Ver fila completa" leva à fila com o mesmo filtro
-  await p.click('.an-l[data-motivo="atraso"]');
-  await p.click('#ver-fila');
-  await p.waitForFunction(() => location.hash === '#/fila?motivo=atraso' && document.querySelector('#ativos .chip-f'));
-  assert.deepEqual(await linhas(p), ['calcFerias:a']);
-  assert.match(await p.textContent('#ativos'), /Só: Fora do prazo/);
+  await p.waitForSelector('#gaveta', { state: 'hidden' });
+  // lembrete "Feito" sai dos próximos passos
+  await p.click('#hj-passos [data-feito]');
+  await p.waitForFunction(() => !/Cobrar o BETA/.test(document.querySelector('#hj-passos').textContent));
+  // carteira Equipe toda: Sem analista aparece; a vez do cliente mostra "Prescreve em"
+  await p.selectOption('#hj-carteira', '__equipe');
+  await p.waitForFunction(() => document.querySelector('.hj-donut .an-total').textContent === '25%');
+  assert.deepEqual(await p.$$eval('.hj-sit', e => e.map(x => x.dataset.sit + '=' + x.querySelector('b').dataset.conta)), ['atraso=1', 'prescreve=1', 'hoje=1', 'respondeu=0', 'emdia=1', 'sem=1']);
+  assert.deepEqual(await p.$$eval('.hj-sec', e => e.map(x => x.dataset.grupo)), ['atraso', 'prescreve', 'hoje']);
+  assert.deepEqual(await p.$$eval('.hj-card[data-k="avisoRescisao:c"] .hj-stats dd', e => e.map(x => x.textContent)), ['Respondido', 'Cliente', '4 dias']);
+  assert.match(await p.textContent('.hj-hero-tx p'), /4 pendências · 3 com o escritório · 1 com o cliente · 1 sem analista/);
+  await p.click('.hj-sit[data-sit="sem"]');
+  assert.deepEqual(await linhas(p, '#hj-cartoes .hj-card'), ['avisoRescisao:c']);
+  await p.click('.hj-sit[data-sit="sem"]');
+  // a escolha fica guardada; um analista só com pendências em dia mostra "Tudo em dia" e o grupo Em dia ao clicar
+  await p.selectOption('#hj-carteira', 'Bia');
+  await p.waitForFunction(() => /Tudo em dia/.test(document.querySelector('#hj-titulo').textContent));
+  assert.match(await p.textContent('#hj-cartoes'), /Nenhuma pendência pedindo atenção/);
+  await p.click('.hj-sit[data-sit="emdia"]');
+  assert.deepEqual(await linhas(p, '#hj-cartoes .hj-card'), ['rubricas:d']);
+  await p.reload(); await p.waitForSelector('#hj-carteira');
+  assert.equal(await p.$eval('#hj-carteira', s => s.value), 'Bia');
+  await p.selectOption('#hj-carteira', '__minha');
+  // a primeira tela cabe: destaque e situações sem rolar
+  const cabe = await p.evaluate(() => [document.querySelector('.hj-hero').getBoundingClientRect().bottom < innerHeight, document.querySelector('.hj-sits').getBoundingClientRect().bottom < innerHeight]);
+  assert.deepEqual(cabe, [true, true], 'destaque e situações visíveis em 1360×860');
+  const rol = await p.evaluate(() => Math.round(document.querySelector('#vista').getBoundingClientRect().bottom) <= innerHeight);
+  assert.equal(rol, true, 'Hoje rola dentro da janela');
+  assert.equal(await p.textContent('#n-fila'), '2');
+  assert.match(await p.textContent('#aovivo-tx'), /^Ao vivo · \d\d:\d\d:\d\d$/);
   assert.deepEqual(p.erros, []);
 });
 
-await passo('app · Hoje sem nada com você: vai para a equipe e a frase explica; leitura vazia avisa', async () => {
+await passo('app · Hoje sem nada com você: abre na equipe toda e a frase explica; leitura vazia avisa', async () => {
   const semMinhas = ITENS_APP.map(i => Object.assign({}, i, { mine: false }));
   const p = await abrirApp('#/inicio', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: semMinhas }) });
-  assert.match(await p.textContent('#kpi-escopo .on'), /Equipe · 4/);
-  await p.waitForFunction(() => document.querySelector('.an-total').textContent === '4');
-  assert.deepEqual(await p.$$eval('.an-l', e => e.map(b => b.dataset.motivo + '=' + b.querySelector('b').dataset.conta)), ['atraso=1', 'prescreve=1', 'hoje=1', 'respondeu=0', 'emdia=1']);
-  assert.match(await p.textContent('#ht-resumo'), /Nenhuma pendência está com você como responsável.*equipe \(4 pendências\)/);
-  await p.click('[data-escopo="minhas"]');
-  await p.waitForFunction(() => document.querySelector('.an-total').textContent === '0');   // dá para voltar às suas (o número desce animado)
+  assert.equal(await p.$eval('#hj-carteira', s => s.value), '__equipe');
+  assert.match(await p.textContent('#ht-resumo'), /Nenhuma pendência está com você como responsável.*equipe toda \(4 pendências\)/);
+  await p.waitForFunction(() => document.querySelector('#hj-titulo em') && document.querySelector('#hj-titulo em').textContent === '3');
+  await p.selectOption('#hj-carteira', '__minha');
+  await p.waitForFunction(() => /Nada pendente nesta carteira/.test(document.querySelector('#hj-titulo').textContent));
   assert.equal(await p.$('#ht-resumo'), null, 'escolheu: sem a frase');
-  await p.click('[data-escopo="equipe"]');
-  await p.click('.an-l[data-motivo="prescreve"]');
-  await p.click('#ver-fila');
-  await p.waitForFunction(() => location.hash === '#/fila?escopo=equipe&motivo=prescreve' && document.querySelectorAll('#corpo [data-k]').length === 1);
   const vazio = await abrirApp('#/inicio', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: [] }) });
   assert.match(await vazio.textContent('#ht-resumo'), /não trouxe nenhuma pendência em nenhuma das 10 listas.*Testar a leitura/);
-  assert.match(await vazio.textContent('#prio'), /Nada pendente/);
+  assert.match(await vazio.textContent('#hj-cartoes'), /Nada pendente nesta carteira/);
   assert.deepEqual(p.erros.concat(vazio.erros), []);
 });
 

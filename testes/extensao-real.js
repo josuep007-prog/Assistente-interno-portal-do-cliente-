@@ -125,7 +125,7 @@ await portal.setViewportSize({ width: 1440, height: 900 });
 await portal.goto(PORTAL_TESTE);
 await esperar(() => appDe(portal));                                   // ao entrar no Onvio, o app já ocupa a tela
 const app = appDe(portal);
-await app.waitForSelector('#painel .an-svg', { timeout: 8000 });
+await app.waitForSelector('.hj-hero .an-svg', { timeout: 8000 });
 await new Promise(r => setTimeout(r, 1000));                         // números e anel animados
 assert.equal(await cheia(portal), true);
 const caixa = await (await app.frameElement()).boundingBox();
@@ -134,6 +134,14 @@ await foto(portal, '1-inicio.png');
 await portal.mouse.move(800, 600); await portal.mouse.wheel(0, 800);
 await new Promise(r => setTimeout(r, 500));
 await foto(portal, '1-inicio-2.png');
+await app.evaluate(() => document.querySelector('#vista').scrollTo(0, 0));
+await app.selectOption('#hj-carteira', '__equipe');
+await new Promise(r => setTimeout(r, 600));
+await foto(portal, '1-inicio-equipe.png');
+await app.click('[data-vis="lista"]');
+await foto(portal, '1-inicio-lista.png');
+await app.click('[data-vis="cartoes"]');
+await app.selectOption('#hj-carteira', '__minha');
 await app.evaluate(() => document.querySelector('#vista').scrollTo(0, 0));
 for (const rota of ['fila', 'fila?escopo=equipe', 'equipe', 'equipe?aba=resp', 'clientes', 'clientes?aba=empresas', 'lembretes', 'lembretes?aba=lista']) {
   await app.evaluate(r => { location.hash = '#/' + r; }, rota);
@@ -151,7 +159,7 @@ await new Promise(r => setTimeout(r, 400));
 await foto(portal, '2-busca.png');
 await app.click('#cmdk', { position: { x: 20, y: 20 } });              // clique fora fecha a busca
 await app.waitForSelector('#cmdk', { state: 'hidden' });
-await app.$eval('#ag-novo', b => b.click());                          // fica embaixo: o fim da janela de teste não recebe cliques (ver #g-onvio)
+await app.click('#ag-novo');
 await app.waitForSelector('#dlg-lembrete:not([hidden])');
 await new Promise(r => setTimeout(r, 400));
 await foto(portal, '2-novo-lembrete.png');
