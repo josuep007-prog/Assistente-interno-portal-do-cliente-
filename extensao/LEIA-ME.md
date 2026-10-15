@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.11.2)
+# Control Onvio · ControlTax (v0.11.3)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Nesta versão a extensão ainda **só lê**: as ações (responder, definir responsável, anexar) chegam na próxima, depois do mapeamento.
 
@@ -41,6 +41,11 @@ Vez do escritório: sem primeiro trâmite após 1 dia útil; aberta além de 3 d
 Vez do cliente: sem retorno há mais de 5 dias úteis (laranja); a partir de 20 dias parada fica vermelho com a contagem até a prescrição de 30 dias.
 
 Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardando resposta** = o escritório precisa responder; **Respondido** = vez do cliente.
+
+## Novidades da v0.11.3 (descobrir o caminho dos trâmites)
+
+- Em algumas listas (ex.: Aviso de férias) a extensão não aprendia o caminho dos trâmites sozinha: o Onvio provavelmente busca os trâmites em outro serviço, que a extensão não observava.
+- O **modo aprender** (Configurações > Aprender ações) agora anota o formato de **qualquer chamada à API do Onvio**, não só das de solicitações. Continua sem anotar valores. Para descobrir o caminho: ligue o modo, abra os trâmites de uma solicitação de Aviso de férias no Onvio, clique em "Copiar o que foi aprendido" e envie o texto.
 
 ## Novidades da v0.11.2 (cabeçalho padronizado)
 

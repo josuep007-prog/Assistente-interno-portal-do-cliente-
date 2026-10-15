@@ -8,7 +8,7 @@
  * ler os trâmites das listas em que o caminho padrão não serve.
  *
  * Modo aprender (ligado em Configurações, só para mapear as ações na empresa de teste): registra o FORMATO de
- * cada chamada à API de solicitações (método, caminho com ids trocados por {id}, nomes e tipos dos campos do
+ * cada chamada à API do Onvio (método, caminho com ids trocados por {id}, nomes e tipos dos campos do
  * corpo e da resposta). Nunca grava valores: textos, nomes, CPF, datas e números viram só o tipo.
  */
 (function () {
@@ -17,6 +17,8 @@
   window.__controlOnvioAcao = true;
 
   const RE = /\/api\/(?:service-requesting|br-payroll-sr)\//i;
+  // No modo aprender vale qualquer API do Onvio: os trâmites de algumas listas podem vir de outro serviço.
+  const RE_API = /\/api\//i;
   const altera = m => /^(POST|PUT|PATCH|DELETE)$/i.test(String(m || 'GET'));
   const postar = msg => { try { window.postMessage(Object.assign({ src: 'controlonvio' }, msg), location.origin); } catch (e) {} };
   const aviso = () => postar({ tipo: 'mudanca' });
@@ -124,8 +126,8 @@
       try {
         const url = typeof entrada === 'string' ? entrada : entrada && entrada.url;
         const metodo = String((init && init.method) || (entrada && entrada.method) || 'GET').toUpperCase();
-        if (url && RE.test(url)) {
-          if (altera(metodo)) p.then(r => { if (r && r.ok) aviso(); }).catch(() => {});
+        if (url && RE_API.test(url) && (RE.test(url) || aprendendo)) {
+          if (altera(metodo) && RE.test(url)) p.then(r => { if (r && r.ok) aviso(); }).catch(() => {});
           const cand = metodo === 'GET' && rotaCandidata(url);
           if (cand) p.then(r => (r && r.ok ? r.clone().json() : null)).then(d => { if (pareceTramites(d)) avisarRota(cand); }).catch(() => {});
           if (aprendendo) {
@@ -146,11 +148,12 @@
   XMLHttpRequest.prototype.open = function (metodo, url) {
     try {
       const u = String(url), m = String(metodo || 'GET').toUpperCase();
-      if (RE.test(u)) {
+      const nosso = RE.test(u);
+      if (nosso || (aprendendo && RE_API.test(u))) {
         this.__co = { metodo: m, url: u, ct: '' };
         this.addEventListener('load', () => {
-          if (this.status >= 200 && this.status < 300 && altera(m)) aviso();
-          if (this.status >= 200 && this.status < 300 && m === 'GET') {
+          if (nosso && this.status >= 200 && this.status < 300 && altera(m)) aviso();
+          if (nosso && this.status >= 200 && this.status < 300 && m === 'GET') {
             const cand = rotaCandidata(u);
             if (cand) { try { if (pareceTramites(this.responseType === 'json' ? this.response : JSON.parse(this.responseText))) avisarRota(cand); } catch (e) {} }
           }

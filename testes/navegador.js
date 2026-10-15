@@ -211,8 +211,10 @@ await passo('aprender: registra método, caminho e formato (sem valores); deslig
       await fetch('/api/br-payroll-sr/v1/employee-leave/123/attachments', { method: 'POST', body: fd });
       // leitura com query (expand fica; busca e filtro com dados não)
       await fetch('/api/service-requesting/v1/tickets/generic?expand=clientExpanded&searchText=Fulano&filter=' + encodeURIComponent(JSON.stringify({ groups: [{ items: [{ by: 'clientName', op: 'CT', value: 'ACME' }] }] })));
-      // fora da API de solicitações: ignorado
+      // outra API do Onvio (os trâmites de algumas listas podem vir daqui): também entra, só o formato
       await fetch('/api/storage/v2/Folders/1/children');
+      // fora de /api/: ignorado
+      await fetch('/br-portal-do-cliente/assets/i18n/pt.json').catch(() => {});
     });
     await p.waitForTimeout(600);
     return { p, mem: await p.evaluate(() => JSON.parse(localStorage.getItem('__mem'))) };
@@ -221,7 +223,7 @@ await passo('aprender: registra método, caminho e formato (sem valores); deslig
   const { p, mem } = await montar({ ligado: true, desde: Date.now() });
   const ap = mem.aprendizado || [];
   const txt = JSON.stringify(ap);
-  assert.equal(ap.length, 3, 'POST de trâmite (deduplicado), anexo e leitura: ' + ap.map(a => a.metodo + ' ' + a.caminho).join(' | '));
+  assert.equal(ap.length, 4, 'POST de trâmite (deduplicado), anexo, leitura e outra API: ' + ap.map(a => a.metodo + ' ' + a.caminho).join(' | '));
   const tramite = ap.find(a => /topics$/.test(a.caminho));
   assert.equal(tramite.caminho, '/api/br-payroll-sr/v1/vacation-calculations/{id}/topics');
   assert.equal(tramite.vezes, 2);
@@ -232,7 +234,8 @@ await passo('aprender: registra método, caminho e formato (sem valores); deslig
   const anexo = ap.find(a => /attachments$/.test(a.caminho));
   assert.equal(anexo.caminho, '/api/br-payroll-sr/v1/employee-leave/{id}/attachments');
   assert.deepEqual(anexo.corpo, { multipart: { file: 'arquivo(application/pdf)', description: 'texto' } });
-  const leitura = ap.find(a => a.metodo === 'GET');
+  assert.ok(ap.some(a => a.caminho === '/api/storage/v2/Folders/{id}/children'), 'outra API do Onvio');
+  const leitura = ap.find(a => a.metodo === 'GET' && /generic/.test(a.caminho));
   assert.deepEqual(leitura.query, { expand: 'clientExpanded', searchText: '…', filter: [['clientName CT']] });
   for (const proibido of ['Fulano', 'João', '123.456', 'ACME', 'atestado-joao', 'Prezado', '2026-10-20', '0f8fad5b', '2500']) assert.ok(!txt.includes(proibido), 'vazou um valor: ' + proibido);
   assert.deepEqual(p.erros, []);
