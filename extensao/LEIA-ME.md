@@ -1,6 +1,6 @@
-# Control Onvio · ControlTax (v0.13.0)
+# Control Onvio · ControlTax (v0.14.0)
 
-Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Nesta versão a extensão ainda **só lê**: as ações (responder, definir responsável, anexar) chegam na próxima, depois do mapeamento.
+Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
 ## Instalar (piloto)
 
@@ -41,6 +41,20 @@ Vez do escritório: sem primeiro trâmite após 1 dia útil; aberta além de 3 d
 Vez do cliente: sem retorno há mais de 5 dias úteis (laranja); a partir de 20 dias parada fica vermelho com a contagem até a prescrição de 30 dias.
 
 Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardando resposta** = o escritório precisa responder; **Respondido** = vez do cliente.
+
+## Novidades da v0.14.0 (ações no Onvio)
+
+Feito a partir do mapeamento na empresa de teste (`mapeamento/acoes-2026-10-15.md`).
+
+- **Responder pelo detalhe:** escolha a situação (Em análise, Em análise interna, Respondido ou Concluído; depois de Respondido, só Respondido e Concluído, como no Onvio), escreva o texto e anexe arquivos (até 10, de até 15 MB). **Inserir observações para o cliente** coloca no texto as observações de prazo da aba "Para o cliente". Antes de enviar, **Revisar e enviar** mostra o resumo e só **Confirmar envio ao Onvio** manda.
+- **Encaminhar** para outro usuário (com comentário), **definir responsável** e **alterar expectativa** (só na Geral, a única testada), também com confirmação.
+- **Distribuir:** **Atribuir** em cada linha (com confirmação) e **Atribuir todas**, com o resumo de quantas vão para cada pessoa. O resultado aparece na linha.
+- **Onde funciona:** Geral, Aviso e Cálculo de férias, Aviso e Cálculo de rescisão e Afastamento. Cadastro e Rubricas ficam bloqueados (o botão explica) até serem mapeados. O Onvio também bloqueia: definir responsável na folha quando já tem um; na Geral, com a situação Respondido; encaminhar com Respondido.
+- **Segurança:** o envio sai de dentro da aba do Onvio, com a sessão e a autorização da própria tela (a autorização fica só na memória da página, nunca é gravada). Só os endereços de trâmite, anexo do trâmite, responsável e expectativa podem receber escrita; **nunca exclui** nada nem cria solicitação. Texto e anexos não são guardados. Se o Onvio recusar, a mensagem diz o código e nada se perde do que você escreveu.
+- O Onvio às vezes responde 503 na primeira leitura; a extensão tenta de novo uma vez.
+- Lembrete do Onvio: o primeiro trâmite de uma solicitação sem responsável define quem respondeu como responsável.
+
+**A confirmar no Onvio real:** o envio feito pela extensão (o mapeamento foi pela tela); anexo e expectativa nas listas de férias, rescisão e afastamento (o anexo segue o mesmo desenho da Geral; a expectativa ficou só na Geral).
 
 ## Novidades da v0.13.0 (detalhe completo, prazos legais, avisos sem cálculo, tipos e distribuição)
 
