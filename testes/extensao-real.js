@@ -30,6 +30,9 @@ const itensPorRota = {
   'vacation-calculations': [
     { id: 'v1', identifier: 101, genericStatus: 2, created: iso(9), lastUpdated: iso(7), clientEmployeeExpanded: { name: 'Fulano' }, clientExpanded: { name: 'ACME', nickname: 'ACME' }, staffResponsibleExpanded: { name: 'Ana Teste' } }
   ],
+  'prior-notice-vacations': [
+    { id: '7d9f2c1a-4b3e-4c55-9a10-2f6e8b7c0d11', identifier: 702, genericStatus: 2, created: iso(6), lastUpdated: iso(5), clientEmployeeExpanded: { name: 'Beltrano' }, clientExpanded: { name: 'DELTA', nickname: 'DELTA' }, staffResponsibleExpanded: { name: 'Bia' } }
+  ],
   'payroll-entries': [
     { id: 'r1', identifier: 55, genericStatus: 4, created: iso(25), genericLastUpdated: iso(25), effectiveDate: '2026-09-01', entryType: 'MONTHLY', clientExpanded: { name: 'GAMA' }, staffResponsibleExpanded: null }
   ]
@@ -40,6 +43,9 @@ await ctx.route('https://onvio.com.br/**', async r => {
   const u = new URL(r.request().url());
   chamadas.push(u.pathname + (u.searchParams.get('filter') ? ' ' + u.searchParams.get('filter') : ''));
   if (u.pathname.endsWith('/security/v1/session-and-bindings')) return r.fulfill({ contentType: 'application/json', body: JSON.stringify({ UdsSession: { FirstName: 'Ana', LastName: 'Teste', EmailAddress: 'a@b.c' } }) });
+  // Aviso de férias: o Onvio não usa "topics" (404, com id ou número); os trâmites ficam em outro caminho
+  if (/prior-notice-vacations\/[^/]+\/topics$/.test(u.pathname)) return r.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
+  if (/prior-notice-vacations\/7d9f2c1a-4b3e-4c55-9a10-2f6e8b7c0d11\/history$/.test(u.pathname)) return r.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [{ created: iso(6), status: 1, description: 'Aviso de férias', createdByContactExpanded: { name: 'Cliente DELTA' } }, { created: iso(5), status: 2, description: 'Recebido', createdByExpanded: { name: 'Bia' } }] }) });
   if (u.pathname.endsWith('/topics')) return r.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [{ created: iso(9), status: 1, description: '<p>Bom dia, segue o pedido de <b>cálculo de férias</b> do Fulano a partir de 03/11.</p>', createdByContactExpanded: { name: 'Cliente ACME' }, attachmentsExpanded: [{ name: 'aviso-ferias-fulano.pdf' }] }, { created: iso(7), status: 2, description: 'Recebido, estamos calculando.', createdByContactExpanded: { name: 'Ana Teste' } }] }) });
   if (modoCliente && u.pathname.endsWith('/company-department-access')) return r.fulfill({ status: 403, contentType: 'application/json', body: '{}' });
   const k = Object.keys(itensPorRota).find(x => u.pathname.endsWith('/' + x));
@@ -178,6 +184,19 @@ assert.equal(await app.$$eval('#gaveta .tl-item', e => e.length), 2);
 await foto(portal, '4-detalhe.png');
 await app.click('#g-fechar');
 await app.waitForSelector('#gaveta', { state: 'hidden' });
+// trâmites em lista com outro caminho: sem rota, o detalhe explica; o Onvio abre os trâmites e a extensão aprende
+const det = m => pagina.evaluate(x => new Promise(res => chrome.runtime.sendMessage(x, res)), m);
+const semRota = await det({ cmd: 'detalhe', type: 'avisoFerias', num: 702 });
+assert.deepEqual([semRota.ok, semRota.semRota, semRota.lista], [true, true, 'Aviso de férias']);
+await aba.evaluate(() => new Promise(res => { const x = new XMLHttpRequest(); x.open('GET', '/api/br-payroll-sr/v1/prior-notice-vacations/7d9f2c1a-4b3e-4c55-9a10-2f6e8b7c0d11/history?expand=all'); x.onload = res; x.send(); }));
+await esperarReal(async () => !!(await pagina.evaluate(() => chrome.storage.local.get('rotasTramites'))).rotasTramites);
+const rotas = (await pagina.evaluate(() => chrome.storage.local.get('rotasTramites'))).rotasTramites;
+assert.deepEqual([rotas.avisoFerias.sufixo, rotas.avisoFerias.idForma, rotas.avisoFerias.query], ['history', 'guid', { expand: 'all' }]);
+const depoisRota = await det({ cmd: 'detalhe', type: 'avisoFerias', num: 702 });
+assert.deepEqual([depoisRota.erroTramites, depoisRota.tramites.length], [null, 2], 'com a rota aprendida, os trâmites aparecem');
+await pagina.reload(); await pagina.waitForFunction(() => /Trâmites por lista/.test(document.querySelector('#diag').textContent));
+assert.match(await pagina.textContent('#diag'), /Aviso de férias: aprendido \(history, id\)/);
+console.log('trâmites de Aviso de férias: rota aprendida do Onvio (' + rotas.avisoFerias.sufixo + ')');
 // sino
 await app.click('#btn-sino');
 await foto(portal, '5-sino.png');

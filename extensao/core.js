@@ -421,7 +421,7 @@
     }
     if (extra && extra.tramites) {
       if (onProgress) onProgress(TYPES.length, TYPES.length, 'trâmites');
-      await enriquecer(fetcher, out, extra.tramites, s, now);
+      await enriquecer(fetcher, out, extra.tramites, s, now, extra.rotasTramites);
     }
     out.items.sort((a, b) => (b.nivel - a.nivel) || (b.parado - a.parado));
     return out;
@@ -431,8 +431,24 @@
    * A lista não traz o histórico. Para cada pendência que já saiu de "Sem análise", lê os trâmites
    * uma única vez (o resultado fica em cache) e procura o primeiro trâmite depois da abertura cuja
    * situação NÃO seja uma que o cliente grava. É uma estimativa: confirme com a aba Trâmites. */
-  function urlTramites(t, id) {
-    return API + t.path + '/' + encodeURIComponent(id) + '/topics?expand=all&itemsPerPage=1000&orderBy=' + encodeURIComponent('created asc') + '&pageIndex=0';
+  // Endereço dos trâmites. O padrão ("topics" com o id interno) só foi confirmado em Cadastro; nas listas em que o
+  // Onvio usa outro caminho, a rota é aprendida observando o próprio Onvio (acao-hook.js → rotasTramites).
+  // item: o registro do Onvio ou o item normalizado (id + identifier/num). rota: { sufixo, idForma, query }.
+  const QUERY_TRAMITES = { expand: 'all', itemsPerPage: '1000', orderBy: 'created asc', pageIndex: '0' };
+  const SUFIXO_OK = /^[a-z][a-z0-9-]{0,40}(\/[a-z][a-z0-9-]{0,40})?$/i;
+  const QUERY_OK = new Set(['expand', 'orderBy', 'itemsPerPage', 'pageIndex', 'startIndex', 'sort']);
+  function rotaValida(r) {
+    if (!r || typeof r !== 'object' || !SUFIXO_OK.test(String(r.sufixo || ''))) return null;
+    const query = {};
+    for (const [k, v] of Object.entries(r.query && typeof r.query === 'object' ? r.query : {})) if (QUERY_OK.has(k) && typeof v === 'string' && v.length <= 200) query[k] = v;
+    return { sufixo: r.sufixo, idForma: r.idForma === 'numero' ? 'numero' : 'guid', query };
+  }
+  function urlTramites(t, item, rota) {
+    const it = item && typeof item === 'object' ? item : { id: item };
+    const r = rotaValida(rota);
+    const id = r && r.idForma === 'numero' ? (it.identifier != null ? it.identifier : it.num) : it.id;
+    const q = new URLSearchParams(r ? Object.assign({}, QUERY_TRAMITES, r.query) : QUERY_TRAMITES);
+    return API + t.path + '/' + encodeURIComponent(id) + '/' + (r ? r.sufixo : 'topics') + '?' + q.toString().replace(/\+/g, '%20');
   }
   function primeiroTramiteEsc(topicos, t) {
     const grava = new Set(FAMILIAS[t.familia].clienteGrava);
@@ -440,7 +456,9 @@
     for (let i = 1; i < ord.length; i++) if (!grava.has(Number(ord[i].status))) return ord[i].created;
     return null;
   }
-  async function enriquecer(fetcher, out, cache, s, now) {
+  async function enriquecer(fetcher, out, cache, s, now, rotas) {
+    rotas = rotas || {};
+    out.tramites.porTipo = {};
     const LIMITE = 60, PARALELO = 4;
     const hol = new Set(s.feriados || []);
     const novo = {};
@@ -460,14 +478,16 @@
         const t = TYPE_BY_KEY[it.type];
         if (falhou[t.key] >= 3) continue;                                  // endpoint do tipo não responde
         try {
-          const d = await fetcher(urlTramites(t, it.id));
+          const d = await fetcher(urlTramites(t, it, rotas[t.key]));
           const pt = primeiroTramiteEsc((d && d.items) || (Array.isArray(d) ? d : []), t);
           out.tramites.lidos++;
+          out.tramites.porTipo[t.key] = 'ok';
           if (pt) novo[it.k] = { pt }; // sem achar, tenta de novo no próximo ciclo
         } catch (e) {
           if (e && e.auth) throw e;
           out.tramites.falhas++;
           falhou[t.key] = (falhou[t.key] || 0) + 1;
+          if (out.tramites.porTipo[t.key] !== 'ok') out.tramites.porTipo[t.key] = /HTTP 404/.test(e && e.message) ? (rotas[t.key] ? 'rota aprendida falhou (404)' : 'sem rota (404)') : 'erro: ' + String(e && e.message || e).slice(0, 60);
           novo[it.k] = { erro: now.toISOString() };
         }
       }
@@ -837,5 +857,5 @@
     }));
   }
 
-  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, rotaValida, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);

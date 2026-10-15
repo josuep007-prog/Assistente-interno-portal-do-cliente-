@@ -137,6 +137,45 @@ test('trâmites: lê uma vez, guarda em cache e não relê; falha vira pausa de 
   assert.equal(ruim.chamadas.topicos, 1, 'não insiste no mesmo dia');
 });
 
+test('trâmites: rota padrão "topics"; rota aprendida do Onvio (sufixo, número no lugar do id, só parâmetros técnicos)', () => {
+  const t = OC.TYPE_BY_KEY.avisoFerias;
+  const reg = { id: 'a1b2c3d4-0000-0000-0000-000000000001', identifier: 702 };
+  assert.equal(OC.urlTramites(t, reg), OC.API + 'br-payroll-sr/v1/prior-notice-vacations/a1b2c3d4-0000-0000-0000-000000000001/topics?expand=all&itemsPerPage=1000&orderBy=created%20asc&pageIndex=0');
+  assert.equal(OC.urlTramites(t, 'g9'), OC.API + 'br-payroll-sr/v1/prior-notice-vacations/g9/topics?expand=all&itemsPerPage=1000&orderBy=created%20asc&pageIndex=0', 'aceita só o id, como antes');
+  const u = new URL(OC.urlTramites(t, reg, { sufixo: 'history', idForma: 'numero', query: { orderBy: 'created desc', searchText: 'joão', filter: '{}' } }));
+  assert.equal(u.pathname, '/api/br-payroll-sr/v1/prior-notice-vacations/702/history');
+  assert.equal(u.searchParams.get('orderBy'), 'created desc');
+  assert.equal(u.searchParams.get('searchText'), null, 'parâmetro com dado não entra');
+  assert.equal(u.searchParams.get('filter'), null);
+  assert.equal(new URL(OC.urlTramites(t, { id: 'g1', num: 5 }, { sufixo: 'history', idForma: 'numero' })).pathname.endsWith('/5/history'), true, 'item normalizado: usa num');
+  assert.equal(OC.rotaValida({ sufixo: '../../x' }), null, 'sufixo estranho é recusado');
+  assert.equal(OC.rotaValida({ sufixo: 'a?b=1' }), null);
+  assert.deepEqual(plano(OC.rotaValida({ sufixo: 'service-topics', idForma: 'x' })), { sufixo: 'service-topics', idForma: 'guid', query: {} });
+});
+
+test('trâmites: a leitura usa a rota aprendida da lista e marca por lista quem dá 404 sem rota', async () => {
+  const itens = {
+    avisoFerias: [{ id: 'v1', identifier: 702, genericStatus: 2, created: '2026-10-05T12:00:00', lastUpdated: '2026-10-08T12:00:00' }],
+    calcFerias: [{ id: 'c1', identifier: 101, genericStatus: 2, created: '2026-10-05T12:00:00', lastUpdated: '2026-10-08T12:00:00' }]
+  };
+  const pedidos = [];
+  const f = async url => {
+    const u = new URL(url);
+    if (u.pathname.endsWith('session-and-bindings')) return { UdsSession: { FirstName: 'Ana', LastName: 'Teste' } };
+    if (/\/(topics|history)$/.test(u.pathname)) {
+      pedidos.push(u.pathname.replace('/api/br-payroll-sr/v1/', ''));
+      if (u.pathname.endsWith('prior-notice-vacations/702/history')) return { items: [{ created: '2026-10-05T12:00:00', status: 1 }, { created: '2026-10-06T12:00:00', status: 2 }] };
+      throw new Error('HTTP 404');
+    }
+    const t = OC.TYPES.find(x => u.pathname.endsWith('/' + x.path.split('/').pop()));
+    return { items: itens[t.key] || [], totalPages: 1 };
+  };
+  const snap = await OC.collect(f, {}, null, { tramites: {}, rotasTramites: { avisoFerias: { sufixo: 'history', idForma: 'numero', query: {} } } });
+  assert.deepEqual(pedidos.sort(), ['prior-notice-vacations/702/history', 'vacation-calculations/c1/topics']);
+  assert.equal(snap.items.find(i => i.k === 'avisoFerias:v1').ptUteis, 1);
+  assert.deepEqual(plano(snap.tramites.porTipo), { avisoFerias: 'ok', calcFerias: 'sem rota (404)' });
+});
+
 test('o cache de trâmites só guarda o que continua pendente', async () => {
   const f = fetcherFalso({ itens: {} });
   const snap = await OC.collect(f, {}, null, { tramites: { 'calcFerias:velho': { pt: '2026-01-01T00:00:00' } } });
@@ -845,6 +884,43 @@ test('background: detalhe acha pelo número e traz os trâmites; trâmites que f
   const nada = await new Promise(res => ouvintes[0]({ cmd: 'detalhe', type: 'geral', num: 999 }, { tab: { id: 5 } }, res));
   assert.equal(nada.ok, false);
   assert.match(nada.erro, /#999 não encontrada/);
+});
+
+test('background: trâmites com 404 tentam uma vez pelo número; sem saída, o detalhe diz que falta aprender a rota', async () => {
+  const base = apiSimulada({ itens: { avisoFerias: [pend('v1', 702)], afastamento: [pend('a1', 9)] } });
+  const api = async url => {
+    const p = new URL(url).pathname;
+    if (/prior-notice-vacations\/v1\/topics$/.test(p) || /employee-leave\/(a1|9)\/topics$/.test(p)) { await base(url); return respHttp(404, 'application/json', '{}'); }
+    if (/prior-notice-vacations\/702\/topics$/.test(p)) { await base(url); return respHttp(200, 'application/json', JSON.stringify({ items: [{ created: '2026-10-01T10:00:00', status: 1, description: 'oi' }] })); }
+    return base(url);
+  };
+  const { ouvintes, store } = carregarBackground({ abas: [aba(5, ONVIO_PORTAL)], fetchPorMundo: { MAIN: api }, fetch: api });
+  const pedir = m => new Promise(res => ouvintes[0](m, { tab: { id: 5 } }, res));
+  const r = await pedir({ cmd: 'detalhe', type: 'avisoFerias', num: 702 });
+  assert.equal(r.erroTramites, null);
+  assert.equal(r.tramites.length, 1);
+  assert.deepEqual([store.rotasTramites.avisoFerias.sufixo, store.rotasTramites.avisoFerias.idForma], ['topics', 'numero'], 'guarda a forma que funcionou');
+  const r2 = await pedir({ cmd: 'detalhe', type: 'afastamento', num: 9 });
+  assert.equal(r2.ok, true);
+  assert.equal(r2.semRota, true);
+  assert.equal(r2.lista, 'Afastamento');
+  assert.match(r2.erroTramites, /HTTP 404/);
+  assert.equal(store.rotasTramites.afastamento, undefined);
+});
+
+test('background: rota de trâmites vinda do Onvio é conferida com as listas e guardada só como molde', async () => {
+  const { ouvintes, store } = carregarBackground();
+  store.tramites = { 'avisoFerias:v1': { erro: '2026-10-15T10:00:00Z' }, 'calcFerias:c1': { erro: '2026-10-15T10:00:00Z' } };
+  const pedir = m => new Promise(res => ouvintes[0](m, {}, res));
+  const r = await pedir({ cmd: 'rotaTramites', base: '/api/br-payroll-sr/v1/prior-notice-vacations', sufixo: 'history', idForma: 'guid', query: { orderBy: 'created asc', searchText: 'joão' } });
+  assert.deepEqual(plano([r.ok, r.tipo]), [true, 'avisoFerias']);
+  const g = store.rotasTramites.avisoFerias;
+  assert.deepEqual(plano([g.sufixo, g.idForma, g.query]), ['history', 'guid', { orderBy: 'created asc' }], 'só parâmetros técnicos');
+  assert.deepEqual(Object.keys(store.tramites), ['calcFerias:c1'], 'o 1º trâmite da lista volta a ser procurado');
+  const x = await pedir({ cmd: 'rotaTramites', base: '/api/outra-coisa/v1/abc', sufixo: 'history' });
+  assert.equal(x.ok, false);
+  const y = await pedir({ cmd: 'rotaTramites', base: '/api/br-payroll-sr/v1/employee-leave', sufixo: '../x' });
+  assert.equal(store.rotasTramites.afastamento, undefined, 'sufixo estranho não entra');
 });
 
 test('background: cada lembrete pendente tem um alarme; feito/excluído some; no horário vira notificação e alerta', async () => {

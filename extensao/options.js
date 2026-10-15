@@ -57,7 +57,17 @@
     return ['Perfil da sessão: ' + (rot[p.perfil] || 'não confirmado') + ' · ' + (p.motivo || '') + ' · ' + (p.em || ''),
       'Formato da sessão (só nomes de campos): ' + ((p.formato || []).join(', ') || '—')];
   }
-  function diagnostico(snap, perfil, status) {
+  // Trâmites por lista: rota aprendida (do próprio Onvio), resultado da última leitura ou ainda sem dados.
+  function linhasTramites(snap, rotas) {
+    const est = (snap && snap.tramites && snap.tramites.porTipo) || {};
+    return ['Trâmites por lista:'].concat(OC.TYPES.map(t => {
+      const r = (rotas || {})[t.key];
+      const rota = r ? 'aprendido (' + r.sufixo + ', ' + (r.idForma === 'numero' ? 'número' : 'id') + ')' : 'padrão (topics)';
+      const e = est[t.key];
+      return '  ' + t.label + ': ' + rota + (e ? ' · ' + (e === 'sem rota (404)' ? 'a aprender: o Onvio respondeu 404 (abra os trâmites de uma solicitação desta lista no Onvio)' : e) : '');
+    }));
+  }
+  function diagnostico(snap, perfil, status, rotas) {
     if (status && status.estado === 'visao_cliente') return ['O Onvio está aberto com um acesso de cliente: nada é lido nem guardado.'].concat(linhasPerfil(perfil)).join('\n');
     if (!snap) return ['Ainda sem leitura do Onvio.'].concat(linhasPerfil(perfil)).join('\n');
     const l = ['Versão: ' + (snap.versao || chrome.runtime.getManifest().version) + ' · leitura: ' + snap.fetchedAt + ' · via ' + (snap.via || '?'),
@@ -70,6 +80,7 @@
     l.push('Filtro por lista (Rubricas): ' + (snap.filtroAlternativo && snap.filtroAlternativo.length ? 'o Onvio recusou o filtro por exclusão e a extensão usou a lista de códigos (' + snap.filtroAlternativo.join(', ') + ')' : 'por exclusão (tudo menos Concluído e Prescrita)'));
     const t = snap.tramites || {};
     l.push('Trâmites lidos neste ciclo: ' + (t.lidos || 0) + ' · falhas: ' + (t.falhas || 0) + ' · com 1º trâmite conhecido: ' + (snap.items || []).filter(i => i.ptUteis != null).length + ' de ' + (snap.items || []).length);
+    linhasTramites(snap, rotas).forEach(x => l.push(x));
     l.push('Possível aba errada (Geral): ' + (snap.items || []).filter(i => i.abaProvavel).length);
     l.push('Com você como responsável (filtro "atribuídas a mim" do Onvio): ' + (snap.items || []).filter(i => i.mine).length + ' de ' + (snap.items || []).length + (snap.user && snap.user.nome ? ' · usuário: ' + snap.user.nome : ''));
     if (snap.erros && snap.erros.length) l.push('Erros: ' + snap.erros.join(' | '));
@@ -77,11 +88,11 @@
   }
 
   async function carregar() {
-    const d = await chrome.storage.local.get(['settings', 'snapshot', 'regrasEscritorio', 'perfilSessao', 'status']);
+    const d = await chrome.storage.local.get(['settings', 'snapshot', 'regrasEscritorio', 'perfilSessao', 'status', 'rotasTramites']);
     regras = d.regrasEscritorio || null;
     preencher(OC.combinarSettings(regras, d.settings));
     mostrarRegras();
-    $('#diag').textContent = diagnostico(d.snapshot, d.perfilSessao, d.status);
+    $('#diag').textContent = diagnostico(d.snapshot, d.perfilSessao, d.status, d.rotasTramites);
   }
   carregar();
 
@@ -154,6 +165,10 @@
   mostrarAprender();
   setInterval(mostrarAprender, 30000);
 
+  $('#esquecer-rotas').addEventListener('click', async () => {
+    await chrome.storage.local.remove(['rotasTramites', 'tramites']);     // volta ao caminho padrão; o 1º trâmite é lido de novo
+    carregar();
+  });
   $('#copiar-diag').addEventListener('click', async () => {
     try { await navigator.clipboard.writeText($('#diag').textContent); $('#copiado').textContent = 'Copiado'; }
     catch (e) { $('#copiado').textContent = 'Não foi possível copiar; selecione o texto.'; }
