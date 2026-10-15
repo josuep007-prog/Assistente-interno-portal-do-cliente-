@@ -20,6 +20,12 @@
   const postar = msg => { try { window.postMessage(Object.assign({ src: 'controlonvio' }, msg), location.origin); } catch (e) {} };
   const aviso = () => postar({ tipo: 'mudanca' });
 
+  /* Autorização que o próprio Onvio manda nas chamadas de solicitações: fica só na memória desta página (nunca é
+   * gravada nem enviada à extensão) e é usada pelas ações do Control Onvio feitas nesta mesma aba. */
+  let autorizacao = null;
+  try { Object.defineProperty(window, '__controlOnvioAutorizacao', { value: () => autorizacao, configurable: false, enumerable: false, writable: false }); } catch (e) {}
+  const guardarAuth = v => { if (typeof v === 'string' && v.length < 8192) autorizacao = v; };
+
   /* ---------- modo aprender ---------- */
   let aprendendo = false;
   window.addEventListener('message', ev => {
@@ -105,6 +111,7 @@
       try {
         const url = typeof entrada === 'string' ? entrada : entrada && entrada.url;
         const metodo = String((init && init.method) || (entrada && entrada.method) || 'GET').toUpperCase();
+        if (url && RE.test(url) && init && init.headers) { try { guardarAuth(new Headers(init.headers).get('authorization')); } catch (e) {} }
         if (url && RE_API.test(url) && (RE.test(url) || aprendendo)) {
           if (altera(metodo) && RE.test(url)) p.then(r => { if (r && r.ok) aviso(); }).catch(() => {});
           if (aprendendo) {
@@ -141,7 +148,10 @@
     return abrirOriginal.apply(this, arguments);
   };
   XMLHttpRequest.prototype.setRequestHeader = function (nome, valor) {
-    try { if (this.__co && /^content-type$/i.test(nome)) this.__co.ct = String(valor).slice(0, 120); } catch (e) {}
+    try {
+      if (this.__co && /^content-type$/i.test(nome)) this.__co.ct = String(valor).slice(0, 120);
+      if (this.__co && /^authorization$/i.test(nome) && RE.test(this.__co.url)) guardarAuth(valor);
+    } catch (e) {}
     return cabecalhoOriginal.apply(this, arguments);
   };
   XMLHttpRequest.prototype.send = function (corpo) {

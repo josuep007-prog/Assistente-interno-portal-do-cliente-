@@ -243,6 +243,7 @@
       codCliente: cli.code || '',
       detalhe,
       resp: (r.staffResponsibleExpanded && r.staffResponsibleExpanded.name) || '',
+      respId: (r.staffResponsibleExpanded && r.staffResponsibleExpanded.id) || '',
       solicitante: (r.requesterExpanded && r.requesterExpanded.name) || '',
       mine: mineSet ? mineSet.has(r.id) : false,
       abaProvavel: t.key === 'geral' ? abaProvavel(detalhe, regras || DEFAULTS.abaErrada) : null
@@ -1158,10 +1159,18 @@
       else { const k = chaveCliente(x); if (!porCli.has(k)) porCli.set(k, new Map()); soma(porCli.get(k), x.resp); }
     }
     for (const i of pendentes || []) if (i.resp) soma(carga, i.resp);
+    const ids = new Map();
+    for (const x of (movimentadas || []).concat(pendentes || [])) if (x.resp && x.respId && !ids.has(x.resp)) ids.set(x.resp, x.respId);
     const ordem = m => [...m.entries()].sort((a, b) => (b[1] - a[1]) || ((carga.get(a[0]) || 0) - (carga.get(b[0]) || 0)) || a[0].localeCompare(b[0], 'pt-BR'));
     const leve = () => [...carga.entries()].sort((a, b) => (a[1] - b[1]) || a[0].localeCompare(b[0], 'pt-BR'))[0];
     const periodo = (dias || 7) === 7 ? 'na última semana' : 'nos últimos ' + dias + ' dias';
     return (pendentes || []).filter(i => !i.resp).map(i => {
+      const r = sugerir(i);
+      r.respId = ids.get(r.resp) || '';
+      r.alternativas.forEach(a => { a.respId = ids.get(a.resp) || ''; });
+      return r;
+    }).sort((a, b) => ((b.item.nivel || 0) - (a.item.nivel || 0)) || ((b.item.parado || 0) - (a.item.parado || 0)));
+    function sugerir(i) {
       if (ADMISSAO.has(i.type)) {
         const o = ordem(adm);
         if (o.length) return { item: i, resp: o[0][0], n: o[0][1], motivo: 'fez ' + o[0][1] + (o[0][1] === 1 ? ' admissão ' : ' admissões ') + periodo, alternativas: o.slice(1, 4).map(([r, n]) => ({ resp: r, n })) };
@@ -1175,8 +1184,95 @@
       const l = leve();
       return l ? { item: i, resp: l[0], n: 0, motivo: 'sem histórico ' + periodo + ': quem tem menos pendências (' + l[1] + ')', alternativas: [], semHistorico: true }
         : { item: i, resp: '', n: 0, motivo: 'sem histórico e sem analistas com pendências', alternativas: [], semHistorico: true };
-    }).sort((a, b) => ((b.item.nivel || 0) - (a.item.nivel || 0)) || ((b.item.parado || 0) - (a.item.parado || 0)));
+    }
   }
 
-  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, observacoesCliente, lerMovimentadas, distribuirPorCliente, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  /* ---------- ações no Onvio (fase 2, pedida pelo Josué em 15/10/2026) ----------
+   * Formatos vistos no Onvio real (mapeamento/acoes-2026-10-15.md), na EMPRESA EXEMPLO:
+   *  - trâmite (responder, mudar situação, encaminhar): POST {tramites}/{id}/topics  { description, status[, forwardedToExpanded] }
+   *    -> 201, id do trâmite no cabeçalho "location". Não existe trâmite sem situação.
+   *  - anexo: depois do trâmite, POST {tramites}/{id}/topics/{topicId}/attachments  multipart, campo "file[]".
+   *  - responsável: PUT {lista}/{id}/assign-staff  Geral { departmentId, id }; folha { id }.
+   *  - expectativa: PUT {lista}/{id}/change-due-date { dueDate } (só confirmado na Geral).
+   * Só Geral e as listas de férias, rescisão e afastamento foram testadas; Cadastro e Rubricas ficam bloqueados.
+   * Nunca há exclusão. Toda escrita passa por confirmação na tela e pela checagem de escritório no service worker. */
+  const FOLHA = new Set(['avisoFerias', 'calcFerias', 'avisoRescisao', 'calcRescisao', 'afastamento']);
+  const ACOES = {
+    tramite: k => k === 'geral' || FOLHA.has(k),
+    anexo: k => k === 'geral' || FOLHA.has(k),
+    encaminhar: k => k === 'geral' || FOLHA.has(k),
+    responsavel: k => k === 'geral' || FOLHA.has(k),
+    expectativa: k => k === 'geral'
+  };
+  const SEM_MAPA = 'ainda não mapeada no Onvio para esta lista: use "Abrir no Onvio"';
+  // { ok, motivo } para mostrar o botão habilitado ou explicar por que não
+  function podeAcao(acao, item) {
+    const t = item && TYPE_BY_KEY[item.type];
+    if (!t || !ACOES[acao]) return { ok: false, motivo: 'ação desconhecida' };
+    if (!ACOES[acao](t.key)) return { ok: false, motivo: SEM_MAPA };
+    if (item.lado === 'fim') return { ok: false, motivo: 'solicitação encerrada' };
+    if (acao === 'responsavel') {
+      if (FOLHA.has(t.key) && item.resp) return { ok: false, motivo: 'o Onvio só permite definir responsável quando ainda não há um' };
+      if (t.key === 'geral' && item.code === 4) return { ok: false, motivo: 'o Onvio não permite definir responsável com a situação Respondido' };
+    }
+    if (acao === 'encaminhar' && item.code === 4) return { ok: false, motivo: 'o Onvio não permite encaminhar com a situação Respondido' };
+    return { ok: true };
+  }
+  // Situações que a tela do Onvio oferece ao incluir trâmite (depende da situação atual)
+  function situacoesTramite(item) {
+    const t = TYPE_BY_KEY[item.type];
+    const st = FAMILIAS[t.familia].st;
+    return (item.code === 4 ? [4, 5] : [2, 8, 4, 5]).map(c => ({ code: c, rot: st[c][0] }));
+  }
+  const urlNovoTramite = (t, id) => API + t.tramites + '/' + encodeURIComponent(id) + '/topics';
+  const urlAnexoTramite = (t, id, topicId) => urlNovoTramite(t, id) + '/' + encodeURIComponent(topicId) + '/attachments';
+  const urlResponsavel = (t, id) => API + t.path + '/' + encodeURIComponent(id) + '/assign-staff';
+  const urlExpectativa = (t, id) => API + t.path + '/' + encodeURIComponent(id) + '/change-due-date';
+  // id do trâmite criado, do cabeçalho "location" (último pedaço do caminho)
+  const idDoLocation = loc => { const m = /\/([^/?#]+)\/?(?:[?#].*)?$/.exec(String(loc || '')); return m ? decodeURIComponent(m[1]) : null; };
+  // Monta o pedido de uma ação. registro: o item como veio da lista do Onvio (id, departmentId). Lança erro se não puder.
+  function pedidoAcao(o, registro, item) {
+    const t = TYPE_BY_KEY[o.type];
+    if (!t) throw new Error('tipo desconhecido');
+    const id = registro && registro.id;
+    if (!id) throw new Error('solicitação sem id');
+    const acao = o.acao === 'tramite' && o.encaminharPara ? 'encaminhar' : o.acao;
+    const pode = podeAcao(acao, item);
+    if (!pode.ok) throw new Error('Não dá para ' + ({ tramite: 'incluir trâmite', encaminhar: 'encaminhar', responsavel: 'definir responsável', expectativa: 'alterar a expectativa' }[acao] || acao) + ': ' + pode.motivo);
+    if (o.acao === 'tramite') {
+      const texto = String(o.texto || '').trim();
+      if (!texto) throw new Error('escreva o texto do trâmite');
+      if (texto.length > 20000) throw new Error('texto longo demais');
+      const corpo = { description: texto };
+      if (o.encaminharPara) {
+        corpo.status = 7;
+        corpo.forwardedToExpanded = t.key === 'geral' ? { departmentId: registro.departmentId || '', id: String(o.encaminharPara) } : { id: String(o.encaminharPara) };
+      } else {
+        const ok = situacoesTramite(item).map(x => x.code);
+        if (!ok.includes(Number(o.situacao))) throw new Error('escolha a situação do trâmite');
+        corpo.status = Number(o.situacao);
+      }
+      return { metodo: 'POST', url: urlNovoTramite(t, id), corpo };
+    }
+    if (o.acao === 'responsavel') {
+      if (!o.analista) throw new Error('escolha o responsável');
+      return { metodo: 'PUT', url: urlResponsavel(t, id), corpo: t.key === 'geral' ? { departmentId: registro.departmentId || '', id: String(o.analista) } : { id: String(o.analista) } };
+    }
+    if (o.acao === 'expectativa') {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(o.data || ''))) throw new Error('escolha a data');
+      return { metodo: 'PUT', url: urlExpectativa(t, id), corpo: { dueDate: o.data + 'T00:00:00' } };
+    }
+    throw new Error('ação desconhecida');
+  }
+  // Defesa extra: só estes caminhos podem receber escrita, e nunca DELETE nem "/delete"
+  const ESCRITA_OK = /^https:\/\/onvio\.com\.br\/api\/(service-requesting|br-payroll-sr)\/v1\/[a-z-]+(\/[a-z-]+)?\/[^/]+\/(topics(\/[^/]+\/attachments)?|assign-staff|change-due-date)$/;
+  const escritaPermitida = (metodo, url) => (metodo === 'POST' || metodo === 'PUT') && ESCRITA_OK.test(url) && !/delete/i.test(url);
+  // Equipe (para responsável e encaminhar): quem aparece como responsável nas pendências, com o id do Onvio
+  function equipeDe(items) {
+    const m = new Map();
+    for (const i of items || []) if (i.respId && i.resp && !m.has(i.respId)) m.set(i.respId, i.resp);
+    return [...m.entries()].map(([id, nome]) => ({ id, nome })).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  }
+
+  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, observacoesCliente, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);

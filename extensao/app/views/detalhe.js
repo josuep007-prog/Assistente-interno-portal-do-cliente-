@@ -2,6 +2,7 @@
  * Lê dados e trâmites na hora; nada disso é guardado. Com a lista de onde veio, anda para a
  * anterior/próxima (setas ← → ou os botões do topo) sem fechar. */
 import { estado, itens, enviar, salvarLembretes, aoMudar } from '../estado.js';
+import { formAcao, ligarAcao, novaAcao, acaoAberta } from './acao-form.js';
 import { esc, pillSituacao, motivosHtml, fmtDataHora, fmtData, textoPuro, toast, ladoTexto, relativo, $, $$ } from '../util.js';
 import { abrirLembrete, lembreteAberto } from './lembrete-dlg.js';
 const OC = window.OC;
@@ -25,7 +26,7 @@ export async function abrirDetalhe(ref, fonte) {
   if (!t) return;
   if (fonte !== undefined) lista = Array.isArray(fonte) && fonte.length > 1 ? fonte : null;
   atual = { type: ref.type, num: String(ref.num) };
-  if (aba === 'lembretes' && !ultimo) aba = 'tramites';
+  if ((aba === 'lembretes' || aba === 'acao') && !ultimo) aba = 'tramites';
   const doResumo = itens().find(i => i.type === ref.type && String(i.num) === String(ref.num));
   const base = doResumo || (ref.status ? ref : { type: ref.type, typeLabel: t.label, num: ref.num, status: 'Carregando…', lado: 'desc', apelido: ref.cliente || '' });
   const g = $('#gaveta');
@@ -82,18 +83,14 @@ function desenhar(i, r, erro, carregando) {
       '<button class="dtab' + (aba === 'lembretes' ? ' on' : '') + '" data-aba="lembretes" role="tab">Lembretes<span class="n">' + (lems.filter(l => !l.feito).length || '') + '</span></button>' +
     '</div>' +
     '<div class="dlg-body" id="g-corpo">' + (erro ? '<div class="faixa"><svg class="ic"><use href="#i-alert"/></svg>' + esc(erro) + '</div>' : '') +
-      (aba === 'dados' ? dados(i, r, carregando) : aba === 'cliente' ? clienteHtml(obs, carregando) : aba === 'lembretes' ? lembretesHtml(lems) : tramitesHtml(r, carregando)) + '</div>' +
+      (aba === 'acao' && acaoAberta() ? formAcao(i, obs) : aba === 'dados' ? dados(i, r, carregando) : aba === 'cliente' ? clienteHtml(obs, carregando) : aba === 'lembretes' ? lembretesHtml(lems) : tramitesHtml(r, carregando)) + '</div>' +
     '<div class="dlg-actions">' +
       '<button class="btn btn-sm" id="g-onvio"><svg class="ic ic-sm"><use href="#i-link"/></svg> Abrir no Onvio</button>' +
-      '<span class="em-breve" title="Chegam na próxima versão, depois do mapeamento das ações">' +
-        '<button class="btn btn-sm" disabled><svg class="ic ic-sm"><use href="#i-lock"/></svg> Responder</button>' +
-        '<button class="btn btn-sm" disabled>Definir responsável</button>' +
-        '<button class="btn btn-sm" disabled>Alterar expectativa</button>' +
-        '<button class="btn btn-sm" disabled><svg class="ic ic-sm"><use href="#i-paperclip"/></svg> Anexar</button></span>' +
+      botoesAcao(i, carregando) +
       '<span class="spacer"></span>' +
       (obs.some(o => !o.interno) ? '<button class="btn btn-sm" id="g-copiar-obs" title="Copia as observações de prazo e os avisos para colar na resposta ao cliente"><svg class="ic ic-sm"><use href="#i-copy"/></svg> Copiar observações</button>' : '') +
       '<button class="btn btn-primary btn-sm" id="g-lembrete"><svg class="ic ic-sm"><use href="#i-clock"/></svg> Lembrete</button>' +
-      '<p class="dlg-nota">Responder, definir responsável, expectativa e anexos chegam na próxima versão, depois do mapeamento das ações. Por enquanto, use "Abrir no Onvio".</p>' +
+      (OC.ACOES.tramite(i.type) ? '' : '<p class="dlg-nota">Responder, encaminhar e definir responsável ainda não foram mapeados para ' + esc(i.typeLabel) + ': use "Abrir no Onvio".</p>') +
     '</div>';
 
   $('#g-fechar').onclick = fecharDetalhe;
@@ -114,6 +111,12 @@ function desenhar(i, r, erro, carregando) {
   if ($('#g-copiar-obs')) $('#g-copiar-obs').onclick = copiarObs;
   if ($('#g-copiar-obs2')) $('#g-copiar-obs2').onclick = copiarObs;
   $$('#g-obs [data-obs]', g).forEach(c => c.onchange = () => { const pv = $('#g-obs-texto', g); if (pv) pv.textContent = textoParaCliente(obs.filter(o => $$('#g-obs [data-obs]', g).some(x => x.dataset.obs === o.id && x.checked))); });
+  $$('[data-acao]', g).forEach(b => b.onclick = () => { novaAcao(b.dataset.acao); aba = 'acao'; desenhar(i, r, erro, carregando); });
+  if (aba === 'acao' && acaoAberta()) ligarAcao(g, i, obs, {
+    redesenhar: () => desenhar(i, r, erro, carregando),
+    cancelar: () => { aba = 'tramites'; desenhar(i, r, erro, carregando); },
+    feito: () => { aba = 'tramites'; abrirDetalhe({ type: i.type, num: i.num }); }
+  });
   $('#g-lembrete').onclick = () => abrirLembrete({ vinculo: { type: i.type, num: String(i.num), k: i.k || null, cliente: i.apelido || i.cliente } });
   $$('[data-l]', g).forEach(row => row.addEventListener('click', async e => {
     const l = estado.lembretes.find(x => x.id === row.dataset.l);
@@ -122,6 +125,12 @@ function desenhar(i, r, erro, carregando) {
     if (!b) { abrirLembrete({ l }); return; }
     await salvarLembretes(estado.lembretes.map(x => x.id !== l.id ? x : b.dataset.a === 'feito' ? OC.concluirLembrete(x, new Date(), estado.settings.feriados) : Object.assign({}, x, { feito: false, disparado: false })));
   }));
+}
+
+// Botões das ações no Onvio: habilitados só onde o formato foi mapeado e o Onvio permite (OC.podeAcao)
+function botoesAcao(i, carregando) {
+  const b = (acao, rot, ic) => { const p = carregando ? { ok: false, motivo: 'carregando' } : OC.podeAcao(acao, i); return '<button class="btn btn-sm' + (acao === 'tramite' ? ' btn-acao' : '') + '" data-acao="' + acao + '"' + (p.ok ? '' : ' disabled title="' + esc(p.motivo) + '"') + '>' + (ic ? '<svg class="ic ic-sm"><use href="#i-' + ic + '"/></svg> ' : '') + rot + '</button>'; };
+  return b('tramite', 'Responder', 'chat') + b('encaminhar', 'Encaminhar', 'repeat') + b('responsavel', 'Responsável', 'user') + (OC.ACOES.expectativa(i.type) ? b('expectativa', 'Expectativa', 'calendar') : '');
 }
 
 function tramitesHtml(r, carregando) {

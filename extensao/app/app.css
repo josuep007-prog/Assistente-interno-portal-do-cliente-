@@ -727,3 +727,22 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .dist-sug select{min-width:180px; font-weight:600; text-transform:none; letter-spacing:0; color:var(--ink)}
 .dist-sug small{font-size:12px; color:var(--ink-3)}
 .dp-last .late, .dp-last .late b{color:var(--late)}
+
+/* Ações no Onvio (detalhe) */
+.acao-cab{display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:10px}
+.acao-cab h3{margin:0; font:700 15px "Archivo",sans-serif}
+.acao-form{display:flex; flex-direction:column; gap:12px; max-width:760px}
+.acao-form .field{display:flex; flex-direction:column; gap:5px; font-size:12px; font-weight:600; color:var(--ink-3)}
+.acao-form textarea{width:100%; font-weight:400; min-height:90px; resize:vertical; font:inherit; font-size:13.5px; line-height:1.5; color:var(--ink); padding:10px 12px; border:1px solid var(--rule-strong); border-radius:var(--r); background:var(--surface)}
+.acao-form select, .acao-form input[type=date]{max-width:320px; font-weight:500}
+.acao-form > .btn{align-self:flex-start}
+.acao-anexos{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+.acao-anexos .anexos{flex-basis:100%}
+.acao-pe{display:flex; gap:8px; justify-content:flex-end; margin-top:4px}
+.acao-conf{padding:14px 16px; border:1px solid var(--blue-deep); border-radius:8px; background:color-mix(in srgb, var(--blue-deep) 6%, var(--surface)); max-width:760px}
+.acao-conf ul{margin:8px 0; padding-left:18px; line-height:1.6}
+.dlg-actions .btn-acao:not([disabled]){border-color:var(--blue-deep); color:var(--blue-deep)}
+.dist-acao{display:flex; justify-content:flex-end}
+.dist-conf{display:flex; gap:6px}
+.ok-t{color:var(--ok, #2e8b57); font-weight:600; font-size:12.5px}
+.dist-sug small.late{color:var(--late)}
