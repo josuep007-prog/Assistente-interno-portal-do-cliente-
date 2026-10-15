@@ -112,7 +112,11 @@ Todas as chamadas abaixo responderam 200 com `fetch` simples a partir da página
 
 O caminho da lista + `/topics` dá 404 (ex.: `prior-notice-vacations/{id}/topics`, `tickets/generic/{id}/topics`). Resposta `{items:[…], totalItems, …}`; cada trâmite traz `created`, `status`, `description`, `createdByContactExpanded.name`, `attachmentsExpanded` e um número (`number`, `employeeRegistrationTopicNumber` ou `payrollEntryTopicNumber`). Trâmite Rápido e visualização completa usam a mesma chamada. Desde a 0.12.0 a extensão usa esses caminhos fixos (o "aprender a rota" da 0.11.1 saiu).
 
-**Detalhe (aba Dados):** `GET {lista}/{id}?expand=all`; em Rubricas é `br-payroll-sr/v2/payroll-entries/{id}`.
+**Detalhe (aba Dados):** `GET {lista}/{id}?expand=all`; em Rubricas é `br-payroll-sr/v2/payroll-entries/{id}`. Usado desde a 0.13.0 na aba Dados (tudo, na hora, sem guardar) e para as datas de férias e rescisão (`vacationStartDate`, `adviceDate`, `resignationDate`), que dão o prazo legal de pagamento.
+
+**Expectativa de conclusão (`dueDate`):** é a data que o cliente informa; não é prazo do escritório e, desde a 0.13.0, não conta como vencimento.
+
+**Distribuição (0.13.0):** lê sob demanda cada lista em todas as situações, `orderBy=lastUpdated desc`, até a primeira solicitação mais antiga que o período (no máximo 5 páginas de 200 por lista). Busca do cálculo do mesmo empregado: `searchText` com o nome na lista de cálculos (a confirmar se o Onvio busca pelo nome do empregado).
 
 **Ações (encontradas no código, não executadas):** `{tipo}/assign-staff` (definir responsável), `{tipo}/change-due-date`, `{tipo}/{id}/print-detail`, download em lote de anexos `…/{id}/attachments/batch-download/{tipo}`, inclusão e exclusão de trâmite e de anexo.
 
