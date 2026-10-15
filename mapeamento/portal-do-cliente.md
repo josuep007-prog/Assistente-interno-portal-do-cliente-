@@ -72,6 +72,8 @@ O campo `genericStatus` da API tem significado diferente conforme o tipo de soli
 
 Todos os pares acima foram conferidos comparando a API com a grade na tela, exceto Prescrita em Férias e Rescisão (deduzida por seguir o mesmo padrão de Geral e Afastamento).
 
+**Códigos completos (filtro "Situação" da tela, 15/10/2026):** Geral, Férias, Rescisão e Afastamento: 1 Sem análise, 2 Em análise, 3 Aguardando resposta, 4 Respondido, 5 Concluído, 6 Prescrita, 7 Encaminhado para outro usuário, 8 Em análise interna (o 9 não existe na tela). Cadastro: 1 (só no "Apenas pendentes"), 2 Enviado para o escritório, 3 Aguardando o cliente, 4 Respondido pelo Cliente, 5 Cadastro efetuado, 6 Concluído, 7 Encaminhado para outro usuário. Rubricas: 1 Sem análise, 2 Em análise, 3 Importação realizada, 4 Respondido, 5 Aguardando resposta, 6 Aguardando correção, 7 (não aparece), 8 Concluído, 9 Encaminhado para outro usuário, 10 Prescrita. "Apenas pendentes" da própria tela: `firmStatus IN 1,2,3,7,8` (padrão), `IN 1,2,4,7` (Cadastro), `IN 1,2,3,4,9` (Rubricas). A extensão usa conjuntos maiores de propósito: inclui as que estão com o cliente (4 Respondido etc.), por causa da prescrição. Em Rubricas o filtro `NE 8` + `NE 10` dá **HTTP 500**.
+
 O código do portal tem ainda estas situações, que podem aparecer: Em análise interna, Encaminhado para outro usuário, Importação realizada e Respondido pelo Cliente. As cores usadas pelo portal: Sem análise cinza, Em análise laranja, Aguardando cinza claro, Respondido azul, Concluído verde, Prescrita vermelho, Enviado para o escritório amarelo.
 
 O filtro nativo "Apenas pendentes" usa outro campo, `firmStatus IN 1,2,3,7,8`, que não vem no JSON da lista.
@@ -99,9 +101,18 @@ Todas as chamadas abaixo responderam 200 com `fetch` simples a partir da página
 
 **Campos úteis por item:** `id` (GUID), `identifier` (ID da tela), `genericStatus`, `lastUpdated`, `created`, `dueDate` (Expectativa de Conclusão, existe em Geral, Cálculo de férias, Cálculo de rescisão e Afastamento), `subject`, `description`, `departmentId`, `requestWay` (WEB), `clientExpanded.{code,name,nickname}`, `staffResponsibleExpanded.name`, `requesterExpanded.name`. Cadastro traz também nome, CPF, salário, admissão, experiência e observações. Rubricas traz `effectiveDate`, `entryType` e `genericLastUpdated` no lugar de `lastUpdated`.
 
-**Trâmites:** `GET br-payroll-sr/v1/{tipo}/{id}/topics?expand=all&itemsPerPage=1000&orderBy=created asc&pageIndex=0` (testado em Cadastro; para Geral o código segue o mesmo padrão, a confirmar: `service-requesting/v1/tickets/generic/{id}/topics`). Cada trâmite traz `created`, `status`, `description`, `createdByContactExpanded.name` e `attachmentsExpanded`.
+**Trâmites (confirmado no Onvio real em 15/10/2026, ver `onvio-2026-10-15.md`):** `GET {base}/{id}/topics?expand=all&itemsPerPage=1000&orderBy=created asc&pageIndex=0`, com `{id}` = GUID do item (campo `id`), nunca o número. A base **não** é a da lista:
 
-**15/10/2026:** no Onvio real, `prior-notice-vacations/{id}/topics` (Aviso de férias) respondeu **HTTP 404**. O caminho `topics` só está confirmado em Cadastro; nas outras listas pode ser outro. Desde a 0.11.1 a extensão **aprende a rota com o próprio Onvio**: quando a página nativa abre os trâmites de uma solicitação (GET `…/{lista}/{id}/{algo}` que devolve itens com `created` + `status` + texto/autor/anexos), o `acao-hook.js` manda ao service worker só o molde (lista, sufixo, id guid ou número, parâmetros técnicos), guardado em `rotasTramites`. Sem rota aprendida e com 404, o detalhe tenta uma vez `topics` com o número da solicitação. O Diagnóstico mostra o estado de cada lista ("Trâmites por lista"). Quando o caminho real de cada lista for visto, anote aqui.
+| Listas | Base dos trâmites |
+| --- | --- |
+| Geral | `service-requesting/v1/tickets` |
+| Cadastro empregado, contribuinte e estagiário | `br-payroll-sr/v1/employees-registrations` |
+| Aviso e cálculo de férias, aviso e cálculo de rescisão, afastamento | `br-payroll-sr/v1/tickets` |
+| Lançamento de rubricas | `br-payroll-sr/v1/payroll-entries` |
+
+O caminho da lista + `/topics` dá 404 (ex.: `prior-notice-vacations/{id}/topics`, `tickets/generic/{id}/topics`). Resposta `{items:[…], totalItems, …}`; cada trâmite traz `created`, `status`, `description`, `createdByContactExpanded.name`, `attachmentsExpanded` e um número (`number`, `employeeRegistrationTopicNumber` ou `payrollEntryTopicNumber`). Trâmite Rápido e visualização completa usam a mesma chamada. Desde a 0.12.0 a extensão usa esses caminhos fixos (o "aprender a rota" da 0.11.1 saiu).
+
+**Detalhe (aba Dados):** `GET {lista}/{id}?expand=all`; em Rubricas é `br-payroll-sr/v2/payroll-entries/{id}`.
 
 **Ações (encontradas no código, não executadas):** `{tipo}/assign-staff` (definir responsável), `{tipo}/change-due-date`, `{tipo}/{id}/print-detail`, download em lote de anexos `…/{id}/attachments/batch-download/{tipo}`, inclusão e exclusão de trâmite e de anexo.
 
@@ -183,11 +194,11 @@ Arquivos previstos: `manifest.json`, `background.js` (coleta e regras), `onvio-a
 
 - [ ] **API não oficial.** São as chamadas internas do Onvio (versão do app em produção: 2025.09.18.1). Podem mudar sem aviso; isolar todas as URLs num único arquivo de configuração.
 - [ ] **Cookies no service worker.** O teste foi feito de dentro da página. Confirmar que o `fetch` do service worker da extensão (com `host_permissions` para onvio.com.br) leva a sessão; se não levar, as leituras passam para o content script com a aba do Onvio aberta.
-- [ ] **Pendência de Rubricas.** Definir o filtro próprio (provável: situação diferente de 8 Concluído e 10 Prescrita) e conferir na tela.
-- [ ] **Códigos não observados.** Cadastro 1 e 4 e Rubricas 1 a 3 não apareceram nos dados; a extensão deve mostrar "situação desconhecida (código N)" em vez de errar.
+- [x] **Pendência de Rubricas.** Conferido em 15/10/2026: a tela usa `IN 1,2,3,4,9`; o NE dá HTTP 500 (a extensão usa IN).
+- [x] **Códigos não observados.** Levantados em 15/10/2026 pelo filtro da tela (seção de situações); sem opção na tela: Cadastro 1 e Rubricas 7. Código desconhecido continua aparecendo como "situação desconhecida (código N)".
 - [ ] **Busca global de documentos.** Testar `storage/v1/containers/documents/search`. Sem ela, a checagem de guias exige percorrer pastas de cerca de 500 clientes, o que é lento.
-- [ ] **Trâmites fora de Cadastro.** Aviso de férias deu 404 em `topics`. Abrir os trâmites de uma solicitação de cada lista no Onvio e anotar o caminho que o Diagnóstico mostrar como "aprendido" (Geral, Férias, Rescisão, Afastamento, Rubricas).
-- [ ] **Login de cliente x escritório.** As APIs de solicitações respondem às duas visões. A extensão bloqueia o acesso de cliente pela sessão (`security/v1/session-and-bindings`, campo de tipo/papel ainda não visto), por aba em `/clientcenter/` ou por `br-payroll-sr/v1/company-department-access` recusado. Confirmar com um login de cliente de teste qual sinal aparece (Diagnóstico > Perfil da sessão).
+- [x] **Trâmites fora de Cadastro.** Resolvido em 15/10/2026 (caminhos na seção de trâmites).
+- [ ] **Login de cliente x escritório.** (15/10/2026: o escritório tem `FeatureResourcePermissionsMap.Platform.OnvioStaffAccess` na sessão; falta ver um login de cliente.) As APIs de solicitações respondem às duas visões. A extensão bloqueia o acesso de cliente pela sessão (`security/v1/session-and-bindings`, campo de tipo/papel ainda não visto), por aba em `/clientcenter/` ou por `br-payroll-sr/v1/company-department-access` recusado. Confirmar com um login de cliente de teste qual sinal aparece (Diagnóstico > Perfil da sessão).
 - [ ] **Perfil do usuário.** Cada pessoa só vê o que seu perfil no Onvio permite; o painel do gestor depende de um perfil com acesso a todos os departamentos.
 - [ ] **Carga.** Atualizar a cada 5 a 10 minutos, só com o filtro de pendentes e 200 itens por página, nunca a base inteira.
 - [ ] **LGPD.** As listas trazem CPF, salário e observações de empregados. Guardar em cache local só ID, situação, datas, cliente e responsável.

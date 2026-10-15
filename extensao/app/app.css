@@ -70,25 +70,31 @@ a{color:var(--blue-deep)}
 .mod-sub a{font-weight:600; text-decoration:none}
 .mod-extra{display:flex; align-items:center; gap:8px}
 .mod-extra:empty{display:none}
-.busca-falsa{display:flex; align-items:center; gap:9px; width:250px; padding:7px 10px; border:1px solid var(--rule-strong); border-radius:var(--r); background:var(--surface); color:var(--ink-3); font:inherit; font-size:12.5px; cursor:text; text-align:left; transition:border-color .15s, box-shadow .15s}
+/* ferramentas do cabeçalho: todas com 34px, a mesma borda e os mesmos cantos */
+.mod-linha{--alt:34px}
+.busca-falsa{display:flex; align-items:center; gap:9px; width:250px; height:var(--alt); padding:0 10px; border:1px solid var(--rule-strong); border-radius:var(--r); background:var(--surface); color:var(--ink-3); font:inherit; font-size:12.5px; cursor:text; text-align:left; transition:border-color .15s, box-shadow .15s}
 .busca-falsa span{flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
 .busca-falsa:hover{border-color:var(--blue-deep)}
 .busca-falsa:focus-visible{outline:2px solid var(--blue-deep); outline-offset:2px}
-.aovivo{display:flex; align-items:center; gap:7px; padding:6px 11px; border:1px solid var(--rule); border-radius:999px; background:var(--surface); font-size:12px; font-weight:600; color:var(--ink-3); white-space:nowrap; font-variant-numeric:tabular-nums}
+.vivo-grupo{display:flex; height:var(--alt); border:1px solid var(--rule-strong); border-radius:var(--r); background:var(--surface); overflow:hidden}
+.vivo-grupo:has(.aovivo.erro){border-color:var(--brand-red)}
+.aovivo{display:flex; align-items:center; gap:7px; padding:0 11px; font-size:12px; font-weight:600; color:var(--ink-3); white-space:nowrap; font-variant-numeric:tabular-nums}
 .aovivo .ponto{width:8px; height:8px; border-radius:50%; background:var(--ink-3); flex:none}
 .aovivo.ok .ponto{background:var(--status-green); animation:vivo 2s ease-out infinite}
 .aovivo.parado .ponto{background:var(--status-warn)}
-.aovivo.erro{border-color:var(--brand-red); color:var(--brand-red)}
+.aovivo.erro{color:var(--brand-red)}
 .aovivo.erro .ponto{background:var(--brand-red)}
 @keyframes vivo{0%{box-shadow:0 0 0 0 color-mix(in srgb, var(--status-green) 55%, transparent)} 70%,100%{box-shadow:0 0 0 7px transparent}}
-.mod-cab .icon-btn{width:34px; height:34px; color:var(--ink-3)}
+.mod-cab .icon-btn{width:var(--alt); height:var(--alt); border:1px solid var(--rule-strong); background:var(--surface); color:var(--ink-3)}
 .mod-cab .icon-btn:hover{background:var(--surface-3); color:var(--ink)}
+.vivo-grupo .icon-btn{height:100%; border:0; border-left:1px solid var(--rule); border-radius:0}
 .icon-btn:focus-visible{outline:2px solid var(--blue-deep)}
 .sino{position:relative}
-.sino .cont{position:absolute; top:1px; right:0; min-width:16px; height:16px; padding:0 4px; border-radius:8px; background:var(--brand-red); color:#fff; font:700 10px/16px "Archivo",sans-serif; text-align:center}
+.sino .cont{position:absolute; top:-6px; right:-6px; min-width:16px; height:16px; padding:0 4px; border-radius:8px; background:var(--brand-red); color:#fff; font:700 10px/16px "Archivo",sans-serif; text-align:center; box-shadow:0 0 0 2px var(--page)}
 .sino .cont:empty{display:none}
-.btn-ver{border-color:var(--ink); background:var(--ink); color:var(--page)}
-.btn-ver:hover{border-color:var(--ink); color:var(--page); filter:brightness(1.2)}
+.mod-div{width:1px; height:22px; background:var(--rule-strong); margin:0 4px}
+.btn-ver{height:var(--alt); padding:0 13px}
+.mod-extra select{height:var(--alt)}
 .mod-abas{display:flex; gap:2px; margin-top:8px; overflow-x:auto; scrollbar-width:none}
 .aba{display:flex; align-items:center; gap:6px; padding:8px 14px; border:0; border-bottom:2px solid transparent; margin-bottom:-1px; background:none; color:var(--ink-3); font:600 12.5px "IBM Plex Sans",sans-serif; text-decoration:none; white-space:nowrap; cursor:pointer}
 .aba:hover{color:var(--ink)}
@@ -481,8 +487,8 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .aviso-linha{display:flex; align-items:center; gap:10px; margin-bottom:12px; padding:9px 12px; border:1px solid var(--rule); border-left:3px solid var(--blue-deep); border-radius:var(--r); background:var(--surface); font-size:12.5px; color:var(--ink-2)}
 .aviso-linha.late{border-left-color:var(--late)}
 .aviso-linha .ic{flex:none; color:var(--blue-deep)} .aviso-linha.late .ic{color:var(--late)}
-.hj-cart{display:inline-flex; align-items:center; gap:8px; font-size:12px; font-weight:600; color:var(--ink-3)}
-.hj-cart select{min-width:190px; font-weight:600; color:var(--ink)}
+.hj-cart{display:inline-flex; align-items:center; gap:8px; font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-3)}
+.hj-cart select{min-width:190px; font-size:12.5px; font-weight:600; letter-spacing:0; text-transform:none; color:var(--ink)}
 .hj-barra .count{margin-left:auto}
 
 /* anel (rosca) de partes de um todo */

@@ -96,7 +96,6 @@ function desenhar(i, r, erro, carregando) {
     const x = await enviar({ cmd: 'abrir', item: { type: i.type, num: String(i.num) } });
     if (!x.ok) toast('Não foi possível abrir no Onvio: ' + (x.erro || ''), true);
   };
-  if ($('#g-onvio-2')) $('#g-onvio-2').onclick = () => $('#g-onvio').click();
   $('#g-lembrete').onclick = () => abrirLembrete({ vinculo: { type: i.type, num: String(i.num), k: i.k || null, cliente: i.apelido || i.cliente } });
   $$('[data-l]', g).forEach(row => row.addEventListener('click', async e => {
     const l = estado.lembretes.find(x => x.id === row.dataset.l);
@@ -110,9 +109,6 @@ function desenhar(i, r, erro, carregando) {
 function tramitesHtml(r, carregando) {
   if (carregando) return '<div class="vazio">Lendo os trâmites no Onvio…</div>';
   if (!r) return '<div class="vazio">Sem trâmites para mostrar.</div>';
-  if (r.erroTramites && r.semRota) return '<div class="faixa warn" id="g-sem-rota"><svg class="ic"><use href="#i-alert"/></svg><div><b>O Onvio não usa o caminho padrão de trâmites em ' + esc(r.lista || 'nesta lista') + '.</b> ' +
-    'Abra os trâmites de uma solicitação desta lista uma vez no Onvio: o Control Onvio aprende o caminho e passa a mostrar aqui (esta janela atualiza sozinha).' +
-    '<div style="margin-top:8px"><button class="btn btn-sm btn-primary" id="g-onvio-2"><svg class="ic ic-sm"><use href="#i-link"/></svg> Abrir no Onvio</button></div></div></div>';
   if (r.erroTramites) return '<div class="faixa warn"><svg class="ic"><use href="#i-alert"/></svg>Não foi possível ler os trâmites (' + esc(r.erroTramites) + '). Use "Abrir no Onvio" para ver o histórico.</div>';
   const l = r.tramites || [];
   if (!l.length) return '<div class="vazio"><b>Nenhum trâmite ainda</b>A solicitação ainda não teve resposta.</div>';
@@ -155,9 +151,4 @@ addEventListener('keydown', e => {
 });
 aoMudar(quais => {
   if (quais.includes('lembretes') && detalheAberto() && ultimo) desenhar(ultimo.i, ultimo.r, ultimo.erro, ultimo.carregando);
-  // aprendeu a rota dos trâmites desta lista com a janela aberta: lê de novo
-  if (quais.includes('rotas') && detalheAberto() && atual && ultimo && ultimo.r && ultimo.r.semRota && (estado.rotas || {})[atual.type]) {
-    toast('Aprendi onde ficam os trâmites de ' + (ultimo.r.lista || 'esta lista') + '.');
-    abrirDetalhe({ type: atual.type, num: atual.num });
-  }
 });

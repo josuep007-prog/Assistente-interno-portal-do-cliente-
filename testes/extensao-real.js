@@ -43,9 +43,11 @@ await ctx.route('https://onvio.com.br/**', async r => {
   const u = new URL(r.request().url());
   chamadas.push(u.pathname + (u.searchParams.get('filter') ? ' ' + u.searchParams.get('filter') : ''));
   if (u.pathname.endsWith('/security/v1/session-and-bindings')) return r.fulfill({ contentType: 'application/json', body: JSON.stringify({ UdsSession: { FirstName: 'Ana', LastName: 'Teste', EmailAddress: 'a@b.c' } }) });
-  // Aviso de férias: o Onvio não usa "topics" (404, com id ou número); os trâmites ficam em outro caminho
-  if (/prior-notice-vacations\/[^/]+\/topics$/.test(u.pathname)) return r.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
-  if (/prior-notice-vacations\/7d9f2c1a-4b3e-4c55-9a10-2f6e8b7c0d11\/history$/.test(u.pathname)) return r.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [{ created: iso(6), status: 1, description: 'Aviso de férias', createdByContactExpanded: { name: 'Cliente DELTA' } }, { created: iso(5), status: 2, description: 'Recebido', createdByExpanded: { name: 'Bia' } }] }) });
+  // Trâmites como no Onvio real (15/10/2026): tickets (Geral e Férias/Rescisão/Afastamento), employees-registrations
+  // (os 3 Cadastros) e payroll-entries; o caminho da própria lista + /topics dá 404 (ex.: prior-notice-vacations).
+  const tramiteOk = /^\/api\/(service-requesting\/v1\/tickets|br-payroll-sr\/v1\/(tickets|employees-registrations|payroll-entries))\/[^/]+\/topics$/.test(u.pathname);
+  if (tramiteOk && /7d9f2c1a-4b3e-4c55-9a10-2f6e8b7c0d11/.test(u.pathname)) return r.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [{ created: iso(6), status: 1, description: 'Aviso de férias', createdByContactExpanded: { name: 'Cliente DELTA' } }, { created: iso(5), status: 2, description: 'Recebido', createdByExpanded: { name: 'Bia' } }] }) });
+  if (u.pathname.endsWith('/topics') && !tramiteOk) return r.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
   if (u.pathname.endsWith('/topics')) return r.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [{ created: iso(9), status: 1, description: '<p>Bom dia, segue o pedido de <b>cálculo de férias</b> do Fulano a partir de 03/11.</p>', createdByContactExpanded: { name: 'Cliente ACME' }, attachmentsExpanded: [{ name: 'aviso-ferias-fulano.pdf' }] }, { created: iso(7), status: 2, description: 'Recebido, estamos calculando.', createdByContactExpanded: { name: 'Ana Teste' } }] }) });
   if (modoCliente && u.pathname.endsWith('/company-department-access')) return r.fulfill({ status: 403, contentType: 'application/json', body: '{}' });
   const k = Object.keys(itensPorRota).find(x => u.pathname.endsWith('/' + x));
@@ -76,7 +78,7 @@ assert.deepEqual(s.desconhecidos, { geral: { 66: 1 } });
 assert.equal(s.items.find(i => i.num === 101).ptUteis != null, true, '1º trâmite estimado');
 assert.equal(s.tramites.cache, undefined, 'cache fora do resumo');
 assert.ok(Object.keys(snap.tramites).includes('calcFerias:v1'));
-assert.ok(chamadas.some(c => /payroll-entries.*"NE"/.test(c)), 'Rubricas pediu o filtro NE');
+assert.ok(chamadas.some(c => /payroll-entries.*"IN"/.test(c)) && !chamadas.some(c => /"NE"/.test(c)), 'Rubricas usa IN (o NE dava HTTP 500 no Onvio real)');
 assert.equal(s.items.find(i => i.num === 55).status, 'Respondido');
 assert.equal(s.items.find(i => i.num === 900).abaProvavel.label, 'Aviso de férias', 'Geral com assunto de férias sugere a aba certa');
 // regras do escritório guardadas (como se o arquivo remoto tivesse sido baixado): prazo de cálculo de 1 d.u.
@@ -184,19 +186,13 @@ assert.equal(await app.$$eval('#gaveta .tl-item', e => e.length), 2);
 await foto(portal, '4-detalhe.png');
 await app.click('#g-fechar');
 await app.waitForSelector('#gaveta', { state: 'hidden' });
-// trâmites em lista com outro caminho: sem rota, o detalhe explica; o Onvio abre os trâmites e a extensão aprende
+// Aviso de férias: os trâmites vêm de br-payroll-sr/v1/tickets (o caminho da lista + /topics daria 404)
 const det = m => pagina.evaluate(x => new Promise(res => chrome.runtime.sendMessage(x, res)), m);
-const semRota = await det({ cmd: 'detalhe', type: 'avisoFerias', num: 702 });
-assert.deepEqual([semRota.ok, semRota.semRota, semRota.lista], [true, true, 'Aviso de férias']);
-await aba.evaluate(() => new Promise(res => { const x = new XMLHttpRequest(); x.open('GET', '/api/br-payroll-sr/v1/prior-notice-vacations/7d9f2c1a-4b3e-4c55-9a10-2f6e8b7c0d11/history?expand=all'); x.onload = res; x.send(); }));
-await esperarReal(async () => !!(await pagina.evaluate(() => chrome.storage.local.get('rotasTramites'))).rotasTramites);
-const rotas = (await pagina.evaluate(() => chrome.storage.local.get('rotasTramites'))).rotasTramites;
-assert.deepEqual([rotas.avisoFerias.sufixo, rotas.avisoFerias.idForma, rotas.avisoFerias.query], ['history', 'guid', { expand: 'all' }]);
-const depoisRota = await det({ cmd: 'detalhe', type: 'avisoFerias', num: 702 });
-assert.deepEqual([depoisRota.erroTramites, depoisRota.tramites.length], [null, 2], 'com a rota aprendida, os trâmites aparecem');
+const ferias = await det({ cmd: 'detalhe', type: 'avisoFerias', num: 702 });
+assert.deepEqual([ferias.ok, ferias.erroTramites, ferias.tramites && ferias.tramites.length], [true, null, 2]);
 await pagina.reload(); await pagina.waitForFunction(() => /Trâmites por lista/.test(document.querySelector('#diag').textContent));
-assert.match(await pagina.textContent('#diag'), /Aviso de férias: aprendido \(history, id\)/);
-console.log('trâmites de Aviso de férias: rota aprendida do Onvio (' + rotas.avisoFerias.sufixo + ')');
+assert.match(await pagina.textContent('#diag'), /Aviso de férias \(br-payroll-sr\/v1\/tickets\)/);
+console.log('trâmites de Aviso de férias: caminho fixo (tickets)');
 // sino
 await app.click('#btn-sino');
 await foto(portal, '5-sino.png');

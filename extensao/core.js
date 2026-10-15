@@ -17,7 +17,7 @@
     4: ['Respondido', 'cli'],
     5: ['Concluído', 'fim'],
     6: ['Prescrita', 'fim'],
-    7: ['Encaminhado', 'esc'],
+    7: ['Encaminhado para outro usuário', 'esc'],
     8: ['Em análise interna', 'esc'],
     9: ['Encaminhado', 'esc']
   };
@@ -27,7 +27,8 @@
     3: ['Aguardando o cliente', 'cli'],
     4: ['Respondido pelo cliente', 'esc'],
     5: ['Cadastro efetuado', 'cli'],
-    6: ['Concluído', 'fim']
+    6: ['Concluído', 'fim'],
+    7: ['Encaminhado para outro usuário', 'esc']
   };
   const ST_RUBRICAS = {
     0: ['Sem análise', 'esc'],
@@ -46,12 +47,13 @@
   };
 
   // pendentes: lista de códigos (filtro IN). excluir: pendente = qualquer código fora da lista
-  // (filtro NE), que também pega códigos novos; se o Onvio recusar, volta para o IN.
+  // (filtro NE), que também pega códigos novos; se o Onvio recusar, volta para o IN. Em Rubricas o NE dá HTTP 500
+  // no Onvio real (15/10/2026), por isso nenhuma família usa mais o NE.
   // clienteGrava: códigos de situação que um trâmite do CLIENTE grava (usado para achar o 1º trâmite do escritório).
   const FAMILIAS = {
     padrao: { st: ST_PADRAO, pendentes: '1,2,3,4,7,8,9', prescreve: true, clienteGrava: [1, 3] },
-    cadastro: { st: ST_CADASTRO, pendentes: '1,2,3,4,5', prescreve: false, clienteGrava: [1, 2, 4] },
-    rubricas: { st: ST_RUBRICAS, pendentes: '0,1,2,3,4,5,6,7,9,11,12', excluir: ['8', '10'], prescreve: true, clienteGrava: [0, 1, 11, 12] }
+    cadastro: { st: ST_CADASTRO, pendentes: '1,2,3,4,5,7', prescreve: false, clienteGrava: [1, 2, 4] },
+    rubricas: { st: ST_RUBRICAS, pendentes: '0,1,2,3,4,5,6,7,9,11,12', prescreve: true, clienteGrava: [0, 1, 11, 12] }
   };
   const DESCONHECIDO = code => ['Situação desconhecida (código ' + code + ')', 'desc'];
 
@@ -59,17 +61,19 @@
   const EXP_SIMPLES = 'clientExpanded,staffResponsibleExpanded';
 
   const TYPES = [
-    { key: 'geral', label: 'Geral', path: 'service-requesting/v1/tickets/generic', expand: 'clientExpanded,staffResponsibleExpanded,requesterExpanded', route: 'service-requesting/general', familia: 'padrao', calculo: false },
-    { key: 'cadEmpregado', label: 'Cadastro empregado', path: 'br-payroll-sr/v1/employees-registrations', expand: EXP_SIMPLES, route: 'service-requesting/payroll-registration/employee', familia: 'cadastro', calculo: false },
-    { key: 'cadContribuinte', label: 'Cadastro contribuinte', path: 'br-payroll-sr/v1/taxpayers-registrations', expand: EXP_SIMPLES, route: 'service-requesting/payroll-registration/partner', familia: 'cadastro', calculo: false },
-    { key: 'cadEstagiario', label: 'Cadastro estagiário', path: 'br-payroll-sr/v1/interns-registrations', expand: EXP_SIMPLES, route: 'service-requesting/payroll-registration/intern', familia: 'cadastro', calculo: false },
-    { key: 'avisoFerias', label: 'Aviso de férias', path: 'br-payroll-sr/v1/prior-notice-vacations', expand: EXP_PADRAO, route: 'service-requesting/vacation/prior-notice', familia: 'padrao', calculo: false },
-    { key: 'calcFerias', label: 'Cálculo de férias', path: 'br-payroll-sr/v1/vacation-calculations', expand: EXP_PADRAO, route: 'service-requesting/vacation/calculation', familia: 'padrao', calculo: true },
-    { key: 'avisoRescisao', label: 'Aviso de rescisão', path: 'br-payroll-sr/v1/prior-notice-terminations', expand: EXP_PADRAO, route: 'service-requesting/termination/prior-notice', familia: 'padrao', calculo: false },
-    { key: 'calcRescisao', label: 'Cálculo de rescisão', path: 'br-payroll-sr/v1/termination-calculations', expand: EXP_PADRAO, route: 'service-requesting/termination/calculation', familia: 'padrao', calculo: true },
-    { key: 'afastamento', label: 'Afastamento', path: 'br-payroll-sr/v1/employee-leave', expand: EXP_PADRAO, route: 'service-requesting/employee-leave', familia: 'padrao', calculo: false },
-    { key: 'rubricas', label: 'Lançamento de rubricas', path: 'br-payroll-sr/v1/payroll-entries', expand: EXP_SIMPLES, route: 'service-requesting/payroll-entries', familia: 'rubricas', calculo: false }
+    { key: 'geral', label: 'Geral', path: 'service-requesting/v1/tickets/generic', expand: 'clientExpanded,staffResponsibleExpanded,requesterExpanded', route: 'service-requesting/general', tramites: 'service-requesting/v1/tickets', familia: 'padrao', calculo: false },
+    { key: 'cadEmpregado', label: 'Cadastro empregado', path: 'br-payroll-sr/v1/employees-registrations', expand: EXP_SIMPLES, route: 'service-requesting/payroll-registration/employee', tramites: 'br-payroll-sr/v1/employees-registrations', familia: 'cadastro', calculo: false },
+    { key: 'cadContribuinte', label: 'Cadastro contribuinte', path: 'br-payroll-sr/v1/taxpayers-registrations', expand: EXP_SIMPLES, route: 'service-requesting/payroll-registration/partner', tramites: 'br-payroll-sr/v1/employees-registrations', familia: 'cadastro', calculo: false },
+    { key: 'cadEstagiario', label: 'Cadastro estagiário', path: 'br-payroll-sr/v1/interns-registrations', expand: EXP_SIMPLES, route: 'service-requesting/payroll-registration/intern', tramites: 'br-payroll-sr/v1/employees-registrations', familia: 'cadastro', calculo: false },
+    { key: 'avisoFerias', label: 'Aviso de férias', path: 'br-payroll-sr/v1/prior-notice-vacations', expand: EXP_PADRAO, route: 'service-requesting/vacation/prior-notice', tramites: 'br-payroll-sr/v1/tickets', familia: 'padrao', calculo: false },
+    { key: 'calcFerias', label: 'Cálculo de férias', path: 'br-payroll-sr/v1/vacation-calculations', expand: EXP_PADRAO, route: 'service-requesting/vacation/calculation', tramites: 'br-payroll-sr/v1/tickets', familia: 'padrao', calculo: true },
+    { key: 'avisoRescisao', label: 'Aviso de rescisão', path: 'br-payroll-sr/v1/prior-notice-terminations', expand: EXP_PADRAO, route: 'service-requesting/termination/prior-notice', tramites: 'br-payroll-sr/v1/tickets', familia: 'padrao', calculo: false },
+    { key: 'calcRescisao', label: 'Cálculo de rescisão', path: 'br-payroll-sr/v1/termination-calculations', expand: EXP_PADRAO, route: 'service-requesting/termination/calculation', tramites: 'br-payroll-sr/v1/tickets', familia: 'padrao', calculo: true },
+    { key: 'afastamento', label: 'Afastamento', path: 'br-payroll-sr/v1/employee-leave', expand: EXP_PADRAO, route: 'service-requesting/employee-leave', tramites: 'br-payroll-sr/v1/tickets', familia: 'padrao', calculo: false },
+    { key: 'rubricas', label: 'Lançamento de rubricas', path: 'br-payroll-sr/v1/payroll-entries', expand: EXP_SIMPLES, route: 'service-requesting/payroll-entries', tramites: 'br-payroll-sr/v1/payroll-entries', familia: 'rubricas', calculo: false }
   ];
+  // tramites: onde o Onvio lê os trâmites ({tramites}/{id}/topics, id = GUID do item). Não é o caminho da lista:
+  // os 3 Cadastros usam employees-registrations; Férias, Rescisão e Afastamento usam br-payroll-sr tickets.
   const TYPE_BY_KEY = Object.fromEntries(TYPES.map(t => [t.key, t]));
 
   const DEFAULTS = {
@@ -338,6 +342,9 @@
       if (!o || typeof o !== 'object' || prof > 4) return;
       for (const [k, v] of Object.entries(o)) {
         const kn = k.replace(/[_\s-]/g, '');
+        // Permissão de plataforma que só o usuário do escritório tem (FeatureResourcePermissionsMap.Platform.OnvioStaffAccess,
+        // visto no Onvio real em 15/10/2026). O valor é texto; vazio ou negativo não conta.
+        if (/^(OnvioStaffAccess|DefaultStaff)$/i.test(kn) && (v === true || (typeof v === 'string' && !/^(|false|no|none|deny|denied|0)$/i.test(v.trim())))) esc = true;
         if (typeof v === 'boolean' && v === true) {
           if (/^is(client|clientuser|contact|customer|cliente)$/i.test(kn)) cli = true;
           if (/^is(staff|staffuser|firm|firmuser|employee|escritorio)$/i.test(kn)) esc = true;
@@ -421,7 +428,7 @@
     }
     if (extra && extra.tramites) {
       if (onProgress) onProgress(TYPES.length, TYPES.length, 'trâmites');
-      await enriquecer(fetcher, out, extra.tramites, s, now, extra.rotasTramites);
+      await enriquecer(fetcher, out, extra.tramites, s, now);
     }
     out.items.sort((a, b) => (b.nivel - a.nivel) || (b.parado - a.parado));
     return out;
@@ -431,24 +438,12 @@
    * A lista não traz o histórico. Para cada pendência que já saiu de "Sem análise", lê os trâmites
    * uma única vez (o resultado fica em cache) e procura o primeiro trâmite depois da abertura cuja
    * situação NÃO seja uma que o cliente grava. É uma estimativa: confirme com a aba Trâmites. */
-  // Endereço dos trâmites. O padrão ("topics" com o id interno) só foi confirmado em Cadastro; nas listas em que o
-  // Onvio usa outro caminho, a rota é aprendida observando o próprio Onvio (acao-hook.js → rotasTramites).
-  // item: o registro do Onvio ou o item normalizado (id + identifier/num). rota: { sufixo, idForma, query }.
-  const QUERY_TRAMITES = { expand: 'all', itemsPerPage: '1000', orderBy: 'created asc', pageIndex: '0' };
-  const SUFIXO_OK = /^[a-z][a-z0-9-]{0,40}(\/[a-z][a-z0-9-]{0,40})?$/i;
-  const QUERY_OK = new Set(['expand', 'orderBy', 'itemsPerPage', 'pageIndex', 'startIndex', 'sort']);
-  function rotaValida(r) {
-    if (!r || typeof r !== 'object' || !SUFIXO_OK.test(String(r.sufixo || ''))) return null;
-    const query = {};
-    for (const [k, v] of Object.entries(r.query && typeof r.query === 'object' ? r.query : {})) if (QUERY_OK.has(k) && typeof v === 'string' && v.length <= 200) query[k] = v;
-    return { sufixo: r.sufixo, idForma: r.idForma === 'numero' ? 'numero' : 'guid', query };
-  }
-  function urlTramites(t, item, rota) {
-    const it = item && typeof item === 'object' ? item : { id: item };
-    const r = rotaValida(rota);
-    const id = r && r.idForma === 'numero' ? (it.identifier != null ? it.identifier : it.num) : it.id;
-    const q = new URLSearchParams(r ? Object.assign({}, QUERY_TRAMITES, r.query) : QUERY_TRAMITES);
-    return API + t.path + '/' + encodeURIComponent(id) + '/' + (r ? r.sufixo : 'topics') + '?' + q.toString().replace(/\+/g, '%20');
+  // Endereço dos trâmites (o mesmo que o Onvio usa no Trâmite Rápido e na visualização completa).
+  // item: o registro do Onvio ou o item normalizado; o id é sempre o GUID (campo id), nunca o número.
+  const QUERY_TRAMITES = 'expand=all&itemsPerPage=1000&orderBy=created%20asc&pageIndex=0';
+  function urlTramites(t, item) {
+    const id = item && typeof item === 'object' ? item.id : item;
+    return API + t.tramites + '/' + encodeURIComponent(id) + '/topics?' + QUERY_TRAMITES;
   }
   function primeiroTramiteEsc(topicos, t) {
     const grava = new Set(FAMILIAS[t.familia].clienteGrava);
@@ -456,8 +451,7 @@
     for (let i = 1; i < ord.length; i++) if (!grava.has(Number(ord[i].status))) return ord[i].created;
     return null;
   }
-  async function enriquecer(fetcher, out, cache, s, now, rotas) {
-    rotas = rotas || {};
+  async function enriquecer(fetcher, out, cache, s, now) {
     out.tramites.porTipo = {};
     const LIMITE = 60, PARALELO = 4;
     const hol = new Set(s.feriados || []);
@@ -478,7 +472,7 @@
         const t = TYPE_BY_KEY[it.type];
         if (falhou[t.key] >= 3) continue;                                  // endpoint do tipo não responde
         try {
-          const d = await fetcher(urlTramites(t, it, rotas[t.key]));
+          const d = await fetcher(urlTramites(t, it));
           const pt = primeiroTramiteEsc((d && d.items) || (Array.isArray(d) ? d : []), t);
           out.tramites.lidos++;
           out.tramites.porTipo[t.key] = 'ok';
@@ -487,7 +481,7 @@
           if (e && e.auth) throw e;
           out.tramites.falhas++;
           falhou[t.key] = (falhou[t.key] || 0) + 1;
-          if (out.tramites.porTipo[t.key] !== 'ok') out.tramites.porTipo[t.key] = /HTTP 404/.test(e && e.message) ? (rotas[t.key] ? 'rota aprendida falhou (404)' : 'sem rota (404)') : 'erro: ' + String(e && e.message || e).slice(0, 60);
+          if (out.tramites.porTipo[t.key] !== 'ok') out.tramites.porTipo[t.key] = 'erro: ' + String(e && e.message || e).slice(0, 60);
           novo[it.k] = { erro: now.toISOString() };
         }
       }
@@ -857,5 +851,5 @@
     }));
   }
 
-  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, rotaValida, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);

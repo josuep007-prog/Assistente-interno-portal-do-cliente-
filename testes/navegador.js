@@ -211,8 +211,10 @@ await passo('aprender: registra método, caminho e formato (sem valores); deslig
       await fetch('/api/br-payroll-sr/v1/employee-leave/123/attachments', { method: 'POST', body: fd });
       // leitura com query (expand fica; busca e filtro com dados não)
       await fetch('/api/service-requesting/v1/tickets/generic?expand=clientExpanded&searchText=Fulano&filter=' + encodeURIComponent(JSON.stringify({ groups: [{ items: [{ by: 'clientName', op: 'CT', value: 'ACME' }] }] })));
-      // fora da API de solicitações: ignorado
+      // outra API do Onvio (os trâmites de algumas listas podem vir daqui): também entra, só o formato
       await fetch('/api/storage/v2/Folders/1/children');
+      // fora de /api/: ignorado
+      await fetch('/br-portal-do-cliente/assets/i18n/pt.json').catch(() => {});
     });
     await p.waitForTimeout(600);
     return { p, mem: await p.evaluate(() => JSON.parse(localStorage.getItem('__mem'))) };
@@ -221,7 +223,7 @@ await passo('aprender: registra método, caminho e formato (sem valores); deslig
   const { p, mem } = await montar({ ligado: true, desde: Date.now() });
   const ap = mem.aprendizado || [];
   const txt = JSON.stringify(ap);
-  assert.equal(ap.length, 3, 'POST de trâmite (deduplicado), anexo e leitura: ' + ap.map(a => a.metodo + ' ' + a.caminho).join(' | '));
+  assert.equal(ap.length, 4, 'POST de trâmite (deduplicado), anexo, leitura e outra API: ' + ap.map(a => a.metodo + ' ' + a.caminho).join(' | '));
   const tramite = ap.find(a => /topics$/.test(a.caminho));
   assert.equal(tramite.caminho, '/api/br-payroll-sr/v1/vacation-calculations/{id}/topics');
   assert.equal(tramite.vezes, 2);
@@ -232,7 +234,8 @@ await passo('aprender: registra método, caminho e formato (sem valores); deslig
   const anexo = ap.find(a => /attachments$/.test(a.caminho));
   assert.equal(anexo.caminho, '/api/br-payroll-sr/v1/employee-leave/{id}/attachments');
   assert.deepEqual(anexo.corpo, { multipart: { file: 'arquivo(application/pdf)', description: 'texto' } });
-  const leitura = ap.find(a => a.metodo === 'GET');
+  assert.ok(ap.some(a => a.caminho === '/api/storage/v2/Folders/{id}/children'), 'outra API do Onvio');
+  const leitura = ap.find(a => a.metodo === 'GET' && /generic/.test(a.caminho));
   assert.deepEqual(leitura.query, { expand: 'clientExpanded', searchText: '…', filter: [['clientName CT']] });
   for (const proibido of ['Fulano', 'João', '123.456', 'ACME', 'atestado-joao', 'Prezado', '2026-10-20', '0f8fad5b', '2500']) assert.ok(!txt.includes(proibido), 'vazou um valor: ' + proibido);
   assert.deepEqual(p.erros, []);
@@ -241,42 +244,6 @@ await passo('aprender: registra método, caminho e formato (sem valores); deslig
   assert.equal((await montar({ ligado: true, desde: Date.now() - 3 * 3600 * 1000 })).mem.aprendizado, undefined, 'ligado há mais de 2 h: desligou sozinho');
 });
 
-
-
-await passo('rota dos trâmites: quando o Onvio lê trâmites, só o molde do caminho vai ao service worker (sem conteúdo); listas, POST e outras respostas não', async () => {
-  const p = await pagina(URL_PORTAL, '<!doctype html><body>Onvio</body>');
-  await p.addInitScript(lerExt('acao-hook.js'));
-  await semear(p, {});
-  const tramites = { items: [{ created: '2026-10-01T10:00:00', status: 1, description: 'Férias do João Silva', createdByContactExpanded: { name: 'Cliente ACME' } }] };
-  await p.route('**/api/**', r => {
-    const u = new URL(r.request().url());
-    const corpo = /\/history$/.test(u.pathname) ? tramites : /\/detalhes$/.test(u.pathname) ? { id: 'x', status: 1, created: '2026-10-01' } : { items: [{ id: 'v1', identifier: 702, status: 1, created: '2026-10-01', clientExpanded: { name: 'ACME' } }] };
-    return r.fulfill({ contentType: 'application/json', body: JSON.stringify(corpo) });
-  });
-  await p.goto(URL_PORTAL);
-  await p.addScriptTag({ content: lerExt('shell.js') });
-  await p.waitForTimeout(300);
-  await p.evaluate(async () => {
-    const guid = '0f8fad5b-d9cb-469f-a165-70867728950e';
-    // o Angular do Onvio abre a aba Trâmites (XHR)
-    await new Promise(res => { const x = new XMLHttpRequest(); x.open('GET', '/api/br-payroll-sr/v1/prior-notice-vacations/' + guid + '/history?expand=all&orderBy=created%20asc&searchText=Jo%C3%A3o'); x.onload = res; x.send(); });
-    // por fetch, com o número no caminho
-    await fetch('/api/br-payroll-sr/v1/employee-leave/9/history');
-    // lista comum, objeto que não é lista de trâmites e POST: nada
-    await fetch('/api/br-payroll-sr/v1/vacation-calculations?expand=all');
-    await fetch('/api/br-payroll-sr/v1/termination-calculations/' + guid + '/detalhes');
-    await fetch('/api/br-payroll-sr/v1/payroll-entries/' + guid + '/history', { method: 'POST', body: '{}' });
-  });
-  await p.waitForTimeout(400);
-  const msgs = await p.evaluate(() => (window.__msgs || []).filter(m => m.cmd === 'rotaTramites'));
-  assert.deepEqual(msgs, [
-    { cmd: 'rotaTramites', base: '/api/br-payroll-sr/v1/prior-notice-vacations', sufixo: 'history', idForma: 'guid', query: { expand: 'all', orderBy: 'created asc' } },
-    { cmd: 'rotaTramites', base: '/api/br-payroll-sr/v1/employee-leave', sufixo: 'history', idForma: 'numero', query: {} }
-  ]);
-  const txt = JSON.stringify(msgs);
-  for (const proibido of ['João', 'ACME', '0f8fad5b', 'Férias', 'searchText']) assert.ok(!txt.includes(proibido), 'vazou: ' + proibido);
-  assert.deepEqual(p.erros, []);
-});
 
 /* ---------- shell: camada em tela cheia por cima do Onvio ---------- */
 const appFrame = p => p.frames().find(f => /\/app\/app\.html$/.test(f.url()));
@@ -575,19 +542,12 @@ await passo('app · detalhe: janela com dados e trâmites lidos na hora; lembret
   assert.deepEqual(p.erros, []);
 });
 
-await passo('app · detalhe: trâmites sem rota explicam o que fazer e recarregam sozinhos quando o Onvio ensina o caminho', async () => {
+await passo('app · detalhe: trâmites que falham mostram o erro e o caminho do Onvio', async () => {
   const p = await abrirApp('#/fila', {});
-  await p.evaluate(() => { window.__respostas = { detalhe: { ok: true, item: { assunto: 'Férias' }, tramites: null, erroTramites: 'HTTP 404', semRota: true, lista: 'Geral' } }; });
+  await p.evaluate(() => { window.__respostas = { detalhe: { ok: true, item: { assunto: 'Férias' }, tramites: null, erroTramites: 'HTTP 500', lista: 'Geral' } }; });
   await p.click('#corpo [data-k="geral:b"]');
-  await p.waitForSelector('#g-sem-rota');
-  assert.match(await p.textContent('#g-sem-rota'), /não usa o caminho padrão de trâmites em Geral.*Abra os trâmites de uma solicitação desta lista uma vez no Onvio/);
-  await p.click('#g-onvio-2');
-  await p.waitForFunction(() => window.__msgs.some(m => m.cmd === 'abrir' && m.item.num === '102'));
-  // o Onvio ensinou o caminho: a janela lê de novo e mostra os trâmites
-  await p.evaluate(() => { window.__respostas.detalhe = { ok: true, item: { assunto: 'Férias' }, tramites: [{ n: 1, em: '2026-10-10T10:00:00', situacao: 'Sem análise', autor: 'Cliente BETA', texto: 'Abertura', anexos: [] }] }; chrome.storage.local.set({ rotasTramites: { geral: { sufixo: 'history', idForma: 'guid', query: {} } } }); });
-  await p.waitForSelector('#gaveta .tl-item');
-  assert.equal(await p.$('#g-sem-rota'), null);
-  assert.match(await p.textContent('#toast'), /Aprendi onde ficam os trâmites de Geral/);
+  await p.waitForSelector('#gaveta .faixa.warn');
+  assert.match(await p.textContent('#gaveta .faixa.warn'), /Não foi possível ler os trâmites \(HTTP 500\)\. Use "Abrir no Onvio"/);
   assert.deepEqual(p.erros, []);
 });
 
