@@ -1,6 +1,6 @@
 /* Control Onvio · app em tela cheia (tokens de ../ui.css)
  * Desenho tirado do Control Hub (ControlTax): trilho lateral escuro com ícones, cabeçalho de módulo
- * com abas (Departamento Pessoal), "Hoje" como painel de controle escuro (Portal do Cliente), listas em grade,
+ * com abas (Departamento Pessoal), "Hoje" no formato da tela Convenções (Departamento Pessoal), listas em grade,
  * barra de ferramentas com Filtros/Ordenar/Mais, janelas de diálogo com abas e busca em janela central. */
 
 /* cores dos gráficos: paleta validada (2 séries) e cores de status, claro e escuro */
@@ -144,9 +144,6 @@ a{color:var(--blue-deep)}
 .card-b{padding:0 16px 14px; min-width:0; flex:1}
 .card-b.flush{padding:0}
 .card-nota{margin:8px 0 0; font-size:12px; color:var(--ink-3)}
-
-/* ============ Hoje: painel de controle ============ */
-
 
 /* colunas lado a lado (Para fazer agora / Precisa de atenção) */
 .m-top{display:flex; gap:6px; align-items:center; font-size:11.5px; color:var(--ink-3); white-space:nowrap; overflow:hidden}
@@ -429,36 +426,6 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 :root[data-theme="dark"]{ --viz-seq-1:#104281; --viz-seq-2:#1c5cab; --viz-seq-3:#256abf; --viz-seq-4:#5598e7; --viz-seq-5:#86b6ef;
   --viz-seq-ink-1:#fff; --viz-seq-ink-2:#fff; --viz-seq-ink-3:#fff; --viz-seq-ink-4:#0B1015; --viz-seq-ink-5:#0B1015 }
 
-/* barra viva: só a bolinha (verde pulsando = ao vivo, cinza = parado, vermelho = sem leitura) e a fita */
-.fita{display:flex; align-items:center; gap:12px; height:46px; margin-bottom:16px; padding-left:16px; border-radius:var(--r); background:#0E151B; box-shadow:inset 0 0 0 1px rgba(255,255,255,.06); overflow:hidden}
-.ft-bola{flex:none; width:10px; height:10px; border-radius:50%; background:#4ECC8B; animation:bola 2s ease-out infinite}
-@keyframes bola{0%{box-shadow:0 0 0 0 rgba(78,204,139,.6)} 70%,100%{box-shadow:0 0 0 8px rgba(78,204,139,0)}}
-.fita.parado .ft-bola{background:#7D8E9B; animation:none}
-.fita.erro .ft-bola{background:#E8474B; animation:none}
-.ft-janela{flex:1; min-width:0; height:100%; overflow:hidden; -webkit-mask-image:linear-gradient(90deg, transparent, #000 3%, #000 97%, transparent); mask-image:linear-gradient(90deg, transparent, #000 3%, #000 97%, transparent)}
-.ft-trilho{display:flex; width:max-content; height:100%; animation:fita var(--ft-tempo, 60s) linear infinite}
-.fita:hover .ft-trilho, .fita:focus-within .ft-trilho{animation-play-state:paused}
-@keyframes fita{to{transform:translateX(-50%)}}
-.ft-grupo{display:flex; height:100%}
-.ft-i{all:unset; box-sizing:border-box; display:inline-flex; align-items:center; gap:8px; height:100%; padding:0 18px; border-right:1px solid rgba(255,255,255,.08); color:#B9C5CF; font-size:13px; white-space:nowrap; cursor:pointer}
-.ft-i:hover, .ft-i:focus-visible{background:rgba(255,255,255,.07)}
-.ft-i b{color:#E9EEF2; font-weight:600}
-.ft-p{width:8px; height:8px; border-radius:50%; flex:none; background:#4ECC8B}
-.ft-p.n1{background:#FF9D42} .ft-p.n2{background:#FF6B6B}
-.ft-c{color:#fff; font-weight:600}
-.ft-y{color:#7D8E9B}
-.ft-d{font:500 12.5px "IBM Plex Mono",monospace; color:#E9EEF2}
-.ft-d.late{color:#FF8070} .ft-d.today{color:#FFB366}
-.ft-t{font-size:11px; font-weight:700}
-.ft-t.sobe{color:#FF6B6B} .ft-t.desce{color:#4ECC8B}
-.ft-t.nova{font-size:9.5px; letter-spacing:.08em; color:#8CC6EC; border:1px solid rgba(140,198,236,.5); border-radius:3px; padding:0 4px}
-.ft-vazia{display:flex; align-items:center; color:#7D8E9B; font-size:13px; -webkit-mask-image:none; mask-image:none}
-@media (prefers-reduced-motion: reduce){
-  .ft-trilho{animation:none}
-  .ft-janela{overflow-x:auto; -webkit-mask-image:none; mask-image:none; scrollbar-width:thin}
-  .ft-grupo[aria-hidden]{display:none}
-}
-
 /* seletor pequeno no cabeçalho do cartão; rótulos destacados (sua linha, "Sem analista") */
 .seg-sm button{padding:3px 9px; font-size:11.5px}
 .viz .rot-destaque{fill:var(--ink); font-weight:700}
@@ -509,22 +476,16 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .sug b{color:var(--blue-deep)}
 .sug small{display:block; font-size:11px}
 
-/* ============ Hoje: painel de controle escuro ============ */
-/* o painel redefine os tokens por dentro (como o trilho), para os gráficos usarem as mesmas variáveis nos dois temas */
-.painel-ctrl{
-  --surface:#131A21; --surface-2:#1A232C; --ink:#E9EEF2; --ink-2:#B9C5CF; --ink-3:#8696A3; --rule:rgba(255,255,255,.08);
-  --viz-grid:rgba(255,255,255,.07); --viz-axis:rgba(255,255,255,.16); --viz-s1:#3987e5;
-  margin-bottom:18px; padding:14px; border-radius:6px; color:var(--ink);
-  background:radial-gradient(520px 260px at 100% 0%, rgba(57,135,229,.16), transparent 70%), radial-gradient(420px 260px at 0% 100%, rgba(194,0,12,.16), transparent 70%), linear-gradient(180deg, #0E151B, #0B1116);
-  box-shadow:0 1px 2px rgba(0,0,0,.2), 0 10px 28px rgba(14,21,27,.22), inset 0 0 0 1px rgba(255,255,255,.05);
-}
-.painel-ctrl .fita{margin-bottom:12px; background:rgba(255,255,255,.03)}
-.pc-grade{display:grid; grid-template-columns:minmax(330px,1.1fr) minmax(0,2fr) minmax(240px,1fr); gap:12px}
-.pc-cel{min-width:0; padding:12px 14px 12px; border-radius:var(--r); background:var(--surface); box-shadow:inset 0 0 0 1px var(--rule)}
-.pc-cel h3{margin:0 0 8px; font:700 12px "Archivo",sans-serif; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-2)}
-.pc-cel h3 small{margin-left:6px; font:400 11px "IBM Plex Sans",sans-serif; letter-spacing:0; text-transform:none; color:var(--ink-3)}
+/* ============ Hoje: no formato da tela Convenções do Departamento Pessoal (Control Hub) ============ */
+/* cada situação define --c (cor da bolinha, barra, etiqueta e rodapé); o texto fica sempre com a tinta de texto */
+.aviso-linha{display:flex; align-items:center; gap:10px; margin-bottom:12px; padding:9px 12px; border:1px solid var(--rule); border-left:3px solid var(--blue-deep); border-radius:var(--r); background:var(--surface); font-size:12.5px; color:var(--ink-2)}
+.aviso-linha.late{border-left-color:var(--late)}
+.aviso-linha .ic{flex:none; color:var(--blue-deep)} .aviso-linha.late .ic{color:var(--late)}
+.hj-cart{display:inline-flex; align-items:center; gap:8px; font-size:12px; font-weight:600; color:var(--ink-3)}
+.hj-cart select{min-width:190px; font-weight:600; color:var(--ink)}
+.hj-barra .count{margin-left:auto}
 
-/* anel de prioridades */
+/* anel (rosca) de partes de um todo */
 .anel{display:flex; align-items:center; gap:12px}
 .an-svg{flex:none; width:136px; height:136px}
 .an-f{cursor:pointer; transition:stroke-width .15s, opacity .15s}
@@ -541,39 +502,135 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .an-l i{flex:none; width:10px; height:10px; border-radius:50%}
 .an-l span{flex:1; min-width:0; line-height:1.25}
 .an-l b{font:600 13px "IBM Plex Mono",monospace; color:var(--ink)}
-.an-l:not(:disabled):hover{background:rgba(255,255,255,.06)}
-.an-l:focus-visible{outline:2px solid #6BAAC9; outline-offset:-2px}
-.an-l.ativo{background:rgba(255,255,255,.09); color:var(--ink); box-shadow:inset 0 0 0 1px rgba(255,255,255,.18)}
+.an-l:not(:disabled):hover{background:var(--surface-2)}
+.an-l:focus-visible{outline:2px solid var(--blue-deep); outline-offset:-2px}
+.an-l.ativo{background:var(--surface-2); color:var(--ink); box-shadow:inset 0 0 0 1px var(--rule-strong)}
 .an-l:disabled{opacity:.45; cursor:default}
 
-/* radar da fila */
-.rd-svg{display:block}
-.viz .rd-faixa{fill:rgba(255,255,255,.025); stroke:var(--viz-grid)}
-.viz .rd-marca{stroke:var(--ink-3); stroke-width:1; stroke-dasharray:3 3}
-.viz .rd-mrot{font-size:10px; fill:var(--ink-3)}
-.viz .rd-mais{font:600 10.5px "IBM Plex Mono",monospace; fill:var(--ink-2)}
-.rd-p{cursor:pointer; transition:opacity .2s}
-.rd-p:hover circle:last-child, .rd-p:focus-visible circle:last-child{r:7}
-.rd-p.apagado{opacity:.16}
-.rd-p:focus{outline:none}
+/* destaque: rosca + título + carrossel (esquerda) e próximos passos (direita) */
+.hj-hero{display:grid; grid-template-columns:minmax(0,1.35fr) minmax(0,1fr); margin-bottom:14px; border:1px solid var(--rule); border-radius:4px; overflow:hidden; background:var(--surface); box-shadow:var(--shadow-1)}
+.hj-hero-g{display:flex; align-items:center; gap:26px; padding:22px 24px; min-width:0}
+.hj-donut{flex:none}
+.hj-donut .anel{display:block}
+.hj-donut .an-svg{width:150px; height:150px}
+.hj-donut .an-f:hover, .hj-donut .an-f.ativo{stroke-width:15px}
+.hj-donut .an-rot{text-transform:uppercase; letter-spacing:.08em; font-size:10.5px}
+.hj-hero-tx{min-width:0; flex:1; display:flex; flex-direction:column; gap:6px}
+.hj-eyebrow{font-size:11.5px; font-weight:600; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-3)}
+.hj-eyebrow .linkish{all:unset; cursor:pointer; text-transform:none; letter-spacing:0; color:var(--blue-deep); font-weight:600}
+.hj-eyebrow .linkish:hover{text-decoration:underline}
+.hj-hero-tx h2{margin:0; font:700 24px/1.2 "Archivo",sans-serif; letter-spacing:-.01em; color:var(--ink)}
+.hj-hero-tx h2 em{font-style:normal; color:var(--late); font-variant-numeric:tabular-nums}
+.hj-hero-tx h2 .ic{width:22px; height:22px; color:var(--ok); vertical-align:-3px}
+.hj-hero-tx p{margin:0; font-size:13px; color:var(--ink-2)}
+.t-sem{color:var(--today)}
+.hj-legenda{display:flex; flex-wrap:wrap; gap:4px 12px; margin-top:4px; font-size:11.5px; color:var(--ink-2)}
+.hj-legenda span{display:inline-flex; align-items:center; gap:5px}
+.hj-legenda i{width:9px; height:9px; border-radius:3px}
+.hj-legenda b{color:var(--ink)}
 
-/* pulso do dia */
-.ps-cab{display:flex; align-items:baseline; gap:10px; flex-wrap:wrap}
-.ps-cab b{font:700 30px/1.1 "Archivo",sans-serif; color:var(--ink); font-variant-numeric:tabular-nums}
-.ps-cab span{font:600 12.5px "IBM Plex Mono",monospace}
-.painel-ctrl .sobe{color:#FF8070} .painel-ctrl .desce{color:#4ECC8B}
-.painel-ctrl .fraco{color:var(--ink-3); font-family:"IBM Plex Sans",sans-serif; font-weight:400}
-.ps-pe{display:flex; gap:14px; margin-top:4px; font:600 12px "IBM Plex Mono",monospace}
-.ps-vazio{display:grid; place-items:center; min-height:96px; padding:0 8px; text-align:center; font-size:12px; color:var(--ink-3)}
-.ps-svg{display:block; margin-top:4px}
-.ps-agora{filter:drop-shadow(0 0 6px var(--viz-s1))}
+/* carrossel: uma pendência por vez; a bolinha mostra a leitura ao vivo */
+.hj-tick{position:relative; display:flex; align-items:center; gap:12px; margin-top:6px; padding:10px 12px; border-radius:4px; background:var(--surface-2); min-width:0}
+.hj-bola{flex:none; width:10px; height:10px; border-radius:50%; background:var(--ok); animation:hj-bola 2s ease-out infinite}
+@keyframes hj-bola{0%{box-shadow:0 0 0 0 color-mix(in srgb, var(--ok) 60%, transparent)} 70%,100%{box-shadow:0 0 0 8px color-mix(in srgb, var(--ok) 0%, transparent)}}
+.hj-tick.parado .hj-bola{background:var(--ink-3); animation:none}
+.hj-tick.erro .hj-bola{background:var(--late); animation:none}
+.hj-tick-palco{position:relative; flex:1; min-width:0; min-height:58px}
+.hj-tk{all:unset; box-sizing:border-box; position:absolute; inset:0; display:flex; flex-direction:column; justify-content:center; gap:2px; min-width:0; cursor:pointer; opacity:0; transform:translateY(12px); pointer-events:none; transition:opacity .45s ease, transform .45s cubic-bezier(.2,.7,.2,1)}
+.hj-tk.on{opacity:1; transform:none; pointer-events:auto}
+.hj-tk.sai{transform:translateY(-12px)}
+.hj-tk.vazio{cursor:default}
+.hj-tk:focus-visible{outline:2px solid var(--blue-deep); outline-offset:2px; border-radius:4px}
+.hj-tk-tag{align-self:flex-start; display:inline-flex; align-items:center; gap:6px; font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-2)}
+.hj-tk-tag::before{content:""; width:8px; height:8px; border-radius:2px; background:var(--c)}
+.hj-tk b{display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13.5px; font-weight:600; color:var(--ink)}
+.hj-tk small{display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11.5px; color:var(--ink-3)}
+.hj-tk:hover b{text-decoration:underline; text-decoration-thickness:1px; text-underline-offset:2px}
+.hj-tick-relogio{position:absolute; left:0; bottom:0; width:0; height:0; overflow:hidden; visibility:hidden}
+.hj-tick-relogio i{display:block; width:100%; height:100%; animation:hj-relogio 5s linear infinite}
+.hj-tick:hover .hj-tick-relogio i, .hj-tick:focus-within .hj-tick-relogio i, .hj-tick.uno .hj-tick-relogio i{animation-play-state:paused}
+@keyframes hj-relogio{from{transform:scaleX(0)} to{transform:scaleX(1)}}
 
-/* parte de baixo: prioridades (2/3) e equipe + agenda (1/3) */
-.hoje-baixo{display:grid; grid-template-columns:minmax(0,2fr) minmax(300px,1fr); gap:16px; align-items:start}
-.hoje-lado{display:flex; flex-direction:column; gap:16px; min-width:0}
-.aviso-linha{display:flex; align-items:center; gap:10px; margin-bottom:12px; padding:9px 12px; border:1px solid var(--rule); border-left:3px solid var(--blue-deep); border-radius:var(--r); background:var(--surface); font-size:12.5px; color:var(--ink-2)}
-.aviso-linha.late{border-left-color:var(--late)}
-.aviso-linha .ic{flex:none; color:var(--blue-deep)} .aviso-linha.late .ic{color:var(--late)}
+/* próximos passos */
+.hj-passos{display:flex; flex-direction:column; min-width:0; padding:18px 20px; border-left:1px solid var(--rule); background:color-mix(in srgb, var(--surface-2) 70%, transparent)}
+.hj-passos h3{margin:0 0 10px; font-size:11.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-3)}
+.hj-passos-l{list-style:none; margin:0; padding:0 6px 0 0; display:flex; flex-direction:column; gap:6px; max-height:268px; overflow-y:auto; overscroll-behavior:contain; scrollbar-width:thin}
+.hj-passos-l.rola{-webkit-mask-image:linear-gradient(to bottom, #000 0, #000 calc(100% - 22px), transparent 100%); mask-image:linear-gradient(to bottom, #000 0, #000 calc(100% - 22px), transparent 100%)}
+.hj-passos-l.rola.topo{-webkit-mask-image:linear-gradient(to bottom, transparent 0, #000 18px, #000 calc(100% - 22px), transparent 100%); mask-image:linear-gradient(to bottom, transparent 0, #000 18px, #000 calc(100% - 22px), transparent 100%)}
+.hj-passos-l.rola.fim{-webkit-mask-image:none; mask-image:none}
+.hj-passos-l.rola.fim.topo{-webkit-mask-image:linear-gradient(to bottom, transparent 0, #000 18px); mask-image:linear-gradient(to bottom, transparent 0, #000 18px)}
+.hj-step{box-sizing:border-box; width:100%; display:grid; grid-template-columns:10px minmax(0,1fr) auto; gap:10px; align-items:center; padding:8px 10px; border:1px solid var(--rule); border-radius:4px; background:var(--surface); cursor:pointer; transition:transform .15s, box-shadow .15s, border-color .15s}
+.hj-step:hover{transform:translateX(2px); border-color:color-mix(in srgb, var(--c, var(--blue-deep)) 45%, var(--rule)); box-shadow:0 4px 14px rgba(16,24,32,.08)}
+.hj-step:focus-visible{outline:2px solid var(--blue-deep); outline-offset:1px}
+.hj-step > i{width:10px; height:10px; border-radius:50%; background:var(--c, var(--blue-deep)); animation:hj-pulsa 3s ease-out infinite}
+.hj-passos-l li:nth-child(2) .hj-step > i{animation-delay:.26s} .hj-passos-l li:nth-child(3) .hj-step > i{animation-delay:.52s} .hj-passos-l li:nth-child(n+4) .hj-step > i{animation-delay:.78s}
+@keyframes hj-pulsa{0%{box-shadow:0 0 0 0 color-mix(in srgb, var(--c, var(--blue-deep)) 32%, transparent)} 70%,100%{box-shadow:0 0 0 6px color-mix(in srgb, var(--c, var(--blue-deep)) 0%, transparent)}}
+.hj-step.n-lem{--c:var(--blue-deep)} .hj-step.n-lem.late{--c:var(--late)}
+.hj-step b{display:block; font-size:12.5px; font-weight:600; line-height:1.3; color:var(--ink)}
+.hj-step small{display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11.5px; line-height:1.3; color:var(--ink-3)}
+.hj-step > .ic{color:var(--ink-3)}
+.hj-zen{display:flex; align-items:center; gap:10px; padding:14px; border-radius:4px; font-size:13px; font-weight:600; color:var(--ok); background:color-mix(in srgb, var(--ok) 9%, transparent)}
+.hj-zen.big{justify-content:center; padding:40px; color:var(--ink-3); background:var(--surface); border:1px dashed var(--rule-strong)}
+
+/* situações: filtros com bolinha e número */
+.hj-sits{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:20px}
+.hj-sit{all:unset; box-sizing:border-box; display:inline-flex; align-items:center; gap:8px; padding:8px 14px 8px 12px; border:1px solid var(--rule); border-radius:4px; background:var(--surface); font-size:12.5px; color:var(--ink-2); cursor:pointer; transition:background .15s, border-color .15s}
+.hj-sit:hover{border-color:var(--rule-strong); background:var(--surface-2)}
+.hj-sit:focus-visible{outline:2px solid var(--blue-deep); outline-offset:2px}
+.hj-sit-dot{width:8px; height:8px; border-radius:50%; background:var(--c)}
+.hj-sit.s-sem .hj-sit-dot{border-radius:2px; background:repeating-linear-gradient(45deg, var(--c) 0 2px, transparent 2px 4px); box-shadow:inset 0 0 0 1px var(--c)}
+.hj-sit-l{font-weight:600; color:var(--ink)}
+.hj-sit b{font:700 13px "IBM Plex Mono",monospace; color:var(--ink)}
+.hj-sit.on{border-color:var(--c); background:color-mix(in srgb, var(--c) 10%, var(--surface)); box-shadow:inset 0 0 0 1px var(--c)}
+.hj-sit.zero{opacity:.55} .hj-sit.zero .hj-sit-dot{background:var(--ink-3)} .hj-sit.zero.on{opacity:1}
+
+/* grupos de cartões */
+.hj-sec{margin-bottom:22px}
+.hj-sec h3{display:flex; align-items:center; gap:8px; margin:0 0 10px; font:700 13px "Archivo",sans-serif; color:var(--ink)}
+.hj-sec h3 > .ic{color:var(--c)}
+.hj-sec h3 > span{padding:1px 8px; border-radius:3px; font:700 11.5px "IBM Plex Mono",monospace; color:var(--ink); background:color-mix(in srgb, var(--c) 16%, var(--surface))}
+.hj-sec h3::after{content:""; flex:1; order:9; height:1px; background:linear-gradient(90deg, color-mix(in srgb, var(--c) 40%, var(--rule)), transparent)}
+.hj-sec-mais{order:10; display:inline-flex; align-items:center; gap:2px; font:600 12px "IBM Plex Sans",sans-serif; color:var(--blue-deep); text-decoration:none}
+.hj-sec-mais:hover{text-decoration:underline}
+.hj-grade{display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:14px}
+.hj-card{position:relative; display:flex; flex-direction:column; gap:12px; min-width:0; padding:14px 16px 0; overflow:hidden; border:1px solid var(--rule); border-radius:4px; background:var(--surface); cursor:pointer; transition:transform .18s cubic-bezier(.2,.7,.2,1), box-shadow .18s, border-color .18s}
+.hj-card::before{content:""; position:absolute; inset:0 auto 0 0; width:4px; background:var(--c)}
+.hj-card:hover{transform:translateY(-3px); border-color:color-mix(in srgb, var(--c) 40%, var(--rule)); box-shadow:0 14px 34px rgba(16,24,32,.13)}
+.hj-card:focus-visible{outline:2px solid var(--blue-deep); outline-offset:2px}
+.hj-card header{display:flex; align-items:center; gap:6px}
+.hj-card .spacer{flex:1}
+.hj-chip{display:inline-flex; align-items:center; gap:5px; padding:3px 9px 3px 7px; border-radius:3px; font-size:11px; font-weight:700; letter-spacing:.02em; color:var(--ink); background:color-mix(in srgb, var(--c) 16%, var(--surface))}
+.hj-chip .ic{color:var(--c)}
+.hj-num{font-size:12px; color:var(--ink-3)}
+.hj-card-id{display:grid; grid-template-columns:auto minmax(0,1fr); gap:14px; align-items:center}
+.hj-card-id h4{margin:0 0 3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font:700 15px/1.25 "Archivo",sans-serif; color:var(--ink)}
+.hj-sub{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; color:var(--ink-2)}
+.hj-lim{margin-top:4px; font-size:11.5px; color:var(--ink-3); font-variant-numeric:tabular-nums}
+.ap{position:relative; display:inline-block; flex:none; width:var(--sz); height:var(--sz)}
+.ap-svg{width:100%; height:100%; transform:rotate(-90deg)}
+.ap-svg circle{fill:none; stroke-width:3.4}
+.ap-svg .bg{stroke:color-mix(in srgb, var(--ink) 9%, transparent)}
+.ap-svg .fg{stroke:var(--c, var(--blue-deep)); stroke-linecap:round}
+.ap-c{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; line-height:1}
+.ap-c b{font:800 calc(var(--sz) * .3) "Archivo",sans-serif; color:var(--ink); font-variant-numeric:tabular-nums}
+.ap-c small{margin-top:2px; font-size:9.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-3)}
+.hj-stats{display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); margin:0; border:1px solid var(--rule); border-radius:4px; background:color-mix(in srgb, var(--surface-2) 60%, var(--surface))}
+.hj-stats > div{min-width:0; padding:8px 10px}
+.hj-stats > div + div{border-left:1px solid var(--rule)}
+.hj-stats dt{font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.07em; color:var(--ink-3)}
+.hj-stats dd{margin:2px 0 0; overflow-wrap:anywhere; font-size:13px; font-weight:600; line-height:1.25; color:var(--ink)}
+.hj-cta{display:flex; align-items:center; gap:8px; margin:0 -16px; padding:10px 16px; border-top:1px solid var(--rule); font-size:12.5px; font-weight:600; color:var(--ink); background:color-mix(in srgb, var(--c) 9%, var(--surface))}
+.hj-cta .ic{flex:none; color:var(--c); transition:transform .15s}
+.hj-cta span{flex:1; min-width:0}
+.hj-card:hover .hj-cta .ic{transform:translateX(3px)}
+.hj-lista{overflow:hidden}
+.hj-lista .prio:first-child{border-top:0}
+
+/* entrada animada: só ao chegar na tela */
+@keyframes hj-sobe{from{opacity:0; transform:translateY(10px)}}
+@keyframes hj-desenha{from{stroke-dasharray:0 100}}
+.hj-anim .hj-hero, .hj-anim .hj-sit, .hj-anim .hj-card, .hj-anim .hj-passos li{animation:hj-sobe .55s cubic-bezier(.2,.7,.2,1) both; animation-delay:calc(var(--i, 0) * 55ms)}
+.hj-anim .ap-svg .fg{animation:hj-desenha 1.1s cubic-bezier(.3,.7,.2,1) both; animation-delay:.15s}
 
 /* lista de prioridades: etiqueta do motivo · #ID · cliente · (responsável) · dias */
 .prio{display:grid; grid-template-columns:132px 64px minmax(0,1fr) auto 56px; align-items:center; gap:12px; padding:9px 16px; border-top:1px solid var(--rule); border-left:3px solid transparent; cursor:pointer}
@@ -597,40 +654,17 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .nova-t{font:700 9.5px "IBM Plex Sans",sans-serif; letter-spacing:.06em; color:var(--blue-deep); border:1px solid currentColor; border-radius:3px; padding:0 3px}
 #prio .vazio{padding:28px 16px}
 
-/* mosaico da equipe (treemap): área = pendências, cor = pior caso; texto escuro ou claro conforme o fundo */
-.mosaico{position:relative; width:100%; aspect-ratio:1.7; border-radius:var(--r); overflow:hidden; background:var(--surface)}
-.mo-b{all:unset; box-sizing:border-box; position:absolute; display:flex; flex-direction:column; justify-content:flex-end; gap:1px; padding:6px 8px; overflow:hidden; border:1px solid var(--surface); border-radius:4px; color:#0B1015; cursor:pointer; transition:filter .15s, opacity .15s}
-.mo-b:hover{filter:brightness(1.08)}
-.mo-b:focus-visible{outline:2px solid var(--blue-deep); outline-offset:-3px}
-.mo-g3{background:var(--viz-crit); color:#fff}
-.mo-g2{background:var(--viz-serious)}
-.mo-g1{background:var(--viz-warn)}
-.mo-ok{background:var(--viz-ok)}
-.mo-sem{background-image:repeating-linear-gradient(45deg, rgba(255,255,255,.28) 0 6px, transparent 6px 12px)}
-.mo-eu{box-shadow:inset 0 0 0 3px var(--ink)}
-.mosaico:has(.ativo) .mo-b:not(.ativo){opacity:.35}
-.mo-n{font:700 20px/1 "Archivo",sans-serif; font-variant-numeric:tabular-nums}
-.mo-rot{font-size:12px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
-.mo-det{font-size:11px; opacity:.9; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
-.mo-b.pq{justify-content:center; align-items:center; padding:2px}
-.mo-b.pq .mo-rot, .mo-b.pq .mo-det{display:none}
-.mo-b.pq .mo-n{font-size:14px}
-.mo-leg{display:flex; flex-wrap:wrap; gap:4px 12px; margin-top:10px; font-size:11.5px; color:var(--ink-3)}
-.mo-leg span{display:inline-flex; align-items:center; gap:5px}
-.mo-leg i{width:12px; height:12px; border-radius:2px}
-.mo-leg i.mo-sem{background-color:var(--ink-3)}
-
-@media (max-width:1280px){
-  .pc-grade{grid-template-columns:minmax(330px,1fr) minmax(0,1.6fr)}
-  .pc-grade .pc-cel:last-child{grid-column:1 / -1}
-}
-@media (max-width:1100px){ .hoje-baixo{grid-template-columns:minmax(0,1fr)} }
+@media (max-width:1180px){ .hj-hero{grid-template-columns:minmax(0,1fr)} .hj-passos{border-left:0; border-top:1px solid var(--rule)} }
 @media (max-width:760px){
-  .pc-grade{grid-template-columns:minmax(0,1fr)}
+  .hj-hero-g{flex-direction:column; align-items:flex-start; gap:14px; padding:18px 16px}
+  .hj-donut{align-self:center}
+  .hj-hero-tx h2{font-size:20px}
+  .hj-grade{grid-template-columns:minmax(0,1fr)}
   .prio, .prio:has(.pr-resp){grid-template-columns:auto minmax(0,1fr) auto}
   .prio .pr-num, .prio .pr-resp{display:none}
 }
 @media (prefers-reduced-motion: reduce){
-  .an-f.entra{animation:none}
-  .an-f, .rd-p, .mo-b{transition:none}
+  .an-f.entra, .hj-bola, .hj-step > i{animation:none}
+  .an-f, .hj-step, .hj-card, .hj-tk{transition:none}
+  .hj-tick-relogio i{animation-duration:8s}
 }
