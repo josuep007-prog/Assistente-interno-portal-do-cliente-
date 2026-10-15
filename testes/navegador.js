@@ -245,42 +245,6 @@ await passo('aprender: registra método, caminho e formato (sem valores); deslig
 });
 
 
-
-await passo('rota dos trâmites: quando o Onvio lê trâmites, só o molde do caminho vai ao service worker (sem conteúdo); listas, POST e outras respostas não', async () => {
-  const p = await pagina(URL_PORTAL, '<!doctype html><body>Onvio</body>');
-  await p.addInitScript(lerExt('acao-hook.js'));
-  await semear(p, {});
-  const tramites = { items: [{ created: '2026-10-01T10:00:00', status: 1, description: 'Férias do João Silva', createdByContactExpanded: { name: 'Cliente ACME' } }] };
-  await p.route('**/api/**', r => {
-    const u = new URL(r.request().url());
-    const corpo = /\/history$/.test(u.pathname) ? tramites : /\/detalhes$/.test(u.pathname) ? { id: 'x', status: 1, created: '2026-10-01' } : { items: [{ id: 'v1', identifier: 702, status: 1, created: '2026-10-01', clientExpanded: { name: 'ACME' } }] };
-    return r.fulfill({ contentType: 'application/json', body: JSON.stringify(corpo) });
-  });
-  await p.goto(URL_PORTAL);
-  await p.addScriptTag({ content: lerExt('shell.js') });
-  await p.waitForTimeout(300);
-  await p.evaluate(async () => {
-    const guid = '0f8fad5b-d9cb-469f-a165-70867728950e';
-    // o Angular do Onvio abre a aba Trâmites (XHR)
-    await new Promise(res => { const x = new XMLHttpRequest(); x.open('GET', '/api/br-payroll-sr/v1/prior-notice-vacations/' + guid + '/history?expand=all&orderBy=created%20asc&searchText=Jo%C3%A3o'); x.onload = res; x.send(); });
-    // por fetch, com o número no caminho
-    await fetch('/api/br-payroll-sr/v1/employee-leave/9/history');
-    // lista comum, objeto que não é lista de trâmites e POST: nada
-    await fetch('/api/br-payroll-sr/v1/vacation-calculations?expand=all');
-    await fetch('/api/br-payroll-sr/v1/termination-calculations/' + guid + '/detalhes');
-    await fetch('/api/br-payroll-sr/v1/payroll-entries/' + guid + '/history', { method: 'POST', body: '{}' });
-  });
-  await p.waitForTimeout(400);
-  const msgs = await p.evaluate(() => (window.__msgs || []).filter(m => m.cmd === 'rotaTramites'));
-  assert.deepEqual(msgs, [
-    { cmd: 'rotaTramites', base: '/api/br-payroll-sr/v1/prior-notice-vacations', sufixo: 'history', idForma: 'guid', query: { expand: 'all', orderBy: 'created asc' } },
-    { cmd: 'rotaTramites', base: '/api/br-payroll-sr/v1/employee-leave', sufixo: 'history', idForma: 'numero', query: {} }
-  ]);
-  const txt = JSON.stringify(msgs);
-  for (const proibido of ['João', 'ACME', '0f8fad5b', 'Férias', 'searchText']) assert.ok(!txt.includes(proibido), 'vazou: ' + proibido);
-  assert.deepEqual(p.erros, []);
-});
-
 /* ---------- shell: camada em tela cheia por cima do Onvio ---------- */
 const appFrame = p => p.frames().find(f => /\/app\/app\.html$/.test(f.url()));
 const cheia = p => p.evaluate(() => document.documentElement.classList.contains('controlonvio-cheia'));
@@ -578,19 +542,12 @@ await passo('app · detalhe: janela com dados e trâmites lidos na hora; lembret
   assert.deepEqual(p.erros, []);
 });
 
-await passo('app · detalhe: trâmites sem rota explicam o que fazer e recarregam sozinhos quando o Onvio ensina o caminho', async () => {
+await passo('app · detalhe: trâmites que falham mostram o erro e o caminho do Onvio', async () => {
   const p = await abrirApp('#/fila', {});
-  await p.evaluate(() => { window.__respostas = { detalhe: { ok: true, item: { assunto: 'Férias' }, tramites: null, erroTramites: 'HTTP 404', semRota: true, lista: 'Geral' } }; });
+  await p.evaluate(() => { window.__respostas = { detalhe: { ok: true, item: { assunto: 'Férias' }, tramites: null, erroTramites: 'HTTP 500', lista: 'Geral' } }; });
   await p.click('#corpo [data-k="geral:b"]');
-  await p.waitForSelector('#g-sem-rota');
-  assert.match(await p.textContent('#g-sem-rota'), /não usa o caminho padrão de trâmites em Geral.*Abra os trâmites de uma solicitação desta lista uma vez no Onvio/);
-  await p.click('#g-onvio-2');
-  await p.waitForFunction(() => window.__msgs.some(m => m.cmd === 'abrir' && m.item.num === '102'));
-  // o Onvio ensinou o caminho: a janela lê de novo e mostra os trâmites
-  await p.evaluate(() => { window.__respostas.detalhe = { ok: true, item: { assunto: 'Férias' }, tramites: [{ n: 1, em: '2026-10-10T10:00:00', situacao: 'Sem análise', autor: 'Cliente BETA', texto: 'Abertura', anexos: [] }] }; chrome.storage.local.set({ rotasTramites: { geral: { sufixo: 'history', idForma: 'guid', query: {} } } }); });
-  await p.waitForSelector('#gaveta .tl-item');
-  assert.equal(await p.$('#g-sem-rota'), null);
-  assert.match(await p.textContent('#toast'), /Aprendi onde ficam os trâmites de Geral/);
+  await p.waitForSelector('#gaveta .faixa.warn');
+  assert.match(await p.textContent('#gaveta .faixa.warn'), /Não foi possível ler os trâmites \(HTTP 500\)\. Use "Abrir no Onvio"/);
   assert.deepEqual(p.erros, []);
 });
 

@@ -41,12 +41,17 @@ test('código conhecido não é marcado como desconhecido (inclusive o 0 de Rubr
 /* ---------- filtro de pendentes ---------- */
 const filtroDe = url => JSON.parse(new URL(url).searchParams.get('filter')).groups[0].items;
 
-test('Rubricas filtra por exclusão (NE 8 e NE 10); a lista IN fica como alternativa', () => {
+test('Rubricas filtra com IN: o filtro NE (8 e 10) dava HTTP 500 no Onvio real', () => {
   const t = OC.TYPE_BY_KEY.rubricas;
-  assert.deepEqual(plano(filtroDe(OC.listUrl(t, { pendentes: true }))).map(i => i.op + ' ' + i.value), ['NE 8', 'NE 10']);
-  const alt = filtroDe(OC.listUrl(t, { pendentes: 'alt' }));
-  assert.equal(alt.length, 1);
-  assert.equal(alt[0].op, 'IN');
+  assert.deepEqual(plano(filtroDe(OC.listUrl(t, { pendentes: true }))).map(i => i.op + ' ' + i.value), ['IN 0,1,2,3,4,5,6,7,9,11,12']);
+  for (const x of OC.TYPES) assert.ok(!/"NE"/.test(new URL(OC.listUrl(x, { pendentes: true })).searchParams.get('filter')), x.key + ' sem NE');
+});
+
+test('Cadastro: 7 (Encaminhado para outro usuário) é pendente do escritório', () => {
+  const t = OC.TYPE_BY_KEY.cadEmpregado;
+  assert.equal(filtroDe(OC.listUrl(t, { pendentes: true }))[0].value, '1,2,3,4,5,7');
+  const x = OC.normalize(t, { id: 'e1', identifier: 3, genericStatus: 7, created: '2026-10-10T12:00:00', lastUpdated: '2026-10-10T12:00:00' }, new Set(), []);
+  assert.deepEqual([x.status, x.lado, !!x.desconhecido], ['Encaminhado para outro usuário', 'esc', false]);
 });
 
 test('os demais tipos continuam com IN', () => {
@@ -73,14 +78,6 @@ function fetcherFalso({ recusaNE = false, itens = {}, topicos = {}, falhaTopicos
   f.chamadas = chamadas;
   return f;
 }
-
-test('se o Onvio recusa o filtro NE de Rubricas, a coleta repete com IN e avisa', async () => {
-  const f = fetcherFalso({ recusaNE: true, itens: { rubricas: [{ id: 'r1', identifier: 5, genericStatus: 4, lastUpdated: '2026-10-10T12:00:00', created: '2026-10-01T12:00:00' }] } });
-  const snap = await OC.collect(f, {}, null);
-  assert.deepEqual(plano(snap.filtroAlternativo), ['Lançamento de rubricas']);
-  assert.equal(snap.porTipo.rubricas, 1);
-  assert.equal(snap.erros.length, 0);
-});
 
 test('a coleta resume códigos desconhecidos por tipo', async () => {
   const f = fetcherFalso({ itens: { calcFerias: [{ id: 'x', identifier: 7, genericStatus: 42, created: '2026-10-10T12:00:00', lastUpdated: '2026-10-10T12:00:00' }] } });
@@ -137,43 +134,38 @@ test('trâmites: lê uma vez, guarda em cache e não relê; falha vira pausa de 
   assert.equal(ruim.chamadas.topicos, 1, 'não insiste no mesmo dia');
 });
 
-test('trâmites: rota padrão "topics"; rota aprendida do Onvio (sufixo, número no lugar do id, só parâmetros técnicos)', () => {
-  const t = OC.TYPE_BY_KEY.avisoFerias;
-  const reg = { id: 'a1b2c3d4-0000-0000-0000-000000000001', identifier: 702 };
-  assert.equal(OC.urlTramites(t, reg), OC.API + 'br-payroll-sr/v1/prior-notice-vacations/a1b2c3d4-0000-0000-0000-000000000001/topics?expand=all&itemsPerPage=1000&orderBy=created%20asc&pageIndex=0');
-  assert.equal(OC.urlTramites(t, 'g9'), OC.API + 'br-payroll-sr/v1/prior-notice-vacations/g9/topics?expand=all&itemsPerPage=1000&orderBy=created%20asc&pageIndex=0', 'aceita só o id, como antes');
-  const u = new URL(OC.urlTramites(t, reg, { sufixo: 'history', idForma: 'numero', query: { orderBy: 'created desc', searchText: 'joão', filter: '{}' } }));
-  assert.equal(u.pathname, '/api/br-payroll-sr/v1/prior-notice-vacations/702/history');
-  assert.equal(u.searchParams.get('orderBy'), 'created desc');
-  assert.equal(u.searchParams.get('searchText'), null, 'parâmetro com dado não entra');
-  assert.equal(u.searchParams.get('filter'), null);
-  assert.equal(new URL(OC.urlTramites(t, { id: 'g1', num: 5 }, { sufixo: 'history', idForma: 'numero' })).pathname.endsWith('/5/history'), true, 'item normalizado: usa num');
-  assert.equal(OC.rotaValida({ sufixo: '../../x' }), null, 'sufixo estranho é recusado');
-  assert.equal(OC.rotaValida({ sufixo: 'a?b=1' }), null);
-  assert.deepEqual(plano(OC.rotaValida({ sufixo: 'service-topics', idForma: 'x' })), { sufixo: 'service-topics', idForma: 'guid', query: {} });
+test('trâmites: caminho fixo por lista (mapeado no Onvio real), sempre com o GUID da solicitação', () => {
+  const esperado = {
+    geral: 'service-requesting/v1/tickets', cadEmpregado: 'br-payroll-sr/v1/employees-registrations',
+    cadContribuinte: 'br-payroll-sr/v1/employees-registrations', cadEstagiario: 'br-payroll-sr/v1/employees-registrations',
+    avisoFerias: 'br-payroll-sr/v1/tickets', calcFerias: 'br-payroll-sr/v1/tickets', avisoRescisao: 'br-payroll-sr/v1/tickets',
+    calcRescisao: 'br-payroll-sr/v1/tickets', afastamento: 'br-payroll-sr/v1/tickets', rubricas: 'br-payroll-sr/v1/payroll-entries'
+  };
+  for (const t of OC.TYPES) assert.equal(OC.urlTramites(t, { id: 'abc123', identifier: 702 }), OC.API + esperado[t.key] + '/abc123/topics?expand=all&itemsPerPage=1000&orderBy=created%20asc&pageIndex=0', t.key);
+  assert.equal(OC.urlTramites(OC.TYPE_BY_KEY.avisoFerias, 'g9'), OC.API + 'br-payroll-sr/v1/tickets/g9/topics?expand=all&itemsPerPage=1000&orderBy=created%20asc&pageIndex=0', 'aceita só o id');
 });
 
-test('trâmites: a leitura usa a rota aprendida da lista e marca por lista quem dá 404 sem rota', async () => {
+test('trâmites: a coleta lê cada lista no seu caminho e marca por lista o que falhou', async () => {
   const itens = {
     avisoFerias: [{ id: 'v1', identifier: 702, genericStatus: 2, created: '2026-10-05T12:00:00', lastUpdated: '2026-10-08T12:00:00' }],
-    calcFerias: [{ id: 'c1', identifier: 101, genericStatus: 2, created: '2026-10-05T12:00:00', lastUpdated: '2026-10-08T12:00:00' }]
+    rubricas: [{ id: 'r1', identifier: 101, genericStatus: 2, created: '2026-10-05T12:00:00', genericLastUpdated: '2026-10-08T12:00:00' }]
   };
   const pedidos = [];
   const f = async url => {
     const u = new URL(url);
     if (u.pathname.endsWith('session-and-bindings')) return { UdsSession: { FirstName: 'Ana', LastName: 'Teste' } };
-    if (/\/(topics|history)$/.test(u.pathname)) {
+    if (u.pathname.endsWith('/topics')) {
       pedidos.push(u.pathname.replace('/api/br-payroll-sr/v1/', ''));
-      if (u.pathname.endsWith('prior-notice-vacations/702/history')) return { items: [{ created: '2026-10-05T12:00:00', status: 1 }, { created: '2026-10-06T12:00:00', status: 2 }] };
-      throw new Error('HTTP 404');
+      if (u.pathname.endsWith('tickets/v1/topics')) return { items: [{ created: '2026-10-05T12:00:00', status: 1 }, { created: '2026-10-06T12:00:00', status: 2 }] };
+      throw new Error('HTTP 500');
     }
     const t = OC.TYPES.find(x => u.pathname.endsWith('/' + x.path.split('/').pop()));
     return { items: itens[t.key] || [], totalPages: 1 };
   };
-  const snap = await OC.collect(f, {}, null, { tramites: {}, rotasTramites: { avisoFerias: { sufixo: 'history', idForma: 'numero', query: {} } } });
-  assert.deepEqual(pedidos.sort(), ['prior-notice-vacations/702/history', 'vacation-calculations/c1/topics']);
+  const snap = await OC.collect(f, {}, null, { tramites: {} });
+  assert.deepEqual(pedidos.sort(), ['payroll-entries/r1/topics', 'tickets/v1/topics']);
   assert.equal(snap.items.find(i => i.k === 'avisoFerias:v1').ptUteis, 1);
-  assert.deepEqual(plano(snap.tramites.porTipo), { avisoFerias: 'ok', calcFerias: 'sem rota (404)' });
+  assert.deepEqual(plano(snap.tramites.porTipo), { avisoFerias: 'ok', rubricas: 'erro: HTTP 500' });
 });
 
 test('o cache de trâmites só guarda o que continua pendente', async () => {
@@ -207,6 +199,7 @@ function carregarBackground(opcoes = {}) {
   const store = {};
   const chamadas = [];            // o que o service worker pediu ao Chrome (abas, janelas, injeção)
   const ouvintes = [];            // chrome.runtime.onMessage
+  const instalado = [];           // chrome.runtime.onInstalled
   let injetado = false;
   const chrome = {
     storage: {
@@ -218,7 +211,7 @@ function carregarBackground(opcoes = {}) {
       onChanged: { addListener() {} }
     },
     alarms: { _a: new Map(), async clear(n) { this._a.delete(n); }, create(n, o) { this._a.set(n, { name: n, scheduledTime: o.when || 0, periodInMinutes: o.periodInMinutes }); }, async getAll() { return [...this._a.values()]; }, onAlarm: { addListener() {} } },
-    runtime: { onMessage: { addListener(f) { ouvintes.push(f); } }, onInstalled: { addListener() {} }, onStartup: { addListener() {} }, getManifest: () => ({ version: 'teste' }) },
+    runtime: { onMessage: { addListener(f) { ouvintes.push(f); } }, onInstalled: { addListener(f) { instalado.push(f); } }, onStartup: { addListener() {} }, getManifest: () => ({ version: 'teste' }) },
     notifications: { onClicked: { addListener() {} }, onClosed: { addListener() {} }, create: async (id, o) => { chamadas.push(['notificacao', id, o.title]); }, clear() {} },
     permissions: { contains: async () => opcoes.permitido !== false },
     action: { onClicked: { addListener() {} }, setBadgeText: async () => {}, setBadgeBackgroundColor: async () => {}, setBadgeTextColor: async () => {}, setTitle: async () => {} },
@@ -247,7 +240,7 @@ function carregarBackground(opcoes = {}) {
   ctx.importScripts = f => vm.runInContext(src(f), ctx);
   vm.createContext(ctx);
   vm.runInContext(src('background.js'), ctx);
-  return { ctx, store, chamadas, ouvintes, chrome };
+  return { ctx, store, chamadas, ouvintes, chrome, instalado };
 }
 
 test('background: erro do servidor não vira "sem sessão"; login e 401 viram', async () => {
@@ -555,6 +548,11 @@ test('perfil da sessão: campos de tipo/papel dizem se é cliente ou escritório
   assert.equal(OC.perfilDaSessao({ Bindings: [{ Product: 'Staff' }, { Product: 'ClientCenter' }] }), null, 'sinais dos dois lados: não decide');
   assert.equal(OC.perfilDaSessao({ UdsSession: { FirstName: 'Ana', LastName: 'Cliente', EmailAddress: 'cliente@acme.com' } }), null);
   assert.equal(OC.perfilDaSessao(null), null);
+  // formato real do Onvio (15/10/2026): a permissão de plataforma do escritório
+  const real = v => ({ UdsSession: { FirstName: 'Ana' }, UdsSessionBindings: { FeatureResourcePermissions: { FeatureResourcePermissionsMap: { Platform: { OnvioStaffAccess: v } } } } });
+  assert.equal(OC.perfilDaSessao(real('Allow')), 'escritorio');
+  assert.equal(OC.perfilDaSessao(real('')), null, 'vazio não conta');
+  assert.equal(OC.perfilDaSessao(real('Deny')), null, 'negativo não conta');
   const f = OC.formatoSessao({ UdsSession: { FirstName: 'Ana', EmailAddress: 'a@b.c', UserType: 'Staff', Ativo: true } });
   assert.deepEqual(plano(f), ['UdsSession:objeto', 'UdsSession.FirstName:string', 'UdsSession.EmailAddress:string', 'UdsSession.UserType:string=Staff', 'UdsSession.Ativo:boolean=true'], 'sem nomes nem e-mails');
 });
@@ -846,7 +844,7 @@ test('consulta sob demanda: pendentes, todas, busca e uma solicitação pelo nú
   const f = u => JSON.parse(new URL(u).searchParams.get('filter') || '{"groups":[{"items":[]}]}').groups[0].items.map(i => i.by + ' ' + i.op + ' ' + i.value);
   const g = OC.TYPE_BY_KEY.geral, r = OC.TYPE_BY_KEY.rubricas;
   assert.deepEqual(f(OC.urlConsulta(g, { filtro: 'pendentes' })), ['firmStatus IN 1,2,3,4,7,8,9']);
-  assert.deepEqual(f(OC.urlConsulta(r, { filtro: 'pendentes' })), ['firmStatus NE 8', 'firmStatus NE 10']);
+  assert.deepEqual(f(OC.urlConsulta(r, { filtro: 'pendentes' })), ['firmStatus IN 0,1,2,3,4,5,6,7,9,11,12']);
   assert.deepEqual(f(OC.urlConsulta(g, { filtro: 'todas' })), []);
   assert.deepEqual(f(OC.urlConsulta(g, { numero: 1372 })), ['identifier EQ 1372']);
   const u = new URL(OC.urlConsulta(g, { page: 3, per: 50, search: 'acme' }));
@@ -880,47 +878,38 @@ test('background: detalhe acha pelo número e traz os trâmites; trâmites que f
   assert.equal(r.ok, true);
   assert.equal(r.item.assunto, 'Dúvida');
   assert.deepEqual(plano(r.tramites), []);
-  assert.ok(api.chamadas.urls.some(u => /tickets\/generic\/g1\/topics$/.test(u)));
+  assert.ok(api.chamadas.urls.some(u => /service-requesting\/v1\/tickets\/g1\/topics$/.test(u)));
   const nada = await new Promise(res => ouvintes[0]({ cmd: 'detalhe', type: 'geral', num: 999 }, { tab: { id: 5 } }, res));
   assert.equal(nada.ok, false);
   assert.match(nada.erro, /#999 não encontrada/);
 });
 
-test('background: trâmites com 404 tentam uma vez pelo número; sem saída, o detalhe diz que falta aprender a rota', async () => {
+test('background: detalhe de Aviso de férias lê os trâmites em br-payroll-sr tickets; erro nos trâmites não derruba o detalhe', async () => {
   const base = apiSimulada({ itens: { avisoFerias: [pend('v1', 702)], afastamento: [pend('a1', 9)] } });
   const api = async url => {
     const p = new URL(url).pathname;
-    if (/prior-notice-vacations\/v1\/topics$/.test(p) || /employee-leave\/(a1|9)\/topics$/.test(p)) { await base(url); return respHttp(404, 'application/json', '{}'); }
-    if (/prior-notice-vacations\/702\/topics$/.test(p)) { await base(url); return respHttp(200, 'application/json', JSON.stringify({ items: [{ created: '2026-10-01T10:00:00', status: 1, description: 'oi' }] })); }
+    if (/br-payroll-sr\/v1\/tickets\/v1\/topics$/.test(p)) { await base(url); return respHttp(200, 'application/json', JSON.stringify({ items: [{ created: '2026-10-01T10:00:00', status: 1, description: 'oi' }] })); }
+    if (/tickets\/a1\/topics$/.test(p)) { await base(url); return respHttp(404, 'application/json', '{}'); }
     return base(url);
   };
-  const { ouvintes, store } = carregarBackground({ abas: [aba(5, ONVIO_PORTAL)], fetchPorMundo: { MAIN: api }, fetch: api });
+  const { ouvintes } = carregarBackground({ abas: [aba(5, ONVIO_PORTAL)], fetchPorMundo: { MAIN: api }, fetch: api });
   const pedir = m => new Promise(res => ouvintes[0](m, { tab: { id: 5 } }, res));
   const r = await pedir({ cmd: 'detalhe', type: 'avisoFerias', num: 702 });
   assert.equal(r.erroTramites, null);
   assert.equal(r.tramites.length, 1);
-  assert.deepEqual([store.rotasTramites.avisoFerias.sufixo, store.rotasTramites.avisoFerias.idForma], ['topics', 'numero'], 'guarda a forma que funcionou');
   const r2 = await pedir({ cmd: 'detalhe', type: 'afastamento', num: 9 });
   assert.equal(r2.ok, true);
-  assert.equal(r2.semRota, true);
-  assert.equal(r2.lista, 'Afastamento');
+  assert.equal(r2.tramites, null);
   assert.match(r2.erroTramites, /HTTP 404/);
-  assert.equal(store.rotasTramites.afastamento, undefined);
 });
 
-test('background: rota de trâmites vinda do Onvio é conferida com as listas e guardada só como molde', async () => {
-  const { ouvintes, store } = carregarBackground();
-  store.tramites = { 'avisoFerias:v1': { erro: '2026-10-15T10:00:00Z' }, 'calcFerias:c1': { erro: '2026-10-15T10:00:00Z' } };
-  const pedir = m => new Promise(res => ouvintes[0](m, {}, res));
-  const r = await pedir({ cmd: 'rotaTramites', base: '/api/br-payroll-sr/v1/prior-notice-vacations', sufixo: 'history', idForma: 'guid', query: { orderBy: 'created asc', searchText: 'joão' } });
-  assert.deepEqual(plano([r.ok, r.tipo]), [true, 'avisoFerias']);
-  const g = store.rotasTramites.avisoFerias;
-  assert.deepEqual(plano([g.sufixo, g.idForma, g.query]), ['history', 'guid', { orderBy: 'created asc' }], 'só parâmetros técnicos');
-  assert.deepEqual(Object.keys(store.tramites), ['calcFerias:c1'], 'o 1º trâmite da lista volta a ser procurado');
-  const x = await pedir({ cmd: 'rotaTramites', base: '/api/outra-coisa/v1/abc', sufixo: 'history' });
-  assert.equal(x.ok, false);
-  const y = await pedir({ cmd: 'rotaTramites', base: '/api/br-payroll-sr/v1/employee-leave', sufixo: '../x' });
-  assert.equal(store.rotasTramites.afastamento, undefined, 'sufixo estranho não entra');
+test('background: ao atualizar, esquece rotas aprendidas e erros de trâmites guardados', async () => {
+  const { store, instalado } = carregarBackground();
+  store.rotasTramites = { avisoFerias: { sufixo: 'history', idForma: 'guid', query: {} } };
+  store.tramites = { 'avisoFerias:v1': { erro: '2026-10-15T10:00:00Z' }, 'calcFerias:c1': { pt: '2026-10-02T10:00:00' } };
+  await Promise.all(instalado.map(f => f({ reason: 'update' })));
+  assert.equal(store.rotasTramites, undefined);
+  assert.deepEqual(Object.keys(store.tramites), ['calcFerias:c1'], 'o que já foi achado fica; os erros são tentados de novo');
 });
 
 test('background: cada lembrete pendente tem um alarme; feito/excluído some; no horário vira notificação e alerta', async () => {
