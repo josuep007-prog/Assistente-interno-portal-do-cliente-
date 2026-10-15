@@ -205,12 +205,12 @@ async function coletar(manual) {
   if (rodando) return rodando;
   rodando = (async () => {
     const s = await getSettings();
-    const { snapshot: anterior, tramites: cacheTramites } = await chrome.storage.local.get(['snapshot', 'tramites']);
+    const { snapshot: anterior, tramites: cacheTramites, rotasTramites } = await chrome.storage.local.get(['snapshot', 'tramites', 'rotasTramites']);
     await chrome.storage.local.set({ status: { estado: 'lendo', em: new Date().toISOString(), etapa: '' } });
     try {
       const { f, via } = await escolherFetcher(manual);
       const assin = await OC.assinaturas(f).catch(() => null);     // antes da leitura: o que mudar depois será notado
-      const snap = await OC.collect(f, s, (i, n, rot) => chrome.storage.local.set({ status: { estado: 'lendo', etapa: i + '/' + n + ' · ' + rot } }), { tramites: cacheTramites || {} });
+      const snap = await OC.collect(f, s, (i, n, rot) => chrome.storage.local.set({ status: { estado: 'lendo', etapa: i + '/' + n + ' · ' + rot } }), { tramites: cacheTramites || {}, rotasTramites: rotasTramites || {} });
       snap.via = via;
       OC.tendencias(anterior, snap);                                  // setas ▲▼ da barra viva
       snap.versao = chrome.runtime.getManifest().version;
@@ -298,6 +298,20 @@ async function consultar(msg) {
   const itens = ((d && d.items) || []).map(r => { const x = OC.normalize(t, r, null, s.abaErrada); return Object.assign(x, OC.evaluate(x, s, now)); });
   return { itens, total: d && d.totalItems != null ? d.totalItems : itens.length, paginas: (d && d.totalPages) || 1 };
 }
+// Rotas de trâmites por lista: só o molde do caminho (sufixo, forma do id e parâmetros técnicos), nunca dados.
+async function guardarRotaTramites(tipo, rota) {
+  const r = OC.rotaValida(rota);
+  if (!r || !OC.TYPE_BY_KEY[tipo]) return;
+  const { rotasTramites } = await chrome.storage.local.get('rotasTramites');
+  const atual = Object.assign({}, rotasTramites || {});
+  const ant = atual[tipo];
+  if (ant && ant.sufixo === r.sufixo && ant.idForma === r.idForma && JSON.stringify(ant.query) === JSON.stringify(r.query)) return;
+  atual[tipo] = Object.assign(r, { em: new Date().toISOString() });
+  await chrome.storage.local.set({ rotasTramites: atual });
+  // o 1º trâmite dessa lista volta a ser procurado na próxima leitura
+  const { tramites } = await chrome.storage.local.get('tramites');
+  if (tramites) await chrome.storage.local.set({ tramites: Object.fromEntries(Object.entries(tramites).filter(([k, v]) => !(k.startsWith(tipo + ':') && v && v.erro))) });
+}
 async function detalhe(msg) {
   const t = OC.TYPE_BY_KEY[msg.type];
   if (!t) throw new Error('tipo desconhecido');
@@ -308,9 +322,22 @@ async function detalhe(msg) {
   if (!r) throw new Error('solicitação #' + msg.num + ' não encontrada em ' + t.label);
   const x = OC.detalheDe(t, r);
   Object.assign(x, OC.evaluate(x, s, new Date()));
-  let tramites = null, erroTramites = null;
-  try { tramites = OC.tramitesDe(t, await f(OC.urlTramites(t, r.id))); } catch (e) { erroTramites = e.message || String(e); }
-  return { item: x, tramites, erroTramites };
+  // Trâmites: a rota aprendida da lista (se houver) ou o padrão "topics". Sem rota aprendida e com 404, tenta uma vez
+  // o mesmo caminho com o número da solicitação; se der certo, guarda a forma para a lista.
+  const { rotasTramites } = await chrome.storage.local.get('rotasTramites');
+  const rota = (rotasTramites || {})[t.key];
+  let tramites = null, erroTramites = null, semRota = false;
+  try { tramites = OC.tramitesDe(t, await f(OC.urlTramites(t, r, rota))); } catch (e) {
+    erroTramites = e.message || String(e);
+    if (!rota && /HTTP 404/.test(erroTramites)) {
+      try {
+        tramites = OC.tramitesDe(t, await f(OC.urlTramites(t, r, { sufixo: 'topics', idForma: 'numero' })));
+        erroTramites = null;
+        await guardarRotaTramites(t.key, { sufixo: 'topics', idForma: 'numero', query: {} });
+      } catch (e2) { semRota = true; }
+    }
+  }
+  return { item: x, tramites, erroTramites, semRota, lista: t.label };
 }
 
 /* ---------- badge ---------- */
@@ -443,6 +470,11 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'tick') { reply(await verificarAoVivo(!!msg.forcar)); }
       else if (msg.cmd === 'consultar') { reply(Object.assign({ ok: true }, await consultar(msg))); }
       else if (msg.cmd === 'detalhe') { reply(Object.assign({ ok: true }, await detalhe(msg))); }
+      else if (msg.cmd === 'rotaTramites') {          // o Onvio abriu trâmites de uma lista: guarda o molde do caminho
+        const t = OC.TYPES.find(x => typeof msg.base === 'string' && msg.base.replace(/\/+$/, '').endsWith('/' + x.path));
+        if (t) await guardarRotaTramites(t.key, msg);
+        reply({ ok: !!t, tipo: t ? t.key : null });
+      }
       else if (msg.cmd === 'testarLeitura') { reply({ ok: true, linhas: await testarLeitura() }); }
       else if (msg.cmd === 'abrirOnvio') { await irParaOnvio(); reply({ ok: true }); }
       else if (msg.cmd === 'fecharPainel') { if (sender.tab && sender.tab.id != null) await mensagemParaPainel(sender.tab.id, 'fechar').catch(() => {}); reply({ ok: true }); }

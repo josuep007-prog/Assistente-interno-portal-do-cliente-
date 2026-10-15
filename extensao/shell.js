@@ -157,6 +157,14 @@
     if (ev.source !== window || ev.origin !== location.origin || !d || d.src !== 'controlonvio' || d.tipo !== 'aprendido') return;
     if (viva()) guardarAprendido(d.registro);
   });
+  // Rota dos trâmites: quando o próprio Onvio abre os trâmites de uma solicitação, o acao-hook.js manda só o molde
+  // do caminho (lista, sufixo, forma do id). O service worker confere com as listas conhecidas e guarda.
+  addEventListener('message', ev => {
+    const d = ev.data;
+    if (ev.source !== window || ev.origin !== location.origin || !d || d.src !== 'controlonvio' || d.tipo !== 'rotaTramites') return;
+    if (!viva() || typeof d.base !== 'string' || typeof d.sufixo !== 'string' || d.base.length > 200 || d.sufixo.length > 90) return;
+    try { chrome.runtime.sendMessage({ cmd: 'rotaTramites', base: d.base, sufixo: d.sufixo, idForma: d.idForma === 'numero' ? 'numero' : 'guid', query: d.query && typeof d.query === 'object' ? d.query : {} }).catch(() => {}); } catch (e) {}
+  });
   chrome.storage.onChanged.addListener((ch, area) => { if (area === 'local' && ch.aprender) avisarHook(ch.aprender.newValue); });
   chrome.storage.local.get('aprender', d => avisarHook(d.aprender));
 
