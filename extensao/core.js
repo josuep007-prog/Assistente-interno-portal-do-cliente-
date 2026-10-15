@@ -592,6 +592,39 @@
     return out;
   }
 
+  /* ---------- prioridades da tela Hoje ----------
+   * Uma classificação só para o anel, o radar e a lista: cada pendência tem um motivo (o mais forte). */
+  const clienteRespondeu = i => i.lado === 'esc' && /^(Aguardando resposta|Respondido pelo cliente)$/.test(i.status || '');
+  const MOTIVOS = [
+    { k: 'atraso', rot: 'Fora do prazo', cor: 'crit' },
+    { k: 'prescreve', rot: 'Perto de prescrever', cor: 'serious' },
+    { k: 'hoje', rot: 'Vence hoje', cor: 'warn' },
+    { k: 'respondeu', rot: 'Cliente respondeu', cor: 's1' },
+    { k: 'emdia', rot: 'Em dia', cor: 'ok' }
+  ];
+  function motivoDe(i) {
+    if (i.lado === 'esc' && i.nivel === 2) return 'atraso';
+    if (i.lado === 'cli' && (i.nivel === 2 || (i.prescreveEm != null && i.prescreveEm <= 5))) return 'prescreve';
+    if (i.nivel === 1) return 'hoje';
+    if (clienteRespondeu(i)) return 'respondeu';
+    return 'emdia';
+  }
+  // Lista de "o que fazer agora": fora do prazo (G3 e mais parada primeiro), perto de prescrever (menos dias primeiro),
+  // vence hoje, cliente respondeu e, por fim, o resto na vez do escritório por dias parada. Em dia na vez do cliente não entra.
+  function prioridades(items) {
+    const ordemMotivo = { atraso: 0, prescreve: 1, hoje: 2, respondeu: 3, emdia: 4 };
+    return (items || []).map(item => ({ item, motivo: motivoDe(item) }))
+      .filter(p => p.motivo !== 'emdia' || p.item.lado === 'esc')
+      .sort((a, b) => (ordemMotivo[a.motivo] - ordemMotivo[b.motivo]) ||
+        (a.motivo === 'prescreve' ? ((a.item.prescreveEm == null ? 99 : a.item.prescreveEm) - (b.item.prescreveEm == null ? 99 : b.item.prescreveEm)) : 0) ||
+        ((b.item.grav || 0) - (a.item.grav || 0)) || ((b.item.parado || 0) - (a.item.parado || 0)));
+  }
+  function contarMotivos(items) {
+    const c = { atraso: 0, prescreve: 0, hoje: 0, respondeu: 0, emdia: 0 };
+    for (const i of items || []) c[motivoDe(i)]++;
+    return c;
+  }
+
   /* ---------- painel da equipe na tela Hoje ---------- */
   // Tendência de cada pendência desde a leitura anterior (setas da barra viva). A marca vale por 2 horas.
   const TENDENCIA_MS = 2 * 3600000;
@@ -786,5 +819,5 @@
     }));
   }
 
-  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, motivoDe, prioridades, contarMotivos, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);

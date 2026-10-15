@@ -51,7 +51,7 @@ export function enviar(msg) {
 export const itens = () => (estado.snap && estado.snap.items) || [];
 export const minhas = () => itens().filter(i => i.mine);
 // "Cliente respondeu": vez do escritório numa situação em que o último a escrever foi o cliente.
-export const clienteRespondeu = i => i.lado === 'esc' && /^(Aguardando resposta|Respondido pelo cliente)$/.test(i.status);
+export const clienteRespondeu = i => OC.clienteRespondeu(i);
 export const primeiroNome = () => { const n = estado.snap && estado.snap.user && estado.snap.user.nome; return n ? n.split(' ')[0] : ''; };
 
 export async function salvarLembretes(lista) { await chrome.storage.local.set({ lembretes: lista }); }
