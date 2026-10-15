@@ -316,73 +316,114 @@ async function abrirApp(rota, extra) {
 }
 const linhas = (p, sel) => p.$$eval(sel || '#corpo [data-k]', e => e.map(x => x.dataset.k));
 
-await passo('app · Hoje (analista): saudação, números, semana, colunas "para fazer agora", agenda com lembrete atrasado e atividade', async () => {
+await passo('app · Hoje (analista): painel escuro com barra viva, anel, radar e pulso; lista única de prioridades, mosaico e agenda', async () => {
   const p = await abrirApp('#/inicio');
   assert.equal(await p.textContent('#titulo'), 'Hoje');
-  assert.match(await p.textContent('.ht-saud'), /, Ana$/);
-  const kpis = await p.$$eval('.ht-cont .kpi', e => e.map(x => x.querySelector('.rot').textContent + '=' + x.querySelector('.val').textContent));
-  assert.deepEqual(kpis, ['Com ação minha=2', 'Fora do prazo=1', 'Vencem hoje=1', 'Cliente respondeu=1', 'Lembretes hoje=1']);
-  assert.deepEqual(await linhas(p, '#agora [data-k]'), ['calcFerias:a', 'geral:b', 'geral:b'], 'fora do prazo, vence hoje e cliente respondeu');
-  assert.match(await p.textContent('#agenda'), /Cobrar o BETA/);
-  assert.match(await p.textContent('#ativ'), /Cliente respondeu/);
+  assert.match(await p.textContent('#subtitulo'), /, Ana · /);
+  // o que saiu do Hoje (mudou de lugar): semana, placar, mapa de calor, prescrição, distribuição e atividade
+  for (const sel of ['.semana', '#placar', '#mapa-idade', '#l-presc', '#distribuicao', '#ativ', '.ht-cont']) assert.equal(await p.$(sel), null, sel + ' não fica no Hoje');
+  assert.ok(await p.$('#painel.painel-ctrl #fita'), 'barra viva dentro do painel escuro');
+  assert.equal(await p.textContent('#kpi-escopo .on'), 'Minhas · 2');
   // barra viva: todas as pendências da equipe em ordem de prioridade, só com a bolinha (sem "Ao vivo")
   assert.deepEqual(await p.$$eval('#fita .ft-grupo:first-child [data-k]', e => e.map(x => x.dataset.k)), ['calcFerias:a', 'avisoRescisao:c', 'geral:b', 'rubricas:d']);
   assert.equal(await p.getAttribute('#fita', 'class'), 'fita ok');
   assert.doesNotMatch(await p.textContent('#fita'), /ao vivo/i);
-  // solicitações por analista: "Sem analista" primeiro; o seletor de vez redesenha
-  assert.deepEqual(await p.$$eval('#g-analistas text.rot-forte', e => e.map(x => x.textContent)), ['Sem analista', 'Ana Teste', 'Bia']);
-  await p.click('[data-vez="esc"]');
-  assert.deepEqual(await p.$$eval('#g-analistas text.rot-forte', e => e.map(x => x.textContent)), ['Ana Teste', 'Bia'], 'só a vez do escritório');
-  await p.click('[data-vez=""]');
-  // placar do dia, mapa de calor, prescrição e distribuição
-  assert.match(await p.textContent('#placar'), /Entraram3Saíram1Saldo▲ 2/);
-  assert.match(await p.textContent('#l-presc'), /4dias[\s\S]*GAMA/);
-  assert.match(await p.textContent('#distribuicao'), /GAMA[\s\S]*sugerido: Bia/);
-  assert.equal(await p.$$eval('#mapa-idade .mc-v:not(:disabled)', e => e.length), 4);
-  assert.equal(await p.$$eval('.semana .sm-dia', e => e.length), 9, 'atrasados, 7 dias e "novo lembrete"');
-  await p.click('.sm-atr');
-  assert.match(await p.textContent('#agenda'), /Cobrar o BETA[\s\S]*Parada há 31 dias/, 'atrasados: lembrete e fora do prazo');
+  // anel: as fatias somam o total do centro; legenda com texto e número
+  await p.waitForFunction(() => document.querySelector('.an-total').textContent === '2');   // o número sobe animado
+  const anel = await p.evaluate(() => ({ total: document.querySelector('.an-total').textContent, fatias: [...document.querySelectorAll('.an-f')].map(c => c.dataset.motivo), leg: [...document.querySelectorAll('.an-l')].map(b => b.dataset.motivo + '=' + b.querySelector('b').dataset.conta) }));
+  assert.deepEqual(anel, { total: '2', fatias: ['atraso', 'hoje'], leg: ['atraso=1', 'prescreve=0', 'hoje=1', 'respondeu=0', 'emdia=0'] });
+  // lista única de prioridades, em ordem, com a etiqueta do motivo
+  assert.deepEqual(await linhas(p, '#prio [data-k]'), ['calcFerias:a', 'geral:b']);
+  assert.deepEqual(await p.$$eval('#prio .pr-tag', e => e.map(x => x.textContent)), ['Fora do prazo', 'Vence hoje']);
+  // radar: um ponto por pendência, com dica; pulso com o saldo da série
+  assert.equal(await p.$$eval('#g-radar .rd-p', e => e.length), 2);
+  assert.match(await p.getAttribute('#g-radar .rd-p[data-k="calcFerias:a"]', 'data-tip'), /#101 · ACME[\s\S]*31 d parada[\s\S]*Fora do prazo/);
+  assert.ok(await p.$('#g-pulso svg .ps-linha'), 'pulso desenhado');
+  await p.waitForFunction(() => /^4▲ \+1 desde 8h$/.test(document.querySelector('.ps-cab').textContent));
+  assert.match(await p.textContent('.ps-pe'), /▲ 3 entraram▼ 1 saíram/);
+  // agenda de hoje: lembrete atrasado com "Feito"
+  assert.match(await p.textContent('#agenda'), /Cobrar o BETA[\s\S]*Atrasado/);
+  // clique numa fatia (ou na legenda) filtra a lista e apaga os pontos do radar que não combinam; o × desfaz
+  await p.click('.an-l[data-motivo="hoje"]');
+  await p.waitForSelector('#prio-card .chip-f');
+  assert.deepEqual(await linhas(p, '#prio [data-k]'), ['geral:b']);
+  assert.deepEqual(await p.$$eval('#g-radar .rd-p.apagado', e => e.map(x => x.dataset.k)), ['calcFerias:a']);
+  assert.match(await p.getAttribute('#ver-fila', 'href'), /motivo=hoje/);
+  await p.click('#prio-card [data-tira="motivo"]');
+  await p.waitForFunction(() => document.querySelectorAll('#prio [data-k]').length === 2 && !document.querySelector('#prio-card .chip-f'));
+  // a fatia "fora do prazo" é a metade direita do anel: clica no traço, à direita do centro
+  const ponto = await p.evaluate(() => { const r = document.querySelector('.an-svg').getBoundingClientRect(), k = r.width / 168; return [r.left + (84 + 73) * k, r.top + 84 * k]; });
+  await p.mouse.click(ponto[0], ponto[1]);
+  assert.deepEqual(await linhas(p, '#prio [data-k]'), ['calcFerias:a']);
+  await p.click('.an-l[data-motivo="atraso"]');                      // segundo clique desliga
+  assert.equal((await linhas(p, '#prio [data-k]')).length, 2);
+  // mosaico: um bloco por analista e "Sem analista", área proporcional às pendências; sua linha com contorno
+  const mo = await p.$$eval('.mosaico .mo-b', e => e.map(x => ({ id: x.dataset.id, n: Number(x.dataset.n), a: Number(x.dataset.area), cls: x.className })));
+  assert.deepEqual(mo.map(b => b.id + '=' + b.n).sort(), ['(sem responsável)=1', 'Ana Teste=2', 'Bia=1']);
+  assert.equal(mo[0].id, 'Ana Teste', 'o maior bloco primeiro');
+  const somaA = mo.reduce((x, b) => x + b.a, 0);
+  for (const b of mo) assert.ok(Math.abs(b.a / somaA - b.n / 4) < 0.02, 'área proporcional: ' + b.id);
+  assert.match(mo[0].cls, /mo-g3/); assert.match(mo[0].cls, /mo-eu/); assert.match(mo.find(b => b.id === '(sem responsável)').cls, /mo-sem/);
+  // clique no mosaico filtra pelo analista e passa para Equipe
+  await p.click('.mosaico [data-id="Bia"]');
+  await p.waitForFunction(() => /Equipe/.test(document.querySelector('#kpi-escopo .on').textContent));
+  assert.deepEqual(await linhas(p, '#prio [data-k]'), ['rubricas:d']);
+  assert.match(await p.textContent('#prio .pr-tag'), /Parada há 0 d/);
+  assert.match(await p.getAttribute('#ver-fila', 'href'), /escopo=equipe&analista=Bia/);
+  await p.click('#prio-card [data-tira="resp"]');
+  await p.click('[data-escopo="equipe"]');
+  assert.deepEqual(await linhas(p, '#prio [data-k]'), ['calcFerias:a', 'avisoRescisao:c', 'geral:b', 'rubricas:d'], 'equipe: prescrição antes de vence hoje');
+  assert.equal(await p.textContent('#prio [data-k="avisoRescisao:c"] .pr-tag'), 'Prescreve em 4 d');
+  assert.match(await p.textContent('#prio [data-k="avisoRescisao:c"] .pr-resp'), /sem analista/);
+  await p.click('[data-escopo="minhas"]');
+  // a primeira tela cabe: o painel e o começo da lista aparecem sem rolar
+  const cabe = await p.evaluate(() => [document.querySelector('#painel').getBoundingClientRect().bottom < innerHeight, document.querySelector('#prio [data-k]').getBoundingClientRect().top < innerHeight]);
+  assert.deepEqual(cabe, [true, true], 'painel e começo da lista visíveis em 1360×860');
   // a área de conteúdo rola (antes o .app em grade do ui.css esticava a tela e cortava o fim)
-  const rol = await p.evaluate(() => { const v = document.querySelector('#vista'); v.scrollTop = 400; return [v.scrollHeight > v.clientHeight, v.scrollTop > 0, Math.round(v.getBoundingClientRect().bottom) <= innerHeight]; });
-  assert.deepEqual(rol, [true, true, true], 'Hoje rola dentro da janela');
-  await p.evaluate(() => { document.querySelector('#vista').scrollTop = 0; });
+  const rol = await p.evaluate(() => { const v = document.querySelector('#vista'); return Math.round(v.getBoundingClientRect().bottom) <= innerHeight; });
+  assert.equal(rol, true, 'Hoje rola dentro da janela');
   assert.equal(await p.textContent('#n-fila'), '2');
   assert.equal(await p.textContent('#sino-cont'), '1');
   assert.match(await p.textContent('#aovivo-tx'), /^Ao vivo · \d\d:\d\d:\d\d$/);
-  await p.click('.ht-cont [data-kpi="atraso"]');
-  await p.waitForFunction(() => location.hash === '#/fila?kpi=atraso');
-  // mapa de calor → fila da pessoa naquela faixa de dias parada, com a etiqueta que sai com um clique
-  await p.goto(URL_APP + '#/inicio'); await p.waitForSelector('#mapa-idade .mc-v');
-  await p.click('#mapa-idade .mc-v[data-id="Ana Teste"][data-col="31-"]');
-  await p.waitForFunction(() => location.hash.startsWith('#/fila?analista=Ana+Teste&idade=31-') && document.querySelector('#ativos .chip-f'));
-  assert.deepEqual(await linhas(p), ['calcFerias:a']);
-  assert.match(await p.textContent('#ativos'), /Parada há 31\+ dias/);
-  // clique na fita abre o detalhe; clique em "Sem analista" leva à fila sem responsável
-  await p.goto(URL_APP + '#/inicio'); await p.waitForSelector('#fita [data-k]');
-  await p.hover('#fita .ft-janela');                                  // a fita para ao passar o mouse
-  await p.click('#fita .ft-grupo:first-child [data-k="geral:b"]');
+  // lembrete "Feito" sai da agenda de hoje
+  await p.click('#agenda [data-feito]');
+  await p.waitForFunction(() => !/Cobrar o BETA/.test(document.querySelector('#agenda').textContent));
+  // clique num ponto do radar e na fita abre o detalhe
+  await p.click('#g-radar .rd-p[data-k="geral:b"]');
   await p.waitForSelector('#gaveta:not([hidden])');
   assert.match(await p.textContent('#gaveta h2'), /BETA/);
   await p.keyboard.press('Escape');
-  await p.click('#g-analistas [data-id="(sem responsável)"]');
-  await p.waitForFunction(() => location.hash === '#/fila?escopo=semresp');
+  await p.waitForSelector('#gaveta', { state: 'hidden' });
+  await p.hover('#fita .ft-janela');                                  // a fita para ao passar o mouse
+  await p.click('#fita .ft-grupo:first-child [data-k="calcFerias:a"]');
+  await p.waitForFunction(() => /ACME/.test(document.querySelector('#gaveta h2').textContent));
+  await p.keyboard.press('Escape');
+  // "Ver fila completa" leva à fila com o mesmo filtro
+  await p.click('.an-l[data-motivo="atraso"]');
+  await p.click('#ver-fila');
+  await p.waitForFunction(() => location.hash === '#/fila?motivo=atraso' && document.querySelector('#ativos .chip-f'));
+  assert.deepEqual(await linhas(p), ['calcFerias:a']);
+  assert.match(await p.textContent('#ativos'), /Só: Fora do prazo/);
   assert.deepEqual(p.erros, []);
 });
 
-await passo('app · Hoje sem nada com você: os números vão para a equipe e a frase explica; leitura vazia avisa', async () => {
+await passo('app · Hoje sem nada com você: vai para a equipe e a frase explica; leitura vazia avisa', async () => {
   const semMinhas = ITENS_APP.map(i => Object.assign({}, i, { mine: false }));
   const p = await abrirApp('#/inicio', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: semMinhas }) });
   assert.match(await p.textContent('#kpi-escopo .on'), /Equipe · 4/);
-  const kpis = await p.$$eval('.ht-cont .kpi', e => e.map(x => x.querySelector('.rot').textContent + '=' + x.querySelector('.val').textContent));
-  assert.deepEqual(kpis, ['Com ação do escritório=3', 'Fora do prazo=2', 'Vencem hoje=1', 'Cliente respondeu=1', 'Sem analista=1']);
+  await p.waitForFunction(() => document.querySelector('.an-total').textContent === '4');
+  assert.deepEqual(await p.$$eval('.an-l', e => e.map(b => b.dataset.motivo + '=' + b.querySelector('b').dataset.conta)), ['atraso=1', 'prescreve=1', 'hoje=1', 'respondeu=0', 'emdia=1']);
   assert.match(await p.textContent('#ht-resumo'), /Nenhuma pendência está com você como responsável.*equipe \(4 pendências\)/);
   await p.click('[data-escopo="minhas"]');
-  assert.match(await p.textContent('.ht-cont .kpi'), /Com ação minha/, 'dá para voltar aos seus números');
+  await p.waitForFunction(() => document.querySelector('.an-total').textContent === '0');   // dá para voltar às suas (o número desce animado)
+  assert.equal(await p.$('#ht-resumo'), null, 'escolheu: sem a frase');
   await p.click('[data-escopo="equipe"]');
-  await p.click('.ht-cont [data-kpi="atraso"]');
-  await p.waitForFunction(() => location.hash === '#/fila?escopo=equipe&kpi=atraso' && document.querySelectorAll('#corpo [data-k]').length === 2);
+  await p.click('.an-l[data-motivo="prescreve"]');
+  await p.click('#ver-fila');
+  await p.waitForFunction(() => location.hash === '#/fila?escopo=equipe&motivo=prescreve' && document.querySelectorAll('#corpo [data-k]').length === 1);
   const vazio = await abrirApp('#/inicio', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: [] }) });
   assert.match(await vazio.textContent('#ht-resumo'), /não trouxe nenhuma pendência em nenhuma das 10 listas.*Testar a leitura/);
+  assert.match(await vazio.textContent('#prio'), /Nada pendente/);
   assert.deepEqual(p.erros.concat(vazio.erros), []);
 });
 
@@ -425,7 +466,7 @@ await passo('app · Fila: abas Minhas/Equipe/Sem responsável, filtros e chips, 
   assert.deepEqual(p.erros, []);
 });
 
-await passo('app · Equipe (gestor): números, 4 gráficos com dicas; aba Responsáveis leva à fila da pessoa', async () => {
+await passo('app · Equipe (gestor): números, 4 gráficos com dicas, prescrição e distribuição; Responsáveis com mapa de calor e fila da pessoa', async () => {
   const p = await abrirApp('#/equipe');
   const kpis = await p.$$eval('.kpi', e => e.map(x => x.querySelector('.rot').textContent + '=' + x.querySelector('.val').textContent));
   assert.deepEqual(kpis, ['Pendências=4', 'Sem responsável=1', 'Fora do prazo=2', 'Prescrevem em 5 dias=1', '1º trâmite (média)=1', 'Hoje=3 / 1']);
@@ -433,6 +474,19 @@ await passo('app · Equipe (gestor): números, 4 gráficos com dicas; aba Respon
   assert.match(await p.textContent('#g-carga .legenda-viz'), /Em dia.*G1 atenção.*G2 fora do prazo.*G3 crítica/);
   await p.hover('#g-carga [data-tip]');
   assert.equal(await p.isVisible('#dica'), true, 'dica ao passar o mouse');
+  // distribuição e prescrição (saíram do Hoje) no Painel
+  assert.match(await p.textContent('#l-presc'), /4dias[\s\S]*GAMA/);
+  assert.match(await p.textContent('#distribuicao'), /GAMA[\s\S]*sugerido: Bia/);
+  await p.click('#abas [data-aba="resp"]');
+  await p.waitForSelector('tr[data-resp="Ana Teste"]');
+  // mapa de calor de idade na aba Responsáveis → fila da pessoa naquela faixa, com a etiqueta que sai com um clique
+  assert.equal(await p.$$eval('#mapa-idade .mc-v:not(:disabled)', e => e.length), 4);
+  await p.click('#mapa-idade .mc-v[data-id="Ana Teste"][data-col="31-"]');
+  await p.waitForFunction(() => location.hash.startsWith('#/fila?analista=Ana+Teste&idade=31-') && document.querySelector('#ativos .chip-f'));
+  assert.deepEqual(await linhas(p), ['calcFerias:a']);
+  assert.match(await p.textContent('#ativos'), /Parada há 31\+ dias/);
+  await p.goto(URL_APP + '#/equipe');
+  await p.waitForSelector('#abas [data-aba="resp"]');
   await p.click('#abas [data-aba="resp"]');
   await p.waitForSelector('tr[data-resp="Ana Teste"]');
   await p.click('tr[data-resp="Ana Teste"]');

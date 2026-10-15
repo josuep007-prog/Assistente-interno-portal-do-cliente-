@@ -1,19 +1,12 @@
-/* Painel da equipe na tela Hoje (para todos): barra viva, solicitações por analista, placar do dia,
- * mapa de calor por idade, próximas a prescrever e sugestão de distribuição. Tudo lido do resumo
- * (estado.snap); nada aqui grava no Onvio: a distribuição é só sugestão. */
+/* Peças da equipe: barra viva e mosaico (Hoje); mapa de calor por idade, próximas a prescrever e
+ * sugestão de distribuição (Equipe). Tudo lido do resumo (estado.snap); nada aqui grava no Onvio:
+ * a distribuição é só sugestão. */
 import { estado, itens } from '../estado.js';
-import { esc, num, plural, ligarItens, fmtHoraS, $, $$ } from '../util.js';
-import { barrasEmpilhadas, linhaDoDia, mapaDeCalor, ligarDicas } from '../graficos.js';
+import { esc, plural, ligarItens, fmtHoraS, $ } from '../util.js';
+import { mapaDeCalor } from '../graficos.js';
 const OC = window.OC;
 
 const SEM = '(sem responsável)';
-const GRAV = [
-  { chave: 'g0', nome: 'Em dia', cor: 'ok' },
-  { chave: 'g1', nome: 'G1 atenção', cor: 'warn' },
-  { chave: 'g2', nome: 'G2 fora do prazo', cor: 'serious' },
-  { chave: 'g3', nome: 'G3 crítica', cor: 'crit' }
-];
-let vez = '';           // '' | 'esc' | 'cli' (seletor do gráfico por analista)
 
 // mesma ordem da fila "Prazo, mais grave primeiro"
 export const porPrioridade = l => l.slice().sort((a, b) => ((b.nivel || 0) - (a.nivel || 0)) || ((b.grav || 0) - (a.grav || 0)) || ((b.parado || 0) - (a.parado || 0)));
@@ -45,37 +38,30 @@ export function fitaHtml(lista) {
     '</div>';
 }
 
-/* ---------- solicitações por analista + placar ---------- */
-export function equipeHtml() {
-  return '<div class="grade g-2">' +
-    '<section class="card"><div class="card-h"><h3>Solicitações por analista</h3><span class="sub">ordem de prioridade · clique para ver a fila</span>' +
-      '<div class="seg seg-sm" role="group" aria-label="De quem é a vez">' + [['', 'Todas'], ['esc', 'Escritório'], ['cli', 'Cliente']].map(([v, r]) => '<button data-vez="' + v + '"' + (vez === v ? ' class="on"' : '') + '>' + r + '</button>').join('') + '</div></div>' +
-      '<div class="card-b"><div id="g-analistas"></div></div></section>' +
-    '<section class="card"><div class="card-h"><h3>Placar do dia</h3><span class="sub">entradas e saídas da fila</span></div><div class="card-b" id="placar">' + placarHtml() + '</div></section>' +
-  '</div>';
-}
-function placarHtml() {
-  const p = OC.placarDoDia(estado.serie, itens());
-  const seta = v => (v > 0 ? '<b class="sobe">▲ ' + num(v) + '</b>' : v < 0 ? '<b class="desce">▼ ' + num(-v) + '</b>' : '<b>= 0</b>');
-  return '<div class="placar"><div><span>Entraram</span><b>' + num(p.entradas) + '</b></div><div><span>Saíram</span><b>' + num(p.saidas) + '</b></div><div><span>Saldo</span>' + seta(p.saldo) + '</div></div>' +
-    '<div class="pl-fila"><span>Fila agora</span><b>' + num(p.fila) + '</b>' + (p.variacao == null ? '<small>sem leitura de ontem</small>' : '<small>' + seta(p.variacao) + ' desde o fim de ontem (' + num(p.filaOntem) + ')</small>') + '</div>' +
-    '<div id="g-dia-hoje"></div>';
-}
-function dadosAnalistas() {
-  const base = vez ? itens().filter(i => i.lado === vez) : itens();
-  const an = OC.porAnalista(base);
-  const ordem = an.filter(r => r.resp === SEM).concat(an.filter(r => r.resp !== SEM));
-  return ordem.map(r => ({ rotulo: nomeResp(r.resp), id: r.resp, valores: { g0: r.total - r.g1 - r.g2 - r.g3, g1: r.g1, g2: r.g2, g3: r.g3 } }));
+/* ---------- mosaico da equipe (dados) ---------- */
+// Um bloco por analista e um para "Sem analista": total e o pior caso (G3, fora do prazo, atenção, em dia).
+export function blocosEquipe(lista) {
+  const meu = eu();
+  return OC.porAnalista(lista || itens()).map(r => ({
+    id: r.resp, rot: nomeResp(r.resp), n: r.total, sem: r.resp === SEM, eu: !!meu && r.resp === meu,
+    nivel: r.g3 ? 'g3' : r.vermelho ? 'g2' : r.amarelo ? 'g1' : 'ok',
+    det: [r.vermelho ? r.vermelho + ' fora do prazo' : '', r.g3 ? r.g3 + ' crítica(s)' : '', !r.vermelho && r.amarelo ? r.amarelo + ' em atenção' : ''].filter(Boolean).join(' · ')
+  }));
 }
 
-/* ---------- mapa de calor por idade + prescrever ---------- */
-export function filaEquipeHtml() {
-  const presc = itens().filter(i => i.lado === 'cli' && i.prescreveEm != null && i.prescreveEm <= 7).sort((a, b) => a.prescreveEm - b.prescreveEm);
-  return '<div class="grade g-2">' +
-    '<section class="card"><div class="card-h"><h3>Idade da fila por analista</h3><span class="sub">dias parada · clique numa célula para ver as solicitações</span></div><div class="card-b" id="mapa-idade"></div></section>' +
-    '<section class="card"><div class="card-h"><h3>Próximas a prescrever</h3><span class="sub">vez do cliente · ' + presc.length + '</span><a href="#/fila?escopo=equipe&kpi=prescreve">Ver todas</a></div><div class="card-b" id="l-presc">' +
-      (presc.length ? presc.slice(0, 7).map(i => '<div class="item-ag clicavel presc" tabindex="0" data-k="' + esc(i.k) + '"><span class="cd' + (i.prescreveEm <= 3 ? ' late' : '') + '"><b>' + i.prescreveEm + '</b>' + (i.prescreveEm === 1 ? 'dia' : 'dias') + '</span><div class="tx"><b>' + esc(i.apelido || i.cliente || '—') + '</b><small>#' + esc(i.num) + ' ' + esc(i.typeLabel) + ' · ' + esc(i.resp || 'sem analista') + '</small></div></div>').join('') : '<div class="vazio" style="padding:10px 0">Nada perto de prescrever na próxima semana.</div>') +
-    '</div></section></div>';
+/* ---------- prescrição e mapa de calor (tela Equipe) ---------- */
+const prescLista = () => itens().filter(i => i.lado === 'cli' && i.prescreveEm != null && i.prescreveEm <= 7).sort((a, b) => a.prescreveEm - b.prescreveEm);
+export function prescricaoHtml() {
+  const presc = prescLista();
+  return '<section class="card"><div class="card-h"><h3>Próximas a prescrever</h3><span class="sub">vez do cliente · ' + presc.length + '</span><a href="#/fila?escopo=equipe&kpi=prescreve">Ver todas</a></div><div class="card-b" id="l-presc">' +
+    (presc.length ? presc.slice(0, 7).map(i => '<div class="item-ag clicavel presc" tabindex="0" data-k="' + esc(i.k) + '"><span class="cd' + (i.prescreveEm <= 3 ? ' late' : '') + '"><b>' + i.prescreveEm + '</b>' + (i.prescreveEm === 1 ? 'dia' : 'dias') + '</span><div class="tx"><b>' + esc(i.apelido || i.cliente || '—') + '</b><small>#' + esc(i.num) + ' ' + esc(i.typeLabel) + ' · ' + esc(i.resp || 'sem analista') + '</small></div></div>').join('') : '<div class="vazio" style="padding:10px 0">Nada perto de prescrever na próxima semana.</div>') +
+    '</div></section>';
+}
+export function mapaIdadeHtml() {
+  const m = OC.mapaIdade(itens());
+  const colunas = OC.FAIXAS_IDADE.map(f => ({ id: f.de + '-' + (f.ate == null ? '' : f.ate), rotulo: f.rot }));
+  return '<section class="card"><div class="card-h"><h3>Idade da fila por analista</h3><span class="sub">dias parada · clique numa célula para ver as solicitações</span></div><div class="card-b" id="mapa-idade">' +
+    mapaDeCalor(m.linhas.map(l => ({ id: l.resp, rotulo: nomeResp(l.resp), valores: l.por })), colunas, { titulo: 'Solicitações por analista e dias parada', destaque: [eu()], fixo: SEM }) + '</div></section>';
 }
 
 /* ---------- sem analista: sugestão de distribuição ---------- */
@@ -93,30 +79,12 @@ export function distribuicaoHtml() {
     '</div></section>';
 }
 
-/* ---------- liga tudo depois do innerHTML ---------- */
-export function ligarPainel(el, ctx, fita) {
-  ligarItens($('#fita', el), fita, ctx.abrirDetalhe);
-  const presc = itens().filter(i => i.lado === 'cli' && i.prescreveEm != null && i.prescreveEm <= 7).sort((a, b) => a.prescreveEm - b.prescreveEm).slice(0, 7);
-  ligarItens($('#l-presc', el), presc, ctx.abrirDetalhe);
+/* ---------- liga o que estiver na tela (Equipe) ---------- */
+export function ligarEquipe(el, ctx) {
+  const presc = $('#l-presc', el);
+  if (presc) ligarItens(presc, prescLista().slice(0, 7), ctx.abrirDetalhe);
   const dist = $('#l-dist', el);
   if (dist) ligarItens(dist, porPrioridade(itens().filter(i => !i.resp)).slice(0, 8), ctx.abrirDetalhe);
-  $$('[data-vez]', el).forEach(b => b.addEventListener('click', () => { vez = b.dataset.vez; $$('[data-vez]', el).forEach(x => x.classList.toggle('on', x === b)); desenharGraficos(el); }));
-  const irFila = (id, extra) => ctx.navegar('fila', Object.assign(id === SEM ? { escopo: 'semresp' } : { analista: id }, extra || {}));
-  $('#g-analistas', el).addEventListener('click', e => { const g = e.target.closest('[data-id]'); if (g) irFila(g.dataset.id, vez ? { vez } : null); });
-  $('#mapa-idade', el).addEventListener('click', e => { const c = e.target.closest('[data-col]'); if (c && !c.disabled) irFila(c.dataset.id, { idade: c.dataset.col }); });
-  ligarDicas(el);
-}
-export function desenharGraficos(el) {
-  const g = $('#g-analistas', el);
-  if (!g) return;
-  const w = Math.max(320, Math.round(g.clientWidth));
-  const dados = dadosAnalistas();
-  g.innerHTML = dados.length ? barrasEmpilhadas(dados, GRAV, { largura: w, rotuloL: 150, titulo: 'Solicitações por analista e gravidade', destaque: [eu()], fixo: SEM }) : '<div class="vazio">Nenhuma pendência' + (vez ? ' com esse filtro' : '') + '.</div>';
-  const hoje = (estado.serie || {})[OC.ymd(new Date())] || {};
-  const pts = Object.entries(hoje.horas || {}).map(([h, v]) => ({ x: Number(h), y: v }));
-  const d = $('#g-dia-hoje', el);
-  if (d) d.innerHTML = linhaDoDia(pts, { largura: Math.max(240, Math.round(d.clientWidth)), altura: 120, nome: 'Fila', titulo: 'Tamanho da fila ao longo de hoje' });
-  const m = OC.mapaIdade(itens());
-  const colunas = OC.FAIXAS_IDADE.map(f => ({ id: f.de + '-' + (f.ate == null ? '' : f.ate), rotulo: f.rot }));
-  $('#mapa-idade', el).innerHTML = mapaDeCalor(m.linhas.map(l => ({ id: l.resp, rotulo: nomeResp(l.resp), valores: l.por })), colunas, { titulo: 'Solicitações por analista e dias parada', destaque: [eu()], fixo: SEM });
+  const mapa = $('#mapa-idade', el);
+  if (mapa) mapa.addEventListener('click', e => { const c = e.target.closest('[data-col]'); if (c && !c.disabled) ctx.navegar('fila', Object.assign(c.dataset.id === SEM ? { escopo: 'semresp' } : { analista: c.dataset.id }, { idade: c.dataset.col })); });
 }

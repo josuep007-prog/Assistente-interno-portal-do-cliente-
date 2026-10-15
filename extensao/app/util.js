@@ -49,16 +49,6 @@ export function prazoHtml(i) {
   const m = (i.motivos || [])[0];
   return m ? '<span class="c-prazo ' + (m.n === 2 ? 'late' : 'today') + '">' + (i.grav === 3 ? 'G3 · ' : '') + esc(m.m) + '</span>' : '<span class="fraco">em dia</span>';
 }
-// Linha compacta (colunas do Hoje e cartões do painel): ID, tipo, cliente, assunto e dias parada.
-export function miniItem(i, o) {
-  o = o || {};
-  const sub = [i.detalhe, o.resp ? (i.resp || 'sem responsável') : ''].filter(Boolean).join(' · ');
-  const d = o.lado === 'prescreve' && i.prescreveEm != null ? { v: i.prescreveEm + 'd', r: 'prescreve', c: 'late' } : { v: (i.parado || 0) + 'd', r: 'parada', c: i.nivel === 2 ? 'late' : i.nivel === 1 ? 'today' : '' };
-  return '<div class="mini" tabindex="0" data-k="' + esc(i.k) + '"><div class="m-tx">' +
-    '<div class="m-top"><span class="mono">#' + esc(i.num) + '</span><span>' + esc(i.typeLabel) + '</span></div>' +
-    '<div class="m-cli">' + esc(nomeCli(i)) + '</div>' + (sub ? '<div class="m-sub">' + esc(sub) + '</div>' : '') +
-    '</div><div class="m-d ' + d.c + '">' + d.v + '<small>' + d.r + '</small></div></div>';
-}
 // Cartão de solicitação (visão "Cartões" das filas).
 export function cartaoItem(i) {
   const mot = motivosHtml(i);

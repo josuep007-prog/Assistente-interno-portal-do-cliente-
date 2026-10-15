@@ -734,6 +734,26 @@ test('lembretes que repetem: feito pula para a próxima vez que ainda não passo
   assert.equal(OC.concluirLembrete({ id: 'antigo', texto: 'sem rep', quando: '2026-10-16T09:00:00' }, agora).feito, true, 'lembrete de versão anterior');
 });
 
+test('Hoje: motivo de cada pendência e lista única de prioridades na ordem certa', () => {
+  const it = [
+    { k: 'emdia-esc', lado: 'esc', nivel: 0, parado: 3, status: 'Em análise' },
+    { k: 'resp', lado: 'esc', nivel: 0, parado: 1, status: 'Aguardando resposta' },
+    { k: 'hoje', lado: 'esc', nivel: 1, parado: 2, status: 'Em análise' },
+    { k: 'presc-4', lado: 'cli', nivel: 2, prescreveEm: 4, parado: 26, status: 'Respondido' },
+    { k: 'presc-1', lado: 'cli', nivel: 2, prescreveEm: 1, parado: 29, status: 'Respondido' },
+    { k: 'atraso-g2', lado: 'esc', nivel: 2, grav: 2, parado: 20, status: 'Em análise' },
+    { k: 'atraso-g3', lado: 'esc', nivel: 2, grav: 3, parado: 5, status: 'Aguardando resposta' },
+    { k: 'emdia-cli', lado: 'cli', nivel: 0, parado: 2, status: 'Respondido' }
+  ];
+  assert.deepEqual(plano(OC.prioridades(it).map(p => p.item.k + ':' + p.motivo)), [
+    'atraso-g3:atraso', 'atraso-g2:atraso', 'presc-1:prescreve', 'presc-4:prescreve', 'hoje:hoje', 'resp:respondeu', 'emdia-esc:emdia'
+  ], 'fora do prazo vence "cliente respondeu" no mesmo item; em dia na vez do cliente não entra');
+  assert.deepEqual(plano(OC.contarMotivos(it)), { atraso: 2, prescreve: 2, hoje: 1, respondeu: 1, emdia: 2 }, 'o anel conta todas, inclusive as em dia do cliente');
+  assert.equal(Object.values(OC.contarMotivos(it)).reduce((a, b) => a + b, 0), it.length);
+  assert.equal(OC.motivoDe({ lado: 'cli', nivel: 1 }), 'hoje', 'cliente sem retorno (atenção) entra como "vence hoje / atenção"');
+  assert.deepEqual(plano(OC.MOTIVOS.map(m => m.k)), ['atraso', 'prescreve', 'hoje', 'respondeu', 'emdia']);
+});
+
 test('painel do Hoje: tendência (nova, piorou, melhorou) e a marca dura 2 horas', () => {
   const t0 = new Date('2026-10-14T10:00:00');
   const ant = { items: [{ k: 'a', nivel: 0, grav: 0 }, { k: 'b', nivel: 2, grav: 2 }, { k: 'c', nivel: 1, grav: 1 }] };
