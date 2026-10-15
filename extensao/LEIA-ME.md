@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.10.0)
+# Control Onvio · ControlTax (v0.11.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Nesta versão a extensão ainda **só lê**: as ações (responder, definir responsável, anexar) chegam na próxima, depois do mapeamento.
 
@@ -25,7 +25,7 @@ Para atualizar a versão: substitua os arquivos da pasta, clique em **Recarregar
 
 | Tela | Para quem | O que mostra |
 | --- | --- | --- |
-| **Hoje** | Analista (todos veem) | **Painel escuro** no topo: **barra viva** (pendências da equipe passando por prioridade; bolinha verde = lendo ao vivo, ▲ piorou, ▼ melhorou, NOVA), **anel de prioridades** (fora do prazo, perto de prescrever, vence hoje, cliente respondeu, em dia; clique filtra), **radar da fila** (cada solicitação é um ponto em "dias parada", escritório e cliente, com as linhas de parada e prescrição; clique abre o detalhe) e **pulso do dia** (fila ao longo do dia, ▲/▼ desde a primeira leitura, entraram e saíram). Embaixo: **lista única de prioridades** (10 primeiras, cada uma com o motivo; "Ver fila completa"), **mosaico da equipe** (um bloco por analista e "Sem analista": tamanho = pendências, cor = pior caso; clique filtra) e **agenda de hoje** (lembretes e expectativas de conclusão, com "Feito"). Seletor **Minhas / Equipe** no cabeçalho |
+| **Hoje** | Analista (todos veem) | No formato da tela **Convenções** do Departamento Pessoal. **Carteira** no cabeçalho (a sua, a equipe toda, cada analista ou "Sem analista"; a escolha fica guardada). **Destaque**: rosca com a porcentagem em dia (cada parte é uma situação e filtra), "**N** solicitações pedem sua atenção", resumo (escritório, cliente, sem analista), **carrossel** com uma pendência por vez (troca a cada 5 s, para com o mouse; a bolinha verde/cinza/vermelha mostra a leitura ao vivo) e **Próximos passos** (lembretes de hoje e atrasados com "Feito", as pendências mais urgentes com o que fazer, expectativas de conclusão). **Situações** (fora do prazo, perto de prescrever, vence hoje, cliente respondeu, em dia, sem analista) filtram os **cartões**, agrupados por situação: etiqueta, anel com os dias parada contra o limite, situação, vez, responsável (ou "prescreve em") e o próximo passo no rodapé. Até 6 por grupo, com "Ver todas na fila". Busca na carteira e visão Cartões ou Lista |
 | **Minha fila** | Analista e gestor | Abas Minhas / Equipe toda / Sem responsável. Busca, vez (escritório/cliente), **Filtros** (tipo, gravidade, responsável), **Ordenar**, **Lista ou Cartões**, **Mais** (exportar CSV). Os filtros ativos aparecem como etiquetas que se tiram com um clique |
 | **Agenda e lembretes** | Cada um | Calendário do mês com lembretes e expectativas de conclusão das suas solicitações; lista (atrasados, hoje, próximos, concluídos). Lembretes podem **repetir** (todo dia, todo dia útil, toda semana, todo mês) |
 | **Equipe** | Gestor | Aba Painel (números, carga por responsável G1/G2/G3, entradas e saídas de 14 dias, pendências ao longo do dia, por tipo, **sugestão de distribuição** das sem analista e **próximas a prescrever**) e aba Responsáveis (**idade da fila**: mapa de calor analista × dias parada, e a carga de cada pessoa) |
@@ -41,6 +41,16 @@ Vez do escritório: sem primeiro trâmite após 1 dia útil; aberta além de 3 d
 Vez do cliente: sem retorno há mais de 5 dias úteis (laranja); a partir de 20 dias parada fica vermelho com a contagem até a prescrição de 30 dias.
 
 Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardando resposta** = o escritório precisa responder; **Respondido** = vez do cliente.
+
+## Novidades da v0.11.0 (Hoje no formato de Convenções)
+
+O Hoje da v0.10 (painel escuro com radar, pulso e mosaico) era bonito, mas não ajudava a decidir. Agora ele segue a tela **Convenções** do Departamento Pessoal do Control Hub:
+
+- **Destaque** em cartão claro: a rosca mostra a porcentagem em dia (clicar numa parte filtra), o título diz quantas solicitações pedem sua atenção e um **carrossel** passa uma pendência por vez (a barra viva virou o carrossel; a bolinha da leitura ao vivo ficou ao lado). À direita, **Próximos passos**: lembretes de hoje e atrasados (com "Feito") e as mais urgentes, cada uma com o que fazer ("Responder o cliente", "Cobrar o cliente · prescreve em 4 dias", "Concluir hoje"…).
+- **Situações** com número viram filtros, e os **cartões** aparecem agrupados por situação, como os de Convenções: barra colorida, anel com os dias parada contra o limite (parada no escritório, prescrição no cliente), situação, vez, responsável e o próximo passo no rodapé. Sem filtro aparecem só os grupos que pedem atenção; "Em dia" fica a um clique.
+- **Carteira** no cabeçalho, como no Departamento Pessoal: a sua, a equipe toda, cada analista ou "Sem analista". Substitui o seletor Minhas/Equipe e o mosaico.
+- Busca na carteira e visão **Cartões ou Lista**.
+- Saíram o painel escuro, o radar, o pulso e o mosaico. A Equipe continua com o mapa de calor, a prescrição e a sugestão de distribuição.
 
 ## Novidades da v0.10.0 (Hoje enxuto e visual)
 
