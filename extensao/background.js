@@ -205,17 +205,18 @@ async function coletar(manual) {
   if (rodando) return rodando;
   rodando = (async () => {
     const s = await getSettings();
-    const { snapshot: anterior, tramites: cacheTramites } = await chrome.storage.local.get(['snapshot', 'tramites']);
+    const { snapshot: anterior, tramites: cacheTramites, avisos: cacheAvisos } = await chrome.storage.local.get(['snapshot', 'tramites', 'avisos']);
     await chrome.storage.local.set({ status: { estado: 'lendo', em: new Date().toISOString(), etapa: '' } });
     try {
       const { f, via } = await escolherFetcher(manual);
       const assin = await OC.assinaturas(f).catch(() => null);     // antes da leitura: o que mudar depois será notado
-      const snap = await OC.collect(f, s, (i, n, rot) => chrome.storage.local.set({ status: { estado: 'lendo', etapa: i + '/' + n + ' · ' + rot } }), { tramites: cacheTramites || {} });
+      const snap = await OC.collect(f, s, (i, n, rot) => chrome.storage.local.set({ status: { estado: 'lendo', etapa: i + '/' + n + ' · ' + rot } }), { tramites: cacheTramites || {}, avisos: cacheAvisos || {} });
       snap.via = via;
       OC.tendencias(anterior, snap);                                  // setas ▲▼ da barra viva
       snap.versao = chrome.runtime.getManifest().version;
       const novoCache = snap.tramites.cache; delete snap.tramites.cache;   // o cache fica fora do resumo
-      await chrome.storage.local.set({ tramites: novoCache });
+      const novoAvisos = snap.avisos ? snap.avisos.cache : {}; if (snap.avisos) delete snap.avisos.cache;
+      await chrome.storage.local.set({ tramites: novoCache, avisos: novoAvisos });
       await notificar(anterior, snap, s);
       const { serie } = await chrome.storage.local.get('serie');
       await chrome.storage.local.set({ serie: OC.atualizarSerie(serie, anterior, snap) });
@@ -308,9 +309,19 @@ async function detalhe(msg) {
   if (!r) throw new Error('solicitação #' + msg.num + ' não encontrada em ' + t.label);
   const x = OC.detalheDe(t, r);
   Object.assign(x, OC.evaluate(x, s, new Date()));
-  let tramites = null, erroTramites = null;
-  try { tramites = OC.tramitesDe(t, await f(OC.urlTramites(t, r))); } catch (e) { erroTramites = e.message || String(e); }
-  return { item: x, tramites, erroTramites, lista: t.label };
+  // Solicitação completa (aba Dados) e trâmites, lidos na hora e em paralelo. Nada disso é guardado.
+  const [comp, tr] = await Promise.all([
+    f(OC.urlDetalhe(t, r.id)).then(d => ({ d }), e => { if (e && e.auth) throw e; return { erro: e.message || String(e) }; }),
+    f(OC.urlTramites(t, r)).then(d => ({ d }), e => { if (e && e.auth) throw e; return { erro: e.message || String(e) }; })
+  ]);
+  const completo = comp.d ? OC.camposDetalhe(t, comp.d) : null;
+  const datas = OC.datasDe(comp.d || r);
+  if (comp.d && typeof comp.d.description === 'string' && !x.descricao) x.descricao = comp.d.description;
+  return {
+    item: x, lista: t.label, datas,
+    grupos: completo ? completo.grupos : null, anexos: completo ? completo.anexos : [], erroDados: comp.erro || null,
+    tramites: tr.d ? OC.tramitesDe(t, tr.d) : null, erroTramites: tr.erro || null
+  };
 }
 
 /* ---------- badge ---------- */
@@ -441,6 +452,14 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'reagendar') { await agendar(); reply({ ok: true }); }
       else if (msg.cmd === 'atualizarRegras') { reply(await atualizarRegras()); }
       else if (msg.cmd === 'tick') { reply(await verificarAoVivo(!!msg.forcar)); }
+      else if (msg.cmd === 'distribuicao') {        // sob demanda: quem mais atendeu cada empresa nos últimos dias (nada é guardado)
+        const { f } = await escolherFetcher();
+        const dias = Math.min(30, Math.max(1, Number(msg.dias) || 7));
+        const { snapshot } = await chrome.storage.local.get('snapshot');
+        const mov = await OC.lerMovimentadas(f, dias, new Date());
+        const pend = (snapshot && snapshot.items) || [];
+        reply({ ok: true, dias, movimentadas: mov.itens.length, erros: mov.erros, sugestoes: OC.distribuirPorCliente(pend, mov.itens, dias) });
+      }
       else if (msg.cmd === 'consultar') { reply(Object.assign({ ok: true }, await consultar(msg))); }
       else if (msg.cmd === 'detalhe') { reply(Object.assign({ ok: true }, await detalhe(msg))); }
       else if (msg.cmd === 'testarLeitura') { reply({ ok: true, linhas: await testarLeitura() }); }

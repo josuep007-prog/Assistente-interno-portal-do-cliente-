@@ -26,9 +26,11 @@ const COLUNAS = [
   { k: 'nivel', rot: 'Prazo', v: i => (i.nivel || 0) * 10 + (i.grav || 0) }
 ];
 const COLS = '64px 132px 168px minmax(0,1.1fr) minmax(0,1.3fr) 130px 60px minmax(0,1.4fr)';
-const ORDENS = [['nivel', 'Prazo (mais grave primeiro)'], ['parado', 'Mais tempo parada'], ['num', 'ID (mais nova primeiro)'], ['cliente', 'Cliente (A–Z)'], ['tipo', 'Tipo'], ['resp', 'Responsável']];
+// Ordem rápida (botões acima da lista); clicar no cabeçalho de uma coluna também ordena.
+const ORDENS = [['prio', 'Prioridade', 'O que pede ação primeiro (mesma ordem do Hoje)'], ['cliente', 'Empresa', 'Agrupado por empresa, de A a Z'], ['recente', 'Mais recente', 'Abertas mais recentemente primeiro'], ['parado', 'Mais parada', 'Mais dias sem movimentação primeiro']];
+const DESC = ['nivel', 'parado', 'num', 'recente'];
 
-let ord = { k: 'nivel', desc: true };
+let ord = (() => { try { const k = localStorage.getItem('controlonvio-fila-ord'); return ORDENS.some(o => o[0] === k) ? { k, desc: DESC.includes(k) } : { k: 'prio', desc: false }; } catch (e) { return { k: 'prio', desc: false }; } })();
 let filtros = { texto: '', tipo: '', lado: '', grav: '', resp: '' };
 let vis = (() => { try { return localStorage.getItem('controlonvio-fila-vis') || 'lista'; } catch (e) { return 'lista'; } })();
 
@@ -78,11 +80,12 @@ export function render(el, ctx, params) {
           (umaPessoa ? '' : sel('f-resp', 'Responsável', [['', 'Todos']].concat(resps.map(r => [r, r])), filtros.resp)) +
           '<div class="menu-pe"><button class="btn btn-sm" id="f-limpar">Limpar filtros</button><button class="btn btn-sm btn-primary" id="f-ok">Pronto</button></div>' +
         '</div></details>' +
-      '<span class="rotulo">Ordenar</span><select id="f-ord" aria-label="Ordenar">' + ORDENS.map(([k, r]) => '<option value="' + k + '"' + (ord.k === k ? ' selected' : '') + '>' + r + '</option>').join('') + '</select>' +
+      '<div class="seg" role="group" aria-label="Ordenar" id="f-ord">' + ORDENS.map(([k, r, d]) => '<button data-ord="' + k + '" title="' + esc(d) + '"' + (ord.k === k ? ' class="on"' : '') + '>' + r + '</button>').join('') + '</div>' +
       '<span class="count" id="cont"></span>' +
       '<div class="seg" role="group" aria-label="Visualização"><button data-vis="lista"' + (vis === 'lista' ? ' class="on"' : '') + ' title="Lista"><svg class="ic"><use href="#i-list"/></svg> Lista</button><button data-vis="cartoes"' + (vis === 'cartoes' ? ' class="on"' : '') + ' title="Cartões"><svg class="ic"><use href="#i-grid"/></svg> Cartões</button></div>' +
       '<details class="menu"><summary class="btn btn-sm" aria-label="Mais"><svg class="ic ic-sm"><use href="#i-more"/></svg> Mais</summary><div class="menu-list"><button class="menu-item" id="csv"><svg class="ic"><use href="#i-download"/></svg> Exportar CSV (o que está na tela)</button><button class="menu-item" id="m-onvio"><svg class="ic"><use href="#i-eye"/></svg> Ver a lista no Onvio</button></div></details>' +
     '</div>' +
+    '<div class="tipos" id="tipos" role="group" aria-label="Tipo de solicitação"></div>' +
     '<div class="ativos" id="ativos"></div>' +
     '<div id="corpo"></div>';
 
@@ -92,9 +95,25 @@ export function render(el, ctx, params) {
       (!filtros.grav || (filtros.grav === 'g3' ? i.grav === 3 : String(i.nivel || 0) === filtros.grav)) &&
       (!filtros.resp || (i.resp || '(sem responsável)') === filtros.resp) &&
       (!q || normal([i.num, i.apelido, i.cliente, i.detalhe, i.resp, i.status, i.typeLabel].join(' ')).includes(q)));
-    const col = COLUNAS.find(c => c.k === ord.k) || COLUNAS[COLUNAS.length - 1];
-    l.sort((a, b) => { const x = col.v(a), y = col.v(b); const r = x < y ? -1 : x > y ? 1 : 0; return (ord.desc ? -r : r) || (b.parado - a.parado); });
+    if (ord.k === 'prio') { const rank = new Map(OC.prioridades(l).map((p, n) => [p.item.k, n])); l.sort((a, b) => (rank.get(a.k) ?? 1e6) - (rank.get(b.k) ?? 1e6) || (b.parado - a.parado)); return l; }
+    const col = ord.k === 'recente' ? { v: i => String(i.created || '') } : COLUNAS.find(c => c.k === ord.k) || COLUNAS[COLUNAS.length - 1];
+    const prio = new Map(OC.prioridades(l).map((p, n) => [p.item.k, n]));
+    l.sort((a, b) => { const x = col.v(a), y = col.v(b); const r = x < y ? -1 : x > y ? 1 : 0; return (ord.desc ? -r : r) || ((prio.get(a.k) ?? 1e6) - (prio.get(b.k) ?? 1e6)); });
     return l;
+  };
+  // Cartões dos tipos: quantas há em cada tipo (com os outros filtros aplicados), quantas fora do prazo e de quem é a vez
+  const tipos = () => {
+    const antes = filtros.tipo;
+    filtros.tipo = ''; const l = filtrar(); filtros.tipo = antes;
+    const cartao = (k, rot, xs) => {
+      const atr = xs.filter(i => i.nivel === 2).length, esc_ = xs.filter(i => i.lado === 'esc').length, tot = xs.length;
+      return '<button type="button" class="tipo-c' + (filtros.tipo === k ? ' on' : '') + (!tot ? ' zero' : '') + '" data-tipo="' + esc(k) + '" aria-pressed="' + (filtros.tipo === k) + '">' +
+        '<span class="tipo-rot">' + esc(rot) + '</span><b>' + tot + '</b>' +
+        '<span class="tipo-sub">' + (atr ? '<em>' + atr + ' fora do prazo</em>' : tot ? 'em dia' : 'nenhuma') + '</span>' +
+        '<i class="tipo-barra" title="' + esc_ + ' com o escritório · ' + (tot - esc_) + ' com o cliente"><i style="width:' + (tot ? Math.round(esc_ / tot * 100) : 0) + '%"></i></i></button>';
+    };
+    $('#tipos', el).innerHTML = cartao('', 'Todos os tipos', l) + OC.TYPES.map(t => cartao(t.key, t.label, l.filter(i => i.type === t.key))).join('');
+    $$('[data-tipo]', el).forEach(b => b.onclick = () => { filtros.tipo = filtros.tipo === b.dataset.tipo ? '' : b.dataset.tipo; const s = $('#f-tipo', el); if (s) s.value = filtros.tipo; desenhar(); });
   };
   const chips = () => {
     const c = [];
@@ -115,17 +134,22 @@ export function render(el, ctx, params) {
   };
   const desenhar = () => {
     const l = filtrar();
+    tipos();
     chips();
     $('#cont', el).textContent = l.length + (l.length === 1 ? ' solicitação' : ' solicitações');
     const vazio = '<div class="vazio">' + (!estado.snap ? '<b>Aguardando a primeira leitura do Onvio</b>' : base.length ? '<b>Nada com esses filtros</b>Tire um filtro acima para ver mais.' : '<b>Nada pendente aqui</b>Quando chegar solicitação, ela aparece sozinha.') + '</div>';
-    if (vis === 'cartoes') $('#corpo', el).innerHTML = l.length ? '<div class="cards">' + l.map(cartaoItem).join('') + '</div>' : '<div class="list-card">' + vazio + '</div>';
+    // por empresa: cabeçalho de cada empresa antes das suas solicitações
+    const porEmp = ord.k === 'cliente';
+    const nEmp = porEmp ? l.reduce((m, i) => { const c = i.apelido || i.cliente || '—'; m[c] = (m[c] || 0) + 1; return m; }, {}) : {};
+    const comGrupos = (fn, cls) => { let ant = null; return l.map(i => { const c = i.apelido || i.cliente || '—'; const h = porEmp && c !== ant ? '<div class="' + cls + '"><b>' + esc(c) + '</b><span>' + nEmp[c] + '</span></div>' : ''; ant = c; return h + fn(i); }).join(''); };
+    if (vis === 'cartoes') $('#corpo', el).innerHTML = l.length ? (porEmp ? '<div class="cards-emp">' + comGrupos(cartaoItem, 'emp-cab') + '</div>' : '<div class="cards">' + l.map(cartaoItem).join('') + '</div>') : '<div class="list-card">' + vazio + '</div>';
     else $('#corpo', el).innerHTML = '<div class="list-card" style="--cols:' + COLS + '"><div class="lh" role="row">' +
       COLUNAS.map(c => '<button data-col="' + c.k + '" class="' + (c.num ? 'num ' : '') + (ord.k === c.k ? 'on' + (ord.desc ? '' : ' asc') : '') + '">' + c.rot + '</button>').join('') + '</div>' +
-      (l.length ? l.map(linha).join('') : vazio) + '</div>';
+      (l.length ? comGrupos(linha, 'emp-cab lr-emp') : vazio) + '</div>';
     ligarItens($('#corpo', el), l, ctx.abrirDetalhe);
     $$('[data-col]', el).forEach(b => b.addEventListener('click', () => {
-      ord = ord.k === b.dataset.col ? { k: ord.k, desc: !ord.desc } : { k: b.dataset.col, desc: ['nivel', 'parado', 'num'].includes(b.dataset.col) };
-      $('#f-ord', el).value = ord.k; desenhar();
+      ord = ord.k === b.dataset.col ? { k: ord.k, desc: !ord.desc } : { k: b.dataset.col, desc: DESC.includes(b.dataset.col) };
+      $$('[data-ord]', el).forEach(x => x.classList.toggle('on', x.dataset.ord === ord.k)); desenhar();
     }));
   };
   $('#f-texto', el).addEventListener('input', e => { filtros.texto = e.target.value; desenhar(); });
@@ -133,7 +157,11 @@ export function render(el, ctx, params) {
   for (const k of ['tipo', 'grav', 'resp']) { const s = $('#f-' + k, el); if (s) s.addEventListener('change', e => { filtros[k] = e.target.value; desenhar(); }); }
   $('#f-limpar', el).onclick = () => { filtros.tipo = filtros.grav = filtros.resp = ''; $$('.menu-list.form select', el).forEach(s => { s.value = ''; }); desenhar(); };
   $('#f-ok', el).onclick = () => { $('#m-filtros', el).open = false; };
-  $('#f-ord', el).addEventListener('change', e => { ord = { k: e.target.value, desc: ['nivel', 'parado', 'num'].includes(e.target.value) }; desenhar(); });
+  $$('[data-ord]', el).forEach(b => b.addEventListener('click', () => {
+    ord = { k: b.dataset.ord, desc: DESC.includes(b.dataset.ord) };
+    try { localStorage.setItem('controlonvio-fila-ord', ord.k); } catch (e) {}
+    $$('[data-ord]', el).forEach(x => x.classList.toggle('on', x === b)); desenhar();
+  }));
   $$('[data-lado]', el).forEach(b => b.addEventListener('click', () => { filtros.lado = b.dataset.lado; $$('[data-lado]', el).forEach(x => x.classList.toggle('on', x === b)); desenhar(); }));
   $$('[data-vis]', el).forEach(b => b.addEventListener('click', () => {
     vis = b.dataset.vis; try { localStorage.setItem('controlonvio-fila-vis', vis); } catch (e) {}

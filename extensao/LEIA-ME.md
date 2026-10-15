@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.12.0)
+# Control Onvio · ControlTax (v0.13.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Nesta versão a extensão ainda **só lê**: as ações (responder, definir responsável, anexar) chegam na próxima, depois do mapeamento.
 
@@ -41,6 +41,18 @@ Vez do escritório: sem primeiro trâmite após 1 dia útil; aberta além de 3 d
 Vez do cliente: sem retorno há mais de 5 dias úteis (laranja); a partir de 20 dias parada fica vermelho com a contagem até a prescrição de 30 dias.
 
 Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardando resposta** = o escritório precisa responder; **Respondido** = vez do cliente.
+
+## Novidades da v0.13.0 (detalhe completo, prazos legais, avisos sem cálculo, tipos e distribuição)
+
+- **Vencimento pelo prazo legal, não pela expectativa do cliente.** A "Expectativa de conclusão" que o cliente informa deixou de contar como atraso (aparece só como informação). Contam os prazos internos e, em férias e rescisão, o **prazo legal de pagamento**: férias até 2 dias antes do início (CLT art. 145) e rescisão até 10 dias após o desligamento (CLT art. 477 §6º), antecipando fim de semana e feriado. Quando faltam **5 dias úteis** ou menos (o tempo que um analista leva num período cheio, `tempoOcupado` nas regras), a solicitação pede atenção; com 1 dia útil ou menos, fica fora do prazo. A agenda mostra os prazos legais.
+- **Hoje · Avisos sem cálculo:** avisos de férias e de rescisão com o pagamento dentro desse prazo e **sem a solicitação de cálculo** do mesmo empregado no mesmo cliente. A data vem do detalhe do aviso (lido uma vez) e o cálculo só é procurado quando o prazo está perto; só datas e sim/não ficam guardados.
+- **Detalhe completo:** a aba **Dados** mostra tudo o que compõe a solicitação no Onvio (dados do empregado, férias, rescisão, cadastro, rubricas, anexos da solicitação), em grupos, lido na hora e nunca guardado. Campo novo do Onvio aparece com o nome técnico, para nada ficar escondido.
+- **Para o cliente:** nova aba no detalhe com observações de prazo e cuidados do que o cliente pediu (prazo de conclusão, início e pagamento das férias, prazo da rescisão, admissão no eSocial, afastamento e INSS…), já com as datas. Avisos fora do prazo vêm primeiro. **Copiar observações** copia o texto pronto com um clique, para colar na resposta. As frases ficam em `observacoes` nas regras e o escritório pode trocar pelo arquivo de regras.
+- **Fila por tipo:** cartões com cada tipo de solicitação (quantas, quantas fora do prazo, de quem é a vez); um clique filtra e outro tira. Ordem rápida por **Prioridade** (a mesma do Hoje), **Empresa** (agrupada), **Mais recente** ou **Mais parada**, lembrada entre as visitas.
+- **Distribuir (novo módulo):** para cada solicitação sem responsável, sugere quem **mais atendeu aquela empresa na última semana** (14 ou 30 dias, se quiser), contando as solicitações movimentadas no período. **Admissões ficam fora da conta** e vão para quem mais fez admissões. Sem histórico, vai para quem tem menos pendências. Lido na hora, nada guardado. A sugestão pode ser trocada na lista.
+- **Responder, mudar situação, anexar e definir responsável por dentro da extensão:** pedidos, mas ainda **não implementados**. Eles escrevem no Onvio e precisam do formato real de cada chamada: rode a Parte 4 de `mapeamento/prompt-mapeamento-onvio.md` (só na empresa de teste) e envie o resultado. Até lá, "Abrir no Onvio".
+
+**A confirmar no Onvio real:** a busca do cálculo pelo nome do empregado (`searchText`) e a data de desligamento no detalhe da rescisão (sem ela, o prazo conta da data do aviso, o caso mais apertado).
 
 ## Novidades da v0.12.0 (pronta de primeira: caminhos do Onvio mapeados)
 

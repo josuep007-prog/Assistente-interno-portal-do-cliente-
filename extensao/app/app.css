@@ -360,6 +360,14 @@ a{color:var(--blue-deep)}
 .tl-item:first-child::before{background:var(--blue-deep)}
 .tl-item .meta{display:flex; gap:8px; align-items:center; flex-wrap:wrap; font-size:12px; color:var(--ink-3); margin-bottom:5px}
 .tl-item .meta b{color:var(--ink-2)}
+.dados-tit{margin:4px 0 10px; font:700 12px "Archivo",sans-serif; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-2)}
+.dados-tit:not(:first-child){margin-top:20px; padding-top:14px; border-top:1px solid var(--rule)}
+.dtab .n.late{color:var(--brand-red); font-weight:700}
+.obs-lista{display:flex; flex-direction:column; gap:8px; margin:10px 0 16px}
+.obs{display:flex; gap:10px; align-items:flex-start; padding:10px 12px; border:1px solid var(--rule); border-radius:6px; background:var(--surface); cursor:pointer; line-height:1.5}
+.obs:hover{border-color:var(--blue-deep)}
+.obs input{margin-top:3px; flex:none}
+.obs.alerta{border-color:var(--brand-red); background:color-mix(in srgb, var(--brand-red) 6%, var(--surface))}
 .anexos{display:flex; gap:6px; flex-wrap:wrap; margin-top:6px}
 .anexos span{display:inline-flex; align-items:center; gap:5px; font-size:12px; background:var(--surface-2); border:1px solid var(--rule); border-radius:3px; padding:2px 8px}
 .chips{display:flex; gap:6px; flex-wrap:wrap}
@@ -675,3 +683,47 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
   .hj-tick-relogio i{animation-duration:8s}
 }
 .faixa > div{flex:1; min-width:0; line-height:1.45}
+
+/* Hoje · avisos de férias/rescisão sem cálculo */
+.hj-semcalc{margin:0 0 18px; padding:14px 16px; border:1px solid color-mix(in srgb, var(--brand-red) 35%, var(--rule)); border-left:4px solid var(--brand-red); border-radius:8px; background:var(--surface)}
+.hj-semcalc h3{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 10px; font:700 14px "Archivo",sans-serif}
+.hj-semcalc h3 > span{min-width:22px; padding:1px 7px; border-radius:999px; background:var(--brand-red); color:#fff; font-size:11.5px; text-align:center}
+.hj-semcalc h3 small{flex-basis:100%; font:500 12px "IBM Plex Sans",sans-serif; color:var(--ink-3)}
+.hj-semcalc-l{display:flex; flex-direction:column; gap:6px}
+.hj-sc{display:flex; align-items:center; gap:14px; width:100%; padding:9px 12px; border:1px solid var(--rule); border-radius:6px; background:var(--surface-2); color:inherit; font:inherit; text-align:left; cursor:pointer; transition:border-color .15s}
+.hj-sc:hover, .hj-sc:focus-visible{border-color:var(--brand-red)}
+.hj-sc-quando{display:flex; flex-direction:column; min-width:96px; font-variant-numeric:tabular-nums}
+.hj-sc-quando b{font:700 16px "Archivo",sans-serif}
+.hj-sc-quando small{font-size:11.5px; color:var(--ink-3)}
+.hj-sc.late .hj-sc-quando b, .hj-sc.late .hj-sc-quando small{color:var(--brand-red)}
+.hj-sc-tx{flex:1; min-width:0; display:flex; flex-direction:column}
+.hj-sc-tx b{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.hj-sc-tx small{font-size:12px; color:var(--ink-3)}
+
+/* Fila · cartões dos tipos de solicitação e agrupamento por empresa */
+.tipos{display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px; margin:0 0 14px}
+.tipo-c{position:relative; display:flex; flex-direction:column; align-items:flex-start; gap:2px; padding:10px 12px 12px; border:1px solid var(--rule); border-radius:8px; background:var(--surface); color:inherit; font:inherit; text-align:left; cursor:pointer; transition:border-color .15s, box-shadow .15s, transform .15s}
+.tipo-c:hover{border-color:var(--blue-deep); transform:translateY(-1px)}
+.tipo-c.on{border-color:var(--blue-deep); box-shadow:0 0 0 2px color-mix(in srgb, var(--blue-deep) 30%, transparent)}
+.tipo-c.zero{opacity:.55}
+.tipo-rot{font-size:11.5px; font-weight:600; color:var(--ink-3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%}
+.tipo-c b{font:700 22px/1.1 "Archivo",sans-serif; font-variant-numeric:tabular-nums}
+.tipo-sub{font-size:11.5px; color:var(--ink-3)}
+.tipo-sub em{font-style:normal; font-weight:600; color:var(--brand-red)}
+.tipo-barra{position:absolute; left:12px; right:12px; bottom:5px; height:3px; border-radius:2px; background:color-mix(in srgb, var(--ink-3) 25%, transparent); overflow:hidden}
+.tipo-barra > i{display:block; height:100%; background:var(--blue-deep)}
+.emp-cab{display:flex; align-items:center; gap:8px; padding:10px 4px 6px; font-size:13px}
+.emp-cab span{padding:0 7px; border-radius:999px; background:var(--surface-3); font-size:11.5px; color:var(--ink-3)}
+.lr-emp{padding:10px 14px 6px; border-bottom:1px solid var(--rule); background:var(--surface-2)}
+.cards-emp{display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:10px}
+.cards-emp .emp-cab{grid-column:1/-1}
+
+/* Distribuir */
+.dist-resumo{display:flex; flex-wrap:wrap; gap:6px; margin:0 0 10px}
+.dist-resumo span{padding:4px 10px; border:1px solid var(--rule); border-radius:999px; background:var(--surface); font-size:12px; color:var(--ink-3)}
+.dist-resumo b{color:var(--ink)}
+.dist-sug{display:flex; flex-direction:column; gap:3px}
+.dist-sug label{display:flex; align-items:center; gap:8px; font-size:11px; font-weight:600; color:var(--ink-3); text-transform:uppercase; letter-spacing:.04em}
+.dist-sug select{min-width:180px; font-weight:600; text-transform:none; letter-spacing:0; color:var(--ink)}
+.dist-sug small{font-size:12px; color:var(--ink-3)}
+.dp-last .late, .dp-last .late b{color:var(--late)}
