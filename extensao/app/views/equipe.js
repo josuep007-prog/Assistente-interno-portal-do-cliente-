@@ -1,8 +1,9 @@
 /* Equipe · visão do gestor (abas como no Departamento Pessoal):
  * Painel (números, gráficos, sem responsável e prescrições) e Responsáveis (carga de cada pessoa). */
 import { estado, itens } from '../estado.js';
-import { esc, plural, miniItem, ligarItens, fmtDataCurta, $, $$ } from '../util.js';
+import { esc, plural, fmtDataCurta, $, $$ } from '../util.js';
 import { barrasEmpilhadas, barrasAgrupadas, linhaDoDia, ligarDicas } from '../graficos.js';
+import { distribuicaoHtml, prescricaoHtml, mapaIdadeHtml, ligarEquipe } from './painel-equipe.js';
 const OC = window.OC;
 
 const GRAV = [
@@ -60,10 +61,7 @@ export function render(el, ctx, params) {
       card('g-horas', 'Pendências ao longo de hoje', 'contagem a cada leitura') +
       card('g-tipo', 'Por tipo de solicitação', 'com o escritório × com o cliente') +
     '</div>' +
-    '<div class="grade g-2i" style="margin-top:16px">' +
-      '<section class="card"><div class="card-h"><h3>Sem responsável</h3><span class="sub">' + semResp.length + '</span><a href="#/fila?escopo=semresp">Distribuir</a></div><div class="card-b" id="l-semresp">' + (semResp.length ? semResp.slice().sort((a, b) => b.parado - a.parado).slice(0, 6).map(i => miniItem(i)).join('') : '<div class="vazio">Todas as pendências têm responsável.</div>') + '</div></section>' +
-      '<section class="card"><div class="card-h"><h3>Prescrevem em breve</h3><span class="sub">' + prescreve.length + '</span><a href="#/fila?escopo=equipe&kpi=prescreve">Ver todas</a></div><div class="card-b" id="l-presc">' + (prescreve.length ? prescreve.slice(0, 6).map(i => miniItem(i, { resp: true, lado: 'prescreve' })).join('') : '<div class="vazio">Nenhuma perto de prescrever.</div>') + '</div></section>' +
-    '</div>';
+    '<div class="grade g-2" style="margin-top:16px">' + distribuicaoHtml() + prescricaoHtml() + '</div>';
 
   const desenhar = () => {
     const w = id => Math.max(320, Math.round($(id, el).clientWidth));
@@ -83,15 +81,14 @@ export function render(el, ctx, params) {
     else if (k === 'atraso' || k === 'prescreve') ctx.navegar('fila', { escopo: 'equipe', kpi: k });
     else if (k === 'todas') ctx.navegar('fila', { escopo: 'equipe' });
   }));
-  ligarItens($('#l-semresp', el), semResp.slice().sort((a, b) => b.parado - a.parado).slice(0, 6), ctx.abrirDetalhe);
-  ligarItens($('#l-presc', el), prescreve.slice(0, 6), ctx.abrirDetalhe);
+  ligarEquipe(el, ctx);
 }
 
 function responsaveis(el, ctx, an, it) {
   const max = Math.max(1, ...an.map(r => r.total));
   const seg = (v, cor) => v ? '<i style="width:' + (v / max * 100) + '%;background:var(--viz-' + cor + ')"></i>' : '';
-  el.innerHTML =
-    '<div class="tabela-wrap"><table class="tabela"><thead><tr>' +
+  el.innerHTML = mapaIdadeHtml() +
+    '<div class="tabela-wrap" style="margin-top:16px"><table class="tabela"><thead><tr>' +
       '<th>Responsável</th><th>Carga</th><th class="num">Total</th><th class="num">Escritório</th><th class="num">Cliente</th><th class="num">G1</th><th class="num">G2</th><th class="num">G3</th><th class="num">Sem 1º trâmite</th><th class="num">1º trâmite (d.u.)</th></tr></thead><tbody>' +
       (an.length ? an.map(r => '<tr data-resp="' + esc(r.resp) + '" tabindex="0"><td><b>' + esc(r.resp) + '</b></td>' +
         '<td><div class="carga"><div class="barra-mini" title="Em dia, G1, G2 e G3">' + seg(r.total - r.g1 - r.g2 - r.g3, 'ok') + seg(r.g1, 'warn') + seg(r.g2, 'serious') + seg(r.g3, 'crit') + '</div></div></td>' +
@@ -99,6 +96,7 @@ function responsaveis(el, ctx, an, it) {
     '</tbody></table></div>' +
     '<div class="legenda-viz" style="margin-top:10px"><span><i style="background:var(--viz-ok)"></i>Em dia</span><span><i style="background:var(--viz-warn)"></i>G1 atenção</span><span><i style="background:var(--viz-serious)"></i>G2 fora do prazo</span><span><i style="background:var(--viz-crit)"></i>G3 crítica</span></div>' +
     '<p class="card-nota">Clique numa pessoa para ver a fila dela. "1º trâmite" é a média de dias úteis até a primeira resposta do escritório (estimativa).</p>';
+  ligarEquipe(el, ctx);
   $$('[data-resp]', el).forEach(tr => {
     const go = () => ctx.navegar('fila', { analista: tr.dataset.resp });
     tr.addEventListener('click', go); tr.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });

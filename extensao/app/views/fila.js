@@ -43,6 +43,8 @@ export function render(el, ctx, params) {
   if (params.cliente) { base = todas.filter(i => (i.cliente || i.apelido || '(cliente não informado)') === params.cliente); titulo = params.cliente; sub = 'Pendências do cliente · <a href="#/clientes">voltar a Clientes</a>'; }
   const kpi = KPI[params.kpi];
   if (kpi) base = base.filter(kpi.f);
+  const motivo = OC.MOTIVOS.find(x => x.k === params.motivo);          // vindo do anel do Hoje
+  if (motivo) base = base.filter(i => OC.motivoDe(i) === motivo.k);
   // vindos do Hoje: faixa de dias parada (mapa de calor) e de quem é a vez (gráfico por analista)
   const idade = /^(\d+)-(\d*)$/.exec(params.idade || '');
   if (idade) base = base.filter(i => (i.parado || 0) >= Number(idade[1]) && (idade[2] === '' || (i.parado || 0) <= Number(idade[2])));
@@ -97,6 +99,7 @@ export function render(el, ctx, params) {
   const chips = () => {
     const c = [];
     if (kpi) c.push(['kpi', 'Só: ' + kpi.rot]);
+    if (motivo) c.push(['motivo', 'Só: ' + motivo.rot]);
     if (idade) c.push(['idade', 'Parada há ' + idade[1] + (idade[2] ? '–' + idade[2] : '+') + ' dias']);
     if (filtros.tipo) c.push(['tipo', OC.TYPE_BY_KEY[filtros.tipo].label]);
     if (filtros.grav) c.push(['grav', { 2: 'Fora do prazo', 1: 'Atenção', 0: 'Em dia', g3: 'Só G3' }[filtros.grav]]);
@@ -106,7 +109,7 @@ export function render(el, ctx, params) {
     $('#n-filtros', el).textContent = nf || '';
     $('#b-filtros', el).classList.toggle('filtro-on', nf > 0);
     $$('[data-tira]', el).forEach(b => b.onclick = () => {
-      if (b.dataset.tira === 'kpi' || b.dataset.tira === 'idade') { const p = Object.assign({}, params); delete p[b.dataset.tira]; delete p.vez; ctx.navegar('fila', p); return; }
+      if (b.dataset.tira === 'kpi' || b.dataset.tira === 'idade' || b.dataset.tira === 'motivo') { const p = Object.assign({}, params); delete p[b.dataset.tira]; delete p.vez; ctx.navegar('fila', p); return; }
       filtros[b.dataset.tira] = ''; const s = $('#f-' + b.dataset.tira, el); if (s) s.value = ''; desenhar();
     });
   };
