@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.11.0)
+# Control Onvio · ControlTax (v0.11.1)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Nesta versão a extensão ainda **só lê**: as ações (responder, definir responsável, anexar) chegam na próxima, depois do mapeamento.
 
@@ -41,6 +41,16 @@ Vez do escritório: sem primeiro trâmite após 1 dia útil; aberta além de 3 d
 Vez do cliente: sem retorno há mais de 5 dias úteis (laranja); a partir de 20 dias parada fica vermelho com a contagem até a prescrição de 30 dias.
 
 Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardando resposta** = o escritório precisa responder; **Respondido** = vez do cliente.
+
+## Novidades da v0.11.1 (trâmites que davam "HTTP 404")
+
+Em algumas listas (como **Aviso de férias**) o detalhe mostrava "Não foi possível ler os trâmites (HTTP 404)". A extensão usava para todas as listas o caminho de trâmites que só tinha sido confirmado em Cadastro.
+
+- Agora o Control Onvio **aprende o caminho com o próprio Onvio**. Abra os trâmites de **uma** solicitação daquela lista na tela nativa do Onvio (botão **Abrir no Onvio** no detalhe) e pronto: a extensão guarda o caminho (só o endereço, nunca o conteúdo) e passa a mostrar os trâmites daquela lista. Se o detalhe estiver aberto, ele atualiza sozinho.
+- Com o caminho aprendido, o **1º trâmite** dessa lista também volta a ser estimado na próxima leitura.
+- Configurações > Diagnóstico mostra "**Trâmites por lista**": padrão, aprendido ou "a aprender (404)". O botão "Esquecer rotas de trâmites aprendidas" volta ao padrão.
+
+**A confirmar no Onvio real:** abra os trâmites de uma solicitação de Aviso de férias (e de cada lista que mostrar "a aprender") e depois o detalhe no Control Onvio. Se continuar falhando, envie o Diagnóstico.
 
 ## Novidades da v0.11.0 (Hoje no formato de Convenções)
 

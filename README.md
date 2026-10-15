@@ -2,7 +2,7 @@
 
 Ferramentas internas da ControlTax para facilitar o uso e o controle do **Portal do Cliente Onvio** por analistas e gestores.
 
-## Control Onvio (extensão do Chrome) · v0.11.0
+## Control Onvio (extensão do Chrome) · v0.11.1
 
 Página de trabalho em tela cheia **por cima do Onvio Portal do Cliente**: filas das 10 listas de solicitações, dashboards em tempo real (Hoje no formato da tela Convenções do Departamento Pessoal: carteira, destaque com rosca, carrossel e próximos passos, situações e cartões por situação; Equipe com idade da fila, prescrição e sugestão de distribuição; Clientes), agenda, detalhe com trâmites, alertas e lembretes pessoais. O Onvio continua aberto por trás e mantém a sessão.
 

@@ -101,6 +101,8 @@ Todas as chamadas abaixo responderam 200 com `fetch` simples a partir da página
 
 **Trâmites:** `GET br-payroll-sr/v1/{tipo}/{id}/topics?expand=all&itemsPerPage=1000&orderBy=created asc&pageIndex=0` (testado em Cadastro; para Geral o código segue o mesmo padrão, a confirmar: `service-requesting/v1/tickets/generic/{id}/topics`). Cada trâmite traz `created`, `status`, `description`, `createdByContactExpanded.name` e `attachmentsExpanded`.
 
+**15/10/2026:** no Onvio real, `prior-notice-vacations/{id}/topics` (Aviso de férias) respondeu **HTTP 404**. O caminho `topics` só está confirmado em Cadastro; nas outras listas pode ser outro. Desde a 0.11.1 a extensão **aprende a rota com o próprio Onvio**: quando a página nativa abre os trâmites de uma solicitação (GET `…/{lista}/{id}/{algo}` que devolve itens com `created` + `status` + texto/autor/anexos), o `acao-hook.js` manda ao service worker só o molde (lista, sufixo, id guid ou número, parâmetros técnicos), guardado em `rotasTramites`. Sem rota aprendida e com 404, o detalhe tenta uma vez `topics` com o número da solicitação. O Diagnóstico mostra o estado de cada lista ("Trâmites por lista"). Quando o caminho real de cada lista for visto, anote aqui.
+
 **Ações (encontradas no código, não executadas):** `{tipo}/assign-staff` (definir responsável), `{tipo}/change-due-date`, `{tipo}/{id}/print-detail`, download em lote de anexos `…/{id}/attachments/batch-download/{tipo}`, inclusão e exclusão de trâmite e de anexo.
 
 **Apoio:** `br-default-department/v1/department` (22 departamentos), `service-requesting/v1/ticket-prescriptions` e `br-payroll-sr/v1/ticket-prescriptions` (regra de prescrição: ativa, 30 dias), `br-payroll-sr/v1/company-department-access`, `core/v3/companies/{id}/employees/search` (funcionários do escritório) e `service-requesting/v1/gestta/task/service-order` (integração com o Gestta, não testada).
@@ -184,7 +186,7 @@ Arquivos previstos: `manifest.json`, `background.js` (coleta e regras), `onvio-a
 - [ ] **Pendência de Rubricas.** Definir o filtro próprio (provável: situação diferente de 8 Concluído e 10 Prescrita) e conferir na tela.
 - [ ] **Códigos não observados.** Cadastro 1 e 4 e Rubricas 1 a 3 não apareceram nos dados; a extensão deve mostrar "situação desconhecida (código N)" em vez de errar.
 - [ ] **Busca global de documentos.** Testar `storage/v1/containers/documents/search`. Sem ela, a checagem de guias exige percorrer pastas de cerca de 500 clientes, o que é lento.
-- [ ] **Trâmites da Geral.** Confirmar o caminho de `topics` para `tickets/generic`.
+- [ ] **Trâmites fora de Cadastro.** Aviso de férias deu 404 em `topics`. Abrir os trâmites de uma solicitação de cada lista no Onvio e anotar o caminho que o Diagnóstico mostrar como "aprendido" (Geral, Férias, Rescisão, Afastamento, Rubricas).
 - [ ] **Login de cliente x escritório.** As APIs de solicitações respondem às duas visões. A extensão bloqueia o acesso de cliente pela sessão (`security/v1/session-and-bindings`, campo de tipo/papel ainda não visto), por aba em `/clientcenter/` ou por `br-payroll-sr/v1/company-department-access` recusado. Confirmar com um login de cliente de teste qual sinal aparece (Diagnóstico > Perfil da sessão).
 - [ ] **Perfil do usuário.** Cada pessoa só vê o que seu perfil no Onvio permite; o painel do gestor depende de um perfil com acesso a todos os departamentos.
 - [ ] **Carga.** Atualizar a cada 5 a 10 minutos, só com o filtro de pendentes e 200 itens por página, nunca a base inteira.
