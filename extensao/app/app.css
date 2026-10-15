@@ -668,3 +668,4 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
   .an-f, .hj-step, .hj-card, .hj-tk{transition:none}
   .hj-tick-relogio i{animation-duration:8s}
 }
+.faixa > div{flex:1; min-width:0; line-height:1.45}

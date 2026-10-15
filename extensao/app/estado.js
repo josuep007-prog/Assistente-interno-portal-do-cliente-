@@ -5,12 +5,12 @@ const OC = window.OC;
 
 const CHAVES = {
   snapshot: 'snap', status: 'status', settings: 'usuario', regrasEscritorio: 'regras', ultimaVerificacao: 'ultima',
-  eventos: 'eventos', lembretes: 'lembretes', serie: 'serie', alertasVistosEm: 'alertasVistosEm'
+  eventos: 'eventos', lembretes: 'lembretes', serie: 'serie', alertasVistosEm: 'alertasVistosEm', rotasTramites: 'rotas'
 };
 
 export const estado = {
   snap: null, status: null, usuario: {}, regras: null, ultima: null,
-  eventos: [], lembretes: [], serie: {}, alertasVistosEm: null,
+  eventos: [], lembretes: [], serie: {}, alertasVistosEm: null, rotas: {},
   settings: Object.assign({}, OC.DEFAULTS)
 };
 
@@ -21,7 +21,7 @@ function aplicar(d) {
   for (const [k, campo] of Object.entries(CHAVES)) {
     if (!(k in d)) continue;
     const v = d[k];
-    estado[campo] = v == null ? (['eventos', 'lembretes'].includes(campo) ? [] : campo === 'serie' ? {} : campo === 'usuario' ? {} : null) : v;
+    estado[campo] = v == null ? (['eventos', 'lembretes'].includes(campo) ? [] : ['serie', 'usuario', 'rotas'].includes(campo) ? {} : null) : v;
   }
   estado.settings = OC.combinarSettings(estado.regras, estado.usuario);
 }
