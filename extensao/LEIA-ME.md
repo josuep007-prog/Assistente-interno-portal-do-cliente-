@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.11.1)
+# Control Onvio · ControlTax (v0.11.2)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Nesta versão a extensão ainda **só lê**: as ações (responder, definir responsável, anexar) chegam na próxima, depois do mapeamento.
 
@@ -41,6 +41,12 @@ Vez do escritório: sem primeiro trâmite após 1 dia útil; aberta além de 3 d
 Vez do cliente: sem retorno há mais de 5 dias úteis (laranja); a partir de 20 dias parada fica vermelho com a contagem até a prescrição de 30 dias.
 
 Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardando resposta** = o escritório precisa responder; **Respondido** = vez do cliente.
+
+## Novidades da v0.11.2 (cabeçalho padronizado)
+
+- Todas as ferramentas do cabeçalho têm a mesma altura (34 px), a mesma borda e os mesmos cantos: carteira, busca, "Ao vivo", atualizar, sino e "Ver Onvio".
+- "Ao vivo" e o botão de atualizar viraram um controle só; "Ver Onvio" fica separado por um divisor e deixou de ser o botão preto, que pesava mais que o resto.
+- O rótulo "Carteira" segue o padrão de rótulo pequeno em maiúsculas.
 
 ## Novidades da v0.11.1 (trâmites que davam "HTTP 404")
 
