@@ -158,14 +158,14 @@ function avisarNovos() {
 /* ---------- busca em janela central (Ctrl+K ou /) ---------- */
 const TELAS = [
   { rot: 'Hoje', sub: 'o que fazer agora', ic: 'i-home', ir: () => navegar('inicio') },
-  { rot: 'Minha fila', sub: 'minhas pendências', ic: 'i-inbox', ir: () => navegar('fila') },
-  { rot: 'Fila da equipe', sub: 'todas as pendências', ic: 'i-users', ir: () => navegar('fila', { escopo: 'equipe' }) },
+  { rot: 'Solicitações', sub: 'minhas pendências', ic: 'i-inbox', ir: () => navegar('fila') },
+  { rot: 'Solicitações da equipe', sub: 'todas as pendências', ic: 'i-users', ir: () => navegar('fila', { escopo: 'equipe' }) },
   { rot: 'Sem responsável', sub: 'para distribuir', ic: 'i-users', ir: () => navegar('fila', { escopo: 'semresp' }) },
   { rot: 'Agenda e lembretes', sub: 'calendário do mês', ic: 'i-calendar', ir: () => navegar('lembretes') },
   { rot: 'Novo lembrete', sub: 'criar agora', ic: 'i-plus', ir: () => abrirLembrete() },
   { rot: 'Equipe', sub: 'painel do gestor', ic: 'i-users', ir: () => navegar('equipe') },
   { rot: 'Clientes', sub: 'pendências por empresa', ic: 'i-building', ir: () => navegar('clientes') },
-  { rot: 'Todas as solicitações', sub: 'as 10 listas, inclusive concluídas', ic: 'i-list', ir: () => navegar('solicitacoes') },
+  { rot: 'Consultar no Onvio', sub: 'as 10 listas, inclusive concluídas', ic: 'i-list', ir: () => navegar('solicitacoes') },
   { rot: 'Configurações', sub: 'prazos, leitura, diagnóstico', ic: 'i-gear', ir: () => navegar('config') }
 ];
 let opcoes = [], marcada = 0;

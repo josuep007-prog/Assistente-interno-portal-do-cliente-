@@ -146,9 +146,7 @@ await app.evaluate(() => document.querySelector('#vista').scrollTo(0, 0));
 await app.selectOption('#hj-carteira', '__equipe');
 await new Promise(r => setTimeout(r, 600));
 await foto(portal, '1-inicio-equipe.png');
-await app.click('[data-vis="lista"]');
-await foto(portal, '1-inicio-lista.png');
-await app.click('[data-vis="cartoes"]');
+assert.ok(await app.$('#hj-paineis, .hj-paineis'), 'painéis do Hoje');
 await app.selectOption('#hj-carteira', '__minha');
 await app.evaluate(() => document.querySelector('#vista').scrollTo(0, 0));
 for (const rota of ['fila', 'fila?escopo=equipe', 'equipe', 'equipe?aba=resp', 'clientes', 'clientes?aba=empresas', 'lembretes', 'lembretes?aba=lista']) {

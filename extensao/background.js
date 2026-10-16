@@ -517,6 +517,11 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'reagendar') { await agendar(); reply({ ok: true }); }
       else if (msg.cmd === 'atualizarRegras') { reply(await atualizarRegras()); }
       else if (msg.cmd === 'tick') { reply(await verificarAoVivo(!!msg.forcar)); }
+      else if (msg.cmd === 'previsao') {            // sob demanda: solicitações abertas por empresa nas últimas 4 semanas (nada é guardado)
+        const { f } = await escolherFetcher();
+        const mov = await OC.lerMovimentadas(f, 28, new Date());
+        reply(Object.assign({ ok: true, erros: mov.erros }, OC.previsaoPorEmpresa(mov.itens, new Date(), 28)));
+      }
       else if (msg.cmd === 'distribuicao') {        // sob demanda: quem mais atendeu cada empresa nos últimos dias (nada é guardado)
         const { f } = await escolherFetcher();
         const dias = Math.min(30, Math.max(1, Number(msg.dias) || 7));

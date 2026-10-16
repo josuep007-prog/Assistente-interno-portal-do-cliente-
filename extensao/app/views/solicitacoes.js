@@ -1,4 +1,4 @@
-/* Todas as solicitações · as 10 listas do Onvio (inclusive concluídas), consultadas na hora, e a busca universal.
+/* Consultar no Onvio · as 10 listas do Onvio (inclusive concluídas), consultadas na hora, e a busca universal.
  * Cada lista é uma aba do cabeçalho; a consulta vai ao service worker, que lê pela aba do Onvio. */
 import { enviar } from '../estado.js';
 import { esc, pillSituacao, ligarItens, fmtDataHora, fmtData, $, $$ } from '../util.js';
@@ -14,7 +14,7 @@ export function render(el, ctx, params) {
   if (params.tipo && OC.TYPE_BY_KEY[params.tipo]) est.tipo = params.tipo;
 
   const { abas } = ctx.cab({
-    titulo: 'Todas as solicitações', sub: 'As listas do Onvio, consultadas na hora (inclusive as concluídas)',
+    titulo: 'Consultar no Onvio', sub: 'As listas do Onvio, consultadas na hora (inclusive as concluídas)',
     abas: OC.TYPES.map(t => ({ id: t.key, rot: t.label })), aba: est.tipo
   });
   el.innerHTML =

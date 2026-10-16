@@ -1,4 +1,4 @@
-/* Fila · minhas, equipe, sem responsável, de um analista ou de um cliente (pendências lidas ao vivo).
+/* Solicitações (rota #/fila) · minhas, equipe, sem responsável, de um analista ou de um cliente (pendências lidas ao vivo).
  * Barra como a de Empresas no Departamento Pessoal: busca, vez, Filtros, Ordenar, Lista/Cartões e Mais. */
 import { estado, itens, minhas, clienteRespondeu, enviar } from '../estado.js';
 import { esc, pillSituacao, prazoHtml, cartaoItem, ligarItens, csvItens, fmtDataCurta, ladoTexto, normal, $, $$ } from '../util.js';
@@ -12,7 +12,10 @@ const KPI = {
   respondeu: { rot: 'Cliente respondeu', f: clienteRespondeu },
   prescreve: { rot: 'Prescrevem em até 5 dias', f: i => i.prescreveEm != null && i.prescreveEm <= 5 },
   abaErrada: { rot: 'Possível aba errada', f: i => !!i.abaProvavel },
-  cli: { rot: 'Na vez do cliente', f: i => i.lado === 'cli' }
+  cli: { rot: 'Na vez do cliente', f: i => i.lado === 'cli' },
+  admissao: { rot: 'Admissões em destaque', f: i => !!i.admissaoAlerta },
+  pagamento: { rot: 'Pagamento vencendo em até 1 dia útil', f: i => !!i.prazoLegal && i.prazoLegal.faltam <= 1 },
+  semcalc: { rot: 'Avisos sem cálculo', f: i => !!i.semCalculo }
 };
 
 const COLUNAS = [
@@ -39,8 +42,8 @@ export function render(el, ctx, params) {
   const escopo = params.escopo || 'minhas';
   const todas = itens();
   let base = escopo === 'equipe' ? todas : escopo === 'semresp' ? todas.filter(i => !i.resp) : minhas();
-  let titulo = escopo === 'equipe' ? 'Fila da equipe' : escopo === 'semresp' ? 'Sem responsável' : 'Minha fila';
-  let sub = 'Pendências lidas do Onvio, ao vivo';
+  let titulo = 'Solicitações';
+  let sub = (escopo === 'equipe' ? 'Da equipe toda' : escopo === 'semresp' ? 'Sem responsável' : 'As suas') + ' · pendências lidas do Onvio, ao vivo';
   if (params.analista) { base = todas.filter(i => (i.resp || '(sem responsável)') === params.analista); titulo = params.analista; sub = 'Fila do responsável · <a href="#/equipe">voltar à Equipe</a>'; }
   if (params.cliente) { base = todas.filter(i => (i.cliente || i.apelido || '(cliente não informado)') === params.cliente); titulo = params.cliente; sub = 'Pendências do cliente · <a href="#/clientes">voltar a Clientes</a>'; }
   const kpi = KPI[params.kpi];

@@ -87,7 +87,8 @@
     parada: 15,               // dias corridos sem movimentação
     prescricaoDias: 30,       // regra do Onvio
     prescricaoAviso: 20,      // a partir de quantos dias parada vira alerta vermelho
-    tempoOcupado: 5,          // dias úteis que um analista leva para atender num período cheio: prazo legal mais perto que isso já pede ação
+    tempoOcupado: 5,
+    admissaoAviso: 2,         // dias úteis antes do início para destacar a admissão (o eSocial é até o dia anterior)          // dias úteis que um analista leva para atender num período cheio: prazo legal mais perto que isso já pede ação
     pagamentoFeriasAntes: 2,  // CLT art. 145: férias pagas até 2 dias antes do início
     pagamentoRescisaoDias: 10, // CLT art. 477 §6º: verbas rescisórias em até 10 dias do término do contrato
     avisoFeriasDias: 30,      // CLT art. 135: aviso de férias com 30 dias de antecedência
@@ -244,6 +245,7 @@
       detalhe,
       resp: (r.staffResponsibleExpanded && r.staffResponsibleExpanded.name) || '',
       respId: (r.staffResponsibleExpanded && r.staffResponsibleExpanded.id) || '',
+      admissao: t.familia === 'cadastro' ? (String(r.admissionDate || r.startDate || '').slice(0, 10) || null) : null,
       solicitante: (r.requesterExpanded && r.requesterExpanded.name) || '',
       mine: mineSet ? mineSet.has(r.id) : false,
       abaProvavel: t.key === 'geral' ? abaProvavel(detalhe, regras || DEFAULTS.abaErrada) : null
@@ -307,7 +309,19 @@
         else if (uteisParado > s.clienteSemRetorno) alerta(1, 'Cliente sem retorno há ' + uteisParado + ' d.u.');
       }
     }
-    return { nivel, motivos, parado, uteisAberto, prescreveEm, grav: gravidade(it, t, s, { nivel, parado, uteisAberto, prescreveEm }) };
+    // Admissão: o eSocial (S-2200) precisa ser enviado até o dia anterior ao início. Pedido com data de início anterior à
+    // abertura (retroativo), início já passado ou perto destacam a solicitação, de quem quer que seja a vez.
+    let admissaoAlerta = null;
+    if (fam === FAMILIAS.cadastro && it.admissao && it.code !== 5 && it.code !== 6) {
+      const ini = diaDe(it.admissao), aberta = created ? new Date(created.getFullYear(), created.getMonth(), created.getDate()) : null;
+      const faltam = uteisAte(now, ini, hol), dt = fmtData(ini);
+      const retro = !!(aberta && ini < aberta);
+      if (retro) alerta(2, 'Admissão retroativa: início em ' + dt + ', pedida depois');
+      else if (faltam < 0) alerta(2, 'Admissão em ' + dt + ' já passou');
+      else if (faltam <= s.admissaoAviso) alerta(faltam <= 1 ? 2 : 1, faltam === 0 ? 'Admissão hoje (' + dt + '): eSocial já fora do prazo' : 'Admissão em ' + dt + ': eSocial até o dia anterior');
+      if (retro || faltam <= s.admissaoAviso) admissaoAlerta = { data: it.admissao, faltam, retro };
+    }
+    return { nivel, motivos, parado, uteisAberto, prescreveEm, admissaoAlerta, grav: gravidade(it, t, s, { nivel, parado, uteisAberto, prescreveEm }) };
   }
 
   /* Gravidade para o painel do gestor. 0 em dia | 1 atenção | 2 fora do prazo |
@@ -574,7 +588,7 @@
   const LIMITES = {
     primeiroTramite: [0, 30], conclusaoSimples: [1, 60], conclusaoCalculo: [1, 60], clienteSemRetorno: [1, 60],
     parada: [1, 90], prescricaoDias: [1, 120], prescricaoAviso: [1, 120], tempoRealSeg: [0, 600],
-    tempoOcupado: [0, 30], pagamentoFeriasAntes: [0, 30], pagamentoRescisaoDias: [0, 60], avisoFeriasDias: [0, 90]
+    tempoOcupado: [0, 30], admissaoAviso: [0, 15], pagamentoFeriasAntes: [0, 30], pagamentoRescisaoDias: [0, 60], avisoFeriasDias: [0, 90]
   };
   const inteiro = (v, [min, max]) => (typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max ? v : undefined);
 
@@ -1274,5 +1288,86 @@
     return [...m.entries()].map(([id, nome]) => ({ id, nome })).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
   }
 
-  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, observacoesCliente, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  /* ---------- painéis do Hoje ---------- */
+  // Admissões em destaque: retroativas, já passadas ou perto do início (ver evaluate). Mais urgente primeiro.
+  function admissoesCriticas(items) {
+    return (items || []).filter(i => i.admissaoAlerta).sort((a, b) => (b.admissaoAlerta.retro - a.admissaoAlerta.retro) || (a.admissaoAlerta.faltam - b.admissaoAlerta.faltam));
+  }
+  // Prazos legais de pagamento (férias e rescisão) que vencem dentro da janela, do mais perto ao mais longe
+  function vencimentosLegais(items, s, now, janela) {
+    s = Object.assign({}, DEFAULTS, s || {});
+    now = now || new Date();
+    const hol = new Set(s.feriados || []), lim = janela == null ? s.tempoOcupado * 2 : janela;
+    return (items || []).filter(i => i.pagamentoAte && i.lado !== 'fim').map(i => ({ item: i, alvo: i.pagamentoAte.alvo, ref: i.pagamentoAte.ref, faltam: uteisAte(now, diaDe(i.pagamentoAte.alvo), hol) }))
+      .filter(v => v.faltam <= lim).sort((a, b) => a.faltam - b.faltam);
+  }
+  /* Mau uso do portal pelo cliente, por empresa: pedido na lista Geral que tem aba própria, pedido repetido em aberto
+   * (mesma lista e mesmo empregado/assunto), solicitação parada do lado do cliente e perto de prescrever. */
+  function malUso(items, s) {
+    s = Object.assign({}, DEFAULTS, s || {});
+    const m = new Map(), chave = i => i.codCliente !== '' && i.codCliente != null ? 'c' + i.codCliente : 'n' + semAcento(i.cliente || i.apelido || '');
+    const reg = i => { const k = chave(i); if (!m.has(k)) m.set(k, { cliente: i.cliente || i.apelido || '—', apelido: i.apelido || '', abaErrada: [], repetidas: [], paradasCliente: [], total: 0 }); return m.get(k); };
+    const vistos = new Map();
+    for (const i of items || []) {
+      if (i.lado === 'fim') continue;
+      const r = reg(i); r.total++;
+      if (i.abaProvavel) r.abaErrada.push(i);
+      if (i.lado === 'cli' && (i.parado || 0) > s.parada) r.paradasCliente.push(i);
+      if (i.detalhe) {
+        const k = chave(i) + '|' + i.type + '|' + semAcento(i.detalhe).trim();
+        if (vistos.has(k)) { r.repetidas.push(i); if (!r.repetidas.includes(vistos.get(k))) r.repetidas.push(vistos.get(k)); } else vistos.set(k, i);
+      }
+    }
+    return [...m.values()].map(r => {
+      const motivos = [];
+      if (r.abaErrada.length) motivos.push(r.abaErrada.length + ' na lista Geral com aba própria');
+      if (r.repetidas.length) motivos.push(r.repetidas.length + ' pedidos repetidos em aberto');
+      if (r.paradasCliente.length) motivos.push(r.paradasCliente.length + ' parada' + (r.paradasCliente.length > 1 ? 's' : '') + ' esperando o cliente há mais de ' + s.parada + ' dias');
+      return Object.assign(r, { motivos, pontos: r.abaErrada.length * 2 + r.repetidas.length * 2 + r.paradasCliente.length });
+    }).filter(r => r.pontos > 0).sort((a, b) => b.pontos - a.pontos || a.cliente.localeCompare(b.cliente, 'pt-BR'));
+  }
+  // Sugestões de ação para o dia, com link para a tela que resolve. extras: { semCalculo, admissoes, vencimentos }
+  function sugestoesAcoes(items, extras) {
+    items = (items || []).filter(i => i.lado !== 'fim');
+    extras = extras || {};
+    const c = f => items.filter(f).length, out = [];
+    const add = (n, k, texto, link, peso) => { if (n) out.push({ k, n, texto, link, peso }); };
+    add((extras.admissoes || []).length, 'admissao', 'Priorize as admissões em destaque: o eSocial vence no dia anterior ao início', '#/fila?escopo=equipe&kpi=admissao', 100);
+    add(c(i => i.lado === 'esc' && i.grav === 3), 'g3', 'Comece pelas críticas (G3): fora do prazo há muito tempo ou perto de prescrever', '#/fila?escopo=equipe&kpi=g3', 90);
+    add((extras.vencimentos || []).filter(v => v.faltam <= 1).length, 'pagamento', 'Pagamentos de férias/rescisão vencendo em até 1 dia útil', '#/fila?escopo=equipe&kpi=pagamento', 85);
+    add((extras.semCalculo || []).length, 'semcalc', 'Avise os clientes que ainda não pediram o cálculo de férias/rescisão', '#/fila?escopo=equipe&kpi=semcalc', 80);
+    add(c(clienteRespondeu), 'respondeu', 'Responda quem já respondeu: o cliente está esperando o escritório', '#/fila?escopo=equipe&kpi=respondeu', 70);
+    add(c(i => !i.resp), 'semresp', 'Distribua as solicitações sem responsável', '#/distribuir', 65);
+    add(c(i => i.lado === 'cli' && i.prescreveEm != null && i.prescreveEm <= 5), 'prescreve', 'Cobre os clientes antes de prescrever (30 dias parada)', '#/fila?escopo=equipe&kpi=prescreve', 60);
+    add(c(i => !!i.abaProvavel), 'abaerrada', 'Oriente os clientes que abriram na lista Geral um pedido com aba própria', '#/fila?escopo=equipe&kpi=abaErrada', 40);
+    return out.sort((a, b) => b.peso - a.peso);
+  }
+  /* Previsão de solicitações por empresa: a partir das abertas nos últimos N dias (todas as situações, lidas na hora),
+   * média por semana, tendência (2 semanas mais recentes x 2 anteriores) e estimativa para os próximos 7 e 30 dias,
+   * pesando mais as semanas recentes. É estimativa simples, não promessa. */
+  function previsaoPorEmpresa(itens, now, dias) {
+    now = now || new Date(); dias = dias || 28;
+    const desde = now.getTime() - dias * 864e5, meio = now.getTime() - 14 * 864e5;
+    const m = new Map();
+    for (const i of itens || []) {
+      const cr = parseDate(i.created);
+      if (!cr || cr.getTime() < desde) continue;
+      const k = i.codCliente !== '' && i.codCliente != null ? 'c' + i.codCliente : 'n' + semAcento(i.cliente || i.apelido || '');
+      if (!m.has(k)) m.set(k, { cliente: i.cliente || i.apelido || '—', apelido: i.apelido || '', total: 0, recentes: 0, anteriores: 0, tipos: {} });
+      const r = m.get(k);
+      r.total++; if (cr.getTime() >= meio) r.recentes++; else r.anteriores++;
+      r.tipos[i.typeLabel || i.type] = (r.tipos[i.typeLabel || i.type] || 0) + 1;
+    }
+    const semanas = dias / 7;
+    const lista = [...m.values()].map(r => {
+      const porSemana = r.total / semanas;
+      const ponderada = (r.recentes / 2) * 0.6 + (r.anteriores / Math.max(1, semanas - 2)) * 0.4;
+      const tend = r.recentes > r.anteriores * 1.25 + 0.5 ? 'sobe' : r.anteriores > r.recentes * 1.25 + 0.5 ? 'desce' : 'estavel';
+      const tipos = Object.entries(r.tipos).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([t, n]) => ({ tipo: t, n }));
+      return { cliente: r.cliente, apelido: r.apelido, total: r.total, porSemana: Math.round(porSemana * 10) / 10, prox7: Math.round(ponderada), prox30: Math.round(ponderada * 30 / 7), tendencia: tend, tipos };
+    }).sort((a, b) => b.prox30 - a.prox30 || b.total - a.total || a.cliente.localeCompare(b.cliente, 'pt-BR'));
+    return { dias, empresas: lista, total: lista.reduce((s2, r) => s2 + r.total, 0), prox30: lista.reduce((s2, r) => s2 + r.prox30, 0) };
+  }
+
+  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, observacoesCliente, admissoesCriticas, vencimentosLegais, malUso, sugestoesAcoes, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);
