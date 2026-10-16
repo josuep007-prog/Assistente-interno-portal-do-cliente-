@@ -491,7 +491,7 @@ await passo('app · Fila: abas Minhas/Equipe/Sem responsável, filtros e chips, 
   assert.deepEqual(p.erros, []);
 });
 
-await passo('app · Equipe (área do gestor): pede a senha; Desempenho com nota, ranking, dispersão e detalhe; Carga e Responsáveis', async () => {
+await passo('app · Equipe (área do gestor): pede a senha; Desempenho com nota, ranking em tabela, entregas no prazo × fora e detalhe; Carga e Responsáveis', async () => {
   const p = await abrirApp('#/equipe');
   // trava: sem a senha certa não mostra nada da equipe
   await p.waitForSelector('#g-trava');
@@ -506,7 +506,8 @@ await passo('app · Equipe (área do gestor): pede a senha; Desempenho com nota,
     const d = n => { const x = new Date(); x.setDate(x.getDate() - n); return x.toISOString().slice(0, 10); };
     const fim = (k, resp, criada, concl, extra) => Object.assign({ k, type: 'geral', resp, lado: 'fim', status: 'Concluído', created: d(criada) + 'T09:00:00', last: d(concl) + 'T15:00:00' }, extra || {});
     const mov = [fim('f1', 'Ana Teste', 3, 2), fim('f2', 'Ana Teste', 2, 1), fim('f3', 'Ana Teste', 20, 1), fim('f4', 'Bia', 2, 1), fim('f5', 'Bia', 9, 8)];
-    window.__respostas = { desempenho: Object.assign({ ok: true, erros: [], movimentadas: mov.length }, OC.avaliarEquipe(JSON.parse(localStorage.getItem('__mem')).snapshot.items, mov, {}, 7)) };
+    const pend = JSON.parse(localStorage.getItem('__mem')).snapshot.items.concat({ k: 'geral:z', type: 'geral', resp: 'Caio', lado: 'esc', nivel: 0, grav: 0, parado: 1 });
+    window.__respostas = { desempenho: Object.assign({ ok: true, erros: [], movimentadas: mov.length }, OC.avaliarEquipe(pend, mov, {}, 7)) };
   });
   await p.fill('#g-senha', 'gestor@987654321');
   await p.press('#g-senha', 'Enter');
@@ -518,19 +519,30 @@ await passo('app · Equipe (área do gestor): pede a senha; Desempenho com nota,
   await p.waitForFunction(() => document.querySelector('#av-k-entregas .av-kpi-val').textContent === '4');
   assert.match(await p.textContent('#av-k-prazo'), /75%/, '3 de 4 entregas no prazo');
   assert.ok(await p.$('#av-k-entregas .mb-svg rect'), 'entregas por dia');
-  // ranking: uma linha por analista, com nota, faixa e os 4 itens
-  const rank = await p.$$eval('#av-rank .av-card', e => e.map(x => x.dataset.resp));
-  assert.deepEqual(rank.slice().sort(), ['Ana Teste', 'Bia']);
-  assert.equal(await p.$$eval('#av-rank .av-card:first-child .av-comp', e => e.length), 4);
-  assert.match(await p.textContent('#av-rank .av-card:first-child .av-chip'), /Excelente|Bom|Atenção|Precisa de apoio/);
-  // dispersão: uma bolinha por pessoa, com dica; clique abre o detalhe da pessoa e acende a bolinha
-  assert.equal(await p.$$eval('#av-disp .dp-p', e => e.length), 2);
-  assert.match(await p.getAttribute('#av-disp .dp-p[data-id="Ana Teste"]', 'data-tip'), /Ana Teste\n3 entregas · 67% no prazo/);
-  await p.click('#av-disp .dp-p[data-id="Ana Teste"]');
+  // ranking: tabela compacta, uma linha por analista, com nota, faixa e os 4 itens; o cabeçalho ordena
+  const rank = await p.$$eval('#av-rank .av-lin', e => e.map(x => x.dataset.resp));
+  assert.deepEqual(rank.slice().sort(), ['Ana Teste', 'Bia', 'Caio']);
+  assert.equal(await p.$$eval('#av-rank .av-lin:first-child .av-mini', e => e.length), 4);
+  assert.match(await p.textContent('#av-rank .av-lin:first-child .av-chip'), /Excelente|Bom|Atenção|Precisa de apoio/);
+  const alt = await p.$eval('#av-rank .av-lin', r => r.getBoundingClientRect().height);
+  assert.ok(alt <= 40, 'linha fina: ' + alt);
+  await p.click('#av-rank [data-ord="concluidas"]');
+  assert.deepEqual(await p.$$eval('#av-rank .av-lin', e => e.map(x => x.dataset.resp)), ['Ana Teste', 'Bia', 'Caio'], 'mais entregas primeiro');
+  await p.click('#av-rank [data-ord="concluidas"]');
+  assert.deepEqual(await p.$$eval('#av-rank .av-lin', e => e.map(x => x.dataset.resp)), ['Caio', 'Bia', 'Ana Teste']);
+  // entregas no período: barra no prazo × fora do prazo por pessoa; sem entregas não vira 0%
+  assert.match(await p.textContent('#av-barras'), /No prazo.*Fora do prazo/s);
+  assert.match(await p.textContent('#av-barras'), /3 · 67% no prazo/);
+  assert.match(await p.textContent('#av-barras'), /Bia1 · 100% no prazo/, 'a entrega de 8 dias atrás fica fora dos 7 dias');
+  assert.match(await p.textContent('#av-barras'), /Caio.*sem entregas no período/s);
+  assert.doesNotMatch(await p.textContent('#av-barras'), /Caio[^A-Z]*\b0%/, 'quem não entregou não aparece com 0%');
+  assert.equal(await p.$('#av-disp'), null, 'a dispersão saiu');
+  await p.click('#av-barras text[data-id="Ana Teste"]');
   await p.waitForSelector('#av-det .av-det');
   assert.match(await p.textContent('#av-det h3'), /Ana Teste · nota/);
-  assert.match(await p.getAttribute('#av-disp .dp-p[data-id="Bia"]', 'class'), /apagado/);
-  assert.match(await p.textContent('#av-det-l'), /Crítica \(G3\)[\s\S]*#101 ACME/, 'pontos de atenção da pessoa');
+  assert.equal(await p.$eval('#av-rank .av-lin.ativo', r => r.dataset.resp), 'Ana Teste');
+  // pontos de atenção com o porquê
+  assert.match(await p.textContent('#av-det-l'), /Crítica \(G3\)[\s\S]*#101 ACME[\s\S]*Por quê: parada há 31 dias, o dobro do limite de 15/, 'pontos de atenção com a justificativa');
   await p.click('#av-det-l [data-k="calcFerias:a"]');
   await p.waitForSelector('#gaveta:not([hidden])');
   await p.keyboard.press('Escape');
@@ -634,6 +646,26 @@ await passo('app · Configurações: prazos com efeito na fila antes de salvar, 
   assert.match(await p.textContent('#vista'), /aguardamos.*favor/s);
   await p.click('#abas .aba:has-text("Avançado")');
   await p.waitForSelector('iframe.cfg-frame');
+  assert.deepEqual(p.erros, []);
+});
+
+await passo('app · gravidade com o porquê (lista, detalhe) e cantos quadrados em botões, etiquetas e janelas', async () => {
+  const p = await abrirApp('#/fila?escopo=equipe', {});
+  await p.waitForSelector('#corpo [data-k="calcFerias:a"]');
+  assert.match(await p.textContent('#corpo [data-k="calcFerias:a"] .c-porque'), /G3: parada 2× o limite/);
+  assert.match(await p.getAttribute('#corpo [data-k="calcFerias:a"] .c-prazo', 'title'), /Crítica \(G3\) porque parada há 31 dias, o dobro do limite de 15/);
+  await p.evaluate(() => { window.__respostas = { detalhe: { ok: true, item: {}, tramites: [] } }; });
+  await p.click('#corpo [data-k="calcFerias:a"]');
+  await p.waitForSelector('#gaveta .grav-porque');
+  assert.equal(await p.textContent('#gaveta .grav-porque'), 'Por que é crítica (G3): parada há 31 dias, o dobro do limite de 15.');
+  assert.match(await p.textContent('#gaveta .motivos'), /Crítica \(G3\)/);
+  // cantos: até 4 px em botões, etiquetas, chips e janelas; iniciais continuam redondas
+  const raio = sel => p.$eval(sel, e => parseFloat(getComputedStyle(e).borderTopLeftRadius));
+  for (const sel of ['#gaveta', '#gaveta .pill', '#gaveta .btn', '#gaveta .dtab']) assert.ok(await raio(sel) <= 4, sel + ': ' + await raio(sel));
+  await p.keyboard.press('Escape');
+  await p.evaluate(() => { const x = document.createElement('div'); x.innerHTML = '<span class="pr-tag" id="t1">x</span><span class="chip-f" id="t2">x</span><span class="sc-n" id="t3">1</span><span class="orig" id="t4">x</span><span class="tr-av" id="t5">AT</span>'; document.body.appendChild(x); });
+  for (const sel of ['#t1', '#t2', '#t3', '#t4']) assert.ok(await raio(sel) <= 4, sel + ': ' + await raio(sel));
+  assert.equal(await p.$eval('#t5', e => getComputedStyle(e).borderTopLeftRadius), '50%', 'iniciais redondas');
   assert.deepEqual(p.erros, []);
 });
 
