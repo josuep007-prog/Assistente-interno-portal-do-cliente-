@@ -663,14 +663,15 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       }
       else if (msg.cmd === 'desempenho') {          // área do gestor: entregas do período e do anterior, lidas na hora (nada é guardado)
         const { f } = await escolherFetcher();
-        const dias = Math.min(30, Math.max(1, Number(msg.dias) || 7));
+        const dias = 30;                             // período fixo da avaliação (7 e 14 dias saíram)
         const s = await getSettings();
         const { snapshot } = await chrome.storage.local.get('snapshot');
         const agora = new Date();
         const mov = await OC.lerMovimentadas(f, dias * 2 + 1, agora, 10);
         // vez do cliente sem retorno e sem pedido do analista conta como entregue na data da última resposta
         const resolvidas = ((snapshot && snapshot.resolvidas) || []).map(r => Object.assign({}, r, { lado: 'fim', status: 'Resolvida (cliente sem retorno)' }));
-        const entregas = resolvidas.concat(mov.itens).filter(x => x.lado === 'fim');
+        // as mais recentes primeiro: o período avaliado é lido antes do anterior (que só serve de comparação)
+        const entregas = resolvidas.concat(mov.itens).filter(x => x.lado === 'fim').sort((a, b) => String(b.last || '').localeCompare(String(a.last || '')));
         // trâmites de cada entrega: tempo com o escritório e quem concluiu. O cache leva só números, o nome de quem
         // concluiu e a data da última movimentação; o que saiu do período sai do cache.
         const { desempenhoCache } = await chrome.storage.local.get('desempenhoCache');
