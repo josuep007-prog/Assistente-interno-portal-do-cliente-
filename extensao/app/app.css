@@ -752,10 +752,18 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .dist-sug small.late{color:var(--late)}
 
 /* Hoje · admissões em destaque */
-.hj-admissao{margin:0 0 18px; padding:16px 18px; border:2px solid var(--brand-red); border-radius:10px; background:color-mix(in srgb, var(--brand-red) 8%, var(--surface)); box-shadow:0 0 0 4px color-mix(in srgb, var(--brand-red) 12%, transparent)}
-.hj-admissao h3{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 12px; font:800 16px "Archivo",sans-serif; color:var(--brand-red)}
-.hj-admissao h3 small{flex-basis:100%; font:500 12.5px "IBM Plex Sans",sans-serif; color:var(--ink-2)}
-.hj-adm-l{display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:8px}
+.hj-admissao{margin:18px 0 0; padding:16px 18px; border:2px solid var(--brand-red); border-radius:10px; background:color-mix(in srgb, var(--brand-red) 8%, var(--surface)); box-shadow:0 0 0 4px color-mix(in srgb, var(--brand-red) 12%, transparent)}
+.hj-adm-cab{display:grid; grid-template-columns:1fr auto; align-items:center; gap:2px 12px; width:100%; padding:0; border:0; background:none; color:inherit; font:inherit; text-align:left; cursor:pointer}
+.hj-admissao h3{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0; font:800 16px "Archivo",sans-serif; color:var(--brand-red)}
+.hj-adm-resumo{font:600 12.5px "IBM Plex Sans",sans-serif; color:var(--ink-2)}
+.hj-adm-cab small{grid-column:1; font:500 12.5px "IBM Plex Sans",sans-serif; color:var(--ink-2)}
+.hj-adm-seta{grid-column:2; grid-row:1 / span 2; display:inline-flex; align-items:center; gap:4px; font-size:12px; font-weight:600; color:var(--brand-red)}
+.hj-adm-seta em{font-style:normal}
+.hj-adm-seta .ic{transition:transform .15s}
+.hj-admissao.recolhida .hj-adm-seta .ic{transform:rotate(-90deg)}
+.hj-adm-cab:hover .hj-adm-seta em{text-decoration:underline}
+.hj-adm-l{display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:8px; margin-top:12px}
+.hj-adm-l[hidden]{display:none}
 .hj-adm{display:flex; align-items:center; gap:12px; padding:10px 12px; border:1px solid var(--rule); border-radius:8px; background:var(--surface); color:inherit; font:inherit; text-align:left; cursor:pointer}
 .hj-adm:hover, .hj-adm:focus-visible{border-color:var(--brand-red)}
 .hj-adm-d{display:flex; flex-direction:column; min-width:78px}

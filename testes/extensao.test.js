@@ -1350,6 +1350,13 @@ test('admissão: retroativa, já passada ou perto do início destaca; cadastro e
   assert.equal(OC.normalize(OC.TYPE_BY_KEY.geral, { id: 'x', identifier: 1, genericStatus: 2, admissionDate: '2026-10-20T00:00:00' }, null, []).admissao, null);
   const lista = OC.admissoesCriticas([{ k: 'a', admissaoAlerta: { faltam: 2, retro: false } }, { k: 'b' }, { k: 'c', admissaoAlerta: { faltam: -4, retro: true } }, { k: 'd', admissaoAlerta: { faltam: 0, retro: false } }]);
   assert.deepEqual(plano(lista.map(x => x.k)), ['c', 'd', 'a'], 'retroativas primeiro, depois a mais perto');
+  // só as que o escritório ainda não tramitou
+  const al = { faltam: -1, retro: true };
+  const cad = (k, code, extra) => Object.assign({ k, type: 'cadEmpregado', code, admissaoAlerta: al }, extra || {});
+  assert.deepEqual(plano(OC.admissoesCriticas([cad('sem', 1), cad('env', 2), cad('aguarda', 3), cad('resp', 4), cad('encam', 7), cad('respLido', 4, { primeiroTramite: '2026-10-10T10:00:00' })]).map(x => x.k)), ['sem', 'env', 'resp'],
+    'Aguardando o cliente e Encaminhado são situações do escritório; trâmite do escritório lido também tira');
+  assert.equal(OC.escritorioTramitou({ type: 'cadEstagiario', code: 2 }), false);
+  assert.equal(OC.escritorioTramitou({ type: 'cadEstagiario', code: 3 }), true);
 });
 
 test('Hoje: vencimentos legais na janela, uso errado do portal por empresa e sugestões de ação', () => {

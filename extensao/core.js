@@ -1410,8 +1410,18 @@
 
   /* ---------- painéis do Hoje ---------- */
   // Admissões em destaque: retroativas, já passadas ou perto do início (ver evaluate). Mais urgente primeiro.
+  // O escritório já mexeu na solicitação? Sim quando a leitura dos trâmites achou um trâmite do escritório
+  // (primeiroTramite) ou quando a situação atual é uma que só um trâmite do escritório grava (fora de clienteGrava).
+  function escritorioTramitou(i) {
+    if (!i) return false;
+    if (i.primeiroTramite) return true;
+    const t = TYPE_BY_KEY[i.type];
+    if (!t || i.code == null) return false;
+    return !FAMILIAS[t.familia].clienteGrava.includes(Number(i.code));
+  }
+  // Faixa de admissões do Hoje: só as que o escritório ainda não tocou (nenhum trâmite do escritório)
   function admissoesCriticas(items) {
-    return (items || []).filter(i => i.admissaoAlerta).sort((a, b) => (b.admissaoAlerta.retro - a.admissaoAlerta.retro) || (a.admissaoAlerta.faltam - b.admissaoAlerta.faltam));
+    return (items || []).filter(i => i.admissaoAlerta && !escritorioTramitou(i)).sort((a, b) => (b.admissaoAlerta.retro - a.admissaoAlerta.retro) || (a.admissaoAlerta.faltam - b.admissaoAlerta.faltam));
   }
   // Prazos legais de pagamento (férias e rescisão) que vencem dentro da janela, do mais perto ao mais longe
   function vencimentosLegais(items, s, now, janela) {
@@ -1489,5 +1499,5 @@
     return { dias, empresas: lista, total: lista.reduce((s2, r) => s2 + r.total, 0), prox30: lista.reduce((s2, r) => s2 + r.prox30, 0) };
   }
 
-  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, quadroSemCalculo, marcarSemCalculo, textoAvisoSemCalculo, assuntoAvisoSemCalculo, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, admissoesCriticas, vencimentosLegais, malUso, sugestoesAcoes, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, quadroSemCalculo, marcarSemCalculo, textoAvisoSemCalculo, assuntoAvisoSemCalculo, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, admissoesCriticas, escritorioTramitou, vencimentosLegais, malUso, sugestoesAcoes, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);

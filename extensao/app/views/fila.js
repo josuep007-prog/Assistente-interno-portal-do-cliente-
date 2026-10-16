@@ -13,7 +13,7 @@ const KPI = {
   prescreve: { rot: 'Prescrevem em até 5 dias', f: i => i.prescreveEm != null && i.prescreveEm <= 5 },
   abaErrada: { rot: 'Possível aba errada', f: i => !!i.abaProvavel },
   cli: { rot: 'Na vez do cliente', f: i => i.lado === 'cli' },
-  admissao: { rot: 'Admissões em destaque', f: i => !!i.admissaoAlerta },
+  admissao: { rot: 'Admissões em destaque', f: i => !!i.admissaoAlerta && !OC.escritorioTramitou(i) },
   pagamento: { rot: 'Pagamento vencendo em até 1 dia útil', f: i => !!i.prazoLegal && i.prazoLegal.faltam <= 1 },
   semcalc: { rot: 'Avisos sem cálculo', f: i => !!i.semCalculo }
 };

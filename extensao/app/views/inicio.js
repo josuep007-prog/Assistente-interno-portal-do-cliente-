@@ -1,6 +1,7 @@
 /* Hoje · visão do dia (o trabalho com as solicitações em si fica em "Solicitações", #/fila).
- * Em cima, em destaque: admissões retroativas ou perto do início (o eSocial vence no dia anterior).
  * Destaque: rosca "% em dia" (clique leva às Solicitações com aquele motivo), carrossel e "Próximos passos".
+ * Logo abaixo, recolhível: admissões retroativas ou perto do início sem nenhum trâmite do escritório (o eSocial
+ * vence no dia anterior).
  * Avisos sem cálculo em quadro de duas colunas ("A avisar" e "Cliente avisado"): "Criar solicitação" abre a Nova
  * solicitação (Geral) já preenchida; "Responder no aviso" é um trâmite no próprio aviso; os dois são revisados e
  * confirmados. "Desconsiderar" tira do quadro. Só o k e a coluna ficam.
@@ -73,17 +74,24 @@ export function render(el, ctx) {
   const linkFila = p => '#/fila?' + new URLSearchParams(Object.assign(cart === EQUIPE ? { escopo: 'equipe' } : cart === SEM ? { escopo: 'semresp' } : cart !== MINHA ? { analista: cart } : {}, p));
 
   const ativos = quadro.avisar.length + quadro.avisados.length;
-  el.innerHTML = aviso + admissoesHtml() + heroHtml() + (semCalc.length ? semCalcHtml() : '') +
+  el.innerHTML = aviso + heroHtml() + admissoesHtml() + (semCalc.length ? semCalcHtml() : '') +
     '<div class="hj-paineis">' + vencHtml() + (semCalc.length ? '' : semCalcHtml()) + sugHtml() + usoHtml() + prevHtml() + '</div>';
 
-  // Admissões: faixa bem destacada no topo
+  // Admissões: faixa destacada logo abaixo do destaque, só as que o escritório ainda não tocou; recolhível (lembra a escolha)
   function admissoesHtml() {
     if (!admissoes.length) return '';
     const quando = a => a.retro ? 'retroativa' : a.faltam < 0 ? 'já passou' : a.faltam === 0 ? 'hoje' : a.faltam === 1 ? 'amanhã' : 'em ' + a.faltam + ' dias úteis';
     const dt = ymd => ymd.slice(8, 10) + '/' + ymd.slice(5, 7);
-    return '<section class="hj-admissao" id="hj-admissao" role="alert">' +
-      '<h3>' + ic('alert') + ' ' + plural(admissoes.length, 'admissão pede', 'admissões pedem') + ' prioridade <small>O eSocial precisa ser enviado até o dia anterior ao início. Admissão retroativa já está fora do prazo.</small></h3>' +
-      '<div class="hj-adm-l">' + admissoes.map(i => { const a = i.admissaoAlerta; return '<button type="button" class="hj-adm' + (a.retro || a.faltam <= 0 ? ' late' : '') + '" data-k="' + esc(i.k) + '">' +
+    const recolhida = lerPref('hojeAdmRecolhida', '') === '1';
+    const retro = admissoes.filter(i => i.admissaoAlerta.retro).length, passou = admissoes.filter(i => !i.admissaoAlerta.retro && i.admissaoAlerta.faltam < 0).length;
+    const prox = admissoes.find(i => !i.admissaoAlerta.retro && i.admissaoAlerta.faltam >= 0);
+    const resumo = [retro ? plural(retro, 'retroativa', 'retroativas') : '', passou ? passou + ' já ' + (passou === 1 ? 'passou' : 'passaram') : '', prox ? 'próxima em ' + dt(prox.admissaoAlerta.data) : ''].filter(Boolean).join(' · ');
+    return '<section class="hj-admissao' + (recolhida ? ' recolhida' : '') + '" id="hj-admissao" role="alert">' +
+      '<button type="button" class="hj-adm-cab" id="hj-adm-toggle" aria-expanded="' + !recolhida + '" aria-controls="hj-adm-l">' +
+        '<h3>' + ic('alert') + ' ' + plural(admissoes.length, 'admissão pede', 'admissões pedem') + ' prioridade <span class="hj-adm-resumo">' + esc(resumo) + '</span></h3>' +
+        '<small>Sem nenhum trâmite do escritório ainda. O eSocial precisa ser enviado até o dia anterior ao início; admissão retroativa já está fora do prazo.</small>' +
+        '<span class="hj-adm-seta">' + ic('chev-d', 'ic-sm') + '<em>' + (recolhida ? 'Mostrar' : 'Recolher') + '</em></span></button>' +
+      '<div class="hj-adm-l" id="hj-adm-l"' + (recolhida ? ' hidden' : '') + '>' + admissoes.map(i => { const a = i.admissaoAlerta; return '<button type="button" class="hj-adm' + (a.retro || a.faltam <= 0 ? ' late' : '') + '" data-k="' + esc(i.k) + '">' +
         '<span class="hj-adm-d"><b>' + esc(dt(a.data)) + '</b><small>' + esc(quando(a)) + '</small></span>' +
         '<span class="hj-adm-tx"><b>#' + esc(i.num) + ' ' + esc(nomeCli(i)) + ' · ' + esc(i.detalhe || i.typeLabel) + '</b><small>' + esc(i.typeLabel) + ' · ' + esc(i.status) + ' · ' + esc(i.resp || 'sem analista') + '</small></span>' + ic('chev-r', 'ic-sm') + '</button>'; }).join('') + '</div></section>';
   }
@@ -236,7 +244,15 @@ export function render(el, ctx) {
       aoEnviar: () => marcarSemCalculo(i.k, 'avisado')
     } });
   }));
-  if ($('#hj-admissao', el)) ligarItens($('#hj-admissao', el), admissoes, ctx.abrirDetalhe);
+  if ($('#hj-admissao', el)) ligarItens($('#hj-adm-l', el), admissoes, ctx.abrirDetalhe);
+  if ($('#hj-adm-toggle', el)) $('#hj-adm-toggle', el).onclick = () => {
+    const sec = $('#hj-admissao', el), rec = !sec.classList.contains('recolhida');
+    gravarPref('hojeAdmRecolhida', rec ? '1' : '');
+    sec.classList.toggle('recolhida', rec);
+    $('#hj-adm-l', el).hidden = rec;
+    $('#hj-adm-toggle', el).setAttribute('aria-expanded', String(!rec));
+    $('.hj-adm-seta em', el).textContent = rec ? 'Mostrar' : 'Recolher';
+  };
   if ($('#hj-venc .hj-mini-l', el)) ligarItens($('#hj-venc', el), vencs.map(v => v.item), ctx.abrirDetalhe);
   // previsão por empresa: calcula sozinha ao abrir (no máximo a cada 30 min); o botão recalcula
   // só o painel da previsão é trocado quando ela chega (o resto da tela e as faixas de aviso ficam)
