@@ -172,32 +172,56 @@ function leitura(el) {
 
 /* ---------- Feriados ---------- */
 const SEMANA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+// Feriados num calendário de 12 meses (o ano escolhido). Nacionais vêm com a extensão, os do escritório do arquivo de
+// regras e os locais são só seus. Clicar num dia leva a data para o quadro ao lado (incluir ou tirar um feriado local).
+let anoFer = new Date().getFullYear(), selFer = '';
 function feriados(el) {
   const lista = estado.settings.feriados || [];
+  const todos = new Set(lista);
   const embutidos = new Set(OC.DEFAULTS.feriados), doEsc = new Set((estado.regras && estado.regras.regras && estado.regras.regras.feriados) || []);
-  const hoje = OC.ymd(new Date()), ate = OC.ymd(new Date(Date.now() + 400 * 864e5));
-  const prox = lista.filter(d => d >= hoje && d <= ate).sort();
-  const porMes = {};
-  prox.forEach(d => { const m = d.slice(0, 7); (porMes[m] = porMes[m] || []).push(d); });
-  const nomeMes = m => { const s = new Date(+m.slice(0, 4), +m.slice(5, 7) - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }); return s[0].toUpperCase() + s.slice(1); };
-  const orig = d => (embutidos.has(d) ? ['padrao', 'nacional'] : doEsc.has(d) ? ['esc', 'escritório'] : ['seu', 'seu']);
-  const seuExtra = d => !embutidos.has(d) && !doEsc.has(d);
+  const hoje = OC.ymd(new Date());
+  const orig = d => (embutidos.has(d) ? ['padrao', 'nacional'] : doEsc.has(d) ? ['esc', 'do escritório'] : ['seu', 'local (só seu)']);
+  const seuExtra = d => todos.has(d) && !embutidos.has(d) && !doEsc.has(d);
+  const p2 = n => String(n).padStart(2, '0');
+  const nomeMes = m => { const s = new Date(anoFer, m, 1).toLocaleDateString('pt-BR', { month: 'long' }); return s[0].toUpperCase() + s.slice(1); };
+  const mes = m => {
+    const ini = new Date(anoFer, m, 1), dias = new Date(anoFer, m + 1, 0).getDate();
+    let cel = '';
+    for (let i = 0; i < ini.getDay(); i++) cel += '<span></span>';
+    let n = 0;
+    for (let d = 1; d <= dias; d++) {
+      const k = anoFer + '-' + p2(m + 1) + '-' + p2(d), dt = new Date(anoFer, m, d), fds = dt.getDay() === 0 || dt.getDay() === 6;
+      const f = todos.has(k) ? orig(k) : null;
+      if (f) n++;
+      cel += '<button type="button" class="fa-d' + (fds ? ' fds' : '') + (f ? ' fer fer-' + f[0] : '') + (k === hoje ? ' hoje' : '') + (k === selFer ? ' sel' : '') + '" data-dia="' + k + '" title="' + p2(d) + '/' + p2(m + 1) + (f ? ' · feriado ' + f[1] : fds ? ' · fim de semana' : '') + '">' + d + '</button>';
+    }
+    return '<div class="fa-mes"><h4>' + nomeMes(m) + (n ? ' <span>' + n + '</span>' : '') + '</h4><div class="fa-sem">' + ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map(x => '<span>' + x + '</span>').join('') + '</div><div class="fa-dias">' + cel + '</div></div>';
+  };
+  const doAno = lista.filter(d => d.startsWith(anoFer + '-'));
+  const prox = lista.filter(d => d >= hoje).sort().slice(0, 4);
+  const selTx = selFer ? selFer.slice(8, 10) + '/' + selFer.slice(5, 7) + '/' + selFer.slice(0, 4) + ' (' + SEMANA[OC.diaDe(selFer).getDay()] + ')' : '';
+  const quadro = !selFer ? '<p class="fraco">Clique num dia do calendário para incluir um feriado local (municipal, ponto facultativo, recesso) ou tirar um que você incluiu.</p>'
+    : seuExtra(selFer) ? '<p><b>' + selTx + '</b> é um feriado local seu.</p><div class="cfg-acoes"><span class="spacer"></span><button type="button" class="btn btn-sm" id="cf-fer-tira">Tirar este feriado</button></div>'
+    : todos.has(selFer) ? '<p><b>' + selTx + '</b> é feriado ' + orig(selFer)[1] + ': vale para todos e não sai por aqui.</p>'
+    : '<p><b>' + selTx + '</b> é dia útil' + ([0, 6].includes(OC.diaDe(selFer).getDay()) ? ' (fim de semana já não conta)' : '') + '.</p><div class="cfg-acoes"><span class="spacer"></span><button type="button" class="btn btn-primary btn-sm" id="cf-fer-add">Marcar como feriado local</button></div>';
   el.innerHTML =
     '<div class="cfg-grade"><div class="cfg-col">' +
-      '<section class="cfg-card"><h3><svg class="ic"><use href="#i-calendar"/></svg>Próximos feriados</h3><p class="fraco">Não contam como dia útil em nenhum prazo. Os nacionais vêm com a extensão; os do escritório, do arquivo de regras.</p>' +
-        (prox.length ? Object.entries(porMes).map(([m, ds]) => '<div class="cfg-mes"><h4>' + esc(nomeMes(m)) + '</h4>' + ds.map(d => { const dt = OC.diaDe(d), [cls, rot] = orig(d); return '<div class="cfg-fer"><span class="mono">' + d.slice(8, 10) + '/' + d.slice(5, 7) + '</span><span class="fraco">' + SEMANA[dt.getDay()] + '</span><span class="orig orig-' + cls + '">' + rot + '</span>' + (seuExtra(d) ? '<button type="button" class="cfg-volta" data-tira="' + d + '" title="Tirar este feriado">Tirar</button>' : '') + '</div>'; }).join('') + '</div>').join('') : '<div class="vazio">Nenhum feriado nos próximos meses.</div>') +
+      '<section class="cfg-card"><div class="fa-cab"><h3><svg class="ic"><use href="#i-calendar"/></svg>Feriados de ' + anoFer + ' <span class="fraco">' + doAno.length + '</span></h3>' +
+        '<div class="fa-nav"><button type="button" class="icon-btn" id="fa-ant" aria-label="Ano anterior" title="Ano anterior"><svg class="ic"><use href="#i-chev-l"/></svg></button><button type="button" class="btn btn-sm" id="fa-hoje">Este ano</button><button type="button" class="icon-btn" id="fa-prox" aria-label="Próximo ano" title="Próximo ano"><svg class="ic"><use href="#i-chev-r"/></svg></button></div></div>' +
+        '<p class="fraco">Não contam como dia útil em nenhum prazo.</p>' +
+        '<div class="fa-leg"><span><i class="fer-padrao"></i>nacional</span><span><i class="fer-esc"></i>do escritório</span><span><i class="fer-seu"></i>local (só seu)</span><span><i class="fds"></i>fim de semana</span></div>' +
+        '<div class="fa-ano">' + Array.from({ length: 12 }, (_, m) => mes(m)).join('') + '</div>' +
       '</section></div>' +
-      '<aside class="cfg-col cfg-lado"><section class="cfg-card"><h3><svg class="ic"><use href="#i-plus"/></svg>Feriado local</h3><p class="fraco">Municipal, ponto facultativo ou recesso do escritório: vale só no seu Chrome. Para valer para todos, peça para incluir no arquivo de regras.</p>' +
-        '<div class="form-row"><label class="field">Data<input type="date" id="cf-fer-data"></label></div><div class="cfg-acoes"><span class="spacer"></span><button type="button" class="btn btn-primary btn-sm" id="cf-fer-add">Adicionar</button></div></section></aside>' +
+      '<aside class="cfg-col cfg-lado"><section class="cfg-card" id="cf-fer-quadro"><h3><svg class="ic"><use href="#i-plus"/></svg>Feriado local</h3>' + quadro + '<p class="fraco" style="margin-top:8px">Vale só no seu Chrome. Para valer para todos, peça para incluir no arquivo de regras.</p></section>' +
+        '<section class="cfg-card"><h3><svg class="ic"><use href="#i-clock"/></svg>Próximos</h3>' + (prox.length ? prox.map(d => { const [cls, rot] = orig(d); return '<div class="cfg-fer"><span class="mono">' + d.slice(8, 10) + '/' + d.slice(5, 7) + '</span><span class="fraco">' + SEMANA[OC.diaDe(d).getDay()] + '</span><span class="orig orig-' + cls + '">' + rot + '</span></div>'; }).join('') : '<div class="fraco">Nenhum feriado à frente.</div>') + '</section></aside>' +
     '</div>';
-  $('#cf-fer-add', el).onclick = async () => {
-    const d = $('#cf-fer-data', el).value;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) { toast('Escolha a data', true); return; }
-    if (lista.includes(d)) { toast('Essa data já é feriado', true); return; }
-    await gravar({ feriados: lista.concat(d).sort() });
-    toast('Feriado incluído: ' + d.slice(8, 10) + '/' + d.slice(5, 7) + '/' + d.slice(0, 4));
-  };
-  $$('[data-tira]', el).forEach(b => b.onclick = async () => { await gravar({ feriados: lista.filter(x => x !== b.dataset.tira) }); toast('Feriado retirado'); });
+  const redesenhar = () => feriados(el);
+  $('#fa-ant', el).onclick = () => { anoFer--; redesenhar(); };
+  $('#fa-prox', el).onclick = () => { anoFer++; redesenhar(); };
+  $('#fa-hoje', el).onclick = () => { anoFer = new Date().getFullYear(); redesenhar(); };
+  $$('[data-dia]', el).forEach(b => b.onclick = () => { selFer = selFer === b.dataset.dia ? '' : b.dataset.dia; redesenhar(); });
+  if ($('#cf-fer-add', el)) $('#cf-fer-add', el).onclick = async () => { const d = selFer; await gravar({ feriados: lista.concat(d).sort() }); toast('Feriado local incluído: ' + d.slice(8, 10) + '/' + d.slice(5, 7) + '/' + d.slice(0, 4)); };
+  if ($('#cf-fer-tira', el)) $('#cf-fer-tira', el).onclick = async () => { const d = selFer; await gravar({ feriados: lista.filter(x => x !== d) }); toast('Feriado retirado'); };
 }
 
 /* ---------- Palavras: como a extensão lê os textos (só leitura; mudam pelo arquivo de regras) ---------- */

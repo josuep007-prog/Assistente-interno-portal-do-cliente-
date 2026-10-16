@@ -251,6 +251,7 @@ const cheia = p => p.evaluate(() => document.documentElement.classList.contains(
 await passo('shell: ao entrar no Onvio o app cobre a tela inteira; "Ver Onvio" esconde e o botão volta; lembra na aba', async () => {
   const p = await pagina(URL_PORTAL, '<!doctype html><body style="height:3000px">Onvio</body>');
   await p.setViewportSize({ width: 1360, height: 800 });
+  await p.emulateMedia({ reducedMotion: 'reduce' });                                     // sem transição: o clique no botão não depende do tempo
   await semear(p);
   await p.goto(URL_PORTAL);
   await p.addScriptTag({ content: lerExt('shell.js') });
@@ -687,13 +688,24 @@ await passo('app · Configurações: prazos com efeito na fila antes de salvar, 
   await p.waitForSelector('#cf-carga');
   await p.fill('#cf-tempoRealSeg', '60');
   assert.match(await p.textContent('#cf-carga'), /até 60 verificações por hora/);
+  // feriados: calendário de 12 meses; clicar num dia leva ao quadro do feriado local
   await p.click('#abas .aba:has-text("Feriados")');
+  await p.waitForSelector('.fa-ano');
+  const ano = new Date().getFullYear();
+  assert.equal(await p.$$eval('.fa-mes', e => e.length), 12, '12 meses');
+  assert.match(await p.textContent('.fa-cab h3'), new RegExp('Feriados de ' + ano));
+  assert.equal(await p.$eval('[data-dia="' + ano + '-12-25"]', b => b.classList.contains('fer-padrao')), true, 'Natal como feriado nacional');
+  await p.click('[data-dia="' + ano + '-12-28"]');
   await p.waitForSelector('#cf-fer-add');
-  assert.match(await p.textContent('.cfg-col'), /Dezembro de 2026|Novembro de 2026/i);
-  await p.fill('#cf-fer-data', '2026-12-28');
   await p.click('#cf-fer-add');
-  await p.waitForFunction(() => (JSON.parse(localStorage.getItem('__mem')).settings.feriados || []).includes('2026-12-28'));
-  await p.waitForSelector('[data-tira="2026-12-28"]');
+  await p.waitForFunction(d => (JSON.parse(localStorage.getItem('__mem')).settings.feriados || []).includes(d), ano + '-12-28');
+  await p.waitForSelector('[data-dia="' + ano + '-12-28"].fer-seu');
+  await p.click('[data-dia="' + ano + '-12-28"]');
+  await p.click('[data-dia="' + ano + '-12-28"]');
+  await p.waitForSelector('#cf-fer-tira');
+  await p.click('#fa-prox');
+  assert.match(await p.textContent('.fa-cab h3'), new RegExp('Feriados de ' + (ano + 1)));
+  await p.click('#fa-hoje');
   await p.click('#abas .aba:has-text("Palavras")');
   await p.waitForSelector('.cfg-chips');
   assert.match(await p.textContent('#vista'), /aguardamos.*favor/s);
