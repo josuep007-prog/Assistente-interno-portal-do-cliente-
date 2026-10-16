@@ -1023,17 +1023,87 @@
   }
   function tramitesDe(t, d) {
     const fam = FAMILIAS[t.familia];
+    const grava = new Set(fam.clienteGrava);
     const lista = (d && d.items) || (Array.isArray(d) ? d : []);
-    return lista.filter(x => x && x.created).sort((a, b) => String(a.created).localeCompare(String(b.created))).map((x, i) => ({
-      n: i + 1,
-      em: x.created,
-      situacao: (fam.st[x.status] || DESCONHECIDO(x.status))[0],
-      autor: (x.createdByContactExpanded && x.createdByContactExpanded.name) || (x.createdByExpanded && x.createdByExpanded.name) || '',
-      texto: typeof x.description === 'string' ? x.description : '',
-      anexos: ((x.attachmentsExpanded || []).map(a => a && (a.name || a.fileName)).filter(Boolean)).slice(0, 30)
-    }));
+    return lista.filter(x => x && x.created && !x.deletedTopic).sort((a, b) => String(a.created).localeCompare(String(b.created))).map((x, i) => {
+      const arquivos = arquivosDe(x.attachmentsExpanded, 30);
+      return {
+        n: i + 1,
+        id: typeof x.id === 'string' ? x.id : null,          // id do trâmite (para baixar os anexos dele)
+        em: x.created,
+        situacao: (fam.st[x.status] || DESCONHECIDO(x.status))[0],
+        // quem escreveu: pela situação que o trâmite gravou (as do cliente estão em clienteGrava); o 1º é a abertura
+        lado: i === 0 || grava.has(Number(x.status)) ? 'cli' : 'esc',
+        autor: (x.createdByContactExpanded && x.createdByContactExpanded.name) || (x.createdByExpanded && x.createdByExpanded.name) || '',
+        texto: typeof x.description === 'string' ? x.description : '',
+        anexos: arquivos.map(a => a.nome),
+        arquivos
+      };
+    });
+  }
+  // Anexos de um registro do Onvio: id e nome (lidos na hora, nunca guardados).
+  function arquivosDe(lista, max) {
+    return (Array.isArray(lista) ? lista : []).filter(a => a && (a.name || a.fileName)).slice(0, max || 50)
+      .map(a => ({ id: typeof a.id === 'string' || typeof a.id === 'number' ? String(a.id) : null, nome: String(a.name || a.fileName) }));
   }
 
+  /* ---------- baixar anexos escolhendo ----------
+   * O caminho de download não foi mapeado: o acao-hook.js aprende o MOLDE quando o próprio Onvio baixa um anexo
+   * (GET), com os ids trocados pelo nome do segmento anterior ({tickets}, {topics}, {attachments}) e o nome do
+   * arquivo por {nome}. Nada de ids, nomes ou tokens no molde. Só GET, só em onvio.com.br. */
+  const SEG_TECNICO = /^(?:[a-z][a-z0-9-]*|v\d+)$/i;
+  const POS_ID = /^(download|downloads|content|file|files|attachment|attachments|view|preview|raw|data|blob|stream|bytes|binary|v\d+)$/i;
+  const SEG_ID = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|\d{3,})$/i;
+  function moldeDeAnexo(url) {
+    let u;
+    try { u = new URL(url); } catch (e) { return null; }
+    if (u.protocol !== 'https:' || !/(^|\.)onvio\.com\.br$/i.test(u.hostname) || u.username || u.password) return null;
+    const segs = u.pathname.split('/').map(x => { try { return decodeURIComponent(x); } catch (e) { return x; } });
+    const primeiroId = segs.findIndex(x => SEG_ID.test(x));
+    // Depois do primeiro id, palavra só fica se for nome de coleção (vem um id em seguida) ou uma das técnicas
+    // conhecidas; o resto pode ser o nome do arquivo e vira {nome}.
+    const out = segs.map((x, i) => {
+      if (!x) return x;
+      if (SEG_ID.test(x)) return '{' + (segs[i - 1] && SEG_TECNICO.test(segs[i - 1]) ? segs[i - 1].toLowerCase() : 'id') + '}';
+      if (!SEG_TECNICO.test(x)) return '{nome}';
+      if (primeiroId < 0 || i < primeiroId || SEG_ID.test(segs[i + 1] || '') || POS_ID.test(x)) return x;
+      return '{nome}';
+    });
+    const q = [];
+    for (const [k, v] of u.searchParams) {
+      if (!/^[A-Za-z][\w-]{0,30}$/.test(k)) return null;
+      if (SEG_ID.test(v)) q.push(k + '={id}');
+      else if (/^(true|false|\d{1,4}|[a-z_-]{1,20})$/i.test(v)) q.push(k + '=' + v);
+      else return null;                                            // valor que pode ser dado ou token: não aprende
+    }
+    const m = u.origin + out.join('/') + (q.length ? '?' + q.join('&') : '');
+    return /\{(attachments?|files?|anexos?|documents?)\}|\{id\}/i.test(m) ? m.slice(0, 400) : null;
+  }
+  const papelDoId = nome => (/^topics?$/i.test(nome) ? 'topico' : /^(attachments?|files?|anexos?|documents?)$/i.test(nome) ? 'anexo' : nome === 'id' ? 'anexo' : 'sol');
+  // Endereço de um anexo pelo molde aprendido que sirva para esta lista e este anexo (com ou sem trâmite).
+  function urlAnexo(t, ids, rotas) {
+    const base = API.replace(/\/$/, '');
+    const cand = (rotas || []).map(r => (typeof r === 'string' ? { molde: r } : r)).filter(r => r && typeof r.molde === 'string');
+    const soDoAnexo = m => (m.match(/\{[a-z-]+\}/gi) || []).every(x => papelDoId(x.slice(1, -1)) === 'anexo' || x === '{nome}');
+    const nota = r => r.molde.includes(base + '/' + t.tramites + '/') ? 3 : r.molde.includes(base + '/' + t.path + '/') ? 2 : soDoAnexo(r.molde) ? 1 : 0;
+    for (const r of cand.filter(r => nota(r) > 0).sort((a, b) => nota(b) - nota(a))) {
+      let falta = false;
+      const u = r.molde.replace(/\{([a-z-]+)\}/gi, (x, nome) => {
+        if (nome === 'nome') return ids.nome ? encodeURIComponent(ids.nome) : (falta = true, '');
+        const v = ids[papelDoId(nome)];
+        if (!v) { falta = true; return ''; }
+        return encodeURIComponent(v);
+      });
+      if (!falta && leituraAnexoPermitida(u)) return { url: u, campo: r.campo || null };
+    }
+    return null;
+  }
+  function leituraAnexoPermitida(url) {
+    try {
+      const u = new URL(url);
+      return u.protocol === 'https:' && /(^|\.)onvio\.com\.br$/i.test(u.hostname) && !u.username && !/\/(delete|remove|assign-staff|change-due-date)(\/|$)/i.test(u.pathname);
+    } catch (e) { return false; }
+  }
 
   /* ---------- datas "só dia" do Onvio (AAAA-MM-DDT00:00:00): dia local, sem fuso ---------- */
   function diaDe(v) {
@@ -1180,8 +1250,11 @@
   }
   // objeto "rico" (vários campos úteis) vira um grupo próprio; objeto só com nome vira uma linha
   const camposUteis = o => Object.entries(o).filter(([k, v]) => !OCULTO.test(k) && !FORA_DADOS.test(k) && v != null && v !== '' && !(Array.isArray(v) && !v.length));
+  // Campos que mais importam para atender (datas que definem prazo, motivo, tipo, dias): ganham destaque sutil e vêm
+  // primeiro no grupo. Salário e documentos ficam sem destaque de propósito.
+  const RELEVANTE = /^(vacationStartDate|vacationEndDate|vacationDays|daysOfVacation|abonoDays|adviceDate|noticeDate|priorNotice\w*Date|priorNoticeType|resignationDate|lastWorkDay|terminationDate|terminationType|terminationReason|admissionDate|startDate|endDate|leaveDate|returnDate|expectedReturnDate|leaveDays|employeeLeaveType\w*|effectiveDate|paymentDate|competence|reason|category|employmentRelationship|subject)$/i;
   function camposDetalhe(t, d) {
-    if (!d || typeof d !== 'object') return { grupos: [], anexos: [] };
+    if (!d || typeof d !== 'object') return { grupos: [], anexos: [], arquivos: [] };
     const principal = { titulo: 'Solicitação', campos: [] }, grupos = [principal];
     for (const [k, v] of Object.entries(d)) {
       if (OCULTO.test(k) || FORA_DADOS.test(k) || v == null || v === '') continue;
@@ -1190,7 +1263,7 @@
         for (const [k2, v2] of camposUteis(v)) {
           if (v2 && typeof v2 === 'object' && !Array.isArray(v2) && camposUteis(v2).length > 2) {
             for (const [k3, v3] of camposUteis(v2)) { const x = valorDe(k3, v3); if (x) g.campos.push({ k: rotulo(k2) + ' · ' + rotulo(k3), v: x }); }
-          } else { const x = valorDe(k2, v2); if (x) g.campos.push({ k: rotulo(k2), v: x, longo: /description|comments|observ/i.test(k2) }); }
+          } else { const x = valorDe(k2, v2); if (x) g.campos.push({ k: rotulo(k2), v: x, longo: /description|comments|observ/i.test(k2), destaque: RELEVANTE.test(k2) && !/subject/i.test(k2) }); }
         }
         if (g.campos.length) grupos.push(g);
         continue;
@@ -1202,16 +1275,17 @@
         continue;
       }
       const x = valorDe(k, v);
-      if (x) principal.campos.push({ k: rotulo(k), v: x, longo: /description|comments|observ/i.test(k) });
+      if (x) principal.campos.push({ k: rotulo(k), v: x, longo: /description|comments|observ/i.test(k), destaque: RELEVANTE.test(k) });
     }
-    const anexos = (d.attachmentsExpanded || []).map(a => a && (a.name || a.fileName)).filter(Boolean).slice(0, 50);
+    const arquivos = arquivosDe(d.attachmentsExpanded, 50);
+    const anexos = arquivos.map(a => a.nome);
     // sem repetição (mesmo rótulo e valor em dois lugares) e os textos longos (assunto, descrição) por último no grupo
     const vistos = new Set();
     grupos.forEach(g => {
       g.campos = g.campos.filter(c => { const ch = c.k + '\u0000' + c.v; if (vistos.has(ch)) return false; vistos.add(ch); return true; });
-      g.campos.sort((a, b) => (a.longo ? 1 : 0) - (b.longo ? 1 : 0));
+      g.campos.sort((a, b) => (a.longo ? 1 : 0) - (b.longo ? 1 : 0) || (b.destaque && !b.longo ? 1 : 0) - (a.destaque && !a.longo ? 1 : 0));
     });
-    return { grupos: grupos.filter(g => g.campos.length), anexos };
+    return { grupos: grupos.filter(g => g.campos.length), anexos, arquivos };
   }
   // Datas que importam para prazos e observações (só datas, sem dados pessoais)
   function datasDe(d) {
@@ -1743,5 +1817,5 @@
     return { dias, empresas: lista, total: lista.reduce((s2, r) => s2 + r.total, 0), prox30: lista.reduce((s2, r) => s2 + r.prox30, 0) };
   }
 
-  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, quadroSemCalculo, marcarSemCalculo, textoAvisoSemCalculo, assuntoAvisoSemCalculo, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, sugestoesAcoes, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, quadroSemCalculo, marcarSemCalculo, textoAvisoSemCalculo, assuntoAvisoSemCalculo, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, moldeDeAnexo, urlAnexo, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, sugestoesAcoes, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);
