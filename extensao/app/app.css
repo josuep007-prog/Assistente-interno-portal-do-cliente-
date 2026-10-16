@@ -9,12 +9,13 @@
   --viz-ok:#0ca30c; --viz-warn:#fab219; --viz-serious:#ec835a; --viz-crit:#d03b3b;
   --viz-grid:#e1e0d9; --viz-axis:#c3c2b7; --viz-muted:#7a7873;
   --shadow-1:0 1px 2px rgba(16,24,32,.05), 0 6px 16px rgba(16,24,32,.06);
+  --shadow-card:0 1px 2px rgba(30,60,100,.04), 0 4px 14px rgba(30,60,100,.05);
   --trilho:64px;
 }
 @media (prefers-color-scheme: dark){
-  :root:not([data-theme="light"]){ --viz-s1:#3987e5; --viz-s2:#d95926; --viz-grid:#2c2c2a; --viz-axis:#383835; --viz-muted:#9a9890; --shadow-1:0 1px 2px rgba(0,0,0,.3), 0 6px 18px rgba(0,0,0,.35) }
+  :root:not([data-theme="light"]){ --viz-s1:#3987e5; --viz-s2:#d95926; --viz-grid:#2c2c2a; --viz-axis:#383835; --viz-muted:#9a9890; --shadow-1:0 1px 2px rgba(0,0,0,.3), 0 6px 18px rgba(0,0,0,.35); --shadow-card:0 1px 2px rgba(0,0,0,.25) }
 }
-:root[data-theme="dark"]{ --viz-s1:#3987e5; --viz-s2:#d95926; --viz-grid:#2c2c2a; --viz-axis:#383835; --viz-muted:#9a9890; --shadow-1:0 1px 2px rgba(0,0,0,.3), 0 6px 18px rgba(0,0,0,.35) }
+:root[data-theme="dark"]{ --viz-s1:#3987e5; --viz-s2:#d95926; --viz-grid:#2c2c2a; --viz-axis:#383835; --viz-muted:#9a9890; --shadow-1:0 1px 2px rgba(0,0,0,.3), 0 6px 18px rgba(0,0,0,.35); --shadow-card:0 1px 2px rgba(0,0,0,.25) }
 
 html.app-html, .app-body{height:100%}
 .app-body{overflow:hidden; font-size:13.5px}
@@ -1047,12 +1048,14 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .ax-falhas{margin:6px 0 0; padding-left:18px}
 .n-anexos{margin-left:6px; padding:0 6px; border-radius:3px; background:var(--blue-pale); color:var(--blue-deep); font:600 11px "IBM Plex Mono", monospace}
 
-/* ============ fundo do Control Hub (tela inicial): brilho vermelho embaixo à direita, azul em cima à esquerda e a
-   logo da ControlTax grande, cortada no canto inferior direito ============ */
+/* ============ fundo do Control Hub (tela inicial), sobre um azul-claro: nuances leves de azul, lilás e verde-água,
+   brilho vermelho suave embaixo à direita e a logo da ControlTax grande, cortada no canto inferior direito ============ */
 .app-body{background:
-  radial-gradient(900px 600px at 100% 100%, rgba(194,0,12,.10), transparent 70%),
-  radial-gradient(700px 500px at 0% 0%, rgba(60,101,155,.10), transparent 70%),
-  var(--page)}
+  radial-gradient(900px 600px at 100% 100%, rgba(194,0,12,.07), transparent 70%),
+  radial-gradient(760px 520px at 0% 0%, rgba(60,120,200,.16), transparent 70%),
+  radial-gradient(680px 480px at 62% -8%, rgba(132,110,220,.09), transparent 70%),
+  radial-gradient(620px 520px at 8% 100%, rgba(40,170,170,.08), transparent 70%),
+  linear-gradient(180deg, #EEF5FC 0%, var(--page) 60%)}
 .app-body::before{content:""; position:fixed; z-index:0; pointer-events:none; right:0; bottom:0; width:min(86vh, 130vw, 780px); aspect-ratio:258/320; transform:translate(46%, 16%); background:url("../logo.svg") no-repeat center / contain; opacity:.12}
 .app{position:relative; z-index:1}
 .mod-cab{background:color-mix(in srgb, var(--page) 88%, transparent)}
@@ -1186,3 +1189,40 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .pp-expl{margin:0 0 10px; font-size:12.5px; color:var(--ink-3)}
 @media (max-width:820px){ .pp-hero{grid-template-columns:auto minmax(0,1fr)} .pp-dias{display:none} .pp-comps{grid-template-columns:repeat(3,minmax(0,1fr))} }
 @media (prefers-reduced-motion:reduce){ .dlg-pessoa.pp-entra, .pp-painel.pp-troca{animation:none} }
+
+/* Configurações · Feriados em calendário de 12 meses */
+.fa-cab{display:flex; align-items:center; justify-content:space-between; gap:10px}
+.fa-cab h3{margin:0}
+.fa-nav{display:flex; align-items:center; gap:4px}
+.fa-nav .icon-btn{width:30px; height:30px; border:1px solid var(--rule-strong); color:var(--ink-2)}
+.fa-leg{display:flex; flex-wrap:wrap; gap:6px 14px; margin:2px 0 12px; font-size:11.5px; color:var(--ink-3)}
+.fa-leg span{display:inline-flex; align-items:center; gap:6px}
+.fa-leg i{width:12px; height:12px; border-radius:3px; display:inline-block}
+.fa-ano{display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:14px 18px}
+.fa-mes h4{display:flex; align-items:center; gap:6px; margin:0 0 6px; font:700 12.5px "Archivo",sans-serif; color:var(--ink)}
+.fa-mes h4 span{padding:0 6px; border-radius:3px; background:var(--surface-3); color:var(--ink-3); font:600 10.5px "IBM Plex Sans",sans-serif}
+.fa-sem, .fa-dias{display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:2px}
+.fa-sem span{font-size:10px; font-weight:600; color:var(--ink-3); text-align:center}
+.fa-d{height:24px; padding:0; border:1px solid transparent; border-radius:3px; background:none; color:var(--ink-2); font:500 11.5px "IBM Plex Sans",sans-serif; font-variant-numeric:tabular-nums; cursor:pointer; transition:background .12s, border-color .12s}
+.fa-d:hover{background:var(--surface-2); border-color:var(--rule-strong)}
+.fa-d:focus-visible{outline:2px solid var(--blue-deep); outline-offset:1px}
+.fa-d.fds, .fa-leg i.fds{color:var(--ink-3); background:color-mix(in srgb, var(--ink-3) 7%, transparent)}
+.fa-d.fer{font-weight:700}
+.fa-d.fer-padrao, .fa-leg i.fer-padrao{background:color-mix(in srgb, var(--brand-red) 14%, transparent); color:var(--brand-red)}
+.fa-d.fer-esc, .fa-leg i.fer-esc{background:var(--blue-pale); color:var(--blue-deep)}
+.fa-d.fer-seu, .fa-leg i.fer-seu{background:color-mix(in srgb, var(--viz-warn) 26%, transparent); color:var(--ink)}
+.fa-d.hoje{border-color:var(--ink)}
+.fa-d.sel{border-color:var(--blue-deep); box-shadow:0 0 0 2px color-mix(in srgb, var(--blue-deep) 30%, transparent)}
+
+/* ============ pequenos acabamentos (v0.23): seleção, toque nos botões, abas, entrada das telas, sombras suaves ============ */
+::selection{background:color-mix(in srgb, var(--blue-mid) 35%, transparent)}
+.btn{transition:border-color .15s, background .15s, color .15s, transform .08s, box-shadow .15s}
+.btn:active:not(:disabled){transform:translateY(1px)}
+.btn:focus-visible, .aba:focus-visible, .icon-btn:focus-visible{outline:2px solid var(--blue-mid); outline-offset:2px}
+.btn-primary:hover{box-shadow:0 2px 8px color-mix(in srgb, var(--blue-deep) 30%, transparent)}
+.aba{transition:color .15s, border-color .15s}
+.mod-cab{backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px)}
+.card, .hj-hero, .av-hero{box-shadow:var(--shadow-card)}
+.vista.entra > *{animation:vista-entra .18s ease-out both}
+@keyframes vista-entra{from{opacity:0; transform:translateY(4px)} to{opacity:1; transform:none}}
+@media (prefers-reduced-motion: reduce){ .vista.entra > *{animation:none} .btn:active:not(:disabled){transform:none} }

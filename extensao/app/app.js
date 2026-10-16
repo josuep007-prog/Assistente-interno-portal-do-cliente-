@@ -67,6 +67,7 @@ function telaBloqueio(v) {
   $('#bl-onvio', v).onclick = () => enviar({ cmd: 'fecharPainel' });
 }
 
+let telaAnterior = '', tEntra = 0;
 function desenhar() {
   rota = lerRota();
   aoRedim = null;
@@ -76,6 +77,9 @@ function desenhar() {
   const ativo = rota.nome === 'busca' ? '' : rota.nome === 'fila' && p.analista ? 'equipe' : rota.nome;
   $$('.trilho [data-rota]').forEach(a => { a.classList.toggle('on', a.dataset.rota === ativo); if (a.dataset.rota === ativo) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
   const v = $('#vista');
+  // entrada suave só quando muda de tela (não a cada atualização da mesma tela)
+  const chaveTela = rota.nome + '?' + JSON.stringify(rota.params);
+  if (chaveTela !== telaAnterior) { telaAnterior = chaveTela; v.classList.remove('entra'); void v.offsetWidth; v.classList.add('entra'); clearTimeout(tEntra); tEntra = setTimeout(() => v.classList.remove('entra'), 260); }
   const params = rota.nome === 'busca' ? Object.assign({ q: rota.params.q || '' }, rota.params) : rota.params;
   try { VISTAS[rota.nome].render(v, ctx, params); }
   catch (e) { console.error(e); v.innerHTML = '<div class="faixa"><b>Algo deu errado ao montar esta tela.</b> ' + esc(e.message) + '</div>'; }
