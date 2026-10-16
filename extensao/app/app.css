@@ -795,7 +795,7 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .hj-prev{width:100%; border-collapse:collapse; font-size:12.5px}
 .hj-prev th{text-align:left; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-3); padding:6px 8px; border-bottom:1px solid var(--rule)}
 .hj-prev td{padding:7px 8px; border-bottom:1px solid var(--rule)}
-.hj-prev .num{text-align:right; font-variant-numeric:tabular-nums}
+.hj-prev .num, .hj-prev th.num{text-align:right; font-variant-numeric:tabular-nums}
 .hj-prev .sobe{color:var(--brand-red)} .hj-prev .desce{color:var(--ok, #2e8b57)}
 .hj-passos h3{display:flex; align-items:center; gap:8px}
 .hj-passos h3 .btn{margin-left:auto; text-transform:none; letter-spacing:0}
