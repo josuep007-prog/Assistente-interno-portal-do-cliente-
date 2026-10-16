@@ -385,6 +385,7 @@ await passo('app · Hoje: admissões sem trâmite do escritório em faixa recolh
   const itens = ITENS_APP.concat([
     { k: 'cadEmpregado:e1', type: 'cadEmpregado', typeLabel: 'Cadastro empregado', id: 'e1', num: 301, code: 2, status: 'Enviado para o escritório', lado: 'esc', nivel: 2, grav: 2, parado: 1, motivos: [{ n: 2, m: 'Admissão retroativa' }], resp: 'Ana Teste', mine: true, apelido: 'DELTA', cliente: 'DELTA', detalhe: 'Fulano', created: agoraIso(1), last: agoraIso(1), admissao: '2026-10-10', admissaoAlerta: { data: '2026-10-10', faltam: -4, retro: true } },
     { k: 'cadEmpregado:e2', type: 'cadEmpregado', typeLabel: 'Cadastro empregado', id: 'e2', num: 302, code: 1, status: 'Sem análise', lado: 'esc', nivel: 1, grav: 1, parado: 0, motivos: [], resp: 'Ana Teste', mine: true, apelido: 'ÔMEGA', cliente: 'ÔMEGA', detalhe: 'Joana', created: agoraIso(0), last: agoraIso(0), admissao: '2026-10-20', admissaoAlerta: { data: '2026-10-20', faltam: 2, retro: false } },
+    { k: 'cadEstagiario:s1', type: 'cadEstagiario', typeLabel: 'Cadastro estagiário', id: 's1', num: 305, code: 2, status: 'Enviado para o escritório', lado: 'esc', nivel: 1, grav: 1, parado: 0, motivos: [], resp: 'Ana Teste', mine: true, apelido: 'KAPPA', cliente: 'KAPPA', detalhe: 'Lia', created: agoraIso(0), last: agoraIso(0), admissao: '2026-10-07', admissaoAlerta: { data: '2026-10-07', prazo: '2026-10-22', faltam: 2, retro: false, estagio: true } },
     { k: 'cadEmpregado:e3', type: 'cadEmpregado', typeLabel: 'Cadastro empregado', id: 'e3', num: 303, code: 3, status: 'Aguardando o cliente', lado: 'cli', nivel: 2, grav: 2, parado: 1, motivos: [], resp: 'Ana Teste', mine: true, apelido: 'SIGMA', cliente: 'SIGMA', detalhe: 'Pedro', created: agoraIso(3), last: agoraIso(1), admissao: '2026-10-10', admissaoAlerta: { data: '2026-10-10', faltam: -4, retro: true } },
     { k: 'cadEmpregado:e4', type: 'cadEmpregado', typeLabel: 'Cadastro empregado', id: 'e4', num: 304, code: 4, status: 'Respondido pelo cliente', lado: 'esc', nivel: 2, grav: 2, parado: 1, motivos: [], resp: 'Ana Teste', mine: true, apelido: 'TAU', cliente: 'TAU', detalhe: 'Rui', created: agoraIso(3), last: agoraIso(1), primeiroTramite: agoraIso(2), admissao: '2026-10-12', admissaoAlerta: { data: '2026-10-12', faltam: -2, retro: false } },
     { k: 'calcFerias:f9', type: 'calcFerias', typeLabel: 'Cálculo de férias', id: 'f9', num: 401, code: 2, status: 'Em análise', lado: 'esc', nivel: 1, grav: 1, parado: 0, motivos: [], resp: 'Ana Teste', mine: true, apelido: 'ZETA', cliente: 'ZETA', detalhe: 'Beltrano', created: agoraIso(2), last: agoraIso(0), pagamentoAte: { alvo: OC_ymd(new Date()), ref: 'início das férias em 20/10' } }
@@ -393,10 +394,13 @@ await passo('app · Hoje: admissões sem trâmite do escritório em faixa recolh
   await p.waitForSelector('#hj-admissao');
   const ordem = await p.evaluate(() => [...document.querySelector('#vista').children].map(x => x.id || x.className.split(' ')[0]));
   assert.ok(ordem.indexOf('hj-admissao') === ordem.indexOf('hj-hero') + 1, 'logo abaixo do destaque: ' + ordem.join());
-  assert.match(await p.textContent('#hj-admissao h3'), /2 admissões pedem prioridade 1 retroativa · próxima em 20\/10/, 'as que o escritório já tramitou (situação do escritório ou trâmite lido) ficam de fora');
+  assert.match(await p.textContent('#hj-admissao h3'), /3 admissões pedem prioridade/, 'as que o escritório já tramitou (situação do escritório ou trâmite lido) ficam de fora');
+  assert.equal(await p.textContent('#hj-admissao .hj-adm-resumo'), '1 retroativa · próxima em 20/10');
   const l = await p.$$eval('#hj-admissao .hj-adm', e => e.map(x => x.textContent));
   assert.match(l[0], /^10\/10retroativa#301 DELTA · Fulano/);
   assert.match(l[1], /^20\/10em 2 dias úteis#302 ÔMEGA · Joana/);
+  assert.match(l[2], /^22\/10prazo · em 2 dias úteis#305 KAPPA · Lia.*Cadastro estagiário · início em 07\/10/, 'estagiário: a data é o prazo do eSocial (15 dias após o início)');
+  assert.match(await p.textContent('#hj-adm-l .hj-adm-nota'), /Estagiário: até 15 dias depois do início/);
   assert.match(await p.textContent('#hj-venc'), /hoje.*ZETA · Beltrano.*Cálculo de férias · início das férias em 20\/10/);
   assert.ok(!/Priorize as admissões em destaque/.test(await p.textContent('#hj-sug')), 'sugestão não repete o que já tem faixa própria');
   await p.click('#hj-admissao [data-k="cadEmpregado:e2"]');
@@ -406,16 +410,17 @@ await passo('app · Hoje: admissões sem trâmite do escritório em faixa recolh
   // recolhe e lembra
   await p.click('#hj-adm-toggle');
   assert.equal(await p.isHidden('#hj-adm-l'), true);
-  assert.match(await p.textContent('#hj-adm-toggle'), /Mostrar$/);
+  assert.equal(await p.getAttribute('#hj-adm-toggle', 'aria-expanded'), 'false');
+  assert.equal(await p.$eval('#hj-adm-toggle', b => b.parentElement.firstElementChild === b && b.getBoundingClientRect().width > b.parentElement.getBoundingClientRect().width * 0.95), true, 'a barra de cabeçalho inteira recolhe, não um botão no canto');
   await p.reload(); await p.waitForSelector('#hj-admissao');
   assert.equal(await p.isHidden('#hj-adm-l'), true, 'continua recolhida');
-  assert.match(await p.textContent('#hj-admissao h3'), /2 admissões pedem prioridade/, 'recolhida, o resumo continua à vista');
+  assert.match(await p.textContent('#hj-adm-toggle'), /3 admissões pedem prioridade.*1 retroativa/, 'recolhida, o resumo continua à vista');
   await p.click('#hj-adm-toggle');
   assert.equal(await p.isHidden('#hj-adm-l'), false);
   // Solicitações com kpi=admissao: o mesmo critério
   await p.evaluate(() => { location.hash = '#/fila?escopo=equipe&kpi=admissao'; });
-  await p.waitForFunction(() => document.querySelectorAll('#corpo [data-k]').length === 2);
-  assert.deepEqual((await linhas(p)).sort(), ['cadEmpregado:e1', 'cadEmpregado:e2']);
+  await p.waitForFunction(() => document.querySelectorAll('#corpo [data-k]').length === 3);
+  assert.deepEqual((await linhas(p)).sort(), ['cadEmpregado:e1', 'cadEmpregado:e2', 'cadEstagiario:s1']);
   assert.deepEqual(p.erros, []);
 });
 

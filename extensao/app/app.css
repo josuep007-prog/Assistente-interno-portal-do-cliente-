@@ -752,17 +752,20 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .dist-sug small.late{color:var(--late)}
 
 /* Hoje · admissões em destaque */
-.hj-admissao{margin:18px 0 0; padding:16px 18px; border:2px solid var(--brand-red); border-radius:10px; background:color-mix(in srgb, var(--brand-red) 8%, var(--surface)); box-shadow:0 0 0 4px color-mix(in srgb, var(--brand-red) 12%, transparent)}
-.hj-adm-cab{display:grid; grid-template-columns:1fr auto; align-items:center; gap:2px 12px; width:100%; padding:0; border:0; background:none; color:inherit; font:inherit; text-align:left; cursor:pointer}
-.hj-admissao h3{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0; font:800 16px "Archivo",sans-serif; color:var(--brand-red)}
-.hj-adm-resumo{font:600 12.5px "IBM Plex Sans",sans-serif; color:var(--ink-2)}
-.hj-adm-cab small{grid-column:1; font:500 12.5px "IBM Plex Sans",sans-serif; color:var(--ink-2)}
-.hj-adm-seta{grid-column:2; grid-row:1 / span 2; display:inline-flex; align-items:center; gap:4px; font-size:12px; font-weight:600; color:var(--brand-red)}
-.hj-adm-seta em{font-style:normal}
+.hj-admissao{margin:18px 0 0; overflow:hidden; border:2px solid var(--brand-red); border-radius:10px; background:color-mix(in srgb, var(--brand-red) 6%, var(--surface)); box-shadow:0 0 0 4px color-mix(in srgb, var(--brand-red) 12%, transparent)}
+/* barra de cabeçalho: a faixa inteira recolhe e mostra */
+.hj-adm-cab{display:flex; align-items:center; gap:10px; width:100%; padding:11px 16px; border:0; border-bottom:1px solid color-mix(in srgb, var(--brand-red) 30%, transparent); background:color-mix(in srgb, var(--brand-red) 14%, var(--surface)); color:inherit; font:inherit; text-align:left; cursor:pointer}
+.hj-admissao.recolhida .hj-adm-cab{border-bottom-color:transparent}
+.hj-adm-cab:hover{background:color-mix(in srgb, var(--brand-red) 20%, var(--surface))}
+.hj-adm-cab:focus-visible{outline:2px solid var(--brand-red); outline-offset:-3px}
+.hj-admissao h3{display:flex; align-items:center; gap:8px; margin:0; font:800 15px "Archivo",sans-serif; color:var(--brand-red)}
+.hj-adm-resumo{margin-left:auto; font:600 12.5px "IBM Plex Sans",sans-serif; color:var(--ink-2)}
+.hj-adm-seta{display:inline-grid; place-items:center; width:22px; height:22px; border-radius:4px; color:var(--brand-red)}
 .hj-adm-seta .ic{transition:transform .15s}
 .hj-admissao.recolhida .hj-adm-seta .ic{transform:rotate(-90deg)}
-.hj-adm-cab:hover .hj-adm-seta em{text-decoration:underline}
-.hj-adm-l{display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:8px; margin-top:12px}
+.hj-adm-nota{margin:0 0 10px; font:500 12.5px "IBM Plex Sans",sans-serif; color:var(--ink-2)}
+.hj-adm-l{padding:12px 16px 16px}
+.hj-adm-grade{display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:8px}
 .hj-adm-l[hidden]{display:none}
 .hj-adm{display:flex; align-items:center; gap:12px; padding:10px 12px; border:1px solid var(--rule); border-radius:8px; background:var(--surface); color:inherit; font:inherit; text-align:left; cursor:pointer}
 .hj-adm:hover, .hj-adm:focus-visible{border-color:var(--brand-red)}
