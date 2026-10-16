@@ -224,7 +224,7 @@ async function atualizar() {
   addEventListener('hashchange', () => { fecharAnexos(); fecharDetalhe(); fecharLembrete(); fecharNova(); desenhar(); });
   aoMudar(quais => {
     const ocupado = detalheAberto() || anexosAbertos() || lembreteAberto() || novaAberta() || !$('#cmdk').hidden || document.activeElement.matches('input, select, textarea') || document.querySelector('#vista details[open]');
-    const relevante = quais.some(q => ['snap', 'settings', 'regras', 'lembretes', 'serie', 'eventos', 'semCalcMarcas'].includes(q)) && AO_VIVO.has(rota.nome);
+    const relevante = quais.some(q => ['snap', 'settings', 'regras', 'lembretes', 'serie', 'eventos', 'semCalcMarcas', 'excecoes'].includes(q)) && AO_VIVO.has(rota.nome);
     if (relevante && ocupado) redesenharDepois = true;
     if (relevante && !ocupado) {
       redesenharDepois = false;

@@ -1,9 +1,11 @@
 /* Equipe · área do gestor, com senha: avaliação de desempenho e qualidade dos atendimentos.
- * Abas: Desempenho (nota de cada analista, entregas no período, pontualidade, carteira em dia, cuidado e agilidade,
- * com a comparação ao período anterior), Carga (números e gráficos da fila de hoje) e Responsáveis (idade da fila).
- * As entregas são lidas na hora pelo service worker (cmd 'desempenho'); nada é guardado. A senha fica só como
+ * Abas: Desempenho (nota de cada analista, entregas no período, pontualidade, ritmo, carteira em dia, cuidado e
+ * agilidade, com a comparação ao período anterior), Carga (números e gráficos da fila de hoje) e Responsáveis.
+ * As entregas e os trâmites de cada uma são lidos na hora pelo service worker (cmd 'desempenho'); a conta é feita aqui
+ * (OC.avaliarEquipe), com o tempo com o escritório, o crédito a quem concluiu e os casos que o gestor tirou da conta
+ * (estado.excecoes: só o k). A senha fica só como
  * resumo SHA-256 (settings.senhaGestorSha256): é uma trava leve, não segurança forte. */
-import { estado, itens, enviar } from '../estado.js';
+import { estado, itens, enviar, marcarExcecao } from '../estado.js';
 import { esc, plural, num, fmtDataCurta, toast, ligarItens, porqueGrav, $, $$ } from '../util.js';
 import { barrasEmpilhadas, barrasAgrupadas, linhaDoDia, ligarDicas, anelProgresso, miniBarras, animarNumeros, cor } from '../graficos.js';
 import { prescricaoHtml, mapaIdadeHtml, ligarEquipe } from './painel-equipe.js';
@@ -79,12 +81,19 @@ let ordRank = { k: 'pos', desc: false };   // ordem da tabela do ranking (clique
 let animar = true;
 const COR_FAIXA = { otimo: 'ok', bom: 's1', atencao: 'warn', critico: 'crit', sem: 'var(--ink-3)' };
 const COMP = [
-  ['pontualidade', 'Pontualidade', 'entregas concluídas dentro do prazo interno (3 d.u. simples, 5 cálculo)'],
-  ['emDia', 'Carteira em dia', 'pendências com o escritório sem atraso agora'],
-  ['cuidado', 'Cuidado', 'sem críticas (G3) na carteira e sem solicitações prescritas no período'],
-  ['agilidade', 'Agilidade', 'tempo até o 1º trâmite do escritório (estimativa)']
+  ['pontualidade', 'Pontualidade', 'entregas dentro do prazo interno (3 d.u. simples, 5 cálculo), contando só os dias em que a vez era do escritório'],
+  ['ritmo', 'Ritmo', 'tempo com o escritório de cada entrega comparado com o normal da equipe no mesmo tipo de solicitação (75 = no normal da equipe)'],
+  ['emDia', 'Carteira em dia', 'pendências com o escritório sem atraso agora, sem contar atrasos de origem do cliente (pedido que já chegou tarde)'],
+  ['cuidado', 'Cuidado', 'críticas (G3) na vez do escritório e prescritas sem nenhuma cobrança ao cliente, a cada 10 solicitações'],
+  ['agilidade', 'Agilidade', 'dias úteis até o 1º trâmite do escritório, incluindo as que seguem sem resposta']
 ];
-const CURTO = { pontualidade: 'Pontual.', emDia: 'Em dia', cuidado: 'Cuidado', agilidade: 'Agilid.' };
+const CURTO = { pontualidade: 'Pontual.', ritmo: 'Ritmo', emDia: 'Em dia', cuidado: 'Cuidado', agilidade: 'Agilid.' };
+// A conta é refeita a cada desenho: muda com as exceções do gestor e com a fila ao vivo, sem ler o Onvio de novo
+function calcular() {
+  if (!resultado || !resultado.entregas) return resultado;
+  return Object.assign({ erros: resultado.erros, semLeitura: resultado.semLeitura || 0, falhas: resultado.falhasTramites || 0 },
+    OC.avaliarEquipe(itens(), resultado.entregas, estado.settings, resultado.dias, new Date(resultado.agora), { analises: resultado.analises || {}, excecoes: estado.excecoes || {} }));
+}
 const fmt1 = v => (v == null ? '–' : String(v).replace('.', ','));
 const pctTxt = v => (v == null ? '–' : v + '%');
 function delta(v, unidade, melhorSobe) {
@@ -111,25 +120,29 @@ function desempenho(el, ctx, params) {
     }
     return;
   }
-  const r = resultado, e = r.equipe, ans = r.analistas;
+  const r = calcular(), e = r.equipe, ans = r.analistas;
   const per = (d => d.slice(8, 10) + '/' + d.slice(5, 7));
   const kpi = (id, rot, val, det, extra) => '<div class="av-kpi" id="' + id + '"><span class="av-kpi-rot">' + rot + '</span><b class="av-kpi-val">' + val + '</b>' + (det || '') + (extra || '') + '</div>';
   el.innerHTML =
     (r.erros && r.erros.length ? '<div class="faixa warn"><svg class="ic"><use href="#i-alert"/></svg>Algumas listas não foram lidas: ' + esc(r.erros.join(' · ')) + '. A avaliação pode estar incompleta.</div>' : '') +
     '<section class="av-hero">' +
       '<div class="av-nota s-' + e.faixa.k + '" style="--c:' + cor(COR_FAIXA[e.faixa.k]) + '">' + anelProgresso(e.nota, '<b data-conta="' + (e.nota || 0) + '" data-de="0">' + (e.nota == null ? '–' : e.nota) + '</b><small>nota</small>', { tam: 132 }) +
-        '<div><span class="av-eyebrow">Equipe · ' + per(r.de) + ' a ' + per(r.ate) + '</span><h2>' + esc(e.faixa.rot) + '</h2><p>' + plural(ans.length, 'analista avaliado', 'analistas avaliados') + ' · nota de 0 a 100</p>' +
+        '<div><span class="av-eyebrow">Equipe · ' + per(r.de) + ' a ' + per(r.ate) + '</span><h2>' + esc(e.faixa.rot) + '</h2><p>' + plural(ans.filter(a => !a.poucosDados).length, 'analista no ranking', 'analistas no ranking') + (ans.some(a => a.poucosDados) ? ' · ' + ans.filter(a => a.poucosDados).length + ' com poucos dados' : '') + ' · nota de 0 a 100</p>' +
+        (r.excluidas ? '<p class="av-exc">' + plural(r.excluidas, 'caso fora da conta', 'casos fora da conta') + ' · <button type="button" class="linkish" id="av-exc-limpar">voltar todos</button></p>' : '') +
         '<button type="button" class="linkish" id="av-como">Como a nota é calculada</button></div></div>' +
       '<div class="av-kpis">' +
         kpi('av-k-entregas', 'Entregas', '<span data-conta="' + e.concluidas + '" data-de="0">' + num(e.concluidas) + '</span>', delta(e.variacao.concluidas, '', true), miniBarras(e.porDia.map(d => ({ rot: per(d.dia), n: d.n })), { largura: 150, titulo: 'Entregas por dia' })) +
         kpi('av-k-prazo', 'No prazo', pctTxt(e.pctNoPrazo), delta(e.variacao.pctNoPrazo, ' p.p.', true), '<i class="av-barra"><i style="width:' + (e.pctNoPrazo || 0) + '%"></i></i>') +
-        kpi('av-k-tempo', 'Tempo de conclusão', fmt1(e.tempoMedio) + '<small> d.u.</small>', '<span class="av-d">média da abertura à conclusão</span>') +
+        kpi('av-k-tempo', 'Tempo com o escritório', fmt1(e.tempoMedio) + '<small> d.u.</small>', '<span class="av-d">média por entrega, sem a espera pelo cliente</span>') +
         kpi('av-k-emdia', 'Carteira em dia', pctTxt(e.pctEmDia), '<span class="av-d">' + plural(e.esc, 'pendência', 'pendências') + ' com o escritório agora</span>', '<i class="av-barra"><i style="width:' + (e.pctEmDia || 0) + '%"></i></i>') +
-        kpi('av-k-pt', '1º trâmite', fmt1(e.primeiroTramite) + '<small> d.u.</small>', '<span class="av-d">média · estimativa</span>') +
-        kpi('av-k-qual', 'Alertas de qualidade', '<span class="' + (e.g3 + e.prescritas ? 'late' : '') + '">' + num(e.g3 + e.prescritas) + '</span>', '<span class="av-d">' + e.g3 + ' críticas (G3) · ' + e.prescritas + ' prescritas no período</span>') +
+        kpi('av-k-pt', '1º trâmite', fmt1(e.primeiroTramite) + '<small> d.u.</small>', '<span class="av-d">média · inclui as ainda sem resposta</span>') +
+        kpi('av-k-qual', 'Alertas evitáveis', '<span class="' + (e.g3Esc + e.prescSemCobranca ? 'late' : '') + '">' + num(e.g3Esc + e.prescSemCobranca) + '</span>', '<span class="av-d">' + e.g3Esc + ' G3 na vez do escritório · ' + e.prescSemCobranca + ' prescritas sem cobrança</span>') +
       '</div>' +
     '</section>' +
-    '<div class="av-como" id="av-como-txt" hidden><b>Como a nota é calculada (0 a 100)</b><ul>' + COMP.map(([k, rot, d]) => '<li><b>' + rot + ' · peso ' + r.pesos[k] + '</b> ' + esc(d) + '</li>').join('') + '</ul><p>Só entram os itens que a pessoa tem no período (sem entregas, a pontualidade fica de fora). Faixas: 85+ Excelente · 70+ Bom · 50+ Atenção · abaixo, Precisa de apoio. É um retrato para conversar com a equipe, não um julgamento automático.</p></div>' +
+    (r.semLeitura ? '<div class="faixa warn"><svg class="ic"><use href="#i-alert"/></svg>' + plural(r.semLeitura, 'entrega ficou', 'entregas ficaram') + ' sem a leitura dos trâmites: para elas o tempo conta da abertura à conclusão (estimado) e o crédito vai para o responsável. Abra a tela de novo mais tarde para completar.</div>' : '') +
+    '<div class="av-como" id="av-como-txt" hidden><b>Como a nota é calculada (0 a 100)</b><ul>' + COMP.map(([k, rot, d]) => '<li><b>' + rot + ' · peso ' + r.pesos[k] + '</b> ' + esc(d) + '</li>').join('') + '</ul>' +
+      '<p><b>Para ser justa:</b> o tempo que conta é só o tempo em que a vez era do escritório (lido nos trâmites de cada entrega); a entrega conta para quem a concluiu, não para o responsável atual; atrasos de origem do cliente não pesam; com poucas entregas, os percentuais são puxados para a média da equipe, e abaixo de ' + r.minEntregas + ' entregas no período a pessoa aparece sem posição ("poucos dados"); item sem dado recebe o valor da equipe. O gestor pode tirar um caso da conta ("Não contar", no detalhe de cada pessoa). Pesos e mínimo podem vir do arquivo de regras (avaliacao).</p>' +
+      '<p>Faixas: 85+ Excelente · 70+ Bom · 50+ Atenção · abaixo, Precisa de apoio. É um retrato para conversar com a equipe, não um julgamento automático.</p></div>' +
     '<div class="av-grade">' +
       '<section class="card av-rank-card"><div class="card-h"><h3>Ranking de desempenho</h3><span class="sub">clique numa linha para ver o detalhe · no cabeçalho para ordenar</span></div><div class="card-b"><div class="av-rank" id="av-rank"></div></div></section>' +
       '<section class="card"><div class="card-h"><h3>Entregas no período</h3><span class="sub">no prazo × fora do prazo, por analista</span></div><div class="card-b"><div id="av-barras"></div></div></section>' +
@@ -161,6 +174,7 @@ function desempenho(el, ctx, params) {
   ligarDicas(el);
   if (animar) { animar = false; el.classList.remove('av-anim'); void el.offsetWidth; el.classList.add('av-anim'); animarNumeros(el); }
   $('#av-como', el).onclick = () => { const t = $('#av-como-txt', el); t.hidden = !t.hidden; };
+  if ($('#av-exc-limpar', el)) $('#av-exc-limpar', el).onclick = async () => { for (const k of Object.keys(estado.excecoes || {})) await marcarExcecao(k, false); toast('Todos os casos voltaram para a conta'); render(el, ctx, params); };
   ligarDetalhe();
 
   function abrir(resp) {
@@ -177,13 +191,21 @@ function desempenho(el, ctx, params) {
     $('#av-det-fila', el).onclick = () => ctx.navegar('fila', { analista: aberto });
     const a = ans.find(x => x.resp === aberto);
     if ($('#av-det-l', el)) ligarItens($('#av-det-l', el), a.atencao, ctx.abrirDetalhe);
+    if ($('#av-det-fp', el)) ligarItens($('#av-det-fp', el), a.foraDoPrazo.map(x => x.item), ctx.abrirDetalhe);
+    if ($('#av-det-ev', el)) ligarItens($('#av-det-ev', el), a.evitaveis.map(x => x.item), ctx.abrirDetalhe);
+    $$('[data-exc]', d).forEach(b => b.addEventListener('click', async ev => {
+      ev.stopPropagation();
+      await marcarExcecao(b.dataset.exc, true);
+      toast('Caso fora da conta (só para a avaliação; pode voltar no topo da tela)');
+      render(el, ctx, params);
+    }));
   }
 }
 
 // Ranking em tabela compacta: uma linha por pessoa, na ordem da nota (ou da coluna escolhida no cabeçalho).
 function rankHtml(ans) {
-  const pos = new Map(ans.map((a, n) => [a.resp, n + 1]));               // ans já vem ordenado pela nota
-  const val = (a, k) => k === 'pos' ? pos.get(a.resp) : k === 'resp' ? a.resp : k === 'nota' ? a.nota : k === 'concluidas' ? a.concluidas : a.componentes[k];
+  const pos = new Map(ans.map((a, n) => [a.resp, n + 1]));               // ans já vem ordenado (poucos dados por último)
+  const val = (a, k) => k === 'pos' ? (a.pos == null ? null : a.pos) : k === 'resp' ? a.resp : k === 'nota' ? a.nota : k === 'concluidas' ? a.concluidas : a.componentes[k];
   const l = ans.slice().sort((a, b) => {
     const x = val(a, ordRank.k), y = val(b, ordRank.k);
     if (x == null && y == null) return pos.get(a.resp) - pos.get(b.resp);
@@ -194,11 +216,11 @@ function rankHtml(ans) {
   const th = (k, rot, cls, tit) => '<th class="' + (cls || '') + (ordRank.k === k ? ' on' + (ordRank.desc ? '' : ' asc') : '') + '"' + (tit ? ' title="' + esc(tit) + '"' : '') + '><button type="button" data-ord="' + k + '">' + rot + '</button></th>';
   return '<table class="av-tab"><thead><tr>' + th('pos', '#', 'num') + th('resp', 'Analista') + th('nota', 'Nota', 'num') + '<th>Faixa</th>' +
       COMP.map(([k, rot, d]) => th(k, CURTO[k], 'av-tc', rot + ': ' + d)).join('') + th('concluidas', 'Entregas', 'num') + '</tr></thead><tbody>' +
-    l.map((a, n) => '<tr class="av-lin' + (aberto === a.resp ? ' ativo' : '') + '" tabindex="0" data-resp="' + esc(a.resp) + '" style="--c:' + cor(COR_FAIXA[a.faixa.k]) + ';--i:' + (n + 1) + '">' +
-      '<td class="num av-pos">' + pos.get(a.resp) + 'º</td>' +
+    l.map((a, n) => '<tr class="av-lin' + (aberto === a.resp ? ' ativo' : '') + (a.poucosDados ? ' av-pouco' : '') + '" tabindex="0" data-resp="' + esc(a.resp) + '" style="--c:' + cor(COR_FAIXA[a.faixa.k]) + ';--i:' + (n + 1) + '">' +
+      '<td class="num av-pos">' + (a.pos == null ? '–' : a.pos + 'º') + '</td>' +
       '<td class="av-nome"><b>' + esc(a.resp) + '</b></td>' +
       '<td class="num"><span class="av-nota-tag">' + (a.nota == null ? '–' : a.nota) + '</span></td>' +
-      '<td><span class="av-chip">' + esc(a.faixa.rot) + '</span></td>' +
+      '<td>' + (a.poucosDados ? '<span class="av-chip av-chip-pouco" title="Menos de ' + estado.settings.avaliacaoMinEntregas + ' entregas no período: a nota é só um indicativo e não entra no ranking">Poucos dados</span>' : '<span class="av-chip">' + esc(a.faixa.rot) + '</span>') + '</td>' +
       COMP.map(([k]) => { const v = a.componentes[k]; return '<td class="av-tc"><span class="av-mini"><i class="av-barra"><i style="width:' + (v == null ? 0 : v) + '%"></i></i><small>' + (v == null ? '–' : v) + '</small></span></td>'; }).join('') +
       '<td class="num av-ent"><b>' + num(a.concluidas) + '</b>' + setinha(a.variacao.concluidas) + '</td></tr>').join('') +
     '</tbody></table>';
@@ -213,15 +235,25 @@ function detalheAnalista(a) {
     '<div class="av-det-grade">' +
       lin('Entregas', num(a.concluidas), 'anterior: ' + num(a.anterior.concluidas)) +
       lin('No prazo', pctTxt(a.pctNoPrazo), a.noPrazo + ' de ' + a.concluidas + (a.anterior.pctNoPrazo != null ? ' · anterior: ' + a.anterior.pctNoPrazo + '%' : '')) +
-      lin('Tempo de conclusão', fmt1(a.tempoMedio) + ' d.u.', 'da abertura à conclusão') +
-      lin('Carteira', num(a.carteira), a.esc + ' com o escritório · ' + pctTxt(a.pctEmDia) + ' em dia') +
-      lin('1º trâmite', fmt1(a.primeiroTramite) + ' d.u.', 'média · estimativa') +
-      lin('Qualidade', num(a.g3 + a.prescritas), a.g3 + ' G3 · ' + a.prescritas + ' prescritas · ' + a.paradas + ' paradas · ' + a.respondeu + ' com resposta do cliente esperando') +
+      lin('Tempo com o escritório', fmt1(a.tempoMedio) + ' d.u.', 'média por entrega' + (a.ritmo != null ? ' · ritmo ' + fmt1(a.ritmo) + '× o normal da equipe' : '') + (a.estimadas ? ' · ' + a.estimadas + ' estimada(s)' : '')) +
+      lin('Carteira', num(a.carteira), a.esc + ' com o escritório · ' + pctTxt(a.pctEmDia) + ' em dia (sem os atrasos do cliente)') +
+      lin('1º trâmite', fmt1(a.primeiroTramite) + ' d.u.', 'média · inclui as sem resposta') +
+      lin('Evitáveis', num(a.g3Esc + a.prescSemCobranca), a.g3Esc + ' G3 na vez do escritório · ' + a.prescSemCobranca + ' prescritas sem cobrança · ' + a.paradas + ' paradas · ' + a.respondeu + ' com resposta do cliente esperando') +
     '</div>' +
+    (a.poucosDados ? '<p class="av-pouco-nota">Só ' + plural(a.concluidas, 'entrega', 'entregas') + ' no período: os percentuais foram puxados para a média da equipe e a pessoa fica sem posição no ranking.</p>' : '') +
+    '<p class="av-pouco-nota">Componentes da nota: ' + COMP.map(([k, rot]) => rot + ' ' + (a.componentes[k] == null ? '–' : a.componentes[k]) + (a.brutos[k] != null && a.brutos[k] !== a.componentes[k] ? ' (próprio: ' + a.brutos[k] + ')' : a.brutos[k] == null ? ' (sem dado: valor da equipe)' : '')).join(' · ') + '</p>' +
+    (a.foraDoPrazo.length ? '<h4 class="av-det-h">Entregas fora do prazo</h4><div class="av-det-l" id="av-det-fp">' + a.foraDoPrazo.map(x => itemExc(x.item, 'Fora do prazo', 'var(--viz-serious)', fmt1(x.tempo) + ' d.u. com o escritório (prazo ' + x.prazo + ')' + (x.estimado ? ' · estimado: sem leitura dos trâmites' : ''))).join('') + '</div>' : '') +
+    (a.evitaveis.length ? '<h4 class="av-det-h">Alertas evitáveis</h4><div class="av-det-l" id="av-det-ev">' + a.evitaveis.map(x => itemExc(x.item, x.item.lado === 'fim' ? 'Prescrita' : 'Crítica (G3)', 'var(--viz-crit)', x.motivo)).join('') + '</div>' : '') +
     '<h4 class="av-det-h">Pontos de atenção agora</h4>' +
     (a.atencao.length ? '<div class="av-det-l" id="av-det-l">' + a.atencao.map(i => (() => { const pg = porqueGrav(i); const porque = i.grav === 3 && pg ? pg.texto.replace(/^Crítica \(G3\) porque /, '') : 'parada há ' + (i.parado || 0) + ' dias com o escritório (limite ' + estado.settings.parada + ')'; return '<div class="item-ag clicavel" tabindex="0" data-k="' + esc(i.k) + '"><span class="pr-tag" style="--pc:' + (i.grav === 3 ? 'var(--viz-crit)' : 'var(--viz-serious)') + '">' + (i.grav === 3 ? 'Crítica (G3)' : 'Parada') + '</span><div class="tx"><b>#' + esc(i.num) + ' ' + esc(i.apelido || i.cliente || '—') + '</b><small>' + esc([i.typeLabel, i.detalhe].filter(Boolean).join(' · ')) + '</small><small class="av-porque">Por quê: ' + esc(porque) + '</small></div></div>'; })()).join('') + '</div>'
       : '<div class="hj-zen">Nenhuma crítica nem parada na carteira agora.</div>') +
     '</div></section>';
+}
+
+// Linha de um caso que pesa na nota, com "Não contar" (o gestor tira da conta; fica só no Chrome dele)
+function itemExc(i, tag, cor, porque) {
+  return '<div class="item-ag clicavel" tabindex="0" data-k="' + esc(i.k) + '"><span class="pr-tag" style="--pc:' + cor + '">' + esc(tag) + '</span><div class="tx"><b>#' + esc(i.num) + ' ' + esc(i.apelido || i.cliente || '—') + '</b><small>' + esc([i.typeLabel, i.detalhe].filter(Boolean).join(' · ')) + '</small><small class="av-porque">' + esc(porque) + '</small></div>' +
+    '<div class="acts"><button type="button" class="btn btn-sm" data-exc="' + esc(i.k) + '" title="Tira este caso da avaliação (por exemplo, um problema que não foi da pessoa)">Não contar</button></div></div>';
 }
 
 function carga(el, ctx) {

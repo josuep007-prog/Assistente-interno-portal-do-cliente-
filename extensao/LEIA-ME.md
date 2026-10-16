@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.20.1)
+# Control Onvio · ControlTax (v0.21.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -26,9 +26,9 @@ Para atualizar a versão: substitua os arquivos da pasta, clique em **Recarregar
 | Tela | Para quem | O que mostra |
 | --- | --- | --- |
 | **Hoje** | Analista (todos veem) | A visão do dia; o trabalho com as solicitações fica em **Solicitações**. **Carteira** no cabeçalho. **Destaque**: rosca % em dia (clicar numa parte abre as Solicitações com aquele motivo), carrossel e **Próximos passos**. Logo abaixo, em **destaque vermelho e recolhível**, as **admissões** retroativas, já passadas ou a até 2 dias úteis do início, sem nenhum trâmite do escritório ainda (o eSocial do empregado vence no dia anterior; o do estagiário, até 15 dias depois do início). **Avisos sem cálculo** com Férias e Rescisões lado a lado (Criar solicitação e, no menu ⋯, responder no aviso, Já avisei e Desconsiderar). **Painéis**: vencimentos de férias e rescisões (prazo legal), **sugestões de ação** (com link para resolver), **uso do portal pelo cliente** (lista errada, pedido repetido, solicitação abandonada) e **previsão de solicitações por empresa** (média das últimas 4 semanas, tendência e estimativa para 7 e 30 dias, lida na hora) |
-| **Solicitações** | Analista e gestor | Onde o analista trabalha. Cartões por tipo, abas Minhas / Equipe toda / Sem responsável / **Resolvidas** (vez do cliente sem retorno, ver as regras). Busca, vez (escritório/cliente), **Filtros** (tipo, gravidade, responsável), **Ordenar**, **Lista ou Cartões**, **Mais** (exportar CSV). Os filtros ativos aparecem como etiquetas que se tiram com um clique |
+| **Solicitações** | Analista e gestor | Onde o analista trabalha. Abre em **A responder** (o que espera o escritório), em grupos por urgência; **Aguardando o cliente** é um botão secundário. Abas Minhas / Equipe toda / Sem responsável / **Resolvidas** (vez do cliente sem retorno, ver as regras). Busca, tipos em chips, **Filtros** (tipo, gravidade, responsável), **Ordenar**, Lista ou Cartões e ⋯ (exportar CSV). Os filtros ativos aparecem como etiquetas que se tiram com um clique |
 | **Agenda e lembretes** | Cada um | Calendário do mês com lembretes e expectativas de conclusão das suas solicitações; lista (atrasados, hoje, próximos, concluídos). Lembretes podem **repetir** (todo dia, todo dia útil, toda semana, todo mês) |
-| **Equipe** | Gestor (com senha) | **Área do gestor**, aberta só com a senha. Aba **Desempenho**: nota da equipe (0 a 100) e de cada analista, com entregas no período (7, 14 ou 30 dias) e a comparação com o período anterior, % no prazo, tempo de conclusão, carteira em dia, 1º trâmite e alertas de qualidade (críticas e prescritas); **ranking em tabela compacta** (uma linha por pessoa, com os 4 itens da nota; o cabeçalho ordena), **entregas no período no prazo × fora do prazo** por pessoa e o **detalhe** de cada pessoa com os pontos de atenção e o porquê de cada um. Abas **Carga de hoje** (números e gráficos da fila, próximas a prescrever) e **Responsáveis** (idade da fila e carga de cada pessoa) |
+| **Equipe** | Gestor (com senha) | **Área do gestor**, aberta só com a senha. Aba **Desempenho**: nota da equipe (0 a 100) e de cada analista, com entregas no período (7, 14 ou 30 dias) e a comparação com o período anterior, % no prazo e tempo **com o escritório** (sem a espera pelo cliente), carteira em dia, 1º trâmite e alertas evitáveis; **ranking em tabela compacta** (uma linha por pessoa, com os 5 itens da nota; quem tem poucas entregas fica sem posição; o cabeçalho ordena), **entregas no período no prazo × fora do prazo** por pessoa e o **detalhe** de cada pessoa com os pontos de atenção e o porquê de cada um. Abas **Carga de hoje** (números e gráficos da fila, próximas a prescrever) e **Responsáveis** (idade da fila e carga de cada pessoa) |
 | **Configurações** | Todos | **Prazos** com a origem de cada valor (padrão, escritório ou seu ajuste) e o **efeito na fila agora** antes de salvar; **Leitura e avisos** (com a carga que cada ajuste gera); **Feriados** (próximos e locais); **Palavras** (como a extensão lê as respostas); **Avançado** (arquivo de regras, aprender ações, diagnóstico) |
 
 O **sino** do topo junta os alertas: nova solicitação para você, cliente respondeu, prescreve em até 5 dias, ficou fora do prazo, nova sem responsável e lembretes. Novidades das suas solicitações também aparecem como aviso na tela.
@@ -40,6 +40,28 @@ Vez do cliente: sem retorno há mais de 5 dias úteis (laranja); a partir de 20 
 **Resolvida sem retorno:** na vez do cliente há mais de 3 dias úteis e a última resposta do analista não pede nada ao cliente = o cliente ficou satisfeito, e a solicitação conta como resolvida (sai da fila, dos prazos e da prescrição e conta como entregue na Equipe). Se a resposta pedir algo ("aguardamos", "favor enviar", "falta"… ou uma pergunta), continua pendente; frases de cortesia ("qualquer dúvida, estamos à disposição") não contam. Nada muda no Onvio.
 
 Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardando resposta** = o escritório precisa responder; **Respondido** = vez do cliente.
+
+## Novidades da v0.21.0 (avaliação justa da equipe, Solicitações enxuta e conversa em ordem)
+
+**Avaliação da equipe mais justa** (área do gestor):
+- **Só conta o tempo com o escritório.** Os trâmites de cada entrega do período são lidos na hora, e os dias em que a vez era do cliente (esperando documento, resposta) saem da conta. Antes, uma solicitação que esperou o cliente 8 dias contava como atraso do analista.
+- **A entrega vale para quem a concluiu** (autor do trâmite de conclusão), não para o responsável atual. Encaminhar ou redistribuir não transfere mais mérito nem atraso.
+- **Poucos dados não ganham de quem trabalha muito.** Abaixo de 5 entregas no período (regra `avaliacao.minEntregas`), a pessoa aparece como "Poucos dados", sem posição no ranking. Com poucas entregas, os percentuais são puxados para a média da equipe. Item sem dado recebe o valor da equipe (antes saía da conta e a nota subia).
+- **Ritmo** (novo, peso 10): o tempo de cada entrega comparado com o normal da equipe no mesmo tipo de solicitação, porque admissão, cálculo e rubricas não levam o mesmo tempo.
+- **Carteira em dia** não conta atrasos de origem do cliente: admissão pedida retroativa, pedido que chegou em cima do prazo legal, prazo que inclui a espera pelo cliente. Esses motivos aparecem com "· origem do cliente" (borda tracejada) em toda a plataforma.
+- **Cuidado** proporcional ao tamanho da carteira (a cada 10 solicitações). Só contam críticas (G3) na vez do escritório e prescritas em que ninguém cobrou o cliente.
+- **Agilidade** passa a incluir as que seguem "Sem análise" (contam o tempo até agora) e o 1º trâmite das entregas.
+- **Detalhe de cada pessoa:** os componentes da nota (próprio × ajustado), as entregas fora do prazo e os alertas evitáveis. **Não contar** tira um caso da conta; fica só no Chrome do gestor, com "voltar todos" no topo.
+- Pesos novos: pontualidade 30, ritmo 10, carteira em dia 25, cuidado 20, agilidade 15. O arquivo de regras pode trocar (`avaliacao.pesos`).
+- **Distribuir** usa a mesma regra: concluídas contam para quem as concluiu, quando a Equipe já leu os trâmites.
+
+**Solicitações mais limpa:**
+- **Padrão "A responder":** só o que espera o escritório. **Aguardando o cliente** virou um botão secundário, com a contagem. Saiu o seletor Todas/Escritório/Cliente. Atalhos de outras telas escolhem sozinhos (prescrição mostra o lado do cliente; Sem responsável e a tela de um cliente mostram as duas).
+- **Grupos por urgência** na ordem de prioridade: Fora do prazo, Perto de prescrever, Vence hoje, Cliente respondeu, Em dia.
+- Os 11 cartões de tipo viraram **chips compactos**, só dos tipos que têm alguma, com quantas fora do prazo. Ordenar virou lista suspensa, Lista/Cartões só ícones, e Mais ficou no "⋯".
+- Coluna única **Cliente · assunto**. Responsável só aparece fora de "Minhas". Saiu o "vez:" repetido em cada linha.
+
+**Detalhe:** os trâmites aparecem **só em ordem de conversa** (da abertura ao mais recente), sem filtros por cliente, escritório ou anexo. A janela já chega no fim da conversa.
 
 ## Novidades da v0.20.1 (Equipe mais legível, cantos quadrados e o porquê da gravidade)
 
@@ -313,7 +335,7 @@ Primeiro passo para a extensão virar a tela de trabalho e fazer as ações (res
 
 ## Privacidade
 
-A extensão usa a sessão do Onvio de quem está logado e só vê o que o perfil da pessoa já vê. Guarda no computador apenas: o resumo das pendências (ID, situação, datas, cliente, empregado/assunto e responsável), os alertas (tipo, ID, cliente, motivo e hora), a série do dia (só contagens), os seus lembretes e a coluna de cada aviso no quadro dos avisos sem cálculo (ID interno, coluna e hora). O detalhe e os trâmites de uma solicitação são lidos na hora e não são gravados; da última resposta do analista fica só o veredito da regra de resolvida (pede algo ao cliente: sim/não). Anexos baixados vão direto para a pasta de downloads do Chrome; do download fica só o molde do caminho, sem ids nem nomes. Não guarda CPF, salário, descrição, observações nem anexos.
+A extensão usa a sessão do Onvio de quem está logado e só vê o que o perfil da pessoa já vê. Guarda no computador apenas: o resumo das pendências (ID, situação, datas, cliente, empregado/assunto e responsável), os alertas (tipo, ID, cliente, motivo e hora), a série do dia (só contagens), os seus lembretes, a coluna de cada aviso no quadro dos avisos sem cálculo (ID interno, coluna e hora) e, para a avaliação da equipe, por entrega do período só números (dias com o escritório, dias até o 1º trâmite, se houve cobrança), o nome de quem concluiu e a data da última movimentação, além dos casos que o gestor tirou da conta (ID interno e data). O detalhe e os trâmites de uma solicitação são lidos na hora e não são gravados; da última resposta do analista fica só o veredito da regra de resolvida (pede algo ao cliente: sim/não). Anexos baixados vão direto para a pasta de downloads do Chrome; do download fica só o molde do caminho, sem ids nem nomes. Não guarda CPF, salário, descrição, observações nem anexos.
 
 ## Problemas comuns
 

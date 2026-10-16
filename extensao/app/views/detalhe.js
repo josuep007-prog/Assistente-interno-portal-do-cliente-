@@ -13,15 +13,14 @@ let atual = null;        // { type, num }
 let aba = 'tramites';
 let lista = null;        // lista de onde a pessoa abriu (para anterior/próxima)
 let ultimo = null;       // { i, r, erro, carregando } para redesenhar ao trocar de aba ou ao mudar lembretes
-let trFiltro = 'todos';  // trâmites: todos, esc, cli, anexos
-let trOrdem = 'recentes'; // trâmites: recentes primeiro ou conversa (ordem em que aconteceram)
+let rolada = null;       // solicitação cuja conversa já foi levada ao fim (uma vez por abertura)
 
 export const detalheAberto = () => !$('#gaveta').hidden;
 export function fecharDetalhe() {
   const estava = detalheAberto();
   $('#gaveta').hidden = true; $('#fundo').hidden = true;
   $('#gaveta').innerHTML = '';
-  atual = null; lista = null; ultimo = null;
+  atual = null; lista = null; ultimo = null; rolada = null;
   if (estava) dispatchEvent(new CustomEvent('controlonvio-detalhe-fechado'));
 }
 
@@ -110,12 +109,13 @@ function desenhar(i, r, erro, carregando) {
     '</div>';
 
   $('#g-fechar').onclick = fecharDetalhe;
+  // conversa: ao chegar, mostra o fim (o trâmite mais recente), uma vez por solicitação aberta
+  const chave = atual ? atual.type + ':' + atual.num : '';
+  if (aba === 'tramites' && !carregando && tramites && tramites.length && rolada !== chave) { rolada = chave; const c = $('#g-corpo'); if (c) c.scrollTop = c.scrollHeight; }
   const anexos = marcar => abrirAnexos({ item: i, r, marcar });
   if ($('#g-anexos')) $('#g-anexos').onclick = () => anexos();
   if ($('#g-anexos2')) $('#g-anexos2').onclick = () => anexos();
   $$('[data-ax-abrir]', g).forEach(b => b.onclick = e => { e.stopPropagation(); anexos(b.dataset.axAbrir); });
-  $$('[data-tr-filtro]', g).forEach(b => b.onclick = () => { trFiltro = b.dataset.trFiltro; desenhar(i, r, erro, carregando); });
-  $$('[data-tr-ordem]', g).forEach(b => b.onclick = () => { trOrdem = b.dataset.trOrdem; desenhar(i, r, erro, carregando); });
   $$('.tr-mais', g).forEach(b => b.onclick = () => { const c = b.closest('.tr-bolha'); const ab = c.classList.toggle('aberto'); b.textContent = ab ? 'Ver menos' : 'Ver tudo'; });
   requestAnimationFrame(() => $$('.tr-texto', g).forEach(t => { if (t.scrollHeight > t.clientHeight + 4) t.closest('.tr-bolha').classList.add('longo'); }));
   if ($('#g-ant')) { $('#g-ant').onclick = () => andar(-1); $('#g-prox').onclick = () => andar(1); }
@@ -158,25 +158,21 @@ function botoesAcao(i, carregando) {
   return b('tramite', 'Responder', 'chat') + b('encaminhar', 'Encaminhar', 'repeat') + b('responsavel', 'Responsável', 'user') + (OC.ACOES.expectativa(i.type) ? b('expectativa', 'Expectativa', 'calendar') : '');
 }
 
-// Trâmites como conversa: cliente à esquerda, escritório à direita, com o tempo entre um e outro, filtros e ordem.
+// Trâmites como conversa, sempre na ordem em que aconteceram (sem filtros): cliente à esquerda, escritório à direita,
+// com o tempo entre um e outro. Ao abrir, a janela já mostra o fim da conversa (o mais recente).
 function tramitesHtml(r, carregando) {
   if (carregando) return '<div class="vazio">Lendo os trâmites no Onvio…</div>';
   if (!r) return '<div class="vazio">Sem trâmites para mostrar.</div>';
   if (r.erroTramites) return '<div class="faixa warn"><svg class="ic"><use href="#i-alert"/></svg>Não foi possível ler os trâmites (' + esc(r.erroTramites) + '). Use "Abrir no Onvio" para ver o histórico.</div>';
   const todos = r.tramites || [];
   if (!todos.length) return '<div class="vazio"><b>Nenhum trâmite ainda</b>A solicitação ainda não teve resposta.</div>';
-  const n = { esc: todos.filter(x => x.lado === 'esc').length, cli: todos.filter(x => x.lado !== 'esc').length, anexos: todos.filter(x => (x.anexos || []).length).length };
-  const f = trFiltro === 'esc' ? x => x.lado === 'esc' : trFiltro === 'cli' ? x => x.lado !== 'esc' : trFiltro === 'anexos' ? x => (x.anexos || []).length : () => true;
-  const l = todos.filter(f);
   const ult = todos[todos.length - 1];
-  const ordem = trOrdem === 'conversa' ? l : l.slice().reverse();
-  const seg = (k, rot, qt) => '<button data-tr-filtro="' + k + '"' + (trFiltro === k ? ' class="on"' : '') + '>' + rot + (qt != null ? ' <span class="n">' + qt + '</span>' : '') + '</button>';
   const dias = (a, b) => Math.round((new Date(b) - new Date(a)) / 864e5);
   let ant = null;
-  const corpo = ordem.map(x => {
+  const corpo = todos.map(x => {
     // tempo entre este trâmite e o anterior na leitura (só quando passou ao menos 1 dia)
     let gap = '';
-    if (ant) { const d = Math.abs(dias(ant.em, x.em)); if (d >= 1) gap = '<div class="tr-gap"><span>' + d + (d === 1 ? ' dia' : ' dias') + (trOrdem === 'conversa' ? ' depois' : ' antes') + '</span></div>'; }
+    if (ant) { const d = Math.abs(dias(ant.em, x.em)); if (d >= 1) gap = '<div class="tr-gap"><span>' + d + (d === 1 ? ' dia' : ' dias') + ' depois</span></div>'; }
     ant = x;
     const lado = x.lado === 'esc' ? 'esc' : 'cli';
     const quem = x.autor || (lado === 'esc' ? 'Escritório' : 'Cliente');
@@ -191,9 +187,7 @@ function tramitesHtml(r, carregando) {
         (anexos.length ? '<div class="tr-anexos">' + anexos.map((a, ai) => { const tp = tipoArquivo(a.nome); return '<button type="button" class="tr-arq"' + (a.id ? ' data-ax-abrir="' + gi + ':' + ai + '"' : ' disabled') + ' title="Baixar ' + esc(a.nome) + '"><span class="ax-ic ' + tp.cls + '">' + tp.rot + '</span><span class="ax-nome">' + esc(a.nome) + '</span></button>'; }).join('') + '</div>' : '') +
       '</div></div>';
   }).join('');
-  return '<div class="tr-barra"><div class="seg" role="group" aria-label="Quais trâmites">' + seg('todos', 'Todos', todos.length) + seg('esc', 'Escritório', n.esc) + seg('cli', 'Cliente', n.cli) + seg('anexos', 'Com anexo', n.anexos) + '</div>' +
-      '<div class="seg" role="group" aria-label="Ordem"><button data-tr-ordem="recentes"' + (trOrdem !== 'conversa' ? ' class="on"' : '') + '>Mais recentes</button><button data-tr-ordem="conversa"' + (trOrdem === 'conversa' ? ' class="on"' : '') + '>Ordem da conversa</button></div></div>' +
-    (l.length ? '<div class="tr-lista">' + corpo + '</div>' : '<div class="vazio">Nenhum trâmite com esse filtro.</div>');
+  return '<div class="tr-lista" id="tr-lista">' + corpo + '</div>';
 }
 
 // Em destaque (sutil): as datas e os dados que definem o atendimento, tirados da solicitação completa.
