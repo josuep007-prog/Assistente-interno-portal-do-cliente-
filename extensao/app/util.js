@@ -44,7 +44,7 @@ export const porqueGrav = i => OC.porqueGravidade(i, estado.settings);
 export function motivosHtml(i) {
   const pg = i.grav === 3 ? porqueGrav(i) : null;
   return (pg ? '<span class="pill pill-late" title="' + esc(pg.texto) + '">' + esc(pg.rot) + '</span>' : '') +
-    (i.motivos || []).map(m => '<span class="pill ' + (m.n === 2 ? 'pill-late' : 'pill-today') + '">' + esc(m.m) + '</span>').join('') +
+    (i.motivos || []).map(m => '<span class="pill ' + (m.n === 2 ? 'pill-late' : 'pill-today') + (m.o === 'cli' ? ' pill-cli" title="Atraso de origem do cliente (o pedido chegou tarde ou o prazo inclui a espera pelo cliente): continua pedindo ação, mas não pesa na avaliação do analista' : '') + '">' + esc(m.m) + (m.o === 'cli' ? ' · origem do cliente' : '') + '</span>').join('') +
     (i.abaProvavel ? '<span class="pill pill-muted" title="O assunto lembra uma solicitação específica (palavra: ' + esc(i.abaProvavel.palavra) + ')">Pode ser: ' + esc(i.abaProvavel.label) + '</span>' : '');
 }
 const nomeCli = i => i.apelido || i.cliente || 'Cliente não informado';

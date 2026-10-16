@@ -5,12 +5,12 @@ const OC = window.OC;
 
 const CHAVES = {
   snapshot: 'snap', status: 'status', settings: 'usuario', regrasEscritorio: 'regras', ultimaVerificacao: 'ultima',
-  eventos: 'eventos', lembretes: 'lembretes', serie: 'serie', alertasVistosEm: 'alertasVistosEm', semCalculoMarcas: 'semCalcMarcas'
+  eventos: 'eventos', lembretes: 'lembretes', serie: 'serie', alertasVistosEm: 'alertasVistosEm', semCalculoMarcas: 'semCalcMarcas', avaliacaoExcecoes: 'excecoes'
 };
 
 export const estado = {
   snap: null, status: null, usuario: {}, regras: null, ultima: null,
-  eventos: [], lembretes: [], serie: {}, alertasVistosEm: null, semCalcMarcas: {},
+  eventos: [], lembretes: [], serie: {}, alertasVistosEm: null, semCalcMarcas: {}, excecoes: {},
   settings: Object.assign({}, OC.DEFAULTS)
 };
 
@@ -21,7 +21,7 @@ function aplicar(d) {
   for (const [k, campo] of Object.entries(CHAVES)) {
     if (!(k in d)) continue;
     const v = d[k];
-    estado[campo] = v == null ? (['eventos', 'lembretes'].includes(campo) ? [] : ['serie', 'usuario', 'semCalcMarcas'].includes(campo) ? {} : null) : v;
+    estado[campo] = v == null ? (['eventos', 'lembretes'].includes(campo) ? [] : ['serie', 'usuario', 'semCalcMarcas', 'excecoes'].includes(campo) ? {} : null) : v;
   }
   estado.settings = OC.combinarSettings(estado.regras, estado.usuario);
 }
@@ -57,4 +57,16 @@ export const primeiroNome = () => { const n = estado.snap && estado.snap.user &&
 export async function salvarLembretes(lista) { await chrome.storage.local.set({ lembretes: lista }); }
 // Quadro dos avisos sem cálculo: só o id interno (k), a coluna e quando (OC.marcarSemCalculo)
 export async function marcarSemCalculo(k, st) { await chrome.storage.local.set({ semCalculoMarcas: OC.marcarSemCalculo(estado.semCalcMarcas, k, st, itens(), new Date()) }); }
+// Avaliação da equipe: casos que o gestor tirou da conta (só o k e quando; no Chrome dele)
+export async function marcarExcecao(k, fora) {
+  const l = Object.assign({}, estado.excecoes || {});
+  if (fora) l[k] = new Date().toISOString(); else delete l[k];
+  // guarda no máximo 500 (as mais recentes) e nada com mais de 180 dias
+  const lim = Date.now() - 180 * 864e5;
+  for (const [x, em] of Object.entries(l)) if (new Date(em).getTime() < lim) delete l[x];
+  const ord = Object.entries(l).sort((a, b) => b[1].localeCompare(a[1])).slice(0, 500);
+  const novo = Object.fromEntries(ord);
+  estado.excecoes = novo;
+  await chrome.storage.local.set({ avaliacaoExcecoes: novo });
+}
 export async function marcarAlertasVistos() { await chrome.storage.local.set({ alertasVistosEm: new Date().toISOString() }); }
