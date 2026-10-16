@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.18.0)
+# Control Onvio · ControlTax (v0.19.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -14,7 +14,7 @@ Para atualizar a versão: substitua os arquivos da pasta, clique em **Recarregar
 
 ## Como usar
 
-- **Trilho lateral** (à esquerda, escuro, como no Control Hub): Hoje, Solicitações, Agenda e lembretes, Equipe, Clientes, Distribuir e Consultar no Onvio. Passe o mouse num ícone para ver o nome; os números vermelhos/azuis são o que pede atenção.
+- **Trilho lateral** (à esquerda, escuro, como no Control Hub): Hoje, Solicitações, Agenda e lembretes, Equipe (área do gestor, com senha) e Distribuir. A busca (/ ou Ctrl+K) procura nas 10 listas do Onvio, inclusive concluídas. Passe o mouse num ícone para ver o nome; os números vermelhos/azuis são o que pede atenção.
 - **Ver Onvio** (canto superior direito) mostra a tela nativa do Onvio; o botão **Voltar ao Control Onvio**, no canto inferior direito, traz o app de volta. O ícone da extensão e o atalho **Alt+Shift+O** fazem o mesmo, e em qualquer outro site levam ao Onvio.
 - **Busca** em janela central: tecla **/** ou **Ctrl+K**. Já mostra, enquanto você digita, as pendências lidas e os clientes; **Enter** busca em todas as listas do Onvio, inclusive concluídas (ou abre direto a solicitação, se você digitou o ID exato).
 - Clique numa solicitação para abrir o **detalhe** (dados e trâmites lidos na hora). Setas **← →** passam para a anterior/próxima da mesma lista sem fechar. "Abrir no Onvio" leva à lista certa do Onvio já filtrada pelo ID.
@@ -25,12 +25,10 @@ Para atualizar a versão: substitua os arquivos da pasta, clique em **Recarregar
 
 | Tela | Para quem | O que mostra |
 | --- | --- | --- |
-| **Hoje** | Analista (todos veem) | A visão do dia; o trabalho com as solicitações fica em **Solicitações**. **Carteira** no cabeçalho. **Destaque**: rosca % em dia (clicar numa parte abre as Solicitações com aquele motivo), carrossel e **Próximos passos**. Logo abaixo, em **destaque vermelho e recolhível**, as **admissões** retroativas, já passadas ou a até 2 dias úteis do início, sem nenhum trâmite do escritório ainda (o eSocial vence no dia anterior). **Avisos sem cálculo** com Férias e Rescisões lado a lado (Criar solicitação e, no menu ⋯, responder no aviso, Já avisei e Desconsiderar). **Painéis**: vencimentos de férias e rescisões (prazo legal), **sugestões de ação** (com link para resolver), **uso do portal pelo cliente** (lista errada, pedido repetido, solicitação abandonada) e **previsão de solicitações por empresa** (média das últimas 4 semanas, tendência e estimativa para 7 e 30 dias, lida na hora) |
+| **Hoje** | Analista (todos veem) | A visão do dia; o trabalho com as solicitações fica em **Solicitações**. **Carteira** no cabeçalho. **Destaque**: rosca % em dia (clicar numa parte abre as Solicitações com aquele motivo), carrossel e **Próximos passos**. Logo abaixo, em **destaque vermelho e recolhível**, as **admissões** retroativas, já passadas ou a até 2 dias úteis do início, sem nenhum trâmite do escritório ainda (o eSocial do empregado vence no dia anterior; o do estagiário, até 15 dias depois do início). **Avisos sem cálculo** com Férias e Rescisões lado a lado (Criar solicitação e, no menu ⋯, responder no aviso, Já avisei e Desconsiderar). **Painéis**: vencimentos de férias e rescisões (prazo legal), **sugestões de ação** (com link para resolver), **uso do portal pelo cliente** (lista errada, pedido repetido, solicitação abandonada) e **previsão de solicitações por empresa** (média das últimas 4 semanas, tendência e estimativa para 7 e 30 dias, lida na hora) |
 | **Solicitações** | Analista e gestor | Onde o analista trabalha. Cartões por tipo, abas Minhas / Equipe toda / Sem responsável. Busca, vez (escritório/cliente), **Filtros** (tipo, gravidade, responsável), **Ordenar**, **Lista ou Cartões**, **Mais** (exportar CSV). Os filtros ativos aparecem como etiquetas que se tiram com um clique |
 | **Agenda e lembretes** | Cada um | Calendário do mês com lembretes e expectativas de conclusão das suas solicitações; lista (atrasados, hoje, próximos, concluídos). Lembretes podem **repetir** (todo dia, todo dia útil, toda semana, todo mês) |
-| **Equipe** | Gestor | Aba Painel (números, carga por responsável G1/G2/G3, entradas e saídas de 14 dias, pendências ao longo do dia, por tipo, **sugestão de distribuição** das sem analista e **próximas a prescrever**) e aba Responsáveis (**idade da fila**: mapa de calor analista × dias parada, e a carga de cada pessoa) |
-| **Clientes** | Gestor e analista | Aba Painel (ranking e quem mais demora a responder) e aba Empresas (cartões ou lista, com fora do prazo, prescrição e aba errada) |
-| **Consultar no Onvio** | Todos | As 10 listas do Onvio (uma aba para cada), inclusive concluídas, consultadas na hora, com busca e paginação |
+| **Equipe** | Gestor (com senha) | **Área do gestor**, aberta só com a senha. Aba **Desempenho**: nota da equipe (0 a 100) e de cada analista, com entregas no período (7, 14 ou 30 dias) e a comparação com o período anterior, % no prazo, tempo de conclusão, carteira em dia, 1º trâmite e alertas de qualidade (críticas e prescritas); **ranking** com os 4 itens da nota, **dispersão volume × pontualidade** e o **detalhe** de cada pessoa com os pontos de atenção. Abas **Carga de hoje** (números e gráficos da fila, próximas a prescrever) e **Responsáveis** (idade da fila e carga de cada pessoa) |
 | **Configurações** | Todos | Prazos, leitura ao vivo, regras do escritório, aprender ações e diagnóstico |
 
 O **sino** do topo junta os alertas: nova solicitação para você, cliente respondeu, prescreve em até 5 dias, ficou fora do prazo, nova sem responsável e lembretes. Novidades das suas solicitações também aparecem como aviso na tela.
@@ -41,6 +39,21 @@ Vez do escritório: sem primeiro trâmite após 1 dia útil; aberta além de 3 d
 Vez do cliente: sem retorno há mais de 5 dias úteis (laranja); a partir de 20 dias parada fica vermelho com a contagem até a prescrição de 30 dias.
 
 Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardando resposta** = o escritório precisa responder; **Respondido** = vez do cliente.
+
+## Novidades da v0.19.0 (Equipe: desempenho e qualidade)
+
+- **Equipe vira a área do gestor, com senha.** A senha é pedida ao abrir a Equipe e vale até fechar a aba (ou "Bloquear"). A extensão guarda só o resumo (SHA-256) da senha; o arquivo de regras pode trocar (`senhaGestorSha256`). É uma trava para a tela não ficar aberta a todos, não uma proteção forte.
+- **Desempenho**, lido na hora no Onvio (nada é guardado):
+  - **nota de 0 a 100** da equipe e de cada analista: pontualidade (peso 35, entregas concluídas dentro do prazo interno), carteira em dia (30), cuidado (20, sem críticas G3 nem prescritas) e agilidade (15, 1º trâmite). Faixas: Excelente, Bom, Atenção, Precisa de apoio. "Como a nota é calculada" explica na tela;
+  - números da equipe: entregas (com as barras por dia e ▲/▼ contra o período anterior), % no prazo, tempo de conclusão, carteira em dia, 1º trâmite e alertas de qualidade;
+  - **ranking** com os 4 itens da nota de cada pessoa e as entregas por dia;
+  - **volume × pontualidade**: cada pessoa é uma bolinha; as medianas dividem em Referência, No prazo com pouco volume, Volume com atraso e Precisa de apoio;
+  - clique numa pessoa (no ranking ou na bolinha) para ver o **detalhe** e os **pontos de atenção** (críticas e paradas), que abrem a solicitação.
+- **Distribuir:** só a sugestão pelo **histórico de atendimentos** da empresa (ou de admissões). Saiu a sugestão "quem tem menos pendências": sem histórico, a pessoa escolhe. A sugestão por carga também saiu da Equipe.
+- **Estagiário:** o eSocial vai até **15 dias depois do início** (`estagiarioPrazoDias`), e não até o dia anterior. A faixa de admissões mostra, para o estagiário, a data desse prazo.
+- **Faixa de admissões:** recolhe e mostra pela **barra de cabeçalho** inteira (seta à esquerda), não por um botão no canto.
+- **Vencimentos no Hoje:** o clique leva às **Solicitações**, e a solicitação **pisca com um contorno vermelho** (se um filtro a escondia, ele sai).
+- **Saíram as telas Clientes e Consultar no Onvio.** A busca (/ ou Ctrl+K) continua procurando nas 10 listas, inclusive concluídas.
 
 ## Novidades da v0.18.0 (Hoje revisto)
 
