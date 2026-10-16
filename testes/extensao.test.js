@@ -1134,8 +1134,9 @@ test('distribuição: quem mais atendeu a empresa na semana; admissões fora da 
   assert.equal(por.c1.resp, 'Carla', 'admissão vai para quem mais fez admissões');
   assert.match(por.c1.motivo, /fez 4 admissões/);
   assert.equal(por.g2.resp, 'Bia');
-  assert.equal(por.g9.resp, 'Bia', 'sem histórico: quem tem menos pendências');
+  assert.equal(por.g9.resp, '', 'sem histórico: não sugere ninguém (nada de "quem tem menos")');
   assert.equal(por.g9.semHistorico, true);
+  assert.match(por.g9.motivo, /ninguém atendeu esta empresa na última semana: escolha o responsável/);
   assert.equal(s[0].item.k, 'a1', 'mais grave primeiro');
   assert.equal(s.length, 4, 'só as sem responsável');
 });
@@ -1158,7 +1159,7 @@ test('distribuição: lê só o período (para na primeira mais antiga) e o serv
   store.snapshot = { items: [{ k: 'geral:g1', type: 'geral', resp: '', codCliente: '', cliente: 'ACME' }, { k: 'geral:g2', type: 'geral', resp: 'Ana', cliente: 'X' }] };
   const r = await new Promise(res => ouvintes[0]({ cmd: 'distribuicao', dias: 7 }, { tab: { id: 5 } }, res));
   assert.equal(r.ok, true);
-  assert.deepEqual([r.dias, r.sugestoes.length, r.sugestoes[0].resp], [7, 1, 'Ana']);
+  assert.deepEqual([r.dias, r.sugestoes.length, r.sugestoes[0].resp], [7, 1, ''], 'sem histórico no período: ninguém sugerido');
   assert.deepEqual(Object.keys(store).filter(k => !['metodoLeitura', 'perfilSessao', 'snapshot'].includes(k)), [], 'nada é gravado');
 });
 

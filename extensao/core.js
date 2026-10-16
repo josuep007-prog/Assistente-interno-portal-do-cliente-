@@ -1232,7 +1232,7 @@
    * Para cada solicitação sem responsável, sugere o analista que mais atendeu aquela empresa nos últimos N dias
    * (solicitações movimentadas no período, em qualquer situação, contadas pelo responsável). As admissões (os 3
    * Cadastros) ficam fora dessa conta, porque são todas da mesma pessoa; uma admissão sem responsável vai para quem
-   * mais fez admissões no período. Sem histórico da empresa, vai para quem tem menos pendências. É lido na hora
+   * mais fez admissões no período. Sem histórico no período, não sugere ninguém (a pessoa escolhe). É lido na hora
    * (sob demanda) e não é guardado. */
   const ADMISSAO = new Set(['cadEmpregado', 'cadContribuinte', 'cadEstagiario']);
   async function lerMovimentadas(fetcher, dias, now, maxPaginas) {
@@ -1259,18 +1259,16 @@
   }
   const chaveCliente = i => (i.codCliente !== '' && i.codCliente != null ? 'c' + i.codCliente : 'n' + semAcento(i.cliente || i.apelido || ''));
   function distribuirPorCliente(pendentes, movimentadas, dias) {
-    const porCli = new Map(), adm = new Map(), carga = new Map();
+    const porCli = new Map(), adm = new Map();
     const soma = (m, k) => m.set(k, (m.get(k) || 0) + 1);
     for (const x of movimentadas || []) {
       if (!x.resp) continue;
       if (ADMISSAO.has(x.type)) soma(adm, x.resp);
       else { const k = chaveCliente(x); if (!porCli.has(k)) porCli.set(k, new Map()); soma(porCli.get(k), x.resp); }
     }
-    for (const i of pendentes || []) if (i.resp) soma(carga, i.resp);
     const ids = new Map();
     for (const x of (movimentadas || []).concat(pendentes || [])) if (x.resp && x.respId && !ids.has(x.resp)) ids.set(x.resp, x.respId);
-    const ordem = m => [...m.entries()].sort((a, b) => (b[1] - a[1]) || ((carga.get(a[0]) || 0) - (carga.get(b[0]) || 0)) || a[0].localeCompare(b[0], 'pt-BR'));
-    const leve = () => [...carga.entries()].sort((a, b) => (a[1] - b[1]) || a[0].localeCompare(b[0], 'pt-BR'))[0];
+    const ordem = m => [...m.entries()].sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0], 'pt-BR'));
     const periodo = (dias || 7) === 7 ? 'na última semana' : 'nos últimos ' + dias + ' dias';
     return (pendentes || []).filter(i => !i.resp).map(i => {
       const r = sugerir(i);
@@ -1289,9 +1287,8 @@
           return { item: i, resp: o[0][0], n: o[0][1], motivo: 'atendeu ' + o[0][1] + ' de ' + total + ' solicitações desta empresa ' + periodo, alternativas: o.slice(1, 4).map(([r, n]) => ({ resp: r, n })) };
         }
       }
-      const l = leve();
-      return l ? { item: i, resp: l[0], n: 0, motivo: 'sem histórico ' + periodo + ': quem tem menos pendências (' + l[1] + ')', alternativas: [], semHistorico: true }
-        : { item: i, resp: '', n: 0, motivo: 'sem histórico e sem analistas com pendências', alternativas: [], semHistorico: true };
+      // sem histórico no período: não sugere ninguém (pedido do Josué em 16/10/2026: só a sugestão pelo histórico)
+      return { item: i, resp: '', n: 0, motivo: ADMISSAO.has(i.type) ? 'nenhuma admissão atendida ' + periodo + ': escolha o responsável' : 'ninguém atendeu esta empresa ' + periodo + ': escolha o responsável', alternativas: [], semHistorico: true };
     }
   }
 
