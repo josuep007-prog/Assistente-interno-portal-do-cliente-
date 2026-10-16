@@ -1725,3 +1725,27 @@ test('detalhe em português: campos e códigos do Onvio traduzidos; o que não t
   assert.match(txt, /Último dia trabalhado.*10\/10\/2026/);
   assert.match(txt, /Tipo do aviso.*Indenizado/);
 });
+
+/* ---------- v0.23: nada de inglês na aba Dados ---------- */
+test('aba Dados: campos e valores comuns do DP saem em português, e o desconhecido não leva a frase toda para o inglês', () => {
+  const c = OC.camposDetalhe(OC.TYPE_BY_KEY.cadEmpregado, {
+    maritalStatus: 'MARRIED', raceColor: 'WHITE', educationLevel: 'HIGH_SCHOOL_COMPLETE', zipCode: '01000-000', bankAccountType: 'CHECKING',
+    contractType: 'UNDETERMINED', expectedReturnDate: '2026-12-01T00:00:00', previousEmployerXyzName: 'Empresa'
+  });
+  const princ = Object.fromEntries(c.grupos.flatMap(g => g.campos).map(x => [x.k, x.v]));
+  assert.equal(princ['Raça/cor'], 'Branca');
+  assert.equal(princ['Escolaridade'], 'Médio completo');
+  assert.equal(princ['CEP'], '01000-000');
+  assert.equal(princ['Tipo de contrato'], 'Prazo indeterminado');
+  assert.equal(princ['Retorno previsto'], '01/12/2026');
+  assert.ok('Estado civil' in princ, 'estado civil');
+  const outro = Object.keys(princ).find(k => /xyz/i.test(k));
+  assert.ok(outro && /empregador/i.test(outro) && !/employer|previous|name/i.test(outro), 'só a palavra desconhecida fica como veio: ' + outro);
+  const conta = Object.keys(princ).find(k => /conta/i.test(k));
+  assert.ok(conta && !/bank|account|type/i.test(conta), conta);
+  assert.equal(princ[conta], 'Corrente');
+  const d = Object.fromEntries(OC.camposDetalhe(OC.TYPE_BY_KEY.cadEmpregado, { educationLevel: 'highSchoolComplete', gender: 'not_informed', name: 'Ana Paula' }).grupos.flatMap(g => g.campos).map(x => [x.k, x.v]));
+  assert.equal(d['Escolaridade'], 'Médio completo');
+  assert.equal(d['Sexo'], 'Não informado');
+  assert.equal(d['Nome'], 'Ana Paula', 'texto comum não é mexido');
+});

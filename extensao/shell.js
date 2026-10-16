@@ -37,7 +37,7 @@
       .launcher .badge.today{background:#B5530C}
       .launcher .badge[hidden]{display:none}
       .launcher.hidden{display:none}
-      .camada{position:fixed;inset:0;width:100vw;height:100vh;opacity:0;visibility:hidden;transition:opacity .16s ease, visibility 0s linear .16s;background:#EDF0F3}
+      .camada{position:fixed;inset:0;width:100vw;height:100vh;opacity:0;visibility:hidden;transition:opacity .16s ease, visibility 0s linear .16s;background:#E9F1F9}
       .camada.open{opacity:1;visibility:visible;transition:opacity .16s ease}
       iframe{border:0;width:100%;height:100%;display:block;background:#EDF0F3;color-scheme:normal}
       @media (prefers-reduced-motion: reduce){.camada,.camada.open,.launcher{transition:none}}

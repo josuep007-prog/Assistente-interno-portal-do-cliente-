@@ -81,7 +81,7 @@
     linhasTramites(snap).forEach(x => l.push(x));
     l.push('Consideradas resolvidas (vez do cliente sem retorno e sem pedido do analista): ' + ((snap.resolvidas || []).length));
     const ra = Array.isArray(rotasAnexo) ? rotasAnexo : [];
-    l.push('Download de anexos: ' + (ra.length ? ra.length + ' caminho(s) aprendido(s) do Onvio' : 'nenhum caminho aprendido ainda (baixe um anexo pelo Onvio uma vez)'));
+    l.push('Baixar anexos: ' + (ra.length ? ra.length + ' caminho(s) aprendido(s) do Onvio' : 'nenhum caminho aprendido ainda (baixe um anexo pelo Onvio uma vez)'));
     ra.slice(0, 6).forEach(r => l.push('  ' + r.molde + (r.campo ? ' (endereço no campo ' + r.campo + ')' : '')));
     l.push('Possível aba errada (Geral): ' + (snap.items || []).filter(i => i.abaProvavel).length);
     l.push('Com você como responsável (filtro "atribuídas a mim" do Onvio): ' + (snap.items || []).filter(i => i.mine).length + ' de ' + (snap.items || []).length + (snap.user && snap.user.nome ? ' · usuário: ' + snap.user.nome : ''));

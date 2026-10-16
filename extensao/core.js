@@ -1256,14 +1256,67 @@
     internship: 'estágio', intern: 'estagiário', taxpayer: 'contribuinte', partner: 'sócio', option: 'opção', schedule: 'horário', shift: 'turno',
     indemnified: 'indenizado', reduction: 'redução', paid: 'pago', unpaid: 'não pago', count: 'quantidade', size: 'tamanho', title: 'título'
   };
+  // Mais termos de DP e de cadastro que o Onvio usa nos campos (para nada aparecer em inglês)
+  Object.assign(PALAVRAS, {
+    marital: 'civil', education: 'escolaridade', level: 'nível', race: 'raça', color: 'cor', nationality: 'nacionalidade', gender: 'sexo', sex: 'sexo',
+    zip: 'CEP', postal: 'postal', street: 'logradouro', neighborhood: 'bairro', district: 'bairro', city: 'cidade', state: 'estado', country: 'país',
+    complement: 'complemento', bank: 'banco', agency: 'agência', branch: 'agência', account: 'conta', pix: 'Pix', key: 'chave', digit: 'dígito',
+    voter: 'eleitor', identity: 'identidade', card: 'carteira', issuing: 'emissor', issuer: 'emissor', issue: 'emissão', issued: 'emitido', body: 'órgão',
+    transport: 'transporte', voucher: 'vale', meal: 'refeição', food: 'alimentação', health: 'saúde', plan: 'plano', dental: 'odontológico',
+    workload: 'carga horária', admission: 'admissão', hiring: 'contratação', hire: 'admissão', hired: 'admitido', dismissal: 'dispensa',
+    contribution: 'contribuição', disability: 'deficiência', disabilities: 'deficiências', previous: 'anterior', current: 'atual', method: 'forma',
+    place: 'local', series: 'série', serie: 'série', holder: 'titular', relationship: 'vínculo', kinship: 'parentesco', spouse: 'cônjuge', child: 'filho',
+    children: 'filhos', retired: 'aposentado', pension: 'pensão', gross: 'bruto', net: 'líquido', discount: 'desconto', discounts: 'descontos',
+    overtime: 'hora extra', night: 'noturno', shift: 'turno', allowance: 'auxílio', hazard: 'periculosidade', unhealthy: 'insalubridade',
+    commission: 'comissão', gratification: 'gratificação', function: 'função', role: 'função', sector: 'setor', area: 'área', unit: 'unidade',
+    reference: 'referência', competence: 'competência', period: 'período', month: 'mês', months: 'meses', year: 'ano', years: 'anos', week: 'semana',
+    base: 'base', rate: 'taxa', percentage: 'percentual', percent: 'percentual', factor: 'fator', limit: 'limite', minimum: 'mínimo', maximum: 'máximo',
+    initial: 'inicial', final: 'final', new: 'novo', old: 'antigo', next: 'próximo', notes: 'observações', justification: 'justificativa',
+    approval: 'aprovação', approved: 'aprovado', rejected: 'recusado', signed: 'assinado', signature: 'assinatura', origin: 'origem', source: 'origem',
+    destination: 'destino', channel: 'canal', way: 'meio', mode: 'modo', kind: 'tipo', group: 'grupo', grade: 'grau', stage: 'etapa', phase: 'fase',
+    hours: 'horas', minutes: 'minutos', weekly: 'semanal', interval: 'intervalo', break: 'intervalo', rest: 'descanso', entry: 'entrada', exit: 'saída',
+    doctor: 'médico', clinic: 'clínica', exam: 'exame', admissional: 'admissional', occupational: 'ocupacional', accident: 'acidente', illness: 'doença',
+    sick: 'doença', maternity: 'maternidade', paternity: 'paternidade', military: 'militar', service: 'serviço', services: 'serviços', benefit: 'benefício',
+    benefits: 'benefícios', insurance: 'seguro', life: 'vida', reason: 'motivo', cause: 'causa', just: 'justa', remuneration: 'remuneração', fixed: 'fixo',
+    variable: 'variável', hourly: 'por hora', paid: 'pago', worked: 'trabalhado', social: 'social', fantasy: 'fantasia', legal: 'jurídico', trade: 'comercial',
+    regime: 'regime', model: 'modelo', template: 'modelo', link: 'vínculo', apprentice: 'aprendiz', teacher: 'professor', manager: 'gestor',
+    supervisor: 'supervisor', responsible: 'responsável', contact: 'contato', contacts: 'contatos', mobile: 'celular', cell: 'celular', home: 'residencial',
+    commercial: 'comercial', street_number: 'número', observation: 'observação', observations: 'observações', situation: 'situação', topic: 'trâmite',
+    topics: 'trâmites', answer: 'resposta', response: 'resposta', question: 'pergunta', forwarded: 'encaminhado', assigned: 'atribuído', assignee: 'responsável'
+  });
+  Object.assign(ROTULOS, {
+    maritalStatus: 'Estado civil', educationLevel: 'Escolaridade', schooling: 'Escolaridade', raceColor: 'Raça/cor', race: 'Raça/cor', gender: 'Sexo',
+    nationality: 'Nacionalidade', birthPlace: 'Naturalidade', placeOfBirth: 'Naturalidade', motherName: 'Nome da mãe', fatherName: 'Nome do pai',
+    zipCode: 'CEP', postalCode: 'CEP', street: 'Logradouro', streetNumber: 'Número', neighborhood: 'Bairro', city: 'Cidade', state: 'UF', complement: 'Complemento',
+    bankCode: 'Banco', bankAgency: 'Agência', bankAccount: 'Conta', accountDigit: 'Dígito da conta', pixKey: 'Chave Pix', voterTitle: 'Título de eleitor',
+    identityCard: 'RG', rg: 'RG', issuingBody: 'Órgão emissor', issueDate: 'Data de emissão', cnh: 'CNH', workCard: 'CTPS', workCardSeries: 'Série da CTPS',
+    pisNumber: 'PIS', transportVoucher: 'Vale-transporte', mealVoucher: 'Vale-refeição', foodVoucher: 'Vale-alimentação', healthPlan: 'Plano de saúde',
+    dentalPlan: 'Plano odontológico', workSchedule: 'Horário de trabalho', workload: 'Carga horária', admissionType: 'Tipo de admissão', contractType: 'Tipo de contrato',
+    disability: 'Deficiência', disabilityType: 'Tipo de deficiência', previousEmployer: 'Empregador anterior', cbo: 'CBO', salaryType: 'Tipo de salário',
+    paymentMethod: 'Forma de pagamento', terminationDate: 'Data do desligamento', lastWorkDay: 'Último dia trabalhado', returnDate: 'Data de retorno',
+    expectedReturnDate: 'Retorno previsto', cid: 'CID', doctorName: 'Nome do médico', crm: 'CRM', competence: 'Competência', unionName: 'Sindicato',
+    unionContribution: 'Contribuição sindical', costCenter: 'Centro de custo', jobPosition: 'Cargo', department: 'Departamento', hireDate: 'Admissão',
+    clientEmployeeRelationship: 'Vínculo', employeeName: 'Empregado', clientEmployeeName: 'Empregado', rubricCode: 'Código da rubrica', rubricName: 'Rubrica',
+    hoursQuantity: 'Quantidade de horas', daysQuantity: 'Quantidade de dias', basis: 'Competência'
+  });
+  Object.assign(VALORES, {
+    WHITE: 'Branca', BLACK: 'Preta', BROWN: 'Parda', YELLOW: 'Amarela', INDIGENOUS: 'Indígena', NOT_INFORMED: 'Não informado', UNINFORMED: 'Não informado',
+    ILLITERATE: 'Analfabeto', ELEMENTARY: 'Fundamental', ELEMENTARY_INCOMPLETE: 'Fundamental incompleto', ELEMENTARY_COMPLETE: 'Fundamental completo',
+    HIGH_SCHOOL: 'Médio', HIGH_SCHOOL_INCOMPLETE: 'Médio incompleto', HIGH_SCHOOL_COMPLETE: 'Médio completo', COLLEGE: 'Superior',
+    COLLEGE_INCOMPLETE: 'Superior incompleto', COLLEGE_COMPLETE: 'Superior completo', HIGHER_EDUCATION: 'Superior', POSTGRADUATE: 'Pós-graduação',
+    MASTER: 'Mestrado', DOCTORATE: 'Doutorado', DETERMINED: 'Prazo determinado', UNDETERMINED: 'Prazo indeterminado', INDETERMINATE: 'Prazo indeterminado',
+    FIXED_TERM: 'Prazo determinado', CLT: 'CLT', CHECKING: 'Corrente', SAVINGS: 'Poupança', SALARY: 'Salário', CPF: 'CPF', CNPJ: 'CNPJ', RANDOM: 'Aleatória',
+    DAY: 'Dia', NIGHT: 'Noite', PARTIAL: 'Parcial', FULL: 'Integral', OPEN: 'Aberto', CLOSED: 'Fechado', DONE: 'Concluído', CANCELED: 'Cancelado', CANCELLED: 'Cancelado'
+  });
   // Em inglês o principal vem por último ("expected return date"); em português, primeiro ("data de retorno prevista").
   const ADJ = new Set(['previsto', 'pago', 'não pago', 'ativo', 'inativo', 'pendente', 'prévio', 'trabalhado', 'indenizado', 'mensal', 'semanal', 'diário', 'pessoal', 'profissional', 'médico', 'criado', 'atualizado', 'alterado', 'enviado', 'lido', 'total']);
   const ANTES = new Set(['primeiro', 'último']);
   const PREP = new Set(['por', 'em', 'de', 'e', 'ou', 'com', 'sem', 'tem']);
-  function traduzirPalavras(lista) {
-    const out = [];
-    for (const w of lista) { const t = PALAVRAS[w.toLowerCase()]; if (t === undefined) return null; if (t) out.push(t); }
-    if (!out.length) return null;
+  // parcial: mantém a palavra que não conhece (em vez de desistir da frase toda)
+  function traduzirPalavras(lista, parcial) {
+    const out = []; let conhecidas = 0;
+    for (const w of lista) { const t = PALAVRAS[w.toLowerCase()]; if (t === undefined) { if (!parcial) return null; out.push(w.toLowerCase()); } else { conhecidas++; if (t) out.push(t); } }
+    if (!out.length || !conhecidas) return null;
     if (out.length === 1 || out.some(w => PREP.has(w))) return out.join(' ');
     const nucleo = out[out.length - 1], resto = out.slice(0, -1).reverse();
     let frase = nucleo, antes = '';
@@ -1276,10 +1329,11 @@
   const OCULTO = /^(type|apiVersion|id|companyId|identifier|genericStatus|clientStatus|firmStatus|attachmentsExpanded|delete|deleted|staticFilePath|translationKey)$|Id$|Ids$/;
   const humano = k => {
     const partes = String(k).replace(/Expanded$/, '').replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase().split(/[\s_]+/).filter(Boolean);
-    const t = traduzirPalavras(partes) || partes.join(' ');
+    // como último recurso, traduz o que conhece e mantém só a palavra desconhecida (antes, a frase inteira ficava em inglês)
+    const t = traduzirPalavras(partes) || traduzirPalavras(partes, true) || partes.join(' ');
     return t.charAt(0).toUpperCase() + t.slice(1);
   };
-  const enumPt = v => { if (VALORES[v]) return VALORES[v]; const t = traduzirPalavras(v.toLowerCase().split('_')); return t ? t.charAt(0).toUpperCase() + t.slice(1) : v; };
+  const enumPt = v => { if (VALORES[v]) return VALORES[v]; const t = traduzirPalavras(v.toLowerCase().split('_'), true); return t ? t.charAt(0).toUpperCase() + t.slice(1) : v; };
   const rotulo = k => ROTULOS[k] || humano(k);
   function valorDe(k, v) {
     if (v == null || v === '') return '';
@@ -1288,7 +1342,10 @@
     if (typeof v === 'string') {
       if (/^\d{4}-\d{2}-\d{2}T00:00:00(\.0+)?Z?$/.test(v) || /^\d{4}-\d{2}-\d{2}$/.test(v)) { const d = diaDe(v); return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear(); }
       if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v)) { const d = parseDate(v); if (d) return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
-      return /^[A-Z][A-Z_]{1,}$/.test(v) ? enumPt(v) : v;
+      if (/^[A-Z][A-Z_]{1,}$/.test(v)) return enumPt(v);
+      // enumeração em camelCase ("highSchoolComplete") ou minúsculas com _ ("not_informed"): só se for valor conhecido
+      if (/^[a-z]+([A-Z][a-z]+)+$|^[a-z]+(_[a-z]+)+$/.test(v)) { const u = v.replace(/([a-z])([A-Z])/g, '$1_$2').toUpperCase(); if (VALORES[u]) return VALORES[u]; }
+      return v;
     }
     if (Array.isArray(v)) return v.map(x => (x && typeof x === 'object' ? x.name || x.description || x.value || '' : valorDe(k, x))).filter(Boolean).join(', ');
     if (typeof v === 'object') return v.name || v.description || (typeof v.value !== 'object' ? valorDe(k, v.value) : '') || '';

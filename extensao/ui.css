@@ -10,9 +10,9 @@
 @font-face{font-family:"IBM Plex Mono"; font-style:normal; font-weight:500; font-display:swap; src:url("fonts/ibm-plex-mono-latin-500-normal.woff2") format("woff2")}
 
 :root{
-  --page:#EDF0F3; --surface:#FFFFFF; --surface-2:#F5F8FA; --surface-3:#EAEFF3;
+  --page:#E9F1F9; --surface:#FFFFFF; --surface-2:#F4F8FC; --surface-3:#E6EEF6;
   --ink:#101820; --ink-2:#47545F; --ink-3:#5F6D77;
-  --rule:#DCE3E9; --rule-strong:#C2CCD5;
+  --rule:#D8E2EC; --rule-strong:#BFCBD7;
   --brand-red:#C2000C; --brand-red-soft:#FBEAEA;
   --blue-deep:#3C659B; --blue-mid:#6BAAC9; --blue-pale:#DCE8F1;
   --masthead:#0E151B; --masthead-2:#182229; --masthead-ink:#E9EEF2; --masthead-ink-2:#8FA0AD;
