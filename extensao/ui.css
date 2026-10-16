@@ -94,7 +94,7 @@ body.painel{overflow:hidden}
 
 /* cabeçalho escuro */
 .mast{background:var(--masthead); color:var(--masthead-ink); padding:12px 8px 10px 14px; display:flex; align-items:center; gap:10px}
-.mast .logo{width:30px; height:30px; border-radius:6px; background:#fff; display:grid; place-items:center; flex:none}
+.mast .logo{width:30px; height:30px; border-radius:var(--r); background:#fff; display:grid; place-items:center; flex:none}
 .mast .logo img{width:19px; height:22px}
 .mast .ttl{min-width:0; flex:1}
 .mast h1{margin:0; font:700 16px/1.2 "Archivo",system-ui,sans-serif; letter-spacing:-.01em}
@@ -111,7 +111,7 @@ body.painel{overflow:hidden}
 .tab:hover{color:var(--masthead-ink)}
 .tab.active{color:#fff; border-bottom-color:var(--brand-red); background:linear-gradient(180deg, transparent, rgba(194,0,12,.12))}
 .tab:focus-visible{outline:2px solid var(--blue-mid); outline-offset:-2px}
-.tab .dot{position:absolute; top:5px; right:calc(50% - 20px); min-width:15px; height:15px; padding:0 4px; border-radius:8px; background:#4A6B8C; color:#fff; font:600 9.5px/15px "Archivo",sans-serif; text-align:center; font-variant-numeric:tabular-nums}
+.tab .dot{position:absolute; top:5px; right:calc(50% - 20px); min-width:15px; height:15px; padding:0 4px; border-radius:3px; background:#4A6B8C; color:#fff; font:600 9.5px/15px "Archivo",sans-serif; text-align:center; font-variant-numeric:tabular-nums}
 .tab .dot.late{background:var(--brand-red)}
 .tab .dot:empty{display:none}
 
