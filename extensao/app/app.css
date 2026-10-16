@@ -867,3 +867,8 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
   .hj-cart select{min-width:170px}
 }
 @media (max-width:1200px){ .busca-falsa{width:44px} .busca-falsa span, .busca-falsa kbd{display:none} }
+
+/* solicitação escolhida em outra tela (foco=k): contorno vermelho que pisca ao chegar */
+.foco-pisca{position:relative; z-index:1; outline:2px solid var(--brand-red); outline-offset:-2px; animation:foco-pisca .7s ease-in-out 4 both}
+@keyframes foco-pisca{0%,100%{outline-color:var(--brand-red); box-shadow:0 0 0 4px color-mix(in srgb, var(--brand-red) 25%, transparent)} 50%{outline-color:transparent; box-shadow:none}}
+@media (prefers-reduced-motion: reduce){ .foco-pisca{animation:none} }

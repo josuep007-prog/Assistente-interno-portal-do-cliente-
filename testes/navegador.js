@@ -417,6 +417,18 @@ await passo('app · Hoje: admissões sem trâmite do escritório em faixa recolh
   assert.match(await p.textContent('#hj-adm-toggle'), /3 admissões pedem prioridade.*1 retroativa/, 'recolhida, o resumo continua à vista');
   await p.click('#hj-adm-toggle');
   assert.equal(await p.isHidden('#hj-adm-l'), false);
+  // vencimento: leva às Solicitações com a solicitação piscando em vermelho (mesmo com um filtro de texto que a esconderia)
+  await p.evaluate(() => { location.hash = '#/fila'; });
+  await p.waitForSelector('#corpo [data-k]');
+  await p.fill('#f-texto', 'delta');
+  await p.evaluate(() => { location.hash = '#/inicio'; });
+  await p.waitForSelector('#hj-venc [data-k="calcFerias:f9"]');
+  await p.click('#hj-venc [data-k="calcFerias:f9"]');
+  await p.waitForSelector('#corpo .foco-pisca[data-k="calcFerias:f9"]');
+  assert.equal(await p.inputValue('#f-texto'), '', 'o filtro que a escondia sai');
+  assert.ok(!/foco=/.test(await p.evaluate(() => location.hash)), 'o foco sai do endereço (uma leitura nova não pisca de novo): ' + await p.evaluate(() => location.hash));
+  assert.match(await p.$eval('#corpo .foco-pisca', r => getComputedStyle(r).outlineStyle), /solid/);
+  await p.waitForFunction(() => !document.querySelector('.foco-pisca'), null, { timeout: 6000 });
   // Solicitações com kpi=admissao: o mesmo critério
   await p.evaluate(() => { location.hash = '#/fila?escopo=equipe&kpi=admissao'; });
   await p.waitForFunction(() => document.querySelectorAll('#corpo [data-k]').length === 3);

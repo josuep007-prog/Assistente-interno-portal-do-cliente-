@@ -275,7 +275,8 @@ export function render(el, ctx) {
     $('#hj-adm-toggle', el).setAttribute('aria-expanded', String(!rec));
     $('#hj-adm-toggle', el).title = rec ? 'Mostrar' : 'Recolher';
   };
-  if ($('#hj-venc .hj-mini-l', el)) ligarItens($('#hj-venc', el), vencLista.map(v => v.item), ctx.abrirDetalhe);
+  // vencimentos: leva às Solicitações da carteira, com a solicitação piscando em vermelho (foco)
+  if ($('#hj-venc .hj-mini-l', el)) ligarItens($('#hj-venc', el), vencLista.map(v => v.item), it => { location.hash = linkFila({ foco: it.k }); });
   // previsão por empresa: calcula sozinha ao abrir (no máximo a cada 30 min); o botão recalcula
   // só o painel da previsão é trocado quando ela chega (o resto da tela e as faixas de aviso ficam)
   const trocarPrevisao = () => { const sec = $('#hj-prev', el); if (sec && el.isConnected) { sec.outerHTML = prevHtml(); ligarPrevisao(); } };

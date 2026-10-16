@@ -175,6 +175,24 @@ export function render(el, ctx, params) {
   $('#csv', el).addEventListener('click', () => { csvItens('onvio-' + (params.escopo || 'minhas') + '-' + OC.ymd(new Date()) + '.csv', filtrar()); });
   $('#m-onvio', el).addEventListener('click', () => enviar({ cmd: 'fecharPainel' }));
   desenhar();
+  if (params.foco) focar(params.foco);
+
+  // Vindo do Hoje com uma solicitação escolhida (foco=k): tira os filtros da tela se ela estiver escondida, rola até a
+  // linha e pisca um contorno vermelho. O foco sai do endereço, para uma nova leitura ao vivo não piscar de novo.
+  function focar(k) {
+    const achar = () => $$('#corpo [data-k]', el).find(r => r.dataset.k === k);
+    if (!achar() && (filtros.texto || filtros.tipo || filtros.lado || filtros.grav || filtros.resp)) {
+      filtros = { texto: '', tipo: '', lado: '', grav: '', resp: '' };
+      $('#f-texto', el).value = ''; $$('.menu-list.form select', el).forEach(x => { x.value = ''; }); $$('[data-lado]', el).forEach(x => x.classList.toggle('on', x.dataset.lado === ''));
+      desenhar();
+    }
+    try { history.replaceState(null, '', location.href.replace(/([?&])foco=[^&]*(&|$)/, (m, a, b) => (b ? a : '')).replace(/\?$/, '')); } catch (e) {}
+    const r = achar();
+    if (!r) return;
+    r.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    r.classList.remove('foco-pisca'); void r.offsetWidth; r.classList.add('foco-pisca');
+    setTimeout(() => r.classList.remove('foco-pisca'), 3400);
+  }
 }
 
 function linha(i) {
