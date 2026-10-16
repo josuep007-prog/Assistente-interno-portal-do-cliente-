@@ -490,32 +490,77 @@ await passo('app · Fila: abas Minhas/Equipe/Sem responsável, filtros e chips, 
   assert.deepEqual(p.erros, []);
 });
 
-await passo('app · Equipe (gestor): números, 4 gráficos com dicas, prescrição e distribuição; Responsáveis com mapa de calor e fila da pessoa', async () => {
+await passo('app · Equipe (área do gestor): pede a senha; Desempenho com nota, ranking, dispersão e detalhe; Carga e Responsáveis', async () => {
   const p = await abrirApp('#/equipe');
+  // trava: sem a senha certa não mostra nada da equipe
+  await p.waitForSelector('#g-trava');
+  assert.equal(await p.$('.av-hero'), null);
+  await p.fill('#g-senha', 'errada');
+  await p.click('#g-entrar');
+  await p.waitForSelector('#g-erro:not([hidden])');
+  assert.equal(await p.$('.av-hero'), null, 'senha errada: continua travada');
+  assert.equal(await p.inputValue('#g-senha'), '', 'o campo é limpo');
+  // entregas simuladas do período (o service worker leria no Onvio)
+  await p.evaluate(() => {
+    const d = n => { const x = new Date(); x.setDate(x.getDate() - n); return x.toISOString().slice(0, 10); };
+    const fim = (k, resp, criada, concl, extra) => Object.assign({ k, type: 'geral', resp, lado: 'fim', status: 'Concluído', created: d(criada) + 'T09:00:00', last: d(concl) + 'T15:00:00' }, extra || {});
+    const mov = [fim('f1', 'Ana Teste', 3, 2), fim('f2', 'Ana Teste', 2, 1), fim('f3', 'Ana Teste', 20, 1), fim('f4', 'Bia', 2, 1), fim('f5', 'Bia', 9, 8)];
+    window.__respostas = { desempenho: Object.assign({ ok: true, erros: [], movimentadas: mov.length }, OC.avaliarEquipe(JSON.parse(localStorage.getItem('__mem')).snapshot.items, mov, {}, 7)) };
+  });
+  await p.fill('#g-senha', 'gestor@987654321');
+  await p.press('#g-senha', 'Enter');
+  await p.waitForSelector('.av-hero');
+  assert.ok(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'desempenho' && m.dias === 7)), 'pediu as entregas de 7 dias');
+  assert.match(await p.textContent('#titulo'), /Equipe/);
+  assert.deepEqual(await p.$$eval('#abas .aba', e => e.map(x => x.dataset.aba)), ['desempenho', 'carga', 'resp']);
+  // números da equipe
+  await p.waitForFunction(() => document.querySelector('#av-k-entregas .av-kpi-val').textContent === '4');
+  assert.match(await p.textContent('#av-k-prazo'), /75%/, '3 de 4 entregas no prazo');
+  assert.ok(await p.$('#av-k-entregas .mb-svg rect'), 'entregas por dia');
+  // ranking: uma linha por analista, com nota, faixa e os 4 itens
+  const rank = await p.$$eval('#av-rank .av-card', e => e.map(x => x.dataset.resp));
+  assert.deepEqual(rank.slice().sort(), ['Ana Teste', 'Bia']);
+  assert.equal(await p.$$eval('#av-rank .av-card:first-child .av-comp', e => e.length), 4);
+  assert.match(await p.textContent('#av-rank .av-card:first-child .av-chip'), /Excelente|Bom|Atenção|Precisa de apoio/);
+  // dispersão: uma bolinha por pessoa, com dica; clique abre o detalhe da pessoa e acende a bolinha
+  assert.equal(await p.$$eval('#av-disp .dp-p', e => e.length), 2);
+  assert.match(await p.getAttribute('#av-disp .dp-p[data-id="Ana Teste"]', 'data-tip'), /Ana Teste\n3 entregas · 67% no prazo/);
+  await p.click('#av-disp .dp-p[data-id="Ana Teste"]');
+  await p.waitForSelector('#av-det .av-det');
+  assert.match(await p.textContent('#av-det h3'), /Ana Teste · nota/);
+  assert.match(await p.getAttribute('#av-disp .dp-p[data-id="Bia"]', 'class'), /apagado/);
+  assert.match(await p.textContent('#av-det-l'), /Crítica \(G3\)[\s\S]*#101 ACME/, 'pontos de atenção da pessoa');
+  await p.click('#av-det-l [data-k="calcFerias:a"]');
+  await p.waitForSelector('#gaveta:not([hidden])');
+  await p.keyboard.press('Escape');
+  await p.waitForSelector('#gaveta', { state: 'hidden' });
+  await p.click('#av-como');
+  assert.match(await p.textContent('#av-como-txt'), /Pontualidade · peso 35/);
+  // período: troca e pede de novo
+  await p.click('#av-periodo [data-dias="30"]');
+  await p.waitForFunction(() => window.__msgs.some(m => m.cmd === 'desempenho' && m.dias === 30));
+  // Carga de hoje: os gráficos da fila (a sugestão "quem tem menos" saiu)
+  await p.click('#abas [data-aba="carga"]');
+  await p.waitForSelector('#g-carga svg');
   const kpis = await p.$$eval('.kpi', e => e.map(x => x.querySelector('.rot').textContent + '=' + x.querySelector('.val').textContent));
   assert.deepEqual(kpis, ['Pendências=4', 'Sem responsável=1', 'Fora do prazo=2', 'Prescrevem em 5 dias=1', '1º trâmite (média)=1', 'Hoje=3 / 1']);
   for (const id of ['#g-carga', '#g-dias', '#g-horas', '#g-tipo']) assert.ok(await p.$(id + ' svg'), 'gráfico ' + id);
-  assert.match(await p.textContent('#g-carga .legenda-viz'), /Em dia.*G1 atenção.*G2 fora do prazo.*G3 crítica/);
+  assert.match(await p.textContent('#l-presc'), /4dias[\s\S]*GAMA/);
+  assert.equal(await p.$('#distribuicao'), null, 'sem a sugestão por quem tem menos pendências');
   await p.hover('#g-carga [data-tip]');
   assert.equal(await p.isVisible('#dica'), true, 'dica ao passar o mouse');
-  // distribuição e prescrição (saíram do Hoje) no Painel
-  assert.match(await p.textContent('#l-presc'), /4dias[\s\S]*GAMA/);
-  assert.match(await p.textContent('#distribuicao'), /GAMA[\s\S]*sugerido: Bia/);
+  // Responsáveis: mapa de calor e a fila da pessoa
   await p.click('#abas [data-aba="resp"]');
   await p.waitForSelector('tr[data-resp="Ana Teste"]');
-  // mapa de calor de idade na aba Responsáveis → fila da pessoa naquela faixa, com a etiqueta que sai com um clique
   assert.equal(await p.$$eval('#mapa-idade .mc-v:not(:disabled)', e => e.length), 4);
   await p.click('#mapa-idade .mc-v[data-id="Ana Teste"][data-col="31-"]');
   await p.waitForFunction(() => location.hash.startsWith('#/fila?analista=Ana+Teste&idade=31-') && document.querySelector('#ativos .chip-f'));
   assert.deepEqual(await linhas(p), ['calcFerias:a']);
-  assert.match(await p.textContent('#ativos'), /Parada há 31\+ dias/);
-  await p.goto(URL_APP + '#/equipe');
-  await p.waitForSelector('#abas [data-aba="resp"]');
-  await p.click('#abas [data-aba="resp"]');
+  // liberada uma vez, continua liberada na visita; "Bloquear" trava de novo
+  await p.evaluate(() => { location.hash = '#/equipe?aba=resp'; });
   await p.waitForSelector('tr[data-resp="Ana Teste"]');
-  await p.click('tr[data-resp="Ana Teste"]');
-  await p.waitForFunction(() => location.hash.startsWith('#/fila?analista=') && document.querySelectorAll('#corpo [data-k]').length > 0);
-  assert.equal((await linhas(p)).length, 2);
+  await p.click('#av-bloquear');
+  await p.waitForSelector('#g-trava');
   assert.deepEqual(p.erros, []);
 });
 
