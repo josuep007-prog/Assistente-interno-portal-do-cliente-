@@ -4,8 +4,8 @@
  * As entregas são lidas na hora pelo service worker (cmd 'desempenho'); nada é guardado. A senha fica só como
  * resumo SHA-256 (settings.senhaGestorSha256): é uma trava leve, não segurança forte. */
 import { estado, itens, enviar } from '../estado.js';
-import { esc, plural, num, fmtDataCurta, toast, ligarItens, $, $$ } from '../util.js';
-import { barrasEmpilhadas, barrasAgrupadas, linhaDoDia, ligarDicas, anelProgresso, miniBarras, dispersao, animarNumeros, cor } from '../graficos.js';
+import { esc, plural, num, fmtDataCurta, toast, ligarItens, porqueGrav, $, $$ } from '../util.js';
+import { barrasEmpilhadas, barrasAgrupadas, linhaDoDia, ligarDicas, anelProgresso, miniBarras, animarNumeros, cor } from '../graficos.js';
 import { prescricaoHtml, mapaIdadeHtml, ligarEquipe } from './painel-equipe.js';
 const OC = window.OC;
 
@@ -75,6 +75,7 @@ let dias = 7;
 let resultado = null;   // resposta do cmd 'desempenho' (lida na hora, só na memória)
 let lendo = false;
 let aberto = null;      // analista com o detalhe aberto
+let ordRank = { k: 'pos', desc: false };   // ordem da tabela do ranking (clique no cabeçalho)
 let animar = true;
 const COR_FAIXA = { otimo: 'ok', bom: 's1', atencao: 'warn', critico: 'crit', sem: 'var(--ink-3)' };
 const COMP = [
@@ -83,6 +84,7 @@ const COMP = [
   ['cuidado', 'Cuidado', 'sem críticas (G3) na carteira e sem solicitações prescritas no período'],
   ['agilidade', 'Agilidade', 'tempo até o 1º trâmite do escritório (estimativa)']
 ];
+const CURTO = { pontualidade: 'Pontual.', emDia: 'Em dia', cuidado: 'Cuidado', agilidade: 'Agilid.' };
 const fmt1 = v => (v == null ? '–' : String(v).replace('.', ','));
 const pctTxt = v => (v == null ? '–' : v + '%');
 function delta(v, unidade, melhorSobe) {
@@ -129,26 +131,36 @@ function desempenho(el, ctx, params) {
     '</section>' +
     '<div class="av-como" id="av-como-txt" hidden><b>Como a nota é calculada (0 a 100)</b><ul>' + COMP.map(([k, rot, d]) => '<li><b>' + rot + ' · peso ' + r.pesos[k] + '</b> ' + esc(d) + '</li>').join('') + '</ul><p>Só entram os itens que a pessoa tem no período (sem entregas, a pontualidade fica de fora). Faixas: 85+ Excelente · 70+ Bom · 50+ Atenção · abaixo, Precisa de apoio. É um retrato para conversar com a equipe, não um julgamento automático.</p></div>' +
     '<div class="av-grade">' +
-      '<section class="card av-rank-card"><div class="card-h"><h3>Ranking de desempenho</h3><span class="sub">clique numa pessoa para ver o detalhe</span></div><div class="card-b"><div class="av-rank" id="av-rank">' +
-        (ans.length ? ans.map((a, n) => cartaoAnalista(a, n)).join('') : '<div class="vazio">Nenhum analista com pendências ou entregas no período.</div>') + '</div></div></section>' +
-      '<section class="card"><div class="card-h"><h3>Volume × pontualidade</h3><span class="sub">cada bolinha é uma pessoa · linhas = mediana da equipe</span></div><div class="card-b"><div id="av-disp"></div>' +
-        '<div class="legenda-viz">' + ['otimo', 'bom', 'atencao', 'critico'].map(k => '<span><i style="background:' + cor(COR_FAIXA[k]) + '"></i>' + OC.faixaNota({ otimo: 90, bom: 75, atencao: 60, critico: 10 }[k]).rot + '</span>').join('') + '</div></div></section>' +
+      '<section class="card av-rank-card"><div class="card-h"><h3>Ranking de desempenho</h3><span class="sub">clique numa linha para ver o detalhe · no cabeçalho para ordenar</span></div><div class="card-b"><div class="av-rank" id="av-rank"></div></div></section>' +
+      '<section class="card"><div class="card-h"><h3>Entregas no período</h3><span class="sub">no prazo × fora do prazo, por analista</span></div><div class="card-b"><div id="av-barras"></div></div></section>' +
     '</div>' +
     '<div id="av-det">' + (aberto ? detalheAnalista(ans.find(a => a.resp === aberto)) : '') + '</div>';
 
   const desenhar = () => {
-    const box = $('#av-disp', el);
+    const box = $('#av-barras', el);
     if (!box) return;
-    box.innerHTML = dispersao(ans.map(a => ({ id: a.resp, rot: a.resp.split(' ')[0], x: a.concluidas, y: a.pctNoPrazo, cor: COR_FAIXA[a.faixa.k], tip: a.resp + '\n' + num(a.concluidas) + ' entregas · ' + pctTxt(a.pctNoPrazo) + ' no prazo\nnota ' + (a.nota == null ? '–' : a.nota) + ' · ' + a.faixa.rot })),
-      { largura: Math.max(360, Math.round(box.clientWidth)), altura: 300, rotX: 'Entregas no período', ativo: aberto, quadrantes: ['Referência', 'No prazo, pouco volume', 'Precisa de apoio', 'Volume com atraso'], titulo: 'Entregas × % no prazo por analista' });
-    $$('.dp-p', box).forEach(g => { const ir = () => abrir(g.dataset.id); g.addEventListener('click', ir); g.addEventListener('keydown', ev => { if (ev.key === 'Enter') ir(); }); });
+    // da que mais entregou para a que menos; quem não entregou nada aparece sem barra (e não como 0% no prazo)
+    const dados = ans.slice().sort((a, b) => (b.concluidas - a.concluidas) || a.resp.localeCompare(b.resp, 'pt-BR')).map(a => ({
+      rotulo: a.resp, id: a.resp, valores: { prazo: a.noPrazo || 0, atraso: Math.max(0, (a.concluidas || 0) - (a.noPrazo || 0)) },
+      fim: num(a.concluidas) + ' · ' + pctTxt(a.pctNoPrazo) + ' no prazo', vazio: a.concluidas ? null : 'sem entregas no período'
+    }));
+    box.innerHTML = ans.length ? barrasEmpilhadas(dados, [{ chave: 'prazo', nome: 'No prazo', cor: 'ok' }, { chave: 'atraso', nome: 'Fora do prazo', cor: 'serious' }],
+      { largura: Math.max(360, Math.round(box.clientWidth)), rotuloL: 130, folga: 150, destaque: aberto ? [aberto] : [], titulo: 'Entregas no período por analista, no prazo e fora do prazo' }) : '<div class="vazio">Nenhuma entrega no período.</div>';
+    $$('[data-id]', box).forEach(g => { g.classList.add('clicavel'); g.addEventListener('click', () => abrir(g.dataset.id)); });
   };
+  const desenharRank = () => {
+    const box = $('#av-rank', el);
+    if (!box) return;
+    box.innerHTML = ans.length ? rankHtml(ans) : '<div class="vazio">Nenhum analista com pendências ou entregas no período.</div>';
+    $$('[data-resp]', box).forEach(c => { const ir = () => abrir(c.dataset.resp); c.addEventListener('click', ir); c.addEventListener('keydown', ev => { if (ev.key === 'Enter') ir(); }); });
+    $$('[data-ord]', box).forEach(b => b.addEventListener('click', () => { ordRank = ordRank.k === b.dataset.ord ? { k: b.dataset.ord, desc: !ordRank.desc } : { k: b.dataset.ord, desc: b.dataset.ord !== 'pos' && b.dataset.ord !== 'resp' }; desenharRank(); }));
+  };
+  desenharRank();
   desenhar();
   ctx.aoRedimensionar(desenhar);
   ligarDicas(el);
   if (animar) { animar = false; el.classList.remove('av-anim'); void el.offsetWidth; el.classList.add('av-anim'); animarNumeros(el); }
   $('#av-como', el).onclick = () => { const t = $('#av-como-txt', el); t.hidden = !t.hidden; };
-  $$('#av-rank [data-resp]', el).forEach(c => { const ir = () => abrir(c.dataset.resp); c.addEventListener('click', ir); c.addEventListener('keydown', ev => { if (ev.key === 'Enter') ir(); }); });
   ligarDetalhe();
 
   function abrir(resp) {
@@ -168,16 +180,30 @@ function desempenho(el, ctx, params) {
   }
 }
 
-function cartaoAnalista(a, n) {
-  const c = cor(COR_FAIXA[a.faixa.k]);
-  return '<article class="av-card' + (aberto === a.resp ? ' ativo' : '') + '" tabindex="0" role="button" data-resp="' + esc(a.resp) + '" style="--c:' + c + ';--i:' + (n + 1) + '">' +
-    '<span class="av-pos">' + (n + 1) + 'º</span>' +
-    anelProgresso(a.nota, '<b>' + (a.nota == null ? '–' : a.nota) + '</b>', { tam: 56 }) +
-    '<div class="av-card-tx"><b>' + esc(a.resp) + '</b><span class="av-chip">' + esc(a.faixa.rot) + '</span>' +
-      '<div class="av-comps">' + COMP.map(([k, rot, d]) => { const v = a.componentes[k]; return '<span class="av-comp" title="' + esc(rot + ': ' + d) + '"><em>' + rot + '</em><i class="av-barra"><i style="width:' + (v == null ? 0 : v) + '%"></i></i><small>' + (v == null ? '–' : v) + '</small></span>'; }).join('') + '</div></div>' +
-    '<div class="av-card-pe"><b>' + num(a.concluidas) + '</b><small>entregas</small>' + delta(a.variacao.concluidas, '', true) + miniBarras(a.porDia.map(d => ({ rot: d.dia.slice(8, 10) + '/' + d.dia.slice(5, 7), n: d.n })), { largura: 96, altura: 22, titulo: 'Entregas por dia' }) + '</div>' +
-  '</article>';
+// Ranking em tabela compacta: uma linha por pessoa, na ordem da nota (ou da coluna escolhida no cabeçalho).
+function rankHtml(ans) {
+  const pos = new Map(ans.map((a, n) => [a.resp, n + 1]));               // ans já vem ordenado pela nota
+  const val = (a, k) => k === 'pos' ? pos.get(a.resp) : k === 'resp' ? a.resp : k === 'nota' ? a.nota : k === 'concluidas' ? a.concluidas : a.componentes[k];
+  const l = ans.slice().sort((a, b) => {
+    const x = val(a, ordRank.k), y = val(b, ordRank.k);
+    if (x == null && y == null) return pos.get(a.resp) - pos.get(b.resp);
+    if (x == null) return 1; if (y == null) return -1;                      // sem valor sempre por último
+    const r = typeof x === 'string' ? x.localeCompare(y, 'pt-BR') : x - y;
+    return (ordRank.desc ? -r : r) || pos.get(a.resp) - pos.get(b.resp);
+  });
+  const th = (k, rot, cls, tit) => '<th class="' + (cls || '') + (ordRank.k === k ? ' on' + (ordRank.desc ? '' : ' asc') : '') + '"' + (tit ? ' title="' + esc(tit) + '"' : '') + '><button type="button" data-ord="' + k + '">' + rot + '</button></th>';
+  return '<table class="av-tab"><thead><tr>' + th('pos', '#', 'num') + th('resp', 'Analista') + th('nota', 'Nota', 'num') + '<th>Faixa</th>' +
+      COMP.map(([k, rot, d]) => th(k, CURTO[k], 'av-tc', rot + ': ' + d)).join('') + th('concluidas', 'Entregas', 'num') + '</tr></thead><tbody>' +
+    l.map((a, n) => '<tr class="av-lin' + (aberto === a.resp ? ' ativo' : '') + '" tabindex="0" data-resp="' + esc(a.resp) + '" style="--c:' + cor(COR_FAIXA[a.faixa.k]) + ';--i:' + (n + 1) + '">' +
+      '<td class="num av-pos">' + pos.get(a.resp) + 'º</td>' +
+      '<td class="av-nome"><b>' + esc(a.resp) + '</b></td>' +
+      '<td class="num"><span class="av-nota-tag">' + (a.nota == null ? '–' : a.nota) + '</span></td>' +
+      '<td><span class="av-chip">' + esc(a.faixa.rot) + '</span></td>' +
+      COMP.map(([k]) => { const v = a.componentes[k]; return '<td class="av-tc"><span class="av-mini"><i class="av-barra"><i style="width:' + (v == null ? 0 : v) + '%"></i></i><small>' + (v == null ? '–' : v) + '</small></span></td>'; }).join('') +
+      '<td class="num av-ent"><b>' + num(a.concluidas) + '</b>' + setinha(a.variacao.concluidas) + '</td></tr>').join('') +
+    '</tbody></table>';
 }
+const setinha = v => (v ? '<span class="av-d ' + (v > 0 ? 'bom' : 'ruim') + '" title="' + (v > 0 ? '+' : '') + fmt1(v) + ' vs. período anterior">' + (v > 0 ? '▲' : '▼') + '</span>' : '');
 
 function detalheAnalista(a) {
   if (!a) return '';
@@ -193,7 +219,7 @@ function detalheAnalista(a) {
       lin('Qualidade', num(a.g3 + a.prescritas), a.g3 + ' G3 · ' + a.prescritas + ' prescritas · ' + a.paradas + ' paradas · ' + a.respondeu + ' com resposta do cliente esperando') +
     '</div>' +
     '<h4 class="av-det-h">Pontos de atenção agora</h4>' +
-    (a.atencao.length ? '<div class="av-det-l" id="av-det-l">' + a.atencao.map(i => '<div class="item-ag clicavel" tabindex="0" data-k="' + esc(i.k) + '"><span class="pr-tag" style="--pc:' + (i.grav === 3 ? 'var(--viz-crit)' : 'var(--viz-serious)') + '">' + (i.grav === 3 ? 'Crítica (G3)' : 'Parada há ' + (i.parado || 0) + ' d') + '</span><div class="tx"><b>#' + esc(i.num) + ' ' + esc(i.apelido || i.cliente || '—') + '</b><small>' + esc([i.typeLabel, i.detalhe].filter(Boolean).join(' · ')) + '</small></div></div>').join('') + '</div>'
+    (a.atencao.length ? '<div class="av-det-l" id="av-det-l">' + a.atencao.map(i => (() => { const pg = porqueGrav(i); const porque = i.grav === 3 && pg ? pg.texto.replace(/^Crítica \(G3\) porque /, '') : 'parada há ' + (i.parado || 0) + ' dias com o escritório (limite ' + estado.settings.parada + ')'; return '<div class="item-ag clicavel" tabindex="0" data-k="' + esc(i.k) + '"><span class="pr-tag" style="--pc:' + (i.grav === 3 ? 'var(--viz-crit)' : 'var(--viz-serious)') + '">' + (i.grav === 3 ? 'Crítica (G3)' : 'Parada') + '</span><div class="tx"><b>#' + esc(i.num) + ' ' + esc(i.apelido || i.cliente || '—') + '</b><small>' + esc([i.typeLabel, i.detalhe].filter(Boolean).join(' · ')) + '</small><small class="av-porque">Por quê: ' + esc(porque) + '</small></div></div>'; })()).join('') + '</div>'
       : '<div class="hj-zen">Nenhuma crítica nem parada na carteira agora.</div>') +
     '</div></section>';
 }

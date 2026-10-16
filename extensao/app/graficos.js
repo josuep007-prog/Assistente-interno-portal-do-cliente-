@@ -21,31 +21,34 @@ export function legenda(series) {
 }
 
 // Barras horizontais empilhadas: uma linha por categoria (ex.: analista), segmentos por série (ex.: G1/G2/G3).
-// dados: [{ rotulo, valores: { chave: n }, id? }]  series: [{ chave, nome, cor }]
-// o.destaque: ids com rótulo em negrito (ex.: a própria pessoa); o.fixo: id com rótulo de alerta (ex.: sem analista).
+// dados: [{ rotulo, valores: { chave: n }, id?, fim?, vazio? }]  series: [{ chave, nome, cor }]
+// d.fim: texto no fim da barra (padrão: o total); d.vazio: texto no lugar da barra (ex.: "sem entregas").
+// o.destaque: ids com rótulo em negrito (ex.: a própria pessoa); o.fixo: id com rótulo de alerta (ex.: sem analista);
+// o.folga: espaço à direita para o texto do fim.
 export function barrasEmpilhadas(dados, series, o) {
-  o = Object.assign({ largura: 560, rotuloL: 150, linha: 26, barra: 16 }, o || {});
+  o = Object.assign({ largura: 560, rotuloL: 150, linha: 26, barra: 16, folga: 40 }, o || {});
   if (!dados.length) return '<div class="vazio">Sem dados.</div>';
   const total = d => series.reduce((s, x) => s + (d.valores[x.chave] || 0), 0);
   const max = Math.max(1, ...dados.map(total));
-  const area = o.largura - o.rotuloL - 40;
+  const area = Math.max(40, o.largura - o.rotuloL - o.folga);
   const alt = dados.length * o.linha + 6;
   let svg = '<svg class="viz" viewBox="0 0 ' + o.largura + ' ' + alt + '" width="100%" role="img" aria-label="' + esc(o.titulo || 'gráfico de barras') + '">';
   dados.forEach((d, i) => {
     const y = i * o.linha + 4;
     const cls = d.id != null && o.fixo === d.id ? 'rot-forte rot-alerta' : d.id != null && (o.destaque || []).includes(d.id) ? 'rot-forte rot-destaque' : 'rot-forte';
     svg += '<text x="' + (o.rotuloL - 8) + '" y="' + (y + o.barra / 2 + 4) + '" text-anchor="end" class="' + cls + '"' + (d.id ? ' data-id="' + esc(d.id) + '"' : '') + '>' + esc(d.rotulo.length > 22 ? d.rotulo.slice(0, 21) + '…' : d.rotulo) + '</text>';
+    if (d.vazio) { svg += '<text x="' + o.rotuloL + '" y="' + (y + o.barra / 2 + 4) + '" class="valor vazio-txt"' + (d.id ? ' data-id="' + esc(d.id) + '"' : '') + '>' + esc(d.vazio) + '</text>'; return; }
     let x = o.rotuloL;
     const segs = series.filter(s => (d.valores[s.chave] || 0) > 0);
     segs.forEach((s, j) => {
       const v = d.valores[s.chave] || 0;
       const w = Math.max(2, v / max * area - (j < segs.length - 1 ? 2 : 0));
-      const r = j === segs.length - 1 ? 3 : 0;                    // ponta arredondada só no fim da barra
+      const r = j === segs.length - 1 ? 2 : 0;                    // ponta levemente arredondada só no fim da barra
       svg += '<g class="hov" data-tip="' + esc(d.rotulo + '\n' + s.nome + ': ' + num(v)) + '"' + (d.id ? ' data-id="' + esc(d.id) + '"' : '') + '>' +
         '<rect class="seg" x="' + x.toFixed(1) + '" y="' + y + '" width="' + w.toFixed(1) + '" height="' + o.barra + '" rx="' + r + '" fill="' + cor(s.cor) + '"/></g>';
       x += w + (j < segs.length - 1 ? 2 : 0);
     });
-    svg += '<text x="' + (x + 6).toFixed(1) + '" y="' + (y + o.barra / 2 + 4) + '" class="valor">' + num(total(d)) + '</text>';
+    svg += '<text x="' + (x + 6).toFixed(1) + '" y="' + (y + o.barra / 2 + 4) + '" class="valor">' + esc(d.fim != null ? d.fim : num(total(d))) + '</text>';
   });
   return legenda(series) + svg + '</svg>';
 }
@@ -166,35 +169,6 @@ export function miniBarras(valores, o) {
   const n = valores.length || 1, max = Math.max(1, ...valores.map(v => v.n)), gap = 2, w = (o.largura - gap * (n - 1)) / n;
   return '<svg class="viz mb-svg" viewBox="0 0 ' + o.largura + ' ' + o.altura + '" width="' + o.largura + '" height="' + o.altura + '" role="img" aria-label="' + esc(o.titulo || 'por dia') + '">' +
     valores.map((v, i) => { const h = v.n ? Math.max(3, v.n / max * (o.altura - 2)) : 2; return '<rect x="' + (i * (w + gap)).toFixed(1) + '" y="' + (o.altura - h).toFixed(1) + '" width="' + Math.max(1, w).toFixed(1) + '" height="' + h.toFixed(1) + '" rx="1.5" fill="' + (v.n ? cor(o.cor) : 'var(--viz-grid)') + '" data-tip="' + esc(v.rot + ': ' + num(v.n)) + '"/>'; }).join('') + '</svg>';
-}
-
-// Dispersão (uma bolinha por pessoa): x = volume, y = 0..100 (%). Linhas tracejadas nas medianas dividem em quadrantes.
-// pontos: [{ id, rot, x, y, cor, tip }]  o: { largura, altura, rotX, rotY, quadrantes: [sup-dir, sup-esq, inf-esq, inf-dir], ativo }
-export function dispersao(pontos, o) {
-  o = Object.assign({ largura: 560, altura: 300, esq: 44, dir: 16, topo: 16, base: 34 }, o || {});
-  const ps = pontos.filter(p => p.x != null && p.y != null);
-  if (!ps.length) return '<div class="vazio">Sem entregas no período para comparar.</div>';
-  const W = o.largura - o.esq - o.dir, H = o.altura - o.topo - o.base;
-  const maxX = Math.max(1, ...ps.map(p => p.x)), { topo } = escala(maxX);
-  const X = v => o.esq + v / topo * W, Y = v => o.topo + (1 - v / 100) * H;
-  const med = a => { const b = a.slice().sort((x, y) => x - y), m = b.length >> 1; return b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2; };
-  const mx = med(ps.map(p => p.x)), my = med(ps.map(p => p.y));
-  let svg = '<svg class="viz dp-svg" viewBox="0 0 ' + o.largura + ' ' + o.altura + '" width="100%" role="img" aria-label="' + esc(o.titulo || 'dispersão') + '">';
-  for (const v of [0, 25, 50, 75, 100]) svg += '<line class="grid" x1="' + o.esq + '" x2="' + (o.largura - o.dir) + '" y1="' + Y(v) + '" y2="' + Y(v) + '"/><text x="' + (o.esq - 6) + '" y="' + (Y(v) + 4) + '" text-anchor="end">' + v + '%</text>';
-  const passo = Math.max(1, Math.ceil(topo / 5));
-  for (let v = 0; v <= topo; v += passo) svg += '<text x="' + X(v) + '" y="' + (o.altura - o.base + 16) + '" text-anchor="middle">' + v + '</text>';
-  svg += '<text class="dp-eixo" x="' + (o.esq + W / 2) + '" y="' + (o.altura - 4) + '" text-anchor="middle">' + esc(o.rotX || '') + '</text>';
-  svg += '<line class="dp-med" x1="' + X(mx) + '" x2="' + X(mx) + '" y1="' + o.topo + '" y2="' + (o.topo + H) + '"/><line class="dp-med" x1="' + o.esq + '" x2="' + (o.largura - o.dir) + '" y1="' + Y(my) + '" y2="' + Y(my) + '"/>';
-  const q = o.quadrantes || [];
-  if (q.length === 4) svg += '<text class="dp-q" x="' + (o.largura - o.dir - 6) + '" y="' + (o.topo + 14) + '" text-anchor="end">' + esc(q[0]) + '</text><text class="dp-q" x="' + (o.esq + 6) + '" y="' + (o.topo + 14) + '">' + esc(q[1]) + '</text>' +
-    '<text class="dp-q" x="' + (o.esq + 6) + '" y="' + (o.topo + H - 6) + '">' + esc(q[2]) + '</text><text class="dp-q" x="' + (o.largura - o.dir - 6) + '" y="' + (o.topo + H - 6) + '" text-anchor="end">' + esc(q[3]) + '</text>';
-  ps.slice().sort((a, b) => (a.id === o.ativo) - (b.id === o.ativo)).forEach(p => {
-    const cx = X(p.x), cy = Y(p.y);
-    svg += '<g class="dp-p' + (o.ativo === p.id ? ' ativo' : o.ativo ? ' apagado' : '') + '" data-id="' + esc(p.id) + '" data-tip="' + esc(p.tip || p.rot) + '" tabindex="0" role="button" aria-label="' + esc(p.rot) + '">' +
-      '<circle class="alvo" cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="16"/><circle cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="9" fill="' + cor(p.cor) + '" stroke="var(--surface)" stroke-width="2"/>' +
-      '<text class="dp-rot" x="' + (cx + 13).toFixed(1) + '" y="' + (cy + 4).toFixed(1) + '"' + (cx > o.largura - 110 ? ' text-anchor="end" dx="-26"' : '') + '>' + esc(p.rot) + '</text></g>';
-  });
-  return svg + '</svg>';
 }
 
 /* ---------- dica (tooltip) compartilhada ---------- */
