@@ -59,5 +59,15 @@
         "inss"
       ]
     }
-  ]
+  ],
+  "avaliacao": {
+    "pesos": {
+      "pontualidade": 30,
+      "ritmo": 10,
+      "emDia": 25,
+      "cuidado": 20,
+      "agilidade": 15
+    },
+    "minEntregas": 5
+  }
 }

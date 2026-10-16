@@ -1600,21 +1600,103 @@ test('avaliação da equipe: entregas no período, % no prazo, carteira em dia, 
   const r = OC.avaliarEquipe(pend, mov, {}, 7, now);
   assert.deepEqual([r.de, r.ate], ['2026-10-10', '2026-10-16']);
   const ana = r.analistas.find(a => a.resp === 'Ana'), bia = r.analistas.find(a => a.resp === 'Bia');
-  assert.deepEqual([ana.concluidas, ana.noPrazo, ana.pctNoPrazo, ana.tempoMedio], [2, 1, 50, 3.5]);
-  assert.deepEqual([ana.carteira, ana.esc, ana.pctEmDia, ana.g3, ana.paradas, ana.primeiroTramite], [2, 2, 50, 1, 1, 2]);
-  assert.deepEqual(plano(ana.componentes), { pontualidade: 50, emDia: 50, cuidado: 75, agilidade: 75 });
-  assert.equal(ana.nota, Math.round((50 * 35 + 50 * 30 + 75 * 20 + 75 * 15) / 100));
+  assert.deepEqual([ana.concluidas, ana.noPrazo, ana.pctNoPrazo, ana.tempoMedio, ana.estimadas], [2, 1, 50, 3.5, 2], 'sem os trâmites lidos, o tempo é estimado (abertura à conclusão)');
+  assert.deepEqual([ana.carteira, ana.esc, ana.pctEmDia, ana.g3, ana.g3Esc, ana.paradas, ana.primeiroTramite], [2, 2, 50, 1, 1, 1, 2]);
+  assert.deepEqual(plano(ana.brutos), { pontualidade: 50, ritmo: 75, emDia: 50, cuidado: 75, agilidade: 75 }, 'valores próprios');
+  assert.deepEqual(plano(ana.componentes), { pontualidade: 68, ritmo: 75, emDia: 62, cuidado: 75, agilidade: 75 }, 'com 2 entregas (mínimo 5), puxados para a média da equipe');
+  assert.equal(ana.nota, Math.round((68 * 30 + 75 * 10 + 62 * 25 + 75 * 20 + 75 * 15) / 100));
   assert.deepEqual(plano([ana.anterior.concluidas, ana.variacao.concluidas]), [1, 1]);
   assert.deepEqual(plano(ana.atencao.map(i => i.k)), ['p2'], 'crítica e parada vão para os pontos de atenção');
-  assert.deepEqual([bia.concluidas, bia.prescritas, bia.pctNoPrazo, bia.componentes.emDia, bia.componentes.agilidade], [2, 1, 100, null, null], 'sem carteira no escritório nem 1º trâmite: esses itens ficam de fora da nota');
-  assert.equal(bia.nota, Math.round((100 * 35 + 75 * 20) / 55));
-  assert.equal(r.analistas[0].resp, 'Bia', 'maior nota primeiro');
+  assert.deepEqual(plano(ana.foraDoPrazo.map(x => [x.tempo, x.prazo, x.estimado])), [[6, 5, true]]);
+  assert.deepEqual([bia.concluidas, bia.prescritas, bia.prescSemCobranca, bia.brutos.emDia, bia.brutos.agilidade], [2, 1, 1, null, null]);
+  assert.deepEqual([bia.componentes.emDia, bia.componentes.agilidade], [r.equipe.brutos.emDia, r.equipe.brutos.agilidade], 'sem dado: recebe o valor da equipe (não some da conta)');
+  assert.deepEqual([ana.poucosDados, ana.pos, bia.poucosDados, bia.pos], [true, null, true, null], 'menos de 5 entregas: sem posição no ranking');
   assert.equal(r.analistas.some(a => a.resp === '(sem responsável)'), false);
   assert.deepEqual([r.equipe.concluidas, r.equipe.carteira, r.equipe.prescritas], [4, 4, 1]);
+  assert.deepEqual(plano(r.medianas), { geral: 1, calcFerias: 6 }, 'tempo normal da equipe por tipo');
   assert.deepEqual(plano(ana.porDia.map(d => d.n)), [0, 0, 0, 0, 1, 1, 0], 'entregas por dia do período');
   assert.equal(OC.faixaNota(90).rot, 'Excelente');
   assert.equal(OC.faixaNota(40).rot, 'Precisa de apoio');
   assert.equal(OC.faixaNota(null).k, 'sem');
+});
+
+// trâmites simulados: status 1 abertura (cliente), 3 aguardando resposta (cliente respondeu), 4 respondido (vez do cliente), 5 concluído
+const tr = (em, status, autor) => ({ created: em, status, createdByContactExpanded: { name: autor || 'Cliente' } });
+test('avaliação justa: só o tempo com o escritório conta, a entrega é de quem concluiu e a cobrança ao cliente aparece', () => {
+  const t = OC.TYPE_BY_KEY.geral;
+  const item = { k: 'geral:x', type: 'geral', created: '2026-10-01T09:00:00', last: '2026-10-14T15:00:00' };
+  // qui 01/10 abre; sex 02/10 o escritório pede documentos (vez do cliente); qua 07/10 o escritório cobra;
+  // ter 13/10 o cliente manda; qua 14/10 a Bia conclui
+  const a = OC.analisarEntrega([tr('2026-10-01T09:00:00', 1), tr('2026-10-02T10:00:00', 4, 'Ana'), tr('2026-10-07T10:00:00', 4, 'Ana'), tr('2026-10-13T10:00:00', 3), tr('2026-10-14T15:00:00', 5, 'Bia')], t, item, {});
+  assert.deepEqual(plano(a), { e: 2, p: 1, a: 'Bia', c: true }, '1 d.u. até pedir + 1 d.u. depois da resposta; a espera de 6 d.u. pelo cliente não conta');
+  // a mesma entrega na conta: no prazo (2 ≤ 3), e para a Bia (quem concluiu), não para a Ana (responsável)
+  const ent = Object.assign({ resp: 'Ana', lado: 'fim', status: 'Concluído' }, item);
+  const r = OC.avaliarEquipe([{ k: 'p', type: 'geral', resp: 'Bia', lado: 'esc', nivel: 0, parado: 0 }], [ent], {}, 7, new Date(2026, 9, 16, 10), { analises: { 'geral:x': a } });
+  const bia = r.analistas.find(x => x.resp === 'Bia');
+  assert.deepEqual([bia.concluidas, bia.noPrazo, bia.estimadas, bia.tempoMedio], [1, 1, 0, 2]);
+  assert.equal((r.analistas.find(x => x.resp === 'Ana') || { concluidas: 0 }).concluidas, 0);
+  const sem = OC.avaliarEquipe([], [ent], {}, 7, new Date(2026, 9, 16, 10));
+  assert.deepEqual([sem.analistas[0].resp, sem.analistas[0].noPrazo, sem.analistas[0].estimadas], ['Ana', 0, 1], 'sem leitura: tempo total, estimado, crédito ao responsável');
+  // resolvida (sem trâmite de conclusão): conta até a última movimentação
+  const b = OC.analisarEntrega([tr('2026-10-05T09:00:00', 1), tr('2026-10-06T09:00:00', 4, 'Ana')], t, { created: '2026-10-05T09:00:00', last: '2026-10-06T09:00:00' }, {});
+  assert.deepEqual(plano(b), { e: 1, p: 1, a: '', c: false });
+});
+
+test('avaliação justa: volume e amostra, atrasos do cliente, cuidado proporcional, agilidade com as sem resposta e exceções', () => {
+  const now = new Date(2026, 9, 16, 12);
+  const d = n => { const x = new Date(now); x.setDate(x.getDate() - n); return x.toISOString().slice(0, 19); };
+  const pend = (resp, n, extra) => Array.from({ length: n }, (_, i) => Object.assign({ k: resp + 'p' + i + JSON.stringify(extra || {}), type: 'geral', resp, lado: 'esc', nivel: 0, grav: 1, parado: 1, status: 'Em análise' }, extra || {}));
+  const ent = (resp, n, dias, pre) => Array.from({ length: n }, (_, i) => ({ k: resp + (pre || '') + 'e' + i, type: 'geral', resp, lado: 'fim', status: 'Concluído', created: d(dias + 1), last: d(1) }));
+  // 2 entregas perfeitas não passam na frente de 40 entregas com 90% no prazo
+  const r1 = OC.avaliarEquipe([...pend('Ana', 3), ...pend('Bia', 54), ...pend('Bia', 6, { nivel: 1 }), ...pend('Bia', 2, { grav: 3, nivel: 2 })], [...ent('Ana', 2, 1), ...ent('Bia', 36, 1), ...ent('Bia', 4, 8, 'x')], {}, 7, now);
+  assert.deepEqual(plano(r1.analistas.map(a => [a.resp, a.pos])), [['Bia', 1], ['Ana', null]], 'quem tem poucas entregas fica sem posição');
+  const bia = r1.analistas[0];
+  assert.ok(bia.componentes.cuidado >= 85, '2 críticas em 102 solicitações pesam pouco (proporcional): ' + bia.componentes.cuidado);
+  // sem entregas não tira 100
+  const r2 = OC.avaliarEquipe([...pend('Eva', 2), ...pend('Fabi', 30)], [...ent('Fabi', 20, 1)], {}, 7, now);
+  const eva = r2.analistas.find(a => a.resp === 'Eva');
+  assert.equal(eva.poucosDados, true);
+  assert.equal(eva.componentes.pontualidade, r2.equipe.brutos.pontualidade, 'sem entregas, a pontualidade é a da equipe');
+  // atraso de origem do cliente não tira "em dia"
+  const cli = pend('Gil', 4, { nivel: 2, motivos: [{ n: 2, m: 'Admissão retroativa', o: 'cli' }] });
+  const esc = pend('Gil', 1, { nivel: 2, motivos: [{ n: 2, m: 'Parada há 20 dias' }] });
+  const gil = OC.avaliarEquipe([...cli, ...esc], [], {}, 7, now).analistas[0];
+  assert.equal(gil.brutos.emDia, 80, '4 de 5 em dia: só a parada é do escritório');
+  // agilidade: "Sem análise" há 4 d.u. conta como 4 d.u. (antes ficava de fora)
+  const h = OC.avaliarEquipe(pend('Hugo', 1, { status: 'Sem análise', uteisAberto: 4 }), [], {}, 7, now).analistas[0];
+  assert.deepEqual([h.primeiroTramite, h.brutos.agilidade], [4, 25]);
+  // exceção do gestor tira o caso da conta
+  const r3 = OC.avaliarEquipe(esc, [], {}, 7, now, { excecoes: { [esc[0].k]: '2026-10-16' } });
+  assert.deepEqual([r3.excluidas, r3.analistas.length], [1, 0]);
+  // pesos e mínimo pelas regras do escritório (o ajuste da pessoa não muda)
+  const reg = OC.normalizarRegras({ avaliacao: { pesos: { pontualidade: 50, ritmo: 0 }, minEntregas: 2 } });
+  const s = OC.combinarSettings({ regras: reg }, { pesosNota: { pontualidade: 1 }, avaliacaoMinEntregas: 99 });
+  assert.deepEqual([s.pesosNota.pontualidade, s.pesosNota.ritmo, s.pesosNota.emDia, s.avaliacaoMinEntregas], [50, 0, 25, 2]);
+  assert.equal(OC.avaliarEquipe(pend('Ana', 1), ent('Ana', 2, 1), s, 7, now).analistas[0].pos, 1, 'com mínimo 2, duas entregas já entram');
+});
+
+test('avaliação justa: o service worker lê os trâmites das entregas (com cache só de números) e o Distribuir credita quem concluiu', async () => {
+  const lidas = [];
+  const f = async url => { lidas.push(url); return { items: [tr('2026-10-12T09:00:00', 1), tr('2026-10-13T09:00:00', 5, 'Bia')] }; };
+  const e1 = { k: 'geral:a', id: 'a', type: 'geral', resp: 'Ana', lado: 'fim', created: '2026-10-12T09:00:00', last: '2026-10-13T09:00:00' };
+  const e2 = Object.assign({}, e1, { k: 'geral:b', id: 'b' });
+  const r = await OC.analisarEntregas(f, [e1, e2], { 'geral:b': { l: e2.last, e: 9, p: 1, a: 'Ana', c: false } }, {});
+  assert.equal(lidas.length, 1, 'o que está no cache e não mudou não é lido de novo');
+  assert.deepEqual(plano(r.analises['geral:a']), { l: e1.last, e: 1, p: 1, a: 'Bia', c: false });
+  assert.ok(!JSON.stringify(r.analises).match(/description|texto|cliente/i), 'o cache não leva texto');
+  const cred = OC.creditarQuemConcluiu([e1, { k: 'x', resp: 'Bia', lado: 'esc' }], r.analises);
+  assert.equal(cred[0].resp, 'Bia', 'concluída vale para quem concluiu (alguém da equipe)');
+  assert.equal(OC.creditarQuemConcluiu([e1], { 'geral:a': { a: 'Fulano de fora' } })[0].resp, 'Ana', 'autor desconhecido: fica com o responsável');
+});
+
+test('motivos de origem do cliente: admissão retroativa e prazo que inclui a espera pelo cliente ficam marcados', () => {
+  const now = new Date(2026, 9, 16, 10);
+  const adm = OC.evaluate({ type: 'cadEmpregado', lado: 'esc', status: 'Enviado para o escritório', code: 2, created: '2026-10-14T09:00:00', last: '2026-10-14T09:00:00', admissao: '2026-10-10' }, {}, now);
+  assert.equal(adm.motivos.find(m => /retroativa/.test(m.m)).o, 'cli');
+  const resp = OC.evaluate({ type: 'geral', lado: 'esc', status: 'Aguardando resposta', created: '2026-10-01T09:00:00', last: '2026-10-15T09:00:00' }, {}, now);
+  assert.equal(resp.motivos.find(m => /Aberta há/.test(m.m)).o, 'cli', 'o cliente respondeu depois: o tempo aberto inclui a espera');
+  const nosso = OC.evaluate({ type: 'geral', lado: 'esc', status: 'Em análise', created: '2026-10-01T09:00:00', last: '2026-10-15T09:00:00' }, {}, now);
+  assert.equal(nosso.motivos.find(m => /Aberta há/.test(m.m)).o, undefined);
 });
 
 test('área do gestor: a senha fica só como resumo SHA-256; regras podem trocar, ajustes da pessoa não', () => {

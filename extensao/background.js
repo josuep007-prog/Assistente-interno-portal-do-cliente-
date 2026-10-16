@@ -181,7 +181,7 @@ async function garantirEscritorio(f, forcar) {
 }
 // Acesso de cliente: nada do que foi lido fica guardado nem aparece (lembretes pessoais ficam).
 async function bloquearVisaoCliente(e) {
-  await chrome.storage.local.remove(['snapshot', 'assinaturas', 'tramites', 'eventos', 'serie', 'ultimaVerificacao', 'notifMap', 'semCalculoMarcas']);
+  await chrome.storage.local.remove(['snapshot', 'assinaturas', 'tramites', 'eventos', 'serie', 'ultimaVerificacao', 'notifMap', 'semCalculoMarcas', 'desempenhoCache']);
   await chrome.storage.local.set({ status: { estado: 'visao_cliente', em: new Date().toISOString(), msg: e.message } });
   await chrome.action.setBadgeText({ text: '' });
 }
@@ -670,7 +670,14 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         const mov = await OC.lerMovimentadas(f, dias * 2 + 1, agora, 10);
         // vez do cliente sem retorno e sem pedido do analista conta como entregue na data da última resposta
         const resolvidas = ((snapshot && snapshot.resolvidas) || []).map(r => Object.assign({}, r, { lado: 'fim', status: 'Resolvida (cliente sem retorno)' }));
-        reply(Object.assign({ ok: true, erros: mov.erros, movimentadas: mov.itens.length, resolvidas: resolvidas.length }, OC.avaliarEquipe((snapshot && snapshot.items) || [], resolvidas.concat(mov.itens), s, dias, agora)));
+        const entregas = resolvidas.concat(mov.itens).filter(x => x.lado === 'fim');
+        // trâmites de cada entrega: tempo com o escritório e quem concluiu. O cache leva só números, o nome de quem
+        // concluiu e a data da última movimentação; o que saiu do período sai do cache.
+        const { desempenhoCache } = await chrome.storage.local.get('desempenhoCache');
+        const an = await OC.analisarEntregas(f, entregas, desempenhoCache || {}, s, 400);
+        await chrome.storage.local.set({ desempenhoCache: an.analises });
+        // a conta é feita no app (com as exceções do gestor); aqui só a leitura
+        reply({ ok: true, erros: mov.erros, dias, agora: agora.toISOString(), movimentadas: mov.itens.length, resolvidas: resolvidas.length, entregas, analises: an.analises, lidas: an.lidas, falhasTramites: an.falhas, semLeitura: an.semLeitura });
       }
       else if (msg.cmd === 'distribuicao') {        // sob demanda: quem mais atendeu cada empresa nos últimos dias (nada é guardado)
         const { f } = await escolherFetcher();
@@ -678,7 +685,9 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         const { snapshot } = await chrome.storage.local.get('snapshot');
         const mov = await OC.lerMovimentadas(f, dias, new Date());
         const pend = (snapshot && snapshot.items) || [];
-        reply({ ok: true, dias, movimentadas: mov.itens.length, erros: mov.erros, sugestoes: OC.distribuirPorCliente(pend, mov.itens, dias) });
+        // concluídas valem para quem as concluiu, quando a avaliação da equipe já leu os trâmites (sem chamadas novas aqui)
+        const { desempenhoCache } = await chrome.storage.local.get('desempenhoCache');
+        reply({ ok: true, dias, movimentadas: mov.itens.length, erros: mov.erros, sugestoes: OC.distribuirPorCliente(pend, OC.creditarQuemConcluiu(mov.itens, desempenhoCache || {}), dias) });
       }
       else if (msg.cmd === 'consultar') { reply(Object.assign({ ok: true }, await consultar(msg))); }
       else if (msg.cmd === 'acao') { reply(Object.assign({ ok: true }, await executarAcao(msg))); }
