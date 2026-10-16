@@ -157,6 +157,12 @@
     if (ev.source !== window || ev.origin !== location.origin || !d || d.src !== 'controlonvio' || d.tipo !== 'aprendido') return;
     if (viva()) guardarAprendido(d.registro);
   });
+  // O Onvio baixou um anexo: o service worker guarda só o molde do caminho (OC.moldeDeAnexo), nunca o endereço.
+  addEventListener('message', ev => {
+    const d = ev.data;
+    if (ev.source !== window || ev.origin !== location.origin || !d || d.src !== 'controlonvio' || d.tipo !== 'anexoBaixado') return;
+    if (viva() && typeof d.url === 'string' && d.url.length < 2000) chrome.runtime.sendMessage({ cmd: 'rotaAnexo', url: d.url, campo: typeof d.campo === 'string' ? d.campo.slice(0, 60) : null }).catch(() => {});
+  });
   chrome.storage.onChanged.addListener((ch, area) => { if (area === 'local' && ch.aprender) avisarHook(ch.aprender.newValue); });
   chrome.storage.local.get('aprender', d => avisarHook(d.aprender));
 

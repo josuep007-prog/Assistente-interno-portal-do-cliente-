@@ -328,6 +328,80 @@ function escritaPorAba(tabId) {
   };
 }
 const MAX_ANEXOS = 10, MAX_BYTES = 15 * 1024 * 1024;
+
+/* ---------- baixar anexos escolhidos ----------
+ * Molde do caminho aprendido quando o próprio Onvio baixa um anexo (acao-hook.js -> shell.js -> rotaAnexo). Guarda só
+ * o molde, sem ids nem nomes. O download é um GET feito de dentro da aba do Onvio (com a mesma autorização da página),
+ * e o arquivo vai direto para a pasta de downloads do Chrome: a extensão não guarda nada. */
+const ROTAS_ANEXO_MAX = 20;
+async function guardarRotaAnexo(msg) {
+  const molde = OC.moldeDeAnexo(String(msg.url || ''));
+  if (!molde) return false;
+  const campo = typeof msg.campo === 'string' && /^[A-Za-z_][\w]{0,40}$/.test(msg.campo) ? msg.campo : null;
+  const { rotasAnexo } = await chrome.storage.local.get('rotasAnexo');
+  const l = Array.isArray(rotasAnexo) ? rotasAnexo : [];
+  const igual = l.find(r => r.molde === molde && (r.campo || null) === campo);
+  if (igual) { igual.vezes = (igual.vezes || 1) + 1; igual.em = new Date().toISOString(); }
+  else l.push({ molde, campo, vezes: 1, em: new Date().toISOString() });
+  await chrome.storage.local.set({ rotasAnexo: l.sort((a, b) => String(b.em).localeCompare(String(a.em))).slice(0, ROTAS_ANEXO_MAX) });
+  return true;
+}
+const MAX_DOWNLOADS = 50;
+async function baixarAnexos(msg) {
+  const t = OC.TYPE_BY_KEY[msg.type];
+  if (!t) throw new Error('tipo desconhecido');
+  const pedidos = Array.isArray(msg.anexos) ? msg.anexos : [];
+  if (!pedidos.length) throw new Error('escolha ao menos um anexo');
+  if (pedidos.length > MAX_DOWNLOADS) throw new Error('no máximo ' + MAX_DOWNLOADS + ' anexos de uma vez');
+  const ok = v => typeof v === 'string' && /^[\w-]{1,80}$/.test(v);
+  if (pedidos.some(a => !a || !ok(a.id) || (a.topico != null && !ok(a.topico)))) throw new Error('anexo inválido');
+  const { f } = await escolherFetcher(true);                     // confere de novo que é o escritório
+  const tab = await abaOnvio();
+  if (!tab) throw new Error('Abra o Onvio numa aba para baixar.');
+  const d = await f(OC.urlConsulta(t, { numero: msg.num, per: 5 }));
+  const r = ((d && d.items) || []).find(x => String(x.identifier) === String(msg.num));
+  if (!r) throw new Error('solicitação #' + msg.num + ' não encontrada em ' + t.label);
+  const { rotasAnexo } = await chrome.storage.local.get('rotasAnexo');
+  const nomeSeguro = n => String(n || 'anexo').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '_').slice(0, 180) || 'anexo';
+  const itens = [], semRota = [];
+  for (const a of pedidos) {
+    const nome = nomeSeguro(a.nome);
+    const u = OC.urlAnexo(t, { sol: r.id, topico: a.topico || null, anexo: a.id, nome }, rotasAnexo || []);
+    if (u && OC.leituraAnexoPermitida(u.url)) itens.push({ url: u.url, campo: u.campo, nome }); else semRota.push(nome);
+  }
+  if (!itens.length) return { baixados: 0, falhas: [], semRota: semRota.length, rotas: (rotasAnexo || []).length };
+  const [res] = await chrome.scripting.executeScript({
+    target: { tabId: tab.id }, world: 'MAIN',
+    func: async lista => {
+      const auth = typeof window.__controlOnvioAutorizacao === 'function' ? window.__controlOnvioAutorizacao() : null;
+      const out = [];
+      for (const it of lista) {
+        try {
+          const headers = { Accept: '*/*' };
+          if (auth) headers.Authorization = auth;
+          const r = await fetch(it.url, { method: 'GET', headers, credentials: 'include' });
+          if (!r.ok) { out.push({ nome: it.nome, erro: 'HTTP ' + r.status }); continue; }
+          let href, blob = null;
+          if (it.campo) {
+            const j = await r.json();
+            href = j && j[it.campo];
+            if (typeof href !== 'string' || !/^https:\/\//.test(href)) { out.push({ nome: it.nome, erro: 'o Onvio não devolveu o endereço do arquivo' }); continue; }
+          } else { blob = await r.blob(); href = URL.createObjectURL(blob); }
+          const a = document.createElement('a');
+          a.href = href; a.download = it.nome; a.rel = 'noopener'; a.style.display = 'none';
+          document.body.appendChild(a); a.click(); a.remove();
+          if (blob) setTimeout(() => URL.revokeObjectURL(href), 60000);
+          out.push({ nome: it.nome, ok: true });
+          await new Promise(res => setTimeout(res, 400));
+        } catch (e) { out.push({ nome: it.nome, erro: String(e && e.message || e).slice(0, 120) }); }
+      }
+      return out;
+    },
+    args: [itens]
+  });
+  const lista = (res && res.result) || [];
+  return { baixados: lista.filter(x => x.ok).length, falhas: lista.filter(x => !x.ok).map(x => x.nome + ': ' + x.erro), semRota: semRota.length, rotas: (rotasAnexo || []).length };
+}
 async function executarAcao(msg) {
   const t = OC.TYPE_BY_KEY[msg.type];
   if (!t) throw new Error('tipo desconhecido');
@@ -449,7 +523,7 @@ async function detalhe(msg) {
   if (comp.d && typeof comp.d.description === 'string' && !x.descricao) x.descricao = comp.d.description;
   return {
     item: x, lista: t.label, datas,
-    grupos: completo ? completo.grupos : null, anexos: completo ? completo.anexos : [], erroDados: comp.erro || null,
+    grupos: completo ? completo.grupos : null, anexos: completo ? completo.anexos : [], arquivos: completo ? completo.arquivos : [], erroDados: comp.erro || null,
     tramites: tr.d ? OC.tramitesDe(t, tr.d) : null, erroTramites: tr.erro || null
   };
 }
@@ -610,6 +684,8 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'acao') { reply(Object.assign({ ok: true }, await executarAcao(msg))); }
       else if (msg.cmd === 'criar') { reply(Object.assign({ ok: true }, await criarSolicitacao(msg))); }
       else if (msg.cmd === 'detalhe') { reply(Object.assign({ ok: true }, await detalhe(msg))); }
+      else if (msg.cmd === 'baixarAnexos') { reply(Object.assign({ ok: true }, await baixarAnexos(msg))); }
+      else if (msg.cmd === 'rotaAnexo') { reply({ ok: await guardarRotaAnexo(msg) }); }
       else if (msg.cmd === 'testarLeitura') { reply({ ok: true, linhas: await testarLeitura() }); }
       else if (msg.cmd === 'abrirOnvio') { await irParaOnvio(); reply({ ok: true }); }
       else if (msg.cmd === 'fecharPainel') { if (sender.tab && sender.tab.id != null) await mensagemParaPainel(sender.tab.id, 'fechar').catch(() => {}); reply({ ok: true }); }
