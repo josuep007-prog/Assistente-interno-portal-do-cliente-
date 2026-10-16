@@ -10,7 +10,11 @@ const TITULO = { tramite: 'Responder', encaminhar: 'Encaminhar para outro usuár
 let f = null;   // { acao, texto, situacao, analista, data, arquivos: [File], confirmar, enviando, erro }
 
 export const acaoAberta = () => !!f;
-export function novaAcao(acao) { f = { acao, texto: '', situacao: '', analista: '', data: '', arquivos: [], confirmar: false, enviando: false, erro: '' }; }
+// preset (opcional): texto e situação sugeridos e aoEnviar, chamado depois que o Onvio aceitou (só na memória)
+export function novaAcao(acao, preset) {
+  const p = preset || {};
+  f = { acao, texto: p.texto || '', situacao: p.situacao || '', analista: '', data: '', arquivos: [], confirmar: false, enviando: false, erro: '', aoEnviar: typeof p.aoEnviar === 'function' ? p.aoEnviar : null };
+}
 const tamanho = n => n < 1024 ? n + ' B' : n < 1048576 ? Math.round(n / 1024) + ' KB' : (n / 1048576).toFixed(1).replace('.', ',') + ' MB';
 const equipe = i => OC.equipeDe(itens()).filter(p => f.acao !== 'encaminhar' || p.id !== i.respId);
 const nomeDe = (i, id) => (equipe(i).find(p => p.id === id) || {}).nome || '';
@@ -114,7 +118,9 @@ export function ligarAcao(g, i, obs, cb) {
       const feito = { tramite: 'Trâmite enviado ao Onvio', encaminhar: 'Encaminhada', responsavel: 'Responsável definido', expectativa: 'Expectativa alterada' }[f.acao];
       if (r.erroAnexos) toast(feito + ', mas: ' + r.erroAnexos, true);
       else toast(feito + (r.anexos ? ' com ' + r.anexos + ' anexo(s)' : ''));
+      const depois = f.aoEnviar;
       f = null;
+      if (depois) { try { await depois(); } catch (e) { console.error(e); } }
       cb.feito();
     } catch (e) {
       f.enviando = false; f.confirmar = false; f.erro = 'Não foi enviado: ' + (e.message || e);

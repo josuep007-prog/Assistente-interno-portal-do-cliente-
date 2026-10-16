@@ -23,7 +23,7 @@ export function render(el, ctx, params) {
     titulo: 'Equipe', sub: 'Visão do gestor · ' + plural(an.length, 'responsável', 'responsáveis') + ' · ao vivo',
     abas: [{ id: 'painel', rot: 'Painel', href: '#/equipe' }, { id: 'resp', rot: 'Responsáveis', href: '#/equipe?aba=resp', n: an.length }],
     aba,
-    extra: '<a class="btn btn-sm" href="#/fila?escopo=equipe"><svg class="ic ic-sm"><use href="#i-inbox"/></svg> Fila da equipe</a>'
+    extra: '<a class="btn btn-sm" href="#/fila?escopo=equipe"><svg class="ic ic-sm"><use href="#i-inbox"/></svg> Solicitações da equipe</a>'
   });
   if (aba === 'resp') return responsaveis(el, ctx, an, it);
 

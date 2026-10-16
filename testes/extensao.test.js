@@ -977,8 +977,52 @@ test('detalhe completo: endereço por lista (Rubricas na v2) e campos em grupos 
   assert.equal(princ['Cargo'], 'Auxiliar', 'objeto só com nome vira uma linha');
   assert.equal(princ['Novo campo do onvio'], 'abc', 'campo novo do Onvio aparece');
   for (const k of ['Id', 'Company id', 'Api version', 'Type', 'Generic status', 'Department id']) assert.ok(!(k in princ), k + ' é técnico');
-  assert.deepEqual(plano(c.grupos.map(g => g.titulo)), ['Solicitação', 'Cliente']);
+  assert.deepEqual(plano(c.grupos.map(g => g.titulo)), ['Solicitação'], 'cliente fica no topo da janela, não repete na aba Dados');
   assert.deepEqual(plano(c.anexos), ['rg.pdf', 'ctps.pdf']);
+});
+
+test('aba Dados: só o que serve para atender (sem campos técnicos, sem repetir o topo), rótulos e valores em português', () => {
+  const c = OC.camposDetalhe(OC.TYPE_BY_KEY.avisoFerias, {
+    id: 'g', subject: 'Férias de novembro', description: 'Texto longo do cliente', serviceRequestType: 'PRIOR_NOTICE_VACATION', requestWay: 'PORTAL',
+    created: '2026-10-01T10:00:00', changed: '2026-10-02T10:00:00', lastUpdated: '2026-10-02T10:00:00', dueDate: '2026-10-20T00:00:00', genericStatus: 1,
+    vacationStartDate: '2026-11-03T00:00:00', vacationDays: 30,
+    createdByContactExpanded: { id: 'u', name: 'Contato' }, requesterExpanded: { id: 'r', name: 'Contato' }, staffResponsibleExpanded: { id: 's', name: 'Analista' },
+    clientExpanded: { id: 'z', name: 'ACME', code: 12, nickname: 'AC' },
+    clientEmployeeExpanded: { id: 'e', name: 'Fulano', code: 7, hireDate: '2024-01-02T00:00:00', clientEmployeeRelationship: 'EMPLOYEE', sortOrder: 3 }
+  });
+  assert.deepEqual(plano(c.grupos.map(g => g.titulo)), ['Solicitação', 'Empregado']);
+  const princ = c.grupos[0].campos.map(x => x.k);
+  for (const k of ['Tipo de solicitação', 'Meio da solicitação', 'Aberta em', 'Alterada em', 'Último trâmite', 'Expectativa de conclusão', 'Cadastrada por', 'Solicitante', 'Responsável'])
+    assert.ok(!princ.includes(k), k + ' não é preciso para atender ou já está no topo');
+  assert.deepEqual(plano(princ), ['Assunto', 'Início das férias', 'Dias de férias', 'Descrição'], 'descrição (texto longo) por último');
+  const emp = Object.fromEntries(c.grupos[1].campos.map(x => [x.k, x.v]));
+  assert.equal(emp['Admissão'], '02/01/2024');
+  assert.equal(emp['Vínculo'], 'Empregado', 'enumeração em português');
+  assert.ok(!('Hire date' in emp) && !('Sort order' in emp) && !('Client employee relationship' in emp));
+});
+
+test('avisos sem cálculo: quadro em duas colunas, marcas só com k/coluna/hora e texto do aviso ao cliente pelas regras', () => {
+  const now = new Date(2026, 9, 16, 10);
+  const it = (k, faltam, extra) => Object.assign({ k, type: 'avisoFerias', typeLabel: 'Aviso de férias', num: k.slice(-1), detalhe: 'Fulano', semCalculo: { alvo: '2026-10-30', faltam, ref: 'início das férias em 03/11/2026', calculo: 'Cálculo de férias' } }, extra || {});
+  const itens = [it('avisoFerias:a', 3), it('avisoFerias:b', -1), it('avisoFerias:c', 1), { k: 'geral:x', type: 'geral' }];
+  let marcas = OC.marcarSemCalculo({}, 'avisoFerias:c', 'avisado', itens, now);
+  marcas = OC.marcarSemCalculo(marcas, 'avisoFerias:a', 'desconsiderado', itens, now);
+  assert.deepEqual(plano(marcas['avisoFerias:c']), { st: 'avisado', em: now.toISOString() });
+  const q = OC.quadroSemCalculo(itens, marcas);
+  assert.deepEqual(plano(q.avisar.map(x => x.item.k)), ['avisoFerias:b']);
+  assert.deepEqual(plano(q.avisados.map(x => x.item.k)), ['avisoFerias:c']);
+  assert.deepEqual(plano(q.desconsiderados.map(x => x.item.k)), ['avisoFerias:a']);
+  // voltar tira a marca; marca de aviso que saiu das pendentes some depois de 7 dias; coluna desconhecida é ignorada
+  assert.ok(!('avisoFerias:c' in OC.marcarSemCalculo(marcas, 'avisoFerias:c', null, itens, now)));
+  const velha = { 'avisoFerias:z': { st: 'avisado', em: '2026-10-01T10:00:00.000Z' }, 'avisoFerias:y': { st: 'avisado', em: '2026-10-14T10:00:00.000Z' }, 'avisoFerias:a': { st: 'xx', em: now.toISOString() } };
+  assert.deepEqual(Object.keys(OC.marcarSemCalculo(velha, null, null, itens, now)), ['avisoFerias:y']);
+  // texto: padrão e o do arquivo de regras
+  assert.equal(OC.textoAvisoSemCalculo(it('avisoFerias:a', 3), {}),
+    'Recebemos o aviso de férias de Fulano, mas ainda não há a solicitação de cálculo de férias desse empregado. Para o pagamento sair dentro do prazo legal (até 30/10/2026, início das férias em 03/11/2026), abra a solicitação de cálculo de férias no Portal do Cliente o quanto antes. Sem ela não conseguimos preparar o cálculo a tempo.');
+  const r = OC.normalizarRegras({ avisoSemCalculo: 'Falta o {calculo} de {empregado} (pagar até {pagamento}). {outro}' });
+  const s = OC.combinarSettings({ regras: r }, {});
+  assert.equal(OC.textoAvisoSemCalculo(it('avisoFerias:a', 3), s), 'Falta o cálculo de férias de Fulano (pagar até 30/10/2026). {outro}', 'chave desconhecida fica como está');
+  assert.equal(OC.normalizarRegras({ avisoSemCalculo: 'x'.repeat(801) }), null, 'texto grande demais é ignorado');
 });
 
 test('prazo de pagamento: férias 2 dias antes do início e rescisão 10 dias após, antecipando fim de semana e feriado', () => {
@@ -1093,14 +1137,14 @@ test('background: detalhe traz a solicitação completa em grupos, anexos e data
   let falhaDetalhe = false;
   const api = async url => {
     const p = new URL(url).pathname;
-    if (/prior-notice-vacations\/v1$/.test(p)) { if (falhaDetalhe) return respHttp(500, 'application/json', '{}'); return respHttp(200, 'application/json', JSON.stringify({ id: 'v1', subject: 'Férias', vacationStartDate: '2026-11-03T00:00:00', clientExpanded: { name: 'ACME', code: 3, nickname: 'AC' }, attachmentsExpanded: [{ name: 'aviso.pdf' }] })); }
+    if (/prior-notice-vacations\/v1$/.test(p)) { if (falhaDetalhe) return respHttp(500, 'application/json', '{}'); return respHttp(200, 'application/json', JSON.stringify({ id: 'v1', subject: 'Férias', vacationStartDate: '2026-11-03T00:00:00', clientExpanded: { name: 'ACME', code: 3, nickname: 'AC' }, clientEmployeeExpanded: { name: 'Fulano', code: 7, hireDate: '2024-01-02T00:00:00' }, attachmentsExpanded: [{ name: 'aviso.pdf' }] })); }
     return base(url);
   };
   const { ouvintes, store } = carregarBackground({ abas: [aba(5, ONVIO_PORTAL)], fetchPorMundo: { MAIN: api }, fetch: api });
   const pedir = m => new Promise(res => ouvintes[0](m, { tab: { id: 5 } }, res));
   const r = await pedir({ cmd: 'detalhe', type: 'avisoFerias', num: 702 });
   assert.equal(r.ok, true);
-  assert.deepEqual(plano(r.grupos.map(g => g.titulo)), ['Solicitação', 'Cliente']);
+  assert.deepEqual(plano(r.grupos.map(g => g.titulo)), ['Solicitação', 'Empregado'], 'o cliente já está no topo da janela');
   assert.deepEqual(plano(r.anexos), ['aviso.pdf']);
   assert.equal(r.datas.inicio, '2026-11-03');
   assert.equal(r.erroDados, null);
@@ -1214,4 +1258,68 @@ test('background: ação recusada pelo Onvio, sem aba ou com acesso de cliente n
   const r2 = await new Promise(res => sem.ouvintes[0]({ cmd: 'acao', acao: 'tramite', type: 'geral', num: 77, texto: 'x', situacao: 4 }, {}, res));
   assert.equal(r2.ok, false);
   assert.equal(escritas, 1, 'sem aba do Onvio nada é enviado');
+});
+
+/* ---------- v0.15: Hoje (admissões, vencimentos, uso do portal, sugestões, previsão) ---------- */
+test('admissão: retroativa, já passada ou perto do início destaca; cadastro efetuado não', () => {
+  const now = new Date(2026, 9, 16, 10);   // sexta
+  const it = (admissao, extra) => Object.assign({ type: 'cadEmpregado', code: 2, lado: 'esc', status: 'Enviado para o escritório', created: '2026-10-14T12:00:00', last: '2026-10-15T12:00:00', admissao }, extra || {});
+  const retro = OC.evaluate(it('2026-10-10'), {}, now);
+  assert.deepEqual(plano(retro.admissaoAlerta), { data: '2026-10-10', faltam: -4, retro: true });
+  assert.ok(retro.motivos.some(m => m.n === 2 && /Admissão retroativa: início em 10\/10/.test(m.m)));
+  const passou = OC.evaluate(it('2026-10-15', { created: '2026-10-01T12:00:00' }), {}, now);
+  assert.equal(passou.admissaoAlerta.retro, false);
+  assert.ok(passou.motivos.some(m => /já passou/.test(m.m)));
+  const segunda = OC.evaluate(it('2026-10-19'), {}, now);
+  assert.deepEqual([segunda.admissaoAlerta.faltam, segunda.nivel], [1, 2], 'segunda-feira: eSocial na sexta (hoje)');
+  const quarta = OC.evaluate(it('2026-10-21'), {}, now);
+  assert.deepEqual([quarta.admissaoAlerta, quarta.nivel], [null, 0], 'quarta: 3 d.u., fora da janela de 2');
+  assert.equal(OC.evaluate(it('2026-10-10', { code: 5, lado: 'cli' }), {}, now).admissaoAlerta, null, 'cadastro efetuado');
+  assert.equal(OC.normalize(OC.TYPE_BY_KEY.cadEmpregado, { id: 'x', identifier: 1, genericStatus: 2, admissionDate: '2026-10-20T00:00:00', name: 'F' }, null, []).admissao, '2026-10-20');
+  assert.equal(OC.normalize(OC.TYPE_BY_KEY.geral, { id: 'x', identifier: 1, genericStatus: 2, admissionDate: '2026-10-20T00:00:00' }, null, []).admissao, null);
+  const lista = OC.admissoesCriticas([{ k: 'a', admissaoAlerta: { faltam: 2, retro: false } }, { k: 'b' }, { k: 'c', admissaoAlerta: { faltam: -4, retro: true } }, { k: 'd', admissaoAlerta: { faltam: 0, retro: false } }]);
+  assert.deepEqual(plano(lista.map(x => x.k)), ['c', 'd', 'a'], 'retroativas primeiro, depois a mais perto');
+});
+
+test('Hoje: vencimentos legais na janela, uso errado do portal por empresa e sugestões de ação', () => {
+  const now = new Date(2026, 9, 16, 10);
+  const v = OC.vencimentosLegais([
+    { k: 'a', lado: 'esc', pagamentoAte: { alvo: '2026-10-20', ref: 'x' } },
+    { k: 'b', lado: 'cli', pagamentoAte: { alvo: '2026-10-16', ref: 'y' } },
+    { k: 'c', lado: 'esc', pagamentoAte: { alvo: '2026-12-01', ref: 'z' } },
+    { k: 'd', lado: 'fim', pagamentoAte: { alvo: '2026-10-16', ref: 'w' } }
+  ], {}, now);
+  assert.deepEqual(plano(v.map(x => [x.item.k, x.faltam])), [['b', 0], ['a', 2]]);
+  const it = (k, o) => Object.assign({ k, type: 'geral', lado: 'esc', codCliente: 1, cliente: 'ACME', apelido: 'ACME', parado: 1, resp: 'Ana' }, o);
+  const uso = OC.malUso([
+    it('a', { abaProvavel: { label: 'Aviso de férias' } }),
+    it('b', { type: 'avisoFerias', detalhe: 'Fulano' }), it('c', { type: 'avisoFerias', detalhe: 'fulano ' }),
+    it('d', { lado: 'cli', parado: 20 }),
+    it('e', { codCliente: 2, cliente: 'BETA', apelido: 'BETA' })
+  ], {});
+  assert.equal(uso.length, 1, 'BETA sem sinais fica de fora');
+  assert.deepEqual(plano(uso[0].motivos), ['1 na lista Geral com aba própria', '2 pedidos repetidos em aberto', '1 parada esperando o cliente há mais de 15 dias']);
+  const sug = OC.sugestoesAcoes([it('a', { grav: 3 }), it('b', { resp: '' }), it('c', { lado: 'cli', prescreveEm: 3 })], { admissoes: [{}], semCalculo: [{}, {}], vencimentos: [{ faltam: 0 }, { faltam: 5 }] });
+  assert.deepEqual(plano(sug.map(x => x.k + '=' + x.n)), ['admissao=1', 'g3=1', 'pagamento=1', 'semcalc=2', 'semresp=1', 'prescreve=1']);
+  assert.equal(sug.find(x => x.k === 'semresp').link, '#/distribuir');
+});
+
+test('previsão por empresa: média por semana, tendência e estimativa; o service worker calcula sem gravar', async () => {
+  const now = new Date('2026-10-16T12:00:00Z');
+  const dia = n => new Date(now.getTime() - n * 864e5).toISOString().slice(0, 19);
+  const x = (cod, n, tipo) => ({ codCliente: cod, cliente: 'C' + cod, apelido: 'C' + cod, created: dia(n), typeLabel: tipo || 'Geral' });
+  const itens = [x(1, 1), x(1, 2), x(1, 3), x(1, 5), x(1, 9, 'Cálculo de férias'), x(1, 20), x(2, 25), x(2, 26), x(2, 3), x(3, 40)];
+  const p = OC.previsaoPorEmpresa(itens, now, 28);
+  assert.equal(p.total, 9, 'a de 40 dias fica de fora');
+  const c1 = p.empresas.find(e => e.cliente === 'C1');
+  assert.deepEqual(plano([c1.total, c1.porSemana, c1.tendencia, c1.tipos[0].tipo]), [6, 1.5, 'sobe', 'Geral']);
+  assert.ok(c1.prox30 >= c1.prox7 && c1.prox7 >= 1);
+  assert.equal(p.empresas[0].cliente, 'C1', 'mais pedidos previstos primeiro');
+  const api = apiSimulada({ itens: { geral: [pend('g1', 1)] } });
+  const { ouvintes, store } = carregarBackground({ abas: [aba(5, ONVIO_PORTAL)], fetchPorMundo: { MAIN: api }, fetch: api });
+  const r = await new Promise(res => ouvintes[0]({ cmd: 'previsao' }, { tab: { id: 5 } }, res));
+  assert.equal(r.ok, true);
+  assert.equal(r.dias, 28);
+  assert.equal(r.empresas[0].cliente, 'ACME');
+  assert.deepEqual(Object.keys(store).filter(k => !['metodoLeitura', 'perfilSessao'].includes(k)), [], 'nada é gravado');
 });

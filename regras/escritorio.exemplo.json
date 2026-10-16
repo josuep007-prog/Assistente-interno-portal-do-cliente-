@@ -14,6 +14,7 @@
     "2026-12-24",
     "2026-12-31"
   ],
+  "avisoSemCalculo": "Recebemos o {aviso} de {empregado}, mas ainda não há a solicitação de {calculo} desse empregado. Para o pagamento sair dentro do prazo legal (até {pagamento}, {ref}), abra a solicitação de {calculo} no Portal do Cliente o quanto antes.",
   "abaErrada": [
     {
       "tipo": "calcFerias",

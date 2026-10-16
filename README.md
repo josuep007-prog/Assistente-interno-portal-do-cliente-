@@ -2,9 +2,9 @@
 
 Ferramentas internas da ControlTax para facilitar o uso e o controle do **Portal do Cliente Onvio** por analistas e gestores.
 
-## Control Onvio (extensão do Chrome) · v0.14.0
+## Control Onvio (extensão do Chrome) · v0.16.0
 
-Página de trabalho em tela cheia **por cima do Onvio Portal do Cliente**: filas das 10 listas de solicitações (com cartões por tipo e ordem por prioridade, empresa ou mais recente), avisos de férias e rescisão sem cálculo perto do prazo legal, detalhe completo da solicitação com observações prontas para o cliente, módulo Distribuir (quem mais atendeu a empresa na semana), dashboards em tempo real (Hoje no formato da tela Convenções do Departamento Pessoal: carteira, destaque com rosca, carrossel e próximos passos, situações e cartões por situação; Equipe com idade da fila, prescrição e sugestão de distribuição; Clientes), agenda, detalhe com trâmites, alertas e lembretes pessoais. O Onvio continua aberto por trás e mantém a sessão.
+Página de trabalho em tela cheia **por cima do Onvio Portal do Cliente**: Hoje como visão do dia (admissões em destaque, vencimentos de férias e rescisões, sugestões de ação, uso do portal pelo cliente e previsão por empresa), Solicitações (filas das 10 listas (com cartões por tipo e ordem por prioridade, empresa ou mais recente), avisos de férias e rescisão sem cálculo perto do prazo legal (quadro "A avisar" e "Cliente avisado", com aviso ao cliente por trâmite revisado e opção de desconsiderar), detalhe completo da solicitação com observações prontas para o cliente, módulo Distribuir (quem mais atendeu a empresa na semana), dashboards em tempo real (Hoje no formato da tela Convenções do Departamento Pessoal: carteira, destaque com rosca, carrossel e próximos passos, Equipe com idade da fila, prescrição e sugestão de distribuição; Clientes), agenda, detalhe com trâmites, alertas e lembretes pessoais. O Onvio continua aberto por trás e mantém a sessão.
 
 Só para a **visão do escritório**: com o login de um cliente a extensão fica bloqueada e não lê nada. Desde a v0.14.0 dá para **responder (com situação e anexos), encaminhar, definir responsável e alterar a expectativa** por dentro da extensão, sempre com confirmação, nas listas já mapeadas (Geral, Férias, Rescisão e Afastamento). Cadastro e Rubricas continuam só leitura. Nunca exclui nada.
 
@@ -26,7 +26,7 @@ Para atualizar: baixe de novo, substitua a pasta e clique em **Recarregar** no c
 | `manifest.json` | Configuração da extensão (Manifest V3) |
 | `core.js` | Tipos de solicitação, códigos de situação, coleta na API do Onvio e regras de prazo |
 | `background.js` | Leitura periódica, contador no ícone, notificações e abertura da solicitação no Onvio |
-| `app/` | O app em si: trilho lateral, telas (Hoje, Minha fila, Agenda e lembretes, Equipe, Clientes, Distribuir, Todas as solicitações), detalhe e busca. Visual do Control Hub (Departamento Pessoal e Portal do Cliente) |
+| `app/` | O app em si: trilho lateral, telas (Hoje, Solicitações, Agenda e lembretes, Equipe, Clientes, Distribuir, Consultar no Onvio), detalhe e busca. Visual do Control Hub (Departamento Pessoal e Portal do Cliente) |
 | `shell.js` | Camada em tela cheia com o app dentro do Onvio, botão "Voltar ao Control Onvio", verificação ao vivo, modo aprender |
 | `acao-hook.js` | Percebe ações que alteram solicitações na página e pede leitura imediata (sem ler conteúdo) |
 | `app/` | O app: `app.html/css/js`, `estado.js` (espelho do armazenamento), `graficos.js` (SVG), `views/` (Início, fila, Equipe, Clientes, Solicitações, detalhe, Lembretes, Configurações) |
