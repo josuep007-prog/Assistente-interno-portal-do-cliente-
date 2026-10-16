@@ -28,7 +28,7 @@ const STUB = `
 (async () => {
 const navegador = await chromium.launch();
 const falhas = [];
-const passo = async (nome, fn) => { try { await fn(); console.log('ok   ' + nome); } catch (e) { falhas.push(nome); console.log('FALHA ' + nome + '\n     ' + String(e.message).split('\n').slice(0, 5).join(' | ')); } };
+const passo = async (nome, fn) => { if (process.env.SO && !nome.includes(process.env.SO)) return; try { await fn(); console.log('ok   ' + nome); } catch (e) { falhas.push(nome); console.log('FALHA ' + nome + '\n     ' + String(e.message).split('\n').slice(0, 5).join(' | ')); } };
 
 async function pagina(url, html, semStub) {
   const ctx = await navegador.newContext();
@@ -590,6 +590,53 @@ await passo('app · Solicitações > Resolvidas: vez do cliente sem retorno e se
   assert.deepEqual(p.erros, []);
 });
 
+await passo('app · Configurações: prazos com efeito na fila antes de salvar, origem de cada valor, leitura, feriados e palavras', async () => {
+  const p = await abrirApp('#/config', { regrasEscritorio: { url: 'https://exemplo.com/r.json', versao: 't1', regras: { versao: 't1', config: { conclusaoCalculo: 4 }, feriados: ['2099-01-02'], abaErrada: [] } }, settings: { __v: 2, parada: 20 } });
+  await p.waitForSelector('#cf-imp .cfg-imp');
+  assert.equal(await p.textContent('#titulo'), 'Configurações');
+  assert.deepEqual(await p.$$eval('#abas .aba', e => e.map(x => x.textContent)), ['Prazos', 'Leitura e avisos', 'Feriados', 'Palavras', 'Avançado']);
+  const orig = k => p.textContent('[data-campo="' + k + '"] .orig');
+  assert.equal(await orig('conclusaoCalculo'), 'escritório');
+  assert.equal(await orig('parada'), 'seu ajuste');
+  assert.equal(await orig('primeiroTramite'), 'padrão');
+  assert.match(await p.textContent('[data-campo="parada"] .cfg-volta'), /15/, 'voltar mostra o valor do escritório');
+  assert.equal(await p.isDisabled('#cf-salvar'), true);
+  assert.match(await p.textContent('#cf-imp'), /Fora do prazo\s*\d/);
+  // muda um número: vira "não salvo" e o efeito é recalculado com as pendências lidas
+  await p.click('[data-mais="conclusaoSimples"]');
+  assert.equal(await orig('conclusaoSimples'), 'não salvo');
+  assert.match(await p.textContent('#cf-imp-nota'), /ainda não salvos/);
+  await p.fill('#cf-conclusaoSimples', '1');
+  assert.equal(await p.$$eval('#cf-imp em', e => e.length), 5);
+  assert.match(await p.textContent('#cf-salvar'), /Salvar 1 ajuste/);
+  await p.click('#cf-salvar');
+  await p.waitForFunction(() => JSON.parse(localStorage.getItem('__mem')).settings.conclusaoSimples === 1);
+  assert.deepEqual(await p.evaluate(() => JSON.parse(localStorage.getItem('__mem')).settings), { __v: 2, parada: 20, conclusaoSimples: 1 }, 'grava só o que difere do padrão em vigor');
+  assert.ok(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'atualizar')), 'pede leitura nova');
+  await p.waitForFunction(() => document.querySelector('[data-campo="conclusaoSimples"] .orig').textContent === 'seu ajuste');
+  // voltar ao valor do escritório tira só aquele ajuste
+  await p.click('[data-campo="parada"] .cfg-volta');
+  await p.waitForFunction(() => !('parada' in JSON.parse(localStorage.getItem('__mem')).settings));
+  // leitura: carga explicada; feriados: próximos e local; palavras da regra de resolvida
+  await p.click('#abas .aba:has-text("Leitura e avisos")');
+  await p.waitForSelector('#cf-carga');
+  await p.fill('#cf-tempoRealSeg', '60');
+  assert.match(await p.textContent('#cf-carga'), /até 60 verificações por hora/);
+  await p.click('#abas .aba:has-text("Feriados")');
+  await p.waitForSelector('#cf-fer-add');
+  assert.match(await p.textContent('.cfg-col'), /Dezembro de 2026|Novembro de 2026/i);
+  await p.fill('#cf-fer-data', '2026-12-28');
+  await p.click('#cf-fer-add');
+  await p.waitForFunction(() => (JSON.parse(localStorage.getItem('__mem')).settings.feriados || []).includes('2026-12-28'));
+  await p.waitForSelector('[data-tira="2026-12-28"]');
+  await p.click('#abas .aba:has-text("Palavras")');
+  await p.waitForSelector('.cfg-chips');
+  assert.match(await p.textContent('#vista'), /aguardamos.*favor/s);
+  await p.click('#abas .aba:has-text("Avançado")');
+  await p.waitForSelector('iframe.cfg-frame');
+  assert.deepEqual(p.erros, []);
+});
+
 await passo('app · detalhe: janela com dados e trâmites lidos na hora; lembrete ligado à solicitação aparece na aba Lembretes', async () => {
   const p = await abrirApp('#/fila', {});
   await p.evaluate(() => { window.__respostas = { detalhe: { ok: true, item: { assunto: 'Férias do João', descricao: '<p>Segue <b>pedido</b></p>', meio: 'WEB' }, tramites: [{ n: 1, em: '2026-10-10T10:00:00', situacao: 'Sem análise', autor: 'Cliente BETA', texto: 'Abertura', anexos: ['aviso.pdf'] }, { n: 2, em: '2026-10-12T10:00:00', situacao: 'Aguardando resposta', autor: 'Cliente BETA', texto: 'Alguma novidade?', anexos: [] }] } }; });
@@ -800,6 +847,7 @@ await passo('app · detalhe: destaques sutis; trâmites como conversa (filtro, o
   await p.waitForSelector('#g-corpo .tr-bolha.longo .tr-mais');
   await p.click('#g-corpo .tr-bolha.longo .tr-mais');
   assert.equal(await p.$eval('#g-corpo .tr-bolha.longo', e => e.classList.contains('aberto')), true, 'Ver tudo abre o texto longo');
+  if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/detalhe-tramites.png' });
   await p.click('[data-tr-filtro="esc"]');
   assert.equal(await p.$$eval('#g-corpo .tr-item', e => e.length), 1);
   await p.click('[data-tr-filtro="todos"]');
@@ -816,6 +864,7 @@ await passo('app · detalhe: destaques sutis; trâmites como conversa (filtro, o
   await p.click('#dlg-anexos .ax-arq:has-text("aviso.pdf")');
   await p.click('#dlg-anexos .ax-arq:has-text("pedido.pdf")');
   assert.match(await p.textContent('#ax-cont'), /2 de 4/);
+  if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/anexos.png' });
   assert.equal(await p.$eval('#ax-todos', e => e.indeterminate), true);
   await p.click('#ax-baixar');
   await p.waitForSelector('#dlg-anexos', { state: 'hidden' });
