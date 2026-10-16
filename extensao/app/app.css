@@ -1004,8 +1004,6 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .campo.dq-campo .v{font-weight:600; color:var(--ink)}
 
 /* ============ detalhe: trâmites como conversa ============ */
-.tr-barra{display:flex; flex-wrap:wrap; gap:8px; justify-content:space-between; align-items:center; margin-bottom:14px}
-.tr-barra .n{font:600 10.5px "IBM Plex Mono", monospace; color:var(--ink-3); margin-left:2px}
 .tr-lista{display:flex; flex-direction:column; gap:12px}
 .tr-item{display:flex; gap:10px; align-items:flex-start; max-width:86%; animation:tr-entra .25s ease both}
 .tr-item.esc{flex-direction:row-reverse; align-self:flex-end}
@@ -1113,3 +1111,44 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .cfg-aba{padding:8px 0; border-top:1px solid var(--rule)}
 .cfg-aba b{font-weight:600}
 @media (max-width:980px){ .cfg-grade{grid-template-columns:1fr} .cfg-lado{position:static} .cfg-campo{grid-template-columns:minmax(0,1fr) auto; } .cfg-un{grid-column:2} .cfg-orig{grid-column:1 / -1; justify-content:flex-start} }
+
+/* Equipe · avaliação justa: poucos dados, casos fora da conta e notas da pessoa */
+.av-como p + p{margin-top:8px}
+.av-exc{margin:4px 0 0; font-size:12px; color:var(--ink-3)}
+.av-exc .linkish{border:0; background:none; padding:0; font:inherit; font-weight:600; color:var(--blue-deep); cursor:pointer}
+.av-chip.av-chip-pouco{background:var(--surface-2); color:var(--ink-3); border:1px dashed var(--rule-strong)}
+.av-lin.av-pouco .av-nome b, .av-lin.av-pouco .av-nota-tag{color:var(--ink-3)}
+.av-pouco-nota{margin:10px 0 0; font-size:12px; color:var(--ink-3)}
+.av-det-l .item-ag .acts{margin-left:auto}
+.pill.pill-cli{border-style:dashed}
+
+/* Solicitações · enxuta: "A responder" por padrão, "Aguardando o cliente" como filtro secundário */
+.barra-fila .spacer{flex:1}
+.chip-vez{display:inline-flex; align-items:center; gap:6px; height:30px; padding:0 10px; border:1px solid var(--rule-strong); border-radius:var(--r); background:var(--surface); color:var(--ink-2); font:600 12px "IBM Plex Sans",sans-serif; cursor:pointer}
+.chip-vez .n{min-width:18px; padding:0 5px; border-radius:3px; background:var(--surface-3); color:var(--ink-3); font-size:11px; text-align:center; font-variant-numeric:tabular-nums}
+.chip-vez:hover{border-color:var(--blue-deep); color:var(--blue-deep)}
+.chip-vez.on{border-color:var(--blue-deep); background:var(--blue-pale); color:var(--blue-deep)}
+.chip-vez.on .n{background:var(--blue-deep); color:var(--surface)}
+.ord-sel{display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:var(--ink-3)}
+.ord-sel select{height:30px; padding:0 8px; font-size:12px; font-weight:600}
+.seg-ic button{padding:5px 8px}
+.fila-cab{display:flex; align-items:center; gap:6px 12px; flex-wrap:wrap; margin:2px 0 10px}
+.fila-cab h3{margin:0; display:flex; align-items:baseline; gap:10px; font:700 15px "Archivo",sans-serif}
+.fila-cab h3 .linkish{border:0; background:none; padding:0; font:600 12px "IBM Plex Sans",sans-serif; color:var(--blue-deep); cursor:pointer}
+.fila-cab h3 .linkish:hover{text-decoration:underline}
+.fila-cab .count{font-size:12px; color:var(--ink-3)}
+.tipos-l{display:flex; gap:6px; flex-wrap:wrap; margin-left:auto}
+.tipo-ch{display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 9px; border:1px solid var(--rule); border-radius:var(--r); background:var(--surface); color:var(--ink-2); font:600 12px "IBM Plex Sans",sans-serif; cursor:pointer}
+.tipo-ch b{font-variant-numeric:tabular-nums; color:var(--ink)}
+.tipo-ch em{font-style:normal; min-width:16px; padding:0 4px; border-radius:3px; background:var(--brand-red); color:#fff; font-size:10.5px; text-align:center}
+.tipo-ch:hover{border-color:color-mix(in srgb, var(--fam) 60%, var(--rule))}
+.tipo-ch.on{border-color:var(--fam); background:color-mix(in srgb, var(--fam) 9%, var(--surface)); color:var(--ink)}
+.tipo-ch .tipo-ic{width:18px; height:18px}
+.tipo-ch .tipo-ic .ic{width:12px; height:12px}
+/* grupos por urgência na ordem de prioridade */
+.emp-cab.grp-atraso b{color:var(--late)}
+.emp-cab.grp-prescreve b{color:var(--late)}
+.emp-cab.grp-hoje b{color:var(--today)}
+.emp-cab.grp-respondeu b{color:var(--blue-deep)}
+.emp-cab.grp-emdia b, .emp-cab.grp-cli b{color:var(--ink-2)}
+.fila-cab h3{flex:none}
