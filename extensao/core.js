@@ -140,6 +140,11 @@
       cadContribuinte: ['Informe a data de início e o valor do pró-labore ou da retirada, para o cadastro no eSocial.'],
       rubricas: ['Lançamentos da competência {competencia} precisam chegar antes do fechamento da folha; depois disso entram na competência seguinte.']
     },
+    // Trâmite sugerido no aviso de férias/rescisão sem o cálculo ("Avisar o cliente" no Hoje). {empregado}, {aviso},
+    // {calculo}, {pagamento} e {ref} vêm do aviso; o analista revisa antes de enviar. O arquivo de regras pode trocar.
+    avisoSemCalculo: 'Recebemos o {aviso} de {empregado}, mas ainda não há a solicitação de {calculo} desse empregado. ' +
+      'Para o pagamento sair dentro do prazo legal (até {pagamento}, {ref}), abra a solicitação de {calculo} no Portal do Cliente o quanto antes. ' +
+      'Sem ela não conseguimos preparar o cálculo a tempo.',
     notificar: true,
     modoGestor: false,
     feriados: [
@@ -610,6 +615,7 @@
         if ((k === 'todas' || TYPE_BY_KEY[k]) && Array.isArray(v)) out.observacoes[k] = v.filter(x => typeof x === 'string' && x.trim() && x.length <= 400).map(x => x.trim()).slice(0, 12);
       }
     }
+    if (typeof raw.avisoSemCalculo === 'string' && raw.avisoSemCalculo.trim() && raw.avisoSemCalculo.length <= 800) out.avisoSemCalculo = raw.avisoSemCalculo.trim();
     if (Array.isArray(raw.abaErrada)) {
       for (const e of raw.abaErrada.slice(0, 30)) {
         const t = e && TYPE_BY_KEY[e.tipo];
@@ -617,7 +623,7 @@
         if (t && t.key !== 'geral' && palavras.length) out.abaErrada.push({ tipo: t.key, palavras });
       }
     }
-    const util = Object.keys(out.config).length || out.feriados.length || out.abaErrada.length || (out.observacoes && Object.keys(out.observacoes).length);
+    const util = Object.keys(out.config).length || out.feriados.length || out.abaErrada.length || (out.observacoes && Object.keys(out.observacoes).length) || out.avisoSemCalculo;
     return util ? out : null;
   }
 
@@ -630,6 +636,7 @@
       if (r.feriados && r.feriados.length) base.feriados = [...new Set(DEFAULTS.feriados.concat(r.feriados))].sort();
       if (r.abaErrada && r.abaErrada.length) base.abaErrada = r.abaErrada;
       if (r.observacoes) base.observacoes = Object.assign({}, DEFAULTS.observacoes, r.observacoes);
+      if (r.avisoSemCalculo) base.avisoSemCalculo = r.avisoSemCalculo;
     }
     return Object.assign(base, usuario || {});
   }
@@ -964,8 +971,20 @@
     serviceExpanded: 'Serviço', employeeLeaveTypeExpanded: 'Tipo de afastamento', payrollEntryConfigurationHeaderExpanded: 'Configuração do lançamento',
     payrollEntryClientEmployeeExpanded: 'Empregados do lançamento', employeeRegistrationPersonalExpanded: 'Dados pessoais',
     employeeRegistrationProfessionalExpanded: 'Dados profissionais', code: 'Código', nickname: 'Apelido', value: 'Valor', amount: 'Valor',
-    quantity: 'Quantidade', hours: 'Horas', days: 'Dias', rubric: 'Rubrica', email: 'E-mail', phone: 'Telefone', birthDate: 'Nascimento'
+    quantity: 'Quantidade', hours: 'Horas', days: 'Dias', rubric: 'Rubrica', email: 'E-mail', phone: 'Telefone', birthDate: 'Nascimento',
+    hireDate: 'Admissão', clientEmployeeRelationship: 'Vínculo', reason: 'Motivo', priorNotice: 'Tem aviso prévio', calculation: 'Pede cálculo',
+    internshipOption: 'Opção de estágio', registrationNumber: 'Matrícula', pis: 'PIS', ctps: 'CTPS', cpf: 'CPF', gender: 'Sexo',
+    terminationReasonExpanded: 'Motivo da rescisão', noticeType: 'Tipo do aviso', workedNotice: 'Aviso trabalhado', reduction: 'Redução da jornada'
   };
+  // valores técnicos (enumerações) que o Onvio manda em inglês; o que não estiver aqui aparece como veio
+  const VALORES = {
+    EMPLOYEE: 'Empregado', INTERN: 'Estagiário', TAXPAYER: 'Contribuinte', PARTNER: 'Sócio', DIRECTOR: 'Diretor', APPRENTICE: 'Aprendiz',
+    INDEMNIFIED: 'Indenizado', WORKED: 'Trabalhado', MONTHLY: 'Mensal', HOURLY: 'Por hora', DAILY: 'Diário', WEEKLY: 'Semanal',
+    EMPLOYER: 'Empregador', MALE: 'Masculino', FEMALE: 'Feminino', PORTAL: 'Portal do Cliente', EMAIL: 'E-mail', PHONE: 'Telefone'
+  };
+  // Fora da aba Dados: o que já está no topo da janela (cliente, responsável, datas, solicitante) e o que só serve ao
+  // sistema (tipo técnico, meio, quem cadastrou, quando foi alterada). A aba fica com o que é preciso para atender.
+  const FORA_DADOS = /^(serviceRequestType|requestWay|changed|created|lastUpdated|genericLastUpdated|lastStatusChanged|dueDate|status|sortOrder|clientExpanded|staffResponsibleExpanded|requesterExpanded|createdByContactExpanded|departmentExpanded)$/;
   const OCULTO = /^(type|apiVersion|id|companyId|identifier|genericStatus|clientStatus|firmStatus|attachmentsExpanded|delete|deleted|staticFilePath|translationKey)$|Id$|Ids$/;
   const humano = k => { const t = String(k).replace(/Expanded$/, '').replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase(); return t.charAt(0).toUpperCase() + t.slice(1); };
   const rotulo = k => ROTULOS[k] || humano(k);
@@ -976,19 +995,19 @@
     if (typeof v === 'string') {
       if (/^\d{4}-\d{2}-\d{2}T00:00:00(\.0+)?Z?$/.test(v) || /^\d{4}-\d{2}-\d{2}$/.test(v)) { const d = diaDe(v); return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear(); }
       if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v)) { const d = parseDate(v); if (d) return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
-      return v;
+      return /^[A-Z][A-Z_]{2,}$/.test(v) && VALORES[v] ? VALORES[v] : v;
     }
     if (Array.isArray(v)) return v.map(x => (x && typeof x === 'object' ? x.name || x.description || x.value || '' : valorDe(k, x))).filter(Boolean).join(', ');
     if (typeof v === 'object') return v.name || v.description || (typeof v.value !== 'object' ? valorDe(k, v.value) : '') || '';
     return String(v);
   }
   // objeto "rico" (vários campos úteis) vira um grupo próprio; objeto só com nome vira uma linha
-  const camposUteis = o => Object.entries(o).filter(([k, v]) => !OCULTO.test(k) && v != null && v !== '' && !(Array.isArray(v) && !v.length));
+  const camposUteis = o => Object.entries(o).filter(([k, v]) => !OCULTO.test(k) && !FORA_DADOS.test(k) && v != null && v !== '' && !(Array.isArray(v) && !v.length));
   function camposDetalhe(t, d) {
     if (!d || typeof d !== 'object') return { grupos: [], anexos: [] };
     const principal = { titulo: 'Solicitação', campos: [] }, grupos = [principal];
     for (const [k, v] of Object.entries(d)) {
-      if (OCULTO.test(k) || v == null || v === '') continue;
+      if (OCULTO.test(k) || FORA_DADOS.test(k) || v == null || v === '') continue;
       if (v && typeof v === 'object' && !Array.isArray(v) && camposUteis(v).length > 2) {
         const g = { titulo: rotulo(k), campos: [] };
         for (const [k2, v2] of camposUteis(v)) {
@@ -1009,6 +1028,12 @@
       if (x) principal.campos.push({ k: rotulo(k), v: x, longo: /description|comments|observ/i.test(k) });
     }
     const anexos = (d.attachmentsExpanded || []).map(a => a && (a.name || a.fileName)).filter(Boolean).slice(0, 50);
+    // sem repetição (mesmo rótulo e valor em dois lugares) e os textos longos (assunto, descrição) por último no grupo
+    const vistos = new Set();
+    grupos.forEach(g => {
+      g.campos = g.campos.filter(c => { const ch = c.k + '\u0000' + c.v; if (vistos.has(ch)) return false; vistos.add(ch); return true; });
+      g.campos.sort((a, b) => (a.longo ? 1 : 0) - (b.longo ? 1 : 0));
+    });
     return { grupos: grupos.filter(g => g.campos.length), anexos };
   }
   // Datas que importam para prazos e observações (só datas, sem dados pessoais)
@@ -1095,6 +1120,42 @@
       novo[it.k] = c;
     }
     out.avisos = { cache: novo, semCalculo: out.items.filter(i => i.semCalculo).length };
+  }
+
+  /* Quadro dos avisos sem cálculo (Hoje, em duas colunas): "A avisar" e "Cliente avisado". Cada marca guarda só o
+   * id interno (k), a coluna e quando: { k: { st: 'avisado' | 'desconsiderado', em } }. O aviso some do quadro sozinho
+   * quando o cálculo chega ou quando a solicitação sai das pendentes. */
+  const MARCAS_SC = new Set(['avisado', 'desconsiderado']);
+  function quadroSemCalculo(items, marcas) {
+    marcas = marcas || {};
+    const q = { avisar: [], avisados: [], desconsiderados: [] };
+    (items || []).filter(i => i.semCalculo).sort((a, b) => a.semCalculo.faltam - b.semCalculo.faltam).forEach(item => {
+      const m = marcas[item.k];
+      const st = m && MARCAS_SC.has(m.st) ? m.st : null;
+      (st === 'avisado' ? q.avisados : st === 'desconsiderado' ? q.desconsiderados : q.avisar).push({ item, em: st ? m.em : null });
+    });
+    return q;
+  }
+  // Nova marca (st null tira) e limpeza: some a marca de aviso que já não está entre as pendentes há mais de 7 dias.
+  function marcarSemCalculo(marcas, k, st, items, now) {
+    now = now || new Date();
+    const vivos = new Set((items || []).map(i => i.k));
+    const out = {};
+    for (const [kk, m] of Object.entries(marcas || {})) {
+      if (!m || !MARCAS_SC.has(m.st)) continue;
+      const t = parseDate(m.em);
+      if (vivos.has(kk) || (t && now - t < 7 * 864e5)) out[kk] = { st: m.st, em: m.em };
+    }
+    if (k) { if (MARCAS_SC.has(st)) out[k] = { st, em: now.toISOString() }; else delete out[k]; }
+    return out;
+  }
+  // Texto do trâmite "Avisar o cliente" (só na memória até o analista enviar; nunca guardado)
+  function textoAvisoSemCalculo(item, settings) {
+    const s = Object.assign({}, DEFAULTS, settings || {});
+    const sc = item.semCalculo || {};
+    const dt = sc.alvo ? sc.alvo.slice(8, 10) + '/' + sc.alvo.slice(5, 7) + '/' + sc.alvo.slice(0, 4) : '';
+    const vals = { aviso: (item.typeLabel || 'aviso').toLowerCase(), empregado: item.detalhe || 'o empregado', calculo: (sc.calculo || 'cálculo').toLowerCase(), pagamento: dt, ref: sc.ref || '' };
+    return String(s.avisoSemCalculo || DEFAULTS.avisoSemCalculo).replace(/\{(\w+)\}/g, (x, k) => (k in vals ? vals[k] : x)).replace(/\s{2,}/g, ' ').trim();
   }
 
   /* ---------- observações para o cliente (detalhe) ----------
@@ -1369,5 +1430,5 @@
     return { dias, empresas: lista, total: lista.reduce((s2, r) => s2 + r.total, 0), prox30: lista.reduce((s2, r) => s2 + r.prox30, 0) };
   }
 
-  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, observacoesCliente, admissoesCriticas, vencimentosLegais, malUso, sugestoesAcoes, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, quadroSemCalculo, marcarSemCalculo, textoAvisoSemCalculo, observacoesCliente, admissoesCriticas, vencimentosLegais, malUso, sugestoesAcoes, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);

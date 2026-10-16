@@ -977,8 +977,52 @@ test('detalhe completo: endereço por lista (Rubricas na v2) e campos em grupos 
   assert.equal(princ['Cargo'], 'Auxiliar', 'objeto só com nome vira uma linha');
   assert.equal(princ['Novo campo do onvio'], 'abc', 'campo novo do Onvio aparece');
   for (const k of ['Id', 'Company id', 'Api version', 'Type', 'Generic status', 'Department id']) assert.ok(!(k in princ), k + ' é técnico');
-  assert.deepEqual(plano(c.grupos.map(g => g.titulo)), ['Solicitação', 'Cliente']);
+  assert.deepEqual(plano(c.grupos.map(g => g.titulo)), ['Solicitação'], 'cliente fica no topo da janela, não repete na aba Dados');
   assert.deepEqual(plano(c.anexos), ['rg.pdf', 'ctps.pdf']);
+});
+
+test('aba Dados: só o que serve para atender (sem campos técnicos, sem repetir o topo), rótulos e valores em português', () => {
+  const c = OC.camposDetalhe(OC.TYPE_BY_KEY.avisoFerias, {
+    id: 'g', subject: 'Férias de novembro', description: 'Texto longo do cliente', serviceRequestType: 'PRIOR_NOTICE_VACATION', requestWay: 'PORTAL',
+    created: '2026-10-01T10:00:00', changed: '2026-10-02T10:00:00', lastUpdated: '2026-10-02T10:00:00', dueDate: '2026-10-20T00:00:00', genericStatus: 1,
+    vacationStartDate: '2026-11-03T00:00:00', vacationDays: 30,
+    createdByContactExpanded: { id: 'u', name: 'Contato' }, requesterExpanded: { id: 'r', name: 'Contato' }, staffResponsibleExpanded: { id: 's', name: 'Analista' },
+    clientExpanded: { id: 'z', name: 'ACME', code: 12, nickname: 'AC' },
+    clientEmployeeExpanded: { id: 'e', name: 'Fulano', code: 7, hireDate: '2024-01-02T00:00:00', clientEmployeeRelationship: 'EMPLOYEE', sortOrder: 3 }
+  });
+  assert.deepEqual(plano(c.grupos.map(g => g.titulo)), ['Solicitação', 'Empregado']);
+  const princ = c.grupos[0].campos.map(x => x.k);
+  for (const k of ['Tipo de solicitação', 'Meio da solicitação', 'Aberta em', 'Alterada em', 'Último trâmite', 'Expectativa de conclusão', 'Cadastrada por', 'Solicitante', 'Responsável'])
+    assert.ok(!princ.includes(k), k + ' não é preciso para atender ou já está no topo');
+  assert.deepEqual(plano(princ), ['Assunto', 'Início das férias', 'Dias de férias', 'Descrição'], 'descrição (texto longo) por último');
+  const emp = Object.fromEntries(c.grupos[1].campos.map(x => [x.k, x.v]));
+  assert.equal(emp['Admissão'], '02/01/2024');
+  assert.equal(emp['Vínculo'], 'Empregado', 'enumeração em português');
+  assert.ok(!('Hire date' in emp) && !('Sort order' in emp) && !('Client employee relationship' in emp));
+});
+
+test('avisos sem cálculo: quadro em duas colunas, marcas só com k/coluna/hora e texto do aviso ao cliente pelas regras', () => {
+  const now = new Date(2026, 9, 16, 10);
+  const it = (k, faltam, extra) => Object.assign({ k, type: 'avisoFerias', typeLabel: 'Aviso de férias', num: k.slice(-1), detalhe: 'Fulano', semCalculo: { alvo: '2026-10-30', faltam, ref: 'início das férias em 03/11/2026', calculo: 'Cálculo de férias' } }, extra || {});
+  const itens = [it('avisoFerias:a', 3), it('avisoFerias:b', -1), it('avisoFerias:c', 1), { k: 'geral:x', type: 'geral' }];
+  let marcas = OC.marcarSemCalculo({}, 'avisoFerias:c', 'avisado', itens, now);
+  marcas = OC.marcarSemCalculo(marcas, 'avisoFerias:a', 'desconsiderado', itens, now);
+  assert.deepEqual(plano(marcas['avisoFerias:c']), { st: 'avisado', em: now.toISOString() });
+  const q = OC.quadroSemCalculo(itens, marcas);
+  assert.deepEqual(plano(q.avisar.map(x => x.item.k)), ['avisoFerias:b']);
+  assert.deepEqual(plano(q.avisados.map(x => x.item.k)), ['avisoFerias:c']);
+  assert.deepEqual(plano(q.desconsiderados.map(x => x.item.k)), ['avisoFerias:a']);
+  // voltar tira a marca; marca de aviso que saiu das pendentes some depois de 7 dias; coluna desconhecida é ignorada
+  assert.ok(!('avisoFerias:c' in OC.marcarSemCalculo(marcas, 'avisoFerias:c', null, itens, now)));
+  const velha = { 'avisoFerias:z': { st: 'avisado', em: '2026-10-01T10:00:00.000Z' }, 'avisoFerias:y': { st: 'avisado', em: '2026-10-14T10:00:00.000Z' }, 'avisoFerias:a': { st: 'xx', em: now.toISOString() } };
+  assert.deepEqual(Object.keys(OC.marcarSemCalculo(velha, null, null, itens, now)), ['avisoFerias:y']);
+  // texto: padrão e o do arquivo de regras
+  assert.equal(OC.textoAvisoSemCalculo(it('avisoFerias:a', 3), {}),
+    'Recebemos o aviso de férias de Fulano, mas ainda não há a solicitação de cálculo de férias desse empregado. Para o pagamento sair dentro do prazo legal (até 30/10/2026, início das férias em 03/11/2026), abra a solicitação de cálculo de férias no Portal do Cliente o quanto antes. Sem ela não conseguimos preparar o cálculo a tempo.');
+  const r = OC.normalizarRegras({ avisoSemCalculo: 'Falta o {calculo} de {empregado} (pagar até {pagamento}). {outro}' });
+  const s = OC.combinarSettings({ regras: r }, {});
+  assert.equal(OC.textoAvisoSemCalculo(it('avisoFerias:a', 3), s), 'Falta o cálculo de férias de Fulano (pagar até 30/10/2026). {outro}', 'chave desconhecida fica como está');
+  assert.equal(OC.normalizarRegras({ avisoSemCalculo: 'x'.repeat(801) }), null, 'texto grande demais é ignorado');
 });
 
 test('prazo de pagamento: férias 2 dias antes do início e rescisão 10 dias após, antecipando fim de semana e feriado', () => {
@@ -1093,14 +1137,14 @@ test('background: detalhe traz a solicitação completa em grupos, anexos e data
   let falhaDetalhe = false;
   const api = async url => {
     const p = new URL(url).pathname;
-    if (/prior-notice-vacations\/v1$/.test(p)) { if (falhaDetalhe) return respHttp(500, 'application/json', '{}'); return respHttp(200, 'application/json', JSON.stringify({ id: 'v1', subject: 'Férias', vacationStartDate: '2026-11-03T00:00:00', clientExpanded: { name: 'ACME', code: 3, nickname: 'AC' }, attachmentsExpanded: [{ name: 'aviso.pdf' }] })); }
+    if (/prior-notice-vacations\/v1$/.test(p)) { if (falhaDetalhe) return respHttp(500, 'application/json', '{}'); return respHttp(200, 'application/json', JSON.stringify({ id: 'v1', subject: 'Férias', vacationStartDate: '2026-11-03T00:00:00', clientExpanded: { name: 'ACME', code: 3, nickname: 'AC' }, clientEmployeeExpanded: { name: 'Fulano', code: 7, hireDate: '2024-01-02T00:00:00' }, attachmentsExpanded: [{ name: 'aviso.pdf' }] })); }
     return base(url);
   };
   const { ouvintes, store } = carregarBackground({ abas: [aba(5, ONVIO_PORTAL)], fetchPorMundo: { MAIN: api }, fetch: api });
   const pedir = m => new Promise(res => ouvintes[0](m, { tab: { id: 5 } }, res));
   const r = await pedir({ cmd: 'detalhe', type: 'avisoFerias', num: 702 });
   assert.equal(r.ok, true);
-  assert.deepEqual(plano(r.grupos.map(g => g.titulo)), ['Solicitação', 'Cliente']);
+  assert.deepEqual(plano(r.grupos.map(g => g.titulo)), ['Solicitação', 'Empregado'], 'o cliente já está no topo da janela');
   assert.deepEqual(plano(r.anexos), ['aviso.pdf']);
   assert.equal(r.datas.inicio, '2026-11-03');
   assert.equal(r.erroDados, null);
