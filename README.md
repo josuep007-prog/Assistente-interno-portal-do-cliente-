@@ -2,11 +2,11 @@
 
 Ferramentas internas da ControlTax para facilitar o uso e o controle do **Portal do Cliente Onvio** por analistas e gestores.
 
-## Control Onvio (extensão do Chrome) · v0.16.0
+## Control Onvio (extensão do Chrome) · v0.17.0
 
 Página de trabalho em tela cheia **por cima do Onvio Portal do Cliente**: Hoje como visão do dia (admissões em destaque, vencimentos de férias e rescisões, sugestões de ação, uso do portal pelo cliente e previsão por empresa), Solicitações (filas das 10 listas (com cartões por tipo e ordem por prioridade, empresa ou mais recente), avisos de férias e rescisão sem cálculo perto do prazo legal (quadro "A avisar" e "Cliente avisado", com aviso ao cliente por trâmite revisado e opção de desconsiderar), detalhe completo da solicitação com observações prontas para o cliente, módulo Distribuir (quem mais atendeu a empresa na semana), dashboards em tempo real (Hoje no formato da tela Convenções do Departamento Pessoal: carteira, destaque com rosca, carrossel e próximos passos, Equipe com idade da fila, prescrição e sugestão de distribuição; Clientes), agenda, detalhe com trâmites, alertas e lembretes pessoais. O Onvio continua aberto por trás e mantém a sessão.
 
-Só para a **visão do escritório**: com o login de um cliente a extensão fica bloqueada e não lê nada. Desde a v0.14.0 dá para **responder (com situação e anexos), encaminhar, definir responsável e alterar a expectativa** por dentro da extensão, sempre com confirmação, nas listas já mapeadas (Geral, Férias, Rescisão e Afastamento). Cadastro e Rubricas continuam só leitura. Nunca exclui nada.
+Só para a **visão do escritório**: com o login de um cliente a extensão fica bloqueada e não lê nada. Desde a v0.14.0 dá para **responder (com situação e anexos), encaminhar, definir responsável e alterar a expectativa** por dentro da extensão, e desde a v0.17.0 **criar solicitações Geral** para o cliente (inclusive a partir dos avisos sem cálculo), sempre com confirmação, nas listas já mapeadas (Geral, Férias, Rescisão e Afastamento). Cadastro e Rubricas continuam só leitura. Nunca exclui nada.
 
 O código fica na pasta [`extensao/`](extensao/). Detalhes de uso, regras do semáforo e privacidade estão em [`extensao/LEIA-ME.md`](extensao/LEIA-ME.md).
 
@@ -56,7 +56,7 @@ Os dois últimos precisam do Playwright (`npm i -D playwright`, ou `NODE_PATH` p
 
 ### Próximos passos previstos
 
-- Mapear as ações com o modo "Aprender ações" (empresa de teste) e implementar responder, definir responsável, expectativa, encaminhar e anexos.
+- Confirmar no Onvio real os valores da criação Geral (`mapeamento/prompt-criacao-onvio.md`) e mapear a criação nas listas da folha (aviso e cálculo de férias e rescisão, afastamento).
 - Publicar o arquivo de regras do escritório e apontar a extensão para ele (ou para o `regras.json` do Assistente do cliente, para os prazos serem os mesmos).
 - Prazos legais por solicitação (aviso de férias com 30 dias, rescisão em 10 dias) e fim de experiência, que exigem ler as datas de cada solicitação.
 - Aviso de competência no nome do arquivo antes do upload.
