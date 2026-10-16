@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.19.0)
+# Control Onvio · ControlTax (v0.20.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -19,17 +19,17 @@ Para atualizar a versão: substitua os arquivos da pasta, clique em **Recarregar
 - **Busca** em janela central: tecla **/** ou **Ctrl+K**. Já mostra, enquanto você digita, as pendências lidas e os clientes; **Enter** busca em todas as listas do Onvio, inclusive concluídas (ou abre direto a solicitação, se você digitou o ID exato).
 - Clique numa solicitação para abrir o **detalhe** (dados e trâmites lidos na hora). Setas **← →** passam para a anterior/próxima da mesma lista sem fechar. "Abrir no Onvio" leva à lista certa do Onvio já filtrada pelo ID.
 - Nas listas: **↑ ↓** andam entre as linhas e **Enter** abre.
-- Em Configurações dá para desligar "Abrir o Control Onvio ao entrar no Onvio".
+- Em **Configurações** você vê as regras em vigor em linguagem simples, testa um prazo novo vendo o efeito na fila antes de salvar, inclui feriados locais e desliga "Abrir o Control Onvio ao entrar no Onvio".
 
 ## Telas
 
 | Tela | Para quem | O que mostra |
 | --- | --- | --- |
 | **Hoje** | Analista (todos veem) | A visão do dia; o trabalho com as solicitações fica em **Solicitações**. **Carteira** no cabeçalho. **Destaque**: rosca % em dia (clicar numa parte abre as Solicitações com aquele motivo), carrossel e **Próximos passos**. Logo abaixo, em **destaque vermelho e recolhível**, as **admissões** retroativas, já passadas ou a até 2 dias úteis do início, sem nenhum trâmite do escritório ainda (o eSocial do empregado vence no dia anterior; o do estagiário, até 15 dias depois do início). **Avisos sem cálculo** com Férias e Rescisões lado a lado (Criar solicitação e, no menu ⋯, responder no aviso, Já avisei e Desconsiderar). **Painéis**: vencimentos de férias e rescisões (prazo legal), **sugestões de ação** (com link para resolver), **uso do portal pelo cliente** (lista errada, pedido repetido, solicitação abandonada) e **previsão de solicitações por empresa** (média das últimas 4 semanas, tendência e estimativa para 7 e 30 dias, lida na hora) |
-| **Solicitações** | Analista e gestor | Onde o analista trabalha. Cartões por tipo, abas Minhas / Equipe toda / Sem responsável. Busca, vez (escritório/cliente), **Filtros** (tipo, gravidade, responsável), **Ordenar**, **Lista ou Cartões**, **Mais** (exportar CSV). Os filtros ativos aparecem como etiquetas que se tiram com um clique |
+| **Solicitações** | Analista e gestor | Onde o analista trabalha. Cartões por tipo, abas Minhas / Equipe toda / Sem responsável / **Resolvidas** (vez do cliente sem retorno, ver as regras). Busca, vez (escritório/cliente), **Filtros** (tipo, gravidade, responsável), **Ordenar**, **Lista ou Cartões**, **Mais** (exportar CSV). Os filtros ativos aparecem como etiquetas que se tiram com um clique |
 | **Agenda e lembretes** | Cada um | Calendário do mês com lembretes e expectativas de conclusão das suas solicitações; lista (atrasados, hoje, próximos, concluídos). Lembretes podem **repetir** (todo dia, todo dia útil, toda semana, todo mês) |
 | **Equipe** | Gestor (com senha) | **Área do gestor**, aberta só com a senha. Aba **Desempenho**: nota da equipe (0 a 100) e de cada analista, com entregas no período (7, 14 ou 30 dias) e a comparação com o período anterior, % no prazo, tempo de conclusão, carteira em dia, 1º trâmite e alertas de qualidade (críticas e prescritas); **ranking** com os 4 itens da nota, **dispersão volume × pontualidade** e o **detalhe** de cada pessoa com os pontos de atenção. Abas **Carga de hoje** (números e gráficos da fila, próximas a prescrever) e **Responsáveis** (idade da fila e carga de cada pessoa) |
-| **Configurações** | Todos | Prazos, leitura ao vivo, regras do escritório, aprender ações e diagnóstico |
+| **Configurações** | Todos | **Prazos** com a origem de cada valor (padrão, escritório ou seu ajuste) e o **efeito na fila agora** antes de salvar; **Leitura e avisos** (com a carga que cada ajuste gera); **Feriados** (próximos e locais); **Palavras** (como a extensão lê as respostas); **Avançado** (arquivo de regras, aprender ações, diagnóstico) |
 
 O **sino** do topo junta os alertas: nova solicitação para você, cliente respondeu, prescreve em até 5 dias, ficou fora do prazo, nova sem responsável e lembretes. Novidades das suas solicitações também aparecem como aviso na tela.
 
@@ -37,8 +37,19 @@ O **sino** do topo junta os alertas: nova solicitação para você, cliente resp
 
 Vez do escritório: sem primeiro trâmite após 1 dia útil; aberta além de 3 dias úteis (simples) ou 5 (cálculo de férias e rescisão); parada há mais de 15 dias; expectativa de conclusão vencida.
 Vez do cliente: sem retorno há mais de 5 dias úteis (laranja); a partir de 20 dias parada fica vermelho com a contagem até a prescrição de 30 dias.
+**Resolvida sem retorno:** na vez do cliente há mais de 3 dias úteis e a última resposta do analista não pede nada ao cliente = o cliente ficou satisfeito, e a solicitação conta como resolvida (sai da fila, dos prazos e da prescrição e conta como entregue na Equipe). Se a resposta pedir algo ("aguardamos", "favor enviar", "falta"… ou uma pergunta), continua pendente; frases de cortesia ("qualquer dúvida, estamos à disposição") não contam. Nada muda no Onvio.
 
 Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardando resposta** = o escritório precisa responder; **Respondido** = vez do cliente.
+
+## Novidades da v0.20.0 (resolvidas, detalhe, anexos e Configurações)
+
+- **Regra nova: vez do cliente sem retorno = resolvida.** Aguardando o cliente há mais de **3 dias úteis** (`resolvidaClienteDias`, 0 desliga) e a última resposta do analista não pede nada: entende-se que o cliente ficou satisfeito. A solicitação sai das pendências, dos prazos e da prescrição, aparece na aba **Resolvidas** das Solicitações e conta como entregue no Desempenho da Equipe. Se a resposta pedir algo (palavras de `pedidoAoCliente` ou uma pergunta, tirando as frases de `cortesiaCliente`) ou se a última palavra for do cliente, continua pendente e o detalhe explica o porquê. O texto do trâmite é lido na hora e nunca guardado: fica só o veredito. Prazo e palavras podem vir do arquivo de regras. Nada muda no Onvio: para encerrar lá, conclua a solicitação.
+- **Detalhe com o que importa em destaque (sutil):** as datas e os dados que definem o atendimento (início das férias, último dia trabalhado, admissão, afastamento, competência, motivo…) aparecem no topo e marcados na aba Dados.
+- **Trâmites como conversa:** cliente à esquerda, escritório à direita, com iniciais, o tempo entre um trâmite e outro, o último marcado, filtros (Escritório, Cliente, Com anexo), ordem (mais recentes ou ordem da conversa) e "Ver tudo" para textos longos.
+- **Anexos num botão só:** "Anexos" junta os da abertura e os de todos os trâmites; a janela lista tudo, o analista marca quais quer (ou "Marcar todos") e baixa de uma vez, direto para a pasta de downloads. Clicar num anexo do trâmite abre a janela só com ele marcado. **A confirmar no Onvio real:** o caminho do download ainda não foi mapeado; a extensão aprende o molde na primeira vez que alguém baixa um anexo pelo próprio Onvio (sem ids nem nomes) e, até lá, avisa como ensinar. Para mapear de vez: `mapeamento/prompt-anexos-onvio.md`.
+- **Configurações com utilidade:** Prazos mostra de onde vem cada valor (padrão, escritório ou seu ajuste, com voltar ao do escritório) e o **efeito na fila agora** (fora do prazo, atenção, G3, prescrição, admissões) antes de salvar; Leitura e avisos mostra a carga que cada ajuste gera; Feriados lista os próximos e aceita feriados locais; Palavras mostra como a extensão lê as respostas; o resto (arquivo de regras, aprender ações, diagnóstico) fica em Avançado.
+- **Fundo do Control Hub:** o app usa o fundo da tela inicial do Control Hub (brilho vermelho e azul e a logo da ControlTax ao fundo), no tema claro e no escuro.
+- Diagnóstico mostra quantas foram consideradas resolvidas e os caminhos de download aprendidos.
 
 ## Novidades da v0.19.0 (Equipe: desempenho e qualidade)
 
@@ -296,7 +307,7 @@ Primeiro passo para a extensão virar a tela de trabalho e fazer as ações (res
 
 ## Privacidade
 
-A extensão usa a sessão do Onvio de quem está logado e só vê o que o perfil da pessoa já vê. Guarda no computador apenas: o resumo das pendências (ID, situação, datas, cliente, empregado/assunto e responsável), os alertas (tipo, ID, cliente, motivo e hora), a série do dia (só contagens), os seus lembretes e a coluna de cada aviso no quadro dos avisos sem cálculo (ID interno, coluna e hora). O detalhe e os trâmites de uma solicitação são lidos na hora e não são gravados. Não guarda CPF, salário, descrição, observações nem anexos.
+A extensão usa a sessão do Onvio de quem está logado e só vê o que o perfil da pessoa já vê. Guarda no computador apenas: o resumo das pendências (ID, situação, datas, cliente, empregado/assunto e responsável), os alertas (tipo, ID, cliente, motivo e hora), a série do dia (só contagens), os seus lembretes e a coluna de cada aviso no quadro dos avisos sem cálculo (ID interno, coluna e hora). O detalhe e os trâmites de uma solicitação são lidos na hora e não são gravados; da última resposta do analista fica só o veredito da regra de resolvida (pede algo ao cliente: sim/não). Anexos baixados vão direto para a pasta de downloads do Chrome; do download fica só o molde do caminho, sem ids nem nomes. Não guarda CPF, salário, descrição, observações nem anexos.
 
 ## Problemas comuns
 

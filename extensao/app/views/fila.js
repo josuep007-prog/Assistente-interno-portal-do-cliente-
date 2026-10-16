@@ -57,19 +57,22 @@ export function render(el, ctx, params) {
   const umaPessoa = escopo === 'minhas' && !params.analista && !params.cliente;
   if (umaPessoa) filtros.resp = '';
 
-  const n = { minhas: minhas().length, equipe: todas.length, semresp: todas.filter(i => !i.resp).length };
+  const resolvidas = (estado.snap && estado.snap.resolvidas) || [];
+  const n = { minhas: minhas().length, equipe: todas.length, semresp: todas.filter(i => !i.resp).length, resolvidas: resolvidas.length };
   const abaAtiva = params.analista || params.cliente ? '' : escopo;
   ctx.cab({
     titulo, sub,
     abas: [
       { id: 'minhas', rot: 'Minhas', href: '#/fila', n: n.minhas },
       { id: 'equipe', rot: 'Equipe toda', href: '#/fila?escopo=equipe', n: n.equipe },
-      { id: 'semresp', rot: 'Sem responsável', href: '#/fila?escopo=semresp', n: n.semresp, late: n.semresp > 0 }
+      { id: 'semresp', rot: 'Sem responsável', href: '#/fila?escopo=semresp', n: n.semresp, late: n.semresp > 0 },
+      { id: 'resolvidas', rot: 'Resolvidas', href: '#/fila?escopo=resolvidas', n: n.resolvidas }
     ],
     aba: abaAtiva,
     extra: '<button type="button" class="btn btn-sm btn-primary" id="f-nova"><svg class="ic ic-sm"><use href="#i-plus"/></svg> Nova solicitação</button>'
   });
   $('#f-nova').onclick = () => { const o = params.cliente && todas.find(i => (i.cliente || i.apelido) === params.cliente); ctx.abrirNova(o ? { origem: o } : {}); };
+  if (escopo === 'resolvidas') { renderResolvidas(el, ctx, resolvidas); return; }
 
   const resps = [...new Set(base.map(i => i.resp || '(sem responsável)'))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
   const sel = (id, rot, ops, v) => '<label class="field">' + rot + '<select id="' + id + '">' + ops.map(([k, r]) => '<option value="' + esc(k) + '"' + (v === k ? ' selected' : '') + '>' + esc(r) + '</option>').join('') + '</select></label>';
@@ -193,6 +196,37 @@ export function render(el, ctx, params) {
     r.classList.remove('foco-pisca'); void r.offsetWidth; r.classList.add('foco-pisca');
     setTimeout(() => r.classList.remove('foco-pisca'), 3400);
   }
+}
+
+// Vez do cliente sem retorno: o analista respondeu, não pediu nada e o cliente não falou mais (regra resolvidaClienteDias).
+// Saem da fila, dos prazos e da prescrição; contam como entregues na avaliação da Equipe.
+let resolvidasMinhas = false;
+function renderResolvidas(el, ctx, todas) {
+  const dias = estado.settings ? estado.settings.resolvidaClienteDias : OC.DEFAULTS.resolvidaClienteDias;
+  const desenhar = () => {
+    const l = (resolvidasMinhas ? todas.filter(i => i.mine) : todas).map(i => Object.assign({}, i, { lado: 'cli', resolvida: true }));
+    el.innerHTML =
+      '<div class="nota-regra"><svg class="ic"><use href="#i-check"/></svg><div><b>Consideradas resolvidas</b>' +
+        'Aguardando o cliente há mais de ' + dias + ' dias úteis, e a última resposta do analista não pede nada ao cliente: entende-se que ele ficou satisfeito. ' +
+        'Saem das pendências, dos prazos e da prescrição e contam como entregues na Equipe. Se a resposta pedir algo (envie, aguardamos, favor, uma pergunta…), a solicitação continua pendente. ' +
+        'Nada muda no Onvio: para encerrar lá, conclua a solicitação.' + (dias ? '' : ' <b class="today">A regra está desligada nas Configurações.</b>') + '</div></div>' +
+      '<div class="barra"><div class="seg" role="group" aria-label="De quem"><button data-de="todas"' + (!resolvidasMinhas ? ' class="on"' : '') + '>Equipe toda</button><button data-de="minhas"' + (resolvidasMinhas ? ' class="on"' : '') + '>Minhas</button></div>' +
+        '<span class="count">' + l.length + (l.length === 1 ? ' resolvida' : ' resolvidas') + '</span></div>' +
+      '<div class="list-card" style="--cols:64px 132px 168px minmax(0,1.1fr) minmax(0,1.3fr) 130px 110px"><div class="lh" role="row"><span>ID</span><span>Tipo</span><span>Situação no Onvio</span><span>Cliente</span><span>Empregado / assunto</span><span>Responsável</span><span class="num">Sem retorno</span></div>' +
+      (l.length ? l.map(i => '<div class="lr resolvida" tabindex="0" data-k="' + esc(i.k) + '" role="row">' +
+        '<span class="mono">#' + esc(i.num) + '</span>' +
+        '<span class="c-sub c-tipo" style="color:var(--ink-2)">' + tipoIcone(i.type, 'pq') + esc(i.typeLabel) + '</span>' +
+        '<span>' + pillSituacao(i) + '</span>' +
+        '<span><div class="c-main" title="' + esc(i.cliente) + '">' + esc(i.apelido || i.cliente || '—') + '</div></span>' +
+        '<span><div class="c-sub" style="color:var(--ink)" title="' + esc(i.detalhe) + '">' + esc(i.detalhe || '—') + '</div></span>' +
+        '<span class="c-sub" style="color:var(--ink-2)">' + esc(i.resp || 'sem responsável') + '</span>' +
+        '<span class="num"><b class="mono">' + (i.semRetorno == null ? '—' : i.semRetorno + ' d.u.') + '</b><div class="c-sub">desde ' + (i.last ? fmtDataCurta(i.last) : '—') + '</div></span></div>').join('')
+        : '<div class="vazio"><b>Nenhuma por enquanto</b>Aparecem aqui as solicitações na vez do cliente que ficaram mais de ' + dias + ' dias úteis sem retorno depois de uma resposta que não pedia nada.</div>') +
+      '</div>';
+    ligarItens($('.list-card', el), l, ctx.abrirDetalhe);
+    $$('[data-de]', el).forEach(b => b.onclick = () => { resolvidasMinhas = b.dataset.de === 'minhas'; desenhar(); });
+  };
+  desenhar();
 }
 
 function linha(i) {

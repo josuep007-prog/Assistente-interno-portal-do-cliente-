@@ -168,6 +168,84 @@ test('trâmites: a coleta lê cada lista no seu caminho e marca por lista o que 
   assert.deepEqual(plano(snap.tramites.porTipo), { avisoFerias: 'ok', rubricas: 'erro: HTTP 500' });
 });
 
+/* ---------- vez do cliente sem retorno = resolvida (regra de 16/10/2026) ---------- */
+test('resolvida: só uma resposta que não pede nada ao cliente (cortesia e faltas não contam)', () => {
+  const pede = t => OC.pedeAlgoAoCliente(t, OC.DEFAULTS).pede;
+  assert.equal(pede('Segue a guia em anexo.'), false);
+  assert.equal(pede('<p>Cálculo enviado. Qualquer dúvida, estamos à disposição.</p>'), false);
+  assert.equal(pede('Feito! Ficou alguma dúvida? Estamos à disposição.'), false);
+  assert.equal(pede('As faltas do mês foram descontadas.'), false);
+  assert.equal(pede('Favor enviar o recibo assinado.'), true);
+  assert.equal(pede('Aguardamos o atestado.'), true);
+  assert.equal(pede('Ainda falta o exame admissional'), true);
+  assert.equal(pede('Qual a data de início?'), true);
+  assert.equal(OC.pedeAlgoAoCliente('Por favor, confirme.', OC.DEFAULTS).trecho, 'favor');
+  assert.equal(pede('Pagamento ok, obrigado.'), false);
+  assert.equal(OC.pedeAlgoAoCliente('Pagamento ok, obrigado.', Object.assign({}, OC.DEFAULTS, { pedidoAoCliente: ['obrigado'] })).pede, true, 'a lista vem das regras');
+});
+
+test('resolvida: vez do cliente há mais de 3 d.u. sem pedido sai da fila; o cache guarda só o veredito', async () => {
+  const recente = new Date(Date.now() - 36e5).toISOString().slice(0, 19);
+  const cli = (id, n, last) => ({ id, identifier: n, genericStatus: 4, created: '2026-01-05T12:00:00', lastUpdated: last || '2026-01-08T12:00:00' });
+  const itens = { avisoFerias: [cli('c1', 801), cli('c2', 802), cli('c3', 803), cli('c4', 804, recente)] };
+  const topicos = {
+    c1: [{ created: '2026-01-05T12:00:00', status: 1, description: 'Pedido' }, { created: '2026-01-08T12:00:00', status: 4, description: '<p>Segue o aviso. Qualquer dúvida, estamos à disposição.</p>' }],
+    c2: [{ created: '2026-01-05T12:00:00', status: 1 }, { created: '2026-01-08T12:00:00', status: 4, description: 'Favor enviar o aviso assinado.' }],
+    c3: [{ created: '2026-01-05T12:00:00', status: 1 }, { created: '2026-01-07T12:00:00', status: 4, description: 'Segue.' }, { created: '2026-01-08T12:00:00', status: 3, description: 'Recebido' }],
+    c4: [{ created: '2026-01-05T12:00:00', status: 1 }, { created: '2026-01-08T12:00:00', status: 4, description: 'Segue.' }]
+  };
+  const pedidos = [];
+  const f = async url => {
+    const u = new URL(url);
+    if (u.pathname.endsWith('session-and-bindings')) return { UdsSession: { FirstName: 'Ana', LastName: 'Teste' } };
+    const m = /tickets\/(\w+)\/topics$/.exec(u.pathname);
+    if (m) { pedidos.push(m[1]); return { items: topicos[m[1]] }; }
+    const t = OC.TYPES.find(x => u.pathname.endsWith('/' + x.path.split('/').pop()));
+    return { items: itens[t.key] || [], totalPages: 1 };
+  };
+  const snap = await OC.collect(f, {}, null, { tramites: {} });
+  assert.deepEqual(plano(snap.resolvidas.map(r => r.k)), ['avisoFerias:c1']);
+  assert.equal(snap.items.some(i => i.k === 'avisoFerias:c1'), false, 'sai das pendências');
+  assert.equal(snap.items.find(i => i.k === 'avisoFerias:c2').pedidoAoCliente, 'favor');
+  assert.equal(snap.items.find(i => i.k === 'avisoFerias:c3').pedidoAoCliente, 'última palavra do cliente');
+  assert.equal(snap.items.find(i => i.k === 'avisoFerias:c4').pedidoAoCliente, undefined, 'parada há pouco: nem é conferida');
+  assert.ok(snap.resolvidas[0].semRetorno > 3);
+  assert.equal(snap.resolvidas[0].num, 801);
+  const cache = plano(snap.tramites.cache);
+  assert.deepEqual(cache['avisoFerias:c1'].res, { em: '2026-01-08T12:00:00', pede: false });
+  assert.doesNotMatch(JSON.stringify(cache), /Segue|Favor|Recebido|dúvida/, 'nenhum texto de trâmite no cache');
+  // segunda leitura: o veredito vem do cache, sem ler os trâmites de novo
+  pedidos.length = 0;
+  const snap2 = await OC.collect(f, {}, null, { tramites: cache });
+  assert.equal(pedidos.includes('c1'), false);
+  assert.deepEqual(plano(snap2.resolvidas.map(r => r.k)), ['avisoFerias:c1']);
+  // nova movimentação: o veredito antigo não vale e a solicitação volta a ser conferida
+  itens.avisoFerias[0] = cli('c1', 801, recente);
+  const snap3 = await OC.collect(f, {}, null, { tramites: cache });
+  assert.equal(snap3.resolvidas.length, 0);
+  assert.ok(snap3.items.some(i => i.k === 'avisoFerias:c1'));
+  // regra desligada (0): nada sai da fila
+  itens.avisoFerias[0] = cli('c1', 801);
+  const snap4 = await OC.collect(f, { resolvidaClienteDias: 0 }, null, { tramites: {} });
+  assert.equal(snap4.resolvidas.length, 0);
+  assert.equal(snap4.items.length, 4);
+});
+
+test('resolvida que volta à fila não vira "nova solicitação"', () => {
+  const it = { k: 'avisoFerias:c1', type: 'avisoFerias', num: 801, typeLabel: 'Aviso de férias', mine: true, lado: 'cli', resp: 'Ana' };
+  const ev = OC.eventos({ items: [], resolvidas: [it] }, { items: [it] }, {}, AGORA);
+  assert.equal(ev.length, 0);
+});
+
+test('regras do escritório podem trocar o prazo e as palavras da regra de resolvida', () => {
+  const r = OC.normalizarRegras({ prazos: { resolvidaClienteDias: 5 }, pedidoAoCliente: ['Aguardamos', '', 7], cortesiaCliente: ['Abraços'] });
+  assert.equal(r.config.resolvidaClienteDias, 5);
+  assert.deepEqual(plano(r.pedidoAoCliente), ['aguardamos']);
+  const s = OC.combinarSettings({ regras: r }, {});
+  assert.deepEqual(plano(s.cortesiaCliente), ['abracos']);
+  assert.equal(OC.normalizarRegras({ prazos: { resolvidaClienteDias: 99 } }), null, 'fora do limite é ignorado');
+});
+
 test('o cache de trâmites só guarda o que continua pendente', async () => {
   const f = fetcherFalso({ itens: {} });
   const snap = await OC.collect(f, {}, null, { tramites: { 'calcFerias:velho': { pt: '2026-01-01T00:00:00' } } });
@@ -395,7 +473,7 @@ test('o arquivo de regras de exemplo é válido e cobre prazos, feriados e palav
   const ex = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'regras', 'escritorio.exemplo.json'), 'utf8'));
   const r = OC.normalizarRegras(ex);
   assert.ok(r);
-  assert.equal(Object.keys(r.config).length, 7, 'todos os prazos do exemplo passam na validação');
+  assert.equal(Object.keys(r.config).length, 8, 'todos os prazos do exemplo passam na validação');
   assert.equal(r.feriados.length, 2);
   assert.equal(r.abaErrada.length, 4);
   assert.equal(r.abaErrada[0].palavras[0], 'calculo de ferias', 'palavras ficam sem acento');
@@ -859,6 +937,63 @@ test('detalhe e trâmites: campos para a tela, trâmites em ordem, situação pe
   assert.deepEqual([d.num, d.status, d.lado, d.assunto, d.meio, d.detalhe], [7, 'Respondido', 'cli', 'Férias', 'WEB', 'João']);
   const tr = OC.tramitesDe(t, { items: [{ created: '2026-10-02T10:00:00', status: 4, description: 'b', createdByContactExpanded: { name: 'Ana' }, attachmentsExpanded: [{ name: 'recibo.pdf' }] }, { created: '2026-10-01T10:00:00', status: 1, description: 'a' }, { status: 2 }] });
   assert.deepEqual(tr.map(x => [x.n, x.situacao, x.autor, x.texto, x.anexos.join()]), [[1, 'Sem análise', '', 'a', ''], [2, 'Respondido', 'Ana', 'b', 'recibo.pdf']]);
+});
+
+test('trâmites: lado pela situação (abertura e as do cliente), id do trâmite e anexos com id; apagados ficam fora', () => {
+  const t = OC.TYPE_BY_KEY.avisoFerias;
+  const tr = OC.tramitesDe(t, { items: [
+    { id: 't1', created: '2026-10-01T10:00:00', status: 1, description: 'a', attachmentsExpanded: [{ id: 'a1', name: 'ponto.xlsx' }] },
+    { id: 't2', created: '2026-10-02T10:00:00', status: 4, description: 'b', attachmentsExpanded: [{ id: 'a2', name: 'aviso.pdf' }, { name: '' }] },
+    { id: 't3', created: '2026-10-03T10:00:00', status: 3, description: 'c' },
+    { id: 't4', created: '2026-10-04T10:00:00', status: 4, description: 'apagado', deletedTopic: true }] });
+  assert.deepEqual(plano(tr.map(x => [x.id, x.lado, x.arquivos])), [['t1', 'cli', [{ id: 'a1', nome: 'ponto.xlsx' }]], ['t2', 'esc', [{ id: 'a2', nome: 'aviso.pdf' }]], ['t3', 'cli', []]]);
+  const c = OC.camposDetalhe(t, { vacationStartDate: '2026-11-03T00:00:00', requestWay: 'WEB', attachmentsExpanded: [{ id: 'x9', name: 'pedido.pdf' }] });
+  assert.deepEqual(plano(c.arquivos), [{ id: 'x9', nome: 'pedido.pdf' }]);
+  assert.deepEqual(plano(c.anexos), ['pedido.pdf']);
+  const inicio = c.grupos[0].campos.find(x => /Início/.test(x.k));
+  assert.equal(inicio.destaque, true, 'início das férias em destaque');
+  assert.equal(c.grupos[0].campos[0], inicio, 'o destaque vem primeiro');
+  assert.ok(!c.grupos[0].campos.find(x => x.v === 'Portal do Cliente' || /Meio/.test(x.k) && x.destaque), 'meio sem destaque');
+});
+
+test('anexos: molde aprendido sem ids, nomes nem tokens; endereço por lista; só GET em onvio.com.br', () => {
+  const G = '3f2a1b4c-1111-2222-3333-444455556666', T = 'aaaaaaaa-1111-2222-3333-444455556666', A = 'bbbbbbbb-1111-2222-3333-444455556666';
+  const folha = OC.moldeDeAnexo('https://onvio.com.br/api/br-payroll-sr/v1/tickets/' + G + '/topics/' + T + '/attachments/' + A + '/download?inline=false');
+  assert.equal(folha, 'https://onvio.com.br/api/br-payroll-sr/v1/tickets/{tickets}/topics/{topics}/attachments/{attachments}/download?inline=false');
+  assert.equal(OC.moldeDeAnexo('https://onvio.com.br/api/files/' + A + '/Aviso%20Jo%C3%A3o.pdf'), 'https://onvio.com.br/api/files/{files}/{nome}');
+  assert.equal(OC.moldeDeAnexo('https://onvio.com.br/api/files/' + A + '/joao'), 'https://onvio.com.br/api/files/{files}/{nome}', 'palavra depois do id pode ser nome: vira {nome}');
+  assert.equal(OC.moldeDeAnexo('https://onvio.com.br/api/files/' + A + '?token=Abc123xyz9'), null, 'token não é aprendido');
+  assert.equal(OC.moldeDeAnexo('https://outro.com/api/attachments/' + A), null);
+  assert.equal(OC.moldeDeAnexo('http://onvio.com.br/api/attachments/' + A), null);
+  assert.equal(OC.moldeDeAnexo('https://onvio.com.br/api/br-payroll-sr/v1/tickets'), null, 'sem id não é download');
+  const ids = { sol: 'S1', topico: 'T1', anexo: 'A1', nome: 'a b.pdf' };
+  assert.equal(OC.urlAnexo(OC.TYPE_BY_KEY.calcFerias, ids, [{ molde: folha }]).url, 'https://onvio.com.br/api/br-payroll-sr/v1/tickets/S1/topics/T1/attachments/A1/download?inline=false');
+  assert.equal(OC.urlAnexo(OC.TYPE_BY_KEY.geral, ids, [{ molde: folha }]), null, 'molde da folha não serve para a Geral');
+  assert.equal(OC.urlAnexo(OC.TYPE_BY_KEY.calcFerias, { sol: 'S1', anexo: 'A1' }, [{ molde: folha }]), null, 'anexo da abertura (sem trâmite) não cabe no molde do trâmite');
+  const generico = OC.moldeDeAnexo('https://onvio.com.br/api/files/' + A + '/x.pdf');
+  assert.equal(OC.urlAnexo(OC.TYPE_BY_KEY.geral, ids, [{ molde: folha }, { molde: generico }]).url, 'https://onvio.com.br/api/files/A1/a%20b.pdf');
+  assert.equal(OC.urlAnexo(OC.TYPE_BY_KEY.calcFerias, ids, [{ molde: generico }, { molde: folha }]).url.includes('/tickets/S1/'), true, 'o da própria lista vem antes do genérico');
+  assert.equal(OC.leituraAnexoPermitida('https://onvio.com.br/api/x/attachments/1/delete'), false);
+  assert.equal(OC.leituraAnexoPermitida('https://onvio.com.br.evil.com/api/x'), false);
+});
+
+test('background: baixar anexos usa o molde aprendido, confere o escritório e baixa pela aba; sem molde, explica', async () => {
+  const api = apiSimulada({ itens: { avisoFerias: [pend('f1', 31)] } });
+  const { ouvintes, store } = carregarBackground({ abas: [aba(5, ONVIO_PORTAL)], fetchPorMundo: { MAIN: api }, fetch: api });
+  const pedir = m => new Promise(res => ouvintes[0](m, { tab: { id: 5 } }, res));
+  const G = '3f2a1b4c-1111-2222-3333-444455556666', T = 'aaaaaaaa-1111-2222-3333-444455556666', A = 'bbbbbbbb-1111-2222-3333-444455556666';
+  const sem = await pedir({ cmd: 'baixarAnexos', type: 'avisoFerias', num: '31', anexos: [{ id: 'a1', topico: 't1', nome: 'aviso.pdf' }] });
+  assert.deepEqual([sem.ok, sem.baixados, sem.semRota], [true, 0, 1]);
+  assert.equal((await pedir({ cmd: 'rotaAnexo', url: 'https://onvio.com.br/api/br-payroll-sr/v1/tickets/' + G + '/topics/' + T + '/attachments/' + A })).ok, true);
+  assert.equal((await pedir({ cmd: 'rotaAnexo', url: 'https://evil.com/x/' + A })).ok, false);
+  assert.doesNotMatch(JSON.stringify(store.rotasAnexo), /3f2a1b4c|aaaaaaaa|bbbbbbbb/, 'só o molde, sem ids');
+  const r = await pedir({ cmd: 'baixarAnexos', type: 'avisoFerias', num: '31', anexos: [{ id: 'a1', topico: 't1', nome: 'av/iso.pdf' }] });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.ok(api.chamadas.urls.includes('/api/br-payroll-sr/v1/tickets/f1/topics/t1/attachments/a1'), 'GET pela aba no endereço montado do molde');
+  assert.equal(r.baixados + r.falhas.length, 1);
+  assert.match(r.falhas.concat('av_iso.pdf').join(), /av_iso\.pdf/, 'nome sem barra');
+  const ruim = await pedir({ cmd: 'baixarAnexos', type: 'avisoFerias', num: '31', anexos: [{ id: '../x', nome: 'a' }] });
+  assert.equal(ruim.ok, false);
 });
 
 test('background: consultar lista na hora e devolve itens avaliados, sem gravar nada', async () => {

@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   const $ = s => document.querySelector(s);
-  const NUM = ['tempoRealSeg', 'intervalo', 'primeiroTramite', 'conclusaoSimples', 'conclusaoCalculo', 'clienteSemRetorno', 'parada', 'prescricaoDias', 'prescricaoAviso'];
+  const NUM = ['tempoRealSeg', 'intervalo', 'primeiroTramite', 'conclusaoSimples', 'conclusaoCalculo', 'clienteSemRetorno', 'resolvidaClienteDias', 'parada', 'prescricaoDias', 'prescricaoAviso'];
   const BOOL = ['abrirAoEntrar', 'notificar', 'modoGestor'];
   const URL_CLIENTE = 'https://raw.githubusercontent.com/josuep007-prog/assistente-portal-regras/main/regras.json';
   let regras = null;          // regras do escritório guardadas (arquivo)
@@ -65,7 +65,7 @@
       return '  ' + t.label + ' (' + t.tramites + '): ' + (e || 'sem leitura ainda');
     }));
   }
-  function diagnostico(snap, perfil, status) {
+  function diagnostico(snap, perfil, status, rotasAnexo) {
     if (status && status.estado === 'visao_cliente') return ['O Onvio está aberto com um acesso de cliente: nada é lido nem guardado.'].concat(linhasPerfil(perfil)).join('\n');
     if (!snap) return ['Ainda sem leitura do Onvio.'].concat(linhasPerfil(perfil)).join('\n');
     const l = ['Versão: ' + (snap.versao || chrome.runtime.getManifest().version) + ' · leitura: ' + snap.fetchedAt + ' · via ' + (snap.via || '?'),
@@ -79,6 +79,10 @@
     const t = snap.tramites || {};
     l.push('Trâmites lidos neste ciclo: ' + (t.lidos || 0) + ' · falhas: ' + (t.falhas || 0) + ' · com 1º trâmite conhecido: ' + (snap.items || []).filter(i => i.ptUteis != null).length + ' de ' + (snap.items || []).length);
     linhasTramites(snap).forEach(x => l.push(x));
+    l.push('Consideradas resolvidas (vez do cliente sem retorno e sem pedido do analista): ' + ((snap.resolvidas || []).length));
+    const ra = Array.isArray(rotasAnexo) ? rotasAnexo : [];
+    l.push('Download de anexos: ' + (ra.length ? ra.length + ' caminho(s) aprendido(s) do Onvio' : 'nenhum caminho aprendido ainda (baixe um anexo pelo Onvio uma vez)'));
+    ra.slice(0, 6).forEach(r => l.push('  ' + r.molde + (r.campo ? ' (endereço no campo ' + r.campo + ')' : '')));
     l.push('Possível aba errada (Geral): ' + (snap.items || []).filter(i => i.abaProvavel).length);
     l.push('Com você como responsável (filtro "atribuídas a mim" do Onvio): ' + (snap.items || []).filter(i => i.mine).length + ' de ' + (snap.items || []).length + (snap.user && snap.user.nome ? ' · usuário: ' + snap.user.nome : ''));
     if (snap.erros && snap.erros.length) l.push('Erros: ' + snap.erros.join(' | '));
@@ -86,11 +90,11 @@
   }
 
   async function carregar() {
-    const d = await chrome.storage.local.get(['settings', 'snapshot', 'regrasEscritorio', 'perfilSessao', 'status']);
+    const d = await chrome.storage.local.get(['settings', 'snapshot', 'regrasEscritorio', 'perfilSessao', 'status', 'rotasAnexo']);
     regras = d.regrasEscritorio || null;
     preencher(OC.combinarSettings(regras, d.settings));
     mostrarRegras();
-    $('#diag').textContent = diagnostico(d.snapshot, d.perfilSessao, d.status);
+    $('#diag').textContent = diagnostico(d.snapshot, d.perfilSessao, d.status, d.rotasAnexo);
   }
   carregar();
 

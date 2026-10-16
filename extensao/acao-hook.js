@@ -4,6 +4,10 @@
  * Sempre: quando o Onvio faz uma chamada que altera dados (POST, PUT, PATCH ou DELETE em solicitações de
  * serviço), avisa o shell.js, que pede uma leitura imediata. O aviso não leva conteúdo.
  *
+ * Sempre: quando o Onvio BAIXA um anexo (GET num endereço de anexo/arquivo com resposta que não é a lista em JSON),
+ * avisa o shell.js com o endereço; o service worker guarda só o molde (OC.moldeDeAnexo: ids e nome do arquivo
+ * trocados por marcadores), para o Control Onvio baixar os anexos que o analista escolher.
+ *
  * Modo aprender (ligado em Configurações, só para mapear as ações na empresa de teste): registra o FORMATO de
  * cada chamada à API do Onvio (método, caminho com ids trocados por {id}, nomes e tipos dos campos do
  * corpo e da resposta). Nunca grava valores: textos, nomes, CPF, datas e números viram só o tipo.
@@ -25,6 +29,23 @@
   let autorizacao = null;
   try { Object.defineProperty(window, '__controlOnvioAutorizacao', { value: () => autorizacao, configurable: false, enumerable: false, writable: false }); } catch (e) {}
   const guardarAuth = v => { if (typeof v === 'string' && v.length < 8192) autorizacao = v; };
+
+  /* ---------- download de anexo (molde do caminho) ---------- */
+  const RE_ANEXO = /\/(attachments?|files?|downloads?|anexos?|documents?)(\/|\?|$)/i;
+  const ehOnvio = url => { try { const u = new URL(url, location.href); return u.protocol === 'https:' && /(^|\.)onvio\.com\.br$/i.test(u.hostname) ? u.href : null; } catch (e) { return null; } };
+  const vistosAnexo = new Set();
+  function anexoBaixado(url, ct, lerJson) {
+    const abs = ehOnvio(url);
+    if (!abs || !RE_ANEXO.test(new URL(abs).pathname)) return;
+    const avisar = campo => { const ch = abs + '|' + (campo || ''); if (vistosAnexo.has(ch)) return; vistosAnexo.add(ch); postar({ tipo: 'anexoBaixado', url: abs, campo: campo || null }); };
+    if (/json/i.test(ct || '')) {
+      // alguns sistemas devolvem um endereço temporário do arquivo: guarda só o NOME do campo que o traz
+      Promise.resolve().then(lerJson).then(j => {
+        const campo = j && typeof j === 'object' && !Array.isArray(j) ? Object.keys(j).find(k => typeof j[k] === 'string' && /^https:\/\//.test(j[k])) : null;
+        if (campo) avisar(campo);
+      }).catch(() => {});
+    } else if (!/html/i.test(ct || '')) avisar(null);
+  }
 
   /* ---------- modo aprender ---------- */
   let aprendendo = false;
@@ -112,6 +133,7 @@
         const url = typeof entrada === 'string' ? entrada : entrada && entrada.url;
         const metodo = String((init && init.method) || (entrada && entrada.method) || 'GET').toUpperCase();
         if (url && RE.test(url) && init && init.headers) { try { guardarAuth(new Headers(init.headers).get('authorization')); } catch (e) {} }
+        if (url && metodo === 'GET' && RE_ANEXO.test(url)) p.then(r => { if (r && r.ok) anexoBaixado(url, r.headers.get('content-type'), () => r.clone().json()); }).catch(() => {});
         if (url && RE_API.test(url) && (RE.test(url) || aprendendo)) {
           if (altera(metodo) && RE.test(url)) p.then(r => { if (r && r.ok) aviso(); }).catch(() => {});
           if (aprendendo) {
@@ -133,6 +155,14 @@
     try {
       const u = String(url), m = String(metodo || 'GET').toUpperCase();
       const nosso = RE.test(u);
+      if (m === 'GET' && RE_ANEXO.test(u)) {
+        this.addEventListener('load', () => {
+          try {
+            if (this.status < 200 || this.status >= 300) return;
+            anexoBaixado(u, this.getResponseHeader('content-type'), () => (this.responseType === 'json' ? this.response : JSON.parse(this.responseText)));
+          } catch (e) {}
+        });
+      }
       if (nosso || (aprendendo && RE_API.test(u))) {
         this.__co = { metodo: m, url: u, ct: '' };
         this.addEventListener('load', () => {
