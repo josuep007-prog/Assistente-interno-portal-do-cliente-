@@ -1463,3 +1463,19 @@ test('área do gestor: a senha fica só como resumo SHA-256; regras podem trocar
   assert.equal(OC.combinarSettings({ regras }, { senhaGestorSha256: 'a'.repeat(64) }).senhaGestorSha256, outro, 'ajuste da pessoa não troca a senha');
   assert.equal(OC.normalizarRegras({ senhaGestorSha256: 'texto' }), null);
 });
+
+test('detalhe em português: campos e códigos do Onvio traduzidos; o que não tem tradução aparece como veio', () => {
+  assert.equal(OC.traduzirCampo('lastWorkDay'), 'Último dia trabalhado');
+  assert.equal(OC.traduzirCampo('workScheduleType'), 'Tipo de horário de trabalho', 'palavra por palavra, na ordem do português');
+  assert.equal(OC.traduzirCampo('costCenterCode'), 'Código de centro de custo');
+  assert.equal(OC.traduzirCampo('fooBarBaz'), 'Foo bar baz', 'sem tradução de tudo: não mistura idiomas');
+  assert.equal(OC.traduzirValor('x', 'PRIOR_NOTICE_TERMINATION'), 'Aviso prévio de rescisão');
+  assert.equal(OC.traduzirValor('x', 'SICK_LEAVE'), 'Afastamento por doença');
+  assert.equal(OC.traduzirValor('x', 'WEB'), 'Portal (web)');
+  assert.equal(OC.traduzirValor('x', 'XPTO_ABC'), 'XPTO_ABC');
+  const d = OC.camposDetalhe(OC.TYPE_BY_KEY.calcRescisao, { terminationType: 'WITHOUT_CAUSE', lastWorkDay: '2026-10-10T00:00:00', noticeType: 'INDEMNIFIED' });
+  const txt = JSON.stringify(plano(d.grupos));
+  assert.match(txt, /Tipo de rescisão.*Sem justa causa/);
+  assert.match(txt, /Último dia trabalhado.*10\/10\/2026/);
+  assert.match(txt, /Tipo do aviso.*Indenizado/);
+});

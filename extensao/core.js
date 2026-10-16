@@ -1006,19 +1006,83 @@
     quantity: 'Quantidade', hours: 'Horas', days: 'Dias', rubric: 'Rubrica', email: 'E-mail', phone: 'Telefone', birthDate: 'Nascimento',
     hireDate: 'Admissão', clientEmployeeRelationship: 'Vínculo', reason: 'Motivo', priorNotice: 'Tem aviso prévio', calculation: 'Pede cálculo',
     internshipOption: 'Opção de estágio', registrationNumber: 'Matrícula', pis: 'PIS', ctps: 'CTPS', cpf: 'CPF', gender: 'Sexo',
-    terminationReasonExpanded: 'Motivo da rescisão', noticeType: 'Tipo do aviso', workedNotice: 'Aviso trabalhado', reduction: 'Redução da jornada'
+    terminationReasonExpanded: 'Motivo da rescisão', noticeType: 'Tipo do aviso', workedNotice: 'Aviso trabalhado', reduction: 'Redução da jornada',
+    terminationDate: 'Data do término', lastWorkDay: 'Último dia trabalhado', clientEmployeeRelationshipExpanded: 'Vínculo', customFields: 'Campos adicionais',
+    displayStatus: 'Situação', assignedTo: 'Atribuída a', isReadByClientUser: 'Lida pelo cliente', nickName: 'Apelido', clientName: 'Cliente',
+    staffName: 'Responsável', mimeType: 'Tipo do arquivo', fileName: 'Arquivo', createdDate: 'Criada em', modifiedDate: 'Alterada em',
+    expirationDate: 'Vencimento', sendDate: 'Enviada em', requestType: 'Tipo de solicitação', createdBy: 'Criada por', size: 'Tamanho',
+    prescribePendingTicketsDays: 'Dias para prescrever', forwardedToExpanded: 'Encaminhada para', employeeRegistrationTopicNumber: 'Trâmite nº',
+    payrollEntryTopicNumber: 'Trâmite nº', motherName: 'Nome da mãe', fatherName: 'Nome do pai', maritalStatus: 'Estado civil',
+    educationLevel: 'Escolaridade', nationality: 'Nacionalidade', race: 'Raça/cor', address: 'Endereço', street: 'Rua', number: 'Número',
+    complement: 'Complemento', neighborhood: 'Bairro', city: 'Cidade', state: 'UF', zipCode: 'CEP', country: 'País', bank: 'Banco',
+    agency: 'Agência', account: 'Conta', dependents: 'Dependentes', relationship: 'Parentesco', workSchedule: 'Horário de trabalho',
+    salaryType: 'Tipo de salário', paymentType: 'Forma de pagamento', experienceContract: 'Contrato de experiência', union: 'Sindicato',
+    institution: 'Instituição de ensino', course: 'Curso', supervisor: 'Supervisor', scholarship: 'Bolsa', insurance: 'Seguro',
+    returnDate: 'Data de retorno', cid: 'CID', doctor: 'Médico', crm: 'CRM', certificate: 'Atestado', note: 'Observação', notes: 'Observações',
+    observation: 'Observação', observations: 'Observações', title: 'Título', type: 'Tipo', status: 'Situação', active: 'Ativo'
   };
   // valores técnicos (enumerações) que o Onvio manda em inglês; o que não estiver aqui aparece como veio
   const VALORES = {
     EMPLOYEE: 'Empregado', INTERN: 'Estagiário', TAXPAYER: 'Contribuinte', PARTNER: 'Sócio', DIRECTOR: 'Diretor', APPRENTICE: 'Aprendiz',
     INDEMNIFIED: 'Indenizado', WORKED: 'Trabalhado', MONTHLY: 'Mensal', HOURLY: 'Por hora', DAILY: 'Diário', WEEKLY: 'Semanal',
-    EMPLOYER: 'Empregador', MALE: 'Masculino', FEMALE: 'Feminino', PORTAL: 'Portal do Cliente', EMAIL: 'E-mail', PHONE: 'Telefone'
+    EMPLOYER: 'Empregador', MALE: 'Masculino', FEMALE: 'Feminino', PORTAL: 'Portal do Cliente', EMAIL: 'E-mail', PHONE: 'Telefone',
+    WEB: 'Portal (web)', MOBILE: 'Aplicativo', PRIOR_NOTICE_TERMINATION: 'Aviso prévio de rescisão', TERMINATION_CALCULATION: 'Cálculo de rescisão',
+    PRIOR_NOTICE_VACATION: 'Aviso de férias', VACATION_CALCULATION: 'Cálculo de férias', EMPLOYEE_LEAVE: 'Afastamento', PAYROLL_ENTRY: 'Lançamento de rubricas',
+    GENERIC: 'Geral', ADVANCE: 'Adiantamento', THIRTEENTH: '13º salário', VACATION: 'Férias', TERMINATION: 'Rescisão', SINGLE: 'Solteiro(a)',
+    MARRIED: 'Casado(a)', DIVORCED: 'Divorciado(a)', WIDOWED: 'Viúvo(a)', SEPARATED: 'Separado(a)', STABLE_UNION: 'União estável', YES: 'Sim', NO: 'Não',
+    NONE: 'Nenhum', OTHER: 'Outro', OTHERS: 'Outros', PENDING: 'Pendente', APPROVED: 'Aprovado', REJECTED: 'Recusado', ACTIVE: 'Ativo', INACTIVE: 'Inativo',
+    SICK_LEAVE: 'Afastamento por doença', ILLNESS: 'Doença', WORK_ACCIDENT: 'Acidente de trabalho', MATERNITY_LEAVE: 'Licença-maternidade',
+    PATERNITY_LEAVE: 'Licença-paternidade', MILITARY_SERVICE: 'Serviço militar', UNPAID_LEAVE: 'Licença não remunerada', PAID_LEAVE: 'Licença remunerada',
+    WITH_CAUSE: 'Com justa causa', WITHOUT_CAUSE: 'Sem justa causa', WITH_JUST_CAUSE: 'Com justa causa', WITHOUT_JUST_CAUSE: 'Sem justa causa',
+    RESIGNATION: 'Pedido de demissão', DISMISSAL: 'Dispensa', AGREEMENT: 'Acordo entre as partes', MUTUAL_AGREEMENT: 'Acordo entre as partes',
+    END_OF_CONTRACT: 'Término de contrato', CONTRACT_END: 'Término de contrato', EXPERIENCE_END: 'Fim do contrato de experiência', DEATH: 'Falecimento',
+    RETIREMENT: 'Aposentadoria', TRANSFER: 'Transferência', FULL_TIME: 'Tempo integral', PART_TIME: 'Tempo parcial', INTERMITTENT: 'Intermitente',
+    TEMPORARY: 'Temporário', INDEFINITE: 'Indeterminado', DEFINITE: 'Determinado', CLT: 'CLT'
   };
+  // Palavras soltas (campos e valores que o Onvio venha a mandar e ainda não estão acima): traduz palavra por palavra;
+  // se sobrar alguma sem tradução, mostra como veio (melhor o nome técnico do que uma frase pela metade).
+  const PALAVRAS = {
+    date: 'data', start: 'início', end: 'fim', type: 'tipo', reason: 'motivo', name: 'nome', number: 'número', value: 'valor', days: 'dias',
+    day: 'dia', hours: 'horas', hour: 'hora', employee: 'empregado', employer: 'empregador', client: 'cliente', company: 'empresa', staff: 'escritório',
+    notice: 'aviso', prior: 'prévio', termination: 'rescisão', vacation: 'férias', leave: 'afastamento', payment: 'pagamento', salary: 'salário',
+    wage: 'salário', bonus: 'abono', advance: 'adiantamento', first: 'primeiro', last: 'último', work: 'trabalho', worked: 'trabalhado', job: 'cargo',
+    position: 'cargo', department: 'departamento', cost: 'custo', center: 'centro', description: 'descrição', comments: 'observações', note: 'observação',
+    document: 'documento', documents: 'documentos', file: 'arquivo', files: 'arquivos', attachment: 'anexo', attachments: 'anexos', created: 'criado',
+    updated: 'atualizado', changed: 'alterado', by: 'por', at: 'em', of: 'de', the: '', and: 'e', or: 'ou', with: 'com', without: 'sem', is: '', has: 'tem',
+    total: 'total', amount: 'valor', quantity: 'quantidade', code: 'código', status: 'situação', request: 'solicitação', requester: 'solicitante',
+    registration: 'cadastro', personal: 'pessoal', professional: 'profissional', address: 'endereço', phone: 'telefone', email: 'e-mail',
+    birth: 'nascimento', mother: 'mãe', father: 'pai', dependent: 'dependente', dependents: 'dependentes', category: 'categoria', union: 'sindicato',
+    contract: 'contrato', experience: 'experiência', extension: 'prorrogação', weekly: 'semanal', monthly: 'mensal', daily: 'diário', yes: 'sim', no: 'não',
+    active: 'ativo', inactive: 'inativo', pending: 'pendente', other: 'outro', calculation: 'cálculo', calculate: 'calcular', entry: 'lançamento',
+    entries: 'lançamentos', payroll: 'folha', rubric: 'rubrica', absent: 'falta', absence: 'falta', medical: 'médico', certificate: 'atestado',
+    return: 'retorno', expected: 'previsto', due: 'prazo', expiration: 'vencimento', send: 'envio', sent: 'enviado', read: 'lido', user: 'usuário',
+    internship: 'estágio', intern: 'estagiário', taxpayer: 'contribuinte', partner: 'sócio', option: 'opção', schedule: 'horário', shift: 'turno',
+    indemnified: 'indenizado', reduction: 'redução', paid: 'pago', unpaid: 'não pago', count: 'quantidade', size: 'tamanho', title: 'título'
+  };
+  // Em inglês o principal vem por último ("expected return date"); em português, primeiro ("data de retorno prevista").
+  const ADJ = new Set(['previsto', 'pago', 'não pago', 'ativo', 'inativo', 'pendente', 'prévio', 'trabalhado', 'indenizado', 'mensal', 'semanal', 'diário', 'pessoal', 'profissional', 'médico', 'criado', 'atualizado', 'alterado', 'enviado', 'lido', 'total']);
+  const ANTES = new Set(['primeiro', 'último']);
+  const PREP = new Set(['por', 'em', 'de', 'e', 'ou', 'com', 'sem', 'tem']);
+  function traduzirPalavras(lista) {
+    const out = [];
+    for (const w of lista) { const t = PALAVRAS[w.toLowerCase()]; if (t === undefined) return null; if (t) out.push(t); }
+    if (!out.length) return null;
+    if (out.length === 1 || out.some(w => PREP.has(w))) return out.join(' ');
+    const nucleo = out[out.length - 1], resto = out.slice(0, -1).reverse();
+    let frase = nucleo, antes = '';
+    for (const w of resto) { if (ANTES.has(w)) antes = w + ' '; else if (ADJ.has(w)) frase += ' ' + w; else frase += ' de ' + w; }
+    return antes + frase;
+  }
   // Fora da aba Dados: o que já está no topo da janela (cliente, responsável, datas, solicitante) e o que só serve ao
   // sistema (tipo técnico, meio, quem cadastrou, quando foi alterada). A aba fica com o que é preciso para atender.
   const FORA_DADOS = /^(serviceRequestType|requestWay|changed|created|lastUpdated|genericLastUpdated|lastStatusChanged|dueDate|status|sortOrder|clientExpanded|staffResponsibleExpanded|requesterExpanded|createdByContactExpanded|departmentExpanded)$/;
   const OCULTO = /^(type|apiVersion|id|companyId|identifier|genericStatus|clientStatus|firmStatus|attachmentsExpanded|delete|deleted|staticFilePath|translationKey)$|Id$|Ids$/;
-  const humano = k => { const t = String(k).replace(/Expanded$/, '').replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase(); return t.charAt(0).toUpperCase() + t.slice(1); };
+  const humano = k => {
+    const partes = String(k).replace(/Expanded$/, '').replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase().split(/[\s_]+/).filter(Boolean);
+    const t = traduzirPalavras(partes) || partes.join(' ');
+    return t.charAt(0).toUpperCase() + t.slice(1);
+  };
+  const enumPt = v => { if (VALORES[v]) return VALORES[v]; const t = traduzirPalavras(v.toLowerCase().split('_')); return t ? t.charAt(0).toUpperCase() + t.slice(1) : v; };
   const rotulo = k => ROTULOS[k] || humano(k);
   function valorDe(k, v) {
     if (v == null || v === '') return '';
@@ -1027,7 +1091,7 @@
     if (typeof v === 'string') {
       if (/^\d{4}-\d{2}-\d{2}T00:00:00(\.0+)?Z?$/.test(v) || /^\d{4}-\d{2}-\d{2}$/.test(v)) { const d = diaDe(v); return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear(); }
       if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v)) { const d = parseDate(v); if (d) return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
-      return /^[A-Z][A-Z_]{2,}$/.test(v) && VALORES[v] ? VALORES[v] : v;
+      return /^[A-Z][A-Z_]{1,}$/.test(v) ? enumPt(v) : v;
     }
     if (Array.isArray(v)) return v.map(x => (x && typeof x === 'object' ? x.name || x.description || x.value || '' : valorDe(k, x))).filter(Boolean).join(', ');
     if (typeof v === 'object') return v.name || v.description || (typeof v.value !== 'object' ? valorDe(k, v.value) : '') || '';
@@ -1598,5 +1662,5 @@
     return { dias, empresas: lista, total: lista.reduce((s2, r) => s2 + r.total, 0), prox30: lista.reduce((s2, r) => s2 + r.prox30, 0) };
   }
 
-  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, quadroSemCalculo, marcarSemCalculo, textoAvisoSemCalculo, assuntoAvisoSemCalculo, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, admissoesCriticas, escritorioTramitou, vencimentosLegais, malUso, sugestoesAcoes, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, quadroSemCalculo, marcarSemCalculo, textoAvisoSemCalculo, assuntoAvisoSemCalculo, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, vencimentosLegais, malUso, sugestoesAcoes, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);
