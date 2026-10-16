@@ -5,12 +5,12 @@ const OC = window.OC;
 
 const CHAVES = {
   snapshot: 'snap', status: 'status', settings: 'usuario', regrasEscritorio: 'regras', ultimaVerificacao: 'ultima',
-  eventos: 'eventos', lembretes: 'lembretes', serie: 'serie', alertasVistosEm: 'alertasVistosEm', semCalculoMarcas: 'semCalcMarcas', avaliacaoExcecoes: 'excecoes'
+  eventos: 'eventos', lembretes: 'lembretes', serie: 'serie', alertasVistosEm: 'alertasVistosEm', semCalculoMarcas: 'semCalcMarcas', avaliacaoExcecoes: 'excecoes', sugestoesIgnoradas: 'sugIgnoradas'
 };
 
 export const estado = {
   snap: null, status: null, usuario: {}, regras: null, ultima: null,
-  eventos: [], lembretes: [], serie: {}, alertasVistosEm: null, semCalcMarcas: {}, excecoes: {},
+  eventos: [], lembretes: [], serie: {}, alertasVistosEm: null, semCalcMarcas: {}, excecoes: {}, sugIgnoradas: {},
   settings: Object.assign({}, OC.DEFAULTS)
 };
 
@@ -21,7 +21,7 @@ function aplicar(d) {
   for (const [k, campo] of Object.entries(CHAVES)) {
     if (!(k in d)) continue;
     const v = d[k];
-    estado[campo] = v == null ? (['eventos', 'lembretes'].includes(campo) ? [] : ['serie', 'usuario', 'semCalcMarcas', 'excecoes'].includes(campo) ? {} : null) : v;
+    estado[campo] = v == null ? (['eventos', 'lembretes'].includes(campo) ? [] : ['serie', 'usuario', 'semCalcMarcas', 'excecoes', 'sugIgnoradas'].includes(campo) ? {} : null) : v;
   }
   estado.settings = OC.combinarSettings(estado.regras, estado.usuario);
 }
@@ -68,5 +68,11 @@ export async function marcarExcecao(k, fora) {
   const novo = Object.fromEntries(ord);
   estado.excecoes = novo;
   await chrome.storage.local.set({ avaliacaoExcecoes: novo });
+}
+// Sugestões de ação: "não é o caso" guarda só o k e a última movimentação (volta se a solicitação mexer)
+export async function ignorarSugestao(k, item) {
+  const novo = OC.ignorarCaso(estado.sugIgnoradas, k, item, new Date());
+  estado.sugIgnoradas = novo;
+  await chrome.storage.local.set({ sugestoesIgnoradas: novo });
 }
 export async function marcarAlertasVistos() { await chrome.storage.local.set({ alertasVistosEm: new Date().toISOString() }); }

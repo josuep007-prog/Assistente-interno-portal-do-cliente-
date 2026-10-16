@@ -11,7 +11,8 @@ const GRUPOS = [
     { k: 'primeiroTramite', rot: 'Primeiro trâmite', un: 'dias úteis', ajuda: 'Depois disso, solicitação sem resposta do escritório fica fora do prazo.' },
     { k: 'conclusaoSimples', rot: 'Concluir demanda simples', un: 'dias úteis', ajuda: 'O cliente é avisado do mesmo prazo pelo Assistente do Portal.' },
     { k: 'conclusaoCalculo', rot: 'Concluir cálculo', un: 'dias úteis', ajuda: 'Cálculo de férias e de rescisão.' },
-    { k: 'parada', rot: 'Parada sem movimentação', un: 'dias corridos', ajuda: 'Na vez do escritório, sem nenhum trâmite nesse tempo.' }
+    { k: 'parada', rot: 'Parada sem movimentação', un: 'dias corridos', ajuda: 'Na vez do escritório, sem nenhum trâmite nesse tempo.' },
+    { k: 'foraDoPortalDias', rot: 'Provavelmente resolvida fora do portal', un: 'dias sem resposta', ajuda: 'Na vez do escritório e sem movimentação: vira sugestão de concluir no Hoje. 0 desliga.' }
   ] },
   { titulo: 'Vez do cliente', ic: 'i-user', campos: [
     { k: 'clienteSemRetorno', rot: 'Cliente sem retorno', un: 'dias úteis', ajuda: 'A partir daí a solicitação pede uma cobrança ao cliente.' },

@@ -88,6 +88,9 @@
     // pede nada ao cliente: conta como resolvida (o cliente ficou satisfeito). 0 desliga. Pedido do Josué, 16/10/2026.
     resolvidaClienteDias: 3,
     parada: 15,               // dias corridos sem movimentação
+    // Na vez do escritório e sem nenhuma movimentação há mais que isso (dias corridos): provavelmente foi resolvida fora
+    // do portal (Sugestões de ação no Hoje). 0 desliga. Pedido do Josué, 16/10/2026.
+    foraDoPortalDias: 30,
     prescricaoDias: 30,       // regra do Onvio
     prescricaoAviso: 20,      // a partir de quantos dias parada vira alerta vermelho
     tempoOcupado: 5,          // dias úteis que um analista leva para atender num período cheio: prazo legal mais perto que isso já pede ação
@@ -126,6 +129,33 @@
       'confirme', 'confirmar', 'assinar', 'solicitamos', 'pedimos', 'poderia', 'poderiam', 'pode nos', 'podem nos', 'seu retorno',
       'retornar', 'anexe', 'anexar', 'complementar', 'corrigir', 'regularizar'
     ],
+    // Sugestões de ação (Hoje), lidas nos trâmites na hora (o texto nunca é guardado; só qual trecho casou).
+    // Trechos (sem acento, minúsculas) que indicam que a solicitação foi resolvida fora do portal.
+    foraDoPortal: [
+      'ja resolvido', 'ja resolvida', 'ja foi resolvido', 'ja foi resolvida', 'ja resolvemos', 'ja resolvi', 'resolvido por telefone',
+      'resolvemos por telefone', 'conforme conversado por telefone', 'tratado por telefone', 'enviado por e-mail', 'enviado por email',
+      'enviada por e-mail', 'enviada por email', 'enviei por e-mail', 'enviei por email', 'enviamos por e-mail', 'enviamos por email',
+      'enviado pelo whatsapp', 'enviado por whatsapp', 'enviei pelo whatsapp', 'enviei por whatsapp', 'enviamos pelo whatsapp',
+      'enviamos por whatsapp', 'pelo zap', 'tratado pelo whatsapp', 'pode desconsiderar', 'podem desconsiderar', 'favor desconsiderar',
+      'pode cancelar', 'podem cancelar', 'pode encerrar', 'podem encerrar', 'pode finalizar', 'podem finalizar', 'pode concluir',
+      'podem concluir', 'nao precisa mais', 'nao e mais necessario', 'nao sera mais necessario', 'ja foi feito', 'ja foi feita',
+      'ja foi enviado', 'ja foi enviada', 'ja recebi', 'ja recebemos', 'ja enviei', 'ja enviamos'
+    ],
+    // Trechos que mostram que o cliente diz ter anexado algo (se nenhum arquivo veio, a sugestão é pedir de novo).
+    anexoCitado: [
+      'segue anexo', 'segue em anexo', 'seguem anexos', 'seguem em anexo', 'segue o anexo', 'seguem os anexos', 'em anexo', 'anexei',
+      'anexado', 'anexados', 'anexada', 'anexadas', 'arquivo anexo', 'documento anexo', 'documentos anexos', 'conforme anexo'
+    ],
+    // Abertura da lista Geral com menos letras que isso e sem anexo: provavelmente falta informação.
+    faltaInfoMinCaracteres: 25,
+    // Textos sugeridos para cada caso (o analista revisa e confirma antes de enviar). {aba} e {outra} vêm do caso.
+    textosSugestao: {
+      fora: 'Pelo que consta, esta solicitação já foi resolvida fora do portal. Estamos concluindo por aqui. Se ainda precisar de algo, é só abrir uma nova solicitação.',
+      abaErrada: 'Olá! Este pedido tem uma aba própria no Portal do Cliente: {aba}. Por favor, abra a solicitação por lá, com os campos preenchidos, para conseguirmos atender dentro do prazo. Estamos concluindo esta da lista Geral.',
+      duplicada: 'Esta solicitação repete a nº {outra}, que já está em atendimento. Seguimos por lá e estamos concluindo esta.',
+      falta: 'Olá! Para seguirmos com a solicitação, precisamos de mais informações: (descreva o que falta). Pode completar por aqui, por favor?',
+      anexo: 'Olá! A mensagem fala em anexo, mas nenhum arquivo chegou. Pode anexar de novo por aqui, por favor?'
+    },
     // Frases de cortesia que não são pedido: são tiradas do texto antes de procurar os trechos acima.
     cortesiaCliente: [
       'qualquer duvida', 'quaisquer duvidas', 'fico a disposicao', 'ficamos a disposicao', 'estamos a disposicao',
@@ -720,7 +750,7 @@
    * Tudo é validado: número dentro de limites, datas AAAA-MM-DD, textos curtos. Nada é executado. */
   const LIMITES = {
     primeiroTramite: [0, 30], conclusaoSimples: [1, 60], conclusaoCalculo: [1, 60], clienteSemRetorno: [1, 60], resolvidaClienteDias: [0, 30],
-    parada: [1, 90], prescricaoDias: [1, 120], prescricaoAviso: [1, 120], tempoRealSeg: [0, 600],
+    parada: [1, 90], foraDoPortalDias: [0, 180], prescricaoDias: [1, 120], prescricaoAviso: [1, 120], tempoRealSeg: [0, 600],
     tempoOcupado: [0, 30], admissaoAviso: [0, 15], estagiarioPrazoDias: [0, 60], pagamentoFeriasAntes: [0, 30], pagamentoRescisaoDias: [0, 60], avisoFeriasDias: [0, 90]
   };
   const inteiro = (v, [min, max]) => (typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max ? v : undefined);
@@ -751,8 +781,13 @@
       for (const k of ['serviceRequestType', 'requestWay', 'departmentId']) if (typeof raw.criacao[k] === 'string' && /^[A-Za-z0-9_.-]{1,80}$/.test(raw.criacao[k])) c[k] = raw.criacao[k];
       if (Object.keys(c).length) out.criacao = c;
     }
-    for (const k of ['pedidoAoCliente', 'cortesiaCliente']) {
+    for (const k of ['pedidoAoCliente', 'cortesiaCliente', 'foraDoPortal', 'anexoCitado']) {
       if (Array.isArray(raw[k])) out[k] = [...new Set(raw[k].filter(p => typeof p === 'string' && p.trim() && p.length <= 60).map(p => semAcento(p).trim()))].slice(0, 80);
+    }
+    if (raw.textosSugestao && typeof raw.textosSugestao === 'object' && !Array.isArray(raw.textosSugestao)) {
+      const ts = {};
+      for (const k of Object.keys(DEFAULTS.textosSugestao)) if (typeof raw.textosSugestao[k] === 'string' && raw.textosSugestao[k].trim() && raw.textosSugestao[k].length <= 800) ts[k] = raw.textosSugestao[k].trim();
+      if (Object.keys(ts).length) out.textosSugestao = ts;
     }
     if (typeof raw.senhaGestorSha256 === 'string' && /^[0-9a-f]{64}$/i.test(raw.senhaGestorSha256)) out.senhaGestorSha256 = raw.senhaGestorSha256.toLowerCase();
     if (raw.avaliacao && typeof raw.avaliacao === 'object' && !Array.isArray(raw.avaliacao)) {
@@ -773,7 +808,7 @@
         if (t && t.key !== 'geral' && palavras.length) out.abaErrada.push({ tipo: t.key, palavras });
       }
     }
-    const util = Object.keys(out.config).length || out.feriados.length || out.abaErrada.length || (out.observacoes && Object.keys(out.observacoes).length) || out.avisoSemCalculo || out.assuntoSemCalculo || out.tramiteCriacao || out.criacao || out.senhaGestorSha256 || out.avaliacao || out.pedidoAoCliente || out.cortesiaCliente;
+    const util = Object.keys(out.config).length || out.feriados.length || out.abaErrada.length || (out.observacoes && Object.keys(out.observacoes).length) || out.avisoSemCalculo || out.assuntoSemCalculo || out.tramiteCriacao || out.criacao || out.senhaGestorSha256 || out.avaliacao || out.pedidoAoCliente || out.cortesiaCliente || out.foraDoPortal || out.anexoCitado || out.textosSugestao;
     return util ? out : null;
   }
 
@@ -795,6 +830,9 @@
       if (r.avaliacao && r.avaliacao.minEntregas) base.avaliacaoMinEntregas = r.avaliacao.minEntregas;
       if (r.pedidoAoCliente) base.pedidoAoCliente = r.pedidoAoCliente;
       if (r.cortesiaCliente) base.cortesiaCliente = r.cortesiaCliente;
+      if (r.foraDoPortal) base.foraDoPortal = r.foraDoPortal;
+      if (r.anexoCitado) base.anexoCitado = r.anexoCitado;
+      if (r.textosSugestao) base.textosSugestao = Object.assign({}, DEFAULTS.textosSugestao, r.textosSugestao);
     }
     // a senha da área do gestor vem só do código ou das regras do escritório, nunca dos ajustes da pessoa
     return Object.assign(base, usuario || {}, { senhaGestorSha256: base.senhaGestorSha256, pesosNota: base.pesosNota, avaliacaoMinEntregas: base.avaliacaoMinEntregas });
@@ -2023,21 +2061,113 @@
       return Object.assign(r, { motivos, pontos: r.abaErrada.length * 2 + r.repetidas.length * 2 + r.paradasCliente.length });
     }).filter(r => r.pontos > 0).sort((a, b) => b.pontos - a.pontos || a.cliente.localeCompare(b.cliente, 'pt-BR'));
   }
-  // Sugestões de ação para o dia, com link para a tela que resolve. extras: { semCalculo, admissoes, vencimentos }
-  function sugestoesAcoes(items, extras) {
-    items = (items || []).filter(i => i.lado !== 'fim');
-    extras = extras || {};
-    const c = f => items.filter(f).length, out = [];
-    const add = (n, k, texto, link, peso) => { if (n) out.push({ k, n, texto, link, peso }); };
-    add((extras.admissoes || []).length, 'admissao', 'Priorize as admissões em destaque: o prazo do eSocial está perto ou já passou', '#/fila?escopo=equipe&kpi=admissao', 100);
-    add(c(i => i.lado === 'esc' && i.grav === 3), 'g3', 'Comece pelas críticas (G3): fora do prazo há muito tempo ou perto de prescrever', '#/fila?escopo=equipe&kpi=g3', 90);
-    add((extras.vencimentos || []).filter(v => v.faltam <= 1).length, 'pagamento', 'Pagamentos de férias/rescisão vencendo em até 1 dia útil', '#/fila?escopo=equipe&kpi=pagamento', 85);
-    add((extras.semCalculo || []).length, 'semcalc', 'Avise os clientes que ainda não pediram o cálculo de férias/rescisão', '#/fila?escopo=equipe&kpi=semcalc', 80);
-    add(c(clienteRespondeu), 'respondeu', 'Responda quem já respondeu: o cliente está esperando o escritório', '#/fila?escopo=equipe&kpi=respondeu', 70);
-    add(c(i => !i.resp), 'semresp', 'Distribua as solicitações sem responsável', '#/distribuir', 65);
-    add(c(i => i.lado === 'cli' && i.prescreveEm != null && i.prescreveEm <= 5), 'prescreve', 'Cobre os clientes antes de prescrever (30 dias parada)', '#/fila?escopo=equipe&kpi=prescreve', 60);
-    add(c(i => !!i.abaProvavel), 'abaerrada', 'Oriente os clientes que abriram na lista Geral um pedido com aba própria', '#/fila?escopo=equipe&kpi=abaErrada', 40);
-    return out.sort((a, b) => b.peso - a.peso);
+  /* ---------- Sugestões de ação (Hoje): casos específicos, cada um com a ação pronta ----------
+   * Solicitações que parecem resolvidas fora do portal, abertas errado (lista errada, repetidas) ou com falta de
+   * informação do cliente. Do resumo: na vez do escritório e sem movimentação há mais de foraDoPortalDias dias,
+   * pedido repetido em aberto e pedido na lista Geral com aba própria. Dos trâmites (lidos sob demanda pelo cmd
+   * 'casos', só o veredito volta): trecho de foraDoPortal nas duas últimas mensagens, cliente que diz ter anexado e
+   * nenhum arquivo veio, abertura da Geral curta demais e sem anexo. A ação é um trâmite já preenchido, que a pessoa
+   * revisa e confirma (nunca automático). */
+  const CASOS = {
+    fora: { rot: 'Resolvida fora do portal?', botao: 'Concluir', situacao: 5 },
+    duplicada: { rot: 'Duplicada', botao: 'Encerrar duplicada', situacao: 5 },
+    abaErrada: { rot: 'Lista errada', botao: 'Orientar e concluir', situacao: 5 },
+    anexo: { rot: 'Anexo não chegou', botao: 'Pedir o anexo', situacao: 4 },
+    falta: { rot: 'Falta informação', botao: 'Pedir informações', situacao: 4 }
+  };
+  const ORDEM_CASOS = Object.keys(CASOS);
+  const textoPlano = x => semAcento(String(x || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/&[a-z#0-9]+;/gi, ' ')).replace(/\s+/g, ' ');
+  const acharTrecho = (texto, lista) => (lista || []).find(p => p && new RegExp('(^|[^a-z0-9])' + escRe(p) + '($|[^a-z0-9])').test(texto)) || null;
+  // Veredito de uma solicitação a partir dos trâmites (o texto não sai daqui): { tipo, trecho } ou null
+  function analisarCaso(topicos, t, item, settings) {
+    const s = Object.assign({}, DEFAULTS, settings || {});
+    const grava = new Set(FAMILIAS[t.familia].clienteGrava);
+    const ord = (topicos || []).filter(x => x && x.created && !x.deletedTopic).sort((a, b) => String(a.created).localeCompare(String(b.created)));
+    if (!ord.length) return null;
+    const temAnexo = x => Array.isArray(x.attachmentsExpanded) && x.attachmentsExpanded.some(a => a && (a.name || a.fileName));
+    // resolvida fora do portal: dito pelo cliente ou pelo escritório nas duas últimas mensagens
+    for (const x of ord.slice(-2).reverse()) { const tr = acharTrecho(textoPlano(x.description), s.foraDoPortal); if (tr) return { tipo: 'fora', trecho: tr }; }
+    // mensagens do cliente depois da última do escritório (a 1ª é a abertura)
+    let ultEsc = -1;
+    ord.forEach((x, n) => { if (n > 0 && !grava.has(Number(x.status))) ultEsc = n; });
+    const doCliente = ord.slice(ultEsc + 1);
+    if (!doCliente.some(temAnexo)) {
+      const cita = doCliente.map(x => acharTrecho(textoPlano(x.description), s.anexoCitado)).find(Boolean);
+      if (cita) return { tipo: 'anexo', trecho: cita };
+    }
+    // Geral sem nenhuma resposta do escritório, texto curto demais e sem anexo
+    if (t.key === 'geral' && ultEsc < 0 && !ord.some(temAnexo) && ord.map(x => textoPlano(x.description)).join('').replace(/[^a-z0-9]/g, '').length < s.faltaInfoMinCaracteres) return { tipo: 'falta', trecho: '' };
+    return null;
+  }
+  // Lê os trâmites das pendências na vez do escritório (as mais recentes primeiro, até limite) e devolve os vereditos.
+  // cache: { k: { l, tipo, trecho } } (l = última movimentação): o que não mudou não é lido de novo.
+  async function analisarCasos(fetcher, items, cache, settings, limite) {
+    const out = {}, fila = [];
+    let lidas = 0, falhas = 0;
+    const cand = (items || []).filter(i => i && i.k && i.id && i.lado === 'esc' && !i.desconhecido && TYPE_BY_KEY[i.type] && ACOES.tramite(i.type))
+      .sort((a, b) => String(b.last || '').localeCompare(String(a.last || '')));
+    for (const i of cand) { const c = cache && cache[i.k]; if (c && c.l === i.last) out[i.k] = c; else fila.push(i); }
+    let n = 0;
+    const max = limite == null ? 80 : limite;
+    async function worker() {
+      while (n < fila.length && n < max) {
+        const i = fila[n++], t = TYPE_BY_KEY[i.type];
+        try {
+          const d = await fetcher(urlTramites(t, i));
+          const a = analisarCaso((d && d.items) || (Array.isArray(d) ? d : []), t, i, settings);
+          lidas++;
+          out[i.k] = { l: i.last, tipo: a ? a.tipo : null, trecho: a ? a.trecho : '' };
+        } catch (e) { if (e && (e.auth || e.cliente)) throw e; falhas++; }
+      }
+    }
+    await Promise.all(Array.from({ length: 4 }, worker));
+    return { analises: out, lidas, falhas, candidatas: cand.length, semLeitura: cand.filter(i => !out[i.k]).length };
+  }
+  // Lista de casos para o painel, do mais forte ao mais fraco. ignorados: { k: { l } } (a pessoa disse "não é o caso";
+  // volta se a solicitação mexer). Cada caso: { k, item, tipo, rot, porque, botao, acao: { situacao, texto }, pode }
+  function casosSugeridos(items, analises, settings, ignorados) {
+    const s = Object.assign({}, DEFAULTS, settings || {});
+    const tx = Object.assign({}, DEFAULTS.textosSugestao, s.textosSugestao || {});
+    const pend = (items || []).filter(i => i && i.k && i.lado !== 'fim' && !i.desconhecido);
+    const casos = new Map();
+    const add = (i, tipo, extra) => {
+      const ig = ignorados && ignorados[i.k];
+      if (ig && ig.l === i.last) return;
+      const atual = casos.get(i.k);
+      if (atual && ORDEM_CASOS.indexOf(atual.tipo) <= ORDEM_CASOS.indexOf(tipo)) return;
+      casos.set(i.k, Object.assign({ k: i.k, item: i, tipo }, extra));
+    };
+    if (s.foraDoPortalDias > 0) for (const i of pend) if (i.lado === 'esc' && (i.parado || 0) > s.foraDoPortalDias) add(i, 'fora', { porque: 'Sem resposta do escritório há ' + i.parado + ' dias: provavelmente resolvida fora do portal' });
+    for (const i of pend) {
+      const a = analises && analises[i.k];
+      if (!a || !a.tipo || a.l !== i.last || !CASOS[a.tipo]) continue;
+      if (a.tipo === 'fora' && i.lado !== 'esc') continue;
+      add(i, a.tipo, { porque: a.tipo === 'fora' ? 'Um trâmite recente indica que foi resolvida fora do portal' : a.tipo === 'anexo' ? 'O cliente fala em anexo, mas nenhum arquivo chegou' : 'Pedido curto demais e sem anexo: falta informação para atender', trecho: a.trecho || '' });
+    }
+    const chave = i => (i.codCliente !== '' && i.codCliente != null ? 'c' + i.codCliente : 'n' + semAcento(i.cliente || i.apelido || '')) + '|' + i.type + '|' + semAcento(i.detalhe || '').trim();
+    const grupos = new Map();
+    for (const i of pend) if (String(i.detalhe || '').trim()) { const k = chave(i); if (!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(i); }
+    for (const g of grupos.values()) {
+      if (g.length < 2) continue;
+      g.sort((a, b) => Number(a.num) - Number(b.num));
+      for (const i of g.slice(1)) add(i, 'duplicada', { outra: g[0].num, porque: 'Repete a nº ' + g[0].num + ' (mesmo cliente, lista e ' + (i.type === 'geral' ? 'assunto' : 'empregado') + '), ainda em aberto' });
+    }
+    for (const i of pend) if (i.abaProvavel) add(i, 'abaErrada', { aba: i.abaProvavel.label, porque: 'Aberta na lista Geral, mas tem aba própria: ' + i.abaProvavel.label });
+    return [...casos.values()].map(c => {
+      const def = CASOS[c.tipo], pode = podeAcao('tramite', c.item);
+      const sits = pode.ok ? situacoesTramite(c.item).map(x => x.code) : [];
+      const texto = String(tx[c.tipo] || '').replace(/\{aba\}/g, c.aba || '').replace(/\{outra\}/g, c.outra == null ? '' : String(c.outra));
+      return Object.assign(c, { rot: def.rot, botao: def.botao, pode, acao: { situacao: sits.includes(def.situacao) ? String(def.situacao) : '', texto } });
+    }).sort((a, b) => ORDEM_CASOS.indexOf(a.tipo) - ORDEM_CASOS.indexOf(b.tipo) || (b.item.parado || 0) - (a.item.parado || 0));
+  }
+  // "Não é o caso": guarda só o k e a última movimentação (volta se a solicitação mexer); até 300, nada com mais de 180 dias
+  function ignorarCaso(marcas, k, item, now) {
+    const l = Object.assign({}, marcas || {});
+    now = now || new Date();
+    if (item) l[k] = { l: item.last || '', em: now.toISOString() }; else delete l[k];
+    const lim = now.getTime() - 180 * 864e5;
+    for (const [x, v] of Object.entries(l)) if (!v || !v.em || new Date(v.em).getTime() < lim) delete l[x];
+    return Object.fromEntries(Object.entries(l).sort((a, b) => b[1].em.localeCompare(a[1].em)).slice(0, 300));
   }
   /* Previsão de solicitações por empresa: a partir das abertas nos últimos N dias (todas as situações, lidas na hora),
    * média por semana, tendência (2 semanas mais recentes x 2 anteriores) e estimativa para os próximos 7 e 30 dias,
@@ -2066,5 +2196,5 @@
     return { dias, empresas: lista, total: lista.reduce((s2, r) => s2 + r.total, 0), prox30: lista.reduce((s2, r) => s2 + r.prox30, 0) };
   }
 
-  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, quadroSemCalculo, marcarSemCalculo, textoAvisoSemCalculo, assuntoAvisoSemCalculo, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, sugestoesAcoes, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, quadroSemCalculo, marcarSemCalculo, textoAvisoSemCalculo, assuntoAvisoSemCalculo, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);

@@ -49,6 +49,7 @@
       <label class="field">Cliente sem retorno (dias úteis)<input type="number" id="clienteSemRetorno" min="1" max="60"></label>
       <label class="field" title="Aguardando o cliente há mais que isso e a última resposta do analista não pede nada: conta como resolvida. 0 desliga.">Vez do cliente vira resolvida depois de (dias úteis, 0 desliga)<input type="number" id="resolvidaClienteDias" min="0" max="30"></label>
       <label class="field">Solicitação parada (dias corridos)<input type="number" id="parada" min="1" max="90"></label>
+      <label class="field" title="Na vez do escritório e sem movimentação há mais que isso: sugestão de concluir no Hoje. 0 desliga.">Provavelmente resolvida fora do portal após (dias, 0 desliga)<input type="number" id="foraDoPortalDias" min="0" max="180"></label>
       <label class="field">Prescrição no Onvio (dias)<input type="number" id="prescricaoDias" min="1" max="120"></label>
       <label class="field">Alerta de prescrição a partir de (dias parada)<input type="number" id="prescricaoAviso" min="1" max="120"></label>
     </div>
