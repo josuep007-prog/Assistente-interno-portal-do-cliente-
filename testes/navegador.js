@@ -348,6 +348,9 @@ await passo('app · Hoje (analista): destaque com rosca, carrossel e próximos p
   await p.waitForSelector('#hj-prev table');
   assert.match(await p.textContent('#hj-prev'), /Escritório: 12 abertas em 4 semanas · estimativa de 13 nos próximos 30 dias[\s\S]*ACME2311 ▲Geral, Cálculo de férias/);
   // clique na rosca leva às Solicitações com o motivo, na mesma carteira
+  // a rosca entra animada: o clique só vale depois que os arcos chegam ao lugar
+  await p.waitForFunction(() => !document.querySelector('#vista').classList.contains('hj-anim'));
+  await p.waitForTimeout(250);
   const ponto = await p.evaluate(() => { const r = document.querySelector('.hj-donut .an-svg').getBoundingClientRect(), k = r.width / 150; return [r.left + (75 + 64) * k, r.top + 75 * k]; });
   await p.mouse.click(ponto[0], ponto[1]);
   await p.waitForFunction(() => location.hash === '#/fila?motivo=atraso');
@@ -395,7 +398,7 @@ await passo('app · Hoje: admissões sem trâmite do escritório em faixa recolh
   assert.match(l[0], /^10\/10retroativa#301 DELTA · Fulano/);
   assert.match(l[1], /^20\/10em 2 dias úteis#302 ÔMEGA · Joana/);
   assert.match(await p.textContent('#hj-venc'), /hoje.*ZETA · Beltrano.*Cálculo de férias · início das férias em 20\/10/);
-  assert.match(await p.textContent('#hj-sug'), /Priorize as admissões em destaque/);
+  assert.ok(!/Priorize as admissões em destaque/.test(await p.textContent('#hj-sug')), 'sugestão não repete o que já tem faixa própria');
   await p.click('#hj-admissao [data-k="cadEmpregado:e2"]');
   await p.waitForFunction(() => (window.__msgs || []).some(m => m.cmd === 'detalhe' && String(m.num) === '302'));
   await p.keyboard.press('Escape');
@@ -585,38 +588,43 @@ await passo('app · detalhe: aba Dados com a solicitação completa em grupos e 
   assert.deepEqual(p.erros, []);
 });
 
-await passo('app · Hoje: avisos sem cálculo em quadro de duas colunas; desconsiderar, já avisei e avisar o cliente por trâmite revisado', async () => {
+await passo('app · Hoje: avisos sem cálculo com Férias e Rescisões separadas; menu com responder no aviso, já avisei e desconsiderar', async () => {
   const itens = ITENS_APP.concat([
     { k: 'avisoFerias:f1', type: 'avisoFerias', typeLabel: 'Aviso de férias', id: 'f1', num: 201, code: 1, status: 'Sem análise', lado: 'esc', nivel: 0, grav: 0, parado: 1, motivos: [], resp: 'Ana Teste', mine: true, apelido: 'DELTA', cliente: 'DELTA', detalhe: 'Fulano', created: agoraIso(2), last: agoraIso(1), semCalculo: { alvo: '2026-10-30', faltam: 3, ref: 'início das férias em 03/11/2026', calculo: 'Cálculo de férias' } },
     { k: 'avisoRescisao:r1', type: 'avisoRescisao', typeLabel: 'Aviso de rescisão', id: 'r1', num: 202, code: 2, status: 'Em análise', lado: 'esc', nivel: 0, grav: 0, parado: 1, motivos: [], resp: 'Ana Teste', mine: true, apelido: 'ÔMEGA', cliente: 'ÔMEGA', detalhe: 'Joana', created: agoraIso(2), last: agoraIso(1), semCalculo: { alvo: '2026-10-14', faltam: -1, ref: 'aviso em 04/10/2026', calculo: 'Cálculo de rescisão' } }
   ]);
   const p = await abrirApp('#/inicio', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens }) });
-  await p.waitForSelector('#hj-semcalc .kb');
-  const col = c => p.$$eval('#hj-semcalc [data-col="' + c + '"] .kb-abre', e => e.map(x => x.dataset.k));
-  assert.equal(await p.$('.hj-paineis #hj-semcalc'), null, 'o quadro fica acima dos painéis, em largura total');
-  assert.deepEqual(await col('avisar'), ['avisoRescisao:r1', 'avisoFerias:f1'], 'do mais urgente');
-  assert.deepEqual(await col('avisados'), []);
-  const l = await p.$$eval('#hj-semcalc [data-col="avisar"] .kb-card', e => e.map(x => x.textContent));
-  assert.match(l[0], /14\/10venceu há 1 dia útil#202 ÔMEGA · Joana.*Aviso de rescisão sem Cálculo de rescisão · pagamento até 14\/10/);
-  assert.match(l[1], /30\/10vence em 3 dias úteis#201 DELTA · Fulano/);
+  await p.waitForSelector('#hj-semcalc .sc-cols');
+  const grupo = (tipo, g) => p.$$eval('#hj-semcalc [data-tipo="' + tipo + '"] [data-grupo="' + g + '"] .sc-abre', e => e.map(x => x.dataset.k));
+  const menu = async (tipo, sel) => { await p.click('#hj-semcalc [data-tipo="' + tipo + '"] [data-grupo="avisar"] .sc-mais summary'); await p.click('#hj-semcalc [data-tipo="' + tipo + '"] .sc-mais[open] ' + sel); };
+  assert.equal(await p.$('.hj-paineis #hj-semcalc'), null, 'o painel fica acima dos outros, em largura total');
+  assert.deepEqual(await p.$$eval('#hj-semcalc .sc-col h4', e => e.map(x => x.textContent)), ['Férias 1', 'Rescisões 1'], 'férias e rescisões separadas');
+  assert.deepEqual(await grupo('avisoFerias', 'avisar'), ['avisoFerias:f1']);
+  assert.deepEqual(await grupo('avisoRescisao', 'avisar'), ['avisoRescisao:r1']);
+  assert.match(await p.textContent('#hj-semcalc [data-tipo="avisoRescisao"] .sc-l'), /14\/10venceu há 1 d\.u\.#202 ÔMEGA · Joana.*Sem cálculo de rescisão · pagamento até 14\/10/);
+  assert.match(await p.textContent('#hj-semcalc [data-tipo="avisoFerias"] .sc-l'), /30\/10vence em 3 d\.u\.#201 DELTA · Fulano/);
+  assert.equal(await p.$eval('#hj-semcalc [data-tipo="avisoRescisao"] .sc-tx b', b => getComputedStyle(b).color) === await p.$eval('#hj-semcalc [data-tipo="avisoFerias"] .sc-tx b', b => getComputedStyle(b).color), true, 'título com a mesma cor, vencido ou não');
+  assert.equal(await p.isVisible('#hj-semcalc [data-sc-marca="desconsiderado"]'), false, 'ações secundárias no menu');
   // "Já avisei" passa para a 2ª coluna; "Voltar" devolve
-  await p.click('#hj-semcalc [data-sc-marca="avisado"][data-sc-k="avisoFerias:f1"]');
-  await p.waitForFunction(() => document.querySelectorAll('#hj-semcalc [data-col="avisados"] .kb-card').length === 1);
-  assert.deepEqual(await col('avisados'), ['avisoFerias:f1']);
-  assert.match(await p.textContent('#hj-semcalc [data-col="avisados"]'), /avisado \d{2}\/\d{2} \d{2}:\d{2}/);
+  await menu('avisoFerias', '[data-sc-marca="avisado"]');
+  await p.waitForFunction(() => document.querySelectorAll('#hj-semcalc [data-tipo="avisoFerias"] [data-grupo="avisados"] .sc-l').length === 1);
+  assert.deepEqual(await grupo('avisoFerias', 'avisados'), ['avisoFerias:f1']);
+  assert.match(await p.textContent('#hj-semcalc [data-tipo="avisoFerias"] [data-grupo="avisados"]'), /avisado \d{2}\/\d{2} \d{2}:\d{2}/);
+  assert.match(await p.textContent('#hj-semcalc [data-tipo="avisoFerias"] h4'), /Férias 01 avisado/);
   const marcas = await p.evaluate(() => JSON.parse(localStorage.getItem('__mem')).semCalculoMarcas);
   assert.deepEqual(Object.keys(marcas), ['avisoFerias:f1']);
   assert.deepEqual(Object.keys(marcas['avisoFerias:f1']).sort(), ['em', 'st'], 'guarda só a coluna e quando');
-  await p.click('#hj-semcalc [data-col="avisados"] [data-sc-marca=""]');
-  await p.waitForFunction(() => document.querySelectorAll('#hj-semcalc [data-col="avisar"] .kb-card').length === 2);
+  await p.click('#hj-semcalc [data-grupo="avisados"] [data-sc-marca=""]');
+  await p.waitForFunction(() => document.querySelectorAll('#hj-semcalc [data-grupo="avisar"] .sc-l').length === 2);
   // desconsiderar tira do quadro (fica na lista de desconsiderados, de onde pode voltar)
-  await p.click('#hj-semcalc [data-sc-marca="desconsiderado"][data-sc-k="avisoRescisao:r1"]');
-  await p.waitForFunction(() => document.querySelectorAll('#hj-semcalc [data-col="avisar"] .kb-card').length === 1);
-  assert.match(await p.textContent('#hj-semcalc .kb-desc-l summary'), /1 desconsiderado/);
-  assert.match(await p.textContent('#hj-semcalc h3 span'), /^1$/);
+  await menu('avisoRescisao', '[data-sc-marca="desconsiderado"]');
+  await p.waitForFunction(() => document.querySelectorAll('#hj-semcalc [data-grupo="avisar"] .sc-l').length === 1);
+  assert.match(await p.textContent('#hj-semcalc [data-tipo="avisoRescisao"] .sc-vazio'), /Nenhum aviso de rescisão sem cálculo/);
+  assert.match(await p.textContent('#hj-semcalc .sc-desc summary'), /1 desconsiderado/);
+  assert.match(await p.textContent('#hj-sc-total'), /^1$/);
   // avisar o cliente: abre o detalhe já no formulário de trâmite, com texto e situação sugeridos; só envia depois de confirmar
   await p.evaluate(() => { window.__respostas = Object.assign(window.__respostas || {}, { acao: { ok: true, acao: 'tramite', anexos: 0 }, detalhe: { ok: true, item: { assunto: 'Férias' }, tramites: [], datas: {} } }); });
-  await p.click('#hj-semcalc [data-sc-avisar="avisoFerias:f1"]');
+  await menu('avisoFerias', '[data-sc-avisar]');
   await p.waitForSelector('#gaveta #a-texto');
   assert.equal(await p.$eval('#a-situacao', s => s.value), '4', 'Respondido: a vez passa ao cliente');
   const txt = await p.$eval('#a-texto', t => t.value);
@@ -632,10 +640,10 @@ await passo('app · Hoje: avisos sem cálculo em quadro de duas colunas; descons
   await p.waitForFunction(() => { try { return JSON.parse(localStorage.getItem('__mem')).semCalculoMarcas['avisoFerias:f1'].st === 'avisado'; } catch (e) { return false; } });
   await p.keyboard.press('Escape');
   await p.waitForSelector('#gaveta', { state: 'hidden' });
-  await p.waitForFunction(() => document.querySelectorAll('#hj-semcalc [data-col="avisados"] .kb-card').length === 1, null, { timeout: 4000 });
+  await p.waitForFunction(() => document.querySelectorAll('#hj-semcalc [data-grupo="avisados"] .sc-l').length === 1, null, { timeout: 4000 });
   assert.ok(!/semCalculo|Fulano/.test(JSON.stringify(await p.evaluate(() => JSON.parse(localStorage.getItem('__mem')).semCalculoMarcas))), 'texto e nome não são guardados');
   // o cartão abre o detalhe
-  await p.click('#hj-semcalc .kb-abre[data-k="avisoFerias:f1"]');
+  await p.click('#hj-semcalc .sc-abre[data-k="avisoFerias:f1"]');
   await p.waitForFunction(() => (window.__msgs || []).filter(m => m.cmd === 'detalhe' && String(m.num) === '201').length >= 2);
   assert.deepEqual(p.erros, []);
 });
