@@ -1,6 +1,6 @@
-# Control Onvio · ControlTax (v0.16.0)
+# Control Onvio · ControlTax (v0.18.0)
 
-Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
+Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
 ## Instalar (piloto)
 
@@ -25,7 +25,7 @@ Para atualizar a versão: substitua os arquivos da pasta, clique em **Recarregar
 
 | Tela | Para quem | O que mostra |
 | --- | --- | --- |
-| **Hoje** | Analista (todos veem) | A visão do dia; o trabalho com as solicitações fica em **Solicitações**. **Carteira** no cabeçalho. Em cima, em **destaque vermelho**, as **admissões** retroativas, já passadas ou a até 2 dias úteis do início (o eSocial vence no dia anterior). **Destaque**: rosca % em dia (clicar numa parte abre as Solicitações com aquele motivo), carrossel e **Próximos passos**. **Avisos sem cálculo** em quadro de duas colunas (A avisar / Cliente avisado, com Avisar o cliente, Já avisei e Desconsiderar). **Painéis**: vencimentos de férias e rescisões (prazo legal), **sugestões de ação** (com link para resolver), **uso do portal pelo cliente** (lista errada, pedido repetido, solicitação abandonada) e **previsão de solicitações por empresa** (média das últimas 4 semanas, tendência e estimativa para 7 e 30 dias, lida na hora) |
+| **Hoje** | Analista (todos veem) | A visão do dia; o trabalho com as solicitações fica em **Solicitações**. **Carteira** no cabeçalho. **Destaque**: rosca % em dia (clicar numa parte abre as Solicitações com aquele motivo), carrossel e **Próximos passos**. Logo abaixo, em **destaque vermelho e recolhível**, as **admissões** retroativas, já passadas ou a até 2 dias úteis do início, sem nenhum trâmite do escritório ainda (o eSocial vence no dia anterior). **Avisos sem cálculo** com Férias e Rescisões lado a lado (Criar solicitação e, no menu ⋯, responder no aviso, Já avisei e Desconsiderar). **Painéis**: vencimentos de férias e rescisões (prazo legal), **sugestões de ação** (com link para resolver), **uso do portal pelo cliente** (lista errada, pedido repetido, solicitação abandonada) e **previsão de solicitações por empresa** (média das últimas 4 semanas, tendência e estimativa para 7 e 30 dias, lida na hora) |
 | **Solicitações** | Analista e gestor | Onde o analista trabalha. Cartões por tipo, abas Minhas / Equipe toda / Sem responsável. Busca, vez (escritório/cliente), **Filtros** (tipo, gravidade, responsável), **Ordenar**, **Lista ou Cartões**, **Mais** (exportar CSV). Os filtros ativos aparecem como etiquetas que se tiram com um clique |
 | **Agenda e lembretes** | Cada um | Calendário do mês com lembretes e expectativas de conclusão das suas solicitações; lista (atrasados, hoje, próximos, concluídos). Lembretes podem **repetir** (todo dia, todo dia útil, toda semana, todo mês) |
 | **Equipe** | Gestor | Aba Painel (números, carga por responsável G1/G2/G3, entradas e saídas de 14 dias, pendências ao longo do dia, por tipo, **sugestão de distribuição** das sem analista e **próximas a prescrever**) e aba Responsáveis (**idade da fila**: mapa de calor analista × dias parada, e a carga de cada pessoa) |
@@ -42,6 +42,36 @@ Vez do cliente: sem retorno há mais de 5 dias úteis (laranja); a partir de 20 
 
 Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardando resposta** = o escritório precisa responder; **Respondido** = vez do cliente.
 
+## Novidades da v0.18.0 (Hoje revisto)
+
+- **Avisos sem cálculo** no padrão dos outros painéis, com **Férias** e **Rescisões** lado a lado. Em cada coluna, primeiro os que faltam avisar (do mais urgente) e, embaixo, "Cliente avisado · aguardando o cálculo".
+  - Cada linha tem um botão só, **Criar solicitação**. O menu **⋯** traz "Responder no próprio aviso", "Já avisei por outro meio" e "Desconsiderar"; os desconsiderados voltam pelo botão no cabeçalho do painel.
+  - O título não fica mais todo em vermelho: só a data do vencido.
+- **Sem repetição:** o painel de vencimentos não repete os avisos que já estão no quadro (diz quantos estão lá). As sugestões não repetem admissões e avisos sem cálculo, que já têm painel próprio.
+- **Painéis em grade de 2:** vencimentos e sugestões, uso do portal e previsão. Na previsão, os números ficam mais perto dos nomes das empresas.
+- **Cabeçalho** cabe numa linha em telas de 1280 px: a busca encolhe e o rótulo "Carteira" sai (fica no leitor de tela).
+
+## Novidades da v0.17.1 (faixa de admissões)
+
+- A faixa de **admissões** do Hoje desce para **logo abaixo do destaque** ("solicitações pedem sua atenção").
+- Só entram as admissões em que o **escritório ainda não fez nenhum trâmite**. Saem as que estão numa situação que só o escritório grava (Aguardando o cliente, Encaminhado) e aquelas em que a leitura dos trâmites achou um trâmite do escritório (`OC.escritorioTramitou`). As Solicitações com "Admissões em destaque" usam o mesmo critério.
+- A faixa é **recolhível**: o cabeçalho mostra o resumo (retroativas, já passaram, próxima data) e o Control Onvio lembra se você recolheu.
+
+## Novidades da v0.17.0 (criar solicitação)
+
+Autorizado pelo Josué em 16/10/2026.
+
+- **Nova solicitação (lista Geral)** por dentro da extensão, em três lugares:
+  - **Solicitações**: botão **Nova solicitação** no cabeçalho. Escolha o cliente (os que têm alguma pendência lida; vindo da tela de um cliente, ele já vem escolhido).
+  - **Detalhe**: **Nova para o cliente** cria para o cliente da solicitação aberta.
+  - **Hoje, avisos sem cálculo**: **Criar solicitação** já vem com o cliente, o assunto ("Cálculo de férias pendente · Fulano") e o texto. Criada, o aviso passa para **Cliente avisado**. **Responder no aviso** (trâmite no próprio aviso) continua como opção.
+- Sempre em dois passos: **Revisar e criar** mostra o resumo e só **Confirmar e criar no Onvio** cria. Depois de criada, a solicitação nova abre no detalhe.
+- **Passar a vez ao cliente:** marcado, logo depois de criar a extensão inclui um trâmite "Respondido" (texto em `tramiteCriacao` nas regras). Assim a solicitação fica com o cliente, conta a prescrição e você fica como responsável. Sem marcar, ela fica "Sem análise" na fila do escritório.
+- **Como a extensão monta o pedido:** o id do cliente vem de uma solicitação dele, lida na hora. O tipo e o meio da solicitação são copiados de uma Geral recente do próprio Onvio, e o departamento vem do acesso do usuário. O arquivo de regras pode fixar os três (`criacao`). Se não conseguir descobrir, não cria e diz o que faltou.
+- Anexos: depois de criada, responda na solicitação (Responder > Anexar).
+
+**A confirmar no Onvio real:** os valores de `serviceRequestType` e `requestWay` quando o escritório cria pela tela (`mapeamento/prompt-criacao-onvio.md`). Até lá, a 1ª criação real deve ser feita numa solicitação da empresa de teste.
+
 ## Novidades da v0.16.0 (quadro dos avisos sem cálculo e detalhe mais limpo)
 
 - **Avisos sem cálculo em quadro de duas colunas** no Hoje, logo abaixo do destaque: **A avisar** e **Cliente avisado** (aguardando o cálculo). Em cada cartão:
@@ -53,7 +83,7 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 - **Detalhe:** as abas (Trâmites, Dados, Para o cliente, Lembretes) não são mais achatadas quando a janela é baixa ou a solicitação tem muitos trâmites; só o corpo rola.
 - **Aba Dados mais limpa:** só o que serve para atender. Saíram o bloco "Controle" (o que ele tinha já está no topo da janela, agora com "Aberta em … por …"), o cliente repetido e os campos técnicos (tipo de solicitação, meio, quem cadastrou, alterada em, datas de controle). Rótulos e valores em português (ex.: "Admissão", "Vínculo: Empregado"), sem repetição, e a descrição por último.
 
-**Não feito: criar uma solicitação nova para o cliente.** As regras de segurança proíbem a extensão de criar solicitação, e o formato da criação não está completo no mapeamento (os valores de `serviceRequestType` e `requestWay` não foram anotados). Por isso o aviso vai como trâmite no próprio aviso. Para criar uma solicitação Geral é preciso a autorização do Josué, mapear esses valores na empresa de teste e um teste com API simulada.
+Criar uma solicitação nova para o cliente chegou na v0.17.0.
 
 ## Novidades da v0.15.0 (Hoje como visão do dia)
 

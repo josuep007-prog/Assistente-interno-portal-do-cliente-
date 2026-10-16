@@ -752,10 +752,18 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .dist-sug small.late{color:var(--late)}
 
 /* Hoje · admissões em destaque */
-.hj-admissao{margin:0 0 18px; padding:16px 18px; border:2px solid var(--brand-red); border-radius:10px; background:color-mix(in srgb, var(--brand-red) 8%, var(--surface)); box-shadow:0 0 0 4px color-mix(in srgb, var(--brand-red) 12%, transparent)}
-.hj-admissao h3{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 12px; font:800 16px "Archivo",sans-serif; color:var(--brand-red)}
-.hj-admissao h3 small{flex-basis:100%; font:500 12.5px "IBM Plex Sans",sans-serif; color:var(--ink-2)}
-.hj-adm-l{display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:8px}
+.hj-admissao{margin:18px 0 0; padding:16px 18px; border:2px solid var(--brand-red); border-radius:10px; background:color-mix(in srgb, var(--brand-red) 8%, var(--surface)); box-shadow:0 0 0 4px color-mix(in srgb, var(--brand-red) 12%, transparent)}
+.hj-adm-cab{display:grid; grid-template-columns:1fr auto; align-items:center; gap:2px 12px; width:100%; padding:0; border:0; background:none; color:inherit; font:inherit; text-align:left; cursor:pointer}
+.hj-admissao h3{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0; font:800 16px "Archivo",sans-serif; color:var(--brand-red)}
+.hj-adm-resumo{font:600 12.5px "IBM Plex Sans",sans-serif; color:var(--ink-2)}
+.hj-adm-cab small{grid-column:1; font:500 12.5px "IBM Plex Sans",sans-serif; color:var(--ink-2)}
+.hj-adm-seta{grid-column:2; grid-row:1 / span 2; display:inline-flex; align-items:center; gap:4px; font-size:12px; font-weight:600; color:var(--brand-red)}
+.hj-adm-seta em{font-style:normal}
+.hj-adm-seta .ic{transition:transform .15s}
+.hj-admissao.recolhida .hj-adm-seta .ic{transform:rotate(-90deg)}
+.hj-adm-cab:hover .hj-adm-seta em{text-decoration:underline}
+.hj-adm-l{display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:8px; margin-top:12px}
+.hj-adm-l[hidden]{display:none}
 .hj-adm{display:flex; align-items:center; gap:12px; padding:10px 12px; border:1px solid var(--rule); border-radius:8px; background:var(--surface); color:inherit; font:inherit; text-align:left; cursor:pointer}
 .hj-adm:hover, .hj-adm:focus-visible{border-color:var(--brand-red)}
 .hj-adm-d{display:flex; flex-direction:column; min-width:78px}
@@ -768,9 +776,8 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 
 /* Hoje · painéis */
 .hj-paineis{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; margin-top:18px}
-.hj-paineis > #hj-prev{grid-column:1/-1}
 .hj-paineis > .hj-semcalc{margin:0}
-.hj-paineis > section:nth-child(odd):nth-last-child(2){grid-column:1/-1}   /* painel sozinho na linha antes da previsão */
+.hj-paineis > section:last-child:nth-child(odd){grid-column:1/-1}   /* o último, sozinho na linha, ocupa a largura */
 @media (max-width:1000px){ .hj-paineis{grid-template-columns:1fr} }
 .hj-painel{padding:14px 16px; border:1px solid var(--rule); border-radius:8px; background:var(--surface); min-width:0}
 .hj-painel header{display:flex; align-items:center; gap:8px; margin-bottom:4px}
@@ -783,7 +790,6 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .hj-mini:hover, .hj-mini:focus-visible{border-color:var(--blue-deep)}
 .hj-mini-q{display:flex; flex-direction:column; min-width:70px; font:700 15px "Archivo",sans-serif; font-variant-numeric:tabular-nums}
 .hj-mini-q small{font:600 11px "IBM Plex Sans",sans-serif; color:var(--ink-3)}
-.hj-mini.late .hj-mini-q, .hj-mini.late .hj-mini-q small{color:var(--brand-red)}
 .hj-mini > span{flex:1; min-width:0; display:flex; flex-direction:column}
 .hj-mini > span b{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px}
 .hj-mini > span small{font-size:11.5px; color:var(--ink-3)}
@@ -805,40 +811,56 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .hj-passos h3{display:flex; align-items:center; gap:8px}
 .hj-passos h3 .btn{margin-left:auto; text-transform:none; letter-spacing:0}
 
-/* Hoje · quadro dos avisos sem cálculo (duas colunas) */
-.hj-kanban{margin:18px 0 0}
-.kb{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px}
-@media (max-width:900px){ .kb{grid-template-columns:1fr} }
-.kb-col{display:flex; flex-direction:column; gap:8px; min-width:0; padding:10px; border-radius:8px; background:var(--surface-2)}
-.kb-col header{display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; padding:2px 4px 4px}
-.kb-col header b{font:700 13px "Archivo",sans-serif}
-.kb-col header small{flex-basis:100%; font-size:11.5px; color:var(--ink-3)}
-.kb-n{min-width:20px; padding:0 6px; border-radius:999px; background:var(--surface); border:1px solid var(--rule); font-size:11px; font-weight:700; text-align:center; font-variant-numeric:tabular-nums}
-.kb-col[data-col="avisar"] .kb-n{background:var(--brand-red); border-color:var(--brand-red); color:#fff}
-.kb-col[data-col="avisados"] .kb-card{border-left-color:var(--ok)}
-.kb-card{display:flex; flex-direction:column; border:1px solid var(--rule); border-left:3px solid var(--today); border-radius:6px; background:var(--surface)}
-.kb-card.late{border-left-color:var(--brand-red)}
-.kb-abre{display:flex; align-items:center; gap:12px; width:100%; padding:9px 11px 6px; border:0; background:none; color:inherit; font:inherit; text-align:left; cursor:pointer; border-radius:6px 6px 0 0}
-.kb-abre:hover b, .kb-abre:focus-visible b{color:var(--blue-deep)}
-.kb-data{display:flex; flex-direction:column; min-width:88px; font-variant-numeric:tabular-nums}
-.kb-data b{font:700 15px "Archivo",sans-serif}
-.kb-data small{font-size:11px; color:var(--ink-3)}
-.kb-card.late .kb-data b, .kb-card.late .kb-data small{color:var(--brand-red)}
-.kb-tx{flex:1; min-width:0; display:flex; flex-direction:column}
-.kb-tx b{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
-.kb-tx small{font-size:11.5px; color:var(--ink-3)}
-.kb-acoes{display:flex; align-items:center; gap:6px; flex-wrap:wrap; padding:4px 11px 9px}
-.kb-acoes .kb-desc{margin-left:auto; border:0; background:none; padding:4px 2px; font:600 12px "IBM Plex Sans",sans-serif; color:var(--ink-3); cursor:pointer}
-.kb-acoes .kb-desc:hover{color:var(--brand-red)}
-.kb-quando{display:inline-flex; align-items:center; gap:4px; font-size:11.5px; color:var(--ok); font-weight:600}
-.kb-vazio{padding:14px 6px; font-size:12px; color:var(--ink-3); text-align:center}
-.kb-desc-l{margin-top:10px; font-size:12.5px}
-.kb-desc-l summary{cursor:pointer; color:var(--ink-3); font-weight:600}
-.kb-desc-i{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:6px 0; border-bottom:1px solid var(--rule)}
-.kb-desc-i small{color:var(--ink-3)}
+/* Hoje · avisos sem cálculo: painel no padrão, Férias | Rescisões */
+.hj-painel.hj-semcalc{margin-top:18px}
+.hj-semcalc header .sc-desc{margin-left:auto}
+.sc-n{min-width:20px; padding:1px 7px; border-radius:999px; background:var(--surface-2); border:1px solid var(--rule); color:var(--ink-2); font:700 11px "IBM Plex Sans",sans-serif; text-align:center; font-variant-numeric:tabular-nums}
+.sc-n.on{background:var(--brand-red); border-color:var(--brand-red); color:#fff}
+.sc-cols{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px}
+@media (max-width:1000px){ .sc-cols{grid-template-columns:1fr} }
+.sc-col{min-width:0}
+.sc-col h4{display:flex; align-items:center; gap:8px; margin:0 0 8px; padding-bottom:6px; border-bottom:1px solid var(--rule); font:700 12px "Archivo",sans-serif; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-2)}
+.sc-col h4 small{margin-left:auto; font:600 11.5px "IBM Plex Sans",sans-serif; letter-spacing:0; text-transform:none; color:var(--ok)}
+.sc-lista{display:flex; flex-direction:column; gap:6px}
+.sc-l{display:flex; align-items:center; gap:8px; padding-right:8px; border:1px solid var(--rule); border-radius:6px; background:var(--surface-2); transition:border-color .15s}
+.sc-l:hover{border-color:var(--blue-deep)}
+.sc-abre{flex:1; min-width:0; display:flex; align-items:center; gap:12px; padding:8px 10px; border:0; background:none; color:inherit; font:inherit; text-align:left; cursor:pointer}
+.sc-data{display:flex; flex-direction:column; min-width:92px; font:700 15px "Archivo",sans-serif; font-variant-numeric:tabular-nums}
+.sc-data small{font:600 11px "IBM Plex Sans",sans-serif; color:var(--ink-3)}
+.sc-vencido .sc-data, .sc-vencido .sc-data small{color:var(--brand-red)}
+.sc-tx{flex:1; min-width:0; display:flex; flex-direction:column}
+.sc-tx b{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; color:var(--ink)}
+.sc-tx small{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11.5px; color:var(--ink-3)}
+.sc-acoes{display:flex; align-items:center; gap:4px; flex:none}
+.sc-acoes .icon-btn{width:28px; height:28px; color:var(--ink-3)}
+.sc-acoes .icon-btn:hover{color:var(--ink); background:var(--surface)}
+.sc-mais .menu-list, .sc-desc .menu-list{min-width:230px}
+.menu-item:disabled{opacity:.45; cursor:default}
+.sc-avisado{background:var(--surface); opacity:.85}
+.sc-avisado .sc-data, .sc-avisado .sc-tx b{color:var(--ink-2)}
+.sc-ok{display:inline-flex; align-items:center; gap:4px; margin-right:4px; font-size:11.5px; font-weight:600; color:var(--ok); white-space:nowrap}
+.sc-grupo{margin:12px 0 6px; font:600 11.5px "IBM Plex Sans",sans-serif; color:var(--ink-3)}
+.sc-vazio{display:flex; align-items:center; gap:6px; padding:10px 2px; font-size:12.5px; color:var(--ink-3)}
+.hj-semcalc .btn-ghost{border-color:transparent; background:none}
+.hj-semcalc .btn-ghost:hover{border-color:var(--rule-strong)}
+.hj-painel-nota{margin:8px 0 0; font-size:11.5px; color:var(--ink-3)}
+.hj-mini.hj-mini-urg .hj-mini-q, .hj-mini.hj-mini-urg .hj-mini-q small{color:var(--brand-red)}
 
 /* Detalhe · aba Dados em blocos */
 .dados-g{margin-bottom:18px}
 .dados-g:last-child{margin-bottom:0}
 .campo-longo{margin:12px 0 0}
 .campo-longo .texto-longo{margin-top:4px}
+
+/* Nova solicitação (Geral) */
+.dlg-nova{width:min(640px, calc(100vw - 32px))}
+.dlg-nova .dlg-section{display:flex; flex-direction:column; gap:12px}
+.dlg-nova textarea{min-height:150px}
+
+/* cabeçalho em telas médias: a busca encolhe e o rótulo "Carteira" sai, para tudo caber numa linha */
+@media (max-width:1440px){
+  .busca-falsa{width:200px}
+  .hj-cart{font-size:0; gap:0}
+  .hj-cart select{min-width:170px}
+}
+@media (max-width:1200px){ .busca-falsa{width:44px} .busca-falsa span, .busca-falsa kbd{display:none} }

@@ -1,8 +1,10 @@
 /* Hoje · visão do dia (o trabalho com as solicitações em si fica em "Solicitações", #/fila).
- * Em cima, em destaque: admissões retroativas ou perto do início (o eSocial vence no dia anterior).
  * Destaque: rosca "% em dia" (clique leva às Solicitações com aquele motivo), carrossel e "Próximos passos".
- * Avisos sem cálculo em quadro de duas colunas ("A avisar" e "Cliente avisado"): avisar o cliente é um trâmite no
- * próprio aviso (formulário das ações, revisado e confirmado); "Desconsiderar" tira do quadro. Só o k e a coluna ficam.
+ * Logo abaixo, recolhível: admissões retroativas ou perto do início sem nenhum trâmite do escritório (o eSocial
+ * vence no dia anterior).
+ * Avisos sem cálculo em painel com Férias e Rescisões lado a lado (em cada uma, os que faltam avisar e, embaixo,
+ * "Cliente avisado"): "Criar solicitação" abre a Nova solicitação (Geral) já preenchida; no menu "⋯", responder no
+ * próprio aviso, "Já avisei" e "Desconsiderar". Envios sempre revisados e confirmados. Só o k e a marca ficam.
  * Painéis: vencimentos de férias e rescisões (prazo legal), sugestões de ação, uso do portal pelo cliente e previsão
  * de solicitações por empresa (lida na hora, sob demanda). Carteira no cabeçalho. */
 import { estado, itens, minhas, primeiroNome, salvarLembretes, enviar, marcarSemCalculo } from '../estado.js';
@@ -68,21 +70,30 @@ export function render(el, ctx) {
   const admissoes = OC.admissoesCriticas(base);
   const vencs = OC.vencimentosLegais(base, estado.settings, new Date());
   const uso = OC.malUso(base, estado.settings);
-  const sugs = OC.sugestoesAcoes(base, { semCalculo: quadro.avisar.map(x => x.item), admissoes, vencimentos: vencs });
+  // os avisos sem cálculo já estão no quadro: o painel de vencimentos mostra o resto, e as sugestões não repetem
+  // o que já tem painel próprio na tela (admissões e avisos sem cálculo)
+  const vencLista = vencs.filter(v => !v.item.semCalculo), vencNoQuadro = vencs.length - vencLista.length;
+  const sugs = OC.sugestoesAcoes(base, { semCalculo: quadro.avisar.map(x => x.item), admissoes, vencimentos: vencs }).filter(x => x.k !== 'admissao' && x.k !== 'semcalc');
   const linkFila = p => '#/fila?' + new URLSearchParams(Object.assign(cart === EQUIPE ? { escopo: 'equipe' } : cart === SEM ? { escopo: 'semresp' } : cart !== MINHA ? { analista: cart } : {}, p));
 
-  const ativos = quadro.avisar.length + quadro.avisados.length;
-  el.innerHTML = aviso + admissoesHtml() + heroHtml() + (semCalc.length ? semCalcHtml() : '') +
+  el.innerHTML = aviso + heroHtml() + admissoesHtml() + (semCalc.length ? semCalcHtml() : '') +
     '<div class="hj-paineis">' + vencHtml() + (semCalc.length ? '' : semCalcHtml()) + sugHtml() + usoHtml() + prevHtml() + '</div>';
 
-  // Admissões: faixa bem destacada no topo
+  // Admissões: faixa destacada logo abaixo do destaque, só as que o escritório ainda não tocou; recolhível (lembra a escolha)
   function admissoesHtml() {
     if (!admissoes.length) return '';
     const quando = a => a.retro ? 'retroativa' : a.faltam < 0 ? 'já passou' : a.faltam === 0 ? 'hoje' : a.faltam === 1 ? 'amanhã' : 'em ' + a.faltam + ' dias úteis';
     const dt = ymd => ymd.slice(8, 10) + '/' + ymd.slice(5, 7);
-    return '<section class="hj-admissao" id="hj-admissao" role="alert">' +
-      '<h3>' + ic('alert') + ' ' + plural(admissoes.length, 'admissão pede', 'admissões pedem') + ' prioridade <small>O eSocial precisa ser enviado até o dia anterior ao início. Admissão retroativa já está fora do prazo.</small></h3>' +
-      '<div class="hj-adm-l">' + admissoes.map(i => { const a = i.admissaoAlerta; return '<button type="button" class="hj-adm' + (a.retro || a.faltam <= 0 ? ' late' : '') + '" data-k="' + esc(i.k) + '">' +
+    const recolhida = lerPref('hojeAdmRecolhida', '') === '1';
+    const retro = admissoes.filter(i => i.admissaoAlerta.retro).length, passou = admissoes.filter(i => !i.admissaoAlerta.retro && i.admissaoAlerta.faltam < 0).length;
+    const prox = admissoes.find(i => !i.admissaoAlerta.retro && i.admissaoAlerta.faltam >= 0);
+    const resumo = [retro ? plural(retro, 'retroativa', 'retroativas') : '', passou ? passou + ' já ' + (passou === 1 ? 'passou' : 'passaram') : '', prox ? 'próxima em ' + dt(prox.admissaoAlerta.data) : ''].filter(Boolean).join(' · ');
+    return '<section class="hj-admissao' + (recolhida ? ' recolhida' : '') + '" id="hj-admissao" role="alert">' +
+      '<button type="button" class="hj-adm-cab" id="hj-adm-toggle" aria-expanded="' + !recolhida + '" aria-controls="hj-adm-l">' +
+        '<h3>' + ic('alert') + ' ' + plural(admissoes.length, 'admissão pede', 'admissões pedem') + ' prioridade <span class="hj-adm-resumo">' + esc(resumo) + '</span></h3>' +
+        '<small>Sem nenhum trâmite do escritório ainda. O eSocial precisa ser enviado até o dia anterior ao início; admissão retroativa já está fora do prazo.</small>' +
+        '<span class="hj-adm-seta">' + ic('chev-d', 'ic-sm') + '<em>' + (recolhida ? 'Mostrar' : 'Recolher') + '</em></span></button>' +
+      '<div class="hj-adm-l" id="hj-adm-l"' + (recolhida ? ' hidden' : '') + '>' + admissoes.map(i => { const a = i.admissaoAlerta; return '<button type="button" class="hj-adm' + (a.retro || a.faltam <= 0 ? ' late' : '') + '" data-k="' + esc(i.k) + '">' +
         '<span class="hj-adm-d"><b>' + esc(dt(a.data)) + '</b><small>' + esc(quando(a)) + '</small></span>' +
         '<span class="hj-adm-tx"><b>#' + esc(i.num) + ' ' + esc(nomeCli(i)) + ' · ' + esc(i.detalhe || i.typeLabel) + '</b><small>' + esc(i.typeLabel) + ' · ' + esc(i.status) + ' · ' + esc(i.resp || 'sem analista') + '</small></span>' + ic('chev-r', 'ic-sm') + '</button>'; }).join('') + '</div></section>';
   }
@@ -95,10 +106,11 @@ export function render(el, ctx) {
 
   function vencHtml() {
     const quando = f => f < 0 ? 'venceu' : f === 0 ? 'hoje' : f === 1 ? 'amanhã' : 'em ' + f + ' d.u.';
+    const nota = vencNoQuadro ? '<p class="hj-painel-nota">' + plural(vencNoQuadro, 'aviso sem cálculo está', 'avisos sem cálculo estão') + ' no quadro acima.</p>' : '';
     return painel('hj-venc', ic('calendar', 'ic-sm') + ' Vencimentos de férias e rescisões', 'Prazo legal de pagamento: férias até 2 dias antes do início; rescisão até 10 dias após o desligamento.',
-      vencs.length ? '<div class="hj-mini-l">' + vencs.slice(0, 8).map(v => '<button type="button" class="hj-mini' + (v.faltam <= 1 ? ' late' : '') + '" data-k="' + esc(v.item.k) + '"><b class="hj-mini-q">' + esc(dtc(v.alvo)) + '<small>' + esc(quando(v.faltam)) + '</small></b><span><b>' + esc(nomeCli(v.item)) + ' · ' + esc(v.item.detalhe || '') + '</b><small>' + esc(v.item.typeLabel) + ' · ' + esc(v.ref || '') + '</small></span></button>').join('') + '</div>' +
-        (vencs.length > 8 ? '<a class="hj-painel-mais" href="' + linkFila({ kpi: 'pagamento' }) + '">Ver as que vencem em até 1 dia útil</a>' : '')
-        : vazio('Nenhum pagamento de férias ou rescisão vencendo nos próximos ' + (estado.settings.tempoOcupado || 5) * 2 + ' dias úteis.'));
+      vencLista.length ? '<div class="hj-mini-l">' + vencLista.slice(0, 8).map(v => '<button type="button" class="hj-mini' + (v.faltam <= 1 ? ' hj-mini-urg' : '') + '" data-k="' + esc(v.item.k) + '"><b class="hj-mini-q">' + esc(dtc(v.alvo)) + '<small>' + esc(quando(v.faltam)) + '</small></b><span><b>' + esc(nomeCli(v.item)) + ' · ' + esc(v.item.detalhe || '') + '</b><small>' + esc(v.item.typeLabel) + ' · ' + esc(v.ref || '') + '</small></span></button>').join('') + '</div>' +
+        (vencLista.length > 8 ? '<a class="hj-painel-mais" href="' + linkFila({ kpi: 'pagamento' }) + '">Ver as que vencem em até 1 dia útil</a>' : '') + nota
+        : vazio('Nenhum outro pagamento de férias ou rescisão vencendo nos próximos ' + (estado.settings.tempoOcupado || 5) * 2 + ' dias úteis.') + nota);
   }
 
   function sugHtml() {
@@ -154,32 +166,43 @@ export function render(el, ctx) {
     '</section>';
   }
 
+  // Avisos sem cálculo: painel no padrão do Hoje, com Férias e Rescisões lado a lado. Em cada coluna, primeiro o que
+  // falta avisar (do mais urgente) e, embaixo, "Cliente avisado". Um botão principal; o resto no menu "⋯".
   function semCalcHtml() {
     if (!semCalc.length) return painel('hj-semcalc-v', ic('alert', 'ic-sm') + ' Avisos sem cálculo', 'Férias e rescisões com o pagamento perto e sem a solicitação de cálculo do mesmo empregado.', vazio('Nenhum aviso de férias ou rescisão sem cálculo perto do prazo.'));
-    const quando = f => f < 0 ? 'venceu há ' + plural(-f, 'dia útil', 'dias úteis') : f === 0 ? 'vence hoje' : 'vence em ' + plural(f, 'dia útil', 'dias úteis');
+    const quando = f => f < 0 ? 'venceu há ' + f * -1 + ' d.u.' : f === 0 ? 'vence hoje' : 'vence em ' + f + ' d.u.';
     const dt = ymd => ymd.slice(8, 10) + '/' + ymd.slice(5, 7);
     const quandoMarca = em => { const d = new Date(em); return isNaN(d) ? '' : fmtDataHora(d.toISOString()); };
-    const cartao = ({ item: i, em }, col) => {
+    const linha = ({ item: i, em }, avisado) => {
       const sc = i.semCalculo, pode = OC.podeAcao('tramite', i);
-      const botoes = col === 'avisar'
-        ? '<button type="button" class="btn btn-sm btn-primary" data-sc-avisar="' + esc(i.k) + '"' + (pode.ok ? ' title="Trâmite no próprio aviso, revisado antes de enviar"' : ' disabled title="' + esc(pode.motivo) + '"') + '>' + ic('chat', 'ic-sm') + ' Avisar o cliente</button>' +
-          '<button type="button" class="btn btn-sm" data-sc-marca="avisado" data-sc-k="' + esc(i.k) + '" title="Já avisou por outro meio (telefone, e-mail)">Já avisei</button>'
-        : '<span class="kb-quando">' + ic('check', 'ic-sm') + ' avisado ' + esc(quandoMarca(em)) + '</span><button type="button" class="btn btn-sm" data-sc-marca="" data-sc-k="' + esc(i.k) + '" title="Volta para A avisar">Voltar</button>';
-      return '<div class="kb-card' + (sc.faltam <= 0 ? ' late' : '') + '">' +
-        '<button type="button" class="kb-abre" data-k="' + esc(i.k) + '">' +
-          '<span class="kb-data"><b>' + esc(dt(sc.alvo)) + '</b><small>' + esc(quando(sc.faltam)) + '</small></span>' +
-          '<span class="kb-tx"><b>#' + esc(i.num) + ' ' + esc(nomeCli(i)) + ' · ' + esc(i.detalhe || i.typeLabel) + '</b>' +
-          '<small>' + esc(i.typeLabel) + ' sem ' + esc(sc.calculo) + ' · pagamento até ' + esc(dt(sc.alvo)) + (cart === MINHA ? '' : ' · ' + esc(i.resp || 'sem analista')) + '</small></span></button>' +
-        '<div class="kb-acoes">' + botoes + '<button type="button" class="kb-desc" data-sc-marca="desconsiderado" data-sc-k="' + esc(i.k) + '" title="Tira do quadro (por exemplo, o cálculo foi pedido por outro canal)">Desconsiderar</button></div>' +
+      const acoes = avisado
+        ? '<span class="sc-ok">' + ic('check', 'ic-sm') + ' avisado ' + esc(quandoMarca(em)) + '</span><button type="button" class="btn btn-sm btn-ghost" data-sc-marca="" data-sc-k="' + esc(i.k) + '" title="Volta para os que faltam avisar">Voltar</button>'
+        : '<button type="button" class="btn btn-sm btn-primary" data-sc-criar="' + esc(i.k) + '" title="Cria uma solicitação Geral para o cliente, revisada antes de enviar">' + ic('plus', 'ic-sm') + ' Criar solicitação</button>';
+      const menu = '<details class="menu sc-mais"><summary class="icon-btn" aria-label="Mais ações" title="Mais ações">' + ic('more', 'ic-sm') + '</summary><div class="menu-list">' +
+        (avisado ? '' : '<button type="button" class="menu-item" data-sc-avisar="' + esc(i.k) + '"' + (pode.ok ? '' : ' disabled title="' + esc(pode.motivo) + '"') + '>' + ic('chat', 'ic-sm') + ' Responder no próprio aviso</button>' +
+          '<button type="button" class="menu-item" data-sc-marca="avisado" data-sc-k="' + esc(i.k) + '">' + ic('check', 'ic-sm') + ' Já avisei por outro meio</button>') +
+        '<button type="button" class="menu-item" data-sc-marca="desconsiderado" data-sc-k="' + esc(i.k) + '">' + ic('x', 'ic-sm') + ' Desconsiderar</button></div></details>';
+      return '<div class="sc-l' + (avisado ? ' sc-avisado' : sc.faltam <= 0 ? ' sc-vencido' : '') + '">' +
+        '<button type="button" class="sc-abre" data-k="' + esc(i.k) + '">' +
+          '<span class="sc-data"><b>' + esc(dt(sc.alvo)) + '</b><small>' + esc(quando(sc.faltam)) + '</small></span>' +
+          '<span class="sc-tx"><b>#' + esc(i.num) + ' ' + esc(nomeCli(i)) + ' · ' + esc(i.detalhe || i.typeLabel) + '</b>' +
+          '<small>Sem ' + esc(sc.calculo.toLowerCase()) + ' · pagamento até ' + esc(dt(sc.alvo)) + (cart === MINHA ? '' : ' · ' + esc(i.resp || 'sem analista')) + '</small></span></button>' +
+        '<div class="sc-acoes">' + acoes + menu + '</div></div>';
+    };
+    const coluna = (tipo, titulo, vazioTx) => {
+      const av = quadro.avisar.filter(x => x.item.type === tipo), ok = quadro.avisados.filter(x => x.item.type === tipo);
+      return '<div class="sc-col" data-tipo="' + tipo + '"><h4>' + titulo + ' <span class="sc-n' + (av.length ? ' on' : '') + '">' + av.length + '</span>' + (ok.length ? '<small>' + ok.length + ' avisado' + (ok.length > 1 ? 's' : '') + '</small>' : '') + '</h4>' +
+        (av.length ? '<div class="sc-lista" data-grupo="avisar">' + av.map(x => linha(x, false)).join('') + '</div>' : '<div class="sc-vazio">' + ic('check', 'ic-sm') + ' ' + vazioTx + '</div>') +
+        (ok.length ? '<div class="sc-grupo">Cliente avisado · aguardando o cálculo</div><div class="sc-lista" data-grupo="avisados">' + ok.map(x => linha(x, true)).join('') + '</div>' : '') +
       '</div>';
     };
-    const coluna = (id, titulo, dica, lista, col) => '<div class="kb-col" data-col="' + id + '"><header><b>' + titulo + '</b><span class="kb-n">' + lista.length + '</span><small>' + dica + '</small></header>' +
-      (lista.length ? lista.map(x => cartao(x, col)).join('') : '<div class="kb-vazio">' + (col === 'avisar' ? 'Nenhum aviso esperando contato.' : 'Ninguém avisado ainda.') + '</div>') + '</div>';
     const desc = quadro.desconsiderados;
-    return '<section class="hj-semcalc hj-kanban" id="hj-semcalc" style="--i:1" aria-label="Avisos sem cálculo">' +
-      '<h3>' + ic('alert', 'ic-sm') + ' Avisos sem cálculo <span>' + ativos + '</span><small>Férias e rescisões com o pagamento perto e sem a solicitação de cálculo do mesmo empregado. Saem do quadro sozinhos quando o cálculo chega.</small></h3>' +
-      '<div class="kb">' + coluna('avisar', 'A avisar', 'o cliente ainda não sabe', quadro.avisar, 'avisar') + coluna('avisados', 'Cliente avisado', 'aguardando o cálculo', quadro.avisados, 'avisados') + '</div>' +
-      (desc.length ? '<details class="kb-desc-l"><summary>' + plural(desc.length, 'desconsiderado', 'desconsiderados') + '</summary>' + desc.map(({ item: i }) => '<div class="kb-desc-i"><span>#' + esc(i.num) + ' ' + esc(nomeCli(i)) + ' · ' + esc(i.detalhe || i.typeLabel) + ' <small>' + esc(i.typeLabel) + '</small></span><button type="button" class="btn btn-sm" data-sc-marca="" data-sc-k="' + esc(i.k) + '">Voltar ao quadro</button></div>').join('') + '</details>' : '') +
+    return '<section class="hj-painel hj-semcalc" id="hj-semcalc" aria-label="Avisos sem cálculo">' +
+      '<header><h3>' + ic('alert', 'ic-sm') + ' Avisos sem cálculo <span class="sc-n' + (quadro.avisar.length ? ' on' : '') + '" id="hj-sc-total">' + quadro.avisar.length + '</span></h3>' +
+        (desc.length ? '<details class="menu sc-desc"><summary class="btn btn-sm btn-ghost">' + plural(desc.length, 'desconsiderado', 'desconsiderados') + '</summary><div class="menu-list">' + desc.map(({ item: i }) => '<button type="button" class="menu-item" data-sc-marca="" data-sc-k="' + esc(i.k) + '" title="Voltar ao quadro">' + ic('repeat', 'ic-sm') + ' #' + esc(i.num) + ' ' + esc(nomeCli(i)) + ' · ' + esc(i.detalhe || i.typeLabel) + '</button>').join('') + '</div></details>' : '') +
+      '</header>' +
+      '<p class="hj-painel-sub">Pagamento perto e sem a solicitação de cálculo do mesmo empregado. Saem daqui sozinhos quando o cálculo chega.</p>' +
+      '<div class="sc-cols">' + coluna('avisoFerias', 'Férias', 'Nenhum aviso de férias sem cálculo.') + coluna('avisoRescisao', 'Rescisões', 'Nenhum aviso de rescisão sem cálculo.') + '</div>' +
     '</section>';
   }
 
@@ -215,11 +238,19 @@ export function render(el, ctx) {
   if ($('#hj-semcalc', el)) ligarItens($('#hj-semcalc', el), quadro.avisar.concat(quadro.avisados).map(x => x.item), ctx.abrirDetalhe);
   // quadro dos avisos sem cálculo: mover de coluna, desconsiderar e avisar o cliente (trâmite revisado e confirmado)
   $$('[data-sc-marca]', el).forEach(b => b.addEventListener('click', async () => {
+    const m = b.closest('details'); if (m) m.open = false;
     const st = b.dataset.scMarca || null;
     await marcarSemCalculo(b.dataset.scK, st);
-    toast(st === 'desconsiderado' ? 'Desconsiderado: o aviso saiu do quadro' : st === 'avisado' ? 'Movido para Cliente avisado' : 'Voltou para A avisar');
+    toast(st === 'desconsiderado' ? 'Desconsiderado: o aviso saiu do quadro' : st === 'avisado' ? 'Marcado como cliente avisado' : 'Voltou para os que faltam avisar');
+  }));
+  $$('.sc-mais', el).forEach(d => d.addEventListener('click', e => e.stopPropagation()));
+  $$('[data-sc-criar]', el).forEach(b => b.addEventListener('click', () => {
+    const i = semCalc.find(x => x.k === b.dataset.scCriar);
+    if (!i) return;
+    ctx.abrirNova({ origem: i, assunto: OC.assuntoAvisoSemCalculo(i, estado.settings), descricao: OC.textoAvisoSemCalculo(i, estado.settings), passarVez: true, aoCriar: () => marcarSemCalculo(i.k, 'avisado') });
   }));
   $$('[data-sc-avisar]', el).forEach(b => b.addEventListener('click', () => {
+    const m = b.closest('details'); if (m) m.open = false;
     const i = semCalc.find(x => x.k === b.dataset.scAvisar);
     if (!i) return;
     const sits = OC.situacoesTramite(i);
@@ -229,8 +260,16 @@ export function render(el, ctx) {
       aoEnviar: () => marcarSemCalculo(i.k, 'avisado')
     } });
   }));
-  if ($('#hj-admissao', el)) ligarItens($('#hj-admissao', el), admissoes, ctx.abrirDetalhe);
-  if ($('#hj-venc .hj-mini-l', el)) ligarItens($('#hj-venc', el), vencs.map(v => v.item), ctx.abrirDetalhe);
+  if ($('#hj-admissao', el)) ligarItens($('#hj-adm-l', el), admissoes, ctx.abrirDetalhe);
+  if ($('#hj-adm-toggle', el)) $('#hj-adm-toggle', el).onclick = () => {
+    const sec = $('#hj-admissao', el), rec = !sec.classList.contains('recolhida');
+    gravarPref('hojeAdmRecolhida', rec ? '1' : '');
+    sec.classList.toggle('recolhida', rec);
+    $('#hj-adm-l', el).hidden = rec;
+    $('#hj-adm-toggle', el).setAttribute('aria-expanded', String(!rec));
+    $('.hj-adm-seta em', el).textContent = rec ? 'Mostrar' : 'Recolher';
+  };
+  if ($('#hj-venc .hj-mini-l', el)) ligarItens($('#hj-venc', el), vencLista.map(v => v.item), ctx.abrirDetalhe);
   // previsão por empresa: calcula sozinha ao abrir (no máximo a cada 30 min); o botão recalcula
   // só o painel da previsão é trocado quando ela chega (o resto da tela e as faixas de aviso ficam)
   const trocarPrevisao = () => { const sec = $('#hj-prev', el); if (sec && el.isConnected) { sec.outerHTML = prevHtml(); ligarPrevisao(); } };

@@ -1025,6 +1025,36 @@ test('avisos sem cálculo: quadro em duas colunas, marcas só com k/coluna/hora 
   assert.equal(OC.normalizarRegras({ avisoSemCalculo: 'x'.repeat(801) }), null, 'texto grande demais é ignorado');
 });
 
+test('criar solicitação Geral: corpo do formato mapeado, tipo/meio/departamento das regras ou do Onvio, e achar a nova', () => {
+  const ex = { serviceRequestType: 'TIPO_GERAL', requestWay: 'WEB', departmentId: 'depX', subject: 'não usar', clientExpanded: { id: 'outro' } };
+  const m = OC.modeloCriacao({}, ex, { departmentId: 'depDP' });
+  assert.deepEqual(plano(m), { serviceRequestType: 'TIPO_GERAL', requestWay: 'WEB', departmentId: 'depDP', faltam: [] }, 'departamento do acesso do usuário antes do exemplo');
+  assert.deepEqual(plano(OC.modeloCriacao({ criacao: { serviceRequestType: 'R', requestWay: 'PHONE', departmentId: 'D' } }, ex, null)), { serviceRequestType: 'R', requestWay: 'PHONE', departmentId: 'D', faltam: [] }, 'regras do escritório valem primeiro');
+  assert.deepEqual(plano(OC.modeloCriacao({}, null, null).faltam), ['tipo', 'meio', 'departamento']);
+  assert.deepEqual(plano(OC.pedidoCriacao({ assunto: '  Cálculo   pendente ', descricao: ' Texto ' }, 'cli1', m)), {
+    metodo: 'POST', url: OC.API + 'service-requesting/v1/tickets/generic',
+    corpo: { serviceRequestType: 'TIPO_GERAL', clientExpanded: { id: 'cli1' }, departmentId: 'depDP', description: 'Texto', subject: 'Cálculo pendente', requestWay: 'WEB', requesterExpanded: {} }
+  });
+  assert.throws(() => OC.pedidoCriacao({ assunto: 'a', descricao: 'b' }, '', m), /escolha o cliente/);
+  assert.throws(() => OC.pedidoCriacao({ assunto: ' ', descricao: 'b' }, 'c', m), /escreva o assunto/);
+  assert.throws(() => OC.pedidoCriacao({ assunto: 'a', descricao: '' }, 'c', m), /escreva a descrição/);
+  assert.throws(() => OC.pedidoCriacao({ assunto: 'a', descricao: 'b' }, 'c', OC.modeloCriacao({}, { requestWay: 'WEB' }, null)), /não consegui descobrir no Onvio o tipo, departamento/);
+  const agora = new Date(2026, 9, 16, 10);
+  const regs = [
+    { id: 'n1', identifier: 1500, subject: 'Cálculo pendente', clientExpanded: { id: 'cli1' }, created: '2026-10-16T09:58:00' },
+    { id: 'n0', identifier: 1400, subject: 'Cálculo pendente', clientExpanded: { id: 'cli1' }, created: '2026-10-01T09:00:00' },
+    { id: 'n2', identifier: 1501, subject: 'Cálculo pendente', clientExpanded: { id: 'cli2' }, created: '2026-10-16T09:59:00' }
+  ];
+  assert.equal(OC.acharCriada(regs, 'Cálculo pendente', 'cli1', agora).id, 'n1', 'mesmo assunto e cliente, criada há pouco');
+  assert.equal(OC.acharCriada(regs, 'Outro', 'cli1', agora), null);
+  assert.equal(OC.assuntoAvisoSemCalculo({ typeLabel: 'Aviso de férias', detalhe: 'Fulano', semCalculo: { calculo: 'Cálculo de férias' } }, {}), 'Cálculo de férias pendente · Fulano');
+  const r = OC.normalizarRegras({ criacao: { serviceRequestType: 'GENERIC', requestWay: 'x y', departmentId: 'abc-1' }, tramiteCriacao: 'Aguardamos.' });
+  assert.deepEqual(plano(r.criacao), { serviceRequestType: 'GENERIC', departmentId: 'abc-1' }, 'valor com espaço é ignorado');
+  const s2 = OC.combinarSettings({ regras: r }, {});
+  assert.deepEqual(plano(s2.criacao), { serviceRequestType: 'GENERIC', requestWay: '', departmentId: 'abc-1' });
+  assert.equal(s2.tramiteCriacao, 'Aguardamos.');
+});
+
 test('prazo de pagamento: férias 2 dias antes do início e rescisão 10 dias após, antecipando fim de semana e feriado', () => {
   const f = OC.prazoPagamento('avisoFerias', { inicio: '2026-11-03' }, {});
   assert.equal(OC.ymd(f.alvo), '2026-10-30', '01/11 é domingo: antecipa para sexta 30/10');
@@ -1204,10 +1234,51 @@ test('ações: formatos do Onvio real (trâmite, encaminhar, responsável, expec
   assert.equal(OC.escritaPermitida('PUT', OC.API + 'br-payroll-sr/v1/prior-notice-vacations/f1/assign-staff'), true);
   assert.equal(OC.escritaPermitida('DELETE', OC.API + 'service-requesting/v1/tickets/g1/topics'), false);
   assert.equal(OC.escritaPermitida('PUT', OC.API + 'service-requesting/v1/tickets/g1/topics/t7/attachments/a1/delete'), false);
-  assert.equal(OC.escritaPermitida('POST', OC.API + 'service-requesting/v1/tickets/generic'), false, 'criar solicitação não');
+  assert.equal(OC.escritaPermitida('POST', OC.API + 'service-requesting/v1/tickets/generic'), true, 'criar solicitação Geral (autorizado em 16/10/2026)');
+  assert.equal(OC.escritaPermitida('PUT', OC.API + 'service-requesting/v1/tickets/generic'), false);
+  assert.equal(OC.escritaPermitida('POST', OC.API + 'br-payroll-sr/v1/prior-notice-vacations'), false, 'criar nas listas da folha ainda não');
+  assert.equal(OC.escritaPermitida('POST', OC.API + 'service-requesting/v1/tickets/generic?x=1'), false);
   assert.equal(OC.escritaPermitida('POST', 'https://outro.com/api/service-requesting/v1/tickets/g1/topics'), false);
   assert.equal(OC.idDoLocation('https://onvio.com.br/api/service-requesting/v1/tickets/g1/topics/abc123'), 'abc123');
   assert.deepEqual(plano(OC.equipeDe([{ resp: 'Bia', respId: 'b' }, { resp: 'Ana', respId: 'a' }, { resp: 'Ana', respId: 'a' }, { resp: '', respId: '' }])), [{ id: 'a', nome: 'Ana' }, { id: 'b', nome: 'Bia' }]);
+});
+
+test('background: criar solicitação Geral pela aba do Onvio, com o cliente da solicitação de origem, e passar a vez ao cliente', async () => {
+  const origem = pend('f1', 901, { clientExpanded: { id: 'cli-guid', name: 'ACME' } });
+  const exemplo = pend('ex1', 1490, { departmentId: 'depEx', requestWay: 'WEB' });
+  let criada = null;
+  const escritas = [];
+  const json = o => respHttp(200, 'application/json', JSON.stringify(o));
+  const api = async (url, init) => {
+    const u = new URL(url);
+    if (init && init.method && init.method !== 'GET') {
+      escritas.push({ metodo: init.method, url: u.pathname, corpo: JSON.parse(init.body), auth: init.headers.Authorization || null });
+      if (u.pathname.endsWith('/tickets/generic')) criada = { id: 'novo-guid', identifier: 1501, subject: JSON.parse(init.body).subject, clientExpanded: { id: 'cli-guid', name: 'ACME' }, created: new Date().toISOString().slice(0, 19) };
+      return respHttp(201, 'application/json', '');
+    }
+    if (u.pathname.endsWith('/company-department-access')) return json({ id: 'a', departmentId: 'depDP' });
+    if (u.pathname.endsWith('/tickets/generic/ex1')) return json({ id: 'ex1', serviceRequestType: 'TIPO_GERAL', requestWay: 'WEB', departmentId: 'depEx', subject: 'outro' });
+    if (u.pathname.endsWith('/tickets/generic')) return json({ items: u.searchParams.get('searchText') ? (criada ? [criada] : []) : [exemplo], totalItems: 1 });
+    if (u.pathname.endsWith('/prior-notice-vacations')) return json({ items: [origem], totalItems: 1 });
+    return json({ items: [] });
+  };
+  const { ctx, ouvintes, store } = carregarBackground({ abas: [aba(5, ONVIO_PORTAL)], fetchPorMundo: { MAIN: api }, fetch: api });
+  ctx.__controlOnvioAutorizacao = () => 'Bearer x';
+  const pedir = m => new Promise(res => ouvintes[0](m, { tab: { id: 5 } }, res));
+  const r = await pedir({ cmd: 'criar', origem: { type: 'avisoFerias', num: 901 }, assunto: 'Cálculo de férias pendente · Fulano', descricao: 'Falta o cálculo', passarVez: true });
+  assert.equal(r.ok, true, r.erro);
+  assert.deepEqual([r.num, r.tramite, r.erroTramite], ['1501', true, null]);
+  assert.deepEqual(plano(escritas.map(e => [e.metodo, e.url])), [['POST', '/api/service-requesting/v1/tickets/generic'], ['POST', '/api/service-requesting/v1/tickets/novo-guid/topics']]);
+  assert.deepEqual(plano(escritas[0].corpo), { serviceRequestType: 'TIPO_GERAL', clientExpanded: { id: 'cli-guid' }, departmentId: 'depDP', description: 'Falta o cálculo', subject: 'Cálculo de férias pendente · Fulano', requestWay: 'WEB', requesterExpanded: {} });
+  assert.equal(escritas[0].auth, 'Bearer x');
+  assert.deepEqual(plano(escritas[1].corpo), { description: 'Aguardando o retorno do cliente.', status: 4 });
+  assert.ok(!JSON.stringify(store).includes('Falta o cálculo') && !JSON.stringify(store).includes('TIPO_GERAL'), 'nada da criação é guardado');
+  // sem cliente, sem assunto: nada é enviado
+  const r2 = await pedir({ cmd: 'criar', assunto: 'x', descricao: 'y' });
+  assert.equal(r2.ok, false); assert.match(r2.erro, /escolha o cliente/);
+  const r3 = await pedir({ cmd: 'criar', origem: { type: 'avisoFerias', num: 901 }, assunto: '', descricao: 'y' });
+  assert.match(r3.erro, /escreva o assunto/);
+  assert.equal(escritas.length, 2);
 });
 
 test('background: ação manda o trâmite pela aba do Onvio, com a autorização da página, e o anexo no trâmite criado', async () => {
@@ -1279,6 +1350,13 @@ test('admissão: retroativa, já passada ou perto do início destaca; cadastro e
   assert.equal(OC.normalize(OC.TYPE_BY_KEY.geral, { id: 'x', identifier: 1, genericStatus: 2, admissionDate: '2026-10-20T00:00:00' }, null, []).admissao, null);
   const lista = OC.admissoesCriticas([{ k: 'a', admissaoAlerta: { faltam: 2, retro: false } }, { k: 'b' }, { k: 'c', admissaoAlerta: { faltam: -4, retro: true } }, { k: 'd', admissaoAlerta: { faltam: 0, retro: false } }]);
   assert.deepEqual(plano(lista.map(x => x.k)), ['c', 'd', 'a'], 'retroativas primeiro, depois a mais perto');
+  // só as que o escritório ainda não tramitou
+  const al = { faltam: -1, retro: true };
+  const cad = (k, code, extra) => Object.assign({ k, type: 'cadEmpregado', code, admissaoAlerta: al }, extra || {});
+  assert.deepEqual(plano(OC.admissoesCriticas([cad('sem', 1), cad('env', 2), cad('aguarda', 3), cad('resp', 4), cad('encam', 7), cad('respLido', 4, { primeiroTramite: '2026-10-10T10:00:00' })]).map(x => x.k)), ['sem', 'env', 'resp'],
+    'Aguardando o cliente e Encaminhado são situações do escritório; trâmite do escritório lido também tira');
+  assert.equal(OC.escritorioTramitou({ type: 'cadEstagiario', code: 2 }), false);
+  assert.equal(OC.escritorioTramitou({ type: 'cadEstagiario', code: 3 }), true);
 });
 
 test('Hoje: vencimentos legais na janela, uso errado do portal por empresa e sugestões de ação', () => {

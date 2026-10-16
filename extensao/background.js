@@ -364,6 +364,71 @@ async function executarAcao(msg) {
   return out;
 }
 
+/* ---------- criar solicitação Geral (autorizado em 16/10/2026) ----------
+ * O id do cliente vem de uma solicitação dele (origem), lida na hora. Tipo, meio e departamento: regras do escritório
+ * ou o próprio Onvio (uma Geral recente e o acesso do usuário); na memória, só esses 3 valores técnicos, por 6 h.
+ * Opcional: logo depois, um trâmite "Respondido" passa a vez ao cliente. Texto nenhum é guardado. */
+let modeloCriacaoCache = null;
+async function modeloDeCriacao(f, s) {
+  const c = Object.assign({}, OC.DEFAULTS.criacao, s.criacao || {});
+  if (c.serviceRequestType && c.requestWay && c.departmentId) return OC.modeloCriacao(s, null, null);
+  if (!modeloCriacaoCache || Date.now() - modeloCriacaoCache.em > 6 * 3600e3) {
+    const so = (e) => { if (e && (e.auth || e.cliente)) throw e; return null; };
+    const acesso = await f(OC.URL_SO_ESCRITORIO()).catch(so);
+    let exemplo = null;
+    const geral = OC.TYPE_BY_KEY.geral;
+    const l = await f(OC.urlConsulta(geral, { per: 5, orderBy: 'created desc' })).catch(so);
+    const r0 = l && l.items && l.items[0];
+    if (r0 && r0.id) exemplo = await f(OC.urlDetalhe(geral, r0.id)).catch(so);
+    const pega = o => (o ? { serviceRequestType: o.serviceRequestType, requestWay: o.requestWay || (r0 && r0.requestWay), departmentId: o.departmentId || (r0 && r0.departmentId) } : r0 ? { requestWay: r0.requestWay, departmentId: r0.departmentId } : null);
+    modeloCriacaoCache = { exemplo: pega(exemplo), acesso: acesso && typeof acesso.departmentId === 'string' ? { departmentId: acesso.departmentId } : null, em: Date.now() };
+  }
+  return OC.modeloCriacao(s, modeloCriacaoCache.exemplo, modeloCriacaoCache.acesso);
+}
+function conferirEscrita(res) {
+  if (res.status === 401 || res.status === 403) throw new Error('o Onvio recusou (HTTP ' + res.status + '). Faça pelo Onvio e avise quem mantém a extensão.');
+  if (res.status < 200 || res.status >= 300) throw new Error('o Onvio não aceitou (' + (res.status ? 'HTTP ' + res.status : res.erro || 'falha de rede') + ')');
+}
+async function criarSolicitacao(msg) {
+  const { f } = await escolherFetcher(true);                     // confere de novo que é o escritório
+  const tab = await abaOnvio();
+  if (!tab) throw new Error('Abra o Onvio numa aba para criar.');
+  const to = msg.origem && OC.TYPE_BY_KEY[msg.origem.type];
+  if (!to || msg.origem.num == null) throw new Error('escolha o cliente');
+  const d = await f(OC.urlConsulta(to, { numero: msg.origem.num, per: 5 }));
+  const r = ((d && d.items) || []).find(x => String(x.identifier) === String(msg.origem.num));
+  if (!r) throw new Error('não encontrei a solicitação #' + msg.origem.num + ' para saber o cliente');
+  const clienteId = r.clientExpanded && r.clientExpanded.id;
+  if (!clienteId) throw new Error('o Onvio não trouxe o id do cliente; crie pelo Onvio');
+  const s = await getSettings();
+  const p = OC.pedidoCriacao({ assunto: msg.assunto, descricao: msg.descricao }, clienteId, await modeloDeCriacao(f, s));
+  if (!OC.escritaPermitida(p.metodo, p.url)) throw new Error('endereço de escrita não permitido');
+  const escreve = escritaPorAba(tab.id);
+  const desde = Date.now();
+  conferirEscrita(await escreve(p.metodo, p.url, p.corpo));
+  const out = { criada: true, num: null, id: null, tramite: false, erroTramite: null };
+  const geral = OC.TYPE_BY_KEY.geral;
+  try {
+    const l = await f(OC.urlConsulta(geral, { search: p.corpo.subject, per: 20, orderBy: 'created desc' }));
+    const nova = OC.acharCriada((l && l.items) || [], p.corpo.subject, clienteId, desde);
+    if (nova) { out.num = String(nova.identifier); out.id = nova.id; }
+  } catch (e) { if (e && (e.auth || e.cliente)) throw e; }
+  if (msg.passarVez) {
+    if (!out.id) out.erroTramite = 'a solicitação foi criada, mas não a encontrei na lista para passar a vez ao cliente; faça pelo detalhe';
+    else {
+      const u = OC.urlNovoTramite(geral, out.id);
+      if (!OC.escritaPermitida('POST', u)) out.erroTramite = 'endereço de trâmite não permitido';
+      else {
+        const rt = await escreve('POST', u, { description: s.tramiteCriacao || OC.DEFAULTS.tramiteCriacao, status: 4 });
+        if (rt.status >= 200 && rt.status < 300) out.tramite = true;
+        else out.erroTramite = 'a solicitação foi criada, mas o trâmite não (' + (rt.status ? 'HTTP ' + rt.status : rt.erro || 'falha de rede') + ')';
+      }
+    }
+  }
+  coletar(false).catch(() => {});
+  return out;
+}
+
 async function detalhe(msg) {
   const t = OC.TYPE_BY_KEY[msg.type];
   if (!t) throw new Error('tipo desconhecido');
@@ -532,6 +597,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       }
       else if (msg.cmd === 'consultar') { reply(Object.assign({ ok: true }, await consultar(msg))); }
       else if (msg.cmd === 'acao') { reply(Object.assign({ ok: true }, await executarAcao(msg))); }
+      else if (msg.cmd === 'criar') { reply(Object.assign({ ok: true }, await criarSolicitacao(msg))); }
       else if (msg.cmd === 'detalhe') { reply(Object.assign({ ok: true }, await detalhe(msg))); }
       else if (msg.cmd === 'testarLeitura') { reply({ ok: true, linhas: await testarLeitura() }); }
       else if (msg.cmd === 'abrirOnvio') { await irParaOnvio(); reply({ ok: true }); }
