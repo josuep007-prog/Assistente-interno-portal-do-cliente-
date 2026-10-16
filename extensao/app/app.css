@@ -706,16 +706,33 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 
 /* Fila · cartões dos tipos de solicitação e agrupamento por empresa */
 .tipos{display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px; margin:0 0 14px}
-.tipo-c{position:relative; display:flex; flex-direction:column; align-items:flex-start; gap:2px; padding:10px 12px 12px; border:1px solid var(--rule); border-radius:8px; background:var(--surface); color:inherit; font:inherit; text-align:left; cursor:pointer; transition:border-color .15s, box-shadow .15s, transform .15s}
-.tipo-c:hover{border-color:var(--blue-deep); transform:translateY(-1px)}
-.tipo-c.on{border-color:var(--blue-deep); box-shadow:0 0 0 2px color-mix(in srgb, var(--blue-deep) 30%, transparent)}
+.tipo-c{position:relative; display:flex; flex-direction:column; align-items:flex-start; gap:4px; padding:10px 12px 13px 14px; border:1px solid var(--rule); border-radius:8px; background:var(--surface); color:inherit; font:inherit; text-align:left; cursor:pointer; overflow:hidden; transition:border-color .15s, box-shadow .15s, transform .15s}
+.tipo-c::before{content:""; position:absolute; inset:0 auto 0 0; width:3px; background:var(--fam)}
+.tipo-c:hover{border-color:color-mix(in srgb, var(--fam) 60%, var(--rule)); transform:translateY(-1px)}
+.tipo-c.on{border-color:var(--fam); box-shadow:0 0 0 2px color-mix(in srgb, var(--fam) 35%, transparent); background:color-mix(in srgb, var(--fam) 7%, var(--surface))}
 .tipo-c.zero{opacity:.55}
-.tipo-rot{font-size:11.5px; font-weight:600; color:var(--ink-3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%}
+.tipo-topo{display:flex; align-items:center; gap:7px; min-width:0; max-width:100%}
+.tipo-rot{font-size:11.5px; font-weight:600; line-height:1.2; color:var(--ink-2); min-width:0; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical}
 .tipo-c b{font:700 22px/1.1 "Archivo",sans-serif; font-variant-numeric:tabular-nums}
 .tipo-sub{font-size:11.5px; color:var(--ink-3)}
 .tipo-sub em{font-style:normal; font-weight:600; color:var(--brand-red)}
-.tipo-barra{position:absolute; left:12px; right:12px; bottom:5px; height:3px; border-radius:2px; background:color-mix(in srgb, var(--ink-3) 25%, transparent); overflow:hidden}
-.tipo-barra > i{display:block; height:100%; background:var(--blue-deep)}
+.tipo-barra{position:absolute; left:14px; right:12px; bottom:5px; height:3px; border-radius:2px; background:color-mix(in srgb, var(--ink-3) 25%, transparent); overflow:hidden}
+.tipo-barra > i{display:block; height:100%; background:var(--fam)}
+/* ícone do tipo: pastilha com o tom da família e o desenho na cor do texto (contraste garantido nos dois temas) */
+.tipo-ic{flex:none; display:inline-grid; place-items:center; width:24px; height:24px; border-radius:6px; color:var(--ink); background:color-mix(in srgb, var(--fam) 22%, var(--surface)); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--fam) 45%, transparent)}
+.tipo-ic .ic{width:14px; height:14px}
+.tipo-ic.pq{width:18px; height:18px; border-radius:4px; margin-right:6px; vertical-align:-4px}
+.tipo-ic.pq .ic{width:11px; height:11px}
+.c-tipo{display:flex; align-items:center; min-width:0}
+/* famílias: paleta categórica validada (skill dataviz), na ordem fixa; nunca as cores de status */
+.fam-todos{--fam:var(--ink-3)}
+.fam-geral{--fam:#2a78d6} .fam-cad{--fam:#1baf7a} .fam-ferias{--fam:#eda100} .fam-resc{--fam:#eb6834} .fam-afast{--fam:#e87ba4} .fam-rub{--fam:#6250d6}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) .fam-geral{--fam:#3987e5} :root:not([data-theme="light"]) .fam-cad{--fam:#199e70} :root:not([data-theme="light"]) .fam-ferias{--fam:#c98500}
+  :root:not([data-theme="light"]) .fam-resc{--fam:#d95926} :root:not([data-theme="light"]) .fam-afast{--fam:#d55181} :root:not([data-theme="light"]) .fam-rub{--fam:#9085e9}
+}
+:root[data-theme="dark"] .fam-geral{--fam:#3987e5} :root[data-theme="dark"] .fam-cad{--fam:#199e70} :root[data-theme="dark"] .fam-ferias{--fam:#c98500}
+:root[data-theme="dark"] .fam-resc{--fam:#d95926} :root[data-theme="dark"] .fam-afast{--fam:#d55181} :root[data-theme="dark"] .fam-rub{--fam:#9085e9}
 .emp-cab{display:flex; align-items:center; gap:8px; padding:10px 4px 6px; font-size:13px}
 .emp-cab span{padding:0 7px; border-radius:999px; background:var(--surface-3); font-size:11.5px; color:var(--ink-3)}
 .lr-emp{padding:10px 14px 6px; border-bottom:1px solid var(--rule); background:var(--surface-2)}

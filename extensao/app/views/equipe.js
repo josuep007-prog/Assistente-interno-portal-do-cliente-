@@ -25,6 +25,7 @@ async function sha256(txt) {
 }
 function travar(v) { liberada = v; try { v ? sessionStorage.setItem('oc.gestor', '1') : sessionStorage.removeItem('oc.gestor'); } catch (e) { /* vale só nesta visita */ } }
 
+let digitada = '';   // o que está no campo da senha (só na memória), para um redesenho ao vivo não apagar
 function telaSenha(el, ctx, params) {
   ctx.cab({ titulo: 'Equipe', sub: 'Área do gestor' });
   if ($('#g-trava', el)) return;   // leitura ao vivo redesenhando: não apaga o que a pessoa está digitando
@@ -36,11 +37,13 @@ function telaSenha(el, ctx, params) {
     '<p class="gt-erro" id="g-erro" role="alert" hidden>Senha incorreta. Tente de novo.</p>' +
     '<button class="btn btn-primary" id="g-entrar">Entrar</button></form>';
   const f = $('#g-trava', el), campo = $('#g-senha', el);
+  campo.value = digitada;
+  campo.addEventListener('input', () => { digitada = campo.value; });
   campo.focus();
   f.addEventListener('submit', async e => {
     e.preventDefault();
     const ok = (await sha256(campo.value)) === String(estado.settings.senhaGestorSha256 || '').toLowerCase();
-    campo.value = '';
+    campo.value = ''; digitada = '';
     if (ok) { travar(true); render(el, ctx, params); return; }
     $('#g-erro', el).hidden = false;
     f.classList.remove('treme'); void f.offsetWidth; f.classList.add('treme');

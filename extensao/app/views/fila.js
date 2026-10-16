@@ -1,7 +1,7 @@
 /* Solicitações (rota #/fila) · minhas, equipe, sem responsável, de um analista ou de um cliente (pendências lidas ao vivo).
  * Barra como a de Empresas no Departamento Pessoal: busca, vez, Filtros, Ordenar, Lista/Cartões e Mais. */
 import { estado, itens, minhas, clienteRespondeu, enviar } from '../estado.js';
-import { esc, pillSituacao, prazoHtml, cartaoItem, ligarItens, csvItens, fmtDataCurta, ladoTexto, normal, $, $$ } from '../util.js';
+import { esc, pillSituacao, prazoHtml, cartaoItem, ligarItens, csvItens, fmtDataCurta, ladoTexto, normal, tipoVisual, tipoIcone, $, $$ } from '../util.js';
 const OC = window.OC;
 
 const KPI = {
@@ -112,8 +112,8 @@ export function render(el, ctx, params) {
     filtros.tipo = ''; const l = filtrar(); filtros.tipo = antes;
     const cartao = (k, rot, xs) => {
       const atr = xs.filter(i => i.nivel === 2).length, esc_ = xs.filter(i => i.lado === 'esc').length, tot = xs.length;
-      return '<button type="button" class="tipo-c' + (filtros.tipo === k ? ' on' : '') + (!tot ? ' zero' : '') + '" data-tipo="' + esc(k) + '" aria-pressed="' + (filtros.tipo === k) + '">' +
-        '<span class="tipo-rot">' + esc(rot) + '</span><b>' + tot + '</b>' +
+      return '<button type="button" class="tipo-c fam-' + tipoVisual(k).fam + (filtros.tipo === k ? ' on' : '') + (!tot ? ' zero' : '') + '" data-tipo="' + esc(k) + '" aria-pressed="' + (filtros.tipo === k) + '">' +
+        '<span class="tipo-topo">' + tipoIcone(k) + '<span class="tipo-rot">' + esc(rot) + '</span></span><b>' + tot + '</b>' +
         '<span class="tipo-sub">' + (atr ? '<em>' + atr + ' fora do prazo</em>' : tot ? 'em dia' : 'nenhuma') + '</span>' +
         '<i class="tipo-barra" title="' + esc_ + ' com o escritório · ' + (tot - esc_) + ' com o cliente"><i style="width:' + (tot ? Math.round(esc_ / tot * 100) : 0) + '%"></i></i></button>';
     };
@@ -198,7 +198,7 @@ export function render(el, ctx, params) {
 function linha(i) {
   return '<div class="lr lvl-' + (i.nivel || 0) + '" tabindex="0" data-k="' + esc(i.k) + '" role="row">' +
     '<span class="mono">#' + esc(i.num) + '</span>' +
-    '<span class="c-sub" style="color:var(--ink-2)">' + esc(i.typeLabel) + '</span>' +
+    '<span class="c-sub c-tipo" style="color:var(--ink-2)">' + tipoIcone(i.type, 'pq') + esc(i.typeLabel) + '</span>' +
     '<span>' + pillSituacao(i) + '<div class="c-sub">vez: ' + ladoTexto(i) + '</div></span>' +
     '<span><div class="c-main" title="' + esc(i.cliente) + '">' + esc(i.apelido || i.cliente || '—') + '</div>' + (i.apelido && i.cliente && i.apelido !== i.cliente ? '<div class="c-sub">' + esc(i.cliente) + '</div>' : '') + '</span>' +
     '<span><div class="c-sub" style="color:var(--ink)" title="' + esc(i.detalhe) + '">' + esc(i.detalhe || '—') + '</div>' + (i.abaProvavel ? '<div class="c-sub">pode ser: ' + esc(i.abaProvavel.label) + '</div>' : '') + '</span>' +

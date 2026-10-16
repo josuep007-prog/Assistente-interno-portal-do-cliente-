@@ -152,11 +152,12 @@ assert.ok(await app.$('#hj-paineis, .hj-paineis'), 'painéis do Hoje');
 await app.selectOption('#hj-carteira', '__minha');
 await app.evaluate(() => document.querySelector('#vista').scrollTo(0, 0));
 // Equipe: área do gestor com senha; o Desempenho lê as entregas do período na hora
+await portal.bringToFront();                                          // a aba do Onvio na frente, como quem digita a senha
 await app.evaluate(() => { location.hash = '#/equipe'; });
 await app.waitForSelector('#g-trava');
 await foto(portal, '2-equipe-senha.png');
-await app.fill('#g-senha', 'gestor@987654321');
-await app.press('#g-senha', 'Enter');
+// digitar e Enter já são testados em navegador.js; aqui o envio vai direto pelo formulário (a aba de teste fica em segundo plano)
+await app.evaluate(() => { const c = document.querySelector('#g-senha'); c.value = 'gestor@987654321'; c.dispatchEvent(new Event('input')); document.querySelector('#g-trava').requestSubmit(); });
 await esperar(() => app.evaluate(() => !!document.querySelector('.av-hero')), 15000);   // a aba pode estar em segundo plano (sem requestAnimationFrame)
 assert.equal(await app.getAttribute('#av-k-entregas [data-conta]', 'data-conta'), '2', 'entregas do período lidas na API (2 concluídas da Ana)');
 await new Promise(r => setTimeout(r, 1200));
