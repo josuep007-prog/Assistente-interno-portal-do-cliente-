@@ -5,6 +5,7 @@ import { estado, itens, enviar, salvarLembretes, aoMudar } from '../estado.js';
 import { formAcao, ligarAcao, novaAcao, acaoAberta } from './acao-form.js';
 import { esc, pillSituacao, motivosHtml, fmtDataHora, fmtData, textoPuro, toast, ladoTexto, relativo, $, $$ } from '../util.js';
 import { abrirLembrete, lembreteAberto } from './lembrete-dlg.js';
+import { abrirNova, novaAberta } from './nova-dlg.js';
 const OC = window.OC;
 
 let atual = null;        // { type, num }
@@ -92,6 +93,7 @@ function desenhar(i, r, erro, carregando) {
     '<div class="dlg-actions">' +
       '<button class="btn btn-sm" id="g-onvio"><svg class="ic ic-sm"><use href="#i-link"/></svg> Abrir no Onvio</button>' +
       botoesAcao(i, carregando) +
+      '<button class="btn btn-sm" id="g-nova" title="Cria uma solicitação Geral para este cliente"><svg class="ic ic-sm"><use href="#i-plus"/></svg> Nova para o cliente</button>' +
       '<span class="spacer"></span>' +
       (obs.some(o => !o.interno) ? '<button class="btn btn-sm" id="g-copiar-obs" title="Copia as observações de prazo e os avisos para colar na resposta ao cliente"><svg class="ic ic-sm"><use href="#i-copy"/></svg> Copiar observações</button>' : '') +
       '<button class="btn btn-primary btn-sm" id="g-lembrete"><svg class="ic ic-sm"><use href="#i-clock"/></svg> Lembrete</button>' +
@@ -122,6 +124,7 @@ function desenhar(i, r, erro, carregando) {
     cancelar: () => { aba = 'tramites'; desenhar(i, r, erro, carregando); },
     feito: () => { aba = 'tramites'; abrirDetalhe({ type: i.type, num: i.num }); }
   });
+  $('#g-nova').onclick = () => abrirNova({ origem: Object.assign({}, i, { type: i.type, num: String(i.num) }) });
   $('#g-lembrete').onclick = () => abrirLembrete({ vinculo: { type: i.type, num: String(i.num), k: i.k || null, cliente: i.apelido || i.cliente } });
   $$('[data-l]', g).forEach(row => row.addEventListener('click', async e => {
     const l = estado.lembretes.find(x => x.id === row.dataset.l);
@@ -197,7 +200,7 @@ function lembretesHtml(lems) {
 
 // Setas ← → andam na lista; lembretes mudaram com a janela aberta: redesenha a aba.
 addEventListener('keydown', e => {
-  if (!detalheAberto() || lembreteAberto() || e.target.matches('input, select, textarea')) return;
+  if (!detalheAberto() || lembreteAberto() || novaAberta() || e.target.matches('input, select, textarea')) return;
   if (e.key === 'ArrowLeft') andar(-1);
   else if (e.key === 'ArrowRight') andar(1);
 });

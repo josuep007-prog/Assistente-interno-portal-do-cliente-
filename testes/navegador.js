@@ -623,6 +623,64 @@ await passo('app · Hoje: avisos sem cálculo em quadro de duas colunas; descons
   assert.deepEqual(p.erros, []);
 });
 
+await passo('app · Nova solicitação (Geral): do quadro de avisos, das Solicitações e do detalhe; revisa, confirma, cria e abre a nova', async () => {
+  const itens = ITENS_APP.concat([
+    { k: 'avisoFerias:f1', type: 'avisoFerias', typeLabel: 'Aviso de férias', id: 'f1', num: 201, code: 1, status: 'Sem análise', lado: 'esc', nivel: 0, grav: 0, parado: 1, motivos: [], resp: 'Ana Teste', mine: true, apelido: 'DELTA', cliente: 'DELTA COMERCIO', detalhe: 'Fulano', created: agoraIso(2), last: agoraIso(1), semCalculo: { alvo: '2026-10-30', faltam: 3, ref: 'início das férias em 03/11/2026', calculo: 'Cálculo de férias' } }
+  ]);
+  const p = await abrirApp('#/inicio', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens }) });
+  await p.evaluate(() => { window.__respostas = Object.assign(window.__respostas || {}, { criar: { ok: true, criada: true, num: '1501', id: 'n1', tramite: true, erroTramite: null }, detalhe: { ok: true, item: { assunto: 'x' }, tramites: [], datas: {} } }); });
+  // do quadro: já vem com cliente travado, assunto, texto e "passar a vez"
+  await p.click('#hj-semcalc [data-sc-criar="avisoFerias:f1"]');
+  await p.waitForSelector('#dlg-nova #nv-assunto');
+  assert.match(await p.textContent('#dlg-nova .vinculo'), /Cliente: DELTA · DELTA COMERCIO/);
+  assert.equal(await p.$eval('#nv-assunto', x => x.value), 'Cálculo de férias pendente · Fulano');
+  assert.match(await p.$eval('#nv-desc', x => x.value), /^Recebemos o aviso de férias de Fulano/);
+  assert.equal(await p.$eval('#nv-vez', x => x.checked), true);
+  await p.fill('#nv-assunto', '');
+  await p.click('#nv-revisar');
+  assert.match(await p.textContent('#dlg-nova .faixa'), /Escreva o assunto/);
+  await p.fill('#nv-assunto', 'Cálculo de férias pendente · Fulano');
+  await p.click('#nv-revisar');
+  await p.waitForSelector('#nv-conf');
+  assert.match(await p.textContent('#nv-conf'), /Cliente: DELTA · DELTA COMERCIO.*Assunto: "Cálculo de férias pendente · Fulano".*trâmite "Respondido"/);
+  assert.equal(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'criar')), false, 'revisar não cria');
+  await p.click('#nv-criar');
+  await p.waitForFunction(() => window.__msgs.some(m => m.cmd === 'criar'));
+  const m = await p.evaluate(() => window.__msgs.find(x => x.cmd === 'criar'));
+  assert.deepEqual([m.origem.type, m.origem.num, m.assunto, m.passarVez], ['avisoFerias', '201', 'Cálculo de férias pendente · Fulano', true]);
+  await p.waitForSelector('#dlg-nova', { state: 'hidden' });
+  await p.waitForFunction(() => (window.__msgs || []).some(x => x.cmd === 'detalhe' && x.type === 'geral' && String(x.num) === '1501'), null, { timeout: 4000 });
+  assert.match(await p.textContent('#toast'), /Solicitação #1501 criada no Onvio · a vez passou ao cliente/);
+  await p.waitForFunction(() => { try { return JSON.parse(localStorage.getItem('__mem')).semCalculoMarcas['avisoFerias:f1'].st === 'avisado'; } catch (e) { return false; } });
+  // do detalhe: "Nova para o cliente" trava o cliente da solicitação aberta
+  await p.click('#g-nova');
+  await p.waitForSelector('#dlg-nova #nv-assunto');
+  assert.equal(await p.$('#nv-cliente'), null);
+  await p.keyboard.press('Escape');
+  await p.waitForSelector('#dlg-nova', { state: 'hidden' });
+  assert.equal(await p.isHidden('#gaveta'), false, 'Esc fecha só a janela de cima');
+  await p.keyboard.press('Escape');
+  // das Solicitações: escolhe o cliente; erro do Onvio aparece e nada é dado como criado
+  await p.evaluate(() => { location.hash = '#/fila?escopo=equipe'; window.__respostas.criar = { ok: false, erro: 'o Onvio não aceitou (HTTP 400)' }; });
+  await p.waitForSelector('#f-nova');
+  await p.click('#f-nova');
+  await p.waitForSelector('#nv-cliente');
+  const ops = await p.$$eval('#nv-cliente option', o => o.map(x => x.value).filter(Boolean));
+  assert.ok(ops.includes('DELTA COMERCIO') && ops.includes('ACME LTDA'), ops.join());
+  await p.click('#nv-revisar');
+  assert.match(await p.textContent('#dlg-nova .faixa'), /Escolha o cliente/);
+  await p.selectOption('#nv-cliente', 'ACME LTDA');
+  await p.fill('#nv-assunto', 'Documentos pendentes');
+  await p.fill('#nv-desc', 'Envie os documentos.');
+  await p.click('#nv-revisar');
+  await p.click('#nv-criar');
+  await p.waitForFunction(() => /Não foi criada: o Onvio não aceitou \(HTTP 400\)/.test(document.querySelector('#dlg-nova').textContent));
+  const m2 = await p.evaluate(() => window.__msgs.filter(x => x.cmd === 'criar').pop());
+  assert.deepEqual([m2.assunto, m2.descricao, m2.passarVez, !!m2.origem.num], ['Documentos pendentes', 'Envie os documentos.', false, true]);
+  assert.equal(await p.$eval('#nv-assunto', x => x.value), 'Documentos pendentes', 'volta ao formulário com o que foi escrito');
+  assert.deepEqual(p.erros, []);
+});
+
 await passo('app · detalhe: abas inteiras (não achatadas) mesmo com muito conteúdo e janela baixa', async () => {
   const p = await abrirApp('#/fila', {});
   await p.setViewportSize({ width: 1100, height: 560 });

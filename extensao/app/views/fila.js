@@ -66,8 +66,10 @@ export function render(el, ctx, params) {
       { id: 'equipe', rot: 'Equipe toda', href: '#/fila?escopo=equipe', n: n.equipe },
       { id: 'semresp', rot: 'Sem responsável', href: '#/fila?escopo=semresp', n: n.semresp, late: n.semresp > 0 }
     ],
-    aba: abaAtiva
+    aba: abaAtiva,
+    extra: '<button type="button" class="btn btn-sm btn-primary" id="f-nova"><svg class="ic ic-sm"><use href="#i-plus"/></svg> Nova solicitação</button>'
   });
+  $('#f-nova').onclick = () => { const o = params.cliente && todas.find(i => (i.cliente || i.apelido) === params.cliente); ctx.abrirNova(o ? { origem: o } : {}); };
 
   const resps = [...new Set(base.map(i => i.resp || '(sem responsável)'))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
   const sel = (id, rot, ops, v) => '<label class="field">' + rot + '<select id="' + id + '">' + ops.map(([k, r]) => '<option value="' + esc(k) + '"' + (v === k ? ' selected' : '') + '>' + esc(r) + '</option>').join('') + '</select></label>';

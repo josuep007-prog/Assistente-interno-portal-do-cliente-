@@ -6,6 +6,7 @@ import { estado, iniciarEstado, aoMudar, enviar, itens, minhas, marcarAlertasVis
 import { $, $$, esc, relativo, fmtHoraS, toast, normal, iniciais, pillSituacao } from './util.js';
 import { abrirDetalhe, fecharDetalhe, detalheAberto } from './views/detalhe.js';
 import { abrirLembrete, fecharLembrete, lembreteAberto } from './views/lembrete-dlg.js';
+import { abrirNova, fecharNova, novaAberta } from './views/nova-dlg.js';
 import * as inicio from './views/inicio.js';
 import * as fila from './views/fila.js';
 import * as equipe from './views/equipe.js';
@@ -50,7 +51,7 @@ function cab(o) {
     esc(a.rot) + (a.n != null ? '<span class="n' + (a.late ? ' late' : '') + '">' + (a.n || '') + '</span>' : '') + (a.href ? '</a>' : '</button>')).join('');
   return { abas: ab, extra: $('#cab-extra') };
 }
-const ctx = { navegar, abrirDetalhe, abrirLembrete, cab, aoRedimensionar: fn => { aoRedim = fn; } };
+const ctx = { navegar, abrirDetalhe, abrirLembrete, abrirNova, cab, aoRedimensionar: fn => { aoRedim = fn; } };
 
 // Onvio aberto com login de cliente: o app não mostra nada (o service worker já apagou o que foi lido).
 const bloqueado = () => (estado.status || {}).estado === 'visao_cliente';
@@ -70,7 +71,7 @@ function desenhar() {
   rota = lerRota();
   aoRedim = null;
   document.body.classList.toggle('bloqueado', bloqueado());
-  if (bloqueado()) { fecharDetalhe(); fecharLembrete(); fecharBusca(); abrirSino(false); $$('.trilho [data-rota]').forEach(a => a.classList.remove('on')); telaBloqueio($('#vista')); return; }
+  if (bloqueado()) { fecharDetalhe(); fecharLembrete(); fecharNova(); fecharBusca(); abrirSino(false); $$('.trilho [data-rota]').forEach(a => a.classList.remove('on')); telaBloqueio($('#vista')); return; }
   const p = rota.params;
   const ativo = rota.nome === 'busca' ? '' : rota.nome === 'fila' && p.cliente ? 'clientes' : rota.nome === 'fila' && p.analista ? 'equipe' : rota.nome;
   $$('.trilho [data-rota]').forEach(a => { a.classList.toggle('on', a.dataset.rota === ativo); if (a.dataset.rota === ativo) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
@@ -222,9 +223,9 @@ async function atualizar() {
 (async function iniciar() {
   await iniciarEstado();
   desenhar(); aoVivo(); contadores(); iconeTema(); avisarNovos();
-  addEventListener('hashchange', () => { fecharDetalhe(); fecharLembrete(); desenhar(); });
+  addEventListener('hashchange', () => { fecharDetalhe(); fecharLembrete(); fecharNova(); desenhar(); });
   aoMudar(quais => {
-    const ocupado = detalheAberto() || lembreteAberto() || !$('#cmdk').hidden || document.activeElement.matches('input, select, textarea') || document.querySelector('#vista details[open]');
+    const ocupado = detalheAberto() || lembreteAberto() || novaAberta() || !$('#cmdk').hidden || document.activeElement.matches('input, select, textarea') || document.querySelector('#vista details[open]');
     const relevante = quais.some(q => ['snap', 'settings', 'regras', 'lembretes', 'serie', 'eventos', 'semCalcMarcas'].includes(q)) && AO_VIVO.has(rota.nome);
     if (relevante && ocupado) redesenharDepois = true;
     if (relevante && !ocupado) {
@@ -236,7 +237,7 @@ async function atualizar() {
   });
   // mudou algo com a janela de detalhe aberta (por exemplo, um aviso enviado por ela): redesenha ao fechar
   addEventListener('controlonvio-detalhe-fechado', () => {
-    if (!redesenharDepois || !AO_VIVO.has(rota.nome) || lembreteAberto()) return;
+    if (!redesenharDepois || !AO_VIVO.has(rota.nome) || lembreteAberto() || novaAberta()) return;
     redesenharDepois = false;
     const rolagem = $('#vista').scrollTop; desenhar(); $('#vista').scrollTop = rolagem;
   });
@@ -271,6 +272,7 @@ async function atualizar() {
     if (e.key === 'Escape') {
       if (!$('#cmdk').hidden) fecharBusca();
       else if (lembreteAberto()) fecharLembrete();
+      else if (novaAberta()) { if (!$('#nv-criar[disabled]')) fecharNova(); }
       else if (detalheAberto()) fecharDetalhe();
       else if (!$('#sino-painel').hidden) abrirSino(false);
       return;

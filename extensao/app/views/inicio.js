@@ -1,8 +1,9 @@
 /* Hoje · visão do dia (o trabalho com as solicitações em si fica em "Solicitações", #/fila).
  * Em cima, em destaque: admissões retroativas ou perto do início (o eSocial vence no dia anterior).
  * Destaque: rosca "% em dia" (clique leva às Solicitações com aquele motivo), carrossel e "Próximos passos".
- * Avisos sem cálculo em quadro de duas colunas ("A avisar" e "Cliente avisado"): avisar o cliente é um trâmite no
- * próprio aviso (formulário das ações, revisado e confirmado); "Desconsiderar" tira do quadro. Só o k e a coluna ficam.
+ * Avisos sem cálculo em quadro de duas colunas ("A avisar" e "Cliente avisado"): "Criar solicitação" abre a Nova
+ * solicitação (Geral) já preenchida; "Responder no aviso" é um trâmite no próprio aviso; os dois são revisados e
+ * confirmados. "Desconsiderar" tira do quadro. Só o k e a coluna ficam.
  * Painéis: vencimentos de férias e rescisões (prazo legal), sugestões de ação, uso do portal pelo cliente e previsão
  * de solicitações por empresa (lida na hora, sob demanda). Carteira no cabeçalho. */
 import { estado, itens, minhas, primeiroNome, salvarLembretes, enviar, marcarSemCalculo } from '../estado.js';
@@ -162,7 +163,8 @@ export function render(el, ctx) {
     const cartao = ({ item: i, em }, col) => {
       const sc = i.semCalculo, pode = OC.podeAcao('tramite', i);
       const botoes = col === 'avisar'
-        ? '<button type="button" class="btn btn-sm btn-primary" data-sc-avisar="' + esc(i.k) + '"' + (pode.ok ? ' title="Trâmite no próprio aviso, revisado antes de enviar"' : ' disabled title="' + esc(pode.motivo) + '"') + '>' + ic('chat', 'ic-sm') + ' Avisar o cliente</button>' +
+        ? '<button type="button" class="btn btn-sm btn-primary" data-sc-criar="' + esc(i.k) + '" title="Cria uma solicitação Geral para o cliente, revisada antes de enviar">' + ic('plus', 'ic-sm') + ' Criar solicitação</button>' +
+          '<button type="button" class="btn btn-sm" data-sc-avisar="' + esc(i.k) + '"' + (pode.ok ? ' title="Trâmite no próprio aviso, revisado antes de enviar"' : ' disabled title="' + esc(pode.motivo) + '"') + '>' + ic('chat', 'ic-sm') + ' Responder no aviso</button>' +
           '<button type="button" class="btn btn-sm" data-sc-marca="avisado" data-sc-k="' + esc(i.k) + '" title="Já avisou por outro meio (telefone, e-mail)">Já avisei</button>'
         : '<span class="kb-quando">' + ic('check', 'ic-sm') + ' avisado ' + esc(quandoMarca(em)) + '</span><button type="button" class="btn btn-sm" data-sc-marca="" data-sc-k="' + esc(i.k) + '" title="Volta para A avisar">Voltar</button>';
       return '<div class="kb-card' + (sc.faltam <= 0 ? ' late' : '') + '">' +
@@ -218,6 +220,11 @@ export function render(el, ctx) {
     const st = b.dataset.scMarca || null;
     await marcarSemCalculo(b.dataset.scK, st);
     toast(st === 'desconsiderado' ? 'Desconsiderado: o aviso saiu do quadro' : st === 'avisado' ? 'Movido para Cliente avisado' : 'Voltou para A avisar');
+  }));
+  $$('[data-sc-criar]', el).forEach(b => b.addEventListener('click', () => {
+    const i = semCalc.find(x => x.k === b.dataset.scCriar);
+    if (!i) return;
+    ctx.abrirNova({ origem: i, assunto: OC.assuntoAvisoSemCalculo(i, estado.settings), descricao: OC.textoAvisoSemCalculo(i, estado.settings), passarVez: true, aoCriar: () => marcarSemCalculo(i.k, 'avisado') });
   }));
   $$('[data-sc-avisar]', el).forEach(b => b.addEventListener('click', () => {
     const i = semCalc.find(x => x.k === b.dataset.scAvisar);

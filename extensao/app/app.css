@@ -842,3 +842,8 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .dados-g:last-child{margin-bottom:0}
 .campo-longo{margin:12px 0 0}
 .campo-longo .texto-longo{margin-top:4px}
+
+/* Nova solicitação (Geral) */
+.dlg-nova{width:min(640px, calc(100vw - 32px))}
+.dlg-nova .dlg-section{display:flex; flex-direction:column; gap:12px}
+.dlg-nova textarea{min-height:150px}
