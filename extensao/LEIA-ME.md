@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.17.0)
+# Control Onvio · ControlTax (v0.17.1)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -25,7 +25,7 @@ Para atualizar a versão: substitua os arquivos da pasta, clique em **Recarregar
 
 | Tela | Para quem | O que mostra |
 | --- | --- | --- |
-| **Hoje** | Analista (todos veem) | A visão do dia; o trabalho com as solicitações fica em **Solicitações**. **Carteira** no cabeçalho. Em cima, em **destaque vermelho**, as **admissões** retroativas, já passadas ou a até 2 dias úteis do início (o eSocial vence no dia anterior). **Destaque**: rosca % em dia (clicar numa parte abre as Solicitações com aquele motivo), carrossel e **Próximos passos**. **Avisos sem cálculo** em quadro de duas colunas (A avisar / Cliente avisado, com Avisar o cliente, Já avisei e Desconsiderar). **Painéis**: vencimentos de férias e rescisões (prazo legal), **sugestões de ação** (com link para resolver), **uso do portal pelo cliente** (lista errada, pedido repetido, solicitação abandonada) e **previsão de solicitações por empresa** (média das últimas 4 semanas, tendência e estimativa para 7 e 30 dias, lida na hora) |
+| **Hoje** | Analista (todos veem) | A visão do dia; o trabalho com as solicitações fica em **Solicitações**. **Carteira** no cabeçalho. **Destaque**: rosca % em dia (clicar numa parte abre as Solicitações com aquele motivo), carrossel e **Próximos passos**. Logo abaixo, em **destaque vermelho e recolhível**, as **admissões** retroativas, já passadas ou a até 2 dias úteis do início, sem nenhum trâmite do escritório ainda (o eSocial vence no dia anterior). **Avisos sem cálculo** em quadro de duas colunas (A avisar / Cliente avisado, com Avisar o cliente, Já avisei e Desconsiderar). **Painéis**: vencimentos de férias e rescisões (prazo legal), **sugestões de ação** (com link para resolver), **uso do portal pelo cliente** (lista errada, pedido repetido, solicitação abandonada) e **previsão de solicitações por empresa** (média das últimas 4 semanas, tendência e estimativa para 7 e 30 dias, lida na hora) |
 | **Solicitações** | Analista e gestor | Onde o analista trabalha. Cartões por tipo, abas Minhas / Equipe toda / Sem responsável. Busca, vez (escritório/cliente), **Filtros** (tipo, gravidade, responsável), **Ordenar**, **Lista ou Cartões**, **Mais** (exportar CSV). Os filtros ativos aparecem como etiquetas que se tiram com um clique |
 | **Agenda e lembretes** | Cada um | Calendário do mês com lembretes e expectativas de conclusão das suas solicitações; lista (atrasados, hoje, próximos, concluídos). Lembretes podem **repetir** (todo dia, todo dia útil, toda semana, todo mês) |
 | **Equipe** | Gestor | Aba Painel (números, carga por responsável G1/G2/G3, entradas e saídas de 14 dias, pendências ao longo do dia, por tipo, **sugestão de distribuição** das sem analista e **próximas a prescrever**) e aba Responsáveis (**idade da fila**: mapa de calor analista × dias parada, e a carga de cada pessoa) |
@@ -41,6 +41,12 @@ Vez do escritório: sem primeiro trâmite após 1 dia útil; aberta além de 3 d
 Vez do cliente: sem retorno há mais de 5 dias úteis (laranja); a partir de 20 dias parada fica vermelho com a contagem até a prescrição de 30 dias.
 
 Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardando resposta** = o escritório precisa responder; **Respondido** = vez do cliente.
+
+## Novidades da v0.17.1 (faixa de admissões)
+
+- A faixa de **admissões** do Hoje desce para **logo abaixo do destaque** ("solicitações pedem sua atenção").
+- Só entram as admissões em que o **escritório ainda não fez nenhum trâmite**. Saem as que estão numa situação que só o escritório grava (Aguardando o cliente, Encaminhado) e aquelas em que a leitura dos trâmites achou um trâmite do escritório (`OC.escritorioTramitou`). As Solicitações com "Admissões em destaque" usam o mesmo critério.
+- A faixa é **recolhível**: o cabeçalho mostra o resumo (retroativas, já passaram, próxima data) e o Control Onvio lembra se você recolheu.
 
 ## Novidades da v0.17.0 (criar solicitação)
 
