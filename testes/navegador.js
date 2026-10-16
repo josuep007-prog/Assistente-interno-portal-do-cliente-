@@ -28,7 +28,7 @@ const STUB = `
 (async () => {
 const navegador = await chromium.launch();
 const falhas = [];
-const passo = async (nome, fn) => { if (process.env.SO && !nome.includes(process.env.SO)) return; try { await fn(); console.log('ok   ' + nome); } catch (e) { falhas.push(nome); console.log('FALHA ' + nome + '\n     ' + String(e.message).split('\n').slice(0, 5).join(' | ')); } };
+const passo = async (nome, fn) => { if (process.env.SO && !nome.includes(process.env.SO)) return; try { await fn(); console.log('ok   ' + nome); } catch (e) { falhas.push(nome); console.log('FALHA ' + nome + '\n     ' + String(e.message).split('\n').slice(0, 5).join(' | ') + (process.env.PILHA ? '\n' + e.stack : '')); } };
 
 async function pagina(url, html, semStub) {
   const ctx = await navegador.newContext();
@@ -525,19 +525,20 @@ await passo('app · Equipe (área do gestor): pede a senha; Desempenho com nota,
     const a = (k, e, quem) => ({ l: mov.find(x => x.k === k).last, e, p: 1, a: quem, c: false });
     const analises = { f1: a('f1', 1, 'Ana Teste'), f2: a('f2', 1, 'Bia'), f3: a('f3', 2, 'Ana Teste'), f4: a('f4', 1, 'Bia'), f6: a('f6', 1, 'Ana Teste'), f7: a('f7', 1, 'Ana Teste'), f8: a('f8', 1, 'Ana Teste') };
     window.__caio = { k: 'geral:z', type: 'geral', resp: 'Caio', lado: 'esc', nivel: 0, grav: 0, parado: 1 };
-    window.__respostas = { desempenho: { ok: true, erros: [], dias: 7, agora: new Date().toISOString(), movimentadas: mov.length, entregas: mov, analises, semLeitura: 1 } };
+    window.__respostas = { desempenho: { ok: true, erros: [], dias: 30, agora: new Date().toISOString(), movimentadas: mov.length, entregas: mov, analises, semLeitura: 1 } };
   });
   await p.evaluate(async () => { const { snapshot } = await chrome.storage.local.get('snapshot'); await chrome.storage.local.set({ snapshot: Object.assign({}, snapshot, { items: snapshot.items.concat(window.__caio) }) }); });
   await p.fill('#g-senha', 'gestor@987654321');
   await p.press('#g-senha', 'Enter');
   await p.waitForSelector('.av-hero');
-  assert.ok(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'desempenho' && m.dias === 7)), 'pediu as entregas de 7 dias');
+  assert.ok(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'desempenho' && m.dias === 30)), 'pediu as entregas de 30 dias');
+  assert.equal(await p.$('#av-periodo [data-dias]'), null, 'período fixo em 30 dias, sem 7 e 14');
   assert.match(await p.textContent('#titulo'), /Equipe/);
   assert.deepEqual(await p.$$eval('#abas .aba', e => e.map(x => x.dataset.aba)), ['desempenho', 'carga', 'resp']);
   // números da equipe
-  await p.waitForFunction(() => document.querySelector('#av-k-entregas .av-kpi-val').textContent === '7');
+  await p.waitForFunction(() => document.querySelector('#av-k-entregas .av-kpi-val').textContent === '8');
   assert.match(await p.textContent('#av-k-prazo'), /100%/, 'só o tempo com o escritório conta: a de 20 dias ficou 2 d.u. com o escritório');
-  assert.match(await p.textContent('#vista'), /1 entrega ficou sem a leitura dos trâmites/);
+  assert.ok(!/sem a leitura dos trâmites/.test(await p.textContent('#vista')), 'sem o aviso de leitura incompleta');
   assert.ok(await p.$('#av-k-entregas .mb-svg rect'), 'entregas por dia');
   // ranking: tabela compacta, uma linha por analista, com nota, faixa e os 4 itens; o cabeçalho ordena
   const rank = await p.$$eval('#av-rank .av-lin', e => e.map(x => x.dataset.resp));
@@ -555,35 +556,55 @@ await passo('app · Equipe (área do gestor): pede a senha; Desempenho com nota,
   // entregas no período: barra no prazo × fora do prazo por pessoa; sem entregas não vira 0%
   assert.match(await p.textContent('#av-barras'), /No prazo.*Fora do prazo/s);
   assert.match(await p.textContent('#av-barras'), /Ana Teste5 · 100% no prazo/);
-  assert.match(await p.textContent('#av-barras'), /Bia2 · 100% no prazo/, 'a f2 conta para a Bia, que a concluiu; a de 8 dias atrás fica fora dos 7 dias');
+  assert.match(await p.textContent('#av-barras'), /Bia3 · 100% no prazo/, 'a f2 conta para a Bia, que a concluiu');
   assert.match(await p.textContent('#av-barras'), /Caio.*sem entregas no período/s);
   assert.doesNotMatch(await p.textContent('#av-barras'), /Caio[^A-Z]*\b0%/, 'quem não entregou não aparece com 0%');
   assert.equal(await p.$('#av-disp'), null, 'a dispersão saiu');
   await p.click('#av-barras text[data-id="Ana Teste"]');
-  await p.waitForSelector('#av-det .av-det');
-  assert.match(await p.textContent('#av-det h3'), /Ana Teste · nota/);
+  // a pessoa abre numa janela por cima (não numa lista embaixo)
+  await p.waitForSelector('#dlg-pessoa:not([hidden])');
+  assert.equal(await p.$('#av-det .av-det'), null, 'sem o detalhe embaixo da tela');
+  assert.match(await p.textContent('#dlg-pessoa h2'), /Ana Teste/);
+  assert.match(await p.textContent('#dlg-pessoa .dlg-l1'), /1º no ranking/);
   assert.equal(await p.$eval('#av-rank .av-lin.ativo', r => r.dataset.resp), 'Ana Teste');
-  // pontos de atenção com o porquê
-  assert.match(await p.textContent('#av-det-l'), /Crítica \(G3\)[\s\S]*#101 ACME[\s\S]*Por quê: parada há 31 dias, o dobro do limite de 15/, 'pontos de atenção com a justificativa');
-  await p.click('#av-det-l [data-k="calcFerias:a"]');
+  assert.equal(await p.$$eval('#dlg-pessoa .pp-comp', e => e.length), 5, 'os 5 itens da nota');
+  assert.match(await p.textContent('#dlg-pessoa .pp-resumo'), /O que mais puxa a nota para baixo/);
+  // abre no item que mais pesa; clicar num item troca os casos
+  const focoIni = await p.$eval('#dlg-pessoa .pp-comp.on', b => b.dataset.comp);
+  assert.ok(focoIni, 'um item em foco ao abrir');
+  await p.click('#dlg-pessoa [data-comp="cuidado"]');
+  assert.equal(await p.$eval('#dlg-pessoa .pp-comp.on', b => b.dataset.comp), 'cuidado');
+  assert.match(await p.textContent('#pp-lista'), /Crítica \(G3\)[\s\S]*#101 ACME[\s\S]*parada há 31 dias, o dobro do limite de 15/, 'caso que pesa, com o porquê');
+  // o caso abre a solicitação por cima da janela; Esc fecha só a de cima
+  await p.click('#pp-lista [data-k="calcFerias:a"]');
   await p.waitForSelector('#gaveta:not([hidden])');
   await p.keyboard.press('Escape');
   await p.waitForSelector('#gaveta', { state: 'hidden' });
-  // alerta evitável com "Não contar": o gestor tira da conta e pode voltar
-  assert.match(await p.textContent('#av-det-ev'), /Crítica \(G3\)[\s\S]*#101 ACME[\s\S]*na vez do escritório/);
+  assert.equal(await p.isHidden('#dlg-pessoa'), false, 'a janela da pessoa continua');
+  // ← → passam para a próxima pessoa
+  await p.keyboard.press('ArrowRight');
+  await p.waitForFunction(() => /Bia/.test(document.querySelector('#dlg-pessoa h2').textContent));
+  assert.match(await p.textContent('#dlg-pessoa .dlg-l1'), /Poucos dados/);
+  await p.keyboard.press('ArrowLeft');
+  await p.waitForFunction(() => /Ana Teste/.test(document.querySelector('#dlg-pessoa h2').textContent));
+  // "Não contar": o gestor tira o caso da conta e a janela se atualiza
+  await p.click('#dlg-pessoa [data-comp="cuidado"]');
   const antes = await p.$eval('#av-rank [data-resp="Ana Teste"] .av-nota-tag', e => Number(e.textContent));
-  await p.click('#av-det-ev [data-exc="calcFerias:a"]');
+  await p.click('#pp-lista [data-exc="calcFerias:a"]');
   await p.waitForSelector('.av-exc');
   assert.match(await p.textContent('.av-exc'), /1 caso fora da conta/);
   assert.ok(await p.$eval('#av-rank [data-resp="Ana Teste"] .av-nota-tag', e => Number(e.textContent)) > antes, 'sem o caso, a nota sobe');
+  assert.equal(await p.$('#pp-lista [data-k="calcFerias:a"]'), null, 'o caso sai da janela');
   assert.deepEqual(Object.keys(await p.evaluate(() => JSON.parse(localStorage.getItem('__mem')).avaliacaoExcecoes)), ['calcFerias:a'], 'guarda só o k');
+  if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/pessoa.png' });
+  await p.keyboard.press('Escape');
+  await p.waitForSelector('#dlg-pessoa', { state: 'hidden' });
+  assert.equal(await p.$('#av-rank .av-lin.ativo'), null);
   await p.click('#av-exc-limpar');
   await p.waitForFunction(() => !document.querySelector('.av-exc'));
   await p.click('#av-como');
   assert.match(await p.textContent('#av-como-txt'), /Pontualidade · peso 30[\s\S]*Ritmo · peso 10[\s\S]*só o tempo em que a vez era do escritório/);
   // período: troca e pede de novo
-  await p.click('#av-periodo [data-dias="30"]');
-  await p.waitForFunction(() => window.__msgs.some(m => m.cmd === 'desempenho' && m.dias === 30));
   // Carga de hoje: os gráficos da fila (a sugestão "quem tem menos" saiu)
   await p.click('#abas [data-aba="carga"]');
   await p.waitForSelector('#g-carga svg');
@@ -965,11 +986,15 @@ await passo('app · detalhe: abas inteiras (não achatadas) mesmo com muito cont
   assert.deepEqual(p.erros, []);
 });
 
-await passo('app · Fila: tipos em chips (só os que têm alguma; de novo tira); ordem por prioridade, empresa (agrupada) e mais recente', async () => {
+await passo('app · Fila: cartões por tipo (todos, enxutos; de novo tira); ordem por prioridade, empresa (agrupada) e mais recente', async () => {
   const p = await abrirApp('#/fila?escopo=equipe');
-  const tipos = await p.$$eval('#tipos .tipo-ch', e => e.map(x => x.dataset.tipo + '=' + x.querySelector('b').textContent));
-  assert.deepEqual(tipos, ['=3', 'geral=1', 'calcFerias=1', 'rubricas=1'], 'só os tipos com alguma, na vez do escritório');
-  assert.match(await p.getAttribute('#tipos [data-tipo="calcFerias"]', 'title'), /1 fora do prazo/);
+  const tipos = await p.$$eval('#tipos .tipo-c', e => e.map(x => x.dataset.tipo + '=' + x.querySelector('b').textContent));
+  assert.equal(tipos.length, 11, 'todos os tipos, como antes');
+  assert.ok(tipos.includes('=3') && tipos.includes('calcFerias=1') && tipos.includes('afastamento=0'), tipos.join());
+  assert.match(await p.textContent('#tipos [data-tipo="calcFerias"]'), /1 fora do prazo/);
+  assert.equal(await p.$eval('#tipos [data-tipo="afastamento"]', b => b.classList.contains('zero')), true);
+  const alt = await p.$eval('#tipos .tipo-c', b => b.getBoundingClientRect().height);
+  assert.ok(alt >= 70 && alt <= 100, 'tamanho de cartão: ' + alt);
   await p.click('#tipos [data-tipo="geral"]');
   assert.deepEqual(await linhas(p), ['geral:b']);
   await p.click('#tipos [data-tipo="geral"]');

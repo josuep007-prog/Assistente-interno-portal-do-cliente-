@@ -215,6 +215,10 @@ function palavras(el) {
 }
 
 /* ---------- Avançado: a página de opções completa (arquivo de regras, aprender ações, diagnóstico) ---------- */
+// options.html precisa estar em web_accessible_resources: o app roda dentro da página do Onvio, e o Chrome bloqueia
+// páginas da extensão em quadros desse contexto se não estiverem liberadas. "Abrir em outra aba" fica de reserva.
 function avancado(el) {
-  el.innerHTML = '<iframe class="cfg-frame" src="../options.html" title="Configurações avançadas do Control Onvio"></iframe>';
+  el.innerHTML = '<div class="cfg-frame-barra"><span class="fraco">Arquivo de regras do escritório, aprender ações e diagnóstico.</span><button type="button" class="btn btn-sm" id="cfg-aba"><svg class="ic ic-sm"><use href="#i-link"/></svg> Abrir em outra aba</button></div>' +
+    '<iframe class="cfg-frame" src="../options.html" title="Configurações avançadas do Control Onvio"></iframe>';
+  el.querySelector('#cfg-aba').onclick = () => { try { chrome.runtime.openOptionsPage(); } catch (e) { window.open('../options.html', '_blank'); } };
 }

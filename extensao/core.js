@@ -1663,7 +1663,7 @@
     const pessoa = nome => { if (!pessoas.has(nome)) pessoas.set(nome, novo(nome)); return pessoas.get(nome); };
     function novo(nome) {
       return { resp: nome, carteira: 0, esc: 0, emDiaEsc: 0, g3: 0, g3Esc: 0, paradas: 0, respondeu: 0, agSoma: 0, agN: 0, concl: 0, noPrazo: 0, tempoSoma: 0, estimadas: 0,
-        prescritas: 0, prescSemCobranca: 0, razoes: [], ant: { concl: 0, noPrazo: 0, prescritas: 0 }, porDia: {}, atencao: [], foraDoPrazo: [], evitaveis: [] };
+        prescritas: 0, prescSemCobranca: 0, razoes: [], ant: { concl: 0, noPrazo: 0, prescritas: 0 }, porDia: {}, atencao: [], foraDoPrazo: [], evitaveis: [], lentas: [], atrasadas: [], semResposta: [] };
     }
     const equipe = novo('Equipe');
     const contar = (fn, quem) => { if (quem) fn(pessoa(quem)); fn(equipe); };
@@ -1684,6 +1684,9 @@
       }, i.resp);
       if (i.resp && (i.grav === 3 || (i.lado === 'esc' && (i.parado || 0) > s.parada))) pessoa(i.resp).atencao.push(i);
       if (i.resp && i.grav === 3 && i.lado === 'esc') pessoa(i.resp).evitaveis.push({ item: i, motivo: 'crítica (G3) na vez do escritório' });
+      // o que pesa em "carteira em dia" e em "agilidade", para a janela de cada pessoa
+      if (i.resp && i.lado === 'esc' && atrasoDoEscritorio) { const m = (i.motivos || []).filter(x => x && x.n > 0 && x.o !== 'cli').sort((a, b) => b.n - a.n)[0]; pessoa(i.resp).atrasadas.push({ item: i, motivo: m ? m.m : 'fora do prazo' }); }
+      if (i.resp && semAnalise && i.ptUteis == null) pessoa(i.resp).semResposta.push({ item: i, dias: i.uteisAberto });
     }
     const vistos = new Set(), doPeriodo = [];
     for (const x of movimentadas || []) {
@@ -1720,13 +1723,19 @@
       }, quem);
       if (atual && quem && !prescrita && !noPrazo) pessoa(quem).foraDoPrazo.push({ item: x, tempo, prazo, estimado: !a });
       if (atual && quem && prescrita && !(a && a.c)) pessoa(quem).evitaveis.push({ item: x, motivo: 'prescrita sem cobrança ao cliente' + (a ? '' : ' (sem leitura dos trâmites)') });
-      if (atual && !prescrita && tempo != null) doPeriodo.push({ quem, type: x.type, tempo });
+      if (atual && !prescrita && tempo != null) doPeriodo.push({ quem, type: x.type, tempo, item: x });
     }
     // ritmo: cada entrega comparada com a mediana da equipe no mesmo tipo (no período)
     const porTipo = {};
     doPeriodo.forEach(d => (porTipo[d.type] = porTipo[d.type] || []).push(d.tempo));
     const med = Object.fromEntries(Object.entries(porTipo).map(([k, l]) => [k, mediana(l)]));
-    doPeriodo.forEach(d => { const raz = (d.tempo + 0.5) / (med[d.type] + 0.5); equipe.razoes.push(raz); if (d.quem) pessoa(d.quem).razoes.push(raz); });
+    doPeriodo.forEach(d => {
+      const raz = (d.tempo + 0.5) / (med[d.type] + 0.5);
+      equipe.razoes.push(raz);
+      if (!d.quem) return;
+      pessoa(d.quem).razoes.push(raz);
+      if (raz >= 1.5 && d.tempo > med[d.type]) pessoa(d.quem).lentas.push({ item: d.item, tempo: d.tempo, normal: med[d.type], raz });
+    });
 
     const diasLista = Array.from({ length: dias }, (_, n) => ymd(somaDias(iniAtual, n)));
     const pct = (a, b) => (b ? Math.round(a / b * 100) : null);
@@ -1774,7 +1783,10 @@
         porDia: diasLista.map(d => ({ dia: d, n: r.porDia[d] || 0 })),
         atencao: ord(r.atencao || [], (a, c) => (c.grav || 0) - (a.grav || 0) || (c.parado || 0) - (a.parado || 0)).slice(0, 8),
         foraDoPrazo: ord(r.foraDoPrazo, (a, c) => (c.tempo || 0) - (a.tempo || 0)),
-        evitaveis: r.evitaveis.slice(0, 10)
+        evitaveis: r.evitaveis.slice(0, 10),
+        lentas: ord(r.lentas, (a, c) => c.raz - a.raz),
+        atrasadas: ord(r.atrasadas, (a, c) => (c.item.nivel || 0) - (a.item.nivel || 0) || (c.item.parado || 0) - (a.item.parado || 0)),
+        semResposta: ord(r.semResposta, (a, c) => (c.dias || 0) - (a.dias || 0))
       };
     }
     const analistas = [...pessoas.values()].filter(r => r.resp !== SEM).map(r => fechar(r, true))

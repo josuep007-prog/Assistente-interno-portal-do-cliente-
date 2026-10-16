@@ -418,7 +418,7 @@ a{color:var(--blue-deep)}
 .rep .ic{width:12px; height:12px}
 
 /* configurações embutidas */
-.cfg-frame{width:100%; height:calc(100vh - 120px); border:1px solid var(--rule); border-radius:var(--r); background:var(--page)}
+.cfg-frame{width:100%; height:calc(100vh - 170px); border:1px solid var(--rule); border-radius:var(--r); background:var(--page)}
 
 @media (max-width:1100px){
   .busca-falsa{width:auto} .busca-falsa span{display:none}
@@ -714,18 +714,20 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 
 /* Fila · cartões dos tipos de solicitação e agrupamento por empresa */
 .tipos{display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px; margin:0 0 14px}
-.tipo-c{position:relative; display:flex; flex-direction:column; align-items:flex-start; gap:4px; padding:10px 12px 13px 14px; border:1px solid var(--rule); border-radius:var(--r); background:var(--surface); color:inherit; font:inherit; text-align:left; cursor:pointer; overflow:hidden; transition:border-color .15s, box-shadow .15s, transform .15s}
-.tipo-c::before{content:""; position:absolute; inset:0 auto 0 0; width:3px; background:var(--fam)}
-.tipo-c:hover{border-color:color-mix(in srgb, var(--fam) 60%, var(--rule)); transform:translateY(-1px)}
-.tipo-c.on{border-color:var(--fam); box-shadow:0 0 0 2px color-mix(in srgb, var(--fam) 35%, transparent); background:color-mix(in srgb, var(--fam) 7%, var(--surface))}
-.tipo-c.zero{opacity:.55}
-.tipo-topo{display:flex; align-items:center; gap:7px; min-width:0; max-width:100%}
-.tipo-rot{font-size:11.5px; font-weight:600; line-height:1.2; color:var(--ink-2); min-width:0; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical}
-.tipo-c b{font:700 22px/1.1 "Archivo",sans-serif; font-variant-numeric:tabular-nums}
-.tipo-sub{font-size:11.5px; color:var(--ink-3)}
+/* cartões de tipo: enxutos (sem faixa nem barra), ícone na cor da família, número grande e uma linha de apoio */
+.tipo-c{display:flex; flex-direction:column; align-items:flex-start; gap:6px; padding:12px 14px; border:1px solid var(--rule); border-radius:var(--r); background:var(--surface); color:inherit; font:inherit; text-align:left; cursor:pointer; transition:border-color .15s, box-shadow .15s, background .15s}
+.tipo-c:hover{border-color:var(--rule-strong); box-shadow:0 1px 2px rgba(15,23,32,.04), 0 6px 16px rgba(15,23,32,.06)}
+.tipo-c.on{border-color:var(--fam); box-shadow:inset 0 0 0 1px var(--fam); background:color-mix(in srgb, var(--fam) 5%, var(--surface))}
+.tipo-c.zero{opacity:.5}
+.tipo-c.zero:hover{box-shadow:none}
+.tipo-topo{display:flex; align-items:center; gap:6px; min-width:0; max-width:100%}
+.tipo-c .tipo-ic.pq{width:16px; height:16px; margin:0; background:none; box-shadow:none; color:var(--fam)}
+.tipo-c .tipo-ic.pq .ic{width:14px; height:14px}
+.tipo-rot{font-size:11.5px; font-weight:500; line-height:1.2; color:var(--ink-3); min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis}
+.tipo-c.on .tipo-rot{color:var(--ink)}
+.tipo-c b{font:600 24px/1 "Archivo",sans-serif; letter-spacing:-.02em; font-variant-numeric:tabular-nums}
+.tipo-sub{font-size:11px; color:var(--ink-3)}
 .tipo-sub em{font-style:normal; font-weight:600; color:var(--brand-red)}
-.tipo-barra{position:absolute; left:14px; right:12px; bottom:5px; height:3px; border-radius:2px; background:color-mix(in srgb, var(--ink-3) 25%, transparent); overflow:hidden}
-.tipo-barra > i{display:block; height:100%; background:var(--fam)}
 /* ícone do tipo: pastilha com o tom da família e o desenho na cor do texto (contraste garantido nos dois temas) */
 .tipo-ic{flex:none; display:inline-grid; place-items:center; width:24px; height:24px; border-radius:var(--r); color:var(--ink); background:color-mix(in srgb, var(--fam) 22%, var(--surface)); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--fam) 45%, transparent)}
 .tipo-ic .ic{width:14px; height:14px}
@@ -1137,14 +1139,6 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .fila-cab h3 .linkish{border:0; background:none; padding:0; font:600 12px "IBM Plex Sans",sans-serif; color:var(--blue-deep); cursor:pointer}
 .fila-cab h3 .linkish:hover{text-decoration:underline}
 .fila-cab .count{font-size:12px; color:var(--ink-3)}
-.tipos-l{display:flex; gap:6px; flex-wrap:wrap; margin-left:auto}
-.tipo-ch{display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 9px; border:1px solid var(--rule); border-radius:var(--r); background:var(--surface); color:var(--ink-2); font:600 12px "IBM Plex Sans",sans-serif; cursor:pointer}
-.tipo-ch b{font-variant-numeric:tabular-nums; color:var(--ink)}
-.tipo-ch em{font-style:normal; min-width:16px; padding:0 4px; border-radius:3px; background:var(--brand-red); color:#fff; font-size:10.5px; text-align:center}
-.tipo-ch:hover{border-color:color-mix(in srgb, var(--fam) 60%, var(--rule))}
-.tipo-ch.on{border-color:var(--fam); background:color-mix(in srgb, var(--fam) 9%, var(--surface)); color:var(--ink)}
-.tipo-ch .tipo-ic{width:18px; height:18px}
-.tipo-ch .tipo-ic .ic{width:12px; height:12px}
 /* grupos por urgência na ordem de prioridade */
 .emp-cab.grp-atraso b{color:var(--late)}
 .emp-cab.grp-prescreve b{color:var(--late)}
@@ -1152,3 +1146,43 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .emp-cab.grp-respondeu b{color:var(--blue-deep)}
 .emp-cab.grp-emdia b, .emp-cab.grp-cli b{color:var(--ink-2)}
 .fila-cab h3{flex:none}
+
+/* cartão de solicitação: um motivo em texto (sem caixa) e nada estourando a borda */
+.sc-mot{display:flex; align-items:baseline; gap:6px; min-width:0; font-size:12px; font-weight:600; line-height:1.35}
+.sc-mot.late{color:var(--late)} .sc-mot.today{color:var(--today)}
+.sc-mot-tx{min-width:0; overflow-wrap:anywhere}
+.sc-mot small{font-weight:500; color:var(--ink-3)}
+.sc-g3{flex:none; padding:0 5px; border-radius:3px; background:var(--late); color:#fff; font-size:10px; font-weight:700; line-height:16px}
+.motivos .pill{white-space:normal; max-width:100%; overflow-wrap:anywhere}
+.cfg-frame-barra{display:flex; align-items:center; justify-content:space-between; gap:10px; margin:0 0 10px; font-size:12.5px}
+.av-periodo{font-size:12px; font-weight:600; color:var(--ink-3)}
+
+/* Equipe · janela da pessoa (por cima): nota, resumo, os 5 itens como abas e os casos que pesam */
+.dlg-pessoa{width:min(920px, calc(100vw - 48px)); max-height:calc(100vh - 48px)}
+.dlg-pessoa.pp-entra{animation:dlgEntra .2s ease}
+.pp-hero{display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:18px; padding:14px 22px 6px}
+.pp-hero .ap .fg{stroke:var(--c)}
+.pp-hero .ap b{font:700 26px/1 "Archivo",sans-serif}
+.pp-resumo p{margin:6px 0 10px; font-size:13px; color:var(--ink-2)}
+.pp-nums{display:flex; gap:22px; flex-wrap:wrap}
+.pp-n{display:flex; flex-direction:column; gap:1px}
+.pp-n span{font-size:11px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; color:var(--ink-3)}
+.pp-n b{font:700 18px/1.2 "Archivo",sans-serif; font-variant-numeric:tabular-nums}
+.pp-n small{font-size:11px; color:var(--ink-3)}
+.pp-dias{display:flex; flex-direction:column; align-items:flex-end; gap:2px}
+.pp-dias small{font-size:10.5px; color:var(--ink-3)}
+.pp-comps{display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:8px; padding:12px 22px 4px}
+.pp-comp{display:flex; flex-direction:column; align-items:flex-start; gap:5px; padding:10px 12px; border:1px solid var(--rule); border-radius:var(--r); background:var(--surface); color:inherit; font:inherit; text-align:left; cursor:pointer; transition:border-color .15s, box-shadow .15s, background .15s}
+.pp-comp:hover{border-color:var(--rule-strong)}
+.pp-comp.on{border-color:var(--blue-deep); box-shadow:inset 0 0 0 1px var(--blue-deep); background:color-mix(in srgb, var(--blue-deep) 4%, var(--surface))}
+.pp-comp-rot{display:flex; align-items:center; gap:6px; width:100%; font-size:11.5px; font-weight:600; color:var(--ink-3)}
+.pp-comp-rot em{margin-left:auto; min-width:18px; padding:0 5px; border-radius:3px; background:var(--surface-3); color:var(--ink-2); font-style:normal; font-size:10.5px; text-align:center}
+.pp-comp b{font:700 22px/1 "Archivo",sans-serif; font-variant-numeric:tabular-nums}
+.pp-comp .av-barra{width:100%}
+.pp-comp small{font-size:10.5px; color:var(--ink-3)}
+.pp-painel{flex:1 1 auto; min-height:120px; overflow-y:auto; padding:10px 22px 16px}
+.pp-painel.pp-troca{animation:ppTroca .18s ease}
+@keyframes ppTroca{from{opacity:0; transform:translateY(4px)}}
+.pp-expl{margin:0 0 10px; font-size:12.5px; color:var(--ink-3)}
+@media (max-width:820px){ .pp-hero{grid-template-columns:auto minmax(0,1fr)} .pp-dias{display:none} .pp-comps{grid-template-columns:repeat(3,minmax(0,1fr))} }
+@media (prefers-reduced-motion:reduce){ .dlg-pessoa.pp-entra, .pp-painel.pp-troca{animation:none} }

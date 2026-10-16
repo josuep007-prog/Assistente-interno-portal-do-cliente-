@@ -9,6 +9,7 @@ import { estado, itens, enviar, marcarExcecao } from '../estado.js';
 import { esc, plural, num, fmtDataCurta, toast, ligarItens, porqueGrav, $, $$ } from '../util.js';
 import { barrasEmpilhadas, barrasAgrupadas, linhaDoDia, ligarDicas, anelProgresso, miniBarras, animarNumeros, cor } from '../graficos.js';
 import { prescricaoHtml, mapaIdadeHtml, ligarEquipe } from './painel-equipe.js';
+import { detalheAberto } from './detalhe.js';
 const OC = window.OC;
 
 const GRAV = [
@@ -62,18 +63,17 @@ export function render(el, ctx, params) {
     titulo: 'Equipe', sub: 'Desempenho e qualidade dos atendimentos · área do gestor',
     abas: [{ id: 'desempenho', rot: 'Desempenho', href: '#/equipe' }, { id: 'carga', rot: 'Carga de hoje', href: '#/equipe?aba=carga' }, { id: 'resp', rot: 'Responsáveis', href: '#/equipe?aba=resp', n: an.length }],
     aba,
-    extra: (aba === 'desempenho' ? '<div class="seg seg-sm" role="group" aria-label="Período" id="av-periodo">' + [7, 14, 30].map(d => '<button data-dias="' + d + '"' + (dias === d ? ' class="on"' : '') + '>' + (d === 7 ? '7 dias' : d + ' dias') + '</button>').join('') + '</div>' : '') +
+    extra: (aba === 'desempenho' ? '<span class="av-periodo" id="av-periodo">Últimos 30 dias</span>' : '') +
       '<button class="btn btn-sm" id="av-bloquear" title="Bloquear a área do gestor"><svg class="ic ic-sm"><use href="#i-lock"/></svg> Bloquear</button>'
   });
   $('#av-bloquear', extra).onclick = () => { travar(false); resultado = null; render(el, ctx, params); };
-  $$('[data-dias]', extra).forEach(b => b.onclick = () => { dias = Number(b.dataset.dias); resultado = null; aberto = null; render(el, ctx, params); });
   if (aba === 'carga') return carga(el, ctx);
   if (aba === 'resp') return responsaveis(el, ctx);
   return desempenho(el, ctx, params);
 }
 
 /* ---------- Desempenho ---------- */
-let dias = 7;
+const dias = 30;          // período fixo: 7 e 14 dias dão amostra pequena demais para avaliar alguém
 let resultado = null;   // resposta do cmd 'desempenho' (lida na hora, só na memória)
 let lendo = false;
 let aberto = null;      // analista com o detalhe aberto
@@ -105,7 +105,7 @@ function delta(v, unidade, melhorSobe) {
 function desempenho(el, ctx, params) {
   if (!estado.snap) { el.innerHTML = '<div class="vazio"><b>Aguardando a primeira leitura do Onvio</b></div>'; return; }
   if (!resultado) {
-    el.innerHTML = '<div class="av-carregando"><span class="av-pulso"></span><b>Lendo as entregas da equipe nos últimos ' + dias + ' dias…</b><small>Solicitações concluídas e prescritas no período e no anterior, lidas na hora no Onvio. Nada é guardado.</small></div>';
+    el.innerHTML = '<div class="av-carregando"><span class="av-pulso"></span><b>Lendo as entregas da equipe nos últimos ' + dias + ' dias…</b><small>Solicitações concluídas e prescritas no período e no anterior, com os trâmites de cada uma, lidas na hora no Onvio. Da primeira vez demora mais; depois só lê o que mudou.</small></div>';
     if (!lendo) {
       lendo = true;
       const pedido = dias;
@@ -139,7 +139,6 @@ function desempenho(el, ctx, params) {
         kpi('av-k-qual', 'Alertas evitáveis', '<span class="' + (e.g3Esc + e.prescSemCobranca ? 'late' : '') + '">' + num(e.g3Esc + e.prescSemCobranca) + '</span>', '<span class="av-d">' + e.g3Esc + ' G3 na vez do escritório · ' + e.prescSemCobranca + ' prescritas sem cobrança</span>') +
       '</div>' +
     '</section>' +
-    (r.semLeitura ? '<div class="faixa warn"><svg class="ic"><use href="#i-alert"/></svg>' + plural(r.semLeitura, 'entrega ficou', 'entregas ficaram') + ' sem a leitura dos trâmites: para elas o tempo conta da abertura à conclusão (estimado) e o crédito vai para o responsável. Abra a tela de novo mais tarde para completar.</div>' : '') +
     '<div class="av-como" id="av-como-txt" hidden><b>Como a nota é calculada (0 a 100)</b><ul>' + COMP.map(([k, rot, d]) => '<li><b>' + rot + ' · peso ' + r.pesos[k] + '</b> ' + esc(d) + '</li>').join('') + '</ul>' +
       '<p><b>Para ser justa:</b> o tempo que conta é só o tempo em que a vez era do escritório (lido nos trâmites de cada entrega); a entrega conta para quem a concluiu, não para o responsável atual; atrasos de origem do cliente não pesam; com poucas entregas, os percentuais são puxados para a média da equipe, e abaixo de ' + r.minEntregas + ' entregas no período a pessoa aparece sem posição ("poucos dados"); item sem dado recebe o valor da equipe. O gestor pode tirar um caso da conta ("Não contar", no detalhe de cada pessoa). Pesos e mínimo podem vir do arquivo de regras (avaliacao).</p>' +
       '<p>Faixas: 85+ Excelente · 70+ Bom · 50+ Atenção · abaixo, Precisa de apoio. É um retrato para conversar com a equipe, não um julgamento automático.</p></div>' +
@@ -147,7 +146,7 @@ function desempenho(el, ctx, params) {
       '<section class="card av-rank-card"><div class="card-h"><h3>Ranking de desempenho</h3><span class="sub">clique numa linha para ver o detalhe · no cabeçalho para ordenar</span></div><div class="card-b"><div class="av-rank" id="av-rank"></div></div></section>' +
       '<section class="card"><div class="card-h"><h3>Entregas no período</h3><span class="sub">no prazo × fora do prazo, por analista</span></div><div class="card-b"><div id="av-barras"></div></div></section>' +
     '</div>' +
-    '<div id="av-det">' + (aberto ? detalheAnalista(ans.find(a => a.resp === aberto)) : '') + '</div>';
+    '';
 
   const desenhar = () => {
     const box = $('#av-barras', el);
@@ -175,31 +174,15 @@ function desempenho(el, ctx, params) {
   if (animar) { animar = false; el.classList.remove('av-anim'); void el.offsetWidth; el.classList.add('av-anim'); animarNumeros(el); }
   $('#av-como', el).onclick = () => { const t = $('#av-como-txt', el); t.hidden = !t.hidden; };
   if ($('#av-exc-limpar', el)) $('#av-exc-limpar', el).onclick = async () => { for (const k of Object.keys(estado.excecoes || {})) await marcarExcecao(k, false); toast('Todos os casos voltaram para a conta'); render(el, ctx, params); };
-  ligarDetalhe();
 
   function abrir(resp) {
-    aberto = aberto === resp ? null : resp;
+    aberto = resp;
     $$('#av-rank [data-resp]', el).forEach(c => c.classList.toggle('ativo', c.dataset.resp === aberto));
-    $('#av-det', el).innerHTML = aberto ? detalheAnalista(ans.find(a => a.resp === aberto)) : '';
-    desenhar(); ligarDetalhe();
-    if (aberto) $('#av-det', el).scrollIntoView({ block: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    desenhar();
+    abrirPessoa(resp, { ans, ctx, recalcular: () => render(el, ctx, params), fechou: () => { $$('#av-rank [data-resp]', el).forEach(c => c.classList.remove('ativo')); desenhar(); } });
   }
-  function ligarDetalhe() {
-    const d = $('#av-det .av-det', el);
-    if (!d) return;
-    $('#av-det-fechar', el).onclick = () => abrir(aberto);
-    $('#av-det-fila', el).onclick = () => ctx.navegar('fila', { analista: aberto });
-    const a = ans.find(x => x.resp === aberto);
-    if ($('#av-det-l', el)) ligarItens($('#av-det-l', el), a.atencao, ctx.abrirDetalhe);
-    if ($('#av-det-fp', el)) ligarItens($('#av-det-fp', el), a.foraDoPrazo.map(x => x.item), ctx.abrirDetalhe);
-    if ($('#av-det-ev', el)) ligarItens($('#av-det-ev', el), a.evitaveis.map(x => x.item), ctx.abrirDetalhe);
-    $$('[data-exc]', d).forEach(b => b.addEventListener('click', async ev => {
-      ev.stopPropagation();
-      await marcarExcecao(b.dataset.exc, true);
-      toast('Caso fora da conta (só para a avaliação; pode voltar no topo da tela)');
-      render(el, ctx, params);
-    }));
-  }
+  // a janela da pessoa continua aberta numa leitura nova ou depois de "Não contar": atualiza com a conta nova
+  if (aberto && pessoaAberta()) abrirPessoa(aberto, { ans, ctx, recalcular: () => render(el, ctx, params), fechou: () => { $$('#av-rank [data-resp]', el).forEach(c => c.classList.remove('ativo')); desenhar(); } }, true);
 }
 
 // Ranking em tabela compacta: uma linha por pessoa, na ordem da nota (ou da coluna escolhida no cabeçalho).
@@ -227,33 +210,123 @@ function rankHtml(ans) {
 }
 const setinha = v => (v ? '<span class="av-d ' + (v > 0 ? 'bom' : 'ruim') + '" title="' + (v > 0 ? '+' : '') + fmt1(v) + ' vs. período anterior">' + (v > 0 ? '▲' : '▼') + '</span>' : '');
 
-function detalheAnalista(a) {
-  if (!a) return '';
-  const lin = (rot, val, det) => '<div class="av-det-n"><span>' + rot + '</span><b>' + val + '</b>' + (det ? '<small>' + det + '</small>' : '') + '</div>';
-  return '<section class="card av-det" style="--c:' + cor(COR_FAIXA[a.faixa.k]) + '"><div class="card-h"><h3>' + esc(a.resp) + ' · nota ' + (a.nota == null ? '–' : a.nota) + ' (' + esc(a.faixa.rot) + ')</h3>' +
-    '<button class="lk" id="av-det-fila">Ver a fila da pessoa</button><button class="lk" id="av-det-fechar">Fechar</button></div><div class="card-b">' +
-    '<div class="av-det-grade">' +
-      lin('Entregas', num(a.concluidas), 'anterior: ' + num(a.anterior.concluidas)) +
-      lin('No prazo', pctTxt(a.pctNoPrazo), a.noPrazo + ' de ' + a.concluidas + (a.anterior.pctNoPrazo != null ? ' · anterior: ' + a.anterior.pctNoPrazo + '%' : '')) +
-      lin('Tempo com o escritório', fmt1(a.tempoMedio) + ' d.u.', 'média por entrega' + (a.ritmo != null ? ' · ritmo ' + fmt1(a.ritmo) + '× o normal da equipe' : '') + (a.estimadas ? ' · ' + a.estimadas + ' estimada(s)' : '')) +
-      lin('Carteira', num(a.carteira), a.esc + ' com o escritório · ' + pctTxt(a.pctEmDia) + ' em dia (sem os atrasos do cliente)') +
-      lin('1º trâmite', fmt1(a.primeiroTramite) + ' d.u.', 'média · inclui as sem resposta') +
-      lin('Evitáveis', num(a.g3Esc + a.prescSemCobranca), a.g3Esc + ' G3 na vez do escritório · ' + a.prescSemCobranca + ' prescritas sem cobrança · ' + a.paradas + ' paradas · ' + a.respondeu + ' com resposta do cliente esperando') +
-    '</div>' +
-    (a.poucosDados ? '<p class="av-pouco-nota">Só ' + plural(a.concluidas, 'entrega', 'entregas') + ' no período: os percentuais foram puxados para a média da equipe e a pessoa fica sem posição no ranking.</p>' : '') +
-    '<p class="av-pouco-nota">Componentes da nota: ' + COMP.map(([k, rot]) => rot + ' ' + (a.componentes[k] == null ? '–' : a.componentes[k]) + (a.brutos[k] != null && a.brutos[k] !== a.componentes[k] ? ' (próprio: ' + a.brutos[k] + ')' : a.brutos[k] == null ? ' (sem dado: valor da equipe)' : '')).join(' · ') + '</p>' +
-    (a.foraDoPrazo.length ? '<h4 class="av-det-h">Entregas fora do prazo</h4><div class="av-det-l" id="av-det-fp">' + a.foraDoPrazo.map(x => itemExc(x.item, 'Fora do prazo', 'var(--viz-serious)', fmt1(x.tempo) + ' d.u. com o escritório (prazo ' + x.prazo + ')' + (x.estimado ? ' · estimado: sem leitura dos trâmites' : ''))).join('') + '</div>' : '') +
-    (a.evitaveis.length ? '<h4 class="av-det-h">Alertas evitáveis</h4><div class="av-det-l" id="av-det-ev">' + a.evitaveis.map(x => itemExc(x.item, x.item.lado === 'fim' ? 'Prescrita' : 'Crítica (G3)', 'var(--viz-crit)', x.motivo)).join('') + '</div>' : '') +
-    '<h4 class="av-det-h">Pontos de atenção agora</h4>' +
-    (a.atencao.length ? '<div class="av-det-l" id="av-det-l">' + a.atencao.map(i => (() => { const pg = porqueGrav(i); const porque = i.grav === 3 && pg ? pg.texto.replace(/^Crítica \(G3\) porque /, '') : 'parada há ' + (i.parado || 0) + ' dias com o escritório (limite ' + estado.settings.parada + ')'; return '<div class="item-ag clicavel" tabindex="0" data-k="' + esc(i.k) + '"><span class="pr-tag" style="--pc:' + (i.grav === 3 ? 'var(--viz-crit)' : 'var(--viz-serious)') + '">' + (i.grav === 3 ? 'Crítica (G3)' : 'Parada') + '</span><div class="tx"><b>#' + esc(i.num) + ' ' + esc(i.apelido || i.cliente || '—') + '</b><small>' + esc([i.typeLabel, i.detalhe].filter(Boolean).join(' · ')) + '</small><small class="av-porque">Por quê: ' + esc(porque) + '</small></div></div>'; })()).join('') + '</div>'
-      : '<div class="hj-zen">Nenhuma crítica nem parada na carteira agora.</div>') +
-    '</div></section>';
-}
-
 // Linha de um caso que pesa na nota, com "Não contar" (o gestor tira da conta; fica só no Chrome dele)
 function itemExc(i, tag, cor, porque) {
   return '<div class="item-ag clicavel" tabindex="0" data-k="' + esc(i.k) + '"><span class="pr-tag" style="--pc:' + cor + '">' + esc(tag) + '</span><div class="tx"><b>#' + esc(i.num) + ' ' + esc(i.apelido || i.cliente || '—') + '</b><small>' + esc([i.typeLabel, i.detalhe].filter(Boolean).join(' · ')) + '</small><small class="av-porque">' + esc(porque) + '</small></div>' +
     '<div class="acts"><button type="button" class="btn btn-sm" data-exc="' + esc(i.k) + '" title="Tira este caso da avaliação (por exemplo, um problema que não foi da pessoa)">Não contar</button></div></div>';
+}
+
+/* ---------- janela da pessoa (por cima da tela) ----------
+ * Nota e resumo no topo; os 5 itens da nota como abas: abre no que mais puxa a nota para baixo e mostra só os casos
+ * que pesam naquele item (clicar abre a solicitação; "Não contar" tira da conta). ← → passam para a próxima pessoa. */
+let foco = null;          // item da nota em foco na janela
+let pessoaCtx = null;     // { ans, ctx, recalcular, fechou }
+const pessoaAberta = () => { const d = document.getElementById('dlg-pessoa'); return !!d && !d.hidden; };
+function garantirDlg() {
+  if (document.getElementById('dlg-pessoa')) return;
+  const f = document.createElement('div'); f.className = 'fundo'; f.id = 'fundo-pessoa'; f.hidden = true; f.style.zIndex = 48; f.onclick = fecharPessoa;
+  const d = document.createElement('section'); d.className = 'dlg dlg-pessoa'; d.id = 'dlg-pessoa'; d.hidden = true; d.tabIndex = -1; d.style.zIndex = 49;
+  d.setAttribute('role', 'dialog'); d.setAttribute('aria-modal', 'true'); d.setAttribute('aria-label', 'Desempenho da pessoa');
+  document.body.append(f, d);
+  addEventListener('hashchange', () => { if (pessoaAberta()) fecharPessoa(); });
+  // antes do atalho geral do app: com a solicitação aberta por cima, quem fecha é ela
+  addEventListener('keydown', e => {
+    if (!pessoaAberta() || detalheAberto()) return;
+    if (e.key === 'Escape') { e.stopImmediatePropagation(); fecharPessoa(); }
+    else if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.target.matches('input, select, textarea')) { e.preventDefault(); andarPessoa(e.key === 'ArrowLeft' ? -1 : 1); }
+  }, true);
+}
+function fecharPessoa() {
+  const d = document.getElementById('dlg-pessoa'); if (!d) return;
+  d.hidden = true; d.innerHTML = ''; document.getElementById('fundo-pessoa').hidden = true;
+  aberto = null; foco = null;
+  if (pessoaCtx && pessoaCtx.fechou) pessoaCtx.fechou();
+}
+function andarPessoa(dlt) {
+  const l = pessoaCtx.ans, p = l.findIndex(x => x.resp === aberto), prox = l[p + dlt];
+  if (prox) { foco = null; aberto = prox.resp; abrirPessoa(prox.resp, pessoaCtx, true); }
+}
+// casos que pesam em cada item, com a frase de por quê
+function casosDe(a, k) {
+  const g = i => { const pg = i.grav === 3 ? porqueGrav(i) : null; return pg ? pg.texto.replace(/^Crítica \(G3\) porque /, 'crítica (G3): ') : ''; };
+  if (k === 'pontualidade') return a.foraDoPrazo.map(x => ({ item: x.item, tag: 'Fora do prazo', cor: 'var(--viz-serious)', porque: fmt1(x.tempo) + ' d.u. com o escritório (prazo ' + x.prazo + ')' + (x.estimado ? ' · estimado: sem leitura dos trâmites' : '') }));
+  if (k === 'ritmo') return a.lentas.map(x => ({ item: x.item, tag: 'Mais lenta', cor: 'var(--viz-warn)', porque: fmt1(x.tempo) + ' d.u. com o escritório; o normal da equipe neste tipo é ' + fmt1(x.normal) + ' d.u.' }));
+  if (k === 'emDia') return a.atrasadas.map(x => ({ item: x.item, tag: x.item.nivel === 2 ? 'Fora do prazo' : 'Vence hoje', cor: x.item.nivel === 2 ? 'var(--viz-serious)' : 'var(--viz-warn)', porque: x.motivo }));
+  if (k === 'cuidado') return a.evitaveis.map(x => ({ item: x.item, tag: x.item.lado === 'fim' ? 'Prescrita' : 'Crítica (G3)', cor: 'var(--viz-crit)', porque: x.item.lado === 'fim' ? x.motivo : (g(x.item) || x.motivo) }));
+  return a.semResposta.map(x => ({ item: x.item, tag: 'Sem resposta', cor: 'var(--viz-warn)', porque: 'sem o 1º trâmite há ' + x.dias + ' d.u.' }));
+}
+function abrirPessoa(resp, c, atualizar) {
+  garantirDlg();
+  pessoaCtx = c;
+  const l = c.ans, a = l.find(x => x.resp === resp);
+  if (!a) { fecharPessoa(); return; }
+  const pesos = Object.assign({}, OC.DEFAULTS.pesosNota, estado.settings.pesosNota || {});
+  const ativos = COMP.filter(([k]) => (pesos[k] || 0) > 0);
+  // abre no item que mais puxa a nota para baixo
+  if (!foco || !ativos.some(([k]) => k === foco)) foco = ativos.slice().sort((x, y) => (a.componentes[x[0]] ?? 101) - (a.componentes[y[0]] ?? 101))[0][0];
+  const p = l.findIndex(x => x.resp === resp);
+  const menor = ativos.slice().sort((x, y) => (a.componentes[x[0]] ?? 101) - (a.componentes[y[0]] ?? 101))[0];
+  const d = document.getElementById('dlg-pessoa');
+  const n = (rot, val, det) => '<div class="pp-n"><span>' + rot + '</span><b>' + val + '</b>' + (det ? '<small>' + det + '</small>' : '') + '</div>';
+  const per = dd => dd.slice(8, 10) + '/' + dd.slice(5, 7);
+  d.innerHTML =
+    '<div class="dlg-head"><div class="tt"><div class="dlg-l1"><span>' + (a.pos ? a.pos + 'º no ranking' : 'Poucos dados · sem posição') + '</span><span>últimos 30 dias</span></div><h2>' + esc(a.resp) + '</h2></div>' +
+      '<div class="dlg-nav"><button class="icon-btn" id="pp-ant" title="Anterior (←)" aria-label="Anterior"' + (p <= 0 ? ' disabled' : '') + '><svg class="ic"><use href="#i-chev-l"/></svg></button><span>' + (p + 1) + ' de ' + l.length + '</span><button class="icon-btn" id="pp-prox" title="Próxima (→)" aria-label="Próxima"' + (p >= l.length - 1 ? ' disabled' : '') + '><svg class="ic"><use href="#i-chev-r"/></svg></button></div>' +
+      '<button class="icon-btn" id="pp-fechar" aria-label="Fechar" title="Fechar (Esc)"><svg class="ic"><use href="#i-x"/></svg></button></div>' +
+    '<div class="pp-hero" style="--c:' + cor(COR_FAIXA[a.faixa.k]) + '">' +
+      anelProgresso(a.nota, '<b>' + (a.nota == null ? '–' : a.nota) + '</b><small>nota</small>', { tam: 92 }) +
+      '<div class="pp-resumo"><span class="av-chip' + (a.poucosDados ? ' av-chip-pouco' : '') + '">' + (a.poucosDados ? 'Poucos dados' : esc(a.faixa.rot)) + '</span>' +
+        '<p>' + (menor && a.componentes[menor[0]] != null && a.componentes[menor[0]] < 85 ? 'O que mais puxa a nota para baixo: <b>' + esc(menor[1].toLowerCase()) + '</b> (' + a.componentes[menor[0]] + ').' : 'Todos os itens acima de 85.') +
+          (a.poucosDados ? ' Com só ' + plural(a.concluidas, 'entrega', 'entregas') + ', os números foram puxados para a média da equipe.' : '') + '</p>' +
+        '<div class="pp-nums">' + n('Entregas', num(a.concluidas), setinha(a.variacao.concluidas) + ' anterior ' + num(a.anterior.concluidas)) + n('No prazo', pctTxt(a.pctNoPrazo), a.noPrazo + ' de ' + a.concluidas) +
+          n('Com o escritório', fmt1(a.tempoMedio) + ' d.u.', 'média por entrega') + n('Carteira', num(a.carteira), a.esc + ' a responder') + '</div></div>' +
+      '<div class="pp-dias" title="Entregas por dia">' + miniBarras(a.porDia.map(x => ({ rot: per(x.dia), n: x.n })), { largura: 180, altura: 40, titulo: 'Entregas por dia' }) + '<small>entregas por dia</small></div>' +
+    '</div>' +
+    '<div class="pp-comps" role="tablist">' + ativos.map(([k, rot]) => {
+      const v = a.componentes[k], b = a.brutos[k], casos = casosDe(a, k).length;
+      return '<button type="button" role="tab" class="pp-comp' + (foco === k ? ' on' : '') + '" data-comp="' + k + '" aria-selected="' + (foco === k) + '">' +
+        '<span class="pp-comp-rot">' + rot + (casos ? '<em>' + casos + '</em>' : '') + '</span><b>' + (v == null ? '–' : v) + '</b><i class="av-barra"><i style="width:' + (v || 0) + '%"></i></i>' +
+        '<small>' + (b == null ? 'sem dado: valor da equipe' : b !== v ? 'próprio ' + b + ' · ajustado' : 'peso ' + pesos[k]) + '</small></button>';
+    }).join('') + '</div>' +
+    '<div class="pp-painel" id="pp-painel">' + painelHtml(a) + '</div>' +
+    '<div class="dlg-actions"><button class="btn btn-sm" id="pp-fila"><svg class="ic ic-sm"><use href="#i-list"/></svg> Ver a fila da pessoa</button><span class="spacer"></span><small class="fraco">Clique num caso para abrir a solicitação · "Não contar" tira o caso da avaliação</small></div>';
+  d.hidden = false; document.getElementById('fundo-pessoa').hidden = false;
+  if (!atualizar) { d.classList.remove('pp-entra'); void d.offsetWidth; d.classList.add('pp-entra'); d.focus(); }
+  ligarPessoa(a);
+}
+function painelHtml(a) {
+  const item = COMP.find(([k]) => k === foco);
+  const casos = casosDe(a, foco);
+  return '<p class="pp-expl">' + esc(item[2].charAt(0).toUpperCase() + item[2].slice(1)) + '.</p>' +
+    (casos.length ? '<div class="av-det-l" id="pp-lista">' + casos.map(x => itemExc(x.item, x.tag, x.cor, x.porque)).join('') + '</div>'
+      : '<div class="hj-zen">' + (foco === 'ritmo' && a.ritmo == null ? 'Sem entregas para comparar no período.' : 'Nada pesando neste item.') + '</div>');
+}
+function ligarPessoa(a) {
+  const d = document.getElementById('dlg-pessoa'), c = pessoaCtx.ctx;
+  d.querySelector('#pp-fechar').onclick = fecharPessoa;
+  d.querySelector('#pp-ant').onclick = () => andarPessoa(-1);
+  d.querySelector('#pp-prox').onclick = () => andarPessoa(1);
+  d.querySelector('#pp-fila').onclick = () => { const r = a.resp; fecharPessoa(); c.navegar('fila', { analista: r }); };
+  const ligarLista = () => {
+    const box = d.querySelector('#pp-lista');
+    if (!box) return;
+    ligarItens(box, casosDe(a, foco).map(x => x.item), c.abrirDetalhe);
+    box.querySelectorAll('[data-exc]').forEach(b => b.addEventListener('click', async ev => {
+      ev.stopPropagation();
+      await marcarExcecao(b.dataset.exc, true);
+      toast('Caso fora da conta (só para a avaliação; pode voltar no topo da tela)');
+      pessoaCtx.recalcular();
+    }));
+  };
+  d.querySelectorAll('[data-comp]').forEach(b => b.onclick = () => {
+    foco = b.dataset.comp;
+    d.querySelectorAll('[data-comp]').forEach(x => { x.classList.toggle('on', x === b); x.setAttribute('aria-selected', String(x === b)); });
+    const pn = d.querySelector('#pp-painel');
+    pn.innerHTML = painelHtml(a);
+    pn.classList.remove('pp-troca'); void pn.offsetWidth; pn.classList.add('pp-troca');
+    ligarLista();
+  });
+  ligarLista();
 }
 
 function carga(el, ctx) {

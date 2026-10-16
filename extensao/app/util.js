@@ -57,14 +57,19 @@ export function prazoHtml(i) {
     (i.grav === 3 && pg ? '<span class="c-porque">' + esc(pg.curto) + '</span>' : '');
 }
 // Cartão de solicitação (visão "Cartões" das filas).
+// Cartão de solicitação: um motivo só (o mais grave), em texto e sem caixa; os outros ficam no "+N" (passe o mouse)
 export function cartaoItem(i) {
-  const mot = motivosHtml(i);
+  const ms = (i.motivos || []).map((m, n) => [m, n]).sort((a, b) => (b[0].n - a[0].n) || (a[1] - b[1])).map(x => x[0]);
+  const m = ms[0], pg = i.grav === 3 ? porqueGrav(i) : null;
+  const tudo = ms.map(x => x.m + (x.o === 'cli' ? ' (origem do cliente)' : '')).concat(pg ? [pg.texto] : []).join(' · ');
+  const mot = m ? '<div class="sc-mot ' + (m.n === 2 ? 'late' : 'today') + '" title="' + esc(tudo) + '">' + (i.grav === 3 ? '<span class="sc-g3">G3</span>' : '') +
+    '<span class="sc-mot-tx">' + esc(m.m) + (m.o === 'cli' ? ' <small>· origem do cliente</small>' : '') + (ms.length > 1 ? ' <small>+' + (ms.length - 1) + '</small>' : '') + '</span></div>' : '';
   return '<div class="sc lvl-' + (i.nivel || 0) + '" tabindex="0" data-k="' + esc(i.k) + '">' +
     '<div class="sc-top"><span class="mono">#' + esc(i.num) + '</span><span class="c-tipo">' + tipoIcone(i.type, 'pq') + '<span class="c-tipo-tx">' + esc(i.typeLabel) + '</span></span>' + pillSituacao(i) + '</div>' +
     '<div class="sc-cli" title="' + esc(i.cliente) + '">' + esc(nomeCli(i)) + '</div>' +
     '<div class="sc-sub">' + esc(i.detalhe || '—') + '</div>' +
-    (mot ? '<div class="motivos">' + mot + '</div>' : '') +
-    '<div class="sc-pe"><span><b>' + (i.parado || 0) + 'd</b> parada</span><span>vez: ' + ladoTexto(i) + '</span><span class="resp">' + (i.resp ? esc(i.resp) : '<span class="today">sem responsável</span>') + '</span></div></div>';
+    mot +
+    '<div class="sc-pe"><span><b>' + (i.parado || 0) + 'd</b> parada</span><span class="resp">' + (i.resp ? esc(i.resp) : '<span class="today">sem responsável</span>') + '</span></div></div>';
 }
 
 let toastT = null;
