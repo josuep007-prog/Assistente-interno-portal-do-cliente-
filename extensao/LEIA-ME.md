@@ -54,6 +54,9 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 - **Faixa de admissões:** recolhe e mostra pela **barra de cabeçalho** inteira (seta à esquerda), não por um botão no canto.
 - **Vencimentos no Hoje:** o clique leva às **Solicitações**, e a solicitação **pisca com um contorno vermelho** (se um filtro a escondia, ele sai).
 - **Saíram as telas Clientes e Consultar no Onvio.** A busca (/ ou Ctrl+K) continua procurando nas 10 listas, inclusive concluídas.
+- **Tipos mais fáceis de distinguir:** cada tipo de solicitação tem um **ícone** próprio e cada família uma **cor** (Geral, Cadastros, Férias, Rescisão, Afastamento, Rubricas), nos cartões por tipo, na lista e nos cartões das Solicitações. Sem emojis.
+- **Cartões das Solicitações:** o tipo fica numa linha só e a situação desce inteira quando não cabe.
+- **Detalhe em português:** mais campos e códigos do Onvio traduzidos (motivo e tipo de rescisão, afastamentos, estado civil, vínculo…). Campo novo que o Onvio mandar é traduzido palavra por palavra quando possível; se não der, aparece o nome técnico.
 
 ## Novidades da v0.18.0 (Hoje revisto)
 
