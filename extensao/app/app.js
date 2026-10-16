@@ -1,5 +1,5 @@
 /* Control Onvio · app em tela cheia por cima do Onvio
- * Rotas (#/inicio, #/fila, #/equipe, #/clientes, #/distribuir, #/solicitacoes, #/lembretes, #/config, #/busca?q=),
+ * Rotas (#/inicio, #/fila, #/equipe, #/distribuir, #/lembretes, #/config, #/busca?q=),
  * trilho lateral, cabeçalho do módulo (título, abas, ao vivo, sino, Ver Onvio), busca em janela central
  * (/ ou Ctrl+K) e as janelas de detalhe e de lembrete. */
 import { estado, iniciarEstado, aoMudar, enviar, itens, minhas, marcarAlertasVistos } from './estado.js';
@@ -10,16 +10,15 @@ import { abrirNova, fecharNova, novaAberta } from './views/nova-dlg.js';
 import * as inicio from './views/inicio.js';
 import * as fila from './views/fila.js';
 import * as equipe from './views/equipe.js';
-import * as clientes from './views/clientes.js';
-import * as solicitacoes from './views/solicitacoes.js';
+import * as busca from './views/busca.js';
 import * as lembretes from './views/lembretes.js';
 import * as distribuir from './views/distribuir.js';
 import * as config from './views/config.js';
 const OC = window.OC;
 
-const VISTAS = { inicio, fila, equipe, clientes, distribuir, solicitacoes, lembretes, config, busca: solicitacoes };
+const VISTAS = { inicio, fila, equipe, distribuir, lembretes, config, busca };
 // Telas que se redesenham sozinhas quando chega leitura nova (as de consulta sob demanda não).
-const AO_VIVO = new Set(['inicio', 'fila', 'equipe', 'clientes', 'lembretes']);
+const AO_VIVO = new Set(['inicio', 'fila', 'equipe', 'lembretes']);
 
 let rota = { nome: 'inicio', params: {} };
 let aoRedim = null;
@@ -73,7 +72,7 @@ function desenhar() {
   document.body.classList.toggle('bloqueado', bloqueado());
   if (bloqueado()) { fecharDetalhe(); fecharLembrete(); fecharNova(); fecharBusca(); abrirSino(false); $$('.trilho [data-rota]').forEach(a => a.classList.remove('on')); telaBloqueio($('#vista')); return; }
   const p = rota.params;
-  const ativo = rota.nome === 'busca' ? '' : rota.nome === 'fila' && p.cliente ? 'clientes' : rota.nome === 'fila' && p.analista ? 'equipe' : rota.nome;
+  const ativo = rota.nome === 'busca' ? '' : rota.nome === 'fila' && p.analista ? 'equipe' : rota.nome;
   $$('.trilho [data-rota]').forEach(a => { a.classList.toggle('on', a.dataset.rota === ativo); if (a.dataset.rota === ativo) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
   const v = $('#vista');
   const params = rota.nome === 'busca' ? Object.assign({ q: rota.params.q || '' }, rota.params) : rota.params;
@@ -166,8 +165,6 @@ const TELAS = [
   { rot: 'Agenda e lembretes', sub: 'calendário do mês', ic: 'i-calendar', ir: () => navegar('lembretes') },
   { rot: 'Novo lembrete', sub: 'criar agora', ic: 'i-plus', ir: () => abrirLembrete() },
   { rot: 'Equipe', sub: 'painel do gestor', ic: 'i-users', ir: () => navegar('equipe') },
-  { rot: 'Clientes', sub: 'pendências por empresa', ic: 'i-building', ir: () => navegar('clientes') },
-  { rot: 'Consultar no Onvio', sub: 'as 10 listas, inclusive concluídas', ic: 'i-list', ir: () => navegar('solicitacoes') },
   { rot: 'Configurações', sub: 'prazos, leitura, diagnóstico', ic: 'i-gear', ir: () => navegar('config') }
 ];
 let opcoes = [], marcada = 0;

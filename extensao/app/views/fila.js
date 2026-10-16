@@ -45,7 +45,7 @@ export function render(el, ctx, params) {
   let titulo = 'Solicitações';
   let sub = (escopo === 'equipe' ? 'Da equipe toda' : escopo === 'semresp' ? 'Sem responsável' : 'As suas') + ' · pendências lidas do Onvio, ao vivo';
   if (params.analista) { base = todas.filter(i => (i.resp || '(sem responsável)') === params.analista); titulo = params.analista; sub = 'Fila do responsável · <a href="#/equipe">voltar à Equipe</a>'; }
-  if (params.cliente) { base = todas.filter(i => (i.cliente || i.apelido || '(cliente não informado)') === params.cliente); titulo = params.cliente; sub = 'Pendências do cliente · <a href="#/clientes">voltar a Clientes</a>'; }
+  if (params.cliente) { base = todas.filter(i => (i.cliente || i.apelido || '(cliente não informado)') === params.cliente); titulo = params.cliente; sub = 'Pendências do cliente · <a href="#/inicio">voltar ao Hoje</a>'; }
   const kpi = KPI[params.kpi];
   if (kpi) base = base.filter(kpi.f);
   const motivo = OC.MOTIVOS.find(x => x.k === params.motivo);          // vindo do anel do Hoje

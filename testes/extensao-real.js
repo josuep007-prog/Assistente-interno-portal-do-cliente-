@@ -164,7 +164,7 @@ await foto(portal, '2-equipe-desempenho.png');
 await app.click('#av-rank .av-card');
 await esperar(() => app.evaluate(() => !!document.querySelector('#av-det .av-det')));
 await foto(portal, '2-equipe-detalhe.png');
-for (const rota of ['fila', 'fila?escopo=equipe', 'equipe?aba=carga', 'equipe?aba=resp', 'clientes', 'clientes?aba=empresas', 'lembretes', 'lembretes?aba=lista']) {
+for (const rota of ['fila', 'fila?escopo=equipe', 'equipe?aba=carga', 'equipe?aba=resp', 'lembretes', 'lembretes?aba=lista']) {
   await app.evaluate(r => { location.hash = '#/' + r; }, rota);
   await app.waitForFunction(() => document.querySelector('#vista').children.length > 0);
   await new Promise(r => setTimeout(r, 300));
@@ -186,10 +186,6 @@ await new Promise(r => setTimeout(r, 400));
 await foto(portal, '2-novo-lembrete.png');
 await app.click('#lc');                                                 // Cancelar
 await app.waitForSelector('#dlg-lembrete', { state: 'hidden' });
-// solicitações: consulta na hora pela aba do Onvio
-await app.evaluate(() => { location.hash = '#/solicitacoes'; });
-await app.waitForSelector('#corpo [data-k]', { timeout: 8000 });
-await foto(portal, '3-solicitacoes.png');
 // detalhe: lê dados e trâmites na hora (API simulada)
 await app.evaluate(() => { location.hash = '#/fila?escopo=equipe'; });
 await app.waitForSelector('#corpo [data-k]');

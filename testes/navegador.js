@@ -377,7 +377,8 @@ await passo('app · Hoje (analista): destaque com rosca, carrossel e próximos p
   assert.equal(await p.textContent('#n-fila'), '2');
   assert.match(await p.textContent('#aovivo-tx'), /^Ao vivo · \d\d:\d\d:\d\d$/);
   assert.match(await p.textContent('.trilho [data-rota="fila"]'), /Solicitações/);
-  assert.match(await p.textContent('.trilho [data-rota="solicitacoes"]'), /Consultar no Onvio/);
+  assert.equal(await p.$('.trilho [data-rota="solicitacoes"]'), null, 'Consultar no Onvio saiu');
+  assert.equal(await p.$('.trilho [data-rota="clientes"]'), null, 'Clientes saiu');
   assert.deepEqual(p.erros, []);
 });
 
@@ -561,23 +562,6 @@ await passo('app · Equipe (área do gestor): pede a senha; Desempenho com nota,
   await p.waitForSelector('tr[data-resp="Ana Teste"]');
   await p.click('#av-bloquear');
   await p.waitForSelector('#g-trava');
-  assert.deepEqual(p.erros, []);
-});
-
-await passo('app · Clientes: painel com ranking e mais tempo sem responder; empresas em cartões e lista levam às pendências', async () => {
-  const p = await abrirApp('#/clientes');
-  assert.ok(await p.$('#g-top svg'));
-  assert.match(await p.textContent('#l-lentos'), /GAMA/);
-  await p.click('#abas [data-aba="empresas"]');
-  await p.waitForSelector('#corpo [data-cli]');
-  assert.equal(await p.$$eval('#corpo .sc[data-cli]', e => e.length), 3);
-  await p.click('[data-vis="lista"]');
-  assert.equal(await p.$$eval('#corpo tr[data-cli]', e => e.length), 3);
-  await p.fill('#f', 'beta');
-  assert.equal(await p.$$eval('#corpo tr[data-cli]', e => e.length), 1);
-  await p.click('#corpo tr[data-cli]');
-  await p.waitForFunction(() => location.hash.startsWith('#/fila?cliente=') && document.querySelectorAll('#corpo [data-k]').length > 0);
-  assert.equal((await linhas(p)).length, 1);
   assert.deepEqual(p.erros, []);
 });
 
@@ -883,15 +867,13 @@ await passo('app · detalhe: trâmites que falham mostram o erro e o caminho do 
   assert.deepEqual(p.erros, []);
 });
 
-await passo('app · Solicitações e busca (janela central) consultam o Onvio na hora; Agenda e lembretes; sino; Ver Onvio', async () => {
-  const p = await abrirApp('#/solicitacoes');
-  await p.evaluate(() => { window.__respostas = { consultar: { ok: true, total: 1, paginas: 1, itens: [{ k: 'geral:z', type: 'geral', typeLabel: 'Geral', num: 900, status: 'Concluído', lado: 'fim', nivel: 0, cliente: 'ZETA', apelido: 'ZETA', detalhe: 'Antiga', resp: 'Ana', last: '2026-01-02T10:00:00' }] }, buscar: { ok: true, itens: [] } }; });
-  await p.click('#abas [data-aba="rubricas"]');
-  await p.waitForSelector('#corpo [data-k="geral:z"]');
-  const c = await p.evaluate(() => window.__msgs.filter(m => m.cmd === 'consultar').pop());
-  assert.deepEqual([c.type, c.filtro, c.page], ['rubricas', 'pendentes', 1]);
-  await p.click('[data-f="todas"]');
-  await p.waitForFunction(() => window.__msgs.filter(m => m.cmd === 'consultar').pop().filtro === 'todas');
+await passo('app · busca (janela central) consulta o Onvio na hora; Clientes e Consultar no Onvio saíram; Agenda e lembretes; sino; Ver Onvio', async () => {
+  const p = await abrirApp('#/fila');
+  await p.evaluate(() => { window.__respostas = { buscar: { ok: true, itens: [{ k: 'geral:z', type: 'geral', typeLabel: 'Geral', num: 900, status: 'Concluído', lado: 'fim', nivel: 0, cliente: 'ZETA', apelido: 'ZETA', detalhe: 'Antiga', resp: 'Ana', last: '2026-01-02T10:00:00' }] } }; });
+  // rotas que saíram voltam ao Hoje
+  for (const r of ['#/clientes', '#/solicitacoes']) { await p.evaluate(h => { location.hash = h; }, r); await p.waitForFunction(() => document.querySelector('#titulo').textContent === 'Hoje'); }
+  await p.evaluate(() => { location.hash = '#/fila'; });
+  await p.waitForSelector('#corpo [data-k]');
   // busca: "/" abre a janela; o que já foi lido aparece na hora; Enter busca nas 10 listas
   await p.keyboard.press('/');
   await p.waitForSelector('#cmdk:not([hidden])');
@@ -900,6 +882,8 @@ await passo('app · Solicitações e busca (janela central) consultam o Onvio na
   await p.press('#busca-q', 'Enter');
   await p.waitForFunction(() => window.__msgs.some(m => m.cmd === 'buscar' && m.q === 'joão'));
   assert.equal(await p.textContent('#titulo'), 'Busca');
+  await p.waitForSelector('#corpo [data-k="geral:z"]');
+  assert.doesNotMatch(await p.textContent('#subtitulo'), /ver as listas/);
   await p.keyboard.press('Control+k');
   await p.fill('#busca-q', '101');
   await p.press('#busca-q', 'Enter');
