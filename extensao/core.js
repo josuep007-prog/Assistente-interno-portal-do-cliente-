@@ -378,6 +378,29 @@
     return 2;
   }
 
+  // Por que a solicitação ficou com essa gravidade, em palavras (mesma regra de gravidade()). Calculado na hora de
+  // mostrar, a partir dos campos do item; nada é guardado. { rot, curto, texto } ou null quando está em dia.
+  function porqueGravidade(it, settings) {
+    if (!it || !it.grav) return null;
+    const s = Object.assign({}, DEFAULTS, settings || {});
+    const t = TYPE_BY_KEY[it.type] || {};
+    const lim = t.calculo ? s.conclusaoCalculo : s.conclusaoSimples;
+    const motivos = (n) => (it.motivos || []).filter(m => m.n === n).map(m => m.m);
+    const minus = x => x.charAt(0).toLowerCase() + x.slice(1);
+    const fim = x => x.replace(/\.*$/, '.');                       // "d.u." no fim não ganha outro ponto
+    if (it.grav === 3) {
+      const l = [], c = [];
+      if (it.prescreveEm != null && it.prescreveEm <= 5) { l.push('prescreve em ' + it.prescreveEm + ' dia(s) (crítica a partir de 5)'); c.push('prescreve em ' + it.prescreveEm + ' d'); }
+      if (it.parado != null && it.parado >= 2 * s.parada) { l.push('parada há ' + it.parado + ' dias, o dobro do limite de ' + s.parada); c.push('parada 2× o limite'); }
+      if (it.lado === 'esc' && it.uteisAberto != null && it.uteisAberto >= 2 * lim) { l.push('aberta há ' + it.uteisAberto + ' d.u., o dobro do prazo de ' + lim + ' d.u. (' + (t.calculo ? 'cálculo' : 'demanda simples') + ')'); c.push('aberta 2× o prazo'); }
+      if (!l.length) motivos(2).forEach(m => { l.push(minus(m)); c.push(minus(m)); });   // leitura antiga sem os números
+      return { rot: 'Crítica (G3)', curto: 'G3: ' + (c.join(' · ') || 'fora do prazo há muito tempo'), texto: fim('Crítica (G3) porque ' + (l.join('; ') || 'está fora do prazo há muito tempo')) };
+    }
+    if (it.grav === 2) { const m = motivos(2).map(minus); return { rot: 'Fora do prazo (G2)', curto: 'G2: ' + (m[0] || 'fora do prazo'), texto: fim('Fora do prazo (G2): ' + (m.join('; ') || 'passou do prazo interno')) }; }
+    const m = motivos(1).map(minus);
+    return { rot: 'Atenção (G1)', curto: 'G1: ' + (m[0] || 'atenção'), texto: fim('Atenção (G1): ' + (m.join('; ') || 'o prazo está perto')) };
+  }
+
   /* ---------- coleta ---------- */
   // Uma chamada de verdade, pequena: serve para validar a sessão (não depende de nenhum endereço de sessão).
   function urlSonda() { return listUrl(TYPE_BY_KEY.geral, { per: 1, expand: false }); }
@@ -1817,5 +1840,5 @@
     return { dias, empresas: lista, total: lista.reduce((s2, r) => s2 + r.total, 0), prox30: lista.reduce((s2, r) => s2 + r.prox30, 0) };
   }
 
-  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, quadroSemCalculo, marcarSemCalculo, textoAvisoSemCalculo, assuntoAvisoSemCalculo, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, moldeDeAnexo, urlAnexo, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, sugestoesAcoes, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, quadroSemCalculo, marcarSemCalculo, textoAvisoSemCalculo, assuntoAvisoSemCalculo, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, sugestoesAcoes, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);

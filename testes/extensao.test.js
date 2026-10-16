@@ -168,6 +168,35 @@ test('trâmites: a coleta lê cada lista no seu caminho e marca por lista o que 
   assert.deepEqual(plano(snap.tramites.porTipo), { avisoFerias: 'ok', rubricas: 'erro: HTTP 500' });
 });
 
+/* ---------- por que a gravidade (justificativa mostrada nas etiquetas) ---------- */
+test('gravidade: G3 diz o porquê com os números (prescrição, parada, prazo de simples e de cálculo)', () => {
+  const p = OC.porqueGravidade({ type: 'avisoRescisao', grav: 3, nivel: 2, lado: 'cli', prescreveEm: 3, parado: 27, motivos: [{ n: 2, m: 'Prescreve em 3 dia(s)' }] });
+  assert.equal(p.rot, 'Crítica (G3)');
+  assert.equal(p.texto, 'Crítica (G3) porque prescreve em 3 dia(s) (crítica a partir de 5).');
+  assert.equal(p.curto, 'G3: prescreve em 3 d');
+  const q = OC.porqueGravidade({ type: 'calcFerias', grav: 3, nivel: 2, lado: 'esc', parado: 31, uteisAberto: 12, motivos: [{ n: 2, m: 'Parada há 31 dias' }] });
+  assert.equal(q.texto, 'Crítica (G3) porque parada há 31 dias, o dobro do limite de 15; aberta há 12 d.u., o dobro do prazo de 5 d.u. (cálculo).');
+  assert.equal(q.curto, 'G3: parada 2× o limite · aberta 2× o prazo');
+  const r = OC.porqueGravidade({ type: 'geral', grav: 3, nivel: 2, lado: 'esc', parado: 3, uteisAberto: 6, motivos: [] });
+  assert.match(r.texto, /aberta há 6 d\.u\., o dobro do prazo de 3 d\.u\. \(demanda simples\)/);
+  // limites das configurações: com parada 20, 31 dias não é o dobro
+  assert.doesNotMatch(OC.porqueGravidade({ type: 'calcFerias', grav: 3, nivel: 2, lado: 'esc', parado: 31, uteisAberto: 12 }, { parada: 20 }).texto, /parada/);
+  // leitura antiga, sem os números: usa os motivos
+  assert.equal(OC.porqueGravidade({ type: 'geral', grav: 3, nivel: 2, motivos: [{ n: 2, m: 'Sem primeiro trâmite há 9 d.u.' }] }).texto, 'Crítica (G3) porque sem primeiro trâmite há 9 d.u.');
+});
+
+test('gravidade: G2 e G1 explicam pelo motivo; em dia não tem justificativa', () => {
+  assert.equal(OC.porqueGravidade({ type: 'geral', grav: 2, nivel: 2, motivos: [{ n: 2, m: 'Aberta há 4 d.u. (limite 3)' }] }).texto, 'Fora do prazo (G2): aberta há 4 d.u. (limite 3).');
+  const g1 = OC.porqueGravidade({ type: 'geral', grav: 1, nivel: 1, motivos: [{ n: 1, m: 'Prazo de conclusão vence hoje' }] });
+  assert.deepEqual([g1.rot, g1.curto], ['Atenção (G1)', 'G1: prazo de conclusão vence hoje']);
+  assert.equal(OC.porqueGravidade({ type: 'geral', grav: 0, nivel: 0 }), null);
+  // a mesma regra de evaluate: um item avaliado de verdade
+  const it = OC.normalize(OC.TYPE_BY_KEY.calcFerias, { id: 'x', identifier: 1, genericStatus: 2, created: '2026-08-01T10:00:00', lastUpdated: '2026-09-01T10:00:00' }, null);
+  Object.assign(it, OC.evaluate(it, {}, AGORA));
+  assert.equal(it.grav, 3);
+  assert.match(OC.porqueGravidade(it).texto, /^Crítica \(G3\) porque parada há \d+ dias, o dobro do limite de 15; aberta há \d+ d\.u\., o dobro do prazo de 5 d\.u\. \(cálculo\)\.$/);
+});
+
 /* ---------- vez do cliente sem retorno = resolvida (regra de 16/10/2026) ---------- */
 test('resolvida: só uma resposta que não pede nada ao cliente (cortesia e faltas não contam)', () => {
   const pede = t => OC.pedeAlgoAoCliente(t, OC.DEFAULTS).pede;
