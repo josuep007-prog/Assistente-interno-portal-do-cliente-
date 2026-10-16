@@ -53,7 +53,7 @@ export function prazoHtml(i) {
 export function cartaoItem(i) {
   const mot = motivosHtml(i);
   return '<div class="sc lvl-' + (i.nivel || 0) + '" tabindex="0" data-k="' + esc(i.k) + '">' +
-    '<div class="sc-top"><span class="mono">#' + esc(i.num) + '</span><span class="c-tipo">' + tipoIcone(i.type, 'pq') + esc(i.typeLabel) + '</span>' + pillSituacao(i) + '</div>' +
+    '<div class="sc-top"><span class="mono">#' + esc(i.num) + '</span><span class="c-tipo">' + tipoIcone(i.type, 'pq') + '<span class="c-tipo-tx">' + esc(i.typeLabel) + '</span></span>' + pillSituacao(i) + '</div>' +
     '<div class="sc-cli" title="' + esc(i.cliente) + '">' + esc(nomeCli(i)) + '</div>' +
     '<div class="sc-sub">' + esc(i.detalhe || '—') + '</div>' +
     (mot ? '<div class="motivos">' + mot + '</div>' : '') +
