@@ -99,7 +99,8 @@ export function render(el, ctx, params) {
       '<div class="seg seg-ic" role="group" aria-label="Visualização"><button data-vis="lista"' + (vis === 'lista' ? ' class="on"' : '') + ' title="Lista" aria-label="Lista"><svg class="ic"><use href="#i-list"/></svg></button><button data-vis="cartoes"' + (vis === 'cartoes' ? ' class="on"' : '') + ' title="Cartões" aria-label="Cartões"><svg class="ic"><use href="#i-grid"/></svg></button></div>' +
       '<details class="menu"><summary class="btn btn-sm" aria-label="Mais" title="Mais"><svg class="ic ic-sm"><use href="#i-more"/></svg></summary><div class="menu-list"><button class="menu-item" id="csv"><svg class="ic"><use href="#i-download"/></svg> Exportar CSV (o que está na tela)</button><button class="menu-item" id="m-onvio"><svg class="ic"><use href="#i-eye"/></svg> Ver a lista no Onvio</button></div></details>' +
     '</div>' +
-    '<div class="fila-cab"><h3 id="vez-tit"></h3><span class="count" id="cont"></span><div class="tipos-l" id="tipos" role="group" aria-label="Tipo de solicitação"></div></div>' +
+    '<div class="fila-cab"><h3 id="vez-tit"></h3><span class="count" id="cont"></span></div>' +
+    '<div class="tipos" id="tipos" role="group" aria-label="Tipo de solicitação"></div>' +
     '<div class="ativos" id="ativos"></div>' +
     '<div id="corpo"></div>';
 
@@ -116,16 +117,17 @@ export function render(el, ctx, params) {
     l.sort((a, b) => { const x = col.v(a), y = col.v(b); const r = x < y ? -1 : x > y ? 1 : 0; return (ord.desc ? -r : r) || ((prio.get(a.k) ?? 1e6) - (prio.get(b.k) ?? 1e6)); });
     return l;
   };
-  // Tipos em chips compactos: só os que têm alguma (com os outros filtros e a vez aplicados), com quantas fora do prazo
+  // Cartões dos tipos (todos, como antes): quantas há em cada tipo, com os outros filtros e a vez aplicados, e quantas
+  // fora do prazo. Visual enxuto: ícone na cor da família, número grande, uma linha de apoio.
   const tipos = () => {
     const l = filtrar(true);
-    const chip = (k, rot, xs) => {
-      const atr = xs.filter(i => i.nivel === 2).length;
-      return '<button type="button" class="tipo-ch fam-' + tipoVisual(k).fam + (filtros.tipo === k ? ' on' : '') + '" data-tipo="' + esc(k) + '" aria-pressed="' + (filtros.tipo === k) + '"' + (atr ? ' title="' + atr + ' fora do prazo"' : '') + '>' +
-        (k ? tipoIcone(k, 'pq') : '') + '<span>' + esc(rot) + '</span><b>' + xs.length + '</b>' + (atr ? '<em>' + atr + '</em>' : '') + '</button>';
+    const cartao = (k, rot, xs) => {
+      const atr = xs.filter(i => i.nivel === 2).length, tot = xs.length;
+      return '<button type="button" class="tipo-c fam-' + tipoVisual(k).fam + (filtros.tipo === k ? ' on' : '') + (!tot ? ' zero' : '') + '" data-tipo="' + esc(k) + '" aria-pressed="' + (filtros.tipo === k) + '">' +
+        '<span class="tipo-topo">' + (k ? tipoIcone(k, 'pq') : '<span class="tipo-ic pq"><svg class="ic"><use href="#i-list"/></svg></span>') + '<span class="tipo-rot">' + esc(rot) + '</span></span>' +
+        '<b>' + tot + '</b><span class="tipo-sub">' + (atr ? '<em>' + atr + ' fora do prazo</em>' : tot ? 'em dia' : 'nenhuma') + '</span></button>';
     };
-    const comAlguma = OC.TYPES.map(t => [t, l.filter(i => i.type === t.key)]).filter(([t, xs]) => xs.length || filtros.tipo === t.key);
-    $('#tipos', el).innerHTML = comAlguma.length > 1 || filtros.tipo ? chip('', 'Todos', l) + comAlguma.map(([t, xs]) => chip(t.key, t.label, xs)).join('') : '';
+    $('#tipos', el).innerHTML = cartao('', 'Todos os tipos', l) + OC.TYPES.map(t => cartao(t.key, t.label, l.filter(i => i.type === t.key))).join('');
     $$('[data-tipo]', el).forEach(b => b.onclick = () => { filtros.tipo = filtros.tipo === b.dataset.tipo ? '' : b.dataset.tipo; const s = $('#f-tipo', el); if (s) s.value = filtros.tipo; desenhar(); });
   };
   const chips = () => {

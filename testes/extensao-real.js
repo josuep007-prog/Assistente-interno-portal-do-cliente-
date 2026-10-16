@@ -238,6 +238,11 @@ await sw.evaluate(i => aoClicarNoIcone({ id: i, url: 'https://onvio.com.br/br-po
 await esperar(async () => !(await cheia(portal)));
 await sw.evaluate(i => aoClicarNoIcone({ id: i, url: 'https://onvio.com.br/br-portal-do-cliente/painel-teste' }), idPortal);
 await esperar(() => cheia(portal));
+// Configurações > Avançado: a página de opções abre dentro do app (precisa estar liberada no manifesto)
+await app.evaluate(() => { location.hash = '#/config?aba=avancado'; });
+await app.waitForSelector('.cfg-frame');
+await esperar(async () => { const f = (await app.$('.cfg-frame').then(e => e.contentFrame())); return !!(f && await f.$('#regrasUrl').catch(() => null)); });
+console.log('Configurações > Avançado abre a página de opções');
 await app.evaluate(() => { location.hash = '#/fila?escopo=equipe'; });
 await app.waitForSelector('#corpo [data-k="calcFerias:v1"]');
 await app.click('#corpo [data-k="calcFerias:v1"]');
