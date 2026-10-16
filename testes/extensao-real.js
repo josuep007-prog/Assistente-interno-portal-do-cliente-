@@ -25,6 +25,8 @@ const hoje = new Date(); const iso = n => new Date(hoje.getTime() - n * 864e5).t
 const itensPorRota = {
   'tickets/generic': [
     { id: 'g1', identifier: 900, genericStatus: 1, created: iso(4), lastUpdated: iso(4), subject: 'Férias do João em dezembro', clientExpanded: { name: 'ACME', nickname: 'ACME' }, staffResponsibleExpanded: null },
+    { id: 'g3', identifier: 880, genericStatus: 5, created: iso(3), lastUpdated: iso(1), subject: 'Concluída', clientExpanded: { name: 'ACME', nickname: 'ACME' }, staffResponsibleExpanded: { name: 'Ana Teste' } },
+    { id: 'g4', identifier: 881, genericStatus: 5, created: iso(12), lastUpdated: iso(2), subject: 'Concluída tarde', clientExpanded: { name: 'BETA' }, staffResponsibleExpanded: { name: 'Ana Teste' } },
     { id: 'g2', identifier: 901, genericStatus: 66, created: iso(2), lastUpdated: iso(2), subject: 'Estranha', clientExpanded: { name: 'BETA' }, staffResponsibleExpanded: { name: 'Ana Teste' } }
   ],
   'vacation-calculations': [
@@ -149,7 +151,21 @@ await foto(portal, '1-inicio-equipe.png');
 assert.ok(await app.$('#hj-paineis, .hj-paineis'), 'painéis do Hoje');
 await app.selectOption('#hj-carteira', '__minha');
 await app.evaluate(() => document.querySelector('#vista').scrollTo(0, 0));
-for (const rota of ['fila', 'fila?escopo=equipe', 'equipe', 'equipe?aba=resp', 'clientes', 'clientes?aba=empresas', 'lembretes', 'lembretes?aba=lista']) {
+// Equipe: área do gestor com senha; o Desempenho lê as entregas do período na hora
+await portal.bringToFront();                                          // a aba do Onvio na frente, como quem digita a senha
+await app.evaluate(() => { location.hash = '#/equipe'; });
+await app.waitForSelector('#g-trava');
+await foto(portal, '2-equipe-senha.png');
+// digitar e Enter já são testados em navegador.js; aqui o envio vai direto pelo formulário (a aba de teste fica em segundo plano)
+await app.evaluate(() => { const c = document.querySelector('#g-senha'); c.value = 'gestor@987654321'; c.dispatchEvent(new Event('input')); document.querySelector('#g-trava').requestSubmit(); });
+await esperar(() => app.evaluate(() => !!document.querySelector('.av-hero')), 15000);   // a aba pode estar em segundo plano (sem requestAnimationFrame)
+assert.equal(await app.getAttribute('#av-k-entregas [data-conta]', 'data-conta'), '2', 'entregas do período lidas na API (2 concluídas da Ana)');
+await new Promise(r => setTimeout(r, 1200));
+await foto(portal, '2-equipe-desempenho.png');
+await app.click('#av-rank .av-card');
+await esperar(() => app.evaluate(() => !!document.querySelector('#av-det .av-det')));
+await foto(portal, '2-equipe-detalhe.png');
+for (const rota of ['fila', 'fila?escopo=equipe', 'equipe?aba=carga', 'equipe?aba=resp', 'lembretes', 'lembretes?aba=lista']) {
   await app.evaluate(r => { location.hash = '#/' + r; }, rota);
   await app.waitForFunction(() => document.querySelector('#vista').children.length > 0);
   await new Promise(r => setTimeout(r, 300));
@@ -171,10 +187,6 @@ await new Promise(r => setTimeout(r, 400));
 await foto(portal, '2-novo-lembrete.png');
 await app.click('#lc');                                                 // Cancelar
 await app.waitForSelector('#dlg-lembrete', { state: 'hidden' });
-// solicitações: consulta na hora pela aba do Onvio
-await app.evaluate(() => { location.hash = '#/solicitacoes'; });
-await app.waitForSelector('#corpo [data-k]', { timeout: 8000 });
-await foto(portal, '3-solicitacoes.png');
 // detalhe: lê dados e trâmites na hora (API simulada)
 await app.evaluate(() => { location.hash = '#/fila?escopo=equipe'; });
 await app.waitForSelector('#corpo [data-k]');

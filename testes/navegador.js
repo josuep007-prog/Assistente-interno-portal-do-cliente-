@@ -377,7 +377,8 @@ await passo('app · Hoje (analista): destaque com rosca, carrossel e próximos p
   assert.equal(await p.textContent('#n-fila'), '2');
   assert.match(await p.textContent('#aovivo-tx'), /^Ao vivo · \d\d:\d\d:\d\d$/);
   assert.match(await p.textContent('.trilho [data-rota="fila"]'), /Solicitações/);
-  assert.match(await p.textContent('.trilho [data-rota="solicitacoes"]'), /Consultar no Onvio/);
+  assert.equal(await p.$('.trilho [data-rota="solicitacoes"]'), null, 'Consultar no Onvio saiu');
+  assert.equal(await p.$('.trilho [data-rota="clientes"]'), null, 'Clientes saiu');
   assert.deepEqual(p.erros, []);
 });
 
@@ -385,6 +386,7 @@ await passo('app · Hoje: admissões sem trâmite do escritório em faixa recolh
   const itens = ITENS_APP.concat([
     { k: 'cadEmpregado:e1', type: 'cadEmpregado', typeLabel: 'Cadastro empregado', id: 'e1', num: 301, code: 2, status: 'Enviado para o escritório', lado: 'esc', nivel: 2, grav: 2, parado: 1, motivos: [{ n: 2, m: 'Admissão retroativa' }], resp: 'Ana Teste', mine: true, apelido: 'DELTA', cliente: 'DELTA', detalhe: 'Fulano', created: agoraIso(1), last: agoraIso(1), admissao: '2026-10-10', admissaoAlerta: { data: '2026-10-10', faltam: -4, retro: true } },
     { k: 'cadEmpregado:e2', type: 'cadEmpregado', typeLabel: 'Cadastro empregado', id: 'e2', num: 302, code: 1, status: 'Sem análise', lado: 'esc', nivel: 1, grav: 1, parado: 0, motivos: [], resp: 'Ana Teste', mine: true, apelido: 'ÔMEGA', cliente: 'ÔMEGA', detalhe: 'Joana', created: agoraIso(0), last: agoraIso(0), admissao: '2026-10-20', admissaoAlerta: { data: '2026-10-20', faltam: 2, retro: false } },
+    { k: 'cadEstagiario:s1', type: 'cadEstagiario', typeLabel: 'Cadastro estagiário', id: 's1', num: 305, code: 2, status: 'Enviado para o escritório', lado: 'esc', nivel: 1, grav: 1, parado: 0, motivos: [], resp: 'Ana Teste', mine: true, apelido: 'KAPPA', cliente: 'KAPPA', detalhe: 'Lia', created: agoraIso(0), last: agoraIso(0), admissao: '2026-10-07', admissaoAlerta: { data: '2026-10-07', prazo: '2026-10-22', faltam: 2, retro: false, estagio: true } },
     { k: 'cadEmpregado:e3', type: 'cadEmpregado', typeLabel: 'Cadastro empregado', id: 'e3', num: 303, code: 3, status: 'Aguardando o cliente', lado: 'cli', nivel: 2, grav: 2, parado: 1, motivos: [], resp: 'Ana Teste', mine: true, apelido: 'SIGMA', cliente: 'SIGMA', detalhe: 'Pedro', created: agoraIso(3), last: agoraIso(1), admissao: '2026-10-10', admissaoAlerta: { data: '2026-10-10', faltam: -4, retro: true } },
     { k: 'cadEmpregado:e4', type: 'cadEmpregado', typeLabel: 'Cadastro empregado', id: 'e4', num: 304, code: 4, status: 'Respondido pelo cliente', lado: 'esc', nivel: 2, grav: 2, parado: 1, motivos: [], resp: 'Ana Teste', mine: true, apelido: 'TAU', cliente: 'TAU', detalhe: 'Rui', created: agoraIso(3), last: agoraIso(1), primeiroTramite: agoraIso(2), admissao: '2026-10-12', admissaoAlerta: { data: '2026-10-12', faltam: -2, retro: false } },
     { k: 'calcFerias:f9', type: 'calcFerias', typeLabel: 'Cálculo de férias', id: 'f9', num: 401, code: 2, status: 'Em análise', lado: 'esc', nivel: 1, grav: 1, parado: 0, motivos: [], resp: 'Ana Teste', mine: true, apelido: 'ZETA', cliente: 'ZETA', detalhe: 'Beltrano', created: agoraIso(2), last: agoraIso(0), pagamentoAte: { alvo: OC_ymd(new Date()), ref: 'início das férias em 20/10' } }
@@ -393,10 +395,13 @@ await passo('app · Hoje: admissões sem trâmite do escritório em faixa recolh
   await p.waitForSelector('#hj-admissao');
   const ordem = await p.evaluate(() => [...document.querySelector('#vista').children].map(x => x.id || x.className.split(' ')[0]));
   assert.ok(ordem.indexOf('hj-admissao') === ordem.indexOf('hj-hero') + 1, 'logo abaixo do destaque: ' + ordem.join());
-  assert.match(await p.textContent('#hj-admissao h3'), /2 admissões pedem prioridade 1 retroativa · próxima em 20\/10/, 'as que o escritório já tramitou (situação do escritório ou trâmite lido) ficam de fora');
+  assert.match(await p.textContent('#hj-admissao h3'), /3 admissões pedem prioridade/, 'as que o escritório já tramitou (situação do escritório ou trâmite lido) ficam de fora');
+  assert.equal(await p.textContent('#hj-admissao .hj-adm-resumo'), '1 retroativa · próxima em 20/10');
   const l = await p.$$eval('#hj-admissao .hj-adm', e => e.map(x => x.textContent));
   assert.match(l[0], /^10\/10retroativa#301 DELTA · Fulano/);
   assert.match(l[1], /^20\/10em 2 dias úteis#302 ÔMEGA · Joana/);
+  assert.match(l[2], /^22\/10prazo · em 2 dias úteis#305 KAPPA · Lia.*Cadastro estagiário · início em 07\/10/, 'estagiário: a data é o prazo do eSocial (15 dias após o início)');
+  assert.match(await p.textContent('#hj-adm-l .hj-adm-nota'), /Estagiário: até 15 dias depois do início/);
   assert.match(await p.textContent('#hj-venc'), /hoje.*ZETA · Beltrano.*Cálculo de férias · início das férias em 20\/10/);
   assert.ok(!/Priorize as admissões em destaque/.test(await p.textContent('#hj-sug')), 'sugestão não repete o que já tem faixa própria');
   await p.click('#hj-admissao [data-k="cadEmpregado:e2"]');
@@ -406,16 +411,29 @@ await passo('app · Hoje: admissões sem trâmite do escritório em faixa recolh
   // recolhe e lembra
   await p.click('#hj-adm-toggle');
   assert.equal(await p.isHidden('#hj-adm-l'), true);
-  assert.match(await p.textContent('#hj-adm-toggle'), /Mostrar$/);
+  assert.equal(await p.getAttribute('#hj-adm-toggle', 'aria-expanded'), 'false');
+  assert.equal(await p.$eval('#hj-adm-toggle', b => b.parentElement.firstElementChild === b && b.getBoundingClientRect().width > b.parentElement.getBoundingClientRect().width * 0.95), true, 'a barra de cabeçalho inteira recolhe, não um botão no canto');
   await p.reload(); await p.waitForSelector('#hj-admissao');
   assert.equal(await p.isHidden('#hj-adm-l'), true, 'continua recolhida');
-  assert.match(await p.textContent('#hj-admissao h3'), /2 admissões pedem prioridade/, 'recolhida, o resumo continua à vista');
+  assert.match(await p.textContent('#hj-adm-toggle'), /3 admissões pedem prioridade.*1 retroativa/, 'recolhida, o resumo continua à vista');
   await p.click('#hj-adm-toggle');
   assert.equal(await p.isHidden('#hj-adm-l'), false);
+  // vencimento: leva às Solicitações com a solicitação piscando em vermelho (mesmo com um filtro de texto que a esconderia)
+  await p.evaluate(() => { location.hash = '#/fila'; });
+  await p.waitForSelector('#corpo [data-k]');
+  await p.fill('#f-texto', 'delta');
+  await p.evaluate(() => { location.hash = '#/inicio'; });
+  await p.waitForSelector('#hj-venc [data-k="calcFerias:f9"]');
+  await p.click('#hj-venc [data-k="calcFerias:f9"]');
+  await p.waitForSelector('#corpo .foco-pisca[data-k="calcFerias:f9"]');
+  assert.equal(await p.inputValue('#f-texto'), '', 'o filtro que a escondia sai');
+  assert.ok(!/foco=/.test(await p.evaluate(() => location.hash)), 'o foco sai do endereço (uma leitura nova não pisca de novo): ' + await p.evaluate(() => location.hash));
+  assert.match(await p.$eval('#corpo .foco-pisca', r => getComputedStyle(r).outlineStyle), /solid/);
+  await p.waitForFunction(() => !document.querySelector('.foco-pisca'), null, { timeout: 6000 });
   // Solicitações com kpi=admissao: o mesmo critério
   await p.evaluate(() => { location.hash = '#/fila?escopo=equipe&kpi=admissao'; });
-  await p.waitForFunction(() => document.querySelectorAll('#corpo [data-k]').length === 2);
-  assert.deepEqual((await linhas(p)).sort(), ['cadEmpregado:e1', 'cadEmpregado:e2']);
+  await p.waitForFunction(() => document.querySelectorAll('#corpo [data-k]').length === 3);
+  assert.deepEqual((await linhas(p)).sort(), ['cadEmpregado:e1', 'cadEmpregado:e2', 'cadEstagiario:s1']);
   assert.deepEqual(p.erros, []);
 });
 
@@ -473,49 +491,77 @@ await passo('app · Fila: abas Minhas/Equipe/Sem responsável, filtros e chips, 
   assert.deepEqual(p.erros, []);
 });
 
-await passo('app · Equipe (gestor): números, 4 gráficos com dicas, prescrição e distribuição; Responsáveis com mapa de calor e fila da pessoa', async () => {
+await passo('app · Equipe (área do gestor): pede a senha; Desempenho com nota, ranking, dispersão e detalhe; Carga e Responsáveis', async () => {
   const p = await abrirApp('#/equipe');
+  // trava: sem a senha certa não mostra nada da equipe
+  await p.waitForSelector('#g-trava');
+  assert.equal(await p.$('.av-hero'), null);
+  await p.fill('#g-senha', 'errada');
+  await p.click('#g-entrar');
+  await p.waitForSelector('#g-erro:not([hidden])');
+  assert.equal(await p.$('.av-hero'), null, 'senha errada: continua travada');
+  assert.equal(await p.inputValue('#g-senha'), '', 'o campo é limpo');
+  // entregas simuladas do período (o service worker leria no Onvio)
+  await p.evaluate(() => {
+    const d = n => { const x = new Date(); x.setDate(x.getDate() - n); return x.toISOString().slice(0, 10); };
+    const fim = (k, resp, criada, concl, extra) => Object.assign({ k, type: 'geral', resp, lado: 'fim', status: 'Concluído', created: d(criada) + 'T09:00:00', last: d(concl) + 'T15:00:00' }, extra || {});
+    const mov = [fim('f1', 'Ana Teste', 3, 2), fim('f2', 'Ana Teste', 2, 1), fim('f3', 'Ana Teste', 20, 1), fim('f4', 'Bia', 2, 1), fim('f5', 'Bia', 9, 8)];
+    window.__respostas = { desempenho: Object.assign({ ok: true, erros: [], movimentadas: mov.length }, OC.avaliarEquipe(JSON.parse(localStorage.getItem('__mem')).snapshot.items, mov, {}, 7)) };
+  });
+  await p.fill('#g-senha', 'gestor@987654321');
+  await p.press('#g-senha', 'Enter');
+  await p.waitForSelector('.av-hero');
+  assert.ok(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'desempenho' && m.dias === 7)), 'pediu as entregas de 7 dias');
+  assert.match(await p.textContent('#titulo'), /Equipe/);
+  assert.deepEqual(await p.$$eval('#abas .aba', e => e.map(x => x.dataset.aba)), ['desempenho', 'carga', 'resp']);
+  // números da equipe
+  await p.waitForFunction(() => document.querySelector('#av-k-entregas .av-kpi-val').textContent === '4');
+  assert.match(await p.textContent('#av-k-prazo'), /75%/, '3 de 4 entregas no prazo');
+  assert.ok(await p.$('#av-k-entregas .mb-svg rect'), 'entregas por dia');
+  // ranking: uma linha por analista, com nota, faixa e os 4 itens
+  const rank = await p.$$eval('#av-rank .av-card', e => e.map(x => x.dataset.resp));
+  assert.deepEqual(rank.slice().sort(), ['Ana Teste', 'Bia']);
+  assert.equal(await p.$$eval('#av-rank .av-card:first-child .av-comp', e => e.length), 4);
+  assert.match(await p.textContent('#av-rank .av-card:first-child .av-chip'), /Excelente|Bom|Atenção|Precisa de apoio/);
+  // dispersão: uma bolinha por pessoa, com dica; clique abre o detalhe da pessoa e acende a bolinha
+  assert.equal(await p.$$eval('#av-disp .dp-p', e => e.length), 2);
+  assert.match(await p.getAttribute('#av-disp .dp-p[data-id="Ana Teste"]', 'data-tip'), /Ana Teste\n3 entregas · 67% no prazo/);
+  await p.click('#av-disp .dp-p[data-id="Ana Teste"]');
+  await p.waitForSelector('#av-det .av-det');
+  assert.match(await p.textContent('#av-det h3'), /Ana Teste · nota/);
+  assert.match(await p.getAttribute('#av-disp .dp-p[data-id="Bia"]', 'class'), /apagado/);
+  assert.match(await p.textContent('#av-det-l'), /Crítica \(G3\)[\s\S]*#101 ACME/, 'pontos de atenção da pessoa');
+  await p.click('#av-det-l [data-k="calcFerias:a"]');
+  await p.waitForSelector('#gaveta:not([hidden])');
+  await p.keyboard.press('Escape');
+  await p.waitForSelector('#gaveta', { state: 'hidden' });
+  await p.click('#av-como');
+  assert.match(await p.textContent('#av-como-txt'), /Pontualidade · peso 35/);
+  // período: troca e pede de novo
+  await p.click('#av-periodo [data-dias="30"]');
+  await p.waitForFunction(() => window.__msgs.some(m => m.cmd === 'desempenho' && m.dias === 30));
+  // Carga de hoje: os gráficos da fila (a sugestão "quem tem menos" saiu)
+  await p.click('#abas [data-aba="carga"]');
+  await p.waitForSelector('#g-carga svg');
   const kpis = await p.$$eval('.kpi', e => e.map(x => x.querySelector('.rot').textContent + '=' + x.querySelector('.val').textContent));
   assert.deepEqual(kpis, ['Pendências=4', 'Sem responsável=1', 'Fora do prazo=2', 'Prescrevem em 5 dias=1', '1º trâmite (média)=1', 'Hoje=3 / 1']);
   for (const id of ['#g-carga', '#g-dias', '#g-horas', '#g-tipo']) assert.ok(await p.$(id + ' svg'), 'gráfico ' + id);
-  assert.match(await p.textContent('#g-carga .legenda-viz'), /Em dia.*G1 atenção.*G2 fora do prazo.*G3 crítica/);
+  assert.match(await p.textContent('#l-presc'), /4dias[\s\S]*GAMA/);
+  assert.equal(await p.$('#distribuicao'), null, 'sem a sugestão por quem tem menos pendências');
   await p.hover('#g-carga [data-tip]');
   assert.equal(await p.isVisible('#dica'), true, 'dica ao passar o mouse');
-  // distribuição e prescrição (saíram do Hoje) no Painel
-  assert.match(await p.textContent('#l-presc'), /4dias[\s\S]*GAMA/);
-  assert.match(await p.textContent('#distribuicao'), /GAMA[\s\S]*sugerido: Bia/);
+  // Responsáveis: mapa de calor e a fila da pessoa
   await p.click('#abas [data-aba="resp"]');
   await p.waitForSelector('tr[data-resp="Ana Teste"]');
-  // mapa de calor de idade na aba Responsáveis → fila da pessoa naquela faixa, com a etiqueta que sai com um clique
   assert.equal(await p.$$eval('#mapa-idade .mc-v:not(:disabled)', e => e.length), 4);
   await p.click('#mapa-idade .mc-v[data-id="Ana Teste"][data-col="31-"]');
   await p.waitForFunction(() => location.hash.startsWith('#/fila?analista=Ana+Teste&idade=31-') && document.querySelector('#ativos .chip-f'));
   assert.deepEqual(await linhas(p), ['calcFerias:a']);
-  assert.match(await p.textContent('#ativos'), /Parada há 31\+ dias/);
-  await p.goto(URL_APP + '#/equipe');
-  await p.waitForSelector('#abas [data-aba="resp"]');
-  await p.click('#abas [data-aba="resp"]');
+  // liberada uma vez, continua liberada na visita; "Bloquear" trava de novo
+  await p.evaluate(() => { location.hash = '#/equipe?aba=resp'; });
   await p.waitForSelector('tr[data-resp="Ana Teste"]');
-  await p.click('tr[data-resp="Ana Teste"]');
-  await p.waitForFunction(() => location.hash.startsWith('#/fila?analista=') && document.querySelectorAll('#corpo [data-k]').length > 0);
-  assert.equal((await linhas(p)).length, 2);
-  assert.deepEqual(p.erros, []);
-});
-
-await passo('app · Clientes: painel com ranking e mais tempo sem responder; empresas em cartões e lista levam às pendências', async () => {
-  const p = await abrirApp('#/clientes');
-  assert.ok(await p.$('#g-top svg'));
-  assert.match(await p.textContent('#l-lentos'), /GAMA/);
-  await p.click('#abas [data-aba="empresas"]');
-  await p.waitForSelector('#corpo [data-cli]');
-  assert.equal(await p.$$eval('#corpo .sc[data-cli]', e => e.length), 3);
-  await p.click('[data-vis="lista"]');
-  assert.equal(await p.$$eval('#corpo tr[data-cli]', e => e.length), 3);
-  await p.fill('#f', 'beta');
-  assert.equal(await p.$$eval('#corpo tr[data-cli]', e => e.length), 1);
-  await p.click('#corpo tr[data-cli]');
-  await p.waitForFunction(() => location.hash.startsWith('#/fila?cliente=') && document.querySelectorAll('#corpo [data-k]').length > 0);
-  assert.equal((await linhas(p)).length, 1);
+  await p.click('#av-bloquear');
+  await p.waitForSelector('#g-trava');
   assert.deepEqual(p.erros, []);
 });
 
@@ -821,15 +867,13 @@ await passo('app · detalhe: trâmites que falham mostram o erro e o caminho do 
   assert.deepEqual(p.erros, []);
 });
 
-await passo('app · Solicitações e busca (janela central) consultam o Onvio na hora; Agenda e lembretes; sino; Ver Onvio', async () => {
-  const p = await abrirApp('#/solicitacoes');
-  await p.evaluate(() => { window.__respostas = { consultar: { ok: true, total: 1, paginas: 1, itens: [{ k: 'geral:z', type: 'geral', typeLabel: 'Geral', num: 900, status: 'Concluído', lado: 'fim', nivel: 0, cliente: 'ZETA', apelido: 'ZETA', detalhe: 'Antiga', resp: 'Ana', last: '2026-01-02T10:00:00' }] }, buscar: { ok: true, itens: [] } }; });
-  await p.click('#abas [data-aba="rubricas"]');
-  await p.waitForSelector('#corpo [data-k="geral:z"]');
-  const c = await p.evaluate(() => window.__msgs.filter(m => m.cmd === 'consultar').pop());
-  assert.deepEqual([c.type, c.filtro, c.page], ['rubricas', 'pendentes', 1]);
-  await p.click('[data-f="todas"]');
-  await p.waitForFunction(() => window.__msgs.filter(m => m.cmd === 'consultar').pop().filtro === 'todas');
+await passo('app · busca (janela central) consulta o Onvio na hora; Clientes e Consultar no Onvio saíram; Agenda e lembretes; sino; Ver Onvio', async () => {
+  const p = await abrirApp('#/fila');
+  await p.evaluate(() => { window.__respostas = { buscar: { ok: true, itens: [{ k: 'geral:z', type: 'geral', typeLabel: 'Geral', num: 900, status: 'Concluído', lado: 'fim', nivel: 0, cliente: 'ZETA', apelido: 'ZETA', detalhe: 'Antiga', resp: 'Ana', last: '2026-01-02T10:00:00' }] } }; });
+  // rotas que saíram voltam ao Hoje
+  for (const r of ['#/clientes', '#/solicitacoes']) { await p.evaluate(h => { location.hash = h; }, r); await p.waitForFunction(() => document.querySelector('#titulo').textContent === 'Hoje'); }
+  await p.evaluate(() => { location.hash = '#/fila'; });
+  await p.waitForSelector('#corpo [data-k]');
   // busca: "/" abre a janela; o que já foi lido aparece na hora; Enter busca nas 10 listas
   await p.keyboard.press('/');
   await p.waitForSelector('#cmdk:not([hidden])');
@@ -838,6 +882,8 @@ await passo('app · Solicitações e busca (janela central) consultam o Onvio na
   await p.press('#busca-q', 'Enter');
   await p.waitForFunction(() => window.__msgs.some(m => m.cmd === 'buscar' && m.q === 'joão'));
   assert.equal(await p.textContent('#titulo'), 'Busca');
+  await p.waitForSelector('#corpo [data-k="geral:z"]');
+  assert.doesNotMatch(await p.textContent('#subtitulo'), /ver as listas/);
   await p.keyboard.press('Control+k');
   await p.fill('#busca-q', '101');
   await p.press('#busca-q', 'Enter');

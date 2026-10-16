@@ -1134,8 +1134,9 @@ test('distribuição: quem mais atendeu a empresa na semana; admissões fora da 
   assert.equal(por.c1.resp, 'Carla', 'admissão vai para quem mais fez admissões');
   assert.match(por.c1.motivo, /fez 4 admissões/);
   assert.equal(por.g2.resp, 'Bia');
-  assert.equal(por.g9.resp, 'Bia', 'sem histórico: quem tem menos pendências');
+  assert.equal(por.g9.resp, '', 'sem histórico: não sugere ninguém (nada de "quem tem menos")');
   assert.equal(por.g9.semHistorico, true);
+  assert.match(por.g9.motivo, /ninguém atendeu esta empresa na última semana: escolha o responsável/);
   assert.equal(s[0].item.k, 'a1', 'mais grave primeiro');
   assert.equal(s.length, 4, 'só as sem responsável');
 });
@@ -1158,7 +1159,7 @@ test('distribuição: lê só o período (para na primeira mais antiga) e o serv
   store.snapshot = { items: [{ k: 'geral:g1', type: 'geral', resp: '', codCliente: '', cliente: 'ACME' }, { k: 'geral:g2', type: 'geral', resp: 'Ana', cliente: 'X' }] };
   const r = await new Promise(res => ouvintes[0]({ cmd: 'distribuicao', dias: 7 }, { tab: { id: 5 } }, res));
   assert.equal(r.ok, true);
-  assert.deepEqual([r.dias, r.sugestoes.length, r.sugestoes[0].resp], [7, 1, 'Ana']);
+  assert.deepEqual([r.dias, r.sugestoes.length, r.sugestoes[0].resp], [7, 1, ''], 'sem histórico no período: ninguém sugerido');
   assert.deepEqual(Object.keys(store).filter(k => !['metodoLeitura', 'perfilSessao', 'snapshot'].includes(k)), [], 'nada é gravado');
 });
 
@@ -1346,6 +1347,18 @@ test('admissão: retroativa, já passada ou perto do início destaca; cadastro e
   const quarta = OC.evaluate(it('2026-10-21'), {}, now);
   assert.deepEqual([quarta.admissaoAlerta, quarta.nivel], [null, 0], 'quarta: 3 d.u., fora da janela de 2');
   assert.equal(OC.evaluate(it('2026-10-10', { code: 5, lado: 'cli' }), {}, now).admissaoAlerta, null, 'cadastro efetuado');
+  // estagiário: o eSocial vai até 15 dias corridos depois do início; começar antes do pedido ou já ter começado não é atraso
+  const est = (admissao, extra) => it(admissao, Object.assign({ type: 'cadEstagiario' }, extra || {}));
+  const ontem = OC.evaluate(est('2026-10-15'), {}, now);
+  assert.deepEqual([ontem.admissaoAlerta, ontem.nivel], [null, 0], 'estágio começou ontem: prazo em 30/10, longe');
+  const perto = OC.evaluate(est('2026-10-04', { created: '2026-10-14T12:00:00' }), {}, now);
+  assert.deepEqual(plano(perto.admissaoAlerta), { data: '2026-10-04', prazo: '2026-10-19', faltam: 1, retro: false, estagio: true }, 'retroativo mas dentro do prazo: só avisa a 2 d.u. do prazo');
+  assert.deepEqual([perto.nivel, perto.motivos[0].m], [1, 'Estágio: eSocial até 19/10 (15 dias após o início)']);
+  const venceu = OC.evaluate(est('2026-09-30'), {}, now);
+  assert.deepEqual([venceu.admissaoAlerta.faltam < 0, venceu.nivel], [true, 2]);
+  assert.match(venceu.motivos[0].m, /prazo do eSocial \(15\/10\) já passou/);
+  assert.equal(OC.evaluate(est('2026-10-04'), { estagiarioPrazoDias: 30 }, now).admissaoAlerta, null, 'o prazo vem das regras');
+  assert.equal(OC.normalizarRegras({ prazos: { estagiarioPrazoDias: 20 } }).config.estagiarioPrazoDias, 20);
   assert.equal(OC.normalize(OC.TYPE_BY_KEY.cadEmpregado, { id: 'x', identifier: 1, genericStatus: 2, admissionDate: '2026-10-20T00:00:00', name: 'F' }, null, []).admissao, '2026-10-20');
   assert.equal(OC.normalize(OC.TYPE_BY_KEY.geral, { id: 'x', identifier: 1, genericStatus: 2, admissionDate: '2026-10-20T00:00:00' }, null, []).admissao, null);
   const lista = OC.admissoesCriticas([{ k: 'a', admissaoAlerta: { faltam: 2, retro: false } }, { k: 'b' }, { k: 'c', admissaoAlerta: { faltam: -4, retro: true } }, { k: 'd', admissaoAlerta: { faltam: 0, retro: false } }]);
@@ -1400,4 +1413,69 @@ test('previsão por empresa: média por semana, tendência e estimativa; o servi
   assert.equal(r.dias, 28);
   assert.equal(r.empresas[0].cliente, 'ACME');
   assert.deepEqual(Object.keys(store).filter(k => !['metodoLeitura', 'perfilSessao'].includes(k)), [], 'nada é gravado');
+});
+
+test('avaliação da equipe: entregas no período, % no prazo, carteira em dia, cuidado, agilidade, nota e comparação', () => {
+  const now = new Date(2026, 9, 16, 10);   // sexta, 16/10
+  const fim = (resp, type, criada, concluida, extra) => Object.assign({ k: type + ':' + resp + criada + concluida, type, resp, lado: 'fim', status: 'Concluído', created: criada + 'T09:00:00', last: concluida + 'T15:00:00' }, extra || {});
+  const mov = [
+    fim('Ana', 'geral', '2026-10-13', '2026-10-14'),          // 1 d.u.: no prazo (3)
+    fim('Ana', 'calcFerias', '2026-10-06', '2026-10-15'),     // 6 d.u.: fora do prazo (5)
+    fim('Ana', 'geral', '2026-10-01', '2026-10-05'),          // período anterior (antes de 10/10)
+    fim('Bia', 'geral', '2026-10-12', '2026-10-13'),
+    fim('Bia', 'geral', '2026-10-12', '2026-10-15', { status: 'Prescrita', k: 'geral:prescrita' }),
+    fim('Bia', 'geral', '2026-10-12', '2026-10-15'),
+    { k: 'geral:aberta', type: 'geral', resp: 'Bia', lado: 'esc', status: 'Em análise', last: '2026-10-15T10:00:00' }   // movimentada, não concluída: não conta
+  ];
+  const pend = [
+    { k: 'p1', type: 'geral', resp: 'Ana', lado: 'esc', nivel: 0, grav: 0, parado: 1, ptUteis: 1 },
+    { k: 'p2', type: 'geral', resp: 'Ana', lado: 'esc', nivel: 2, grav: 3, parado: 20, ptUteis: 3 },
+    { k: 'p3', type: 'geral', resp: 'Bia', lado: 'cli', nivel: 0, grav: 0, parado: 2 },
+    { k: 'p4', type: 'geral', resp: '', lado: 'esc', nivel: 0, grav: 0, parado: 0 }
+  ];
+  const r = OC.avaliarEquipe(pend, mov, {}, 7, now);
+  assert.deepEqual([r.de, r.ate], ['2026-10-10', '2026-10-16']);
+  const ana = r.analistas.find(a => a.resp === 'Ana'), bia = r.analistas.find(a => a.resp === 'Bia');
+  assert.deepEqual([ana.concluidas, ana.noPrazo, ana.pctNoPrazo, ana.tempoMedio], [2, 1, 50, 3.5]);
+  assert.deepEqual([ana.carteira, ana.esc, ana.pctEmDia, ana.g3, ana.paradas, ana.primeiroTramite], [2, 2, 50, 1, 1, 2]);
+  assert.deepEqual(plano(ana.componentes), { pontualidade: 50, emDia: 50, cuidado: 75, agilidade: 75 });
+  assert.equal(ana.nota, Math.round((50 * 35 + 50 * 30 + 75 * 20 + 75 * 15) / 100));
+  assert.deepEqual(plano([ana.anterior.concluidas, ana.variacao.concluidas]), [1, 1]);
+  assert.deepEqual(plano(ana.atencao.map(i => i.k)), ['p2'], 'crítica e parada vão para os pontos de atenção');
+  assert.deepEqual([bia.concluidas, bia.prescritas, bia.pctNoPrazo, bia.componentes.emDia, bia.componentes.agilidade], [2, 1, 100, null, null], 'sem carteira no escritório nem 1º trâmite: esses itens ficam de fora da nota');
+  assert.equal(bia.nota, Math.round((100 * 35 + 75 * 20) / 55));
+  assert.equal(r.analistas[0].resp, 'Bia', 'maior nota primeiro');
+  assert.equal(r.analistas.some(a => a.resp === '(sem responsável)'), false);
+  assert.deepEqual([r.equipe.concluidas, r.equipe.carteira, r.equipe.prescritas], [4, 4, 1]);
+  assert.deepEqual(plano(ana.porDia.map(d => d.n)), [0, 0, 0, 0, 1, 1, 0], 'entregas por dia do período');
+  assert.equal(OC.faixaNota(90).rot, 'Excelente');
+  assert.equal(OC.faixaNota(40).rot, 'Precisa de apoio');
+  assert.equal(OC.faixaNota(null).k, 'sem');
+});
+
+test('área do gestor: a senha fica só como resumo SHA-256; regras podem trocar, ajustes da pessoa não', () => {
+  const crypto = require('node:crypto');
+  assert.equal(OC.DEFAULTS.senhaGestorSha256, crypto.createHash('sha256').update('gestor@987654321').digest('hex'));
+  assert.ok(!fs.readFileSync(path.join(EXT, 'core.js'), 'utf8').includes('gestor@987654321'), 'o texto da senha não está no código');
+  const outro = crypto.createHash('sha256').update('outra').digest('hex');
+  const regras = OC.normalizarRegras({ senhaGestorSha256: outro.toUpperCase() });
+  assert.equal(regras.senhaGestorSha256, outro);
+  assert.equal(OC.combinarSettings({ regras }, { senhaGestorSha256: 'a'.repeat(64) }).senhaGestorSha256, outro, 'ajuste da pessoa não troca a senha');
+  assert.equal(OC.normalizarRegras({ senhaGestorSha256: 'texto' }), null);
+});
+
+test('detalhe em português: campos e códigos do Onvio traduzidos; o que não tem tradução aparece como veio', () => {
+  assert.equal(OC.traduzirCampo('lastWorkDay'), 'Último dia trabalhado');
+  assert.equal(OC.traduzirCampo('workScheduleType'), 'Tipo de horário de trabalho', 'palavra por palavra, na ordem do português');
+  assert.equal(OC.traduzirCampo('costCenterCode'), 'Código de centro de custo');
+  assert.equal(OC.traduzirCampo('fooBarBaz'), 'Foo bar baz', 'sem tradução de tudo: não mistura idiomas');
+  assert.equal(OC.traduzirValor('x', 'PRIOR_NOTICE_TERMINATION'), 'Aviso prévio de rescisão');
+  assert.equal(OC.traduzirValor('x', 'SICK_LEAVE'), 'Afastamento por doença');
+  assert.equal(OC.traduzirValor('x', 'WEB'), 'Portal (web)');
+  assert.equal(OC.traduzirValor('x', 'XPTO_ABC'), 'XPTO_ABC');
+  const d = OC.camposDetalhe(OC.TYPE_BY_KEY.calcRescisao, { terminationType: 'WITHOUT_CAUSE', lastWorkDay: '2026-10-10T00:00:00', noticeType: 'INDEMNIFIED' });
+  const txt = JSON.stringify(plano(d.grupos));
+  assert.match(txt, /Tipo de rescisão.*Sem justa causa/);
+  assert.match(txt, /Último dia trabalhado.*10\/10\/2026/);
+  assert.match(txt, /Tipo do aviso.*Indenizado/);
 });

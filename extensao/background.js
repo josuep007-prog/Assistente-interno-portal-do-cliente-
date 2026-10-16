@@ -587,6 +587,15 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         const mov = await OC.lerMovimentadas(f, 28, new Date());
         reply(Object.assign({ ok: true, erros: mov.erros }, OC.previsaoPorEmpresa(mov.itens, new Date(), 28)));
       }
+      else if (msg.cmd === 'desempenho') {          // área do gestor: entregas do período e do anterior, lidas na hora (nada é guardado)
+        const { f } = await escolherFetcher();
+        const dias = Math.min(30, Math.max(1, Number(msg.dias) || 7));
+        const s = await getSettings();
+        const { snapshot } = await chrome.storage.local.get('snapshot');
+        const agora = new Date();
+        const mov = await OC.lerMovimentadas(f, dias * 2 + 1, agora, 10);
+        reply(Object.assign({ ok: true, erros: mov.erros, movimentadas: mov.itens.length }, OC.avaliarEquipe((snapshot && snapshot.items) || [], mov.itens, s, dias, agora)));
+      }
       else if (msg.cmd === 'distribuicao') {        // sob demanda: quem mais atendeu cada empresa nos últimos dias (nada é guardado)
         const { f } = await escolherFetcher();
         const dias = Math.min(30, Math.max(1, Number(msg.dias) || 7));

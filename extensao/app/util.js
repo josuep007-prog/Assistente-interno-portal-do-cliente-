@@ -53,7 +53,7 @@ export function prazoHtml(i) {
 export function cartaoItem(i) {
   const mot = motivosHtml(i);
   return '<div class="sc lvl-' + (i.nivel || 0) + '" tabindex="0" data-k="' + esc(i.k) + '">' +
-    '<div class="sc-top"><span class="mono">#' + esc(i.num) + '</span><span>' + esc(i.typeLabel) + '</span>' + pillSituacao(i) + '</div>' +
+    '<div class="sc-top"><span class="mono">#' + esc(i.num) + '</span><span class="c-tipo">' + tipoIcone(i.type, 'pq') + '<span class="c-tipo-tx">' + esc(i.typeLabel) + '</span></span>' + pillSituacao(i) + '</div>' +
     '<div class="sc-cli" title="' + esc(i.cliente) + '">' + esc(nomeCli(i)) + '</div>' +
     '<div class="sc-sub">' + esc(i.detalhe || '—') + '</div>' +
     (mot ? '<div class="motivos">' + mot + '</div>' : '') +
@@ -98,3 +98,12 @@ export function csvItens(nome, lista) {
   baixarCsv(nome, ['Tipo', 'ID', 'Situação', 'Vez de', 'Cliente', 'Apelido', 'Empregado/Assunto', 'Responsável', 'Aberta em', 'Último trâmite', 'Expectativa', 'Dias parada', 'Prescreve em (dias)', 'Gravidade', '1º trâmite (d.u.)', 'Possível aba certa', 'Motivos'],
     lista.map(i => [i.typeLabel, i.num, i.status, ladoTexto(i), i.cliente, i.apelido, i.detalhe, i.resp, fmtDataHora(i.created), fmtDataHora(i.last), i.due ? fmtData(i.due) : '', i.parado, i.prescreveEm == null ? '' : i.prescreveEm, i.grav ? 'G' + i.grav : '', i.ptUteis == null ? '' : i.ptUteis, i.abaProvavel ? i.abaProvavel.label : '', (i.motivos || []).map(m => m.m).join(' | ')]));
 }
+
+// Identidade visual de cada tipo de solicitação: ícone (o que é) e família (cor do acento). Sem emoji.
+const TIPO_VISUAL = {
+  geral: ['i-chat', 'geral'], cadEmpregado: ['i-user-plus', 'cad'], cadContribuinte: ['i-briefcase', 'cad'], cadEstagiario: ['i-cap', 'cad'],
+  avisoFerias: ['i-sol', 'ferias'], calcFerias: ['i-calc', 'ferias'], avisoRescisao: ['i-porta', 'resc'], calcRescisao: ['i-calc', 'resc'],
+  afastamento: ['i-pulso', 'afast'], rubricas: ['i-recibo', 'rub']
+};
+export const tipoVisual = k => { const v = TIPO_VISUAL[k] || ['i-layers', 'todos']; return { ic: v[0], fam: v[1] }; };
+export const tipoIcone = (k, cls) => { const v = tipoVisual(k); return '<span class="tipo-ic fam-' + v.fam + (cls ? ' ' + cls : '') + '" aria-hidden="true"><svg class="ic"><use href="#' + v.ic + '"/></svg></span>'; };

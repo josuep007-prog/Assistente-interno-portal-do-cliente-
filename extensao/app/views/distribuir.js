@@ -101,13 +101,14 @@ function corpo(sem) {
       const acao = st === 'ok' ? '<span class="ok-t">Atribuída ✓</span>'
         : st === 'enviando' ? '<span class="fraco">Enviando…</span>'
         : confirmar === i.k ? '<span class="dist-conf"><button class="btn btn-sm" data-canc-k="1">Não</button><button class="btn btn-sm btn-primary" data-conf-k="' + esc(i.k) + '">Confirmar</button></span>'
-        : '<button class="btn btn-sm" data-atr="' + esc(i.k) + '"' + (pode.ok && atual && !trabalhando ? '' : ' disabled title="' + esc(pode.ok ? 'sem analista com id conhecido' : pode.motivo) + '"') + '>Atribuir</button>';
+        : '<button class="btn btn-sm" data-atr="' + esc(i.k) + '"' + (pode.ok && atual && !trabalhando ? '' : ' disabled title="' + esc(pode.ok ? 'escolha o responsável' : pode.motivo) + '"') + '>Atribuir</button>';
       return '<div class="lr dist-l lvl-' + (i.nivel || 0) + '" tabindex="0" data-k="' + esc(i.k) + '">' +
         '<span class="mono">#' + esc(i.num) + '</span>' +
         '<span><div class="c-main">' + esc(i.apelido || i.cliente || '—') + '</div><div class="c-sub">' + esc([i.typeLabel, i.detalhe].filter(Boolean).join(' · ')) + '</div></span>' +
         '<span>' + pillSituacao(i) + '<div class="c-sub">parada há ' + (i.parado || 0) + 'd</div></span>' +
         '<span class="dist-sug"><label>Sugestão<select data-esc="' + esc(i.k) + '" aria-label="Responsável"' + (st === 'ok' ? ' disabled' : '') + '>' +
-          (opcoes.length ? opcoes.map(p => '<option value="' + esc(p.id) + '"' + (p.id === atual ? ' selected' : '') + '>' + esc(p.nome) + '</option>').join('') : '<option value="">' + esc(x.resp || '—') + '</option>') +
+          (atual ? '' : '<option value="" selected>Escolha o responsável…</option>') +
+          opcoes.map(p => '<option value="' + esc(p.id) + '"' + (p.id === atual ? ' selected' : '') + '>' + esc(p.nome) + '</option>').join('') +
         '</select></label><small' + (x.semHistorico ? ' class="today"' : '') + '>' + esc(x.motivo) + (x.alternativas.length ? ' · depois: ' + esc(x.alternativas.map(a => a.resp + ' (' + a.n + ')').join(', ')) : '') + '</small>' +
           (st && st !== 'ok' && st !== 'enviando' ? '<small class="late">' + esc(st) + '</small>' : '') + '</span>' +
         '<span class="dist-acao">' + acao + '</span>' +

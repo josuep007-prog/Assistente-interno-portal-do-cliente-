@@ -1,7 +1,7 @@
 /* Solicitações (rota #/fila) · minhas, equipe, sem responsável, de um analista ou de um cliente (pendências lidas ao vivo).
  * Barra como a de Empresas no Departamento Pessoal: busca, vez, Filtros, Ordenar, Lista/Cartões e Mais. */
 import { estado, itens, minhas, clienteRespondeu, enviar } from '../estado.js';
-import { esc, pillSituacao, prazoHtml, cartaoItem, ligarItens, csvItens, fmtDataCurta, ladoTexto, normal, $, $$ } from '../util.js';
+import { esc, pillSituacao, prazoHtml, cartaoItem, ligarItens, csvItens, fmtDataCurta, ladoTexto, normal, tipoVisual, tipoIcone, $, $$ } from '../util.js';
 const OC = window.OC;
 
 const KPI = {
@@ -45,7 +45,7 @@ export function render(el, ctx, params) {
   let titulo = 'Solicitações';
   let sub = (escopo === 'equipe' ? 'Da equipe toda' : escopo === 'semresp' ? 'Sem responsável' : 'As suas') + ' · pendências lidas do Onvio, ao vivo';
   if (params.analista) { base = todas.filter(i => (i.resp || '(sem responsável)') === params.analista); titulo = params.analista; sub = 'Fila do responsável · <a href="#/equipe">voltar à Equipe</a>'; }
-  if (params.cliente) { base = todas.filter(i => (i.cliente || i.apelido || '(cliente não informado)') === params.cliente); titulo = params.cliente; sub = 'Pendências do cliente · <a href="#/clientes">voltar a Clientes</a>'; }
+  if (params.cliente) { base = todas.filter(i => (i.cliente || i.apelido || '(cliente não informado)') === params.cliente); titulo = params.cliente; sub = 'Pendências do cliente · <a href="#/inicio">voltar ao Hoje</a>'; }
   const kpi = KPI[params.kpi];
   if (kpi) base = base.filter(kpi.f);
   const motivo = OC.MOTIVOS.find(x => x.k === params.motivo);          // vindo do anel do Hoje
@@ -112,8 +112,8 @@ export function render(el, ctx, params) {
     filtros.tipo = ''; const l = filtrar(); filtros.tipo = antes;
     const cartao = (k, rot, xs) => {
       const atr = xs.filter(i => i.nivel === 2).length, esc_ = xs.filter(i => i.lado === 'esc').length, tot = xs.length;
-      return '<button type="button" class="tipo-c' + (filtros.tipo === k ? ' on' : '') + (!tot ? ' zero' : '') + '" data-tipo="' + esc(k) + '" aria-pressed="' + (filtros.tipo === k) + '">' +
-        '<span class="tipo-rot">' + esc(rot) + '</span><b>' + tot + '</b>' +
+      return '<button type="button" class="tipo-c fam-' + tipoVisual(k).fam + (filtros.tipo === k ? ' on' : '') + (!tot ? ' zero' : '') + '" data-tipo="' + esc(k) + '" aria-pressed="' + (filtros.tipo === k) + '">' +
+        '<span class="tipo-topo">' + tipoIcone(k) + '<span class="tipo-rot">' + esc(rot) + '</span></span><b>' + tot + '</b>' +
         '<span class="tipo-sub">' + (atr ? '<em>' + atr + ' fora do prazo</em>' : tot ? 'em dia' : 'nenhuma') + '</span>' +
         '<i class="tipo-barra" title="' + esc_ + ' com o escritório · ' + (tot - esc_) + ' com o cliente"><i style="width:' + (tot ? Math.round(esc_ / tot * 100) : 0) + '%"></i></i></button>';
     };
@@ -175,12 +175,30 @@ export function render(el, ctx, params) {
   $('#csv', el).addEventListener('click', () => { csvItens('onvio-' + (params.escopo || 'minhas') + '-' + OC.ymd(new Date()) + '.csv', filtrar()); });
   $('#m-onvio', el).addEventListener('click', () => enviar({ cmd: 'fecharPainel' }));
   desenhar();
+  if (params.foco) focar(params.foco);
+
+  // Vindo do Hoje com uma solicitação escolhida (foco=k): tira os filtros da tela se ela estiver escondida, rola até a
+  // linha e pisca um contorno vermelho. O foco sai do endereço, para uma nova leitura ao vivo não piscar de novo.
+  function focar(k) {
+    const achar = () => $$('#corpo [data-k]', el).find(r => r.dataset.k === k);
+    if (!achar() && (filtros.texto || filtros.tipo || filtros.lado || filtros.grav || filtros.resp)) {
+      filtros = { texto: '', tipo: '', lado: '', grav: '', resp: '' };
+      $('#f-texto', el).value = ''; $$('.menu-list.form select', el).forEach(x => { x.value = ''; }); $$('[data-lado]', el).forEach(x => x.classList.toggle('on', x.dataset.lado === ''));
+      desenhar();
+    }
+    try { history.replaceState(null, '', location.href.replace(/([?&])foco=[^&]*(&|$)/, (m, a, b) => (b ? a : '')).replace(/\?$/, '')); } catch (e) {}
+    const r = achar();
+    if (!r) return;
+    r.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    r.classList.remove('foco-pisca'); void r.offsetWidth; r.classList.add('foco-pisca');
+    setTimeout(() => r.classList.remove('foco-pisca'), 3400);
+  }
 }
 
 function linha(i) {
   return '<div class="lr lvl-' + (i.nivel || 0) + '" tabindex="0" data-k="' + esc(i.k) + '" role="row">' +
     '<span class="mono">#' + esc(i.num) + '</span>' +
-    '<span class="c-sub" style="color:var(--ink-2)">' + esc(i.typeLabel) + '</span>' +
+    '<span class="c-sub c-tipo" style="color:var(--ink-2)">' + tipoIcone(i.type, 'pq') + esc(i.typeLabel) + '</span>' +
     '<span>' + pillSituacao(i) + '<div class="c-sub">vez: ' + ladoTexto(i) + '</div></span>' +
     '<span><div class="c-main" title="' + esc(i.cliente) + '">' + esc(i.apelido || i.cliente || '—') + '</div>' + (i.apelido && i.cliente && i.apelido !== i.cliente ? '<div class="c-sub">' + esc(i.cliente) + '</div>' : '') + '</span>' +
     '<span><div class="c-sub" style="color:var(--ink)" title="' + esc(i.detalhe) + '">' + esc(i.detalhe || '—') + '</div>' + (i.abaProvavel ? '<div class="c-sub">pode ser: ' + esc(i.abaProvavel.label) + '</div>' : '') + '</span>' +

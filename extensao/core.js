@@ -87,8 +87,12 @@
     parada: 15,               // dias corridos sem movimentação
     prescricaoDias: 30,       // regra do Onvio
     prescricaoAviso: 20,      // a partir de quantos dias parada vira alerta vermelho
-    tempoOcupado: 5,
-    admissaoAviso: 2,         // dias úteis antes do início para destacar a admissão (o eSocial é até o dia anterior)          // dias úteis que um analista leva para atender num período cheio: prazo legal mais perto que isso já pede ação
+    tempoOcupado: 5,          // dias úteis que um analista leva para atender num período cheio: prazo legal mais perto que isso já pede ação
+    admissaoAviso: 2,         // dias úteis antes do prazo do eSocial para destacar a admissão (empregado: até o dia anterior ao início)
+    estagiarioPrazoDias: 15,  // estagiário: o eSocial vai até 15 dias corridos depois da admissão (pedido do Josué, 16/10/2026)
+    // Área do gestor (Equipe): SHA-256 da senha, nunca o texto. Trava leve, para a tela não ficar aberta a todos;
+    // não é segurança forte (o código da extensão é legível). O arquivo de regras pode trocar o resumo.
+    senhaGestorSha256: '112476430c42953d49259e789d363e3c62d8bc91f775a7cc2f735fbf67418e5c',
     pagamentoFeriasAntes: 2,  // CLT art. 145: férias pagas até 2 dias antes do início
     pagamentoRescisaoDias: 10, // CLT art. 477 §6º: verbas rescisórias em até 10 dias do término do contrato
     avisoFeriasDias: 30,      // CLT art. 135: aviso de férias com 30 dias de antecedência
@@ -136,7 +140,7 @@
         'Início das atividades em {admissao}. A admissão precisa ser enviada ao eSocial até o dia anterior ao início, então a documentação completa deve chegar antes disso.',
         'O exame admissional deve ser feito antes do início das atividades.'
       ],
-      cadEstagiario: ['O estágio precisa do termo de compromisso assinado pela empresa, pelo estagiário e pela instituição de ensino antes do início.'],
+      cadEstagiario: ['O estágio precisa do termo de compromisso assinado pela empresa, pelo estagiário e pela instituição de ensino antes do início.', 'Início do estágio em {admissao}. O cadastro do estagiário no eSocial vai até {estagiarioPrazoDias} dias depois do início, então a documentação deve chegar o quanto antes.'],
       cadContribuinte: ['Informe a data de início e o valor do pró-labore ou da retirada, para o cadastro no eSocial.'],
       rubricas: ['Lançamentos da competência {competencia} precisam chegar antes do fechamento da folha; depois disso entram na competência seguinte.']
     },
@@ -324,7 +328,15 @@
     // Admissão: o eSocial (S-2200) precisa ser enviado até o dia anterior ao início. Pedido com data de início anterior à
     // abertura (retroativo), início já passado ou perto destacam a solicitação, de quem quer que seja a vez.
     let admissaoAlerta = null;
-    if (fam === FAMILIAS.cadastro && it.admissao && it.code !== 5 && it.code !== 6) {
+    // Estagiário: o prazo do eSocial é até estagiarioPrazoDias dias corridos depois da admissão, então começar antes do
+    // pedido (retroativo) ou já ter começado não é atraso por si: conta só o prazo.
+    if (fam === FAMILIAS.cadastro && it.admissao && it.code !== 5 && it.code !== 6 && it.type === 'cadEstagiario') {
+      const ini = diaDe(it.admissao), prazo = somaDias(ini, s.estagiarioPrazoDias);
+      const faltam = uteisAte(now, prazo, hol), dp = fmtData(prazo);
+      if (faltam < 0) alerta(2, 'Estágio iniciado em ' + fmtData(ini) + ': prazo do eSocial (' + dp + ') já passou');
+      else if (faltam <= s.admissaoAviso) alerta(faltam === 0 ? 2 : 1, faltam === 0 ? 'Prazo do eSocial do estágio vence hoje (' + dp + ')' : 'Estágio: eSocial até ' + dp + ' (' + s.estagiarioPrazoDias + ' dias após o início)');
+      if (faltam <= s.admissaoAviso) admissaoAlerta = { data: it.admissao, prazo: ymd(prazo), faltam, retro: false, estagio: true };
+    } else if (fam === FAMILIAS.cadastro && it.admissao && it.code !== 5 && it.code !== 6) {
       const ini = diaDe(it.admissao), aberta = created ? new Date(created.getFullYear(), created.getMonth(), created.getDate()) : null;
       const faltam = uteisAte(now, ini, hol), dt = fmtData(ini);
       const retro = !!(aberta && ini < aberta);
@@ -600,7 +612,7 @@
   const LIMITES = {
     primeiroTramite: [0, 30], conclusaoSimples: [1, 60], conclusaoCalculo: [1, 60], clienteSemRetorno: [1, 60],
     parada: [1, 90], prescricaoDias: [1, 120], prescricaoAviso: [1, 120], tempoRealSeg: [0, 600],
-    tempoOcupado: [0, 30], admissaoAviso: [0, 15], pagamentoFeriasAntes: [0, 30], pagamentoRescisaoDias: [0, 60], avisoFeriasDias: [0, 90]
+    tempoOcupado: [0, 30], admissaoAviso: [0, 15], estagiarioPrazoDias: [0, 60], pagamentoFeriasAntes: [0, 30], pagamentoRescisaoDias: [0, 60], avisoFeriasDias: [0, 90]
   };
   const inteiro = (v, [min, max]) => (typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max ? v : undefined);
 
@@ -630,6 +642,7 @@
       for (const k of ['serviceRequestType', 'requestWay', 'departmentId']) if (typeof raw.criacao[k] === 'string' && /^[A-Za-z0-9_.-]{1,80}$/.test(raw.criacao[k])) c[k] = raw.criacao[k];
       if (Object.keys(c).length) out.criacao = c;
     }
+    if (typeof raw.senhaGestorSha256 === 'string' && /^[0-9a-f]{64}$/i.test(raw.senhaGestorSha256)) out.senhaGestorSha256 = raw.senhaGestorSha256.toLowerCase();
     if (Array.isArray(raw.abaErrada)) {
       for (const e of raw.abaErrada.slice(0, 30)) {
         const t = e && TYPE_BY_KEY[e.tipo];
@@ -637,7 +650,7 @@
         if (t && t.key !== 'geral' && palavras.length) out.abaErrada.push({ tipo: t.key, palavras });
       }
     }
-    const util = Object.keys(out.config).length || out.feriados.length || out.abaErrada.length || (out.observacoes && Object.keys(out.observacoes).length) || out.avisoSemCalculo || out.assuntoSemCalculo || out.tramiteCriacao || out.criacao;
+    const util = Object.keys(out.config).length || out.feriados.length || out.abaErrada.length || (out.observacoes && Object.keys(out.observacoes).length) || out.avisoSemCalculo || out.assuntoSemCalculo || out.tramiteCriacao || out.criacao || out.senhaGestorSha256;
     return util ? out : null;
   }
 
@@ -654,8 +667,10 @@
       if (r.assuntoSemCalculo) base.assuntoSemCalculo = r.assuntoSemCalculo;
       if (r.tramiteCriacao) base.tramiteCriacao = r.tramiteCriacao;
       if (r.criacao) base.criacao = Object.assign({}, DEFAULTS.criacao, r.criacao);
+      if (r.senhaGestorSha256) base.senhaGestorSha256 = r.senhaGestorSha256;
     }
-    return Object.assign(base, usuario || {});
+    // a senha da área do gestor vem só do código ou das regras do escritório, nunca dos ajustes da pessoa
+    return Object.assign(base, usuario || {}, { senhaGestorSha256: base.senhaGestorSha256 });
   }
 
   /* ---------- painel por cliente (dashboard Clientes) ---------- */
@@ -991,19 +1006,83 @@
     quantity: 'Quantidade', hours: 'Horas', days: 'Dias', rubric: 'Rubrica', email: 'E-mail', phone: 'Telefone', birthDate: 'Nascimento',
     hireDate: 'Admissão', clientEmployeeRelationship: 'Vínculo', reason: 'Motivo', priorNotice: 'Tem aviso prévio', calculation: 'Pede cálculo',
     internshipOption: 'Opção de estágio', registrationNumber: 'Matrícula', pis: 'PIS', ctps: 'CTPS', cpf: 'CPF', gender: 'Sexo',
-    terminationReasonExpanded: 'Motivo da rescisão', noticeType: 'Tipo do aviso', workedNotice: 'Aviso trabalhado', reduction: 'Redução da jornada'
+    terminationReasonExpanded: 'Motivo da rescisão', noticeType: 'Tipo do aviso', workedNotice: 'Aviso trabalhado', reduction: 'Redução da jornada',
+    terminationDate: 'Data do término', lastWorkDay: 'Último dia trabalhado', clientEmployeeRelationshipExpanded: 'Vínculo', customFields: 'Campos adicionais',
+    displayStatus: 'Situação', assignedTo: 'Atribuída a', isReadByClientUser: 'Lida pelo cliente', nickName: 'Apelido', clientName: 'Cliente',
+    staffName: 'Responsável', mimeType: 'Tipo do arquivo', fileName: 'Arquivo', createdDate: 'Criada em', modifiedDate: 'Alterada em',
+    expirationDate: 'Vencimento', sendDate: 'Enviada em', requestType: 'Tipo de solicitação', createdBy: 'Criada por', size: 'Tamanho',
+    prescribePendingTicketsDays: 'Dias para prescrever', forwardedToExpanded: 'Encaminhada para', employeeRegistrationTopicNumber: 'Trâmite nº',
+    payrollEntryTopicNumber: 'Trâmite nº', motherName: 'Nome da mãe', fatherName: 'Nome do pai', maritalStatus: 'Estado civil',
+    educationLevel: 'Escolaridade', nationality: 'Nacionalidade', race: 'Raça/cor', address: 'Endereço', street: 'Rua', number: 'Número',
+    complement: 'Complemento', neighborhood: 'Bairro', city: 'Cidade', state: 'UF', zipCode: 'CEP', country: 'País', bank: 'Banco',
+    agency: 'Agência', account: 'Conta', dependents: 'Dependentes', relationship: 'Parentesco', workSchedule: 'Horário de trabalho',
+    salaryType: 'Tipo de salário', paymentType: 'Forma de pagamento', experienceContract: 'Contrato de experiência', union: 'Sindicato',
+    institution: 'Instituição de ensino', course: 'Curso', supervisor: 'Supervisor', scholarship: 'Bolsa', insurance: 'Seguro',
+    returnDate: 'Data de retorno', cid: 'CID', doctor: 'Médico', crm: 'CRM', certificate: 'Atestado', note: 'Observação', notes: 'Observações',
+    observation: 'Observação', observations: 'Observações', title: 'Título', type: 'Tipo', status: 'Situação', active: 'Ativo'
   };
   // valores técnicos (enumerações) que o Onvio manda em inglês; o que não estiver aqui aparece como veio
   const VALORES = {
     EMPLOYEE: 'Empregado', INTERN: 'Estagiário', TAXPAYER: 'Contribuinte', PARTNER: 'Sócio', DIRECTOR: 'Diretor', APPRENTICE: 'Aprendiz',
     INDEMNIFIED: 'Indenizado', WORKED: 'Trabalhado', MONTHLY: 'Mensal', HOURLY: 'Por hora', DAILY: 'Diário', WEEKLY: 'Semanal',
-    EMPLOYER: 'Empregador', MALE: 'Masculino', FEMALE: 'Feminino', PORTAL: 'Portal do Cliente', EMAIL: 'E-mail', PHONE: 'Telefone'
+    EMPLOYER: 'Empregador', MALE: 'Masculino', FEMALE: 'Feminino', PORTAL: 'Portal do Cliente', EMAIL: 'E-mail', PHONE: 'Telefone',
+    WEB: 'Portal (web)', MOBILE: 'Aplicativo', PRIOR_NOTICE_TERMINATION: 'Aviso prévio de rescisão', TERMINATION_CALCULATION: 'Cálculo de rescisão',
+    PRIOR_NOTICE_VACATION: 'Aviso de férias', VACATION_CALCULATION: 'Cálculo de férias', EMPLOYEE_LEAVE: 'Afastamento', PAYROLL_ENTRY: 'Lançamento de rubricas',
+    GENERIC: 'Geral', ADVANCE: 'Adiantamento', THIRTEENTH: '13º salário', VACATION: 'Férias', TERMINATION: 'Rescisão', SINGLE: 'Solteiro(a)',
+    MARRIED: 'Casado(a)', DIVORCED: 'Divorciado(a)', WIDOWED: 'Viúvo(a)', SEPARATED: 'Separado(a)', STABLE_UNION: 'União estável', YES: 'Sim', NO: 'Não',
+    NONE: 'Nenhum', OTHER: 'Outro', OTHERS: 'Outros', PENDING: 'Pendente', APPROVED: 'Aprovado', REJECTED: 'Recusado', ACTIVE: 'Ativo', INACTIVE: 'Inativo',
+    SICK_LEAVE: 'Afastamento por doença', ILLNESS: 'Doença', WORK_ACCIDENT: 'Acidente de trabalho', MATERNITY_LEAVE: 'Licença-maternidade',
+    PATERNITY_LEAVE: 'Licença-paternidade', MILITARY_SERVICE: 'Serviço militar', UNPAID_LEAVE: 'Licença não remunerada', PAID_LEAVE: 'Licença remunerada',
+    WITH_CAUSE: 'Com justa causa', WITHOUT_CAUSE: 'Sem justa causa', WITH_JUST_CAUSE: 'Com justa causa', WITHOUT_JUST_CAUSE: 'Sem justa causa',
+    RESIGNATION: 'Pedido de demissão', DISMISSAL: 'Dispensa', AGREEMENT: 'Acordo entre as partes', MUTUAL_AGREEMENT: 'Acordo entre as partes',
+    END_OF_CONTRACT: 'Término de contrato', CONTRACT_END: 'Término de contrato', EXPERIENCE_END: 'Fim do contrato de experiência', DEATH: 'Falecimento',
+    RETIREMENT: 'Aposentadoria', TRANSFER: 'Transferência', FULL_TIME: 'Tempo integral', PART_TIME: 'Tempo parcial', INTERMITTENT: 'Intermitente',
+    TEMPORARY: 'Temporário', INDEFINITE: 'Indeterminado', DEFINITE: 'Determinado', CLT: 'CLT'
   };
+  // Palavras soltas (campos e valores que o Onvio venha a mandar e ainda não estão acima): traduz palavra por palavra;
+  // se sobrar alguma sem tradução, mostra como veio (melhor o nome técnico do que uma frase pela metade).
+  const PALAVRAS = {
+    date: 'data', start: 'início', end: 'fim', type: 'tipo', reason: 'motivo', name: 'nome', number: 'número', value: 'valor', days: 'dias',
+    day: 'dia', hours: 'horas', hour: 'hora', employee: 'empregado', employer: 'empregador', client: 'cliente', company: 'empresa', staff: 'escritório',
+    notice: 'aviso', prior: 'prévio', termination: 'rescisão', vacation: 'férias', leave: 'afastamento', payment: 'pagamento', salary: 'salário',
+    wage: 'salário', bonus: 'abono', advance: 'adiantamento', first: 'primeiro', last: 'último', work: 'trabalho', worked: 'trabalhado', job: 'cargo',
+    position: 'cargo', department: 'departamento', cost: 'custo', center: 'centro', description: 'descrição', comments: 'observações', note: 'observação',
+    document: 'documento', documents: 'documentos', file: 'arquivo', files: 'arquivos', attachment: 'anexo', attachments: 'anexos', created: 'criado',
+    updated: 'atualizado', changed: 'alterado', by: 'por', at: 'em', of: 'de', the: '', and: 'e', or: 'ou', with: 'com', without: 'sem', is: '', has: 'tem',
+    total: 'total', amount: 'valor', quantity: 'quantidade', code: 'código', status: 'situação', request: 'solicitação', requester: 'solicitante',
+    registration: 'cadastro', personal: 'pessoal', professional: 'profissional', address: 'endereço', phone: 'telefone', email: 'e-mail',
+    birth: 'nascimento', mother: 'mãe', father: 'pai', dependent: 'dependente', dependents: 'dependentes', category: 'categoria', union: 'sindicato',
+    contract: 'contrato', experience: 'experiência', extension: 'prorrogação', weekly: 'semanal', monthly: 'mensal', daily: 'diário', yes: 'sim', no: 'não',
+    active: 'ativo', inactive: 'inativo', pending: 'pendente', other: 'outro', calculation: 'cálculo', calculate: 'calcular', entry: 'lançamento',
+    entries: 'lançamentos', payroll: 'folha', rubric: 'rubrica', absent: 'falta', absence: 'falta', medical: 'médico', certificate: 'atestado',
+    return: 'retorno', expected: 'previsto', due: 'prazo', expiration: 'vencimento', send: 'envio', sent: 'enviado', read: 'lido', user: 'usuário',
+    internship: 'estágio', intern: 'estagiário', taxpayer: 'contribuinte', partner: 'sócio', option: 'opção', schedule: 'horário', shift: 'turno',
+    indemnified: 'indenizado', reduction: 'redução', paid: 'pago', unpaid: 'não pago', count: 'quantidade', size: 'tamanho', title: 'título'
+  };
+  // Em inglês o principal vem por último ("expected return date"); em português, primeiro ("data de retorno prevista").
+  const ADJ = new Set(['previsto', 'pago', 'não pago', 'ativo', 'inativo', 'pendente', 'prévio', 'trabalhado', 'indenizado', 'mensal', 'semanal', 'diário', 'pessoal', 'profissional', 'médico', 'criado', 'atualizado', 'alterado', 'enviado', 'lido', 'total']);
+  const ANTES = new Set(['primeiro', 'último']);
+  const PREP = new Set(['por', 'em', 'de', 'e', 'ou', 'com', 'sem', 'tem']);
+  function traduzirPalavras(lista) {
+    const out = [];
+    for (const w of lista) { const t = PALAVRAS[w.toLowerCase()]; if (t === undefined) return null; if (t) out.push(t); }
+    if (!out.length) return null;
+    if (out.length === 1 || out.some(w => PREP.has(w))) return out.join(' ');
+    const nucleo = out[out.length - 1], resto = out.slice(0, -1).reverse();
+    let frase = nucleo, antes = '';
+    for (const w of resto) { if (ANTES.has(w)) antes = w + ' '; else if (ADJ.has(w)) frase += ' ' + w; else frase += ' de ' + w; }
+    return antes + frase;
+  }
   // Fora da aba Dados: o que já está no topo da janela (cliente, responsável, datas, solicitante) e o que só serve ao
   // sistema (tipo técnico, meio, quem cadastrou, quando foi alterada). A aba fica com o que é preciso para atender.
   const FORA_DADOS = /^(serviceRequestType|requestWay|changed|created|lastUpdated|genericLastUpdated|lastStatusChanged|dueDate|status|sortOrder|clientExpanded|staffResponsibleExpanded|requesterExpanded|createdByContactExpanded|departmentExpanded)$/;
   const OCULTO = /^(type|apiVersion|id|companyId|identifier|genericStatus|clientStatus|firmStatus|attachmentsExpanded|delete|deleted|staticFilePath|translationKey)$|Id$|Ids$/;
-  const humano = k => { const t = String(k).replace(/Expanded$/, '').replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase(); return t.charAt(0).toUpperCase() + t.slice(1); };
+  const humano = k => {
+    const partes = String(k).replace(/Expanded$/, '').replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase().split(/[\s_]+/).filter(Boolean);
+    const t = traduzirPalavras(partes) || partes.join(' ');
+    return t.charAt(0).toUpperCase() + t.slice(1);
+  };
+  const enumPt = v => { if (VALORES[v]) return VALORES[v]; const t = traduzirPalavras(v.toLowerCase().split('_')); return t ? t.charAt(0).toUpperCase() + t.slice(1) : v; };
   const rotulo = k => ROTULOS[k] || humano(k);
   function valorDe(k, v) {
     if (v == null || v === '') return '';
@@ -1012,7 +1091,7 @@
     if (typeof v === 'string') {
       if (/^\d{4}-\d{2}-\d{2}T00:00:00(\.0+)?Z?$/.test(v) || /^\d{4}-\d{2}-\d{2}$/.test(v)) { const d = diaDe(v); return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear(); }
       if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v)) { const d = parseDate(v); if (d) return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
-      return /^[A-Z][A-Z_]{2,}$/.test(v) && VALORES[v] ? VALORES[v] : v;
+      return /^[A-Z][A-Z_]{1,}$/.test(v) ? enumPt(v) : v;
     }
     if (Array.isArray(v)) return v.map(x => (x && typeof x === 'object' ? x.name || x.description || x.value || '' : valorDe(k, x))).filter(Boolean).join(', ');
     if (typeof v === 'object') return v.name || v.description || (typeof v.value !== 'object' ? valorDe(k, v.value) : '') || '';
@@ -1200,7 +1279,7 @@
     const vals = {
       conclusao: fmt(conclusao), diasConclusao: nDias, inicio: fmt(ini), pagamentoFerias: fmt(pf),
       pagamentoFeriasAntes: s.pagamentoFeriasAntes, pagamentoRescisaoDias: s.pagamentoRescisaoDias, avisoFeriasDias: s.avisoFeriasDias,
-      aviso: fmt(diaDe(d.aviso)), admissao: fmt(diaDe(d.admissao)), competencia: comp
+      aviso: fmt(diaDe(d.aviso)), admissao: fmt(diaDe(d.admissao)), competencia: comp, estagiarioPrazoDias: s.estagiarioPrazoDias
     };
     const preencher = txt => { let falta = false; const r = txt.replace(/\{(\w+)\}/g, (_, k) => { const v = vals[k]; if (v == null) { falta = true; return ''; } return String(v); }); return falta ? null : r; };
     const out = [];
@@ -1223,7 +1302,7 @@
    * Para cada solicitação sem responsável, sugere o analista que mais atendeu aquela empresa nos últimos N dias
    * (solicitações movimentadas no período, em qualquer situação, contadas pelo responsável). As admissões (os 3
    * Cadastros) ficam fora dessa conta, porque são todas da mesma pessoa; uma admissão sem responsável vai para quem
-   * mais fez admissões no período. Sem histórico da empresa, vai para quem tem menos pendências. É lido na hora
+   * mais fez admissões no período. Sem histórico no período, não sugere ninguém (a pessoa escolhe). É lido na hora
    * (sob demanda) e não é guardado. */
   const ADMISSAO = new Set(['cadEmpregado', 'cadContribuinte', 'cadEstagiario']);
   async function lerMovimentadas(fetcher, dias, now, maxPaginas) {
@@ -1250,18 +1329,16 @@
   }
   const chaveCliente = i => (i.codCliente !== '' && i.codCliente != null ? 'c' + i.codCliente : 'n' + semAcento(i.cliente || i.apelido || ''));
   function distribuirPorCliente(pendentes, movimentadas, dias) {
-    const porCli = new Map(), adm = new Map(), carga = new Map();
+    const porCli = new Map(), adm = new Map();
     const soma = (m, k) => m.set(k, (m.get(k) || 0) + 1);
     for (const x of movimentadas || []) {
       if (!x.resp) continue;
       if (ADMISSAO.has(x.type)) soma(adm, x.resp);
       else { const k = chaveCliente(x); if (!porCli.has(k)) porCli.set(k, new Map()); soma(porCli.get(k), x.resp); }
     }
-    for (const i of pendentes || []) if (i.resp) soma(carga, i.resp);
     const ids = new Map();
     for (const x of (movimentadas || []).concat(pendentes || [])) if (x.resp && x.respId && !ids.has(x.resp)) ids.set(x.resp, x.respId);
-    const ordem = m => [...m.entries()].sort((a, b) => (b[1] - a[1]) || ((carga.get(a[0]) || 0) - (carga.get(b[0]) || 0)) || a[0].localeCompare(b[0], 'pt-BR'));
-    const leve = () => [...carga.entries()].sort((a, b) => (a[1] - b[1]) || a[0].localeCompare(b[0], 'pt-BR'))[0];
+    const ordem = m => [...m.entries()].sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0], 'pt-BR'));
     const periodo = (dias || 7) === 7 ? 'na última semana' : 'nos últimos ' + dias + ' dias';
     return (pendentes || []).filter(i => !i.resp).map(i => {
       const r = sugerir(i);
@@ -1280,10 +1357,96 @@
           return { item: i, resp: o[0][0], n: o[0][1], motivo: 'atendeu ' + o[0][1] + ' de ' + total + ' solicitações desta empresa ' + periodo, alternativas: o.slice(1, 4).map(([r, n]) => ({ resp: r, n })) };
         }
       }
-      const l = leve();
-      return l ? { item: i, resp: l[0], n: 0, motivo: 'sem histórico ' + periodo + ': quem tem menos pendências (' + l[1] + ')', alternativas: [], semHistorico: true }
-        : { item: i, resp: '', n: 0, motivo: 'sem histórico e sem analistas com pendências', alternativas: [], semHistorico: true };
+      // sem histórico no período: não sugere ninguém (pedido do Josué em 16/10/2026: só a sugestão pelo histórico)
+      return { item: i, resp: '', n: 0, motivo: ADMISSAO.has(i.type) ? 'nenhuma admissão atendida ' + periodo + ': escolha o responsável' : 'ninguém atendeu esta empresa ' + periodo + ': escolha o responsável', alternativas: [], semHistorico: true };
     }
+  }
+
+  /* ---------- avaliação de desempenho e qualidade (tela Equipe, área do gestor) ----------
+   * Junta as pendências (resumo ao vivo) e as solicitações movimentadas no período (lidas na hora, nunca guardadas).
+   * Para cada analista e para a equipe:
+   *  - entregas: concluídas no período, tempo de conclusão (d.u. da abertura à conclusão), % no prazo interno
+   *    (3 d.u. simples, 5 cálculo), prescritas no período;
+   *  - carteira: pendências, % em dia das que estão com o escritório, críticas (G3), paradas, cliente respondeu e
+   *    esperando, 1º trâmite médio (estimativa);
+   *  - nota (0–100) = média ponderada do que houver: pontualidade 35, carteira em dia 30, cuidado 20, agilidade 15;
+   *  - comparação com o período anterior (mesmo tamanho) e entregas por dia (para a linha de cada pessoa). */
+  const PESOS_NOTA = { pontualidade: 35, emDia: 30, cuidado: 20, agilidade: 15 };
+  function faixaNota(n) { return n == null ? { k: 'sem', rot: 'Sem dados' } : n >= 85 ? { k: 'otimo', rot: 'Excelente' } : n >= 70 ? { k: 'bom', rot: 'Bom' } : n >= 50 ? { k: 'atencao', rot: 'Atenção' } : { k: 'critico', rot: 'Precisa de apoio' }; }
+  function avaliarEquipe(pendentes, movimentadas, settings, dias, now) {
+    const s = Object.assign({}, DEFAULTS, settings || {});
+    now = now || new Date();
+    dias = dias || 7;
+    const hol = new Set(s.feriados || []);
+    const hoje0 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const iniAtual = somaDias(hoje0, -(dias - 1)), iniAnt = somaDias(iniAtual, -dias);
+    const SEM = '(sem responsável)';
+    const pessoas = new Map();
+    const pessoa = nome => { if (!pessoas.has(nome)) pessoas.set(nome, novo(nome)); return pessoas.get(nome); };
+    function novo(nome) { return { resp: nome, carteira: 0, esc: 0, emDiaEsc: 0, g3: 0, paradas: 0, respondeu: 0, ptSoma: 0, ptN: 0, concl: 0, noPrazo: 0, tempoSoma: 0, prescritas: 0, ant: { concl: 0, noPrazo: 0, prescritas: 0 }, porDia: {}, atencao: [] }; }
+    const equipe = novo('Equipe');
+    const contar = (fn, i) => { if (i.resp) fn(pessoa(i.resp)); fn(equipe); };
+    for (const i of pendentes || []) {
+      if (i.lado === 'fim') continue;
+      contar(r => {
+        r.carteira++;
+        if (i.lado === 'esc') { r.esc++; if (!i.nivel) r.emDiaEsc++; if ((i.parado || 0) > s.parada) r.paradas++; }
+        if (i.grav === 3) r.g3++;
+        if (clienteRespondeu(i)) r.respondeu++;
+        if (i.ptUteis != null) { r.ptSoma += i.ptUteis; r.ptN++; }
+      }, i);
+      if (i.resp && (i.grav === 3 || (i.lado === 'esc' && (i.parado || 0) > s.parada))) pessoa(i.resp).atencao.push(i);
+    }
+    const vistos = new Set();
+    for (const x of movimentadas || []) {
+      if (x.lado !== 'fim' || vistos.has(x.k)) continue;
+      vistos.add(x.k);
+      const fim = parseDate(x.last);
+      if (!fim) continue;
+      const dia = new Date(fim.getFullYear(), fim.getMonth(), fim.getDate());
+      const atual = dia >= iniAtual && dia <= hoje0, anterior = !atual && dia >= iniAnt && dia < iniAtual;
+      if (!atual && !anterior) continue;
+      const t = TYPE_BY_KEY[x.type] || {};
+      const prescrita = /^Prescrita/.test(x.status || '');
+      const ab = parseDate(x.created);
+      const tempo = ab ? diasUteis(ab, fim, hol) : null;
+      const prazo = t.calculo ? s.conclusaoCalculo : s.conclusaoSimples;
+      contar(r => {
+        const alvo = atual ? r : r.ant;
+        if (prescrita) { alvo.prescritas++; return; }
+        alvo.concl++;
+        if (tempo != null && tempo <= prazo) alvo.noPrazo++;
+        if (atual && tempo != null) r.tempoSoma += tempo;
+        if (atual) { const k = ymd(dia); r.porDia[k] = (r.porDia[k] || 0) + 1; }
+      }, x);
+    }
+    const diasLista = Array.from({ length: dias }, (_, n) => ymd(somaDias(iniAtual, n)));
+    const pct = (a, b) => (b ? Math.round(a / b * 100) : null);
+    function fechar(r) {
+      const pt = r.ptN ? Math.round(r.ptSoma / r.ptN * 10) / 10 : null;
+      const comp = {
+        pontualidade: pct(r.noPrazo, r.concl),
+        emDia: pct(r.emDiaEsc, r.esc),
+        cuidado: r.carteira || r.concl || r.prescritas ? Math.max(0, 100 - 25 * (r.g3 + r.prescritas)) : null,
+        agilidade: pt == null ? null : Math.max(0, Math.min(100, Math.round(100 - (pt - s.primeiroTramite) * 25)))
+      };
+      let soma = 0, peso = 0;
+      for (const [k, w] of Object.entries(PESOS_NOTA)) if (comp[k] != null) { soma += comp[k] * w; peso += w; }
+      const nota = peso ? Math.round(soma / peso) : null;
+      const antPont = pct(r.ant.noPrazo, r.ant.concl);
+      return {
+        resp: r.resp, nota, faixa: faixaNota(nota), componentes: comp,
+        concluidas: r.concl, noPrazo: r.noPrazo, pctNoPrazo: comp.pontualidade, tempoMedio: r.concl ? Math.round(r.tempoSoma / r.concl * 10) / 10 : null,
+        prescritas: r.prescritas, carteira: r.carteira, esc: r.esc, pctEmDia: comp.emDia, g3: r.g3, paradas: r.paradas, respondeu: r.respondeu, primeiroTramite: pt,
+        anterior: { concluidas: r.ant.concl, pctNoPrazo: antPont, prescritas: r.ant.prescritas },
+        variacao: { concluidas: r.concl - r.ant.concl, pctNoPrazo: comp.pontualidade == null || antPont == null ? null : comp.pontualidade - antPont },
+        porDia: diasLista.map(d => ({ dia: d, n: r.porDia[d] || 0 })),
+        atencao: (r.atencao || []).sort((a, b) => (b.grav || 0) - (a.grav || 0) || (b.parado || 0) - (a.parado || 0)).slice(0, 8)
+      };
+    }
+    const analistas = [...pessoas.values()].filter(r => r.resp !== SEM).map(fechar)
+      .sort((a, b) => ((b.nota == null ? -1 : b.nota) - (a.nota == null ? -1 : a.nota)) || (b.concluidas - a.concluidas) || a.resp.localeCompare(b.resp, 'pt-BR'));
+    return { dias, de: ymd(iniAtual), ate: ymd(hoje0), equipe: fechar(equipe), analistas, pesos: PESOS_NOTA };
   }
 
   /* ---------- ações no Onvio (fase 2, pedida pelo Josué em 15/10/2026) ----------
@@ -1462,7 +1625,7 @@
     extras = extras || {};
     const c = f => items.filter(f).length, out = [];
     const add = (n, k, texto, link, peso) => { if (n) out.push({ k, n, texto, link, peso }); };
-    add((extras.admissoes || []).length, 'admissao', 'Priorize as admissões em destaque: o eSocial vence no dia anterior ao início', '#/fila?escopo=equipe&kpi=admissao', 100);
+    add((extras.admissoes || []).length, 'admissao', 'Priorize as admissões em destaque: o prazo do eSocial está perto ou já passou', '#/fila?escopo=equipe&kpi=admissao', 100);
     add(c(i => i.lado === 'esc' && i.grav === 3), 'g3', 'Comece pelas críticas (G3): fora do prazo há muito tempo ou perto de prescrever', '#/fila?escopo=equipe&kpi=g3', 90);
     add((extras.vencimentos || []).filter(v => v.faltam <= 1).length, 'pagamento', 'Pagamentos de férias/rescisão vencendo em até 1 dia útil', '#/fila?escopo=equipe&kpi=pagamento', 85);
     add((extras.semCalculo || []).length, 'semcalc', 'Avise os clientes que ainda não pediram o cálculo de férias/rescisão', '#/fila?escopo=equipe&kpi=semcalc', 80);
@@ -1499,5 +1662,5 @@
     return { dias, empresas: lista, total: lista.reduce((s2, r) => s2 + r.total, 0), prox30: lista.reduce((s2, r) => s2 + r.prox30, 0) };
   }
 
-  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, quadroSemCalculo, marcarSemCalculo, textoAvisoSemCalculo, assuntoAvisoSemCalculo, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, admissoesCriticas, escritorioTramitou, vencimentosLegais, malUso, sugestoesAcoes, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, quadroSemCalculo, marcarSemCalculo, textoAvisoSemCalculo, assuntoAvisoSemCalculo, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, vencimentosLegais, malUso, sugestoesAcoes, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);
