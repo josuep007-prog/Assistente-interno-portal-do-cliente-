@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   const $ = s => document.querySelector(s);
-  const NUM = ['tempoRealSeg', 'intervalo', 'primeiroTramite', 'conclusaoSimples', 'conclusaoCalculo', 'clienteSemRetorno', 'parada', 'prescricaoDias', 'prescricaoAviso'];
+  const NUM = ['tempoRealSeg', 'intervalo', 'primeiroTramite', 'conclusaoSimples', 'conclusaoCalculo', 'clienteSemRetorno', 'resolvidaClienteDias', 'parada', 'prescricaoDias', 'prescricaoAviso'];
   const BOOL = ['abrirAoEntrar', 'notificar', 'modoGestor'];
   const URL_CLIENTE = 'https://raw.githubusercontent.com/josuep007-prog/assistente-portal-regras/main/regras.json';
   let regras = null;          // regras do escritório guardadas (arquivo)

@@ -168,6 +168,84 @@ test('trâmites: a coleta lê cada lista no seu caminho e marca por lista o que 
   assert.deepEqual(plano(snap.tramites.porTipo), { avisoFerias: 'ok', rubricas: 'erro: HTTP 500' });
 });
 
+/* ---------- vez do cliente sem retorno = resolvida (regra de 16/10/2026) ---------- */
+test('resolvida: só uma resposta que não pede nada ao cliente (cortesia e faltas não contam)', () => {
+  const pede = t => OC.pedeAlgoAoCliente(t, OC.DEFAULTS).pede;
+  assert.equal(pede('Segue a guia em anexo.'), false);
+  assert.equal(pede('<p>Cálculo enviado. Qualquer dúvida, estamos à disposição.</p>'), false);
+  assert.equal(pede('Feito! Ficou alguma dúvida? Estamos à disposição.'), false);
+  assert.equal(pede('As faltas do mês foram descontadas.'), false);
+  assert.equal(pede('Favor enviar o recibo assinado.'), true);
+  assert.equal(pede('Aguardamos o atestado.'), true);
+  assert.equal(pede('Ainda falta o exame admissional'), true);
+  assert.equal(pede('Qual a data de início?'), true);
+  assert.equal(OC.pedeAlgoAoCliente('Por favor, confirme.', OC.DEFAULTS).trecho, 'favor');
+  assert.equal(pede('Pagamento ok, obrigado.'), false);
+  assert.equal(OC.pedeAlgoAoCliente('Pagamento ok, obrigado.', Object.assign({}, OC.DEFAULTS, { pedidoAoCliente: ['obrigado'] })).pede, true, 'a lista vem das regras');
+});
+
+test('resolvida: vez do cliente há mais de 3 d.u. sem pedido sai da fila; o cache guarda só o veredito', async () => {
+  const recente = new Date(Date.now() - 36e5).toISOString().slice(0, 19);
+  const cli = (id, n, last) => ({ id, identifier: n, genericStatus: 4, created: '2026-01-05T12:00:00', lastUpdated: last || '2026-01-08T12:00:00' });
+  const itens = { avisoFerias: [cli('c1', 801), cli('c2', 802), cli('c3', 803), cli('c4', 804, recente)] };
+  const topicos = {
+    c1: [{ created: '2026-01-05T12:00:00', status: 1, description: 'Pedido' }, { created: '2026-01-08T12:00:00', status: 4, description: '<p>Segue o aviso. Qualquer dúvida, estamos à disposição.</p>' }],
+    c2: [{ created: '2026-01-05T12:00:00', status: 1 }, { created: '2026-01-08T12:00:00', status: 4, description: 'Favor enviar o aviso assinado.' }],
+    c3: [{ created: '2026-01-05T12:00:00', status: 1 }, { created: '2026-01-07T12:00:00', status: 4, description: 'Segue.' }, { created: '2026-01-08T12:00:00', status: 3, description: 'Recebido' }],
+    c4: [{ created: '2026-01-05T12:00:00', status: 1 }, { created: '2026-01-08T12:00:00', status: 4, description: 'Segue.' }]
+  };
+  const pedidos = [];
+  const f = async url => {
+    const u = new URL(url);
+    if (u.pathname.endsWith('session-and-bindings')) return { UdsSession: { FirstName: 'Ana', LastName: 'Teste' } };
+    const m = /tickets\/(\w+)\/topics$/.exec(u.pathname);
+    if (m) { pedidos.push(m[1]); return { items: topicos[m[1]] }; }
+    const t = OC.TYPES.find(x => u.pathname.endsWith('/' + x.path.split('/').pop()));
+    return { items: itens[t.key] || [], totalPages: 1 };
+  };
+  const snap = await OC.collect(f, {}, null, { tramites: {} });
+  assert.deepEqual(plano(snap.resolvidas.map(r => r.k)), ['avisoFerias:c1']);
+  assert.equal(snap.items.some(i => i.k === 'avisoFerias:c1'), false, 'sai das pendências');
+  assert.equal(snap.items.find(i => i.k === 'avisoFerias:c2').pedidoAoCliente, 'favor');
+  assert.equal(snap.items.find(i => i.k === 'avisoFerias:c3').pedidoAoCliente, 'última palavra do cliente');
+  assert.equal(snap.items.find(i => i.k === 'avisoFerias:c4').pedidoAoCliente, undefined, 'parada há pouco: nem é conferida');
+  assert.ok(snap.resolvidas[0].semRetorno > 3);
+  assert.equal(snap.resolvidas[0].num, 801);
+  const cache = plano(snap.tramites.cache);
+  assert.deepEqual(cache['avisoFerias:c1'].res, { em: '2026-01-08T12:00:00', pede: false });
+  assert.doesNotMatch(JSON.stringify(cache), /Segue|Favor|Recebido|dúvida/, 'nenhum texto de trâmite no cache');
+  // segunda leitura: o veredito vem do cache, sem ler os trâmites de novo
+  pedidos.length = 0;
+  const snap2 = await OC.collect(f, {}, null, { tramites: cache });
+  assert.equal(pedidos.includes('c1'), false);
+  assert.deepEqual(plano(snap2.resolvidas.map(r => r.k)), ['avisoFerias:c1']);
+  // nova movimentação: o veredito antigo não vale e a solicitação volta a ser conferida
+  itens.avisoFerias[0] = cli('c1', 801, recente);
+  const snap3 = await OC.collect(f, {}, null, { tramites: cache });
+  assert.equal(snap3.resolvidas.length, 0);
+  assert.ok(snap3.items.some(i => i.k === 'avisoFerias:c1'));
+  // regra desligada (0): nada sai da fila
+  itens.avisoFerias[0] = cli('c1', 801);
+  const snap4 = await OC.collect(f, { resolvidaClienteDias: 0 }, null, { tramites: {} });
+  assert.equal(snap4.resolvidas.length, 0);
+  assert.equal(snap4.items.length, 4);
+});
+
+test('resolvida que volta à fila não vira "nova solicitação"', () => {
+  const it = { k: 'avisoFerias:c1', type: 'avisoFerias', num: 801, typeLabel: 'Aviso de férias', mine: true, lado: 'cli', resp: 'Ana' };
+  const ev = OC.eventos({ items: [], resolvidas: [it] }, { items: [it] }, {}, AGORA);
+  assert.equal(ev.length, 0);
+});
+
+test('regras do escritório podem trocar o prazo e as palavras da regra de resolvida', () => {
+  const r = OC.normalizarRegras({ prazos: { resolvidaClienteDias: 5 }, pedidoAoCliente: ['Aguardamos', '', 7], cortesiaCliente: ['Abraços'] });
+  assert.equal(r.config.resolvidaClienteDias, 5);
+  assert.deepEqual(plano(r.pedidoAoCliente), ['aguardamos']);
+  const s = OC.combinarSettings({ regras: r }, {});
+  assert.deepEqual(plano(s.cortesiaCliente), ['abracos']);
+  assert.equal(OC.normalizarRegras({ prazos: { resolvidaClienteDias: 99 } }), null, 'fora do limite é ignorado');
+});
+
 test('o cache de trâmites só guarda o que continua pendente', async () => {
   const f = fetcherFalso({ itens: {} });
   const snap = await OC.collect(f, {}, null, { tramites: { 'calcFerias:velho': { pt: '2026-01-01T00:00:00' } } });

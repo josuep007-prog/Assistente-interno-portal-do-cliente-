@@ -6,6 +6,7 @@
     "conclusaoSimples": 3,
     "conclusaoCalculo": 5,
     "clienteSemRetorno": 5,
+    "resolvidaClienteDias": 3,
     "parada": 15,
     "prescricaoDias": 30,
     "prescricaoAviso": 20

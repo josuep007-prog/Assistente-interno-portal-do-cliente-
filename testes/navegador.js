@@ -454,7 +454,7 @@ await passo('app · Hoje sem nada com você: abre na equipe toda e a frase expli
 await passo('app · Fila: abas Minhas/Equipe/Sem responsável, filtros e chips, ordenação, cartões, ↑↓ e Enter', async () => {
   const p = await abrirApp('#/fila');
   assert.equal(await p.textContent('#titulo'), 'Solicitações');
-  assert.deepEqual(await p.$$eval('#abas .aba', e => e.map(x => x.textContent)), ['Minhas2', 'Equipe toda4', 'Sem responsável1']);
+  assert.deepEqual(await p.$$eval('#abas .aba', e => e.map(x => x.textContent)), ['Minhas2', 'Equipe toda4', 'Sem responsável1', 'Resolvidas']);
   assert.equal((await linhas(p)).length, 2);
   await p.goto(URL_APP + '#/fila?kpi=atraso'); await p.waitForSelector('#corpo [data-k]');
   assert.deepEqual(await linhas(p), ['calcFerias:a']);
@@ -562,6 +562,31 @@ await passo('app · Equipe (área do gestor): pede a senha; Desempenho com nota,
   await p.waitForSelector('tr[data-resp="Ana Teste"]');
   await p.click('#av-bloquear');
   await p.waitForSelector('#g-trava');
+  assert.deepEqual(p.erros, []);
+});
+
+await passo('app · Solicitações > Resolvidas: vez do cliente sem retorno e sem pedido; detalhe explica; pendente com pedido também', async () => {
+  const resolvidas = [{ k: 'avisoFerias:r1', type: 'avisoFerias', typeLabel: 'Aviso de férias', id: 'r1', num: 801, status: 'Respondido', lado: 'cli', resp: 'Ana Teste', mine: true, apelido: 'OMEGA', cliente: 'OMEGA LTDA', detalhe: 'Beltrano', created: agoraIso(9), last: agoraIso(6), semRetorno: 4 },
+    { k: 'geral:r2', type: 'geral', typeLabel: 'Geral', id: 'r2', num: 802, status: 'Respondido', lado: 'cli', resp: 'Bia', mine: false, apelido: 'SIGMA', cliente: 'SIGMA SA', detalhe: 'Dúvida', created: agoraIso(12), last: agoraIso(8), semRetorno: 5 }];
+  const itens = ITENS_APP.map(i => i.k === 'avisoRescisao:c' ? Object.assign({}, i, { pedidoAoCliente: 'aguardamos' }) : i);
+  const p = await abrirApp('#/fila?escopo=resolvidas', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens, resolvidas }) });
+  await p.waitForSelector('.nota-regra');
+  assert.match(await p.textContent('.nota-regra'), /mais de 3 dias úteis/);
+  assert.match(await p.textContent('#abas'), /Resolvidas\s*2/);
+  assert.deepEqual(await linhas(p, '.list-card [data-k]'), ['avisoFerias:r1', 'geral:r2']);
+  await p.click('[data-de="minhas"]');
+  assert.deepEqual(await linhas(p, '.list-card [data-k]'), ['avisoFerias:r1']);
+  await p.evaluate(() => { window.__respostas = { detalhe: { ok: true, item: { assunto: 'Aviso' }, tramites: [] } }; });
+  await p.click('.list-card [data-k="avisoFerias:r1"]');
+  await p.waitForSelector('#gaveta .dlg-resolvida');
+  assert.match(await p.textContent('#gaveta .dlg-resolvida'), /Considerada resolvida.*4 dias úteis/);
+  await p.keyboard.press('Escape');
+  // pendente com pedido ao cliente: o detalhe diz por que continua na fila
+  await p.evaluate(() => { location.hash = '#/fila?escopo=equipe'; });
+  await p.waitForSelector('#corpo [data-k="avisoRescisao:c"]');
+  await p.click('#corpo [data-k="avisoRescisao:c"]');
+  await p.waitForSelector('#gaveta .dlg-resolvida.pede');
+  assert.match(await p.textContent('#gaveta .dlg-resolvida'), /Continua pendente.*“aguardamos”/);
   assert.deepEqual(p.erros, []);
 });
 

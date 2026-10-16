@@ -980,3 +980,14 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 @media (max-width:1100px){ .av-hero{grid-template-columns:minmax(0,1fr)} .av-nota{border-right:0; border-bottom:1px solid var(--rule)} }
 @media (max-width:760px){ .av-kpis{grid-template-columns:repeat(2, minmax(0,1fr))} .av-comps{grid-template-columns:repeat(2, minmax(0,1fr))} .av-card{grid-template-columns:auto minmax(0,1fr)} .av-pos, .av-card-pe{display:none} }
 @media (prefers-reduced-motion: reduce){ .gestor-trava.treme, .av-pulso{animation:none} .av-card, .av-barra > i{transition:none} }
+
+/* ============ Solicitações · Resolvidas (vez do cliente sem retorno) ============ */
+.nota-regra{display:flex; gap:10px; align-items:flex-start; margin:0 0 12px; padding:10px 14px; border:1px solid var(--rule); border-left:3px solid var(--viz-ok); border-radius:4px; background:var(--surface); color:var(--ink-2); line-height:1.5}
+.nota-regra .ic{flex:none; margin-top:2px; color:var(--viz-ok)}
+.nota-regra b:first-child{display:block; color:var(--ink); margin-bottom:2px}
+.lr.resolvida{opacity:.92}
+.lr.resolvida .pill{text-decoration:line-through; text-decoration-color:var(--ink-3)}
+.dlg-resolvida{display:flex; gap:8px; align-items:center; margin:8px 0 0; padding:6px 10px; border-radius:4px; background:color-mix(in srgb, var(--viz-ok) 10%, transparent); color:var(--ink-2); font-size:12.5px}
+.dlg-resolvida .ic{color:var(--viz-ok)}
+.dlg-resolvida.pede{background:color-mix(in srgb, var(--viz-warn) 14%, transparent)}
+.dlg-resolvida.pede .ic{color:var(--ink-2)}

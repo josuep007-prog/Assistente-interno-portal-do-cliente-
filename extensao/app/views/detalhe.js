@@ -71,6 +71,8 @@ function desenhar(i, r, erro, carregando) {
       '<h2>' + esc(i.apelido || i.cliente || 'Solicitação') + '</h2>' +
       '<div class="dlg-l3">' + esc(i.detalhe || i.assunto || '') + '</div>' +
       ((i.motivos && i.motivos.length) || i.abaProvavel || i.grav === 3 ? '<div class="motivos">' + motivosHtml(i) + '</div>' : '') +
+      (i.resolvida ? '<div class="dlg-resolvida"><svg class="ic ic-sm"><use href="#i-check"/></svg><span><b>Considerada resolvida:</b> o cliente não respondeu' + (i.semRetorno != null ? ' em ' + i.semRetorno + ' dias úteis' : '') + ' e a última resposta não pedia nada. No Onvio ela continua aberta.</span></div>'
+        : i.pedidoAoCliente ? '<div class="dlg-resolvida pede"><svg class="ic ic-sm"><use href="#i-clock"/></svg><span>' + porquePendente(i.pedidoAoCliente) + '</span></div>' : '') +
     '</div>' +
     (p >= 0 ? '<div class="dlg-nav"><button class="icon-btn" id="g-ant" title="Anterior (←)" aria-label="Anterior"' + (p <= 0 ? ' disabled' : '') + '><svg class="ic"><use href="#i-chev-l"/></svg></button><span>' + (p + 1) + ' de ' + lista.length + '</span><button class="icon-btn" id="g-prox" title="Próxima (→)" aria-label="Próxima"' + (p >= lista.length - 1 ? ' disabled' : '') + '><svg class="ic"><use href="#i-chev-r"/></svg></button></div>' : '') +
     '<button class="icon-btn" id="g-fechar" aria-label="Fechar" title="Fechar (Esc)"><svg class="ic"><use href="#i-x"/></svg></button></div>' +
@@ -207,3 +209,10 @@ addEventListener('keydown', e => {
 aoMudar(quais => {
   if (quais.includes('lembretes') && detalheAberto() && ultimo) desenhar(ultimo.i, ultimo.r, ultimo.erro, ultimo.carregando);
 });
+
+// Por que uma solicitação na vez do cliente, parada há dias, não conta como resolvida (OC.vereditoResolvida).
+function porquePendente(t) {
+  if (t === 'última palavra do cliente') return 'Continua pendente: o último trâmite é do cliente, então a vez é do escritório.';
+  if (t === 'sem trâmites') return 'Continua pendente: não há resposta do analista para conferir.';
+  return 'Continua pendente: a última resposta pede algo ao cliente' + (t === '?' ? ' (uma pergunta)' : typeof t === 'string' ? ' (“' + esc(t) + '”)' : '') + '.';
+}

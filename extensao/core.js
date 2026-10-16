@@ -84,6 +84,9 @@
     conclusaoSimples: 3,      // dias úteis para concluir demanda simples
     conclusaoCalculo: 5,      // dias úteis para concluir cálculo
     clienteSemRetorno: 5,     // dias úteis aguardando o cliente
+    // Aguardando o cliente há mais que isso (dias úteis desde a última movimentação) e a última resposta do analista não
+    // pede nada ao cliente: conta como resolvida (o cliente ficou satisfeito). 0 desliga. Pedido do Josué, 16/10/2026.
+    resolvidaClienteDias: 3,
     parada: 15,               // dias corridos sem movimentação
     prescricaoDias: 30,       // regra do Onvio
     prescricaoAviso: 20,      // a partir de quantos dias parada vira alerta vermelho
@@ -109,6 +112,21 @@
       { tipo: 'cadEmpregado', palavras: ['admissao', 'admitir', 'novo funcionario', 'nova contratacao', 'contratar'] },
       { tipo: 'cadEstagiario', palavras: ['estagio', 'estagiario', 'estagiaria'] },
       { tipo: 'rubricas', palavras: ['hora extra', 'horas extras', 'comissao', 'rubrica', 'variaveis da folha'] }
+    ],
+    // Palavras ou expressões inteiras (sem acento, minúsculas) que mostram que a resposta do analista ainda espera algo
+    // do cliente. Com qualquer uma delas a solicitação continua pendente. Uma pergunta (?) também conta.
+    pedidoAoCliente: [
+      'aguardamos', 'aguardando', 'aguardo', 'aguarde', 'aguardar', 'favor', 'por gentileza', 'gentileza', 'precisamos', 'precisaremos',
+      'necessitamos', 'necessario', 'necessaria', 'necessarios', 'falta', 'faltam', 'faltou', 'faltando', 'pendente', 'pendentes',
+      'pendencia', 'pendencias', 'envie', 'enviem', 'enviar', 'encaminhe', 'encaminhar', 'informe', 'informem', 'informar',
+      'confirme', 'confirmar', 'assinar', 'solicitamos', 'pedimos', 'poderia', 'poderiam', 'pode nos', 'podem nos', 'seu retorno',
+      'retornar', 'anexe', 'anexar', 'complementar', 'corrigir', 'regularizar'
+    ],
+    // Frases de cortesia que não são pedido: são tiradas do texto antes de procurar os trechos acima.
+    cortesiaCliente: [
+      'qualquer duvida', 'quaisquer duvidas', 'fico a disposicao', 'ficamos a disposicao', 'estamos a disposicao',
+      'permaneco a disposicao', 'ficou alguma duvida', 'restou alguma duvida', 'em caso de duvida', 'em caso de duvidas',
+      'se precisar', 'caso precise', 'caso necessario'
     ],
     // Observações para o cliente no detalhe (prontas para copiar na resposta). {chaves} são preenchidas com as datas
     // da solicitação; a linha que ficar com alguma chave sem valor não aparece. O arquivo de regras pode trocar.
@@ -530,18 +548,65 @@
     for (let i = 1; i < ord.length; i++) if (!grava.has(Number(ord[i].status))) return ord[i].created;
     return null;
   }
+  /* ---------- vez do cliente sem retorno = resolvida ----------
+   * Regra do escritório (16/10/2026): aguardando o cliente há mais de resolvidaClienteDias dias úteis desde a última
+   * movimentação e a última resposta do analista não pede nada ao cliente => o cliente ficou satisfeito e a solicitação
+   * conta como resolvida. Qualquer trecho de pedidoAoCliente (ou uma pergunta) mantém pendente. O texto é lido na hora
+   * e nunca guardado: o cache leva só o veredito (sim/não), a data da movimentação e o trecho da lista que casou. */
+  function pedeAlgoAoCliente(texto, settings) {
+    const s = settings || DEFAULTS;
+    let t = semAcento(String(texto || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/&[a-z#0-9]+;/gi, ' ')).replace(/\s+/g, ' ');
+    const esc = x => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    for (const c of s.cortesiaCliente || []) t = t.replace(new RegExp(esc(c) + '[^.!?\\n]*[.!?]?', 'g'), ' ');
+    if (t.includes('?')) return { pede: true, trecho: '?' };
+    for (const p of s.pedidoAoCliente || []) if (new RegExp('(^|[^a-z0-9])' + esc(p) + '($|[^a-z0-9])').test(t)) return { pede: true, trecho: p };
+    return { pede: false };
+  }
+  // Veredito sobre o último trâmite. Se a última palavra foi do cliente (situação que o cliente grava), não está
+  // resolvida: a vez é do escritório, mesmo que a situação diga o contrário.
+  function vereditoResolvida(topicos, t, it, settings) {
+    const grava = new Set(FAMILIAS[t.familia].clienteGrava);
+    const ord = (topicos || []).filter(x => x && x.created).sort((a, b) => String(a.created).localeCompare(String(b.created)));
+    const ult = ord[ord.length - 1];
+    if (!ult) return { em: it.last, pede: true, trecho: 'sem trâmites' };
+    if (grava.has(Number(ult.status))) return { em: it.last, pede: true, trecho: 'última palavra do cliente' };
+    return Object.assign({ em: it.last }, pedeAlgoAoCliente(ult.description, settings));
+  }
+  function quietoNoCliente(it, s, now, hol) {
+    if (!(s.resolvidaClienteDias > 0) || it.lado !== 'cli' || it.desconhecido) return false;
+    const ult = parseDate(it.last);
+    return !!ult && diasUteis(ult, now, hol) > s.resolvidaClienteDias;
+  }
+  // resumo de uma solicitação considerada resolvida (só os campos do resumo, como os itens pendentes)
+  function resumoResolvida(it, now, hol) {
+    const ult = parseDate(it.last);
+    return {
+      k: it.k, type: it.type, typeLabel: it.typeLabel, id: it.id, num: it.num, code: it.code, status: it.status, lado: 'cli',
+      cliente: it.cliente, apelido: it.apelido, codCliente: it.codCliente, detalhe: it.detalhe, resp: it.resp, respId: it.respId,
+      mine: it.mine, created: it.created, last: it.last, semRetorno: ult ? diasUteis(ult, now, hol) : null
+    };
+  }
+
   async function enriquecer(fetcher, out, cache, s, now) {
     out.tramites.porTipo = {};
     const LIMITE = 60, PARALELO = 4;
     const hol = new Set(s.feriados || []);
     const novo = {};
-    const fila = [];
+    const fila = [], quer = {};
     for (const it of out.items) {
-      const c = cache[it.k];
-      if (c && c.pt) { novo[it.k] = c; continue; }
-      if (c && c.erro && now - new Date(c.erro) < 864e5) continue;       // não insiste por 1 dia
-      if (/^Sem análise/.test(it.status) || it.desconhecido) continue;     // ainda sem trâmite do escritório
-      fila.push(it);
+      const c = cache[it.k] || {};
+      const guarda = {};
+      if (c.pt) guarda.pt = c.pt;
+      const quieto = quietoNoCliente(it, s, now, hol);
+      if (quieto && c.res && c.res.em === it.last) guarda.res = c.res;     // nada mudou desde o veredito
+      if (c.erro && now - new Date(c.erro) < 864e5) {                        // não insiste por 1 dia
+        novo[it.k] = Object.assign(guarda, { erro: c.erro });
+        continue;
+      }
+      if (Object.keys(guarda).length) novo[it.k] = guarda;
+      const pt = !guarda.pt && !/^Sem análise/.test(it.status) && !it.desconhecido;   // ainda sem trâmite do escritório
+      const res = quieto && !guarda.res;
+      if (pt || res) { quer[it.k] = { pt, res }; (res ? fila.unshift(it) : fila.push(it)); }
     }
     const falhou = {};
     let i = 0;
@@ -552,28 +617,39 @@
         if (falhou[t.key] >= 3) continue;                                  // endpoint do tipo não responde
         try {
           const d = await fetcher(urlTramites(t, it));
-          const pt = primeiroTramiteEsc((d && d.items) || (Array.isArray(d) ? d : []), t);
+          const lista = (d && d.items) || (Array.isArray(d) ? d : []);
           out.tramites.lidos++;
           out.tramites.porTipo[t.key] = 'ok';
-          if (pt) novo[it.k] = { pt }; // sem achar, tenta de novo no próximo ciclo
+          const e = novo[it.k] || {};
+          const pt = quer[it.k].pt ? primeiroTramiteEsc(lista, t) : null;
+          if (pt) e.pt = pt; // sem achar, tenta de novo no próximo ciclo
+          if (quer[it.k].res) e.res = vereditoResolvida(lista, t, it, s);
+          if (Object.keys(e).length) novo[it.k] = e;
         } catch (e) {
           if (e && e.auth) throw e;
           out.tramites.falhas++;
           falhou[t.key] = (falhou[t.key] || 0) + 1;
           if (out.tramites.porTipo[t.key] !== 'ok') out.tramites.porTipo[t.key] = 'erro: ' + String(e && e.message || e).slice(0, 60);
-          novo[it.k] = { erro: now.toISOString() };
+          novo[it.k] = Object.assign(novo[it.k] || {}, { erro: now.toISOString() });
         }
       }
     }
     await Promise.all(Array.from({ length: PARALELO }, worker));
-    for (const it of out.items) {
+    out.resolvidas = [];
+    out.items = out.items.filter(it => {
       const c = novo[it.k];
       if (c && c.pt) {
         it.primeiroTramite = c.pt;
         it.ptUteis = diasUteis(parseDate(it.created), parseDate(c.pt), hol);
       }
-    }
-    out.tramites.cache = novo; // só o que ainda está pendente: o cache não cresce
+      if (c && c.res && c.res.em === it.last && quietoNoCliente(it, s, now, hol)) {
+        if (!c.res.pede) { out.resolvidas.push(resumoResolvida(it, now, hol)); return false; }
+        it.pedidoAoCliente = c.res.trecho || true;                         // continua pendente: o analista pediu algo
+      }
+      return true;
+    });
+    out.resolvidas.sort((a, b) => String(b.last).localeCompare(String(a.last)));
+    out.tramites.cache = novo; // só o que ainda está pendente ou resolvido nesta leitura: o cache não cresce
   }
 
   async function search(fetcher, q, settings) {
@@ -610,7 +686,7 @@
    *     (simples e calculo) e feriados, para os dois lados prometerem os mesmos prazos.
    * Tudo é validado: número dentro de limites, datas AAAA-MM-DD, textos curtos. Nada é executado. */
   const LIMITES = {
-    primeiroTramite: [0, 30], conclusaoSimples: [1, 60], conclusaoCalculo: [1, 60], clienteSemRetorno: [1, 60],
+    primeiroTramite: [0, 30], conclusaoSimples: [1, 60], conclusaoCalculo: [1, 60], clienteSemRetorno: [1, 60], resolvidaClienteDias: [0, 30],
     parada: [1, 90], prescricaoDias: [1, 120], prescricaoAviso: [1, 120], tempoRealSeg: [0, 600],
     tempoOcupado: [0, 30], admissaoAviso: [0, 15], estagiarioPrazoDias: [0, 60], pagamentoFeriasAntes: [0, 30], pagamentoRescisaoDias: [0, 60], avisoFeriasDias: [0, 90]
   };
@@ -642,6 +718,9 @@
       for (const k of ['serviceRequestType', 'requestWay', 'departmentId']) if (typeof raw.criacao[k] === 'string' && /^[A-Za-z0-9_.-]{1,80}$/.test(raw.criacao[k])) c[k] = raw.criacao[k];
       if (Object.keys(c).length) out.criacao = c;
     }
+    for (const k of ['pedidoAoCliente', 'cortesiaCliente']) {
+      if (Array.isArray(raw[k])) out[k] = [...new Set(raw[k].filter(p => typeof p === 'string' && p.trim() && p.length <= 60).map(p => semAcento(p).trim()))].slice(0, 80);
+    }
     if (typeof raw.senhaGestorSha256 === 'string' && /^[0-9a-f]{64}$/i.test(raw.senhaGestorSha256)) out.senhaGestorSha256 = raw.senhaGestorSha256.toLowerCase();
     if (Array.isArray(raw.abaErrada)) {
       for (const e of raw.abaErrada.slice(0, 30)) {
@@ -650,7 +729,7 @@
         if (t && t.key !== 'geral' && palavras.length) out.abaErrada.push({ tipo: t.key, palavras });
       }
     }
-    const util = Object.keys(out.config).length || out.feriados.length || out.abaErrada.length || (out.observacoes && Object.keys(out.observacoes).length) || out.avisoSemCalculo || out.assuntoSemCalculo || out.tramiteCriacao || out.criacao || out.senhaGestorSha256;
+    const util = Object.keys(out.config).length || out.feriados.length || out.abaErrada.length || (out.observacoes && Object.keys(out.observacoes).length) || out.avisoSemCalculo || out.assuntoSemCalculo || out.tramiteCriacao || out.criacao || out.senhaGestorSha256 || out.pedidoAoCliente || out.cortesiaCliente;
     return util ? out : null;
   }
 
@@ -668,6 +747,8 @@
       if (r.tramiteCriacao) base.tramiteCriacao = r.tramiteCriacao;
       if (r.criacao) base.criacao = Object.assign({}, DEFAULTS.criacao, r.criacao);
       if (r.senhaGestorSha256) base.senhaGestorSha256 = r.senhaGestorSha256;
+      if (r.pedidoAoCliente) base.pedidoAoCliente = r.pedidoAoCliente;
+      if (r.cortesiaCliente) base.cortesiaCliente = r.cortesiaCliente;
     }
     // a senha da área do gestor vem só do código ou das regras do escritório, nunca dos ajustes da pessoa
     return Object.assign(base, usuario || {}, { senhaGestorSha256: base.senhaGestorSha256 });
@@ -831,7 +912,7 @@
     s = Object.assign({}, DEFAULTS, s || {});
     if (!anterior || !anterior.items || !snap || !snap.items) return [];   // primeira leitura vira base
     const em = (now || new Date()).toISOString();
-    const antes = new Map(anterior.items.map(i => [i.k, i]));
+    const antes = new Map(anterior.items.concat(anterior.resolvidas || []).map(i => [i.k, i]));   // resolvida que volta não é nova
     const out = [];
     const ev = (tipo, it, titulo) => out.push({ id: tipo + ':' + it.k + ':' + em, tipo, titulo, k: it.k, type: it.type, num: String(it.num), typeLabel: it.typeLabel, cliente: it.apelido || it.cliente || '', mine: !!it.mine, em });
     for (const it of snap.items) {
@@ -1662,5 +1743,5 @@
     return { dias, empresas: lista, total: lista.reduce((s2, r) => s2 + r.total, 0), prox30: lista.reduce((s2, r) => s2 + r.prox30, 0) };
   }
 
-  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, quadroSemCalculo, marcarSemCalculo, textoAvisoSemCalculo, assuntoAvisoSemCalculo, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, vencimentosLegais, malUso, sugestoesAcoes, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, quadroSemCalculo, marcarSemCalculo, textoAvisoSemCalculo, assuntoAvisoSemCalculo, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, sugestoesAcoes, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);

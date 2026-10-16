@@ -594,7 +594,9 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         const { snapshot } = await chrome.storage.local.get('snapshot');
         const agora = new Date();
         const mov = await OC.lerMovimentadas(f, dias * 2 + 1, agora, 10);
-        reply(Object.assign({ ok: true, erros: mov.erros, movimentadas: mov.itens.length }, OC.avaliarEquipe((snapshot && snapshot.items) || [], mov.itens, s, dias, agora)));
+        // vez do cliente sem retorno e sem pedido do analista conta como entregue na data da última resposta
+        const resolvidas = ((snapshot && snapshot.resolvidas) || []).map(r => Object.assign({}, r, { lado: 'fim', status: 'Resolvida (cliente sem retorno)' }));
+        reply(Object.assign({ ok: true, erros: mov.erros, movimentadas: mov.itens.length, resolvidas: resolvidas.length }, OC.avaliarEquipe((snapshot && snapshot.items) || [], resolvidas.concat(mov.itens), s, dias, agora)));
       }
       else if (msg.cmd === 'distribuicao') {        // sob demanda: quem mais atendeu cada empresa nos últimos dias (nada é guardado)
         const { f } = await escolherFetcher();
