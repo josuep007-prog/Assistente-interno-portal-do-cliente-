@@ -166,12 +166,13 @@ await foto(portal, '2-equipe-senha.png');
 // digitar e Enter já são testados em navegador.js; aqui o envio vai direto pelo formulário (a aba de teste fica em segundo plano)
 await app.evaluate(() => { const c = document.querySelector('#g-senha'); c.value = 'gestor@987654321'; c.dispatchEvent(new Event('input')); document.querySelector('#g-trava').requestSubmit(); });
 await esperar(() => app.evaluate(() => !!document.querySelector('.av-hero')), 15000);   // a aba pode estar em segundo plano (sem requestAnimationFrame)
-assert.equal(await app.getAttribute('#av-k-entregas [data-conta]', 'data-conta'), '2', 'entregas do período lidas na API (2 concluídas da Ana)');
+assert.equal(await app.getAttribute('#av-k-entregas [data-conta]', 'data-conta'), '3', 'entregas dos 30 dias lidas na API (2 concluídas da Ana e a #56 resolvida há 10 dias)');
 await new Promise(r => setTimeout(r, 1200));
 await foto(portal, '2-equipe-desempenho.png');
 await app.click('#av-rank .av-lin');
-await esperar(() => app.evaluate(() => !!document.querySelector('#av-det .av-det')));
+await esperar(() => app.evaluate(() => { const d = document.querySelector('#dlg-pessoa'); return !!d && !d.hidden; }));   // a pessoa abre por cima
 await foto(portal, '2-equipe-detalhe.png');
+await app.evaluate(() => document.querySelector('#pp-fechar').click());
 for (const rota of ['fila', 'fila?escopo=equipe', 'equipe?aba=carga', 'equipe?aba=resp', 'lembretes', 'lembretes?aba=lista']) {
   await app.evaluate(r => { location.hash = '#/' + r; }, rota);
   await app.waitForFunction(() => document.querySelector('#vista').children.length > 0);
