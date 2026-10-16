@@ -1,5 +1,5 @@
 /* Control Onvio · app em tela cheia por cima do Onvio
- * Rotas (#/inicio, #/fila, #/equipe, #/clientes, #/solicitacoes, #/lembretes, #/config, #/busca?q=),
+ * Rotas (#/inicio, #/fila, #/equipe, #/clientes, #/distribuir, #/solicitacoes, #/lembretes, #/config, #/busca?q=),
  * trilho lateral, cabeçalho do módulo (título, abas, ao vivo, sino, Ver Onvio), busca em janela central
  * (/ ou Ctrl+K) e as janelas de detalhe e de lembrete. */
 import { estado, iniciarEstado, aoMudar, enviar, itens, minhas, marcarAlertasVistos } from './estado.js';
@@ -12,10 +12,11 @@ import * as equipe from './views/equipe.js';
 import * as clientes from './views/clientes.js';
 import * as solicitacoes from './views/solicitacoes.js';
 import * as lembretes from './views/lembretes.js';
+import * as distribuir from './views/distribuir.js';
 import * as config from './views/config.js';
 const OC = window.OC;
 
-const VISTAS = { inicio, fila, equipe, clientes, solicitacoes, lembretes, config, busca: solicitacoes };
+const VISTAS = { inicio, fila, equipe, clientes, distribuir, solicitacoes, lembretes, config, busca: solicitacoes };
 // Telas que se redesenham sozinhas quando chega leitura nova (as de consulta sob demanda não).
 const AO_VIVO = new Set(['inicio', 'fila', 'equipe', 'clientes', 'lembretes']);
 

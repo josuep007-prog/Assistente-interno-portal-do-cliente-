@@ -56,7 +56,17 @@ Numa lista qualquer, diga se a grade é Wijmo (`wj-flexgrid`) ou `<table>`, qual
 
 ## Parte 4 (só se eu disser "pode fazer a Parte 4"): ações, só na empresa de teste
 
-Somente na **EMPRESA EXEMPLO SIMPLES NACIONAL LTDA**, em solicitações criadas para teste, faça uma vez e anote o formato da chamada (método, caminho com `{id}`, nomes e tipos dos campos do corpo e da resposta, nunca valores): incluir trâmite só com texto; incluir trâmite mudando a situação; concluir; definir responsável (uma e várias); alterar expectativa de conclusão; encaminhar; anexar arquivo fictício e excluí-lo. Sem essa frase minha, pule a Parte 4.
+Somente na **EMPRESA EXEMPLO SIMPLES NACIONAL LTDA**, em solicitações **criadas para o teste** (uma Geral, um Aviso de férias, um Cadastro de empregado e um Lançamento de rubricas). Faça cada ação **uma vez** pela tela do Onvio e anote a chamada que ela gera: método, caminho com `{id}`, cabeçalhos relevantes (Content-Type), **nomes e tipos** dos campos do corpo e da resposta, status HTTP. **Nunca valores.** Ações:
+
+1. Incluir trâmite **só com texto** (pela visualização completa e pelo Trâmite Rápido: são a mesma chamada?).
+2. Incluir trâmite **mudando a situação** (ex.: Em análise, Aguardando resposta, Concluído). Como a situação vai no corpo? Muda também `firmStatus`/`genericStatus`?
+3. Incluir trâmite **com anexo** (arquivo fictício, ex.: `teste.txt`). O arquivo sobe numa chamada separada antes (qual? multipart? devolve um id?) ou junto com o trâmite? Anote a sequência completa e o campo que liga o anexo ao trâmite.
+4. **Definir responsável** de uma solicitação e de várias de uma vez (`assign-staff`?). Como vem a lista de analistas para escolher (chamada e campos)?
+5. **Alterar expectativa de conclusão** (`change-due-date`?).
+6. **Encaminhar** para outro usuário.
+7. **Excluir** o anexo do item 3 (só para ver o formato; a extensão nunca vai excluir).
+
+Para cada uma, diga também se a tela pede confirmação e qual chamada de leitura ela faz em seguida (para a lista atualizar). Sem a frase "pode fazer a Parte 4", pule esta parte.
 
 ## Formato do relatório
 

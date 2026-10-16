@@ -542,6 +542,152 @@ await passo('app · detalhe: janela com dados e trâmites lidos na hora; lembret
   assert.deepEqual(p.erros, []);
 });
 
+await passo('app · detalhe: aba Dados com a solicitação completa em grupos e anexos; "Para o cliente" com avisos e copiar com um clique', async () => {
+  const p = await abrirApp('#/fila', {});
+  await p.evaluate(() => {
+    window.__copiado = null;
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText: async t => { window.__copiado = t; } }, configurable: true });
+    const em = new Date(); em.setDate(em.getDate() + 12);
+    const ymd = em.getFullYear() + '-' + String(em.getMonth() + 1).padStart(2, '0') + '-' + String(em.getDate()).padStart(2, '0');
+    window.__respostas = { detalhe: { ok: true, item: { assunto: 'Férias', type: 'avisoFerias', created: new Date().toISOString().slice(0, 19) }, tramites: [], datas: { inicio: ymd },
+      grupos: [{ titulo: 'Solicitação', campos: [{ k: 'Início das férias', v: '27/10/2026' }, { k: 'Dias de férias', v: '30' }, { k: 'Descrição', v: '<p>Pedido do cliente</p>', longo: true }] }, { titulo: 'Empregado', campos: [{ k: 'Nome', v: 'Fulano' }, { k: 'Cargo', v: 'Auxiliar' }, { k: 'Matrícula', v: '12' }] }],
+      anexos: ['aviso-assinado.pdf'] } };
+  });
+  await p.click('#corpo [data-k="geral:b"]');
+  await p.waitForSelector('#gaveta [data-aba="cliente"]');
+  await p.click('#gaveta [data-aba="dados"]');
+  const t = await p.textContent('#g-corpo');
+  assert.match(t, /Controle.*Solicitação.*Início das férias27\/10\/2026.*Dias de férias30/);
+  assert.match(t, /Empregado.*NomeFulano.*CargoAuxiliar/);
+  assert.match(t, /Pedido do cliente/);
+  assert.match(t, /Anexos da solicitação.*aviso-assinado\.pdf/);
+  assert.match(await p.textContent('#gaveta [data-aba="dados"]'), /1 anexo/);
+  // Para o cliente: aviso calculado (menos de 30 dias) marcado com "!" na aba
+  assert.match(await p.textContent('#gaveta [data-aba="cliente"]'), /Para o cliente!/);
+  await p.click('#gaveta [data-aba="cliente"]');
+  const obs = await p.$$eval('#g-obs .obs', e => e.map(x => x.textContent));
+  assert.match(obs[0], /^Atenção: faltam 12 dias para o início das férias/);
+  assert.ok(obs.some(x => /O aviso precisa ser entregue ao empregado com pelo menos 30 dias/.test(x)));
+  // tira uma observação: o texto que será copiado acompanha
+  await p.click('#g-obs .obs:last-child input');
+  assert.ok(!/abono pecuniário/.test(await p.textContent('#g-obs-texto')));
+  await p.click('#g-copiar-obs2');
+  await p.waitForFunction(() => window.__copiado);
+  const cop = await p.evaluate(() => window.__copiado);
+  assert.match(cop, /^Observações importantes:\n• Atenção: faltam 12 dias/);
+  assert.ok(!/abono pecuniário/.test(cop));
+  assert.deepEqual(p.erros, []);
+});
+
+await passo('app · Hoje: avisos de férias/rescisão sem cálculo aparecem em destaque, do mais urgente, e abrem o detalhe', async () => {
+  const itens = ITENS_APP.concat([
+    { k: 'avisoFerias:f1', type: 'avisoFerias', typeLabel: 'Aviso de férias', id: 'f1', num: 201, status: 'Sem análise', lado: 'esc', nivel: 0, grav: 0, parado: 1, motivos: [], resp: 'Ana Teste', mine: true, apelido: 'DELTA', cliente: 'DELTA', detalhe: 'Fulano', created: agoraIso(2), last: agoraIso(1), semCalculo: { alvo: '2026-10-30', faltam: 3, ref: 'início das férias em 03/11', calculo: 'Cálculo de férias' } },
+    { k: 'avisoRescisao:r1', type: 'avisoRescisao', typeLabel: 'Aviso de rescisão', id: 'r1', num: 202, status: 'Em análise', lado: 'esc', nivel: 0, grav: 0, parado: 1, motivos: [], resp: 'Ana Teste', mine: true, apelido: 'ÔMEGA', cliente: 'ÔMEGA', detalhe: 'Joana', created: agoraIso(2), last: agoraIso(1), semCalculo: { alvo: '2026-10-14', faltam: -1, ref: 'aviso em 04/10', calculo: 'Cálculo de rescisão' } }
+  ]);
+  const p = await abrirApp('#/inicio', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens }) });
+  await p.waitForSelector('#hj-semcalc');
+  const l = await p.$$eval('#hj-semcalc .hj-sc', e => e.map(x => x.textContent));
+  assert.equal(l.length, 2);
+  assert.match(l[0], /14\/10venceu há 1 dia útil#202 ÔMEGA · Joana.*Aviso de rescisão sem Cálculo de rescisão · pagamento até 14\/10/);
+  assert.match(l[1], /30\/10vence em 3 dias úteis#201 DELTA · Fulano/);
+  await p.click('#hj-semcalc [data-k="avisoFerias:f1"]');
+  await p.waitForFunction(() => (window.__msgs || []).some(m => m.cmd === 'detalhe' && String(m.num) === '201'));
+  assert.deepEqual(p.erros, []);
+});
+
+await passo('app · Fila: cartões por tipo filtram (de novo tira); ordem por prioridade, empresa (agrupada) e mais recente', async () => {
+  const p = await abrirApp('#/fila?escopo=equipe');
+  const tipos = await p.$$eval('#tipos .tipo-c', e => e.map(x => x.dataset.tipo + '=' + x.querySelector('b').textContent));
+  assert.equal(tipos.length, 11);
+  assert.ok(tipos.includes('=4') && tipos.includes('calcFerias=1') && tipos.includes('afastamento=0'));
+  assert.match(await p.textContent('#tipos [data-tipo="calcFerias"]'), /1 fora do prazo/);
+  await p.click('#tipos [data-tipo="geral"]');
+  assert.deepEqual(await linhas(p), ['geral:b']);
+  await p.click('#tipos [data-tipo="geral"]');
+  assert.equal((await linhas(p)).length, 4, 'clicar de novo volta a todos');
+  // prioridade (padrão): a mesma ordem do Hoje
+  assert.equal(await p.getAttribute('#f-ord [data-ord="prio"]', 'class'), 'on');
+  assert.equal((await linhas(p))[0], 'calcFerias:a');
+  await p.click('#f-ord [data-ord="cliente"]');
+  assert.deepEqual(await p.$$eval('#corpo .emp-cab b', e => e.map(x => x.textContent)), ['ACME', 'BETA', 'GAMA']);
+  assert.deepEqual(await linhas(p), ['calcFerias:a', 'rubricas:d', 'geral:b', 'avisoRescisao:c']);
+  await p.click('#f-ord [data-ord="recente"]');
+  assert.equal((await linhas(p))[0], 'rubricas:d');
+  assert.equal(await p.evaluate(() => localStorage.getItem('controlonvio-fila-ord')), 'recente', 'a ordem escolhida fica lembrada');
+  assert.deepEqual(p.erros, []);
+});
+
+await passo('app · Distribuir: mostra para quem vai cada sem responsável, com o porquê; Atribuir confirma e define no Onvio', async () => {
+  const p = await abrirApp('#/fila', {});
+  await p.evaluate(() => { window.__respostas = Object.assign(window.__respostas || {}, { acao: { ok: true, acao: 'responsavel', anexos: 0 }, distribuicao: { ok: true, dias: 7, movimentadas: 40, erros: [], sugestoes: [
+    { item: { k: 'avisoRescisao:c', type: 'avisoRescisao', typeLabel: 'Aviso de rescisão', num: 103, code: 4, status: 'Respondido', lado: 'cli', apelido: 'GAMA', detalhe: 'Ciclano', parado: 26, nivel: 2, resp: '' }, resp: 'Bia', respId: 'id-bia', n: 3, motivo: 'atendeu 3 de 4 solicitações desta empresa na última semana', alternativas: [{ resp: 'Ana Teste', n: 1, respId: 'id-ana' }] },
+    { item: { k: 'rubricas:z', type: 'rubricas', typeLabel: 'Lançamento de rubricas', num: 105, code: 1, status: 'Sem análise', lado: 'esc', apelido: 'ZETA', detalhe: '10/2026', parado: 1, nivel: 0, resp: '' }, resp: 'Bia', respId: 'id-bia', n: 1, motivo: 'atendeu 1 de 1 solicitações desta empresa na última semana', alternativas: [] }
+  ] } }); });
+  await p.evaluate(() => { location.hash = '#/distribuir'; });
+  await p.waitForSelector('.dist-l');
+  assert.equal(await p.textContent('#titulo'), 'Distribuir');
+  assert.equal((await p.evaluate(() => window.__msgs.find(m => m.cmd === 'distribuicao'))).dias, 7);
+  assert.match(await p.textContent('.dist-l'), /#103GAMA.*Aviso de rescisão · Ciclano.*atendeu 3 de 4 solicitações desta empresa na última semana · depois: Ana Teste \(1\)/);
+  assert.equal(await p.$eval('.dist-l select', s => s.value), 'id-bia');
+  assert.match(await p.textContent('#d-todas'), /Atribuir todas \(1\)/, 'Rubricas fica de fora (não mapeado)');
+  assert.equal(await p.$eval('[data-atr="rubricas:z"]', b => b.disabled), true);
+  // troca a sugestão e atribui uma, com confirmação
+  await p.selectOption('[data-esc="avisoRescisao:c"]', 'id-ana');
+  await p.click('[data-atr="avisoRescisao:c"]');
+  assert.equal(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'acao')), false, 'sem confirmar não envia');
+  await p.click('[data-conf-k="avisoRescisao:c"]');
+  await p.waitForSelector('.dist-l .ok-t');
+  const m = await p.evaluate(() => window.__msgs.find(x => x.cmd === 'acao'));
+  assert.deepEqual([m.acao, m.type, m.num, m.analista], ['responsavel', 'avisoRescisao', '103', 'id-ana']);
+  assert.match(await p.textContent('#d-todas'), /Atribuir todas \(0\)/);
+  await p.click('[data-dias="14"]');
+  await p.waitForFunction(() => window.__msgs.some(x => x.cmd === 'distribuicao' && x.dias === 14));
+  assert.deepEqual(p.erros, []);
+});
+
+await passo('app · detalhe: Responder com situação, observações e anexo; revisa, confirma e envia; listas não mapeadas ficam bloqueadas', async () => {
+  const p = await abrirApp('#/fila', {});
+  await p.evaluate(() => { window.__respostas = { acao: { ok: true, acao: 'tramite', anexos: 1 }, detalhe: { ok: true, item: { assunto: 'Férias' }, tramites: [], datas: {} } }; });
+  await p.click('#corpo [data-k="geral:b"]');
+  await p.waitForSelector('#gaveta [data-acao="tramite"]:not([disabled])');
+  assert.equal(await p.$eval('#gaveta [data-acao="expectativa"]', b => b.disabled), false);
+  await p.click('#gaveta [data-acao="tramite"]');
+  assert.deepEqual(await p.$$eval('#a-situacao option', o => o.map(x => x.textContent)), ['Escolha…', 'Em análise', 'Em análise interna', 'Respondido', 'Concluído']);
+  await p.click('#a-revisar');
+  assert.match(await p.textContent('#g-corpo'), /Escolha a situação do trâmite/);
+  await p.selectOption('#a-situacao', '4');
+  await p.fill('#a-texto', 'Bom dia, segue o retorno.');
+  await p.click('#a-obs');
+  assert.match(await p.inputValue('#a-texto'), /^Bom dia, segue o retorno\.\n\nObservações importantes:\n• Prazo de conclusão/);
+  await p.setInputFiles('#a-arquivos', { name: 'recibo.txt', mimeType: 'text/plain', buffer: Buffer.from('ola') });
+  assert.match(await p.textContent('.acao-anexos'), /recibo\.txt · 3 B/);
+  await p.click('#a-revisar');
+  assert.match(await p.textContent('#a-conf'), /Trâmite com a situação "Respondido"[\s\S]*1 anexo\(s\): recibo\.txt/);
+  assert.equal(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'acao')), false, 'revisar não envia');
+  await p.click('#a-enviar');
+  await p.waitForFunction(() => window.__msgs.some(m => m.cmd === 'acao'));
+  const m = await p.evaluate(() => window.__msgs.find(x => x.cmd === 'acao'));
+  assert.deepEqual([m.acao, m.type, m.num, m.situacao, m.arquivos.length, m.arquivos[0].nome, m.arquivos[0].b64], ['tramite', 'geral', '102', '4', 1, 'recibo.txt', 'b2xh']);
+  await p.waitForFunction(() => /Trâmite enviado ao Onvio com 1 anexo/.test(document.querySelector('#toast').textContent));
+  await p.waitForFunction(() => window.__msgs.filter(x => x.cmd === 'detalhe').length >= 2, null, { timeout: 3000 });
+  // erro do Onvio aparece e nada se perde
+  await p.evaluate(() => { window.__respostas.acao = { ok: false, erro: 'o Onvio recusou a ação (HTTP 403)' }; });
+  await p.click('#gaveta [data-acao="tramite"]');
+  await p.selectOption('#a-situacao', '5'); await p.fill('#a-texto', 'Concluído.');
+  await p.click('#a-revisar'); await p.click('#a-enviar');
+  await p.waitForFunction(() => /Não foi enviado: o Onvio recusou a ação \(HTTP 403\)/.test(document.querySelector('#g-corpo').textContent));
+  assert.equal(await p.inputValue('#a-texto'), 'Concluído.');
+  // Rubricas: não mapeado
+  await p.click('#g-fechar');
+  await p.evaluate(() => { location.hash = '#/fila?escopo=equipe'; });
+  await p.click('#corpo [data-k="rubricas:d"]');
+  await p.waitForSelector('#gaveta [data-acao="tramite"]');
+  await p.waitForFunction(() => { const b = document.querySelector('#gaveta [data-acao="tramite"]'); return b && b.title && b.title !== 'carregando'; });
+  assert.equal(await p.$eval('#gaveta [data-acao="tramite"]', b => b.disabled), true);
+  assert.match(await p.getAttribute('#gaveta [data-acao="tramite"]', 'title'), /ainda não mapeada/);
+  assert.deepEqual(p.erros, []);
+});
+
 await passo('app · detalhe: trâmites que falham mostram o erro e o caminho do Onvio', async () => {
   const p = await abrirApp('#/fila', {});
   await p.evaluate(() => { window.__respostas = { detalhe: { ok: true, item: { assunto: 'Férias' }, tramites: null, erroTramites: 'HTTP 500', lista: 'Geral' } }; });

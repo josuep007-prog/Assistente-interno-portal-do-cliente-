@@ -113,7 +113,8 @@ function brutoPorAba(tabId, mundo) {
 }
 
 const comoFetcher = bruto => async url => {
-  const v = await bruto(url);
+  let v = await bruto(url);
+  if (v.status === 503) { await new Promise(r => setTimeout(r, 800)); v = await bruto(url); }   // o Onvio às vezes responde 503 na 1ª tentativa
   if (v.status === 0) throw new Error('falha de rede (' + String(v.body).slice(0, 80) + ')');
   return lerResposta(v.status, v.ct, v.body);
 };
@@ -205,17 +206,18 @@ async function coletar(manual) {
   if (rodando) return rodando;
   rodando = (async () => {
     const s = await getSettings();
-    const { snapshot: anterior, tramites: cacheTramites } = await chrome.storage.local.get(['snapshot', 'tramites']);
+    const { snapshot: anterior, tramites: cacheTramites, avisos: cacheAvisos } = await chrome.storage.local.get(['snapshot', 'tramites', 'avisos']);
     await chrome.storage.local.set({ status: { estado: 'lendo', em: new Date().toISOString(), etapa: '' } });
     try {
       const { f, via } = await escolherFetcher(manual);
       const assin = await OC.assinaturas(f).catch(() => null);     // antes da leitura: o que mudar depois será notado
-      const snap = await OC.collect(f, s, (i, n, rot) => chrome.storage.local.set({ status: { estado: 'lendo', etapa: i + '/' + n + ' · ' + rot } }), { tramites: cacheTramites || {} });
+      const snap = await OC.collect(f, s, (i, n, rot) => chrome.storage.local.set({ status: { estado: 'lendo', etapa: i + '/' + n + ' · ' + rot } }), { tramites: cacheTramites || {}, avisos: cacheAvisos || {} });
       snap.via = via;
       OC.tendencias(anterior, snap);                                  // setas ▲▼ da barra viva
       snap.versao = chrome.runtime.getManifest().version;
       const novoCache = snap.tramites.cache; delete snap.tramites.cache;   // o cache fica fora do resumo
-      await chrome.storage.local.set({ tramites: novoCache });
+      const novoAvisos = snap.avisos ? snap.avisos.cache : {}; if (snap.avisos) delete snap.avisos.cache;
+      await chrome.storage.local.set({ tramites: novoCache, avisos: novoAvisos });
       await notificar(anterior, snap, s);
       const { serie } = await chrome.storage.local.get('serie');
       await chrome.storage.local.set({ serie: OC.atualizarSerie(serie, anterior, snap) });
@@ -298,6 +300,70 @@ async function consultar(msg) {
   const itens = ((d && d.items) || []).map(r => { const x = OC.normalize(t, r, null, s.abaErrada); return Object.assign(x, OC.evaluate(x, s, now)); });
   return { itens, total: d && d.totalItems != null ? d.totalItems : itens.length, paginas: (d && d.totalPages) || 1 };
 }
+/* ---------- ações no Onvio (fase 2) ----------
+ * Escrita sempre de dentro da aba do Onvio (mundo da página), com a sessão e a autorização da própria tela.
+ * Só os pedidos montados por OC.pedidoAcao e aceitos por OC.escritaPermitida saem; nunca DELETE nem exclusão.
+ * O app pede confirmação antes de mandar a mensagem. Nada do texto ou dos anexos é guardado. */
+function escritaPorAba(tabId) {
+  return async (metodo, url, corpo, arquivos) => {
+    const [res] = await chrome.scripting.executeScript({
+      target: { tabId }, world: 'MAIN',
+      func: async (m, u, c, arqs) => {
+        try {
+          const auth = typeof window.__controlOnvioAutorizacao === 'function' ? window.__controlOnvioAutorizacao() : null;
+          const headers = { Accept: 'application/json, text/plain, */*' };
+          if (auth) headers.Authorization = auth;
+          let body;
+          if (arqs) {
+            body = new FormData();
+            for (const a of arqs) { const bin = Uint8Array.from(atob(a.b64), ch => ch.charCodeAt(0)); body.append('file[]', new Blob([bin], { type: a.tipo || 'application/octet-stream' }), a.nome); }
+          } else { headers['Content-Type'] = 'application/json'; body = JSON.stringify(c); }
+          const r = await fetch(u, { method: m, body, headers, credentials: 'include' });
+          return { status: r.status, location: r.headers.get('location'), texto: (await r.text()).slice(0, 200) };
+        } catch (e) { return { status: 0, erro: String(e).slice(0, 200) }; }
+      },
+      args: [metodo, url, corpo || null, arquivos || null]
+    });
+    return (res && res.result) || { status: 0, erro: 'sem resposta da aba' };
+  };
+}
+const MAX_ANEXOS = 10, MAX_BYTES = 15 * 1024 * 1024;
+async function executarAcao(msg) {
+  const t = OC.TYPE_BY_KEY[msg.type];
+  if (!t) throw new Error('tipo desconhecido');
+  const { f } = await escolherFetcher(true);                     // confere de novo que é o escritório
+  const tab = await abaOnvio();
+  if (!tab) throw new Error('Abra o Onvio numa aba para enviar.');
+  const d = await f(OC.urlConsulta(t, { numero: msg.num, per: 5 }));
+  const r = ((d && d.items) || []).find(x => String(x.identifier) === String(msg.num));
+  if (!r) throw new Error('solicitação #' + msg.num + ' não encontrada em ' + t.label);
+  const s = await getSettings();
+  const item = OC.normalize(t, r, null, s.abaErrada);
+  const p = OC.pedidoAcao(msg, r, item);
+  if (!OC.escritaPermitida(p.metodo, p.url)) throw new Error('endereço de escrita não permitido');
+  const arquivos = Array.isArray(msg.arquivos) ? msg.arquivos : [];
+  if (arquivos.length > MAX_ANEXOS) throw new Error('no máximo ' + MAX_ANEXOS + ' anexos por trâmite');
+  if (arquivos.some(a => !a || typeof a.b64 !== 'string' || a.b64.length * 0.75 > MAX_BYTES)) throw new Error('anexo inválido ou maior que 15 MB');
+  const escreve = escritaPorAba(tab.id);
+  const res = await escreve(p.metodo, p.url, p.corpo);
+  if (res.status === 401 || res.status === 403) throw new Error('o Onvio recusou a ação (HTTP ' + res.status + '). Faça pelo Onvio e avise quem mantém a extensão.');
+  if (res.status < 200 || res.status >= 300) throw new Error('o Onvio não aceitou (' + (res.status ? 'HTTP ' + res.status : res.erro || 'falha de rede') + ')');
+  const out = { acao: msg.acao, anexos: 0, erroAnexos: null };
+  if (msg.acao === 'tramite' && arquivos.length) {
+    const topicId = OC.idDoLocation(res.location);
+    const u = topicId && OC.urlAnexoTramite(t, r.id, topicId);
+    if (!u) out.erroAnexos = 'o Onvio não devolveu o número do trâmite; anexe pelo Onvio';
+    else if (!OC.escritaPermitida('POST', u)) out.erroAnexos = 'endereço de anexo não permitido';
+    else {
+      const ra = await escreve('POST', u, null, arquivos);
+      if (ra.status >= 200 && ra.status < 300) out.anexos = arquivos.length;
+      else out.erroAnexos = 'o trâmite foi enviado, mas o anexo não (' + (ra.status ? 'HTTP ' + ra.status : ra.erro || 'falha de rede') + '). Anexe pelo Onvio.';
+    }
+  }
+  coletar(false).catch(() => {});                                // a fila e o Hoje já refletem a ação
+  return out;
+}
+
 async function detalhe(msg) {
   const t = OC.TYPE_BY_KEY[msg.type];
   if (!t) throw new Error('tipo desconhecido');
@@ -308,9 +374,19 @@ async function detalhe(msg) {
   if (!r) throw new Error('solicitação #' + msg.num + ' não encontrada em ' + t.label);
   const x = OC.detalheDe(t, r);
   Object.assign(x, OC.evaluate(x, s, new Date()));
-  let tramites = null, erroTramites = null;
-  try { tramites = OC.tramitesDe(t, await f(OC.urlTramites(t, r))); } catch (e) { erroTramites = e.message || String(e); }
-  return { item: x, tramites, erroTramites, lista: t.label };
+  // Solicitação completa (aba Dados) e trâmites, lidos na hora e em paralelo. Nada disso é guardado.
+  const [comp, tr] = await Promise.all([
+    f(OC.urlDetalhe(t, r.id)).then(d => ({ d }), e => { if (e && e.auth) throw e; return { erro: e.message || String(e) }; }),
+    f(OC.urlTramites(t, r)).then(d => ({ d }), e => { if (e && e.auth) throw e; return { erro: e.message || String(e) }; })
+  ]);
+  const completo = comp.d ? OC.camposDetalhe(t, comp.d) : null;
+  const datas = OC.datasDe(comp.d || r);
+  if (comp.d && typeof comp.d.description === 'string' && !x.descricao) x.descricao = comp.d.description;
+  return {
+    item: x, lista: t.label, datas,
+    grupos: completo ? completo.grupos : null, anexos: completo ? completo.anexos : [], erroDados: comp.erro || null,
+    tramites: tr.d ? OC.tramitesDe(t, tr.d) : null, erroTramites: tr.erro || null
+  };
 }
 
 /* ---------- badge ---------- */
@@ -441,7 +517,16 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'reagendar') { await agendar(); reply({ ok: true }); }
       else if (msg.cmd === 'atualizarRegras') { reply(await atualizarRegras()); }
       else if (msg.cmd === 'tick') { reply(await verificarAoVivo(!!msg.forcar)); }
+      else if (msg.cmd === 'distribuicao') {        // sob demanda: quem mais atendeu cada empresa nos últimos dias (nada é guardado)
+        const { f } = await escolherFetcher();
+        const dias = Math.min(30, Math.max(1, Number(msg.dias) || 7));
+        const { snapshot } = await chrome.storage.local.get('snapshot');
+        const mov = await OC.lerMovimentadas(f, dias, new Date());
+        const pend = (snapshot && snapshot.items) || [];
+        reply({ ok: true, dias, movimentadas: mov.itens.length, erros: mov.erros, sugestoes: OC.distribuirPorCliente(pend, mov.itens, dias) });
+      }
       else if (msg.cmd === 'consultar') { reply(Object.assign({ ok: true }, await consultar(msg))); }
+      else if (msg.cmd === 'acao') { reply(Object.assign({ ok: true }, await executarAcao(msg))); }
       else if (msg.cmd === 'detalhe') { reply(Object.assign({ ok: true }, await detalhe(msg))); }
       else if (msg.cmd === 'testarLeitura') { reply({ ok: true, linhas: await testarLeitura() }); }
       else if (msg.cmd === 'abrirOnvio') { await irParaOnvio(); reply({ ok: true }); }

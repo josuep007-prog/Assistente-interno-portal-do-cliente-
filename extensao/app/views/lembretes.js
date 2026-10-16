@@ -32,9 +32,10 @@ function agenda(el, ctx, l) {
   const hoje = new Date(), hojeK = OC.ymd(hoje);
   if (!mes) mes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
   if (!diaSel) diaSel = hojeK;
-  const m = minhas().filter(i => i.due);
+  // prazos legais de pagamento (férias e rescisão) das suas solicitações; a expectativa do cliente não entra
+  const m = minhas().filter(i => i.pagamentoAte);
   const hol = new Set(estado.settings.feriados || []);
-  const doDia = k => ({ l: l.filter(x => OC.ymd(new Date(x.quando)) === k), i: m.filter(i => OC.ymd(OC.parseDate(i.due)) === k) });
+  const doDia = k => ({ l: l.filter(x => OC.ymd(new Date(x.quando)) === k), i: m.filter(i => i.pagamentoAte.alvo === k) });
   const ini = new Date(mes); ini.setDate(1 - ini.getDay());
   let cal = SEMANA.map(s => '<span class="cal-sem">' + s + '</span>').join('');
   for (let n = 0; n < 42; n++) {
@@ -54,11 +55,11 @@ function agenda(el, ctx, l) {
     '<section class="card"><div class="card-b" style="padding-top:14px">' +
       '<div class="cal-mes"><b>' + nomeMes(mes) + '</b><button class="btn btn-sm" id="cal-hoje">Hoje</button><button class="icon-btn" id="cal-ant" aria-label="Mês anterior"><svg class="ic"><use href="#i-chev-l"/></svg></button><button class="icon-btn" id="cal-prox" aria-label="Próximo mês"><svg class="ic"><use href="#i-chev-r"/></svg></button></div>' +
       '<div class="cal">' + cal + '</div>' +
-      '<div class="cal-leg"><span><i></i>lembrete</span><span><i class="today"></i>expectativa de conclusão</span><span><i class="late"></i>atrasado / fora do prazo</span><span style="text-decoration:line-through">feriado</span></div>' +
+      '<div class="cal-leg"><span><i></i>lembrete</span><span><i class="today"></i>pagamento (prazo legal)</span><span><i class="late"></i>atrasado / fora do prazo</span><span style="text-decoration:line-through">feriado</span></div>' +
     '</div></section>' +
     '<section class="card"><div class="card-h"><h3>' + esc(diaSel === hojeK ? 'Hoje, ' : '') + esc(dSel.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })) + '</h3><span class="sub">' + plural(linhas.length + x.i.length, 'item', 'itens') + '</span><button class="lk" id="ag-novo">+ Lembrete neste dia</button></div><div class="card-b" id="ag-dia">' +
       (linhas.length ? linhas.map(item).join('') : '') +
-      x.i.map(i => '<div class="item-ag clicavel ' + (i.nivel === 2 ? 'late' : 'soon') + '" data-k="' + esc(i.k) + '"><svg class="ic"><use href="#i-alert"/></svg><div class="tx"><b>Expectativa de conclusão · #' + esc(i.num) + ' ' + esc(i.typeLabel) + '</b><small>' + esc(i.apelido || i.cliente) + (i.detalhe ? ' · ' + esc(i.detalhe) : '') + '</small></div></div>').join('') +
+      x.i.map(i => '<div class="item-ag clicavel ' + (i.nivel === 2 ? 'late' : 'soon') + '" data-k="' + esc(i.k) + '"><svg class="ic"><use href="#i-alert"/></svg><div class="tx"><b>Pagamento (prazo legal) · #' + esc(i.num) + ' ' + esc(i.typeLabel) + '</b><small>' + esc(i.apelido || i.cliente) + (i.detalhe ? ' · ' + esc(i.detalhe) : '') + '</small></div></div>').join('') +
       (linhas.length + x.i.length ? '' : '<div class="vazio" style="padding:14px 0">Nada marcado para este dia.</div>') +
     '</div></section></div>';
   const ir = d => { mes = new Date(mes.getFullYear(), mes.getMonth() + d, 1); render(el, ctx, {}); };

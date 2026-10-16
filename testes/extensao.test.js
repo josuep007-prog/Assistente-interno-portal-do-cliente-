@@ -235,8 +235,9 @@ function carregarBackground(opcoes = {}) {
       }
     }
   };
-  const ctx = { console, URL, URLSearchParams, AbortController, setTimeout, clearTimeout, chrome, fetch: opcoes.fetch || (async () => { throw new Error('sem rede'); }) };
+  const ctx = { console, URL, URLSearchParams, AbortController, setTimeout, clearTimeout, chrome, FormData, Blob, atob, Headers, fetch: opcoes.fetch || (async () => { throw new Error('sem rede'); }) };
   ctx.self = ctx;
+  ctx.window = ctx;
   ctx.importScripts = f => vm.runInContext(src(f), ctx);
   vm.createContext(ctx);
   vm.runInContext(src('background.js'), ctx);
@@ -956,4 +957,261 @@ test('Hoje: próximo passo de cada motivo e anel do prazo (escritório × client
   assert.deepEqual(plano(OC.progressoPrazo({ lado: 'esc', parado: 6 }, { parada: 15 })), { pct: 40, dias: 6, limite: 15 });
   assert.deepEqual(plano(OC.progressoPrazo({ lado: 'cli', parado: 15 }, { prescricaoDias: 30 })), { pct: 50, dias: 15, limite: 30 });
   assert.equal(OC.progressoPrazo({ lado: 'esc', parado: 40 }, {}).pct, 100, 'nunca passa de 100%');
+});
+
+/* ---------- v0.13: detalhe completo, observações, aviso sem cálculo, distribuição ---------- */
+test('detalhe completo: endereço por lista (Rubricas na v2) e campos em grupos com rótulos, sem ids técnicos', () => {
+  assert.equal(OC.urlDetalhe(OC.TYPE_BY_KEY.avisoFerias, 'g1'), OC.API + 'br-payroll-sr/v1/prior-notice-vacations/g1?expand=all');
+  assert.equal(OC.urlDetalhe(OC.TYPE_BY_KEY.rubricas, 'r1'), OC.API + 'br-payroll-sr/v2/payroll-entries/r1?expand=all');
+  const c = OC.camposDetalhe(OC.TYPE_BY_KEY.cadEmpregado, {
+    type: 'x', apiVersion: '1', id: 'g', companyId: 'c', identifier: 9, genericStatus: 2, departmentId: 'd',
+    name: 'Fulano', admissionDate: '2026-11-03T00:00:00', wage: 2500.5, firstJob: true, novoCampoDoOnvio: 'abc',
+    clientExpanded: { id: 'z', name: 'ACME', code: 12, nickname: 'AC' }, jobPositionExpanded: { id: 'j', name: 'Auxiliar' },
+    attachmentsExpanded: [{ name: 'rg.pdf' }, { name: 'ctps.pdf' }]
+  });
+  const princ = Object.fromEntries(c.grupos[0].campos.map(x => [x.k, x.v]));
+  assert.equal(princ['Nome'], 'Fulano');
+  assert.equal(princ['Data de admissão'], '03/11/2026', 'data "só dia" sem voltar um dia pelo fuso');
+  assert.match(princ['Salário'], /R\$\s?2\.500,50/);
+  assert.equal(princ['Primeiro emprego'], 'Sim');
+  assert.equal(princ['Cargo'], 'Auxiliar', 'objeto só com nome vira uma linha');
+  assert.equal(princ['Novo campo do onvio'], 'abc', 'campo novo do Onvio aparece');
+  for (const k of ['Id', 'Company id', 'Api version', 'Type', 'Generic status', 'Department id']) assert.ok(!(k in princ), k + ' é técnico');
+  assert.deepEqual(plano(c.grupos.map(g => g.titulo)), ['Solicitação', 'Cliente']);
+  assert.deepEqual(plano(c.anexos), ['rg.pdf', 'ctps.pdf']);
+});
+
+test('prazo de pagamento: férias 2 dias antes do início e rescisão 10 dias após, antecipando fim de semana e feriado', () => {
+  const f = OC.prazoPagamento('avisoFerias', { inicio: '2026-11-03' }, {});
+  assert.equal(OC.ymd(f.alvo), '2026-10-30', '01/11 é domingo: antecipa para sexta 30/10');
+  const r = OC.prazoPagamento('avisoRescisao', { aviso: '2026-10-05' }, {});
+  assert.equal(OC.ymd(r.alvo), '2026-10-15');
+  assert.match(r.ref, /sem data de desligamento/);
+  const r2 = OC.prazoPagamento('calcRescisao', { desligamento: '2026-10-02', aviso: '2026-09-01' }, {});
+  assert.equal(OC.ymd(r2.alvo), '2026-10-09', '12/10 é feriado e 10 e 11 fim de semana: antecipa para 09/10');
+  assert.equal(OC.prazoPagamento('avisoFerias', {}, {}), null);
+  assert.deepEqual(plano(OC.datasDe({ vacationStartDate: '2026-11-03T00:00:00', adviceDate: '2026-10-01T00:00:00', name: 'Fulano', nationalIdentity: '123' })),
+    { inicio: '2026-11-03', aviso: '2026-10-01', desligamento: null, admissao: null, competencia: null, afastamento: null, pagamento: null }, 'só datas, nada pessoal');
+});
+
+test('observações para o cliente: frases do tipo com as datas, avisos fora do prazo primeiro e linha sem dado some', () => {
+  const now = new Date(2026, 9, 15, 10);
+  const it = { type: 'avisoFerias', created: '2026-10-14T12:00:00', lado: 'esc' };
+  const o = OC.observacoesCliente(it, { inicio: '2026-11-03' }, {}, now);
+  assert.equal(o[0].id, 'alerta-aviso');
+  assert.match(o[0].texto, /faltam 19 dias para o início das férias \(03\/11\/2026\), menos que os 30 dias/);
+  assert.ok(o.some(x => /Prazo de conclusão: até 19\/10\/2026 \(3 dias úteis a partir da abertura\)\./.test(x.texto)));
+  assert.ok(o.some(x => /pagamento das férias deve ser feito até 30\/10\/2026/.test(x.texto)));
+  const sem = OC.observacoesCliente(it, {}, {}, now);
+  assert.ok(!sem.some(x => /férias começam/.test(x.texto)), 'sem a data de início, a frase não aparece');
+  const venc = OC.observacoesCliente({ type: 'geral', created: '2026-09-01T12:00:00', lado: 'esc' }, {}, {}, now);
+  assert.deepEqual([venc[0].id, venc[0].interno], ['alerta-conclusao', true], 'prazo vencido é aviso interno (não vai para o cliente)');
+  const regras = OC.normalizarRegras({ observacoes: { geral: ['Frase do escritório.'], invalido: ['x'], rubricas: [42, 'Outra'] } });
+  assert.deepEqual(plano(regras.observacoes), { geral: ['Frase do escritório.'], rubricas: ['Outra'] });
+  const s = OC.combinarSettings({ regras }, {});
+  assert.ok(OC.observacoesCliente({ type: 'geral', created: '2026-10-14T12:00:00', lado: 'esc' }, {}, s, now).some(x => x.texto === 'Frase do escritório.'));
+});
+
+test('aviso sem cálculo: lê a data do aviso uma vez, só procura o cálculo perto do prazo e marca quem não tem', async () => {
+  const now = new Date(2026, 9, 15, 10);
+  const urls = [];
+  const det = { v1: { vacationStartDate: '2026-10-22T00:00:00' }, v2: { vacationStartDate: '2026-10-21T00:00:00' }, v3: { vacationStartDate: '2027-01-10T00:00:00' }, r1: { adviceDate: '2026-10-05T00:00:00' } };
+  const f = async url => {
+    const u = new URL(url); urls.push(u.pathname + (u.searchParams.get('searchText') ? '?' + u.searchParams.get('searchText') : ''));
+    const id = u.pathname.split('/').pop();
+    if (det[id]) return det[id];
+    if (u.pathname.endsWith('vacation-calculations')) return { items: [{ id: 'c', created: '2026-10-10T12:00:00', clientEmployeeExpanded: { name: 'Beltrano' }, clientExpanded: { code: 7, name: 'ACME' } }] };
+    return { items: [] };
+  };
+  const item = (k, type, id, emp) => ({ k, type, id, detalhe: emp, codCliente: 7, cliente: 'ACME', created: '2026-10-01T12:00:00' });
+  const out = { items: [item('avisoFerias:v1', 'avisoFerias', 'v1', 'Fulano'), item('avisoFerias:v2', 'avisoFerias', 'v2', 'Beltrano'), item('avisoFerias:v3', 'avisoFerias', 'v3', 'Ciclano'), item('avisoRescisao:r1', 'avisoRescisao', 'r1', 'Joana'), { k: 'geral:g', type: 'geral', id: 'g' }] };
+  await OC.verificarAvisos(f, out, {}, Object.assign({}, OC.DEFAULTS), now);
+  const v1 = out.items[0].semCalculo;
+  assert.deepEqual([v1.alvo, v1.faltam, v1.calculo], ['2026-10-20', 3, 'Cálculo de férias']);
+  assert.equal(out.items[1].semCalculo, undefined, 'Beltrano já tem cálculo');
+  assert.equal(out.items[2].semCalculo, undefined, 'férias longe: nem procura o cálculo');
+  assert.ok(!urls.includes('/api/br-payroll-sr/v1/vacation-calculations?Ciclano'));
+  assert.equal(out.items[3].semCalculo.alvo, '2026-10-15', 'rescisão: 10 dias do aviso');
+  assert.equal(out.avisos.semCalculo, 2);
+  assert.ok(!urls.some(u => /\/g\?|generic/.test(u)), 'só avisos de férias e rescisão');
+  // segunda leitura: cache evita reler o detalhe e reconferir antes de 6 h
+  urls.length = 0;
+  const out2 = { items: out.items.map(i => Object.assign({}, i, { semCalculo: undefined })) };
+  await OC.verificarAvisos(f, out2, out.avisos.cache, Object.assign({}, OC.DEFAULTS), new Date(2026, 9, 15, 11));
+  assert.deepEqual(urls, []);
+  assert.equal(out2.items[0].semCalculo.alvo, '2026-10-20');
+  assert.deepEqual(Object.keys(out.avisos.cache['avisoFerias:v1']).sort(), ['alvo', 'calc', 'conf', 'lido', 'ref'], 'cache só com datas e sim/não');
+});
+
+test('distribuição: quem mais atendeu a empresa na semana; admissões fora da conta e com quem mais faz admissões', () => {
+  const x = (type, resp, cod, extra) => Object.assign({ k: type + ':' + Math.random(), type, resp, codCliente: cod, cliente: 'C' + cod }, extra || {});
+  const mov = [
+    x('geral', 'Ana', 1), x('calcFerias', 'Ana', 1), x('rubricas', 'Bia', 1),
+    x('cadEmpregado', 'Carla', 1), x('cadEmpregado', 'Carla', 1), x('cadEmpregado', 'Carla', 1), x('cadEstagiario', 'Carla', 2),
+    x('geral', 'Bia', 2), x('avisoFerias', '', 2)
+  ];
+  const pend = [x('geral', 'Ana', 5), x('geral', 'Ana', 5), x('geral', 'Bia', 6),
+    x('afastamento', '', 1, { k: 'a1', nivel: 2 }), x('cadEmpregado', '', 2, { k: 'c1' }), x('geral', '', 2, { k: 'g2' }), x('geral', '', 9, { k: 'g9' })];
+  const s = OC.distribuirPorCliente(pend, mov, 7);
+  const por = Object.fromEntries(s.map(r => [r.item.k, r]));
+  assert.equal(por.a1.resp, 'Ana', 'empresa 1: Ana atendeu 2 (as 3 admissões da Carla não contam)');
+  assert.match(por.a1.motivo, /atendeu 2 de 3 solicitações desta empresa na última semana/);
+  assert.deepEqual(plano(por.a1.alternativas), [{ resp: 'Bia', n: 1, respId: '' }]);
+  assert.equal(por.c1.resp, 'Carla', 'admissão vai para quem mais fez admissões');
+  assert.match(por.c1.motivo, /fez 4 admissões/);
+  assert.equal(por.g2.resp, 'Bia');
+  assert.equal(por.g9.resp, 'Bia', 'sem histórico: quem tem menos pendências');
+  assert.equal(por.g9.semHistorico, true);
+  assert.equal(s[0].item.k, 'a1', 'mais grave primeiro');
+  assert.equal(s.length, 4, 'só as sem responsável');
+});
+
+test('distribuição: lê só o período (para na primeira mais antiga) e o service worker devolve as sugestões sem gravar', async () => {
+  const agora = new Date('2026-10-15T12:00:00Z');
+  const f = async url => {
+    const u = new URL(url);
+    if (!/tickets\/generic$/.test(u.pathname)) return { items: [] };
+    return { items: [
+      { id: 'a', identifier: 1, genericStatus: 5, lastUpdated: '2026-10-14T10:00:00', staffResponsibleExpanded: { name: 'Ana' }, clientExpanded: { code: 1, name: 'ACME' } },
+      { id: 'b', identifier: 2, genericStatus: 5, lastUpdated: '2026-10-01T10:00:00', staffResponsibleExpanded: { name: 'Bia' }, clientExpanded: { code: 1, name: 'ACME' } }
+    ], totalPages: 3 };
+  };
+  const m = await OC.lerMovimentadas(f, 7, agora);
+  assert.deepEqual(plano(m.itens.map(i => i.resp)), ['Ana']);
+
+  const api = apiSimulada({ itens: { geral: [pend('g1', 1, { staffResponsibleExpanded: null })] } });
+  const { ouvintes, store } = carregarBackground({ abas: [aba(5, ONVIO_PORTAL)], fetchPorMundo: { MAIN: api }, fetch: api });
+  store.snapshot = { items: [{ k: 'geral:g1', type: 'geral', resp: '', codCliente: '', cliente: 'ACME' }, { k: 'geral:g2', type: 'geral', resp: 'Ana', cliente: 'X' }] };
+  const r = await new Promise(res => ouvintes[0]({ cmd: 'distribuicao', dias: 7 }, { tab: { id: 5 } }, res));
+  assert.equal(r.ok, true);
+  assert.deepEqual([r.dias, r.sugestoes.length, r.sugestoes[0].resp], [7, 1, 'Ana']);
+  assert.deepEqual(Object.keys(store).filter(k => !['metodoLeitura', 'perfilSessao', 'snapshot'].includes(k)), [], 'nada é gravado');
+});
+
+test('background: detalhe traz a solicitação completa em grupos, anexos e datas; erro na completa não derruba', async () => {
+  const base = apiSimulada({ itens: { avisoFerias: [pend('v1', 702)] } });
+  let falhaDetalhe = false;
+  const api = async url => {
+    const p = new URL(url).pathname;
+    if (/prior-notice-vacations\/v1$/.test(p)) { if (falhaDetalhe) return respHttp(500, 'application/json', '{}'); return respHttp(200, 'application/json', JSON.stringify({ id: 'v1', subject: 'Férias', vacationStartDate: '2026-11-03T00:00:00', clientExpanded: { name: 'ACME', code: 3, nickname: 'AC' }, attachmentsExpanded: [{ name: 'aviso.pdf' }] })); }
+    return base(url);
+  };
+  const { ouvintes, store } = carregarBackground({ abas: [aba(5, ONVIO_PORTAL)], fetchPorMundo: { MAIN: api }, fetch: api });
+  const pedir = m => new Promise(res => ouvintes[0](m, { tab: { id: 5 } }, res));
+  const r = await pedir({ cmd: 'detalhe', type: 'avisoFerias', num: 702 });
+  assert.equal(r.ok, true);
+  assert.deepEqual(plano(r.grupos.map(g => g.titulo)), ['Solicitação', 'Cliente']);
+  assert.deepEqual(plano(r.anexos), ['aviso.pdf']);
+  assert.equal(r.datas.inicio, '2026-11-03');
+  assert.equal(r.erroDados, null);
+  falhaDetalhe = true;
+  const r2 = await pedir({ cmd: 'detalhe', type: 'avisoFerias', num: 702 });
+  assert.equal(r2.ok, true);
+  assert.equal(r2.grupos, null);
+  assert.match(r2.erroDados, /HTTP 500/);
+  assert.ok(!('grupos' in store) && !('datas' in store), 'nada do detalhe é gravado');
+});
+
+test('vencimento: expectativa do cliente não conta; prazo legal de pagamento perto do tempo de atendimento (período cheio) conta', async () => {
+  const now = new Date(2026, 9, 15, 10);
+  const it = { type: 'geral', lado: 'esc', status: 'Em análise', created: '2026-10-14T12:00:00', last: '2026-10-14T12:00:00', due: '2026-10-01T00:00:00' };
+  const e = OC.evaluate(it, {}, now);
+  assert.equal(e.nivel, 0, 'expectativa vencida do cliente não vira atraso');
+  assert.ok(!e.motivos.some(m => /Expectativa/.test(m.m)));
+  const det = { c1: { vacationStartDate: '2026-10-19T00:00:00' }, c2: { vacationStartDate: '2026-10-24T00:00:00' }, c3: { vacationStartDate: '2026-12-01T00:00:00' } };
+  const f = async url => det[new URL(url).pathname.split('/').pop()] || { items: [] };
+  const item = (id, extra) => Object.assign({ k: 'calcFerias:' + id, type: 'calcFerias', id, lado: 'esc', nivel: 0, grav: 0, motivos: [], parado: 1, uteisAberto: 1 }, extra || {});
+  const out = { items: [item('c1'), item('c2'), item('c3')] };
+  await OC.verificarAvisos(f, out, {}, Object.assign({}, OC.DEFAULTS), now);
+  const [a, b, c] = out.items;
+  assert.deepEqual([a.nivel, a.motivos[0].m], [2, 'Pagamento (prazo legal) vence em 1 d.u., 16/10'], 'férias na segunda 19/10: 2 dias antes é sábado, antecipa para sexta 16/10');
+  assert.deepEqual([b.nivel, b.motivos[0].m], [1, 'Pagamento (prazo legal) vence em 5 d.u., 22/10'], 'dentro do tempo de atendimento de 5 d.u.');
+  assert.deepEqual([c.nivel, c.motivos.length, c.pagamentoAte.alvo], [0, 0, '2026-11-27'], 'longe: só a data, para a agenda');
+  assert.equal(a.semCalculo, undefined, 'cálculo não procura cálculo');
+});
+
+
+/* ---------- v0.14: ações no Onvio (fase 2), sempre com API simulada ---------- */
+test('ações: formatos do Onvio real (trâmite, encaminhar, responsável, expectativa) e só onde foi mapeado', () => {
+  const geral = { type: 'geral', code: 2, lado: 'esc', resp: 'Ana' };
+  const reg = { id: 'g1', departmentId: 'dep1' };
+  assert.deepEqual(plano(OC.pedidoAcao({ acao: 'tramite', type: 'geral', texto: ' Segue o cálculo ', situacao: '4' }, reg, geral)),
+    { metodo: 'POST', url: OC.API + 'service-requesting/v1/tickets/g1/topics', corpo: { description: 'Segue o cálculo', status: 4 } });
+  const ferias = { type: 'avisoFerias', code: 2, lado: 'esc', resp: '' };
+  assert.equal(OC.pedidoAcao({ acao: 'tramite', type: 'avisoFerias', texto: 'ok', situacao: 5 }, { id: 'f1' }, ferias).url, OC.API + 'br-payroll-sr/v1/tickets/f1/topics');
+  assert.deepEqual(plano(OC.pedidoAcao({ acao: 'tramite', type: 'geral', texto: 'Veja', encaminharPara: 'u9' }, reg, geral).corpo), { description: 'Veja', status: 7, forwardedToExpanded: { departmentId: 'dep1', id: 'u9' } });
+  assert.deepEqual(plano(OC.pedidoAcao({ acao: 'tramite', type: 'avisoFerias', texto: 'Veja', encaminharPara: 'u9' }, { id: 'f1' }, ferias).corpo.forwardedToExpanded), { id: 'u9' });
+  assert.deepEqual(plano(OC.pedidoAcao({ acao: 'responsavel', type: 'geral', analista: 'u9' }, reg, geral)), { metodo: 'PUT', url: OC.API + 'service-requesting/v1/tickets/generic/g1/assign-staff', corpo: { departmentId: 'dep1', id: 'u9' } });
+  assert.deepEqual(plano(OC.pedidoAcao({ acao: 'responsavel', type: 'avisoFerias', analista: 'u9' }, { id: 'f1' }, ferias)), { metodo: 'PUT', url: OC.API + 'br-payroll-sr/v1/prior-notice-vacations/f1/assign-staff', corpo: { id: 'u9' } });
+  assert.deepEqual(plano(OC.pedidoAcao({ acao: 'expectativa', type: 'geral', data: '2026-10-30' }, reg, geral)), { metodo: 'PUT', url: OC.API + 'service-requesting/v1/tickets/generic/g1/change-due-date', corpo: { dueDate: '2026-10-30T00:00:00' } });
+  // regras do Onvio e do mapeamento
+  assert.throws(() => OC.pedidoAcao({ acao: 'tramite', type: 'geral', texto: 'x', situacao: 3 }, reg, geral), /escolha a situação/, 'situação fora do seletor do Onvio');
+  assert.deepEqual(plano(OC.situacoesTramite(geral).map(x => x.code)), [2, 8, 4, 5]);
+  assert.deepEqual(plano(OC.situacoesTramite({ type: 'geral', code: 4 }).map(x => x.code)), [4, 5], 'depois de Respondido só Respondido e Concluído');
+  assert.throws(() => OC.pedidoAcao({ acao: 'tramite', type: 'geral', texto: '  ', situacao: 4 }, reg, geral), /escreva o texto/);
+  assert.match(OC.podeAcao('responsavel', { type: 'avisoFerias', code: 2, lado: 'esc', resp: 'Ana' }).motivo, /só permite definir responsável quando ainda não há/);
+  assert.match(OC.podeAcao('responsavel', { type: 'geral', code: 4, lado: 'cli' }).motivo, /Respondido/);
+  assert.match(OC.podeAcao('expectativa', ferias).motivo, /ainda não mapeada/);
+  for (const k of ['cadEmpregado', 'cadContribuinte', 'cadEstagiario', 'rubricas']) assert.equal(OC.podeAcao('tramite', { type: k, code: 2, lado: 'esc' }).ok, false, k + ' não mapeado');
+  assert.throws(() => OC.pedidoAcao({ acao: 'tramite', type: 'rubricas', texto: 'x', situacao: 4 }, { id: 'r' }, { type: 'rubricas', code: 2, lado: 'esc' }), /ainda não mapeada/);
+  // só estes endereços recebem escrita; nunca DELETE nem /delete
+  assert.equal(OC.escritaPermitida('POST', OC.API + 'service-requesting/v1/tickets/g1/topics'), true);
+  assert.equal(OC.escritaPermitida('POST', OC.API + 'service-requesting/v1/tickets/g1/topics/t7/attachments'), true);
+  assert.equal(OC.escritaPermitida('PUT', OC.API + 'br-payroll-sr/v1/prior-notice-vacations/f1/assign-staff'), true);
+  assert.equal(OC.escritaPermitida('DELETE', OC.API + 'service-requesting/v1/tickets/g1/topics'), false);
+  assert.equal(OC.escritaPermitida('PUT', OC.API + 'service-requesting/v1/tickets/g1/topics/t7/attachments/a1/delete'), false);
+  assert.equal(OC.escritaPermitida('POST', OC.API + 'service-requesting/v1/tickets/generic'), false, 'criar solicitação não');
+  assert.equal(OC.escritaPermitida('POST', 'https://outro.com/api/service-requesting/v1/tickets/g1/topics'), false);
+  assert.equal(OC.idDoLocation('https://onvio.com.br/api/service-requesting/v1/tickets/g1/topics/abc123'), 'abc123');
+  assert.deepEqual(plano(OC.equipeDe([{ resp: 'Bia', respId: 'b' }, { resp: 'Ana', respId: 'a' }, { resp: 'Ana', respId: 'a' }, { resp: '', respId: '' }])), [{ id: 'a', nome: 'Ana' }, { id: 'b', nome: 'Bia' }]);
+});
+
+test('background: ação manda o trâmite pela aba do Onvio, com a autorização da página, e o anexo no trâmite criado', async () => {
+  const base = apiSimulada({ itens: { geral: [pend('g1', 77, { departmentId: 'dep1' })] } });
+  const escritas = [];
+  const api = async (url, init) => {
+    if (init && init.method && init.method !== 'GET') {
+      const corpo = init.body instanceof FormData ? [...init.body.entries()].map(([k, v]) => k + '=' + v.name + ':' + v.size) : JSON.parse(init.body);
+      escritas.push({ metodo: init.method, url: new URL(url).pathname, auth: init.headers.Authorization || null, corpo });
+      const r = respHttp(201, 'application/json', '');
+      if (/\/topics$/.test(url)) r.headers.set ? r.headers.set('location', url + '/top9') : null;
+      return Object.assign(r, { headers: { get: k => (k === 'location' && /\/topics$/.test(url) ? url + '/top9' : k === 'content-type' ? 'application/json' : null) } });
+    }
+    return base(url);
+  };
+  const { ctx, ouvintes, store } = carregarBackground({ abas: [aba(5, ONVIO_PORTAL)], fetchPorMundo: { MAIN: api }, fetch: api });
+  ctx.__controlOnvioAutorizacao = () => 'Bearer x';
+  const pedir = m => new Promise(res => ouvintes[0](m, { tab: { id: 5 } }, res));
+  const arq = { nome: 'recibo.txt', tipo: 'text/plain', b64: Buffer.from('ola').toString('base64') };
+  const r = await pedir({ cmd: 'acao', acao: 'tramite', type: 'geral', num: 77, texto: 'Segue', situacao: 4, arquivos: [arq] });
+  assert.equal(r.ok, true, r.erro);
+  assert.equal(r.anexos, 1);
+  assert.deepEqual(plano(escritas.map(e => [e.metodo, e.url])), [['POST', '/api/service-requesting/v1/tickets/g1/topics'], ['POST', '/api/service-requesting/v1/tickets/g1/topics/top9/attachments']]);
+  assert.deepEqual(plano(escritas[0].corpo), { description: 'Segue', status: 4 });
+  assert.equal(escritas[0].auth, 'Bearer x', 'usa a autorização que a própria página do Onvio usa');
+  assert.deepEqual(plano(escritas[1].corpo), ['file[]=recibo.txt:3']);
+  assert.ok(!Object.keys(store).some(k => /acao|texto|anexo/i.test(k)), 'nada da ação é guardado');
+  // responsável na folha e erro do Onvio visível
+  const r2 = await pedir({ cmd: 'acao', acao: 'responsavel', type: 'geral', num: 77, analista: 'u9' });
+  assert.equal(r2.ok, true);
+  assert.deepEqual(plano(escritas[2]), { metodo: 'PUT', url: '/api/service-requesting/v1/tickets/generic/g1/assign-staff', auth: 'Bearer x', corpo: { departmentId: 'dep1', id: 'u9' } });
+  const r3 = await pedir({ cmd: 'acao', acao: 'tramite', type: 'geral', num: 77, texto: 'x', situacao: 3 });
+  assert.equal(r3.ok, false);
+  assert.match(r3.erro, /escolha a situação/);
+  assert.equal(escritas.length, 3, 'pedido inválido não sai');
+});
+
+test('background: ação recusada pelo Onvio, sem aba ou com acesso de cliente não escreve', async () => {
+  const base = apiSimulada({ itens: { geral: [pend('g1', 77)] } });
+  let escritas = 0;
+  const api = async (url, init) => { if (init && init.method && init.method !== 'GET') { escritas++; return respHttp(403, 'application/json', '{}'); } return base(url); };
+  const { ouvintes } = carregarBackground({ abas: [aba(5, ONVIO_PORTAL)], fetchPorMundo: { MAIN: api }, fetch: api });
+  const r = await new Promise(res => ouvintes[0]({ cmd: 'acao', acao: 'tramite', type: 'geral', num: 77, texto: 'x', situacao: 4 }, { tab: { id: 5 } }, res));
+  assert.equal(r.ok, false);
+  assert.match(r.erro, /o Onvio recusou a ação \(HTTP 403\)/);
+  assert.equal(escritas, 1);
+  const sem = carregarBackground({ abas: [], fetch: api });
+  const r2 = await new Promise(res => sem.ouvintes[0]({ cmd: 'acao', acao: 'tramite', type: 'geral', num: 77, texto: 'x', situacao: 4 }, {}, res));
+  assert.equal(r2.ok, false);
+  assert.equal(escritas, 1, 'sem aba do Onvio nada é enviado');
 });

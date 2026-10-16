@@ -49,8 +49,8 @@ export function render(el, ctx) {
   const fatias = OC.MOTIVOS.map(mo => ({ k: mo.k, rot: mo.rot, n: cont[mo.k], cor: mo.cor }));
   const prio = OC.prioridades(base);
   const lems = (estado.lembretes || []).filter(l => !l.feito && ['hoje', 'atrasado'].includes(OC.situacaoLembrete(l))).sort((a, b) => a.quando.localeCompare(b.quando));
-  const hojeK = OC.ymd(new Date());
-  const expect = m.filter(i => i.due && OC.ymd(OC.parseDate(i.due)) === hojeK);
+  // aviso de férias/rescisão com o pagamento perto e sem o cálculo do mesmo empregado (OC.verificarAvisos)
+  const semCalc = base.filter(i => i.semCalculo).sort((a, b) => a.semCalculo.faltam - b.semCalculo.faltam);
 
   const rotCart = cart === MINHA ? 'Minha carteira' + (nome ? ' · ' + nome : '') : cart === EQUIPE ? 'Equipe toda' : cart === SEM ? 'Sem analista' : 'Carteira de ' + cart;
   const opcoes = [[MINHA, 'Minha carteira (' + m.length + ')'], [EQUIPE, 'Equipe toda (' + todas.length + ')']]
@@ -75,6 +75,7 @@ export function render(el, ctx) {
       '<button class="btn btn-sm" id="ag-novo">' + ic('plus', 'ic-sm') + ' Lembrete</button>' +
     '</div>' +
     heroHtml() +
+    semCalcHtml() +
     '<div class="hj-sits" role="group" aria-label="Filtrar por situação">' + sitsHtml() + '</div>' +
     '<div id="hj-cartoes">' + cartoesHtml() + '</div>';
 
@@ -105,6 +106,22 @@ export function render(el, ctx) {
     '</section>';
   }
 
+  function semCalcHtml() {
+    if (!semCalc.length) return '';
+    const quando = f => f < 0 ? 'venceu há ' + plural(-f, 'dia útil', 'dias úteis') : f === 0 ? 'vence hoje' : 'vence em ' + plural(f, 'dia útil', 'dias úteis');
+    const dt = ymd => ymd.slice(8, 10) + '/' + ymd.slice(5, 7);
+    return '<section class="hj-semcalc" style="--i:1" aria-label="Avisos sem cálculo">' +
+      '<h3>' + ic('alert', 'ic-sm') + ' Avisos sem cálculo <span>' + semCalc.length + '</span><small>Férias e rescisões com o pagamento perto e sem a solicitação de cálculo do mesmo empregado</small></h3>' +
+      '<div class="hj-semcalc-l" id="hj-semcalc">' + semCalc.map(i => {
+        const sc = i.semCalculo;
+        return '<button type="button" class="hj-sc' + (sc.faltam <= 0 ? ' late' : '') + '" data-k="' + esc(i.k) + '">' +
+          '<span class="hj-sc-quando"><b>' + esc(dt(sc.alvo)) + '</b><small>' + esc(quando(sc.faltam)) + '</small></span>' +
+          '<span class="hj-sc-tx"><b>#' + esc(i.num) + ' ' + esc(nomeCli(i)) + ' · ' + esc(i.detalhe || i.typeLabel) + '</b>' +
+          '<small>' + esc(i.typeLabel) + ' sem ' + esc(sc.calculo) + ' · pagamento até ' + esc(dt(sc.alvo)) + ' (' + esc(sc.ref) + ')' + (cart === MINHA ? '' : ' · ' + esc(i.resp || 'sem analista')) + '</small></span>' +
+          ic('chev-r', 'ic-sm') + '</button>';
+      }).join('') + '</div></section>';
+  }
+
   function slidesDoCarrossel() {
     const out = [];
     lems.filter(l => OC.situacaoLembrete(l) === 'atrasado').forEach(l => out.push({ n: 'lem', tag: 'Lembrete atrasado', txt: l.texto, sub: fmtDataHora(l.quando) + (l.num ? ' · #' + l.num + ' ' + (l.cliente || '') : ''), lem: l.id, c: 'var(--late)' }));
@@ -126,9 +143,6 @@ export function render(el, ctx) {
     prio.filter(p => p.motivo !== 'emdia').slice(0, 8).forEach(p => {
       const i = p.item;
       li.push('<li style="--i:' + (n++) + '"><div class="hj-step" tabindex="0" data-k="' + esc(i.k) + '" style="--c:' + cor(corMotivo[p.motivo]) + '"><i></i><span><b>' + esc(OC.acaoDe(i, p.motivo)) + '</b><small>#' + esc(i.num) + ' ' + esc(nomeCli(i)) + ' · ' + esc(i.typeLabel) + (cart === MINHA ? '' : ' · ' + esc(i.resp || 'sem analista')) + '</small></span>' + ic('chev-r', 'ic-sm') + '</div></li>');
-    });
-    expect.filter(i => !prio.slice(0, 8).some(p => p.item.k === i.k)).forEach(i => {
-      li.push('<li style="--i:' + (n++) + '"><div class="hj-step" tabindex="0" data-k="' + esc(i.k) + '" style="--c:var(--blue-deep)"><i></i><span><b>Expectativa de conclusão hoje</b><small>#' + esc(i.num) + ' ' + esc(nomeCli(i)) + ' · ' + esc(i.typeLabel) + '</small></span>' + ic('chev-r', 'ic-sm') + '</div></li>');
     });
     return li.length ? '<ol class="hj-passos-l" id="hj-passos">' + li.join('') + '</ol>' : '<div class="hj-zen">' + ic('check') + '<span>Nenhuma ação pendente. Bom trabalho!</span></div>';
   }
@@ -198,8 +212,9 @@ export function render(el, ctx) {
   const ligarCartoes = () => { const v = visiveis(); ligarItens($('#hj-cartoes', el), v, ctx.abrirDetalhe); };
   const redesenhar = () => render(el, ctx);
   ligarCartoes();
-  ligarItens($('#hj-passos', el) || document.createElement('div'), prio.map(p => p.item).concat(expect), ctx.abrirDetalhe);
+  ligarItens($('#hj-passos', el) || document.createElement('div'), prio.map(p => p.item), ctx.abrirDetalhe);
   ligarItens($('#hj-tick', el), base, ctx.abrirDetalhe);
+  if ($('#hj-semcalc', el)) ligarItens($('#hj-semcalc', el), semCalc, ctx.abrirDetalhe);
   ligarDicas(el);
   if (animar) { el.classList.remove('hj-anim'); void el.offsetWidth; el.classList.add('hj-anim'); setTimeout(() => el.classList.remove('hj-anim'), 1600); animarNumeros(el); }
   iniciarCarrossel($('#hj-tick', el));
