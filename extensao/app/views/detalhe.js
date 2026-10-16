@@ -3,7 +3,7 @@
  * anterior/próxima (setas ← → ou os botões do topo) sem fechar. */
 import { estado, itens, enviar, salvarLembretes, aoMudar } from '../estado.js';
 import { formAcao, ligarAcao, novaAcao, acaoAberta } from './acao-form.js';
-import { esc, pillSituacao, motivosHtml, fmtDataHora, fmtData, textoPuro, toast, ladoTexto, relativo, iniciais, $, $$ } from '../util.js';
+import { esc, pillSituacao, motivosHtml, porqueGrav, fmtDataHora, fmtData, textoPuro, toast, ladoTexto, relativo, iniciais, $, $$ } from '../util.js';
 import { abrirLembrete, lembreteAberto } from './lembrete-dlg.js';
 import { abrirNova, novaAberta } from './nova-dlg.js';
 import { abrirAnexos, anexosAbertos, contarAnexos, tipoArquivo } from './anexos-dlg.js';
@@ -75,6 +75,7 @@ function desenhar(i, r, erro, carregando) {
       '<h2>' + esc(i.apelido || i.cliente || 'Solicitação') + '</h2>' +
       '<div class="dlg-l3">' + esc(i.detalhe || i.assunto || '') + '</div>' +
       ((i.motivos && i.motivos.length) || i.abaProvavel || i.grav === 3 ? '<div class="motivos">' + motivosHtml(i) + '</div>' : '') +
+      ((pg => pg ? '<div class="grav-porque g' + i.grav + '"><b>' + (i.grav === 3 ? 'Por que é crítica (G3):' : i.grav === 2 ? 'Por que está fora do prazo (G2):' : 'Por que pede atenção (G1):') + '</b> ' + esc(pg.texto.replace(/^[^:]*?(porque |: )/, '')) + '</div>' : '')(porqueGrav(i))) +
       (i.resolvida ? '<div class="dlg-resolvida"><svg class="ic ic-sm"><use href="#i-check"/></svg><span><b>Considerada resolvida:</b> o cliente não respondeu' + (i.semRetorno != null ? ' em ' + i.semRetorno + ' dias úteis' : '') + ' e a última resposta não pedia nada. No Onvio ela continua aberta.</span></div>'
         : i.pedidoAoCliente ? '<div class="dlg-resolvida pede"><svg class="ic ic-sm"><use href="#i-clock"/></svg><span>' + porquePendente(i.pedidoAoCliente) + '</span></div>' : '') +
     '</div>' +

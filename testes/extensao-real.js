@@ -169,7 +169,7 @@ await esperar(() => app.evaluate(() => !!document.querySelector('.av-hero')), 15
 assert.equal(await app.getAttribute('#av-k-entregas [data-conta]', 'data-conta'), '2', 'entregas do período lidas na API (2 concluídas da Ana)');
 await new Promise(r => setTimeout(r, 1200));
 await foto(portal, '2-equipe-desempenho.png');
-await app.click('#av-rank .av-card');
+await app.click('#av-rank .av-lin');
 await esperar(() => app.evaluate(() => !!document.querySelector('#av-det .av-det')));
 await foto(portal, '2-equipe-detalhe.png');
 for (const rota of ['fila', 'fila?escopo=equipe', 'equipe?aba=carga', 'equipe?aba=resp', 'lembretes', 'lembretes?aba=lista']) {
