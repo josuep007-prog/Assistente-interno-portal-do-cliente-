@@ -322,7 +322,7 @@ const linhas = (p, sel) => p.$$eval(sel || '#corpo [data-k]', e => e.map(x => x.
 
 await passo('app · Hoje (analista): destaque com rosca, carrossel e próximos passos; painéis de vencimentos, avisos, sugestões, uso e previsão; sem cartões de situação', async () => {
   const p = await abrirApp('#/inicio');
-  await p.evaluate(() => { window.__respostas = Object.assign(window.__respostas || {}, { previsao: { ok: true, dias: 28, total: 12, prox30: 13, erros: [], empresas: [{ cliente: 'ACME LTDA', apelido: 'ACME', total: 8, porSemana: 2, prox7: 3, prox30: 11, tendencia: 'sobe', tipos: [{ tipo: 'Geral', n: 5 }, { tipo: 'Cálculo de férias', n: 3 }] }] } }); });
+  await p.evaluate(() => { window.__respostas = Object.assign(window.__respostas || {}, { casos: { ok: true, analises: {}, lidas: 2 }, detalhe: { ok: true, item: {}, tramites: [] }, previsao: { ok: true, dias: 28, total: 12, prox30: 13, erros: [], empresas: [{ cliente: 'ACME LTDA', apelido: 'ACME', total: 8, porSemana: 2, prox7: 3, prox30: 11, tendencia: 'sobe', tipos: [{ tipo: 'Geral', n: 5 }, { tipo: 'Cálculo de férias', n: 3 }] }] } }); });
   assert.equal(await p.textContent('#titulo'), 'Hoje');
   assert.match(await p.textContent('#subtitulo'), /, Ana · /);
   for (const sel of ['.painel-ctrl', '#fita', '#g-radar', '#g-pulso', '.mosaico', '.semana', '#mapa-idade', '.hj-sits', '.hj-card', '.hj-sec', '#hj-busca']) assert.equal(await p.$(sel), null, sel + ' saiu do Hoje');
@@ -339,9 +339,27 @@ await passo('app · Hoje (analista): destaque com rosca, carrossel e próximos p
   assert.deepEqual(await p.$$eval('.hj-tk', e => e.map(x => x.querySelector('.hj-tk-tag').textContent)), ['Lembrete atrasado', 'Urgente', 'Atenção']);
   assert.deepEqual(await p.$$eval('#hj-passos .hj-step b', e => e.map(x => x.textContent)), ['Cobrar o BETA', 'Fora do prazo · parada há 31 dias', 'Concluir hoje · o prazo vence hoje']);
   // painéis
-  assert.deepEqual(await p.$$eval('.hj-paineis > section', e => e.map(x => x.id)), ['hj-venc', 'hj-semcalc-v', 'hj-sug', 'hj-uso', 'hj-prev']);
-  assert.match(await p.textContent('#hj-sug'), /Comece pelas críticas \(G3\)[\s\S]*Responda quem já respondeu[\s\S]*Oriente os clientes que abriram na lista Geral/);
-  assert.equal(await p.getAttribute('#hj-sug a', 'href'), '#/fila?escopo=minhas&kpi=g3');
+  assert.deepEqual(await p.$$eval('.hj-paineis > section', e => e.map(x => x.id)), ['hj-venc', 'hj-semcalc-v', 'hj-uso', 'hj-prev']);
+  // sugestões de ação: casos específicos, cada um com a ação pronta (trâmite preenchido, revisar e confirmar)
+  await p.waitForFunction(() => window.__msgs.some(m => m.cmd === 'casos'));
+  await p.click('#hj-sug-ler');                          // a 1ª leitura saiu antes da resposta simulada: confere de novo
+  await p.waitForFunction(() => /Trâmites conferidos às/.test(document.querySelector('#hj-sug').textContent));
+  if (process.env.CAP) { await p.$eval('#hj-sug', e => e.scrollIntoView()); await p.screenshot({ path: process.env.CAP + '/sugestoes.png' }); }
+  const cs = await p.$$eval('#hj-sug .cs-l', e => e.map(x => x.textContent));
+  assert.equal(cs.length, 2);
+  assert.match(cs[0], /^Resolvida fora do portal\?#101 ACME · FulanoSem resposta do escritório há 31 dias: provavelmente resolvida fora do portal · Cálculo de fériasConcluir/);
+  assert.match(cs[1], /^Lista errada#102 BETA · Férias do JoãoAberta na lista Geral, mas tem aba própria: Aviso de férias.*Orientar e concluir/);
+  assert.match(await p.textContent('#hj-sug .cs-resumo'), /Resolvida fora do portal\? 1Lista errada 1/);
+  await p.click('#hj-sug [data-cs-acao="calcFerias:a"]');
+  await p.waitForSelector('#a-texto');
+  assert.match(await p.$eval('#a-texto', t => t.value), /já foi resolvida fora do portal/);
+  assert.equal(await p.$eval('#a-situacao', x => x.value), '5', 'concluir');
+  await p.keyboard.press('Escape');
+  await p.waitForSelector('#gaveta', { state: 'hidden' });
+  await p.click('#hj-sug .cs-abaErrada summary');
+  await p.click('#hj-sug [data-cs-ignorar="geral:b"]');
+  await p.waitForFunction(() => document.querySelectorAll('#hj-sug .cs-l').length === 1);
+  assert.equal(await p.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('__mem')).sugestoesIgnoradas || {}).join()), 'geral:b', 'só o k (e a última movimentação) fica');
   assert.match(await p.textContent('#hj-uso'), /BETA1 na lista Geral com aba própria/);
   // previsão por empresa: pedida sozinha ao abrir, mostrada em tabela
   await p.waitForFunction(() => window.__msgs.some(m => m.cmd === 'previsao'));
@@ -355,6 +373,7 @@ await passo('app · Hoje (analista): destaque com rosca, carrossel e próximos p
   const ponto = await p.evaluate(() => { const r = document.querySelector('.hj-donut .an-svg').getBoundingClientRect(), k = r.width / 150; return [r.left + (75 + 64) * k, r.top + 75 * k]; });
   await p.mouse.click(ponto[0], ponto[1]);
   await p.waitForFunction(() => location.hash === '#/fila?motivo=atraso');
+  await p.waitForFunction(() => document.querySelector('#titulo').textContent === 'Solicitações', null, { timeout: 3000 }).catch(() => {});
   assert.equal(await p.textContent('#titulo'), 'Solicitações');
   await p.evaluate(() => { location.hash = '#/inicio'; });
   await p.waitForSelector('#hj-passos');
@@ -369,7 +388,6 @@ await passo('app · Hoje (analista): destaque com rosca, carrossel e próximos p
   await p.selectOption('#hj-carteira', '__equipe');
   await p.waitForFunction(() => document.querySelector('.hj-donut .an-total').textContent === '25%');
   assert.match(await p.textContent('.hj-hero-tx p'), /4 pendências · 3 com o escritório · 1 com o cliente · 1 sem analista/);
-  assert.match(await p.textContent('#hj-sug'), /Distribua as solicitações sem responsável/);
   await p.selectOption('#hj-carteira', 'Bia');
   await p.waitForFunction(() => /Tudo em dia/.test(document.querySelector('#hj-titulo').textContent));
   await p.reload(); await p.waitForSelector('#hj-carteira');
@@ -404,7 +422,6 @@ await passo('app · Hoje: admissões sem trâmite do escritório em faixa recolh
   assert.match(l[2], /^22\/10prazo · em 2 dias úteis#305 KAPPA · Lia.*Cadastro estagiário · início em 07\/10/, 'estagiário: a data é o prazo do eSocial (15 dias após o início)');
   assert.match(await p.textContent('#hj-adm-l .hj-adm-nota'), /Estagiário: até 15 dias depois do início/);
   assert.match(await p.textContent('#hj-venc'), /hoje.*ZETA · Beltrano.*Cálculo de férias · início das férias em 20\/10/);
-  assert.ok(!/Priorize as admissões em destaque/.test(await p.textContent('#hj-sug')), 'sugestão não repete o que já tem faixa própria');
   await p.click('#hj-admissao [data-k="cadEmpregado:e2"]');
   await p.waitForFunction(() => (window.__msgs || []).some(m => m.cmd === 'detalhe' && String(m.num) === '302'));
   await p.keyboard.press('Escape');
@@ -726,7 +743,8 @@ await passo('app · gravidade com o porquê (lista, detalhe) e cantos quadrados 
   assert.match(await p.textContent('#gaveta .motivos'), /Crítica \(G3\)/);
   // cantos: até 4 px em botões, etiquetas, chips e janelas; iniciais continuam redondas
   const raio = sel => p.$eval(sel, e => parseFloat(getComputedStyle(e).borderTopLeftRadius));
-  for (const sel of ['#gaveta', '#gaveta .pill', '#gaveta .btn', '#gaveta .dtab']) assert.ok(await raio(sel) <= 4, sel + ': ' + await raio(sel));
+  // a janela é redesenhada quando a leitura chega: mede depois que ela parou de mudar
+  for (const sel of ['#gaveta', '#gaveta .pill', '#gaveta .btn', '#gaveta .dtab']) await p.waitForFunction(s => { const e = document.querySelector(s); return e && e.isConnected && parseFloat(getComputedStyle(e).borderTopLeftRadius) <= 4; }, sel, { timeout: 3000 }).catch(async () => assert.fail(sel + ': ' + await raio(sel)));
   await p.keyboard.press('Escape');
   await p.evaluate(() => { const x = document.createElement('div'); x.innerHTML = '<span class="pr-tag" id="t1">x</span><span class="chip-f" id="t2">x</span><span class="sc-n" id="t3">1</span><span class="orig" id="t4">x</span><span class="tr-av" id="t5">AT</span>'; document.body.appendChild(x); });
   for (const sel of ['#t1', '#t2', '#t3', '#t4']) assert.ok(await raio(sel) <= 4, sel + ': ' + await raio(sel));
@@ -941,15 +959,24 @@ await passo('app · detalhe: destaques sutis; trâmites como conversa (filtro, o
   assert.match(await p.textContent('#g-corpo .tr-item'), /Abertura/, 'começa pela abertura');
   assert.deepEqual(await p.$$eval('#g-corpo .tr-item', e => e.map(x => x.classList.contains('esc') ? 'esc' : 'cli')), ['cli', 'esc', 'cli']);
   assert.match(await p.textContent('#g-corpo .tr-item.ultimo'), /Ok/);
+  // "Responder" ao lado da última mensagem do cliente (e só dela)
+  assert.equal(await p.$$eval('#g-corpo .tr-responder', e => e.length), 1);
+  assert.equal(await p.$eval('#g-corpo .tr-responder', b => b.closest('.tr-item').classList.contains('ultimo')), true);
+  const [bolha, botao] = await p.$eval('#g-corpo .tr-item.ultimo', e => [e.querySelector('.tr-bolha').getBoundingClientRect(), e.querySelector('.tr-responder').getBoundingClientRect()].map(r => ({ x: r.left, d: r.right })));
+  assert.ok(botao.x >= bolha.d, 'ao lado da bolha');
   assert.match(await p.textContent('#g-corpo .tr-lista'), /5 dias depois/);
   assert.equal(await p.$('[data-tr-filtro], [data-tr-ordem], .tr-barra'), null, 'sem filtros por cliente, escritório ou anexo');
-  assert.ok(await p.$eval('#g-corpo', c => c.scrollHeight <= c.clientHeight || c.scrollTop + c.clientHeight >= c.scrollHeight - 2), 'mostra o fim da conversa');
+  assert.ok(await p.$eval('#g-corpo', c => c.scrollHeight <= c.clientHeight || c.scrollTop + c.clientHeight >= c.scrollHeight - 2), 'mostra o fim da conversa ' + await p.$eval('#g-corpo', c => [c.scrollTop, c.clientHeight, c.scrollHeight].join()));
   const ladoEsc = await p.$eval('#g-corpo .tr-item.esc', e => getComputedStyle(e).flexDirection);
   assert.equal(ladoEsc, 'row-reverse');
   await p.waitForSelector('#g-corpo .tr-bolha.longo .tr-mais');
   await p.click('#g-corpo .tr-bolha.longo .tr-mais');
   assert.equal(await p.$eval('#g-corpo .tr-bolha.longo', e => e.classList.contains('aberto')), true, 'Ver tudo abre o texto longo');
   if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/detalhe-tramites.png' });
+  await p.click('#g-corpo .tr-responder');
+  await p.waitForSelector('#a-texto');
+  await p.click('#a-cancelar');
+  await p.waitForSelector('#g-corpo .tr-item');
   // um botão só para os anexos: abre a escolha com todos marcados
   assert.match(await p.textContent('#g-anexos'), /Anexos\s*4/);
   await p.click('#g-anexos');
@@ -1025,15 +1052,17 @@ await passo('app · Fila: cartões por tipo (todos, enxutos; de novo tira); orde
 
 await passo('app · Distribuir: mostra para quem vai cada sem responsável, com o porquê; Atribuir confirma e define no Onvio', async () => {
   const p = await abrirApp('#/fila', {});
-  await p.evaluate(() => { window.__respostas = Object.assign(window.__respostas || {}, { acao: { ok: true, acao: 'responsavel', anexos: 0 }, distribuicao: { ok: true, dias: 7, movimentadas: 40, erros: [], sugestoes: [
-    { item: { k: 'avisoRescisao:c', type: 'avisoRescisao', typeLabel: 'Aviso de rescisão', num: 103, code: 4, status: 'Respondido', lado: 'cli', apelido: 'GAMA', detalhe: 'Ciclano', parado: 26, nivel: 2, resp: '' }, resp: 'Bia', respId: 'id-bia', n: 3, motivo: 'atendeu 3 de 4 solicitações desta empresa na última semana', alternativas: [{ resp: 'Ana Teste', n: 1, respId: 'id-ana' }] },
-    { item: { k: 'rubricas:z', type: 'rubricas', typeLabel: 'Lançamento de rubricas', num: 105, code: 1, status: 'Sem análise', lado: 'esc', apelido: 'ZETA', detalhe: '10/2026', parado: 1, nivel: 0, resp: '' }, resp: 'Bia', respId: 'id-bia', n: 1, motivo: 'atendeu 1 de 1 solicitações desta empresa na última semana', alternativas: [] }
+  await p.evaluate(() => { window.__respostas = Object.assign(window.__respostas || {}, { acao: { ok: true, acao: 'responsavel', anexos: 0 }, distribuicao: { ok: true, dias: 30, movimentadas: 40, erros: [], sugestoes: [
+    { item: { k: 'avisoRescisao:c', type: 'avisoRescisao', typeLabel: 'Aviso de rescisão', num: 103, code: 4, status: 'Respondido', lado: 'cli', apelido: 'GAMA', detalhe: 'Ciclano', parado: 26, nivel: 2, resp: '' }, resp: 'Bia', respId: 'id-bia', n: 3, motivo: 'atendeu 3 de 4 solicitações desta empresa nos últimos 30 dias', alternativas: [{ resp: 'Ana Teste', n: 1, respId: 'id-ana' }] },
+    { item: { k: 'rubricas:z', type: 'rubricas', typeLabel: 'Lançamento de rubricas', num: 105, code: 1, status: 'Sem análise', lado: 'esc', apelido: 'ZETA', detalhe: '10/2026', parado: 1, nivel: 0, resp: '' }, resp: 'Bia', respId: 'id-bia', n: 1, motivo: 'atendeu 1 de 1 solicitações desta empresa nos últimos 30 dias', alternativas: [] }
   ] } }); });
   await p.evaluate(() => { location.hash = '#/distribuir'; });
   await p.waitForSelector('.dist-l');
   assert.equal(await p.textContent('#titulo'), 'Distribuir');
-  assert.equal((await p.evaluate(() => window.__msgs.find(m => m.cmd === 'distribuicao'))).dias, 7);
-  assert.match(await p.textContent('.dist-l'), /#103GAMA.*Aviso de rescisão · Ciclano.*atendeu 3 de 4 solicitações desta empresa na última semana · depois: Ana Teste \(1\)/);
+  assert.equal((await p.evaluate(() => window.__msgs.find(m => m.cmd === 'distribuicao'))).dias, 30);
+  assert.match(await p.textContent('#subtitulo'), /nos últimos 30 dias/);
+  assert.equal(await p.$('[data-dias]'), null, 'só 30 dias: 7 e 14 saíram');
+  assert.match(await p.textContent('.dist-l'), /#103GAMA.*Aviso de rescisão · Ciclano.*atendeu 3 de 4 solicitações desta empresa nos últimos 30 dias · depois: Ana Teste \(1\)/);
   assert.equal(await p.$eval('.dist-l select', s => s.value), 'id-bia');
   assert.match(await p.textContent('#d-todas'), /Atribuir todas \(1\)/, 'Rubricas fica de fora (não mapeado)');
   assert.equal(await p.$eval('[data-atr="rubricas:z"]', b => b.disabled), true);
@@ -1046,8 +1075,6 @@ await passo('app · Distribuir: mostra para quem vai cada sem responsável, com 
   const m = await p.evaluate(() => window.__msgs.find(x => x.cmd === 'acao'));
   assert.deepEqual([m.acao, m.type, m.num, m.analista], ['responsavel', 'avisoRescisao', '103', 'id-ana']);
   assert.match(await p.textContent('#d-todas'), /Atribuir todas \(0\)/);
-  await p.click('[data-dias="14"]');
-  await p.waitForFunction(() => window.__msgs.some(x => x.cmd === 'distribuicao' && x.dias === 14));
   assert.deepEqual(p.erros, []);
 });
 

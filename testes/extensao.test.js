@@ -502,7 +502,8 @@ test('o arquivo de regras de exemplo é válido e cobre prazos, feriados e palav
   const ex = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'regras', 'escritorio.exemplo.json'), 'utf8'));
   const r = OC.normalizarRegras(ex);
   assert.ok(r);
-  assert.equal(Object.keys(r.config).length, 8, 'todos os prazos do exemplo passam na validação');
+  assert.equal(Object.keys(r.config).length, 9, 'todos os prazos do exemplo passam na validação');
+  assert.ok(r.textosSugestao && r.foraDoPortal, 'frases e textos das sugestões de ação');
   assert.equal(r.feriados.length, 2);
   assert.equal(r.abaErrada.length, 4);
   assert.equal(r.abaErrada[0].palavras[0], 'calculo de ferias', 'palavras ficam sem acento');
@@ -1323,7 +1324,7 @@ test('distribuição: lê só o período (para na primeira mais antiga) e o serv
   store.snapshot = { items: [{ k: 'geral:g1', type: 'geral', resp: '', codCliente: '', cliente: 'ACME' }, { k: 'geral:g2', type: 'geral', resp: 'Ana', cliente: 'X' }] };
   const r = await new Promise(res => ouvintes[0]({ cmd: 'distribuicao', dias: 7 }, { tab: { id: 5 } }, res));
   assert.equal(r.ok, true);
-  assert.deepEqual([r.dias, r.sugestoes.length, r.sugestoes[0].resp], [7, 1, ''], 'sem histórico no período: ninguém sugerido');
+  assert.deepEqual([r.dias, r.sugestoes.length, r.sugestoes[0].resp], [30, 1, ''], 'sempre 30 dias; sem histórico no período: ninguém sugerido');
   assert.deepEqual(Object.keys(store).filter(k => !['metodoLeitura', 'perfilSessao', 'snapshot'].includes(k)), [], 'nada é gravado');
 });
 
@@ -1536,7 +1537,7 @@ test('admissão: retroativa, já passada ou perto do início destaca; cadastro e
   assert.equal(OC.escritorioTramitou({ type: 'cadEstagiario', code: 3 }), true);
 });
 
-test('Hoje: vencimentos legais na janela, uso errado do portal por empresa e sugestões de ação', () => {
+test('Hoje: vencimentos legais na janela e uso errado do portal por empresa', () => {
   const now = new Date(2026, 9, 16, 10);
   const v = OC.vencimentosLegais([
     { k: 'a', lado: 'esc', pagamentoAte: { alvo: '2026-10-20', ref: 'x' } },
@@ -1554,9 +1555,76 @@ test('Hoje: vencimentos legais na janela, uso errado do portal por empresa e sug
   ], {});
   assert.equal(uso.length, 1, 'BETA sem sinais fica de fora');
   assert.deepEqual(plano(uso[0].motivos), ['1 na lista Geral com aba própria', '2 pedidos repetidos em aberto', '1 parada esperando o cliente há mais de 15 dias']);
-  const sug = OC.sugestoesAcoes([it('a', { grav: 3 }), it('b', { resp: '' }), it('c', { lado: 'cli', prescreveEm: 3 })], { admissoes: [{}], semCalculo: [{}, {}], vencimentos: [{ faltam: 0 }, { faltam: 5 }] });
-  assert.deepEqual(plano(sug.map(x => x.k + '=' + x.n)), ['admissao=1', 'g3=1', 'pagamento=1', 'semcalc=2', 'semresp=1', 'prescreve=1']);
-  assert.equal(sug.find(x => x.k === 'semresp').link, '#/distribuir');
+});
+
+/* ---------- v0.24: sugestões de ação por solicitação ---------- */
+test('sugestões de ação: casos específicos (fora do portal, duplicada, lista errada) com o trâmite já preenchido', () => {
+  const it = (k, o) => Object.assign({ k, type: 'geral', typeLabel: 'Geral', id: 'g' + k, num: 100, code: 2, lado: 'esc', codCliente: 1, cliente: 'ACME', apelido: 'ACME', parado: 1, resp: 'Ana', last: '2026-10-10T10:00:00' }, o);
+  const casos = OC.casosSugeridos([
+    it('velha', { num: 101, parado: 31 }),                                         // vez do escritório há mais de 30 dias
+    it('noCli', { num: 102, parado: 40, lado: 'cli', code: 4 }),                   // parada com o cliente: é prescrição, não "fora"
+    it('d1', { num: 110, type: 'avisoFerias', typeLabel: 'Aviso de férias', detalhe: 'Fulano' }),
+    it('d2', { num: 115, type: 'avisoFerias', typeLabel: 'Aviso de férias', detalhe: 'fulano ' }),
+    it('aba', { num: 120, abaProvavel: { tipo: 'avisoFerias', label: 'Aviso de férias' } }),
+    it('cad', { num: 130, type: 'cadEmpregado', typeLabel: 'Cadastro empregado', parado: 45 }),
+    it('ok', { num: 140 })
+  ], {}, {});
+  assert.deepEqual(plano(casos.map(c => c.k + '=' + c.tipo)), ['cad=fora', 'velha=fora', 'd2=duplicada', 'aba=abaErrada']);
+  const velha = casos.find(c => c.k === 'velha');
+  assert.match(velha.porque, /Sem resposta do escritório há 31 dias/);
+  assert.equal(velha.botao, 'Concluir');
+  assert.equal(velha.acao.situacao, '5', 'concluir');
+  assert.match(velha.acao.texto, /resolvida fora do portal/);
+  const dup = casos.find(c => c.k === 'd2');
+  assert.match(dup.acao.texto, /repete a nº 110/);
+  assert.match(casos.find(c => c.k === 'aba').acao.texto, /aba própria no Portal do Cliente: Aviso de férias/);
+  const cad = casos.find(c => c.k === 'cad');
+  assert.equal(cad.pode.ok, false, 'Cadastro ainda não tem trâmite mapeado: o caso aparece só para abrir');
+  // 0 desliga a regra dos 30 dias; "não é o caso" some até a solicitação mexer
+  assert.ok(!OC.casosSugeridos([it('velha', { parado: 31 })], {}, { foraDoPortalDias: 0 }).length);
+  const ig = OC.ignorarCaso({}, 'velha', { last: '2026-10-10T10:00:00' }, new Date('2026-10-16T12:00:00Z'));
+  assert.deepEqual(Object.keys(ig), ['velha']);
+  assert.ok(!OC.casosSugeridos([it('velha', { parado: 31 })], {}, {}, ig).length);
+  assert.equal(OC.casosSugeridos([it('velha', { parado: 31, last: '2026-10-15T09:00:00' })], {}, {}, ig).length, 1, 'mexeu: volta');
+  assert.deepEqual(Object.keys(OC.ignorarCaso(ig, 'velha', null)), [], 'desfazer');
+});
+
+test('sugestões de ação: lidas nos trâmites (fora do portal, anexo que não chegou, falta informação), só o veredito sai', async () => {
+  const t = OC.TYPE_BY_KEY.geral;
+  const tp = (n, status, description, anexos) => ({ created: '2026-10-0' + n + 'T10:00:00', status, description, attachmentsExpanded: anexos || [] });
+  assert.deepEqual(plano(OC.analisarCaso([tp(1, 1, 'Preciso da guia do FGTS de setembro da empresa'), tp(2, 4, 'Segue a guia.'), tp(3, 3, 'Obrigado, <b>já resolvido</b> por telefone')], t, {})), { tipo: 'fora', trecho: 'ja resolvido' });
+  assert.deepEqual(plano(OC.analisarCaso([tp(1, 1, 'Seguem em anexo os documentos do novo empregado')], t, {})), { tipo: 'anexo', trecho: 'seguem em anexo' });
+  assert.equal(OC.analisarCaso([tp(1, 1, 'Seguem em anexo os documentos', [{ name: 'rg.pdf' }])], t, {}), null, 'o anexo veio');
+  assert.deepEqual(plano(OC.analisarCaso([tp(1, 1, 'Férias')], t, {})), { tipo: 'falta', trecho: '' });
+  assert.equal(OC.analisarCaso([tp(1, 1, 'Férias'), tp(2, 4, 'Quais as datas?')], t, {}), null, 'o escritório já perguntou');
+  assert.equal(OC.analisarCaso([tp(1, 1, 'Férias')], OC.TYPE_BY_KEY.avisoFerias, {}), null, 'listas da folha têm campos próprios');
+  assert.equal(OC.analisarCaso([tp(1, 1, 'Preciso da guia do FGTS de setembro da empresa')], t, {}), null);
+  // leitura em lote: só vez do escritório, só listas com trâmite mapeado, cache pela última movimentação
+  const lidos = [];
+  const f = async url => { lidos.push(url); return { items: [tp(1, 1, 'Podem desconsiderar, enviei por e-mail')] }; };
+  const it = (k, o) => Object.assign({ k, type: 'geral', id: 'g' + k, lado: 'esc', last: '2026-10-10T10:00:00' }, o);
+  const r = await OC.analisarCasos(f, [it('a'), it('b', { lado: 'cli' }), it('c', { type: 'cadEmpregado' }), it('d')], { d: { l: '2026-10-10T10:00:00', tipo: null, trecho: '' } }, {});
+  assert.equal(lidos.length, 1, 'só a "a" é lida (b é do cliente, c sem trâmite mapeado, d no cache)');
+  assert.deepEqual(plano([r.analises.a.l, r.analises.a.tipo, Object.keys(r.analises.a).sort()]), ['2026-10-10T10:00:00', 'fora', ['l', 'tipo', 'trecho']]);
+  assert.ok(['podem desconsiderar', 'enviei por e-mail'].includes(r.analises.a.trecho), 'só o trecho da lista que casou');
+  assert.ok(!JSON.stringify(r).includes('Podem desconsiderar,'), 'o texto do trâmite não sai');
+  const casos = OC.casosSugeridos([it('a', { num: 5, cliente: 'X' })], r.analises, {});
+  assert.equal(casos[0].tipo, 'fora');
+  assert.match(casos[0].porque, /trâmite recente/);
+  const pedir = OC.casosSugeridos([it('e', { num: 6 })], { e: { l: '2026-10-10T10:00:00', tipo: 'anexo', trecho: 'em anexo' } }, {});
+  assert.deepEqual(plano([pedir[0].botao, pedir[0].acao.situacao]), ['Pedir o anexo', '4']);
+  assert.equal(OC.casosSugeridos([it('e', { num: 6, last: '2026-10-12T10:00:00' })], { e: { l: '2026-10-10T10:00:00', tipo: 'anexo' } }, {}).length, 0, 'mexeu depois do veredito: espera a próxima leitura');
+});
+
+test('regras: frases e textos das sugestões de ação vêm do arquivo do escritório', () => {
+  const r = OC.normalizarRegras({ foraDoPortal: ['Resolvido no balcão'], anexoCitado: ['vai junto'], textosSugestao: { fora: 'Concluindo.', inventado: 'x' }, prazos: { foraDoPortalDias: 45 } });
+  assert.deepEqual(plano(r.foraDoPortal), ['resolvido no balcao']);
+  assert.deepEqual(plano(r.textosSugestao), { fora: 'Concluindo.' });
+  assert.equal(r.config.foraDoPortalDias, 45);
+  const s = OC.combinarSettings({ regras: r }, {});
+  assert.equal(s.textosSugestao.fora, 'Concluindo.');
+  assert.match(s.textosSugestao.anexo, /anexar de novo/);
+  assert.equal(s.foraDoPortalDias, 45);
 });
 
 test('previsão por empresa: média por semana, tendência e estimativa; o service worker calcula sem gravar', async () => {

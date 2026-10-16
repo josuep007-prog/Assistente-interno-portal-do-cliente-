@@ -181,7 +181,8 @@ async function garantirEscritorio(f, forcar) {
 }
 // Acesso de cliente: nada do que foi lido fica guardado nem aparece (lembretes pessoais ficam).
 async function bloquearVisaoCliente(e) {
-  await chrome.storage.local.remove(['snapshot', 'assinaturas', 'tramites', 'eventos', 'serie', 'ultimaVerificacao', 'notifMap', 'semCalculoMarcas', 'desempenhoCache']);
+  await chrome.storage.local.remove(['snapshot', 'assinaturas', 'tramites', 'eventos', 'serie', 'ultimaVerificacao', 'notifMap', 'semCalculoMarcas', 'desempenhoCache', 'sugestoesIgnoradas']);
+  casosCache = {};
   await chrome.storage.local.set({ status: { estado: 'visao_cliente', em: new Date().toISOString(), msg: e.message } });
   await chrome.action.setBadgeText({ text: '' });
 }
@@ -643,6 +644,9 @@ async function abrir(it, tabPreferida) {
   }
 }
 
+// Vereditos das Sugestões de ação (k -> { l, tipo, trecho }): só na memória, some quando o service worker dorme
+let casosCache = {};
+
 /* ---------- mensagens do painel ---------- */
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   (async () => {
@@ -660,6 +664,14 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         const { f } = await escolherFetcher();
         const mov = await OC.lerMovimentadas(f, 28, new Date());
         reply(Object.assign({ ok: true, erros: mov.erros }, OC.previsaoPorEmpresa(mov.itens, new Date(), 28)));
+      }
+      else if (msg.cmd === 'casos') {               // Sugestões de ação do Hoje: lê os trâmites das pendências na vez do escritório
+        const { f } = await escolherFetcher();        // e devolve só o veredito (tipo e qual trecho da lista casou), nunca o texto
+        const s = await getSettings();
+        const { snapshot } = await chrome.storage.local.get('snapshot');
+        const r = await OC.analisarCasos(f, (snapshot && snapshot.items) || [], casosCache, s, 80);
+        casosCache = r.analises;                       // só na memória do service worker (não é gravado)
+        reply(Object.assign({ ok: true, em: new Date().toISOString() }, r));
       }
       else if (msg.cmd === 'desempenho') {          // área do gestor: entregas do período e do anterior, lidas na hora (nada é guardado)
         const { f } = await escolherFetcher();
@@ -682,7 +694,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       }
       else if (msg.cmd === 'distribuicao') {        // sob demanda: quem mais atendeu cada empresa nos últimos dias (nada é guardado)
         const { f } = await escolherFetcher();
-        const dias = Math.min(30, Math.max(1, Number(msg.dias) || 7));
+        const dias = 30;                             // período fixo (7 e 14 dias saíram)
         const { snapshot } = await chrome.storage.local.get('snapshot');
         const mov = await OC.lerMovimentadas(f, dias, new Date());
         const pend = (snapshot && snapshot.items) || [];

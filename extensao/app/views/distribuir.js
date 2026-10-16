@@ -7,7 +7,7 @@ import { estado, itens, enviar } from '../estado.js';
 import { esc, toast, ligarItens, plural, pillSituacao, $, $$ } from '../util.js';
 const OC = window.OC;
 
-let dias = 7;
+const dias = 30;          // período fixo, como a avaliação da equipe (7 e 14 dias saíram)
 let resultado = null;   // { dias, movimentadas, erros, sugestoes }
 let lendo = false;
 let escolha = {};       // k -> id do responsável escolhido (troca da sugestão), só nesta visita
@@ -18,13 +18,12 @@ let trabalhando = false;
 export function render(el, ctx) {
   ctx.cab({
     titulo: 'Distribuir',
-    sub: 'Quem mais atendeu cada empresa ' + (dias === 7 ? 'na última semana' : 'nos últimos ' + dias + ' dias') + ' · admissões à parte'
+    sub: 'Quem mais atendeu cada empresa nos últimos 30 dias · admissões à parte'
   });
   const sem = (estado.snap ? estado.snap.items || [] : []).filter(i => !i.resp);
   const atribuiveis = resultado ? resultado.sugestoes.filter(x => OC.podeAcao('responsavel', x.item).ok && idEscolhido(x) && estadoK[x.item.k] !== 'ok') : [];
   el.innerHTML =
     '<div class="barra">' +
-      '<span class="rotulo">Período</span><div class="seg" role="group" aria-label="Período">' + [7, 14, 30].map(d => '<button data-dias="' + d + '"' + (dias === d ? ' class="on"' : '') + '>' + (d === 7 ? 'Última semana' : d + ' dias') + '</button>').join('') + '</div>' +
       '<button class="btn btn-sm" id="d-recalc"' + (lendo || trabalhando ? ' disabled' : '') + '><svg class="ic ic-sm"><use href="#i-refresh"/></svg> ' + (lendo ? 'Lendo o Onvio…' : 'Recalcular') + '</button>' +
       '<span class="count">' + plural(sem.length, 'sem responsável', 'sem responsável') + (resultado ? ' · ' + plural(resultado.movimentadas, 'movimentada', 'movimentadas') + ' no período' : '') + '</span>' +
       '<span class="spacer" style="flex:1"></span>' +
@@ -36,7 +35,6 @@ export function render(el, ctx) {
     (resultado && resultado.erros && resultado.erros.length ? '<div class="faixa warn"><svg class="ic"><use href="#i-alert"/></svg>Algumas listas não foram lidas: ' + esc(resultado.erros.join(' · ')) + '. As sugestões podem estar incompletas.</div>' : '') +
     '<div id="d-corpo">' + corpo(sem) + '</div>';
 
-  $$('[data-dias]', el).forEach(b => b.onclick = () => { dias = Number(b.dataset.dias); resultado = null; estadoK = {}; render(el, ctx); });
   $('#d-recalc', el).onclick = () => { resultado = null; estadoK = {}; render(el, ctx); };
   $$('[data-esc]', el).forEach(s => s.onchange = e => { escolha[s.dataset.esc] = e.target.value; render(el, ctx); });
   $$('[data-esc], [data-atr], [data-conf-k], [data-canc-k]', el).forEach(s => s.addEventListener('click', e => e.stopPropagation()));

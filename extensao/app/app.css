@@ -824,11 +824,6 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .hj-mini > span{flex:1; min-width:0; display:flex; flex-direction:column}
 .hj-mini > span b{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px}
 .hj-mini > span small{font-size:11.5px; color:var(--ink-3)}
-.hj-sug-l{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px}
-.hj-sug-l a{display:flex; align-items:center; gap:12px; padding:8px 10px; border:1px solid var(--rule); border-radius:var(--r); text-decoration:none; color:inherit; background:var(--surface-2)}
-.hj-sug-l a:hover{border-color:var(--blue-deep)}
-.hj-sug-l b{min-width:34px; text-align:center; font:800 17px "Archivo",sans-serif; color:var(--blue-deep); font-variant-numeric:tabular-nums}
-.hj-sug-l span{flex:1; font-size:13px}
 .hj-uso-l{display:flex; flex-direction:column; gap:6px}
 .hj-uso{display:flex; flex-direction:column; padding:8px 10px; border:1px solid var(--rule); border-left:3px solid var(--today); border-radius:var(--r); text-decoration:none; color:inherit; background:var(--surface-2)}
 .hj-uso:hover{border-color:var(--today)}
@@ -1226,3 +1221,38 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .vista.entra > *{animation:vista-entra .18s ease-out both}
 @keyframes vista-entra{from{opacity:0; transform:translateY(4px)} to{opacity:1; transform:none}}
 @media (prefers-reduced-motion: reduce){ .vista.entra > *{animation:none} .btn:active:not(:disabled){transform:none} }
+
+/* ============ Sugestões de ação (Hoje): casos específicos com a ação pronta ============ */
+#hj-sug{margin-top:18px}
+#hj-sug header .sc-n{margin-left:2px}
+.cs-resumo{display:flex; flex-wrap:wrap; gap:6px 14px; margin:0 0 10px; font-size:12px; color:var(--ink-2)}
+.cs-resumo span{display:inline-flex; align-items:center; gap:6px}
+.cs-resumo i{width:8px; height:8px; border-radius:50%; background:var(--cs)}
+.cs-lista{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px 12px}
+.cs-l{--cs:var(--blue-deep); display:flex; align-items:center; gap:8px; min-width:0; padding-right:8px; border:1px solid var(--rule); border-left:3px solid var(--cs); border-radius:var(--r); background:var(--surface-2); transition:border-color .15s}
+.cs-l:hover{border-color:var(--cs)}
+.cs-fora{--cs:var(--status-green)} .cs-duplicada{--cs:#7a5bc7} .cs-abaErrada{--cs:var(--status-warn)} .cs-anexo, .cs-falta{--cs:var(--blue-deep)}
+.cs-abre{flex:1; min-width:0; display:flex; flex-direction:column; align-items:flex-start; gap:2px; padding:8px 10px; border:0; background:none; color:inherit; font:inherit; text-align:left; cursor:pointer}
+.cs-tag{font:700 10.5px "IBM Plex Sans",sans-serif; letter-spacing:.05em; text-transform:uppercase; color:var(--cs)}
+.cs-tx{display:flex; flex-direction:column; min-width:0; max-width:100%}
+.cs-tx b{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px}
+.cs-tx small{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; color:var(--ink-3)}
+.cs-acoes{flex:none; display:flex; align-items:center; gap:4px}
+@media (max-width:1100px){ .cs-lista{grid-template-columns:minmax(0,1fr)} }
+.cs-acoes .icon-btn{width:28px; height:28px; color:var(--ink-3)}
+/* "Responder" ao lado da última mensagem do cliente, embaixo à direita da bolha */
+.tr-responder{flex:none; align-self:flex-end; white-space:nowrap}
+
+/* ============ destaque do Hoje com as manchas do Control Hub: azul em cima à esquerda, lilás e verde-água ao fundo,
+   brilho vermelho embaixo, bem suaves (o texto continua sobre fundo claro) ============ */
+.hj-hero{position:relative; isolation:isolate; background:var(--surface)}
+.hj-hero::before{content:""; position:absolute; inset:-30px; z-index:-1; pointer-events:none; filter:blur(10px);
+  background:
+    radial-gradient(420px 300px at 8% 12%, rgba(60,120,200,.46), transparent 66%),
+    radial-gradient(380px 250px at 34% 112%, rgba(194,0,12,.28), transparent 66%),
+    radial-gradient(400px 250px at 58% -4%, rgba(132,110,220,.34), transparent 66%),
+    radial-gradient(420px 300px at 96% 100%, rgba(40,170,170,.30), transparent 66%),
+    radial-gradient(300px 220px at 84% 6%, rgba(60,120,200,.24), transparent 66%)}
+.hj-hero .hj-tick{background:color-mix(in srgb, var(--surface) 62%, transparent); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); border:1px solid color-mix(in srgb, var(--rule) 70%, transparent)}
+.hj-hero .hj-passos{background:color-mix(in srgb, var(--surface) 25%, transparent)}
+.hj-hero .hj-step{background:color-mix(in srgb, var(--surface) 80%, transparent)}

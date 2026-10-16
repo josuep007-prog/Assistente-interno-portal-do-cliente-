@@ -8,6 +8,7 @@
     "clienteSemRetorno": 5,
     "resolvidaClienteDias": 3,
     "parada": 15,
+    "foraDoPortalDias": 30,
     "prescricaoDias": 30,
     "prescricaoAviso": 20
   },
@@ -18,6 +19,11 @@
   "avisoSemCalculo": "Recebemos o {aviso} de {empregado}, mas ainda não há a solicitação de {calculo} desse empregado. Para o pagamento sair dentro do prazo legal (até {pagamento}, {ref}), abra a solicitação de {calculo} no Portal do Cliente o quanto antes.",
   "assuntoSemCalculo": "{calculo} pendente · {empregado}",
   "tramiteCriacao": "Aguardando o retorno do cliente.",
+  "foraDoPortal": ["ja resolvido", "enviei por e-mail", "pelo whatsapp", "pode desconsiderar"],
+  "textosSugestao": {
+    "fora": "Pelo que consta, esta solicitação já foi resolvida fora do portal. Estamos concluindo por aqui. Se ainda precisar de algo, é só abrir uma nova solicitação.",
+    "abaErrada": "Olá! Este pedido tem uma aba própria no Portal do Cliente: {aba}. Por favor, abra a solicitação por lá, com os campos preenchidos. Estamos concluindo esta da lista Geral."
+  },
   "criacao": {
     "serviceRequestType": "",
     "requestWay": "",
