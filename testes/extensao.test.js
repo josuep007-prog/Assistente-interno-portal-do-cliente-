@@ -1346,6 +1346,18 @@ test('admissão: retroativa, já passada ou perto do início destaca; cadastro e
   const quarta = OC.evaluate(it('2026-10-21'), {}, now);
   assert.deepEqual([quarta.admissaoAlerta, quarta.nivel], [null, 0], 'quarta: 3 d.u., fora da janela de 2');
   assert.equal(OC.evaluate(it('2026-10-10', { code: 5, lado: 'cli' }), {}, now).admissaoAlerta, null, 'cadastro efetuado');
+  // estagiário: o eSocial vai até 15 dias corridos depois do início; começar antes do pedido ou já ter começado não é atraso
+  const est = (admissao, extra) => it(admissao, Object.assign({ type: 'cadEstagiario' }, extra || {}));
+  const ontem = OC.evaluate(est('2026-10-15'), {}, now);
+  assert.deepEqual([ontem.admissaoAlerta, ontem.nivel], [null, 0], 'estágio começou ontem: prazo em 30/10, longe');
+  const perto = OC.evaluate(est('2026-10-04', { created: '2026-10-14T12:00:00' }), {}, now);
+  assert.deepEqual(plano(perto.admissaoAlerta), { data: '2026-10-04', prazo: '2026-10-19', faltam: 1, retro: false, estagio: true }, 'retroativo mas dentro do prazo: só avisa a 2 d.u. do prazo');
+  assert.deepEqual([perto.nivel, perto.motivos[0].m], [1, 'Estágio: eSocial até 19/10 (15 dias após o início)']);
+  const venceu = OC.evaluate(est('2026-09-30'), {}, now);
+  assert.deepEqual([venceu.admissaoAlerta.faltam < 0, venceu.nivel], [true, 2]);
+  assert.match(venceu.motivos[0].m, /prazo do eSocial \(15\/10\) já passou/);
+  assert.equal(OC.evaluate(est('2026-10-04'), { estagiarioPrazoDias: 30 }, now).admissaoAlerta, null, 'o prazo vem das regras');
+  assert.equal(OC.normalizarRegras({ prazos: { estagiarioPrazoDias: 20 } }).config.estagiarioPrazoDias, 20);
   assert.equal(OC.normalize(OC.TYPE_BY_KEY.cadEmpregado, { id: 'x', identifier: 1, genericStatus: 2, admissionDate: '2026-10-20T00:00:00', name: 'F' }, null, []).admissao, '2026-10-20');
   assert.equal(OC.normalize(OC.TYPE_BY_KEY.geral, { id: 'x', identifier: 1, genericStatus: 2, admissionDate: '2026-10-20T00:00:00' }, null, []).admissao, null);
   const lista = OC.admissoesCriticas([{ k: 'a', admissaoAlerta: { faltam: 2, retro: false } }, { k: 'b' }, { k: 'c', admissaoAlerta: { faltam: -4, retro: true } }, { k: 'd', admissaoAlerta: { faltam: 0, retro: false } }]);

@@ -87,8 +87,9 @@
     parada: 15,               // dias corridos sem movimentação
     prescricaoDias: 30,       // regra do Onvio
     prescricaoAviso: 20,      // a partir de quantos dias parada vira alerta vermelho
-    tempoOcupado: 5,
-    admissaoAviso: 2,         // dias úteis antes do início para destacar a admissão (o eSocial é até o dia anterior)          // dias úteis que um analista leva para atender num período cheio: prazo legal mais perto que isso já pede ação
+    tempoOcupado: 5,          // dias úteis que um analista leva para atender num período cheio: prazo legal mais perto que isso já pede ação
+    admissaoAviso: 2,         // dias úteis antes do prazo do eSocial para destacar a admissão (empregado: até o dia anterior ao início)
+    estagiarioPrazoDias: 15,  // estagiário: o eSocial vai até 15 dias corridos depois da admissão (pedido do Josué, 16/10/2026)
     pagamentoFeriasAntes: 2,  // CLT art. 145: férias pagas até 2 dias antes do início
     pagamentoRescisaoDias: 10, // CLT art. 477 §6º: verbas rescisórias em até 10 dias do término do contrato
     avisoFeriasDias: 30,      // CLT art. 135: aviso de férias com 30 dias de antecedência
@@ -136,7 +137,7 @@
         'Início das atividades em {admissao}. A admissão precisa ser enviada ao eSocial até o dia anterior ao início, então a documentação completa deve chegar antes disso.',
         'O exame admissional deve ser feito antes do início das atividades.'
       ],
-      cadEstagiario: ['O estágio precisa do termo de compromisso assinado pela empresa, pelo estagiário e pela instituição de ensino antes do início.'],
+      cadEstagiario: ['O estágio precisa do termo de compromisso assinado pela empresa, pelo estagiário e pela instituição de ensino antes do início.', 'Início do estágio em {admissao}. O cadastro do estagiário no eSocial vai até {estagiarioPrazoDias} dias depois do início, então a documentação deve chegar o quanto antes.'],
       cadContribuinte: ['Informe a data de início e o valor do pró-labore ou da retirada, para o cadastro no eSocial.'],
       rubricas: ['Lançamentos da competência {competencia} precisam chegar antes do fechamento da folha; depois disso entram na competência seguinte.']
     },
@@ -324,7 +325,15 @@
     // Admissão: o eSocial (S-2200) precisa ser enviado até o dia anterior ao início. Pedido com data de início anterior à
     // abertura (retroativo), início já passado ou perto destacam a solicitação, de quem quer que seja a vez.
     let admissaoAlerta = null;
-    if (fam === FAMILIAS.cadastro && it.admissao && it.code !== 5 && it.code !== 6) {
+    // Estagiário: o prazo do eSocial é até estagiarioPrazoDias dias corridos depois da admissão, então começar antes do
+    // pedido (retroativo) ou já ter começado não é atraso por si: conta só o prazo.
+    if (fam === FAMILIAS.cadastro && it.admissao && it.code !== 5 && it.code !== 6 && it.type === 'cadEstagiario') {
+      const ini = diaDe(it.admissao), prazo = somaDias(ini, s.estagiarioPrazoDias);
+      const faltam = uteisAte(now, prazo, hol), dp = fmtData(prazo);
+      if (faltam < 0) alerta(2, 'Estágio iniciado em ' + fmtData(ini) + ': prazo do eSocial (' + dp + ') já passou');
+      else if (faltam <= s.admissaoAviso) alerta(faltam === 0 ? 2 : 1, faltam === 0 ? 'Prazo do eSocial do estágio vence hoje (' + dp + ')' : 'Estágio: eSocial até ' + dp + ' (' + s.estagiarioPrazoDias + ' dias após o início)');
+      if (faltam <= s.admissaoAviso) admissaoAlerta = { data: it.admissao, prazo: ymd(prazo), faltam, retro: false, estagio: true };
+    } else if (fam === FAMILIAS.cadastro && it.admissao && it.code !== 5 && it.code !== 6) {
       const ini = diaDe(it.admissao), aberta = created ? new Date(created.getFullYear(), created.getMonth(), created.getDate()) : null;
       const faltam = uteisAte(now, ini, hol), dt = fmtData(ini);
       const retro = !!(aberta && ini < aberta);
@@ -600,7 +609,7 @@
   const LIMITES = {
     primeiroTramite: [0, 30], conclusaoSimples: [1, 60], conclusaoCalculo: [1, 60], clienteSemRetorno: [1, 60],
     parada: [1, 90], prescricaoDias: [1, 120], prescricaoAviso: [1, 120], tempoRealSeg: [0, 600],
-    tempoOcupado: [0, 30], admissaoAviso: [0, 15], pagamentoFeriasAntes: [0, 30], pagamentoRescisaoDias: [0, 60], avisoFeriasDias: [0, 90]
+    tempoOcupado: [0, 30], admissaoAviso: [0, 15], estagiarioPrazoDias: [0, 60], pagamentoFeriasAntes: [0, 30], pagamentoRescisaoDias: [0, 60], avisoFeriasDias: [0, 90]
   };
   const inteiro = (v, [min, max]) => (typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max ? v : undefined);
 
@@ -1200,7 +1209,7 @@
     const vals = {
       conclusao: fmt(conclusao), diasConclusao: nDias, inicio: fmt(ini), pagamentoFerias: fmt(pf),
       pagamentoFeriasAntes: s.pagamentoFeriasAntes, pagamentoRescisaoDias: s.pagamentoRescisaoDias, avisoFeriasDias: s.avisoFeriasDias,
-      aviso: fmt(diaDe(d.aviso)), admissao: fmt(diaDe(d.admissao)), competencia: comp
+      aviso: fmt(diaDe(d.aviso)), admissao: fmt(diaDe(d.admissao)), competencia: comp, estagiarioPrazoDias: s.estagiarioPrazoDias
     };
     const preencher = txt => { let falta = false; const r = txt.replace(/\{(\w+)\}/g, (_, k) => { const v = vals[k]; if (v == null) { falta = true; return ''; } return String(v); }); return falta ? null : r; };
     const out = [];
@@ -1462,7 +1471,7 @@
     extras = extras || {};
     const c = f => items.filter(f).length, out = [];
     const add = (n, k, texto, link, peso) => { if (n) out.push({ k, n, texto, link, peso }); };
-    add((extras.admissoes || []).length, 'admissao', 'Priorize as admissões em destaque: o eSocial vence no dia anterior ao início', '#/fila?escopo=equipe&kpi=admissao', 100);
+    add((extras.admissoes || []).length, 'admissao', 'Priorize as admissões em destaque: o prazo do eSocial está perto ou já passou', '#/fila?escopo=equipe&kpi=admissao', 100);
     add(c(i => i.lado === 'esc' && i.grav === 3), 'g3', 'Comece pelas críticas (G3): fora do prazo há muito tempo ou perto de prescrever', '#/fila?escopo=equipe&kpi=g3', 90);
     add((extras.vencimentos || []).filter(v => v.faltam <= 1).length, 'pagamento', 'Pagamentos de férias/rescisão vencendo em até 1 dia útil', '#/fila?escopo=equipe&kpi=pagamento', 85);
     add((extras.semCalculo || []).length, 'semcalc', 'Avise os clientes que ainda não pediram o cálculo de férias/rescisão', '#/fila?escopo=equipe&kpi=semcalc', 80);
