@@ -145,6 +145,13 @@
     avisoSemCalculo: 'Recebemos o {aviso} de {empregado}, mas ainda não há a solicitação de {calculo} desse empregado. ' +
       'Para o pagamento sair dentro do prazo legal (até {pagamento}, {ref}), abra a solicitação de {calculo} no Portal do Cliente o quanto antes. ' +
       'Sem ela não conseguimos preparar o cálculo a tempo.',
+    // Criar solicitação (Geral) pela extensão. Assunto da solicitação criada a partir de um aviso sem cálculo.
+    assuntoSemCalculo: '{calculo} pendente · {empregado}',
+    // Texto do trâmite que passa a vez ao cliente logo depois de criar (situação Respondido)
+    tramiteCriacao: 'Aguardando o retorno do cliente.',
+    // Valores técnicos do corpo da criação. Vazio = descobrir no Onvio: tipo e meio copiados de uma solicitação Geral
+    // recente; departamento pelo acesso do usuário (company-department-access). O arquivo de regras pode fixar.
+    criacao: { serviceRequestType: '', requestWay: '', departmentId: '' },
     notificar: true,
     modoGestor: false,
     feriados: [
@@ -616,6 +623,13 @@
       }
     }
     if (typeof raw.avisoSemCalculo === 'string' && raw.avisoSemCalculo.trim() && raw.avisoSemCalculo.length <= 800) out.avisoSemCalculo = raw.avisoSemCalculo.trim();
+    if (typeof raw.assuntoSemCalculo === 'string' && raw.assuntoSemCalculo.trim() && raw.assuntoSemCalculo.length <= 200) out.assuntoSemCalculo = raw.assuntoSemCalculo.trim();
+    if (typeof raw.tramiteCriacao === 'string' && raw.tramiteCriacao.trim() && raw.tramiteCriacao.length <= 400) out.tramiteCriacao = raw.tramiteCriacao.trim();
+    if (raw.criacao && typeof raw.criacao === 'object' && !Array.isArray(raw.criacao)) {
+      const c = {};
+      for (const k of ['serviceRequestType', 'requestWay', 'departmentId']) if (typeof raw.criacao[k] === 'string' && /^[A-Za-z0-9_.-]{1,80}$/.test(raw.criacao[k])) c[k] = raw.criacao[k];
+      if (Object.keys(c).length) out.criacao = c;
+    }
     if (Array.isArray(raw.abaErrada)) {
       for (const e of raw.abaErrada.slice(0, 30)) {
         const t = e && TYPE_BY_KEY[e.tipo];
@@ -623,7 +637,7 @@
         if (t && t.key !== 'geral' && palavras.length) out.abaErrada.push({ tipo: t.key, palavras });
       }
     }
-    const util = Object.keys(out.config).length || out.feriados.length || out.abaErrada.length || (out.observacoes && Object.keys(out.observacoes).length) || out.avisoSemCalculo;
+    const util = Object.keys(out.config).length || out.feriados.length || out.abaErrada.length || (out.observacoes && Object.keys(out.observacoes).length) || out.avisoSemCalculo || out.assuntoSemCalculo || out.tramiteCriacao || out.criacao;
     return util ? out : null;
   }
 
@@ -637,6 +651,9 @@
       if (r.abaErrada && r.abaErrada.length) base.abaErrada = r.abaErrada;
       if (r.observacoes) base.observacoes = Object.assign({}, DEFAULTS.observacoes, r.observacoes);
       if (r.avisoSemCalculo) base.avisoSemCalculo = r.avisoSemCalculo;
+      if (r.assuntoSemCalculo) base.assuntoSemCalculo = r.assuntoSemCalculo;
+      if (r.tramiteCriacao) base.tramiteCriacao = r.tramiteCriacao;
+      if (r.criacao) base.criacao = Object.assign({}, DEFAULTS.criacao, r.criacao);
     }
     return Object.assign(base, usuario || {});
   }
@@ -1149,6 +1166,13 @@
     if (k) { if (MARCAS_SC.has(st)) out[k] = { st, em: now.toISOString() }; else delete out[k]; }
     return out;
   }
+  // Assunto da solicitação criada para avisar o cliente (Geral)
+  function assuntoAvisoSemCalculo(item, settings) {
+    const s = Object.assign({}, DEFAULTS, settings || {});
+    const sc = item.semCalculo || {};
+    const vals = { aviso: item.typeLabel || 'Aviso', empregado: item.detalhe || 'empregado', calculo: sc.calculo || 'Cálculo' };
+    return String(s.assuntoSemCalculo || DEFAULTS.assuntoSemCalculo).replace(/\{(\w+)\}/g, (x, k) => (k in vals ? vals[k] : x)).replace(/\s{2,}/g, ' ').trim().slice(0, 200);
+  }
   // Texto do trâmite "Avisar o cliente" (só na memória até o analista enviar; nunca guardado)
   function textoAvisoSemCalculo(item, settings) {
     const s = Object.assign({}, DEFAULTS, settings || {});
@@ -1339,9 +1363,44 @@
     }
     throw new Error('ação desconhecida');
   }
+  /* ---------- criar solicitação (Geral) ----------
+   * Autorizada pelo Josué em 16/10/2026. Formato mapeado na empresa de teste (acoes-2026-10-15.md):
+   * POST service-requesting/v1/tickets/generic { serviceRequestType, clientExpanded: { id }, departmentId, description,
+   * subject, requestWay, requesterExpanded: {} } -> 201. O id do cliente vem de uma solicitação dele lida na hora;
+   * tipo, meio e departamento vêm das regras ou do próprio Onvio (modeloCriacao). Sempre com confirmação na tela. */
+  const URL_CRIAR_GERAL = API + 'service-requesting/v1/tickets/generic';
+  function modeloCriacao(settings, exemplo, acesso) {
+    const c = Object.assign({}, DEFAULTS.criacao, (settings && settings.criacao) || {});
+    const ex = exemplo || {}, ac = acesso || {};
+    const m = {
+      serviceRequestType: c.serviceRequestType || (typeof ex.serviceRequestType === 'string' ? ex.serviceRequestType : ''),
+      requestWay: c.requestWay || (typeof ex.requestWay === 'string' ? ex.requestWay : ''),
+      departmentId: c.departmentId || (typeof ac.departmentId === 'string' ? ac.departmentId : '') || (typeof ex.departmentId === 'string' ? ex.departmentId : '')
+    };
+    m.faltam = Object.entries({ serviceRequestType: 'tipo', requestWay: 'meio', departmentId: 'departamento' }).filter(([k]) => !m[k]).map(([, v]) => v);
+    return m;
+  }
+  function pedidoCriacao(o, clienteId, modelo) {
+    const assunto = String((o && o.assunto) || '').replace(/\s+/g, ' ').trim();
+    const descricao = String((o && o.descricao) || '').trim();
+    if (!clienteId) throw new Error('escolha o cliente');
+    if (!assunto) throw new Error('escreva o assunto');
+    if (assunto.length > 200) throw new Error('assunto longo demais (até 200 caracteres)');
+    if (!descricao) throw new Error('escreva a descrição');
+    if (descricao.length > 20000) throw new Error('descrição longa demais');
+    if (!modelo || modelo.faltam.length) throw new Error('não consegui descobrir no Onvio o ' + ((modelo && modelo.faltam) || ['tipo']).join(', ') + ' da solicitação Geral; informe em "criacao" no arquivo de regras ou crie pelo Onvio');
+    return { metodo: 'POST', url: URL_CRIAR_GERAL, corpo: { serviceRequestType: modelo.serviceRequestType, clientExpanded: { id: String(clienteId) }, departmentId: modelo.departmentId, description: descricao, subject: assunto, requestWay: modelo.requestWay, requesterExpanded: {} } };
+  }
+  // A criação devolve 201 sem corpo: acha a nova na lista Geral (mesmo assunto e cliente, criada há pouco, a de maior número)
+  function acharCriada(registros, assunto, clienteId, desde) {
+    const lim = (desde instanceof Date ? desde.getTime() : Number(desde) || 0) - 10 * 60000;
+    return (registros || []).filter(r => r && String(r.subject || '').trim() === String(assunto).trim() && r.clientExpanded && String(r.clientExpanded.id) === String(clienteId) && (!parseDate(r.created) || parseDate(r.created).getTime() >= lim))
+      .sort((a, b) => Number(b.identifier) - Number(a.identifier))[0] || null;
+  }
+
   // Defesa extra: só estes caminhos podem receber escrita, e nunca DELETE nem "/delete"
   const ESCRITA_OK = /^https:\/\/onvio\.com\.br\/api\/(service-requesting|br-payroll-sr)\/v1\/[a-z-]+(\/[a-z-]+)?\/[^/]+\/(topics(\/[^/]+\/attachments)?|assign-staff|change-due-date)$/;
-  const escritaPermitida = (metodo, url) => (metodo === 'POST' || metodo === 'PUT') && ESCRITA_OK.test(url) && !/delete/i.test(url);
+  const escritaPermitida = (metodo, url) => ((metodo === 'POST' || metodo === 'PUT') && ESCRITA_OK.test(url) && !/delete/i.test(url)) || (metodo === 'POST' && url === URL_CRIAR_GERAL);
   // Equipe (para responsável e encaminhar): quem aparece como responsável nas pendências, com o id do Onvio
   function equipeDe(items) {
     const m = new Map();
@@ -1430,5 +1489,5 @@
     return { dias, empresas: lista, total: lista.reduce((s2, r) => s2 + r.total, 0), prox30: lista.reduce((s2, r) => s2 + r.prox30, 0) };
   }
 
-  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, quadroSemCalculo, marcarSemCalculo, textoAvisoSemCalculo, observacoesCliente, admissoesCriticas, vencimentosLegais, malUso, sugestoesAcoes, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, quadroSemCalculo, marcarSemCalculo, textoAvisoSemCalculo, assuntoAvisoSemCalculo, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, admissoesCriticas, vencimentosLegais, malUso, sugestoesAcoes, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);
