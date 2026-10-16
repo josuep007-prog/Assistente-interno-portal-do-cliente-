@@ -1,10 +1,12 @@
 /* Hoje · visão do dia (o trabalho com as solicitações em si fica em "Solicitações", #/fila).
  * Em cima, em destaque: admissões retroativas ou perto do início (o eSocial vence no dia anterior).
  * Destaque: rosca "% em dia" (clique leva às Solicitações com aquele motivo), carrossel e "Próximos passos".
- * Painéis: vencimentos de férias e rescisões (prazo legal), avisos sem cálculo, sugestões de ação, uso do portal
- * pelo cliente e previsão de solicitações por empresa (lida na hora, sob demanda). Carteira no cabeçalho. */
-import { estado, itens, minhas, primeiroNome, salvarLembretes, enviar } from '../estado.js';
-import { esc, plural, num, ligarItens, fmtDataHora, saudacao, dataExtensa, $, $$ } from '../util.js';
+ * Avisos sem cálculo em quadro de duas colunas ("A avisar" e "Cliente avisado"): avisar o cliente é um trâmite no
+ * próprio aviso (formulário das ações, revisado e confirmado); "Desconsiderar" tira do quadro. Só o k e a coluna ficam.
+ * Painéis: vencimentos de férias e rescisões (prazo legal), sugestões de ação, uso do portal pelo cliente e previsão
+ * de solicitações por empresa (lida na hora, sob demanda). Carteira no cabeçalho. */
+import { estado, itens, minhas, primeiroNome, salvarLembretes, enviar, marcarSemCalculo } from '../estado.js';
+import { esc, plural, num, ligarItens, fmtDataHora, saudacao, dataExtensa, toast, $, $$ } from '../util.js';
 import { anel, anelProgresso, animarNumeros, ligarDicas, cor } from '../graficos.js';
 import { estadoLeitura, dicaLeitura } from './painel-equipe.js';
 const OC = window.OC;
@@ -46,6 +48,7 @@ export function render(el, ctx) {
   const lems = (estado.lembretes || []).filter(l => !l.feito && ['hoje', 'atrasado'].includes(OC.situacaoLembrete(l))).sort((a, b) => a.quando.localeCompare(b.quando));
   // aviso de férias/rescisão com o pagamento perto e sem o cálculo do mesmo empregado (OC.verificarAvisos)
   const semCalc = base.filter(i => i.semCalculo).sort((a, b) => a.semCalculo.faltam - b.semCalculo.faltam);
+  const quadro = OC.quadroSemCalculo(base, estado.semCalcMarcas);
 
   const rotCart = cart === MINHA ? 'Minha carteira' + (nome ? ' · ' + nome : '') : cart === EQUIPE ? 'Equipe toda' : cart === SEM ? 'Sem analista' : 'Carteira de ' + cart;
   const opcoes = [[MINHA, 'Minha carteira (' + m.length + ')'], [EQUIPE, 'Equipe toda (' + todas.length + ')']]
@@ -65,11 +68,12 @@ export function render(el, ctx) {
   const admissoes = OC.admissoesCriticas(base);
   const vencs = OC.vencimentosLegais(base, estado.settings, new Date());
   const uso = OC.malUso(base, estado.settings);
-  const sugs = OC.sugestoesAcoes(base, { semCalculo: semCalc, admissoes, vencimentos: vencs });
+  const sugs = OC.sugestoesAcoes(base, { semCalculo: quadro.avisar.map(x => x.item), admissoes, vencimentos: vencs });
   const linkFila = p => '#/fila?' + new URLSearchParams(Object.assign(cart === EQUIPE ? { escopo: 'equipe' } : cart === SEM ? { escopo: 'semresp' } : cart !== MINHA ? { analista: cart } : {}, p));
 
-  el.innerHTML = aviso + admissoesHtml() + heroHtml() +
-    '<div class="hj-paineis">' + vencHtml() + semCalcHtml() + sugHtml() + usoHtml() + prevHtml() + '</div>';
+  const ativos = quadro.avisar.length + quadro.avisados.length;
+  el.innerHTML = aviso + admissoesHtml() + heroHtml() + (semCalc.length ? semCalcHtml() : '') +
+    '<div class="hj-paineis">' + vencHtml() + (semCalc.length ? '' : semCalcHtml()) + sugHtml() + usoHtml() + prevHtml() + '</div>';
 
   // Admissões: faixa bem destacada no topo
   function admissoesHtml() {
@@ -154,16 +158,29 @@ export function render(el, ctx) {
     if (!semCalc.length) return painel('hj-semcalc-v', ic('alert', 'ic-sm') + ' Avisos sem cálculo', 'Férias e rescisões com o pagamento perto e sem a solicitação de cálculo do mesmo empregado.', vazio('Nenhum aviso de férias ou rescisão sem cálculo perto do prazo.'));
     const quando = f => f < 0 ? 'venceu há ' + plural(-f, 'dia útil', 'dias úteis') : f === 0 ? 'vence hoje' : 'vence em ' + plural(f, 'dia útil', 'dias úteis');
     const dt = ymd => ymd.slice(8, 10) + '/' + ymd.slice(5, 7);
-    return '<section class="hj-semcalc" style="--i:1" aria-label="Avisos sem cálculo">' +
-      '<h3>' + ic('alert', 'ic-sm') + ' Avisos sem cálculo <span>' + semCalc.length + '</span><small>Férias e rescisões com o pagamento perto e sem a solicitação de cálculo do mesmo empregado</small></h3>' +
-      '<div class="hj-semcalc-l" id="hj-semcalc">' + semCalc.map(i => {
-        const sc = i.semCalculo;
-        return '<button type="button" class="hj-sc' + (sc.faltam <= 0 ? ' late' : '') + '" data-k="' + esc(i.k) + '">' +
-          '<span class="hj-sc-quando"><b>' + esc(dt(sc.alvo)) + '</b><small>' + esc(quando(sc.faltam)) + '</small></span>' +
-          '<span class="hj-sc-tx"><b>#' + esc(i.num) + ' ' + esc(nomeCli(i)) + ' · ' + esc(i.detalhe || i.typeLabel) + '</b>' +
-          '<small>' + esc(i.typeLabel) + ' sem ' + esc(sc.calculo) + ' · pagamento até ' + esc(dt(sc.alvo)) + ' (' + esc(sc.ref) + ')' + (cart === MINHA ? '' : ' · ' + esc(i.resp || 'sem analista')) + '</small></span>' +
-          ic('chev-r', 'ic-sm') + '</button>';
-      }).join('') + '</div></section>';
+    const quandoMarca = em => { const d = new Date(em); return isNaN(d) ? '' : fmtDataHora(d.toISOString()); };
+    const cartao = ({ item: i, em }, col) => {
+      const sc = i.semCalculo, pode = OC.podeAcao('tramite', i);
+      const botoes = col === 'avisar'
+        ? '<button type="button" class="btn btn-sm btn-primary" data-sc-avisar="' + esc(i.k) + '"' + (pode.ok ? ' title="Trâmite no próprio aviso, revisado antes de enviar"' : ' disabled title="' + esc(pode.motivo) + '"') + '>' + ic('chat', 'ic-sm') + ' Avisar o cliente</button>' +
+          '<button type="button" class="btn btn-sm" data-sc-marca="avisado" data-sc-k="' + esc(i.k) + '" title="Já avisou por outro meio (telefone, e-mail)">Já avisei</button>'
+        : '<span class="kb-quando">' + ic('check', 'ic-sm') + ' avisado ' + esc(quandoMarca(em)) + '</span><button type="button" class="btn btn-sm" data-sc-marca="" data-sc-k="' + esc(i.k) + '" title="Volta para A avisar">Voltar</button>';
+      return '<div class="kb-card' + (sc.faltam <= 0 ? ' late' : '') + '">' +
+        '<button type="button" class="kb-abre" data-k="' + esc(i.k) + '">' +
+          '<span class="kb-data"><b>' + esc(dt(sc.alvo)) + '</b><small>' + esc(quando(sc.faltam)) + '</small></span>' +
+          '<span class="kb-tx"><b>#' + esc(i.num) + ' ' + esc(nomeCli(i)) + ' · ' + esc(i.detalhe || i.typeLabel) + '</b>' +
+          '<small>' + esc(i.typeLabel) + ' sem ' + esc(sc.calculo) + ' · pagamento até ' + esc(dt(sc.alvo)) + (cart === MINHA ? '' : ' · ' + esc(i.resp || 'sem analista')) + '</small></span></button>' +
+        '<div class="kb-acoes">' + botoes + '<button type="button" class="kb-desc" data-sc-marca="desconsiderado" data-sc-k="' + esc(i.k) + '" title="Tira do quadro (por exemplo, o cálculo foi pedido por outro canal)">Desconsiderar</button></div>' +
+      '</div>';
+    };
+    const coluna = (id, titulo, dica, lista, col) => '<div class="kb-col" data-col="' + id + '"><header><b>' + titulo + '</b><span class="kb-n">' + lista.length + '</span><small>' + dica + '</small></header>' +
+      (lista.length ? lista.map(x => cartao(x, col)).join('') : '<div class="kb-vazio">' + (col === 'avisar' ? 'Nenhum aviso esperando contato.' : 'Ninguém avisado ainda.') + '</div>') + '</div>';
+    const desc = quadro.desconsiderados;
+    return '<section class="hj-semcalc hj-kanban" id="hj-semcalc" style="--i:1" aria-label="Avisos sem cálculo">' +
+      '<h3>' + ic('alert', 'ic-sm') + ' Avisos sem cálculo <span>' + ativos + '</span><small>Férias e rescisões com o pagamento perto e sem a solicitação de cálculo do mesmo empregado. Saem do quadro sozinhos quando o cálculo chega.</small></h3>' +
+      '<div class="kb">' + coluna('avisar', 'A avisar', 'o cliente ainda não sabe', quadro.avisar, 'avisar') + coluna('avisados', 'Cliente avisado', 'aguardando o cálculo', quadro.avisados, 'avisados') + '</div>' +
+      (desc.length ? '<details class="kb-desc-l"><summary>' + plural(desc.length, 'desconsiderado', 'desconsiderados') + '</summary>' + desc.map(({ item: i }) => '<div class="kb-desc-i"><span>#' + esc(i.num) + ' ' + esc(nomeCli(i)) + ' · ' + esc(i.detalhe || i.typeLabel) + ' <small>' + esc(i.typeLabel) + '</small></span><button type="button" class="btn btn-sm" data-sc-marca="" data-sc-k="' + esc(i.k) + '">Voltar ao quadro</button></div>').join('') + '</details>' : '') +
+    '</section>';
   }
 
   function slidesDoCarrossel() {
@@ -195,7 +212,23 @@ export function render(el, ctx) {
   const redesenhar = () => render(el, ctx);
   ligarItens($('#hj-passos', el) || document.createElement('div'), prio.map(p => p.item), ctx.abrirDetalhe);
   ligarItens($('#hj-tick', el), base, ctx.abrirDetalhe);
-  if ($('#hj-semcalc', el)) ligarItens($('#hj-semcalc', el), semCalc, ctx.abrirDetalhe);
+  if ($('#hj-semcalc', el)) ligarItens($('#hj-semcalc', el), quadro.avisar.concat(quadro.avisados).map(x => x.item), ctx.abrirDetalhe);
+  // quadro dos avisos sem cálculo: mover de coluna, desconsiderar e avisar o cliente (trâmite revisado e confirmado)
+  $$('[data-sc-marca]', el).forEach(b => b.addEventListener('click', async () => {
+    const st = b.dataset.scMarca || null;
+    await marcarSemCalculo(b.dataset.scK, st);
+    toast(st === 'desconsiderado' ? 'Desconsiderado: o aviso saiu do quadro' : st === 'avisado' ? 'Movido para Cliente avisado' : 'Voltou para A avisar');
+  }));
+  $$('[data-sc-avisar]', el).forEach(b => b.addEventListener('click', () => {
+    const i = semCalc.find(x => x.k === b.dataset.scAvisar);
+    if (!i) return;
+    const sits = OC.situacoesTramite(i);
+    ctx.abrirDetalhe(i, null, { acao: 'tramite', preset: {
+      texto: OC.textoAvisoSemCalculo(i, estado.settings),
+      situacao: sits.some(x => x.code === 4) ? '4' : '',
+      aoEnviar: () => marcarSemCalculo(i.k, 'avisado')
+    } });
+  }));
   if ($('#hj-admissao', el)) ligarItens($('#hj-admissao', el), admissoes, ctx.abrirDetalhe);
   if ($('#hj-venc .hj-mini-l', el)) ligarItens($('#hj-venc', el), vencs.map(v => v.item), ctx.abrirDetalhe);
   // previsão por empresa: calcula sozinha ao abrir (no máximo a cada 30 min); o botão recalcula

@@ -5,12 +5,12 @@ const OC = window.OC;
 
 const CHAVES = {
   snapshot: 'snap', status: 'status', settings: 'usuario', regrasEscritorio: 'regras', ultimaVerificacao: 'ultima',
-  eventos: 'eventos', lembretes: 'lembretes', serie: 'serie', alertasVistosEm: 'alertasVistosEm'
+  eventos: 'eventos', lembretes: 'lembretes', serie: 'serie', alertasVistosEm: 'alertasVistosEm', semCalculoMarcas: 'semCalcMarcas'
 };
 
 export const estado = {
   snap: null, status: null, usuario: {}, regras: null, ultima: null,
-  eventos: [], lembretes: [], serie: {}, alertasVistosEm: null,
+  eventos: [], lembretes: [], serie: {}, alertasVistosEm: null, semCalcMarcas: {},
   settings: Object.assign({}, OC.DEFAULTS)
 };
 
@@ -21,7 +21,7 @@ function aplicar(d) {
   for (const [k, campo] of Object.entries(CHAVES)) {
     if (!(k in d)) continue;
     const v = d[k];
-    estado[campo] = v == null ? (['eventos', 'lembretes'].includes(campo) ? [] : ['serie', 'usuario'].includes(campo) ? {} : null) : v;
+    estado[campo] = v == null ? (['eventos', 'lembretes'].includes(campo) ? [] : ['serie', 'usuario', 'semCalcMarcas'].includes(campo) ? {} : null) : v;
   }
   estado.settings = OC.combinarSettings(estado.regras, estado.usuario);
 }
@@ -55,4 +55,6 @@ export const clienteRespondeu = i => OC.clienteRespondeu(i);
 export const primeiroNome = () => { const n = estado.snap && estado.snap.user && estado.snap.user.nome; return n ? n.split(' ')[0] : ''; };
 
 export async function salvarLembretes(lista) { await chrome.storage.local.set({ lembretes: lista }); }
+// Quadro dos avisos sem cálculo: só o id interno (k), a coluna e quando (OC.marcarSemCalculo)
+export async function marcarSemCalculo(k, st) { await chrome.storage.local.set({ semCalculoMarcas: OC.marcarSemCalculo(estado.semCalcMarcas, k, st, itens(), new Date()) }); }
 export async function marcarAlertasVistos() { await chrome.storage.local.set({ alertasVistosEm: new Date().toISOString() }); }

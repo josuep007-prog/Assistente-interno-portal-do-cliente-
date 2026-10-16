@@ -22,6 +22,7 @@ const AO_VIVO = new Set(['inicio', 'fila', 'equipe', 'clientes', 'lembretes']);
 
 let rota = { nome: 'inicio', params: {} };
 let aoRedim = null;
+let redesenharDepois = false;   // mudança que chegou com uma janela aberta
 
 function lerRota() {
   const h = location.hash.replace(/^#\/?/, '');
@@ -224,11 +225,20 @@ async function atualizar() {
   addEventListener('hashchange', () => { fecharDetalhe(); fecharLembrete(); desenhar(); });
   aoMudar(quais => {
     const ocupado = detalheAberto() || lembreteAberto() || !$('#cmdk').hidden || document.activeElement.matches('input, select, textarea') || document.querySelector('#vista details[open]');
-    if (quais.some(q => ['snap', 'settings', 'regras', 'lembretes', 'serie', 'eventos'].includes(q)) && AO_VIVO.has(rota.nome) && !ocupado) {
+    const relevante = quais.some(q => ['snap', 'settings', 'regras', 'lembretes', 'serie', 'eventos', 'semCalcMarcas'].includes(q)) && AO_VIVO.has(rota.nome);
+    if (relevante && ocupado) redesenharDepois = true;
+    if (relevante && !ocupado) {
+      redesenharDepois = false;
       const rolagem = $('#vista').scrollTop; desenhar(); $('#vista').scrollTop = rolagem;
     } else if (quais.includes('status')) { if (bloqueado() !== document.body.classList.contains('bloqueado')) desenhar(); else if (!bloqueado()) avisoSessao(); }
     if (quais.includes('eventos')) avisarNovos();
     aoVivo(); contadores();
+  });
+  // mudou algo com a janela de detalhe aberta (por exemplo, um aviso enviado por ela): redesenha ao fechar
+  addEventListener('controlonvio-detalhe-fechado', () => {
+    if (!redesenharDepois || !AO_VIVO.has(rota.nome) || lembreteAberto()) return;
+    redesenharDepois = false;
+    const rolagem = $('#vista').scrollTop; desenhar(); $('#vista').scrollTop = rolagem;
   });
   setInterval(aoVivo, 5000);
   let t = null;

@@ -14,19 +14,23 @@ let ultimo = null;       // { i, r, erro, carregando } para redesenhar ao trocar
 
 export const detalheAberto = () => !$('#gaveta').hidden;
 export function fecharDetalhe() {
+  const estava = detalheAberto();
   $('#gaveta').hidden = true; $('#fundo').hidden = true;
   $('#gaveta').innerHTML = '';
   atual = null; lista = null; ultimo = null;
+  if (estava) dispatchEvent(new CustomEvent('controlonvio-detalhe-fechado'));
 }
 
 // ref: item da fila, evento do sino ou lembrete (precisa de type e num); fonte: lista para navegar
-export async function abrirDetalhe(ref, fonte) {
+// opcoes.acao: já abre no formulário dessa ação (com opcoes.preset), por exemplo "Avisar o cliente" no Hoje
+export async function abrirDetalhe(ref, fonte, opcoes) {
   if (!ref || !ref.type || ref.num == null) return;
   const t = OC.TYPE_BY_KEY[ref.type];
   if (!t) return;
   if (fonte !== undefined) lista = Array.isArray(fonte) && fonte.length > 1 ? fonte : null;
   atual = { type: ref.type, num: String(ref.num) };
   if ((aba === 'lembretes' || aba === 'acao') && !ultimo) aba = 'tramites';
+  if (opcoes && opcoes.acao) { novaAcao(opcoes.acao, opcoes.preset); aba = 'acao'; }
   const doResumo = itens().find(i => i.type === ref.type && String(i.num) === String(ref.num));
   const base = doResumo || (ref.status ? ref : { type: ref.type, typeLabel: t.label, num: ref.num, status: 'Carregando…', lado: 'desc', apelido: ref.cliente || '' });
   const g = $('#gaveta');
@@ -71,6 +75,7 @@ function desenhar(i, r, erro, carregando) {
     '<button class="icon-btn" id="g-fechar" aria-label="Fechar" title="Fechar (Esc)"><svg class="ic"><use href="#i-x"/></svg></button></div>' +
     '<div class="dp-last">' +
       '<span>Responsável: <b>' + esc(i.resp || 'sem responsável') + '</b></span>' +
+      (i.created ? '<span>Aberta em <b>' + esc(fmtDataHora(i.created)) + '</b>' + (i.solicitante ? ' por ' + esc(i.solicitante) : '') + '</span>' : '') +
       (i.last ? '<span>Último trâmite: <b>' + esc(fmtDataHora(i.last)) + '</b>' + (ultimoTr && ultimoTr.autor ? ' por ' + esc(ultimoTr.autor) : '') + '</span>' : '') +
       (i.parado != null ? '<span>Parada há <b>' + i.parado + ' dia(s)</b></span>' : '') +
       (pagto ? '<span class="' + (pagto.faltam != null && pagto.faltam <= 1 ? 'late' : '') + '">Pagamento até <b>' + esc(pagto.dt) + '</b> (prazo legal)</span>' : '') +
@@ -146,28 +151,22 @@ function tramitesHtml(r, carregando) {
     '</div>').join('') + '</div>';
 }
 
+// Aba Dados: só o que serve para atender. Responsável, datas, solicitante e prazos já estão no topo da janela.
 function dados(i, r, carregando) {
-  const resumo = [
-    ['Cliente', i.cliente], ['Apelido', i.apelido], ['Responsável', i.resp || 'sem responsável'], ['Solicitante', i.solicitante],
-    ['Aberta em', fmtDataHora(i.created)], ['Último trâmite', fmtDataHora(i.last)], ['Expectativa do cliente', i.due ? fmtData(i.due) : ''],
-    ['Dias parada', i.parado != null ? i.parado + ' dia(s)' : ''], ['Prescreve em', i.prescreveEm != null ? i.prescreveEm + ' dia(s)' : ''],
-    ['1º trâmite', i.ptUteis != null ? i.ptUteis + ' dia(s) útil(eis) · estimativa' : '']
-  ].filter(c => c[1]);
   const grade = cs => '<div class="campos">' + cs.map(([k, v]) => '<div class="campo"><div class="k">' + esc(k) + '</div><div class="v">' + esc(v) + '</div></div>').join('') + '</div>';
-  let html = '<h4 class="dados-tit">Controle</h4>' + grade(resumo);
-  if (carregando) return html + '<div class="vazio">Lendo a solicitação completa no Onvio…</div>';
+  if (carregando) return '<div class="vazio">Lendo a solicitação completa no Onvio…</div>';
   if (r && r.grupos) {
-    html += r.grupos.map(gr => {
+    let html = r.grupos.map(gr => {
       const curtos = gr.campos.filter(c => !c.longo), longos = gr.campos.filter(c => c.longo);
-      return '<h4 class="dados-tit">' + esc(gr.titulo) + '</h4>' + (curtos.length ? grade(curtos.map(c => [c.k, c.v])) : '') +
-        longos.map(c => '<div class="campo" style="margin-bottom:14px"><div class="k">' + esc(c.k) + '</div><div class="texto-longo" style="margin-top:4px">' + esc(textoPuro(c.v)) + '</div></div>').join('');
+      return '<section class="dados-g"><h4 class="dados-tit">' + esc(gr.titulo) + '</h4>' + (curtos.length ? grade(curtos.map(c => [c.k, c.v])) : '') +
+        longos.map(c => '<div class="campo campo-longo"><div class="k">' + esc(c.k) + '</div><div class="texto-longo">' + esc(textoPuro(c.v)) + '</div></div>').join('') + '</section>';
     }).join('');
-    if (r.anexos && r.anexos.length) html += '<h4 class="dados-tit">Anexos da solicitação</h4><div class="anexos">' + r.anexos.map(a => '<span><svg class="ic ic-sm"><use href="#i-paperclip"/></svg>' + esc(a) + '</span>').join('') + '</div><p class="fraco" style="margin-top:6px">Para baixar os anexos, use "Abrir no Onvio".</p>';
-    return html;
+    if (r.anexos && r.anexos.length) html += '<section class="dados-g"><h4 class="dados-tit">Anexos da solicitação</h4><div class="anexos">' + r.anexos.map(a => '<span><svg class="ic ic-sm"><use href="#i-paperclip"/></svg>' + esc(a) + '</span>').join('') + '</div><p class="fraco" style="margin-top:6px">Para baixar os anexos, use "Abrir no Onvio".</p></section>';
+    return html || '<div class="vazio">O Onvio não trouxe outros dados desta solicitação.</div>';
   }
-  if (r && r.erroDados) html += '<div class="faixa warn"><svg class="ic"><use href="#i-alert"/></svg>Não foi possível ler a solicitação completa (' + esc(r.erroDados) + '). Mostrando o que veio da lista.</div>';
-  return html + (i.assunto ? '<div class="campo" style="margin-bottom:14px"><div class="k">Assunto</div><div class="v">' + esc(i.assunto) + '</div></div>' : '') +
-    (i.descricao ? '<div class="campo"><div class="k">Descrição</div><div class="texto-longo" style="margin-top:4px">' + esc(textoPuro(i.descricao)) + '</div></div>' : '');
+  const aviso = r && r.erroDados ? '<div class="faixa warn"><svg class="ic"><use href="#i-alert"/></svg>Não foi possível ler a solicitação completa (' + esc(r.erroDados) + '). Mostrando o que veio da lista.</div>' : '';
+  return aviso + (i.assunto ? grade([['Assunto', i.assunto]]) : '') +
+    (i.descricao ? '<div class="campo campo-longo"><div class="k">Descrição</div><div class="texto-longo">' + esc(textoPuro(i.descricao)) + '</div></div>' : '');
 }
 
 // Observações para o cliente: avisos calculados primeiro; os internos (só para o analista) não vão para o texto.

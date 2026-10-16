@@ -181,7 +181,7 @@ async function garantirEscritorio(f, forcar) {
 }
 // Acesso de cliente: nada do que foi lido fica guardado nem aparece (lembretes pessoais ficam).
 async function bloquearVisaoCliente(e) {
-  await chrome.storage.local.remove(['snapshot', 'assinaturas', 'tramites', 'eventos', 'serie', 'ultimaVerificacao', 'notifMap']);
+  await chrome.storage.local.remove(['snapshot', 'assinaturas', 'tramites', 'eventos', 'serie', 'ultimaVerificacao', 'notifMap', 'semCalculoMarcas']);
   await chrome.storage.local.set({ status: { estado: 'visao_cliente', em: new Date().toISOString(), msg: e.message } });
   await chrome.action.setBadgeText({ text: '' });
 }

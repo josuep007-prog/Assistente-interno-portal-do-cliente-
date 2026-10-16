@@ -544,7 +544,9 @@ await passo('app · detalhe: aba Dados com a solicitação completa em grupos e 
   await p.waitForSelector('#gaveta [data-aba="cliente"]');
   await p.click('#gaveta [data-aba="dados"]');
   const t = await p.textContent('#g-corpo');
-  assert.match(t, /Controle.*Solicitação.*Início das férias27\/10\/2026.*Dias de férias30/);
+  assert.match(t, /^Solicitação.*Início das férias27\/10\/2026.*Dias de férias30/, 'sem o bloco "Controle" repetindo o topo');
+  assert.ok(!/Controle|Dias parada|1º trâmite/.test(t));
+  assert.match(await p.textContent('.dp-last'), /Responsável: .*Aberta em /, 'abertura no topo da janela');
   assert.match(t, /Empregado.*NomeFulano.*CargoAuxiliar/);
   assert.match(t, /Pedido do cliente/);
   assert.match(t, /Anexos da solicitação.*aviso-assinado\.pdf/);
@@ -566,19 +568,71 @@ await passo('app · detalhe: aba Dados com a solicitação completa em grupos e 
   assert.deepEqual(p.erros, []);
 });
 
-await passo('app · Hoje: avisos de férias/rescisão sem cálculo aparecem em destaque, do mais urgente, e abrem o detalhe', async () => {
+await passo('app · Hoje: avisos sem cálculo em quadro de duas colunas; desconsiderar, já avisei e avisar o cliente por trâmite revisado', async () => {
   const itens = ITENS_APP.concat([
-    { k: 'avisoFerias:f1', type: 'avisoFerias', typeLabel: 'Aviso de férias', id: 'f1', num: 201, status: 'Sem análise', lado: 'esc', nivel: 0, grav: 0, parado: 1, motivos: [], resp: 'Ana Teste', mine: true, apelido: 'DELTA', cliente: 'DELTA', detalhe: 'Fulano', created: agoraIso(2), last: agoraIso(1), semCalculo: { alvo: '2026-10-30', faltam: 3, ref: 'início das férias em 03/11', calculo: 'Cálculo de férias' } },
-    { k: 'avisoRescisao:r1', type: 'avisoRescisao', typeLabel: 'Aviso de rescisão', id: 'r1', num: 202, status: 'Em análise', lado: 'esc', nivel: 0, grav: 0, parado: 1, motivos: [], resp: 'Ana Teste', mine: true, apelido: 'ÔMEGA', cliente: 'ÔMEGA', detalhe: 'Joana', created: agoraIso(2), last: agoraIso(1), semCalculo: { alvo: '2026-10-14', faltam: -1, ref: 'aviso em 04/10', calculo: 'Cálculo de rescisão' } }
+    { k: 'avisoFerias:f1', type: 'avisoFerias', typeLabel: 'Aviso de férias', id: 'f1', num: 201, code: 1, status: 'Sem análise', lado: 'esc', nivel: 0, grav: 0, parado: 1, motivos: [], resp: 'Ana Teste', mine: true, apelido: 'DELTA', cliente: 'DELTA', detalhe: 'Fulano', created: agoraIso(2), last: agoraIso(1), semCalculo: { alvo: '2026-10-30', faltam: 3, ref: 'início das férias em 03/11/2026', calculo: 'Cálculo de férias' } },
+    { k: 'avisoRescisao:r1', type: 'avisoRescisao', typeLabel: 'Aviso de rescisão', id: 'r1', num: 202, code: 2, status: 'Em análise', lado: 'esc', nivel: 0, grav: 0, parado: 1, motivos: [], resp: 'Ana Teste', mine: true, apelido: 'ÔMEGA', cliente: 'ÔMEGA', detalhe: 'Joana', created: agoraIso(2), last: agoraIso(1), semCalculo: { alvo: '2026-10-14', faltam: -1, ref: 'aviso em 04/10/2026', calculo: 'Cálculo de rescisão' } }
   ]);
   const p = await abrirApp('#/inicio', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens }) });
-  await p.waitForSelector('#hj-semcalc');
-  const l = await p.$$eval('#hj-semcalc .hj-sc', e => e.map(x => x.textContent));
-  assert.equal(l.length, 2);
+  await p.waitForSelector('#hj-semcalc .kb');
+  const col = c => p.$$eval('#hj-semcalc [data-col="' + c + '"] .kb-abre', e => e.map(x => x.dataset.k));
+  assert.equal(await p.$('.hj-paineis #hj-semcalc'), null, 'o quadro fica acima dos painéis, em largura total');
+  assert.deepEqual(await col('avisar'), ['avisoRescisao:r1', 'avisoFerias:f1'], 'do mais urgente');
+  assert.deepEqual(await col('avisados'), []);
+  const l = await p.$$eval('#hj-semcalc [data-col="avisar"] .kb-card', e => e.map(x => x.textContent));
   assert.match(l[0], /14\/10venceu há 1 dia útil#202 ÔMEGA · Joana.*Aviso de rescisão sem Cálculo de rescisão · pagamento até 14\/10/);
   assert.match(l[1], /30\/10vence em 3 dias úteis#201 DELTA · Fulano/);
-  await p.click('#hj-semcalc [data-k="avisoFerias:f1"]');
-  await p.waitForFunction(() => (window.__msgs || []).some(m => m.cmd === 'detalhe' && String(m.num) === '201'));
+  // "Já avisei" passa para a 2ª coluna; "Voltar" devolve
+  await p.click('#hj-semcalc [data-sc-marca="avisado"][data-sc-k="avisoFerias:f1"]');
+  await p.waitForFunction(() => document.querySelectorAll('#hj-semcalc [data-col="avisados"] .kb-card').length === 1);
+  assert.deepEqual(await col('avisados'), ['avisoFerias:f1']);
+  assert.match(await p.textContent('#hj-semcalc [data-col="avisados"]'), /avisado \d{2}\/\d{2} \d{2}:\d{2}/);
+  const marcas = await p.evaluate(() => JSON.parse(localStorage.getItem('__mem')).semCalculoMarcas);
+  assert.deepEqual(Object.keys(marcas), ['avisoFerias:f1']);
+  assert.deepEqual(Object.keys(marcas['avisoFerias:f1']).sort(), ['em', 'st'], 'guarda só a coluna e quando');
+  await p.click('#hj-semcalc [data-col="avisados"] [data-sc-marca=""]');
+  await p.waitForFunction(() => document.querySelectorAll('#hj-semcalc [data-col="avisar"] .kb-card').length === 2);
+  // desconsiderar tira do quadro (fica na lista de desconsiderados, de onde pode voltar)
+  await p.click('#hj-semcalc [data-sc-marca="desconsiderado"][data-sc-k="avisoRescisao:r1"]');
+  await p.waitForFunction(() => document.querySelectorAll('#hj-semcalc [data-col="avisar"] .kb-card').length === 1);
+  assert.match(await p.textContent('#hj-semcalc .kb-desc-l summary'), /1 desconsiderado/);
+  assert.match(await p.textContent('#hj-semcalc h3 span'), /^1$/);
+  // avisar o cliente: abre o detalhe já no formulário de trâmite, com texto e situação sugeridos; só envia depois de confirmar
+  await p.evaluate(() => { window.__respostas = Object.assign(window.__respostas || {}, { acao: { ok: true, acao: 'tramite', anexos: 0 }, detalhe: { ok: true, item: { assunto: 'Férias' }, tramites: [], datas: {} } }); });
+  await p.click('#hj-semcalc [data-sc-avisar="avisoFerias:f1"]');
+  await p.waitForSelector('#gaveta #a-texto');
+  assert.equal(await p.$eval('#a-situacao', s => s.value), '4', 'Respondido: a vez passa ao cliente');
+  const txt = await p.$eval('#a-texto', t => t.value);
+  assert.match(txt, /^Recebemos o aviso de férias de Fulano, mas ainda não há a solicitação de cálculo de férias desse empregado\. Para o pagamento sair dentro do prazo legal \(até 30\/10\/2026, início das férias em 03\/11\/2026\)/);
+  assert.equal(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'acao')), false, 'abrir o formulário não envia');
+  await p.click('#a-revisar');
+  await p.waitForSelector('#a-enviar');
+  assert.equal(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'acao')), false, 'revisar não envia');
+  await p.click('#a-enviar');
+  await p.waitForFunction(() => window.__msgs.some(m => m.cmd === 'acao'));
+  const m = await p.evaluate(() => window.__msgs.find(x => x.cmd === 'acao'));
+  assert.deepEqual([m.acao, m.type, m.num, m.situacao], ['tramite', 'avisoFerias', '201', '4']);
+  await p.waitForFunction(() => { try { return JSON.parse(localStorage.getItem('__mem')).semCalculoMarcas['avisoFerias:f1'].st === 'avisado'; } catch (e) { return false; } });
+  await p.keyboard.press('Escape');
+  await p.waitForSelector('#gaveta', { state: 'hidden' });
+  await p.waitForFunction(() => document.querySelectorAll('#hj-semcalc [data-col="avisados"] .kb-card').length === 1, null, { timeout: 4000 });
+  assert.ok(!/semCalculo|Fulano/.test(JSON.stringify(await p.evaluate(() => JSON.parse(localStorage.getItem('__mem')).semCalculoMarcas))), 'texto e nome não são guardados');
+  // o cartão abre o detalhe
+  await p.click('#hj-semcalc .kb-abre[data-k="avisoFerias:f1"]');
+  await p.waitForFunction(() => (window.__msgs || []).filter(m => m.cmd === 'detalhe' && String(m.num) === '201').length >= 2);
+  assert.deepEqual(p.erros, []);
+});
+
+await passo('app · detalhe: abas inteiras (não achatadas) mesmo com muito conteúdo e janela baixa', async () => {
+  const p = await abrirApp('#/fila', {});
+  await p.setViewportSize({ width: 1100, height: 560 });
+  await p.evaluate(() => { window.__respostas = { detalhe: { ok: true, item: { assunto: 'Férias' }, tramites: Array.from({ length: 30 }, (x, n) => ({ n: n + 1, em: '2026-10-10T10:00:00', situacao: 'Em análise', autor: 'Ana', texto: 'Texto '.repeat(40), anexos: [] })), datas: {}, grupos: [], anexos: [] } }; });
+  await p.click('#corpo [data-k="geral:b"]');
+  await p.waitForFunction(() => document.querySelectorAll('#g-corpo .tl-item').length === 30);
+  const m = await p.$eval('#gaveta .dtabs', e => ({ h: e.clientHeight, s: e.scrollHeight, tab: e.querySelector('.dtab').getBoundingClientRect().height }));
+  assert.ok(m.h >= m.s - 1 && m.h >= 40 && m.tab >= 30, 'abas com a altura toda: ' + JSON.stringify(m));
+  const corpo = await p.$eval('#g-corpo', e => ({ h: e.clientHeight, s: e.scrollHeight }));
+  assert.ok(corpo.s > corpo.h, 'quem rola é o corpo');
   assert.deepEqual(p.erros, []);
 });
 
