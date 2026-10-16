@@ -3,15 +3,18 @@
  * anterior/próxima (setas ← → ou os botões do topo) sem fechar. */
 import { estado, itens, enviar, salvarLembretes, aoMudar } from '../estado.js';
 import { formAcao, ligarAcao, novaAcao, acaoAberta } from './acao-form.js';
-import { esc, pillSituacao, motivosHtml, fmtDataHora, fmtData, textoPuro, toast, ladoTexto, relativo, $, $$ } from '../util.js';
+import { esc, pillSituacao, motivosHtml, fmtDataHora, fmtData, textoPuro, toast, ladoTexto, relativo, iniciais, $, $$ } from '../util.js';
 import { abrirLembrete, lembreteAberto } from './lembrete-dlg.js';
 import { abrirNova, novaAberta } from './nova-dlg.js';
+import { abrirAnexos, anexosAbertos, contarAnexos, tipoArquivo } from './anexos-dlg.js';
 const OC = window.OC;
 
 let atual = null;        // { type, num }
 let aba = 'tramites';
 let lista = null;        // lista de onde a pessoa abriu (para anterior/próxima)
 let ultimo = null;       // { i, r, erro, carregando } para redesenhar ao trocar de aba ou ao mudar lembretes
+let trFiltro = 'todos';  // trâmites: todos, esc, cli, anexos
+let trOrdem = 'recentes'; // trâmites: recentes primeiro ou conversa (ordem em que aconteceram)
 
 export const detalheAberto = () => !$('#gaveta').hidden;
 export function fecharDetalhe() {
@@ -65,6 +68,7 @@ function desenhar(i, r, erro, carregando) {
   const pl = i.pagamentoAte || (r && r.datas ? (x => x && { alvo: OC.ymd(x.alvo), ref: x.ref })(OC.prazoPagamento(i.type, r.datas, estado.settings)) : null);
   const pagto = pl && pl.alvo ? { dt: pl.alvo.slice(8, 10) + '/' + pl.alvo.slice(5, 7) + '/' + pl.alvo.slice(0, 4), faltam: OC.uteisAte(new Date(), OC.diaDe(pl.alvo), estado.settings.feriados) } : null;
   const obs = carregando ? [] : OC.observacoesCliente(i, (r && r.datas) || {}, estado.settings, new Date());
+  const nAnexos = carregando ? 0 : contarAnexos(r);
   g.innerHTML =
     '<div class="dlg-head"><div class="tt">' +
       '<div class="dlg-l1"><span class="mono">#' + esc(i.num) + '</span><span>' + esc(i.typeLabel) + '</span>' + pillSituacao(i) + (i.lado === 'esc' || i.lado === 'cli' ? '<span>vez: <b>' + ladoTexto(i) + '</b></span>' : '') + '</div>' +
@@ -84,6 +88,7 @@ function desenhar(i, r, erro, carregando) {
       (pagto ? '<span class="' + (pagto.faltam != null && pagto.faltam <= 1 ? 'late' : '') + '">Pagamento até <b>' + esc(pagto.dt) + '</b> (prazo legal)</span>' : '') +
       (i.due ? '<span title="Data informada pelo cliente; não conta como vencimento">Expectativa do cliente: ' + esc(fmtData(i.due)) + '</span>' : '') +
     '</div>' +
+    destaquesHtml(r) +
     '<div class="dtabs" role="tablist">' +
       '<button class="dtab' + (aba === 'tramites' ? ' on' : '') + '" data-aba="tramites" role="tab">Trâmites<span class="n">' + (tramites ? tramites.length : '') + '</span></button>' +
       '<button class="dtab' + (aba === 'dados' ? ' on' : '') + '" data-aba="dados" role="tab">Dados' + (r && r.anexos && r.anexos.length ? '<span class="n">' + r.anexos.length + ' anexo' + (r.anexos.length > 1 ? 's' : '') + '</span>' : '') + '</button>' +
@@ -94,6 +99,7 @@ function desenhar(i, r, erro, carregando) {
       (aba === 'acao' && acaoAberta() ? formAcao(i, obs) : aba === 'dados' ? dados(i, r, carregando) : aba === 'cliente' ? clienteHtml(obs, carregando) : aba === 'lembretes' ? lembretesHtml(lems) : tramitesHtml(r, carregando)) + '</div>' +
     '<div class="dlg-actions">' +
       '<button class="btn btn-sm" id="g-onvio"><svg class="ic ic-sm"><use href="#i-link"/></svg> Abrir no Onvio</button>' +
+      (nAnexos ? '<button class="btn btn-sm" id="g-anexos" title="Escolha quais anexos baixar"><svg class="ic ic-sm"><use href="#i-paperclip"/></svg> Anexos<span class="n-anexos">' + nAnexos + '</span></button>' : '') +
       botoesAcao(i, carregando) +
       '<button class="btn btn-sm" id="g-nova" title="Cria uma solicitação Geral para este cliente"><svg class="ic ic-sm"><use href="#i-plus"/></svg> Nova para o cliente</button>' +
       '<span class="spacer"></span>' +
@@ -103,6 +109,14 @@ function desenhar(i, r, erro, carregando) {
     '</div>';
 
   $('#g-fechar').onclick = fecharDetalhe;
+  const anexos = marcar => abrirAnexos({ item: i, r, marcar });
+  if ($('#g-anexos')) $('#g-anexos').onclick = () => anexos();
+  if ($('#g-anexos2')) $('#g-anexos2').onclick = () => anexos();
+  $$('[data-ax-abrir]', g).forEach(b => b.onclick = e => { e.stopPropagation(); anexos(b.dataset.axAbrir); });
+  $$('[data-tr-filtro]', g).forEach(b => b.onclick = () => { trFiltro = b.dataset.trFiltro; desenhar(i, r, erro, carregando); });
+  $$('[data-tr-ordem]', g).forEach(b => b.onclick = () => { trOrdem = b.dataset.trOrdem; desenhar(i, r, erro, carregando); });
+  $$('.tr-mais', g).forEach(b => b.onclick = () => { const c = b.closest('.tr-bolha'); const ab = c.classList.toggle('aberto'); b.textContent = ab ? 'Ver menos' : 'Ver tudo'; });
+  requestAnimationFrame(() => $$('.tr-texto', g).forEach(t => { if (t.scrollHeight > t.clientHeight + 4) t.closest('.tr-bolha').classList.add('longo'); }));
   if ($('#g-ant')) { $('#g-ant').onclick = () => andar(-1); $('#g-prox').onclick = () => andar(1); }
   $$('[data-aba]', g).forEach(b => b.onclick = () => { aba = b.dataset.aba; desenhar(i, r, erro, carregando); });
   $('#g-onvio').onclick = async () => {
@@ -143,30 +157,63 @@ function botoesAcao(i, carregando) {
   return b('tramite', 'Responder', 'chat') + b('encaminhar', 'Encaminhar', 'repeat') + b('responsavel', 'Responsável', 'user') + (OC.ACOES.expectativa(i.type) ? b('expectativa', 'Expectativa', 'calendar') : '');
 }
 
+// Trâmites como conversa: cliente à esquerda, escritório à direita, com o tempo entre um e outro, filtros e ordem.
 function tramitesHtml(r, carregando) {
   if (carregando) return '<div class="vazio">Lendo os trâmites no Onvio…</div>';
   if (!r) return '<div class="vazio">Sem trâmites para mostrar.</div>';
   if (r.erroTramites) return '<div class="faixa warn"><svg class="ic"><use href="#i-alert"/></svg>Não foi possível ler os trâmites (' + esc(r.erroTramites) + '). Use "Abrir no Onvio" para ver o histórico.</div>';
-  const l = r.tramites || [];
-  if (!l.length) return '<div class="vazio"><b>Nenhum trâmite ainda</b>A solicitação ainda não teve resposta.</div>';
-  return '<div class="tl">' + l.slice().reverse().map(x =>
-    '<div class="tl-item' + (/^cliente\b/i.test(x.autor || '') ? ' cli' : '') + '"><div class="meta"><b>#' + String(x.n).padStart(2, '0') + '</b><span class="pill">' + esc(x.situacao) + '</span><span>' + esc(x.autor || '—') + '</span><span title="' + esc(fmtDataHora(x.em)) + '">' + esc(fmtDataHora(x.em)) + (relativo(x.em) !== fmtDataHora(x.em) ? ' · ' + esc(relativo(x.em)) : '') + '</span></div>' +
-    (x.texto ? '<div class="texto-longo">' + esc(textoPuro(x.texto)) + '</div>' : '') +
-    (x.anexos && x.anexos.length ? '<div class="anexos">' + x.anexos.map(a => '<span><svg class="ic ic-sm"><use href="#i-paperclip"/></svg>' + esc(a) + '</span>').join('') + '</div>' : '') +
-    '</div>').join('') + '</div>';
+  const todos = r.tramites || [];
+  if (!todos.length) return '<div class="vazio"><b>Nenhum trâmite ainda</b>A solicitação ainda não teve resposta.</div>';
+  const n = { esc: todos.filter(x => x.lado === 'esc').length, cli: todos.filter(x => x.lado !== 'esc').length, anexos: todos.filter(x => (x.anexos || []).length).length };
+  const f = trFiltro === 'esc' ? x => x.lado === 'esc' : trFiltro === 'cli' ? x => x.lado !== 'esc' : trFiltro === 'anexos' ? x => (x.anexos || []).length : () => true;
+  const l = todos.filter(f);
+  const ult = todos[todos.length - 1];
+  const ordem = trOrdem === 'conversa' ? l : l.slice().reverse();
+  const seg = (k, rot, qt) => '<button data-tr-filtro="' + k + '"' + (trFiltro === k ? ' class="on"' : '') + '>' + rot + (qt != null ? ' <span class="n">' + qt + '</span>' : '') + '</button>';
+  const dias = (a, b) => Math.round((new Date(b) - new Date(a)) / 864e5);
+  let ant = null;
+  const corpo = ordem.map(x => {
+    // tempo entre este trâmite e o anterior na leitura (só quando passou ao menos 1 dia)
+    let gap = '';
+    if (ant) { const d = Math.abs(dias(ant.em, x.em)); if (d >= 1) gap = '<div class="tr-gap"><span>' + d + (d === 1 ? ' dia' : ' dias') + (trOrdem === 'conversa' ? ' depois' : ' antes') + '</span></div>'; }
+    ant = x;
+    const lado = x.lado === 'esc' ? 'esc' : 'cli';
+    const quem = x.autor || (lado === 'esc' ? 'Escritório' : 'Cliente');
+    const anexos = (x.arquivos && x.arquivos.length ? x.arquivos : (x.anexos || []).map(nome => ({ nome })));
+    const gi = (r.arquivos && r.arquivos.length ? 1 : 0) + todos.filter(t => t.n < x.n && t.arquivos && t.arquivos.length).length;
+    return gap + '<div class="tr-item ' + lado + (x === ult ? ' ultimo' : '') + '">' +
+      '<span class="tr-av" title="' + esc(quem) + '">' + esc(iniciais(quem) || (lado === 'esc' ? 'E' : 'C')) + '</span>' +
+      '<div class="tr-bolha">' +
+        '<div class="tr-meta"><b>' + esc(quem) + '</b><span class="tr-lado">' + (x.n === 1 ? 'abertura' : lado === 'esc' ? 'escritório' : 'cliente') + '</span><span class="pill">' + esc(x.situacao) + '</span>' + (x === ult ? '<span class="pill pill-soon">último</span>' : '') +
+          '<span class="tr-quando" title="' + esc(fmtDataHora(x.em)) + '">#' + String(x.n).padStart(2, '0') + ' · ' + esc(relativo(x.em) !== fmtDataHora(x.em) ? relativo(x.em) : fmtDataHora(x.em)) + '</span></div>' +
+        (x.texto ? '<div class="tr-texto">' + esc(textoPuro(x.texto)) + '</div><button type="button" class="tr-mais">Ver tudo</button>' : '<div class="tr-texto fraco">Sem texto' + (anexos.length ? ' (só anexo)' : '') + '</div>') +
+        (anexos.length ? '<div class="tr-anexos">' + anexos.map((a, ai) => { const tp = tipoArquivo(a.nome); return '<button type="button" class="tr-arq"' + (a.id ? ' data-ax-abrir="' + gi + ':' + ai + '"' : ' disabled') + ' title="Baixar ' + esc(a.nome) + '"><span class="ax-ic ' + tp.cls + '">' + tp.rot + '</span><span class="ax-nome">' + esc(a.nome) + '</span></button>'; }).join('') + '</div>' : '') +
+      '</div></div>';
+  }).join('');
+  return '<div class="tr-barra"><div class="seg" role="group" aria-label="Quais trâmites">' + seg('todos', 'Todos', todos.length) + seg('esc', 'Escritório', n.esc) + seg('cli', 'Cliente', n.cli) + seg('anexos', 'Com anexo', n.anexos) + '</div>' +
+      '<div class="seg" role="group" aria-label="Ordem"><button data-tr-ordem="recentes"' + (trOrdem !== 'conversa' ? ' class="on"' : '') + '>Mais recentes</button><button data-tr-ordem="conversa"' + (trOrdem === 'conversa' ? ' class="on"' : '') + '>Ordem da conversa</button></div></div>' +
+    (l.length ? '<div class="tr-lista">' + corpo + '</div>' : '<div class="vazio">Nenhum trâmite com esse filtro.</div>');
+}
+
+// Em destaque (sutil): as datas e os dados que definem o atendimento, tirados da solicitação completa.
+function destaquesHtml(r) {
+  const l = [];
+  for (const g of (r && r.grupos) || []) for (const c of g.campos) if (c.destaque && !c.longo && l.length < 6 && !l.some(x => x.k === c.k)) l.push(c);
+  if (!l.length) return '';
+  return '<div class="dlg-destaques" aria-label="Em destaque">' + l.map(c => '<span class="dq"><small>' + esc(c.k) + '</small><b>' + esc(c.v) + '</b></span>').join('') + '</div>';
 }
 
 // Aba Dados: só o que serve para atender. Responsável, datas, solicitante e prazos já estão no topo da janela.
 function dados(i, r, carregando) {
-  const grade = cs => '<div class="campos">' + cs.map(([k, v]) => '<div class="campo"><div class="k">' + esc(k) + '</div><div class="v">' + esc(v) + '</div></div>').join('') + '</div>';
+  const grade = cs => '<div class="campos">' + cs.map(([k, v, dq]) => '<div class="campo' + (dq ? ' dq-campo' : '') + '"><div class="k">' + esc(k) + '</div><div class="v">' + esc(v) + '</div></div>').join('') + '</div>';
   if (carregando) return '<div class="vazio">Lendo a solicitação completa no Onvio…</div>';
   if (r && r.grupos) {
     let html = r.grupos.map(gr => {
       const curtos = gr.campos.filter(c => !c.longo), longos = gr.campos.filter(c => c.longo);
-      return '<section class="dados-g"><h4 class="dados-tit">' + esc(gr.titulo) + '</h4>' + (curtos.length ? grade(curtos.map(c => [c.k, c.v])) : '') +
+      return '<section class="dados-g"><h4 class="dados-tit">' + esc(gr.titulo) + '</h4>' + (curtos.length ? grade(curtos.map(c => [c.k, c.v, c.destaque])) : '') +
         longos.map(c => '<div class="campo campo-longo"><div class="k">' + esc(c.k) + '</div><div class="texto-longo">' + esc(textoPuro(c.v)) + '</div></div>').join('') + '</section>';
     }).join('');
-    if (r.anexos && r.anexos.length) html += '<section class="dados-g"><h4 class="dados-tit">Anexos da solicitação</h4><div class="anexos">' + r.anexos.map(a => '<span><svg class="ic ic-sm"><use href="#i-paperclip"/></svg>' + esc(a) + '</span>').join('') + '</div><p class="fraco" style="margin-top:6px">Para baixar os anexos, use "Abrir no Onvio".</p></section>';
+    if (r.anexos && r.anexos.length) html += '<section class="dados-g"><h4 class="dados-tit">Anexos da solicitação</h4><div class="anexos">' + r.anexos.map(a => '<span><svg class="ic ic-sm"><use href="#i-paperclip"/></svg>' + esc(a) + '</span>').join('') + '</div><div style="margin-top:8px"><button type="button" class="btn btn-sm" id="g-anexos2"><svg class="ic ic-sm"><use href="#i-download"/></svg> Escolher e baixar anexos</button></div></section>';
     return html || '<div class="vazio">O Onvio não trouxe outros dados desta solicitação.</div>';
   }
   const aviso = r && r.erroDados ? '<div class="faixa warn"><svg class="ic"><use href="#i-alert"/></svg>Não foi possível ler a solicitação completa (' + esc(r.erroDados) + '). Mostrando o que veio da lista.</div>' : '';
@@ -202,7 +249,7 @@ function lembretesHtml(lems) {
 
 // Setas ← → andam na lista; lembretes mudaram com a janela aberta: redesenha a aba.
 addEventListener('keydown', e => {
-  if (!detalheAberto() || lembreteAberto() || novaAberta() || e.target.matches('input, select, textarea')) return;
+  if (!detalheAberto() || lembreteAberto() || novaAberta() || anexosAbertos() || e.target.matches('input, select, textarea')) return;
   if (e.key === 'ArrowLeft') andar(-1);
   else if (e.key === 'ArrowRight') andar(1);
 });

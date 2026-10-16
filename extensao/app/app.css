@@ -991,3 +991,55 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .dlg-resolvida .ic{color:var(--viz-ok)}
 .dlg-resolvida.pede{background:color-mix(in srgb, var(--viz-warn) 14%, transparent)}
 .dlg-resolvida.pede .ic{color:var(--ink-2)}
+
+/* ============ detalhe: em destaque (sutil) ============ */
+.dlg-destaques{display:flex; flex-wrap:wrap; gap:6px; padding:8px 22px 0}
+.dq{display:inline-flex; flex-direction:column; gap:1px; padding:4px 10px; border-radius:4px; background:var(--blue-pale); border:1px solid color-mix(in srgb, var(--blue-deep) 18%, transparent); min-width:0; max-width:260px}
+.dq small{font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.dq b{font:600 12.5px "IBM Plex Mono", monospace; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.campo.dq-campo{background:color-mix(in srgb, var(--blue-pale) 70%, transparent); border-radius:4px; box-shadow:inset 3px 0 0 var(--blue-deep); padding-left:10px}
+.campo.dq-campo .v{font-weight:600; color:var(--ink)}
+
+/* ============ detalhe: trâmites como conversa ============ */
+.tr-barra{display:flex; flex-wrap:wrap; gap:8px; justify-content:space-between; align-items:center; margin-bottom:14px}
+.tr-barra .n{font:600 10.5px "IBM Plex Mono", monospace; color:var(--ink-3); margin-left:2px}
+.tr-lista{display:flex; flex-direction:column; gap:12px}
+.tr-item{display:flex; gap:10px; align-items:flex-start; max-width:86%; animation:tr-entra .25s ease both}
+.tr-item.esc{flex-direction:row-reverse; align-self:flex-end}
+.tr-item.cli{align-self:flex-start}
+@keyframes tr-entra{from{opacity:0; transform:translateY(4px)} to{opacity:1; transform:none}}
+@media (prefers-reduced-motion: reduce){ .tr-item{animation:none} }
+.tr-av{flex:none; display:grid; place-items:center; width:32px; height:32px; border-radius:50%; font:600 11.5px "Archivo", sans-serif; color:#fff; background:var(--ink-3)}
+.tr-item.esc .tr-av{background:var(--blue-deep); color:var(--surface)}
+.tr-bolha{position:relative; min-width:0; flex:1 1 auto; padding:9px 12px 10px; border-radius:4px; border:1px solid var(--rule); background:var(--surface)}
+.tr-item.esc .tr-bolha{background:var(--blue-pale); border-color:color-mix(in srgb, var(--blue-deep) 22%, transparent)}
+.tr-item.ultimo .tr-bolha{box-shadow:0 0 0 2px color-mix(in srgb, var(--blue-deep) 35%, transparent)}
+.tr-meta{display:flex; flex-wrap:wrap; align-items:center; gap:4px 8px; font-size:12px; color:var(--ink-3); margin-bottom:5px}
+.tr-meta b{color:var(--ink); font-weight:600}
+.tr-lado{font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:.04em}
+.tr-quando{margin-left:auto; font-family:"IBM Plex Mono", monospace; font-size:11px}
+.tr-texto{white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.5; max-height:7.6em; overflow:hidden; color:var(--ink)}
+.tr-bolha.aberto .tr-texto{max-height:none}
+.tr-mais{display:none; margin-top:4px; padding:0; border:0; background:none; color:var(--blue-deep); font:600 12px inherit; cursor:pointer}
+.tr-bolha.longo .tr-mais{display:inline-block}
+.tr-bolha.longo:not(.aberto) .tr-texto{-webkit-mask-image:linear-gradient(180deg, #000 70%, transparent)}
+.tr-gap{display:flex; align-items:center; gap:10px; color:var(--ink-3); font-size:11px}
+.tr-gap::before, .tr-gap::after{content:""; flex:1; height:1px; background:var(--rule)}
+.tr-anexos{display:flex; flex-wrap:wrap; gap:6px; margin-top:8px}
+.tr-arq{display:inline-flex; align-items:center; gap:6px; max-width:260px; padding:3px 8px 3px 4px; border:1px solid var(--rule); border-radius:4px; background:var(--surface); color:var(--ink-2); font:12px inherit; cursor:pointer}
+.tr-arq:hover:not([disabled]){border-color:var(--blue-deep); color:var(--ink)}
+.tr-arq[disabled]{cursor:default; opacity:.8}
+@media (max-width:760px){ .tr-item{max-width:100%} }
+
+/* ============ janela de anexos ============ */
+#dlg-anexos{width:min(560px, calc(100vw - 32px))}
+.ax-todos{display:flex; align-items:center; gap:8px; padding:8px 10px; margin-bottom:6px; border-bottom:1px solid var(--rule)}
+.ax-grupo{margin-bottom:10px}
+.ax-grupo .dados-tit small{display:block; font-weight:400; text-transform:none; letter-spacing:0; color:var(--ink-3); margin-top:1px}
+.ax-arq{display:flex; align-items:center; gap:10px; padding:6px 10px; border-radius:4px; cursor:pointer}
+.ax-arq:hover{background:var(--surface-2)}
+.ax-ic{flex:none; display:grid; place-items:center; width:30px; height:20px; border-radius:3px; font:700 9.5px "IBM Plex Mono", monospace; color:#fff; background:var(--ink-3)}
+.ax-ic.pdf{background:#d03b3b} .ax-ic.img{background:#2a78d6} .ax-ic.xls{background:#1baf7a} .ax-ic.doc{background:#6250d6} .ax-ic.zip{background:#c98500}
+.ax-nome{min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.ax-falhas{margin:6px 0 0; padding-left:18px}
+.n-anexos{margin-left:6px; padding:0 6px; border-radius:8px; background:var(--blue-pale); color:var(--blue-deep); font:600 11px "IBM Plex Mono", monospace}

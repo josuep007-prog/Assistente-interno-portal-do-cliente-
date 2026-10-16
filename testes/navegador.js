@@ -594,8 +594,8 @@ await passo('app · detalhe: janela com dados e trâmites lidos na hora; lembret
   const p = await abrirApp('#/fila', {});
   await p.evaluate(() => { window.__respostas = { detalhe: { ok: true, item: { assunto: 'Férias do João', descricao: '<p>Segue <b>pedido</b></p>', meio: 'WEB' }, tramites: [{ n: 1, em: '2026-10-10T10:00:00', situacao: 'Sem análise', autor: 'Cliente BETA', texto: 'Abertura', anexos: ['aviso.pdf'] }, { n: 2, em: '2026-10-12T10:00:00', situacao: 'Aguardando resposta', autor: 'Cliente BETA', texto: 'Alguma novidade?', anexos: [] }] } }; });
   await p.click('#corpo [data-k="geral:b"]');
-  await p.waitForSelector('#gaveta .tl-item');
-  assert.equal(await p.$$eval('#gaveta .tl-item', e => e.length), 2);
+  await p.waitForSelector('#gaveta .tr-item');
+  assert.equal(await p.$$eval('#gaveta .tr-item', e => e.length), 2);
   assert.match(await p.textContent('#gaveta .dlg-head h2'), /BETA/);
   assert.match(await p.textContent('#gaveta'), /aviso\.pdf/);
   assert.match(await p.textContent('#gaveta [data-aba="tramites"]'), /Trâmites2/);
@@ -777,12 +777,74 @@ await passo('app · Nova solicitação (Geral): do quadro de avisos, das Solicit
   assert.deepEqual(p.erros, []);
 });
 
+await passo('app · detalhe: destaques sutis; trâmites como conversa (filtro, ordem, ver tudo); Anexos num botão só com escolha do que baixar', async () => {
+  const p = await abrirApp('#/fila', {});
+  await p.evaluate(() => { window.__respostas = { detalhe: { ok: true, item: { assunto: 'Férias' }, datas: {},
+    grupos: [{ titulo: 'Solicitação', campos: [{ k: 'Início das férias', v: '03/11/2026', destaque: true }, { k: 'Meio', v: 'Portal' }, { k: 'Dias de férias', v: '30', destaque: true }] }],
+    anexos: ['pedido.pdf'], arquivos: [{ id: 'a0', nome: 'pedido.pdf' }],
+    tramites: [
+      { n: 1, id: 't1', em: '2026-10-01T10:00:00', situacao: 'Sem análise', lado: 'cli', autor: 'Cliente BETA', texto: 'Abertura', anexos: ['ponto.xlsx'], arquivos: [{ id: 'a1', nome: 'ponto.xlsx' }] },
+      { n: 2, id: 't2', em: '2026-10-06T10:00:00', situacao: 'Respondido', lado: 'esc', autor: 'Ana Teste', texto: 'Linha\n'.repeat(30), anexos: ['aviso.pdf', 'recibo.pdf'], arquivos: [{ id: 'a2', nome: 'aviso.pdf' }, { id: 'a3', nome: 'recibo.pdf' }] },
+      { n: 3, id: 't3', em: '2026-10-07T10:00:00', situacao: 'Aguardando resposta', lado: 'cli', autor: 'Cliente BETA', texto: 'Ok', anexos: [], arquivos: [] }] },
+    baixarAnexos: { ok: true, baixados: 2, falhas: [], semRota: 0 } }; });
+  await p.click('#corpo [data-k="geral:b"]');
+  await p.waitForSelector('#gaveta .tr-item');
+  // destaques: só os campos marcados, no topo
+  assert.deepEqual(await p.$$eval('#gaveta .dlg-destaques .dq small', e => e.map(x => x.textContent)), ['Início das férias', 'Dias de férias']);
+  // conversa: mais recentes primeiro; escritório à direita; tempo entre trâmites; último marcado
+  assert.deepEqual(await p.$$eval('#g-corpo .tr-item', e => e.map(x => x.classList.contains('esc') ? 'esc' : 'cli')), ['cli', 'esc', 'cli']);
+  assert.match(await p.textContent('#g-corpo .tr-item.ultimo'), /Ok/);
+  assert.match(await p.textContent('#g-corpo .tr-lista'), /5 dias antes/);
+  const ladoEsc = await p.$eval('#g-corpo .tr-item.esc', e => getComputedStyle(e).flexDirection);
+  assert.equal(ladoEsc, 'row-reverse');
+  await p.waitForSelector('#g-corpo .tr-bolha.longo .tr-mais');
+  await p.click('#g-corpo .tr-bolha.longo .tr-mais');
+  assert.equal(await p.$eval('#g-corpo .tr-bolha.longo', e => e.classList.contains('aberto')), true, 'Ver tudo abre o texto longo');
+  await p.click('[data-tr-filtro="esc"]');
+  assert.equal(await p.$$eval('#g-corpo .tr-item', e => e.length), 1);
+  await p.click('[data-tr-filtro="todos"]');
+  await p.click('[data-tr-ordem="conversa"]');
+  assert.match(await p.textContent('#g-corpo .tr-item'), /Abertura/, 'ordem da conversa começa pela abertura');
+  // um botão só para os anexos: abre a escolha com todos marcados
+  assert.match(await p.textContent('#g-anexos'), /Anexos\s*4/);
+  await p.click('#g-anexos');
+  await p.waitForSelector('#dlg-anexos [data-ax]');
+  assert.equal(await p.$$eval('#dlg-anexos [data-ax]:checked', e => e.length), 4);
+  assert.match(await p.textContent('#dlg-anexos'), /Na abertura da solicitação.*Trâmite #01 · cliente.*Trâmite #02 · escritório/s);
+  await p.click('#ax-todos');
+  assert.equal(await p.isDisabled('#ax-baixar'), true, 'nada marcado, nada a baixar');
+  await p.click('#dlg-anexos .ax-arq:has-text("aviso.pdf")');
+  await p.click('#dlg-anexos .ax-arq:has-text("pedido.pdf")');
+  assert.match(await p.textContent('#ax-cont'), /2 de 4/);
+  assert.equal(await p.$eval('#ax-todos', e => e.indeterminate), true);
+  await p.click('#ax-baixar');
+  await p.waitForSelector('#dlg-anexos', { state: 'hidden' });
+  const m = await p.evaluate(() => window.__msgs.find(x => x.cmd === 'baixarAnexos'));
+  assert.deepEqual([m.type, m.num, JSON.stringify(m.anexos)], ['geral', '102', JSON.stringify([{ id: 'a0', topico: null, nome: 'pedido.pdf' }, { id: 'a2', topico: 't2', nome: 'aviso.pdf' }])]);
+  assert.equal(await p.isHidden('#gaveta'), false, 'o detalhe continua aberto');
+  // clicar num anexo do trâmite abre a escolha só com ele marcado; sem caminho conhecido, explica como ensinar
+  await p.evaluate(() => { window.__respostas.baixarAnexos = { ok: true, baixados: 0, falhas: [], semRota: 1 }; });
+  await p.click('#g-corpo .tr-arq:has-text("recibo.pdf")');
+  await p.waitForSelector('#dlg-anexos [data-ax]');
+  assert.deepEqual(await p.$$eval('#dlg-anexos [data-ax]:checked', e => e.map(x => x.closest('label').textContent)), ['PDFrecibo.pdf']);
+  await p.click('#ax-baixar');
+  await p.waitForSelector('#ax-onvio');
+  assert.match(await p.textContent('#ax-msg'), /Ainda não sei como o Onvio baixa/);
+  await p.keyboard.press('Escape');
+  assert.equal(await p.isHidden('#dlg-anexos'), true);
+  assert.equal(await p.isHidden('#gaveta'), false, 'Esc fecha só a janela de anexos');
+  // aba Dados: o campo em destaque tem marca própria
+  await p.click('#gaveta [data-aba="dados"]');
+  assert.equal(await p.$$eval('#g-corpo .campo.dq-campo', e => e.length), 2);
+  assert.deepEqual(p.erros, []);
+});
+
 await passo('app · detalhe: abas inteiras (não achatadas) mesmo com muito conteúdo e janela baixa', async () => {
   const p = await abrirApp('#/fila', {});
   await p.setViewportSize({ width: 1100, height: 560 });
   await p.evaluate(() => { window.__respostas = { detalhe: { ok: true, item: { assunto: 'Férias' }, tramites: Array.from({ length: 30 }, (x, n) => ({ n: n + 1, em: '2026-10-10T10:00:00', situacao: 'Em análise', autor: 'Ana', texto: 'Texto '.repeat(40), anexos: [] })), datas: {}, grupos: [], anexos: [] } }; });
   await p.click('#corpo [data-k="geral:b"]');
-  await p.waitForFunction(() => document.querySelectorAll('#g-corpo .tl-item').length === 30);
+  await p.waitForFunction(() => document.querySelectorAll('#g-corpo .tr-item').length === 30);
   const m = await p.$eval('#gaveta .dtabs', e => ({ h: e.clientHeight, s: e.scrollHeight, tab: e.querySelector('.dtab').getBoundingClientRect().height }));
   assert.ok(m.h >= m.s - 1 && m.h >= 40 && m.tab >= 30, 'abas com a altura toda: ' + JSON.stringify(m));
   const corpo = await p.$eval('#g-corpo', e => ({ h: e.clientHeight, s: e.scrollHeight }));

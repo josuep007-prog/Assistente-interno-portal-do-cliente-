@@ -36,7 +36,8 @@ const itensPorRota = {
     { id: '7d9f2c1a-4b3e-4c55-9a10-2f6e8b7c0d11', identifier: 702, genericStatus: 2, created: iso(6), lastUpdated: iso(5), clientEmployeeExpanded: { name: 'Beltrano' }, clientExpanded: { name: 'DELTA', nickname: 'DELTA' }, staffResponsibleExpanded: { name: 'Bia' } }
   ],
   'payroll-entries': [
-    { id: 'r1', identifier: 55, genericStatus: 4, created: iso(25), genericLastUpdated: iso(25), effectiveDate: '2026-09-01', entryType: 'MONTHLY', clientExpanded: { name: 'GAMA' }, staffResponsibleExpanded: null }
+    { id: 'r1', identifier: 55, genericStatus: 4, created: iso(25), genericLastUpdated: iso(25), effectiveDate: '2026-09-01', entryType: 'MONTHLY', clientExpanded: { name: 'GAMA' }, staffResponsibleExpanded: null },
+    { id: 'r2', identifier: 56, genericStatus: 4, created: iso(12), genericLastUpdated: iso(10), effectiveDate: '2026-09-01', entryType: 'MONTHLY', clientExpanded: { name: 'GAMA' }, staffResponsibleExpanded: { name: 'Ana Teste' } }
   ]
 };
 const chamadas = [];
@@ -49,6 +50,8 @@ await ctx.route('https://onvio.com.br/**', async r => {
   // (os 3 Cadastros) e payroll-entries; o caminho da própria lista + /topics dá 404 (ex.: prior-notice-vacations).
   const tramiteOk = /^\/api\/(service-requesting\/v1\/tickets|br-payroll-sr\/v1\/(tickets|employees-registrations|payroll-entries))\/[^/]+\/topics$/.test(u.pathname);
   if (tramiteOk && /7d9f2c1a-4b3e-4c55-9a10-2f6e8b7c0d11/.test(u.pathname)) return r.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [{ created: iso(6), status: 1, description: 'Aviso de férias', createdByContactExpanded: { name: 'Cliente DELTA' } }, { created: iso(5), status: 2, description: 'Recebido', createdByExpanded: { name: 'Bia' } }] }) });
+  // Rubricas #55: o analista ainda espera algo do cliente (continua pendente); a #56 fica com o texto genérico (resolvida)
+  if (tramiteOk && /payroll-entries\/r1\/topics$/.test(u.pathname)) return r.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [{ created: iso(25), status: 1, description: 'Rubricas' }, { created: iso(25), status: 4, description: 'Aguardamos a planilha de horas extras.' }] }) });
   if (u.pathname.endsWith('/topics') && !tramiteOk) return r.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
   if (u.pathname.endsWith('/topics')) return r.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [{ created: iso(9), status: 1, description: '<p>Bom dia, segue o pedido de <b>cálculo de férias</b> do Fulano a partir de 03/11.</p>', createdByContactExpanded: { name: 'Cliente ACME' }, attachmentsExpanded: [{ name: 'aviso-ferias-fulano.pdf' }] }, { created: iso(7), status: 2, description: 'Recebido, estamos calculando.', createdByContactExpanded: { name: 'Ana Teste' } }] }) });
   if (modoCliente && u.pathname.endsWith('/company-department-access')) return r.fulfill({ status: 403, contentType: 'application/json', body: '{}' });
@@ -82,6 +85,10 @@ assert.equal(s.tramites.cache, undefined, 'cache fora do resumo');
 assert.ok(Object.keys(snap.tramites).includes('calcFerias:v1'));
 assert.ok(chamadas.some(c => /payroll-entries.*"IN"/.test(c)) && !chamadas.some(c => /"NE"/.test(c)), 'Rubricas usa IN (o NE dava HTTP 500 no Onvio real)');
 assert.equal(s.items.find(i => i.num === 55).status, 'Respondido');
+assert.equal(s.items.find(i => i.num === 55).pedidoAoCliente, 'aguardamos', 'o analista pediu algo: continua pendente');
+assert.deepEqual(s.resolvidas.map(x => x.num), [56], 'vez do cliente sem retorno e sem pedido: resolvida');
+assert.ok(!s.items.some(i => i.num === 56));
+assert.doesNotMatch(JSON.stringify(snap.tramites), /Aguardamos|planilha|Recebido/, 'cache sem texto de trâmite');
 assert.equal(s.items.find(i => i.num === 900).abaProvavel.label, 'Aviso de férias', 'Geral com assunto de férias sugere a aba certa');
 // regras do escritório guardadas (como se o arquivo remoto tivesse sido baixado): prazo de cálculo de 1 d.u.
 await pagina.evaluate(() => chrome.storage.local.set({ regrasEscritorio: { url: 'https://exemplo.com/r.json', versao: 't1', atualizadoEm: new Date().toISOString(), regras: { versao: 't1', config: { conclusaoCalculo: 1 }, feriados: [], abaErrada: [] } } }));
@@ -191,8 +198,8 @@ await app.waitForSelector('#dlg-lembrete', { state: 'hidden' });
 await app.evaluate(() => { location.hash = '#/fila?escopo=equipe'; });
 await app.waitForSelector('#corpo [data-k]');
 await app.click('#corpo [data-k="calcFerias:v1"]');
-await app.waitForSelector('#gaveta .tl-item', { timeout: 8000 });
-assert.equal(await app.$$eval('#gaveta .tl-item', e => e.length), 2);
+await app.waitForSelector('#gaveta .tr-item', { timeout: 8000 });
+assert.equal(await app.$$eval('#gaveta .tr-item', e => e.length), 2);
 await foto(portal, '4-detalhe.png');
 await app.click('#g-fechar');
 await app.waitForSelector('#gaveta', { state: 'hidden' });
@@ -234,7 +241,7 @@ await esperar(() => cheia(portal));
 await app.evaluate(() => { location.hash = '#/fila?escopo=equipe'; });
 await app.waitForSelector('#corpo [data-k="calcFerias:v1"]');
 await app.click('#corpo [data-k="calcFerias:v1"]');
-await app.waitForSelector('#gaveta .tl-item', { timeout: 8000 });         // espera os dados chegarem (a gaveta se redesenha)
+await app.waitForSelector('#gaveta .tr-item', { timeout: 8000 });         // espera os dados chegarem (a gaveta se redesenha)
 // clique por script: neste navegador de teste a janela real é menor que a área emulada e os ~120 px de baixo
 // não chegam ao iframe por mouse (também acontecia com a versão anterior)
 await app.$eval('#g-onvio', b => b.click());
