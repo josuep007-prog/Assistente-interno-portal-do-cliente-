@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.22.0)
+# Control Onvio · ControlTax (v0.23.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -29,7 +29,7 @@ Para atualizar a versão: substitua os arquivos da pasta, clique em **Recarregar
 | **Solicitações** | Analista e gestor | Onde o analista trabalha. Abre em **A responder** (o que espera o escritório), em grupos por urgência; **Aguardando o cliente** é um botão secundário. Abas Minhas / Equipe toda / Sem responsável / **Resolvidas** (vez do cliente sem retorno, ver as regras). Busca, tipos em chips, **Filtros** (tipo, gravidade, responsável), **Ordenar**, Lista ou Cartões e ⋯ (exportar CSV). Os filtros ativos aparecem como etiquetas que se tiram com um clique |
 | **Agenda e lembretes** | Cada um | Calendário do mês com lembretes e expectativas de conclusão das suas solicitações; lista (atrasados, hoje, próximos, concluídos). Lembretes podem **repetir** (todo dia, todo dia útil, toda semana, todo mês) |
 | **Equipe** | Gestor (com senha) | **Área do gestor**, aberta só com a senha. Aba **Desempenho**: nota da equipe (0 a 100) e de cada analista, com entregas nos últimos 30 dias e a comparação com o período anterior, % no prazo e tempo **com o escritório** (sem a espera pelo cliente), carteira em dia, 1º trâmite e alertas evitáveis; **ranking em tabela compacta** (uma linha por pessoa, com os 5 itens da nota; quem tem poucas entregas fica sem posição; o cabeçalho ordena), **entregas no período no prazo × fora do prazo** por pessoa e o **detalhe** de cada pessoa com os pontos de atenção e o porquê de cada um. Abas **Carga de hoje** (números e gráficos da fila, próximas a prescrever) e **Responsáveis** (idade da fila e carga de cada pessoa) |
-| **Configurações** | Todos | **Prazos** com a origem de cada valor (padrão, escritório ou seu ajuste) e o **efeito na fila agora** antes de salvar; **Leitura e avisos** (com a carga que cada ajuste gera); **Feriados** (próximos e locais); **Palavras** (como a extensão lê as respostas); **Avançado** (arquivo de regras, aprender ações, diagnóstico) |
+| **Configurações** | Todos | **Prazos** com a origem de cada valor (padrão, escritório ou seu ajuste) e o **efeito na fila agora** antes de salvar; **Leitura e avisos** (com a carga que cada ajuste gera); **Feriados** (calendário do ano, com os próximos e os locais); **Palavras** (como a extensão lê as respostas); **Avançado** (arquivo de regras, aprender ações, diagnóstico) |
 
 O **sino** do topo junta os alertas: nova solicitação para você, cliente respondeu, prescreve em até 5 dias, ficou fora do prazo, nova sem responsável e lembretes. Novidades das suas solicitações também aparecem como aviso na tela.
 
@@ -40,6 +40,13 @@ Vez do cliente: sem retorno há mais de 5 dias úteis (laranja); a partir de 20 
 **Resolvida sem retorno:** na vez do cliente há mais de 3 dias úteis e a última resposta do analista não pede nada ao cliente = o cliente ficou satisfeito, e a solicitação conta como resolvida (sai da fila, dos prazos e da prescrição e conta como entregue na Equipe). Se a resposta pedir algo ("aguardamos", "favor enviar", "falta"… ou uma pergunta), continua pendente; frases de cortesia ("qualquer dúvida, estamos à disposição") não contam. Nada muda no Onvio.
 
 Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardando resposta** = o escritório precisa responder; **Respondido** = vez do cliente.
+
+## Novidades da v0.23.0 (calendário de feriados, fundo azul-claro e tudo em português)
+
+- **Feriados em calendário de 12 meses:** Configurações > Feriados mostra o ano inteiro, com nacionais, do escritório e os seus em cores diferentes, fim de semana marcado e o dia de hoje destacado. Setas e "Este ano" trocam o ano. Clique num dia para marcar como feriado local (ou tirar um que você incluiu); ao lado ficam os próximos feriados.
+- **Fundo azul-claro com nuances leves** de azul, lilás e verde-água (o brilho vermelho e a logo continuam, mais suaves). O tema escuro não mudou.
+- **Pequenos acabamentos:** entrada suave ao trocar de tela (só na troca, não a cada atualização), botões que "afundam" ao clicar, foco visível no teclado, abas com transição, cabeçalho translúcido, sombras mais leves nos cartões e cor de seleção de texto. Tudo respeita "reduzir movimento" do sistema.
+- **Nada de inglês na aba Dados:** muitos campos e valores do Onvio que ainda apareciam em inglês (estado civil, escolaridade, raça/cor, endereço, banco, contrato, retorno previsto etc.) agora saem em português. Campo novo com uma palavra desconhecida não leva mais a frase toda para o inglês: só a palavra desconhecida fica como veio. Valores em camelCase ou com "_" também são traduzidos quando conhecidos. "Ranking de desempenho" virou "Classificação de desempenho".
 
 ## Novidades da v0.22.0 (janela da pessoa, 30 dias, cartões e Avançado)
 
