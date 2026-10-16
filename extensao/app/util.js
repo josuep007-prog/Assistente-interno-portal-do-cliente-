@@ -1,4 +1,5 @@
 /* Control Onvio · utilidades do app */
+import { estado } from './estado.js';
 const OC = window.OC;
 
 export const $ = (s, el) => (el || document).querySelector(s);
@@ -38,8 +39,11 @@ export function pillSituacao(i) {
   return '<span class="pill ' + cls + '">' + esc(i.status) + '</span>';
 }
 export const ladoTexto = i => (i.lado === 'esc' ? 'escritório' : i.lado === 'cli' ? 'cliente' : '—');
+// Justificativa da gravidade (OC.porqueGravidade) com os limites em vigor.
+export const porqueGrav = i => OC.porqueGravidade(i, estado.settings);
 export function motivosHtml(i) {
-  return (i.grav === 3 ? '<span class="pill pill-late" title="Crítica">G3</span>' : '') +
+  const pg = i.grav === 3 ? porqueGrav(i) : null;
+  return (pg ? '<span class="pill pill-late" title="' + esc(pg.texto) + '">' + esc(pg.rot) + '</span>' : '') +
     (i.motivos || []).map(m => '<span class="pill ' + (m.n === 2 ? 'pill-late' : 'pill-today') + '">' + esc(m.m) + '</span>').join('') +
     (i.abaProvavel ? '<span class="pill pill-muted" title="O assunto lembra uma solicitação específica (palavra: ' + esc(i.abaProvavel.palavra) + ')">Pode ser: ' + esc(i.abaProvavel.label) + '</span>' : '');
 }
@@ -47,7 +51,10 @@ const nomeCli = i => i.apelido || i.cliente || 'Cliente não informado';
 // Prazo em uma linha: o motivo mais grave, ou "em dia".
 export function prazoHtml(i) {
   const m = (i.motivos || [])[0];
-  return m ? '<span class="c-prazo ' + (m.n === 2 ? 'late' : 'today') + '">' + (i.grav === 3 ? 'G3 · ' : '') + esc(m.m) + '</span>' : '<span class="fraco">em dia</span>';
+  if (!m) return '<span class="fraco">em dia</span>';
+  const pg = porqueGrav(i);
+  return '<span class="c-prazo ' + (m.n === 2 ? 'late' : 'today') + '"' + (pg ? ' title="' + esc(pg.texto) + '"' : '') + '>' + esc(m.m) + '</span>' +
+    (i.grav === 3 && pg ? '<span class="c-porque">' + esc(pg.curto) + '</span>' : '');
 }
 // Cartão de solicitação (visão "Cartões" das filas).
 export function cartaoItem(i) {
