@@ -1414,3 +1414,52 @@ test('previsão por empresa: média por semana, tendência e estimativa; o servi
   assert.equal(r.empresas[0].cliente, 'ACME');
   assert.deepEqual(Object.keys(store).filter(k => !['metodoLeitura', 'perfilSessao'].includes(k)), [], 'nada é gravado');
 });
+
+test('avaliação da equipe: entregas no período, % no prazo, carteira em dia, cuidado, agilidade, nota e comparação', () => {
+  const now = new Date(2026, 9, 16, 10);   // sexta, 16/10
+  const fim = (resp, type, criada, concluida, extra) => Object.assign({ k: type + ':' + resp + criada + concluida, type, resp, lado: 'fim', status: 'Concluído', created: criada + 'T09:00:00', last: concluida + 'T15:00:00' }, extra || {});
+  const mov = [
+    fim('Ana', 'geral', '2026-10-13', '2026-10-14'),          // 1 d.u.: no prazo (3)
+    fim('Ana', 'calcFerias', '2026-10-06', '2026-10-15'),     // 6 d.u.: fora do prazo (5)
+    fim('Ana', 'geral', '2026-10-01', '2026-10-05'),          // período anterior (antes de 10/10)
+    fim('Bia', 'geral', '2026-10-12', '2026-10-13'),
+    fim('Bia', 'geral', '2026-10-12', '2026-10-15', { status: 'Prescrita', k: 'geral:prescrita' }),
+    fim('Bia', 'geral', '2026-10-12', '2026-10-15'),
+    { k: 'geral:aberta', type: 'geral', resp: 'Bia', lado: 'esc', status: 'Em análise', last: '2026-10-15T10:00:00' }   // movimentada, não concluída: não conta
+  ];
+  const pend = [
+    { k: 'p1', type: 'geral', resp: 'Ana', lado: 'esc', nivel: 0, grav: 0, parado: 1, ptUteis: 1 },
+    { k: 'p2', type: 'geral', resp: 'Ana', lado: 'esc', nivel: 2, grav: 3, parado: 20, ptUteis: 3 },
+    { k: 'p3', type: 'geral', resp: 'Bia', lado: 'cli', nivel: 0, grav: 0, parado: 2 },
+    { k: 'p4', type: 'geral', resp: '', lado: 'esc', nivel: 0, grav: 0, parado: 0 }
+  ];
+  const r = OC.avaliarEquipe(pend, mov, {}, 7, now);
+  assert.deepEqual([r.de, r.ate], ['2026-10-10', '2026-10-16']);
+  const ana = r.analistas.find(a => a.resp === 'Ana'), bia = r.analistas.find(a => a.resp === 'Bia');
+  assert.deepEqual([ana.concluidas, ana.noPrazo, ana.pctNoPrazo, ana.tempoMedio], [2, 1, 50, 3.5]);
+  assert.deepEqual([ana.carteira, ana.esc, ana.pctEmDia, ana.g3, ana.paradas, ana.primeiroTramite], [2, 2, 50, 1, 1, 2]);
+  assert.deepEqual(plano(ana.componentes), { pontualidade: 50, emDia: 50, cuidado: 75, agilidade: 75 });
+  assert.equal(ana.nota, Math.round((50 * 35 + 50 * 30 + 75 * 20 + 75 * 15) / 100));
+  assert.deepEqual(plano([ana.anterior.concluidas, ana.variacao.concluidas]), [1, 1]);
+  assert.deepEqual(plano(ana.atencao.map(i => i.k)), ['p2'], 'crítica e parada vão para os pontos de atenção');
+  assert.deepEqual([bia.concluidas, bia.prescritas, bia.pctNoPrazo, bia.componentes.emDia, bia.componentes.agilidade], [2, 1, 100, null, null], 'sem carteira no escritório nem 1º trâmite: esses itens ficam de fora da nota');
+  assert.equal(bia.nota, Math.round((100 * 35 + 75 * 20) / 55));
+  assert.equal(r.analistas[0].resp, 'Bia', 'maior nota primeiro');
+  assert.equal(r.analistas.some(a => a.resp === '(sem responsável)'), false);
+  assert.deepEqual([r.equipe.concluidas, r.equipe.carteira, r.equipe.prescritas], [4, 4, 1]);
+  assert.deepEqual(plano(ana.porDia.map(d => d.n)), [0, 0, 0, 0, 1, 1, 0], 'entregas por dia do período');
+  assert.equal(OC.faixaNota(90).rot, 'Excelente');
+  assert.equal(OC.faixaNota(40).rot, 'Precisa de apoio');
+  assert.equal(OC.faixaNota(null).k, 'sem');
+});
+
+test('área do gestor: a senha fica só como resumo SHA-256; regras podem trocar, ajustes da pessoa não', () => {
+  const crypto = require('node:crypto');
+  assert.equal(OC.DEFAULTS.senhaGestorSha256, crypto.createHash('sha256').update('gestor@987654321').digest('hex'));
+  assert.ok(!fs.readFileSync(path.join(EXT, 'core.js'), 'utf8').includes('gestor@987654321'), 'o texto da senha não está no código');
+  const outro = crypto.createHash('sha256').update('outra').digest('hex');
+  const regras = OC.normalizarRegras({ senhaGestorSha256: outro.toUpperCase() });
+  assert.equal(regras.senhaGestorSha256, outro);
+  assert.equal(OC.combinarSettings({ regras }, { senhaGestorSha256: 'a'.repeat(64) }).senhaGestorSha256, outro, 'ajuste da pessoa não troca a senha');
+  assert.equal(OC.normalizarRegras({ senhaGestorSha256: 'texto' }), null);
+});

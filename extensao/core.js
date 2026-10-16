@@ -90,6 +90,9 @@
     tempoOcupado: 5,          // dias úteis que um analista leva para atender num período cheio: prazo legal mais perto que isso já pede ação
     admissaoAviso: 2,         // dias úteis antes do prazo do eSocial para destacar a admissão (empregado: até o dia anterior ao início)
     estagiarioPrazoDias: 15,  // estagiário: o eSocial vai até 15 dias corridos depois da admissão (pedido do Josué, 16/10/2026)
+    // Área do gestor (Equipe): SHA-256 da senha, nunca o texto. Trava leve, para a tela não ficar aberta a todos;
+    // não é segurança forte (o código da extensão é legível). O arquivo de regras pode trocar o resumo.
+    senhaGestorSha256: '112476430c42953d49259e789d363e3c62d8bc91f775a7cc2f735fbf67418e5c',
     pagamentoFeriasAntes: 2,  // CLT art. 145: férias pagas até 2 dias antes do início
     pagamentoRescisaoDias: 10, // CLT art. 477 §6º: verbas rescisórias em até 10 dias do término do contrato
     avisoFeriasDias: 30,      // CLT art. 135: aviso de férias com 30 dias de antecedência
@@ -639,6 +642,7 @@
       for (const k of ['serviceRequestType', 'requestWay', 'departmentId']) if (typeof raw.criacao[k] === 'string' && /^[A-Za-z0-9_.-]{1,80}$/.test(raw.criacao[k])) c[k] = raw.criacao[k];
       if (Object.keys(c).length) out.criacao = c;
     }
+    if (typeof raw.senhaGestorSha256 === 'string' && /^[0-9a-f]{64}$/i.test(raw.senhaGestorSha256)) out.senhaGestorSha256 = raw.senhaGestorSha256.toLowerCase();
     if (Array.isArray(raw.abaErrada)) {
       for (const e of raw.abaErrada.slice(0, 30)) {
         const t = e && TYPE_BY_KEY[e.tipo];
@@ -646,7 +650,7 @@
         if (t && t.key !== 'geral' && palavras.length) out.abaErrada.push({ tipo: t.key, palavras });
       }
     }
-    const util = Object.keys(out.config).length || out.feriados.length || out.abaErrada.length || (out.observacoes && Object.keys(out.observacoes).length) || out.avisoSemCalculo || out.assuntoSemCalculo || out.tramiteCriacao || out.criacao;
+    const util = Object.keys(out.config).length || out.feriados.length || out.abaErrada.length || (out.observacoes && Object.keys(out.observacoes).length) || out.avisoSemCalculo || out.assuntoSemCalculo || out.tramiteCriacao || out.criacao || out.senhaGestorSha256;
     return util ? out : null;
   }
 
@@ -663,8 +667,10 @@
       if (r.assuntoSemCalculo) base.assuntoSemCalculo = r.assuntoSemCalculo;
       if (r.tramiteCriacao) base.tramiteCriacao = r.tramiteCriacao;
       if (r.criacao) base.criacao = Object.assign({}, DEFAULTS.criacao, r.criacao);
+      if (r.senhaGestorSha256) base.senhaGestorSha256 = r.senhaGestorSha256;
     }
-    return Object.assign(base, usuario || {});
+    // a senha da área do gestor vem só do código ou das regras do escritório, nunca dos ajustes da pessoa
+    return Object.assign(base, usuario || {}, { senhaGestorSha256: base.senhaGestorSha256 });
   }
 
   /* ---------- painel por cliente (dashboard Clientes) ---------- */
@@ -1292,6 +1298,93 @@
     }
   }
 
+  /* ---------- avaliação de desempenho e qualidade (tela Equipe, área do gestor) ----------
+   * Junta as pendências (resumo ao vivo) e as solicitações movimentadas no período (lidas na hora, nunca guardadas).
+   * Para cada analista e para a equipe:
+   *  - entregas: concluídas no período, tempo de conclusão (d.u. da abertura à conclusão), % no prazo interno
+   *    (3 d.u. simples, 5 cálculo), prescritas no período;
+   *  - carteira: pendências, % em dia das que estão com o escritório, críticas (G3), paradas, cliente respondeu e
+   *    esperando, 1º trâmite médio (estimativa);
+   *  - nota (0–100) = média ponderada do que houver: pontualidade 35, carteira em dia 30, cuidado 20, agilidade 15;
+   *  - comparação com o período anterior (mesmo tamanho) e entregas por dia (para a linha de cada pessoa). */
+  const PESOS_NOTA = { pontualidade: 35, emDia: 30, cuidado: 20, agilidade: 15 };
+  function faixaNota(n) { return n == null ? { k: 'sem', rot: 'Sem dados' } : n >= 85 ? { k: 'otimo', rot: 'Excelente' } : n >= 70 ? { k: 'bom', rot: 'Bom' } : n >= 50 ? { k: 'atencao', rot: 'Atenção' } : { k: 'critico', rot: 'Precisa de apoio' }; }
+  function avaliarEquipe(pendentes, movimentadas, settings, dias, now) {
+    const s = Object.assign({}, DEFAULTS, settings || {});
+    now = now || new Date();
+    dias = dias || 7;
+    const hol = new Set(s.feriados || []);
+    const hoje0 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const iniAtual = somaDias(hoje0, -(dias - 1)), iniAnt = somaDias(iniAtual, -dias);
+    const SEM = '(sem responsável)';
+    const pessoas = new Map();
+    const pessoa = nome => { if (!pessoas.has(nome)) pessoas.set(nome, novo(nome)); return pessoas.get(nome); };
+    function novo(nome) { return { resp: nome, carteira: 0, esc: 0, emDiaEsc: 0, g3: 0, paradas: 0, respondeu: 0, ptSoma: 0, ptN: 0, concl: 0, noPrazo: 0, tempoSoma: 0, prescritas: 0, ant: { concl: 0, noPrazo: 0, prescritas: 0 }, porDia: {}, atencao: [] }; }
+    const equipe = novo('Equipe');
+    const contar = (fn, i) => { if (i.resp) fn(pessoa(i.resp)); fn(equipe); };
+    for (const i of pendentes || []) {
+      if (i.lado === 'fim') continue;
+      contar(r => {
+        r.carteira++;
+        if (i.lado === 'esc') { r.esc++; if (!i.nivel) r.emDiaEsc++; if ((i.parado || 0) > s.parada) r.paradas++; }
+        if (i.grav === 3) r.g3++;
+        if (clienteRespondeu(i)) r.respondeu++;
+        if (i.ptUteis != null) { r.ptSoma += i.ptUteis; r.ptN++; }
+      }, i);
+      if (i.resp && (i.grav === 3 || (i.lado === 'esc' && (i.parado || 0) > s.parada))) pessoa(i.resp).atencao.push(i);
+    }
+    const vistos = new Set();
+    for (const x of movimentadas || []) {
+      if (x.lado !== 'fim' || vistos.has(x.k)) continue;
+      vistos.add(x.k);
+      const fim = parseDate(x.last);
+      if (!fim) continue;
+      const dia = new Date(fim.getFullYear(), fim.getMonth(), fim.getDate());
+      const atual = dia >= iniAtual && dia <= hoje0, anterior = !atual && dia >= iniAnt && dia < iniAtual;
+      if (!atual && !anterior) continue;
+      const t = TYPE_BY_KEY[x.type] || {};
+      const prescrita = /^Prescrita/.test(x.status || '');
+      const ab = parseDate(x.created);
+      const tempo = ab ? diasUteis(ab, fim, hol) : null;
+      const prazo = t.calculo ? s.conclusaoCalculo : s.conclusaoSimples;
+      contar(r => {
+        const alvo = atual ? r : r.ant;
+        if (prescrita) { alvo.prescritas++; return; }
+        alvo.concl++;
+        if (tempo != null && tempo <= prazo) alvo.noPrazo++;
+        if (atual && tempo != null) r.tempoSoma += tempo;
+        if (atual) { const k = ymd(dia); r.porDia[k] = (r.porDia[k] || 0) + 1; }
+      }, x);
+    }
+    const diasLista = Array.from({ length: dias }, (_, n) => ymd(somaDias(iniAtual, n)));
+    const pct = (a, b) => (b ? Math.round(a / b * 100) : null);
+    function fechar(r) {
+      const pt = r.ptN ? Math.round(r.ptSoma / r.ptN * 10) / 10 : null;
+      const comp = {
+        pontualidade: pct(r.noPrazo, r.concl),
+        emDia: pct(r.emDiaEsc, r.esc),
+        cuidado: r.carteira || r.concl || r.prescritas ? Math.max(0, 100 - 25 * (r.g3 + r.prescritas)) : null,
+        agilidade: pt == null ? null : Math.max(0, Math.min(100, Math.round(100 - (pt - s.primeiroTramite) * 25)))
+      };
+      let soma = 0, peso = 0;
+      for (const [k, w] of Object.entries(PESOS_NOTA)) if (comp[k] != null) { soma += comp[k] * w; peso += w; }
+      const nota = peso ? Math.round(soma / peso) : null;
+      const antPont = pct(r.ant.noPrazo, r.ant.concl);
+      return {
+        resp: r.resp, nota, faixa: faixaNota(nota), componentes: comp,
+        concluidas: r.concl, noPrazo: r.noPrazo, pctNoPrazo: comp.pontualidade, tempoMedio: r.concl ? Math.round(r.tempoSoma / r.concl * 10) / 10 : null,
+        prescritas: r.prescritas, carteira: r.carteira, esc: r.esc, pctEmDia: comp.emDia, g3: r.g3, paradas: r.paradas, respondeu: r.respondeu, primeiroTramite: pt,
+        anterior: { concluidas: r.ant.concl, pctNoPrazo: antPont, prescritas: r.ant.prescritas },
+        variacao: { concluidas: r.concl - r.ant.concl, pctNoPrazo: comp.pontualidade == null || antPont == null ? null : comp.pontualidade - antPont },
+        porDia: diasLista.map(d => ({ dia: d, n: r.porDia[d] || 0 })),
+        atencao: (r.atencao || []).sort((a, b) => (b.grav || 0) - (a.grav || 0) || (b.parado || 0) - (a.parado || 0)).slice(0, 8)
+      };
+    }
+    const analistas = [...pessoas.values()].filter(r => r.resp !== SEM).map(fechar)
+      .sort((a, b) => ((b.nota == null ? -1 : b.nota) - (a.nota == null ? -1 : a.nota)) || (b.concluidas - a.concluidas) || a.resp.localeCompare(b.resp, 'pt-BR'));
+    return { dias, de: ymd(iniAtual), ate: ymd(hoje0), equipe: fechar(equipe), analistas, pesos: PESOS_NOTA };
+  }
+
   /* ---------- ações no Onvio (fase 2, pedida pelo Josué em 15/10/2026) ----------
    * Formatos vistos no Onvio real (mapeamento/acoes-2026-10-15.md), na EMPRESA EXEMPLO:
    *  - trâmite (responder, mudar situação, encaminhar): POST {tramites}/{id}/topics  { description, status[, forwardedToExpanded] }
@@ -1505,5 +1598,5 @@
     return { dias, empresas: lista, total: lista.reduce((s2, r) => s2 + r.total, 0), prox30: lista.reduce((s2, r) => s2 + r.prox30, 0) };
   }
 
-  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, quadroSemCalculo, marcarSemCalculo, textoAvisoSemCalculo, assuntoAvisoSemCalculo, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, admissoesCriticas, escritorioTramitou, vencimentosLegais, malUso, sugestoesAcoes, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, quadroSemCalculo, marcarSemCalculo, textoAvisoSemCalculo, assuntoAvisoSemCalculo, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, admissoesCriticas, escritorioTramitou, vencimentosLegais, malUso, sugestoesAcoes, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);
