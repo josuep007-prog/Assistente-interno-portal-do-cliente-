@@ -96,7 +96,7 @@ function desenhar(i, r, erro, carregando) {
       '<button class="dtab' + (aba === 'lembretes' ? ' on' : '') + '" data-aba="lembretes" role="tab">Lembretes<span class="n">' + (lems.filter(l => !l.feito).length || '') + '</span></button>' +
     '</div>' +
     '<div class="dlg-body" id="g-corpo">' + (erro ? '<div class="faixa"><svg class="ic"><use href="#i-alert"/></svg>' + esc(erro) + '</div>' : '') +
-      (aba === 'acao' && acaoAberta() ? formAcao(i, obs) : aba === 'dados' ? dados(i, r, carregando) : aba === 'cliente' ? clienteHtml(obs, carregando) : aba === 'lembretes' ? lembretesHtml(lems) : tramitesHtml(r, carregando)) + '</div>' +
+      (aba === 'acao' && acaoAberta() ? formAcao(i, obs) : aba === 'dados' ? dados(i, r, carregando) : aba === 'cliente' ? clienteHtml(obs, carregando) : aba === 'lembretes' ? lembretesHtml(lems) : tramitesHtml(r, carregando, i)) + '</div>' +
     '<div class="dlg-actions">' +
       '<button class="btn btn-sm" id="g-onvio"><svg class="ic ic-sm"><use href="#i-link"/></svg> Abrir no Onvio</button>' +
       (nAnexos ? '<button class="btn btn-sm" id="g-anexos" title="Escolha quais anexos baixar"><svg class="ic ic-sm"><use href="#i-paperclip"/></svg> Anexos<span class="n-anexos">' + nAnexos + '</span></button>' : '') +
@@ -111,13 +111,19 @@ function desenhar(i, r, erro, carregando) {
   $('#g-fechar').onclick = fecharDetalhe;
   // conversa: ao chegar, mostra o fim (o trâmite mais recente), uma vez por solicitação aberta
   const chave = atual ? atual.type + ':' + atual.num : '';
-  if (aba === 'tramites' && !carregando && tramites && tramites.length && rolada !== chave) { rolada = chave; const c = $('#g-corpo'); if (c) c.scrollTop = c.scrollHeight; }
+  const rolar = aba === 'tramites' && !carregando && tramites && tramites.length && rolada !== chave;
+  if (rolar) { rolada = chave; const c = $('#g-corpo'); if (c) c.scrollTop = c.scrollHeight; }
   const anexos = marcar => abrirAnexos({ item: i, r, marcar });
   if ($('#g-anexos')) $('#g-anexos').onclick = () => anexos();
   if ($('#g-anexos2')) $('#g-anexos2').onclick = () => anexos();
   $$('[data-ax-abrir]', g).forEach(b => b.onclick = e => { e.stopPropagation(); anexos(b.dataset.axAbrir); });
   $$('.tr-mais', g).forEach(b => b.onclick = () => { const c = b.closest('.tr-bolha'); const ab = c.classList.toggle('aberto'); b.textContent = ab ? 'Ver menos' : 'Ver tudo'; });
-  requestAnimationFrame(() => $$('.tr-texto', g).forEach(t => { if (t.scrollHeight > t.clientHeight + 4) t.closest('.tr-bolha').classList.add('longo'); }));
+  // texto longo ganha "Ver tudo" depois de medido; se a conversa acabou de ser levada ao fim, continua no fim
+  requestAnimationFrame(() => {
+    $$('.tr-texto', g).forEach(t => { if (t.scrollHeight > t.clientHeight + 4) t.closest('.tr-bolha').classList.add('longo'); });
+    const c = $('#g-corpo');
+    if (rolar && c) c.scrollTop = c.scrollHeight;
+  });
   if ($('#g-ant')) { $('#g-ant').onclick = () => andar(-1); $('#g-prox').onclick = () => andar(1); }
   $$('[data-aba]', g).forEach(b => b.onclick = () => { aba = b.dataset.aba; desenhar(i, r, erro, carregando); });
   $('#g-onvio').onclick = async () => {
@@ -160,13 +166,17 @@ function botoesAcao(i, carregando) {
 
 // Trâmites como conversa, sempre na ordem em que aconteceram (sem filtros): cliente à esquerda, escritório à direita,
 // com o tempo entre um e outro. Ao abrir, a janela já mostra o fim da conversa (o mais recente).
-function tramitesHtml(r, carregando) {
+function tramitesHtml(r, carregando, i) {
   if (carregando) return '<div class="vazio">Lendo os trâmites no Onvio…</div>';
   if (!r) return '<div class="vazio">Sem trâmites para mostrar.</div>';
   if (r.erroTramites) return '<div class="faixa warn"><svg class="ic"><use href="#i-alert"/></svg>Não foi possível ler os trâmites (' + esc(r.erroTramites) + '). Use "Abrir no Onvio" para ver o histórico.</div>';
   const todos = r.tramites || [];
   if (!todos.length) return '<div class="vazio"><b>Nenhum trâmite ainda</b>A solicitação ainda não teve resposta.</div>';
   const ult = todos[todos.length - 1];
+  // "Responder" ao lado da última mensagem do cliente (abre o formulário do trâmite, como o botão do rodapé)
+  const ultCli = todos.filter(x => x.lado !== 'esc').pop();
+  const pode = i ? OC.podeAcao('tramite', i) : { ok: false, motivo: '' };
+  const responder = '<button type="button" class="btn btn-sm' + (ultCli === ult ? ' btn-primary' : '') + ' tr-responder" data-acao="tramite"' + (pode.ok ? '' : ' disabled title="' + esc(pode.motivo) + '"') + '><svg class="ic ic-sm"><use href="#i-chat"/></svg> Responder</button>';
   const dias = (a, b) => Math.round((new Date(b) - new Date(a)) / 864e5);
   let ant = null;
   const corpo = todos.map(x => {
@@ -185,7 +195,7 @@ function tramitesHtml(r, carregando) {
           '<span class="tr-quando" title="' + esc(fmtDataHora(x.em)) + '">#' + String(x.n).padStart(2, '0') + ' · ' + esc(relativo(x.em) !== fmtDataHora(x.em) ? relativo(x.em) : fmtDataHora(x.em)) + '</span></div>' +
         (x.texto ? '<div class="tr-texto">' + esc(textoPuro(x.texto)) + '</div><button type="button" class="tr-mais">Ver tudo</button>' : '<div class="tr-texto fraco">Sem texto' + (anexos.length ? ' (só anexo)' : '') + '</div>') +
         (anexos.length ? '<div class="tr-anexos">' + anexos.map((a, ai) => { const tp = tipoArquivo(a.nome); return '<button type="button" class="tr-arq"' + (a.id ? ' data-ax-abrir="' + gi + ':' + ai + '"' : ' disabled') + ' title="Baixar ' + esc(a.nome) + '"><span class="ax-ic ' + tp.cls + '">' + tp.rot + '</span><span class="ax-nome">' + esc(a.nome) + '</span></button>'; }).join('') + '</div>' : '') +
-      '</div></div>';
+      '</div>' + (x === ultCli ? responder : '') + '</div>';
   }).join('');
   return '<div class="tr-lista" id="tr-lista">' + corpo + '</div>';
 }
