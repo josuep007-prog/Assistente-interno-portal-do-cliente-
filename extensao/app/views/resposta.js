@@ -14,6 +14,8 @@ const MAX_ANEXOS = 10, MAX_BYTES = 15 * 1024 * 1024;
 const rascunhos = new Map();     // 'tipo:num' -> rascunho (só na memória)
 let pendente = null;             // { chave, timer }: contagem para desistir
 let enviado = null;              // { chave, em }: o último envio, para o aviso e o destaque da bolha
+let recolhida = true;            // começa só com a barra de título, para a conversa ter a janela; abre ao clicar, no atalho R ou ao preparar uma resposta (vale nesta visita)
+let aoAbrir = null;              // { r, redesenhar } da caixa na tela, para o atalho R e o botão Responder abrirem a recolhida
 
 const chaveDe = i => i.type + ':' + i.num;
 const novoRascunho = () => ({ texto: '', sit: '', arquivos: [], modo: 'editar', erro: '', aoEnviar: null, guardando: false, guardTexto: '', guardRot: '', aberto: false, focar: false, selMarca: '', proxima: false, fimEm: 0, segTotal: 0 });
@@ -28,6 +30,7 @@ export function prepararResposta(i, preset) {
   if (p.situacao) r.sit = String(p.situacao);
   r.aoEnviar = typeof p.aoEnviar === 'function' ? p.aoEnviar : null;
   r.modo = 'editar'; r.aberto = true; r.focar = true; r.erro = '';
+  recolhida = false;
 }
 export const recemEnviado = i => !!(enviado && enviado.chave === chaveDe(i) && Date.now() - enviado.em < 20000);
 export const respostaEmAndamento = i => { const r = rascunhos.get(chaveDe(i)); return !!r && r.modo !== 'editar'; };
@@ -42,6 +45,7 @@ export function cancelarPendente() {
   return true;
 }
 export function focarResposta() {
+  if (recolhida && aoAbrir && $('#cmp')) { recolhida = false; aoAbrir.r.focar = true; aoAbrir.redesenhar(); return true; }
   const t = $('#a-texto');
   if (!t) return false;
   t.focus(); t.setSelectionRange(t.value.length, t.value.length);
@@ -78,10 +82,16 @@ export function respostaHtml(i, obs, ctx) {
   const it = ints.find(x => String(x.sit) === String(r.sit));
   const vez = i.lado === 'esc' ? 'Vez do escritório' : i.lado === 'cli' ? 'Vez do cliente' : '';
   const aberto = r.aberto || r.texto || r.sit || r.arquivos.length || r.guardando || r.erro;
-  const cab = '<div class="cmp-cab"><b>Responder ao cliente</b>' + (vez ? '<span class="cmp-vez ' + esc(i.lado) + '">' + vez + (i.parado != null ? ' · parada há ' + i.parado + ' dia(s)' : '') + '</span>' : '') + '<span class="cmp-atalho">atalho <kbd>R</kbd></span></div>';
+  const cab = '<div class="cmp-cab"><b>Responder ao cliente</b>' + (vez ? '<span class="cmp-vez ' + esc(i.lado) + '">' + vez + (i.parado != null ? ' · parada há ' + i.parado + ' dia(s)' : '') + '</span>' : '') + '<span class="cmp-atalho">atalho <kbd>R</kbd></span>' + (r.modo !== 'editar' ? '' : '<button type="button" class="cmp-rec" id="cmp-rec" aria-expanded="' + (recolhida && r.modo === 'editar' ? 'false' : 'true') + '" title="' + (recolhida && r.modo === 'editar' ? 'Abrir a caixa de resposta' : 'Recolher a caixa de resposta (o rascunho fica guardado)') + '">' + ic(recolhida && r.modo === 'editar' ? 'chev-r' : 'chev-d', 'ic-sm') + (recolhida && r.modo === 'editar' ? ' Abrir' : '') + '</button>') + '</div>';
   const ok = recemEnviado(i) ? '<div class="cmp-ok">' + ic('check', 'ic-sm') + ' Trâmite enviado às ' + horaDe(enviado.em) + '. Ele aparece no fim da conversa.</div>' : '';
   const erro = r.erro ? '<div class="cmp-erro">' + ic('alert', 'ic-sm') + '<span>' + esc(r.erro) + '</span></div>' : '';
   const arqs = r.arquivos.length ? '<div class="cmp-arqs">' + r.arquivos.map((a, n) => '<span class="cmp-arq">' + ic('paperclip', 'ic-sm') + esc(a.name) + ' · ' + tamanho(a.size) + (r.modo === 'editar' ? ' <button type="button" class="linkish" data-tira-arq="' + n + '" aria-label="Tirar ' + esc(a.name) + '">×</button>' : '') + '</span>').join('') + '</div>' : '';
+
+  // recolhida: só a barra de título (com o aviso de que há rascunho)
+  if (recolhida && r.modo === 'editar') {
+    const ha = r.texto.trim() || r.arquivos.length;
+    return '<div class="cmp cmp-min" id="cmp" title="Abrir a caixa de resposta">' + cab + ok + erro + (ha ? '<span class="fraco cmp-min-rasc">Rascunho guardado' + (r.texto.trim() ? ' (' + r.texto.trim().length + ' caracteres)' : '') + (r.arquivos.length ? ' · ' + r.arquivos.length + ' anexo(s)' : '') + '</span>' : '') + '</div>';
+  }
 
   // revisar, contagem para desistir e envio: o rascunho aparece na conversa e aqui só o resumo
   if (r.modo !== 'editar') {
@@ -153,6 +163,15 @@ export function ligarResposta(g, i, r0, obs, cb) {
   const cmp = $('#cmp', g);
   if (!cmp) return;
   const ints = OC.intencoesDe(i, estado.settings);
+  aoAbrir = { r, redesenhar: cb.redesenhar };
+  const alternar = () => {
+    if (r.modo !== 'editar') return;                 // revisando ou enviando: não recolhe
+    recolhida = !recolhida;
+    if (!recolhida) r.focar = true;
+    cb.redesenhar();
+  };
+  if ($('#cmp-rec', g)) $('#cmp-rec', g).onclick = e => { e.stopPropagation(); alternar(); };
+  if (cmp.classList.contains('cmp-min')) cmp.onclick = alternar;     // a barra inteira abre a caixa
 
   // atualiza sem redesenhar (para não perder o foco nem o cursor)
   const atualizar = () => {
