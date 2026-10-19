@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.25.1)
+# Control Onvio · ControlTax (v0.25.2)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -40,6 +40,11 @@ Vez do cliente: sem retorno há mais de 5 dias úteis (laranja); a partir de 20 
 **Resolvida sem retorno:** na vez do cliente há mais de 3 dias úteis e a última resposta do analista não pede nada ao cliente = o cliente ficou satisfeito, e a solicitação conta como resolvida (sai da fila, dos prazos e da prescrição e conta como entregue na Equipe). Se a resposta pedir algo ("aguardamos", "favor enviar", "falta"… ou uma pergunta), continua pendente; frases de cortesia ("qualquer dúvida, estamos à disposição") não contam. Nada muda no Onvio.
 
 Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardando resposta** = o escritório precisa responder; **Respondido** = vez do cliente.
+
+## Novidades da v0.25.2 (aviso claro em Cadastro e Rubricas)
+
+- Em **Cadastro (empregado, contribuinte, estagiário)** e **Lançamento de rubricas**, a caixa de resposta explica em linguagem simples que responder ainda não está disponível na extensão (as situações dessas listas são outras: em Cadastro, por exemplo, "Aguardando o cliente", "Cadastro efetuado" e "Concluído") e traz o botão **Abrir no Onvio** ali mesmo.
+- **Para liberar:** `mapeamento/prompt-cadastro-respostas.md` (roteiro curto só dessas listas, com a alternativa pelo modo aprender). Precisa de uma solicitação de teste de cada lista, criada pela visão do cliente.
 
 ## Novidades da v0.25.1 (Respondido sempre à vista)
 
