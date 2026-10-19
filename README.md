@@ -2,7 +2,7 @@
 
 Ferramentas internas da ControlTax para facilitar o uso e o controle do **Portal do Cliente Onvio** por analistas e gestores.
 
-## Control Onvio (extensão do Chrome) · v0.24.0
+## Control Onvio (extensão do Chrome) · v0.24.1
 
 Página de trabalho em tela cheia **por cima do Onvio Portal do Cliente**: Hoje como visão do dia (admissões em destaque, vencimentos de férias e rescisões, sugestões de ação por solicitação (resolvida fora do portal, duplicada, lista errada, falta informação) com o trâmite já preenchido, uso do portal pelo cliente e previsão por empresa), Solicitações (filas das 10 listas (com cartões por tipo e ordem por prioridade, empresa ou mais recente), avisos de férias e rescisão sem cálculo perto do prazo legal (Férias e Rescisões lado a lado, com criar solicitação ou responder no aviso, já avisei e desconsiderar), detalhe completo da solicitação com observações prontas para o cliente, módulo Distribuir (quem mais atendeu a empresa nos últimos 30 dias), dashboards em tempo real (Hoje no formato da tela Convenções do Departamento Pessoal: carteira, destaque com rosca, carrossel e próximos passos, Equipe como área do gestor com senha: avaliação de desempenho e qualidade dos atendimentos), agenda, detalhe com o essencial em destaque, trâmites como conversa e anexos baixados de uma vez (o analista escolhe quais), alertas, lembretes pessoais e Configurações que mostram o efeito de cada prazo na fila antes de salvar. Solicitações na vez do cliente sem retorno há mais de 3 dias úteis, cuja última resposta não pedia nada, contam como resolvidas. O Onvio continua aberto por trás e mantém a sessão.
 

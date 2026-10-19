@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Control Onvio · ControlTax",
   "short_name": "Control Onvio",
-  "version": "0.24.0",
+  "version": "0.24.1",
   "description": "Página de trabalho por cima do Onvio Portal do Cliente: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores.",
   "permissions": [
     "storage",
