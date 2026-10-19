@@ -158,6 +158,7 @@ function desenhar(i, r, erro, carregando) {
     if (aba !== 'tramites') { aba = 'tramites'; desenhar(i, r, erro, carregando); }
     if (!focarResposta()) toast('A caixa de resposta não está disponível aqui', true);
   };
+  $$('[data-abrir-onvio]', g).forEach(b => b.onclick = () => $('#g-onvio').click());
   $$('[data-responder]', g).forEach(b => b.onclick = () => { if (!focarResposta()) toast('A caixa de resposta não está disponível aqui', true); });
   $$('.g-mais .menu-item', g).forEach(b => b.addEventListener('click', () => { const m = b.closest('details'); if (m) m.open = false; }));
   document.addEventListener('click', fechaMais);

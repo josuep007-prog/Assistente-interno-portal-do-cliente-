@@ -1316,6 +1316,7 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .cmp-barra > i{display:block; height:100%; width:100%; background:var(--blue-deep); transform-origin:left; animation:cmp-barra var(--dur, 5s) linear forwards}
 @keyframes cmp-barra{from{transform:scaleX(0)} to{transform:scaleX(1)}}
 /* rascunho na conversa */
+.cmp-nota .btn{margin-left:auto; flex:none}
 .tr-item.rascunho .tr-bolha{border-style:dashed; border-color:var(--blue-deep); background:color-mix(in srgb, var(--blue-pale) 55%, var(--surface))}
 .tr-arq.off{opacity:.8; cursor:default}
 .tr-nova .tr-bolha{animation:tr-nova 1.8s ease-out}

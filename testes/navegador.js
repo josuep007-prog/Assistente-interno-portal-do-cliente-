@@ -1158,7 +1158,9 @@ await passo('app · Tramitação: caixa de resposta fixa; intenção e efeito; m
   await p.evaluate(() => { location.hash = '#/fila?escopo=equipe'; });
   await p.click('#corpo [data-k="rubricas:d"]');
   await p.waitForSelector('#gaveta .cmp-nota');
-  assert.match(await p.textContent('#gaveta .cmp-nota'), /ainda não está mapeado/);
+  assert.match(await p.textContent('#gaveta .cmp-nota'), /ainda não está disponível na extensão para Lançamento de rubricas/);
+  await p.click('#gaveta .cmp-nota [data-abrir-onvio]');
+  await p.waitForFunction(() => window.__msgs.some(m => m.cmd === 'abrir'));
   assert.equal(await p.$eval('#g-responder', b => b.disabled), true, 'Responder do rodapé desativado, com o motivo');
   assert.match(await p.getAttribute('#g-responder', 'title'), /ainda não mapeada/);
   assert.equal(await p.$('#a-texto'), null);
