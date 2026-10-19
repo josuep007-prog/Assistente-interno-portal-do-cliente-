@@ -25,14 +25,21 @@
       @font-face{font-family:'IBM Plex Sans';font-weight:500;src:url('${url('fonts/ibm-plex-sans-latin-500-normal.woff2')}') format('woff2')}
       :host{all:initial}
       *{box-sizing:border-box}
-      .launcher{position:fixed;right:20px;bottom:22px;display:flex;align-items:center;gap:10px;height:46px;padding:0 16px 0 8px;border:0;border-radius:23px;
-        background:#0E151B;color:#E9EEF2;font:500 13px 'IBM Plex Sans',system-ui,sans-serif;cursor:pointer;
-        box-shadow:0 2px 6px rgba(16,24,32,.18),0 14px 32px rgba(16,24,32,.22);transition:transform .15s ease, box-shadow .15s ease}
-      .launcher:hover{transform:translateY(-2px)}
+      .launcher{--anel:#6BAAC9;position:fixed;right:18px;bottom:18px;width:48px;height:48px;padding:0;border:0;border-radius:50%;
+        background:#0E151B;cursor:pointer;display:grid;place-items:center;
+        box-shadow:0 2px 6px rgba(16,24,32,.22),0 10px 24px rgba(16,24,32,.28);transition:transform .15s ease, box-shadow .15s ease}
+      .launcher.late{--anel:#E8474B}
+      .launcher.today{--anel:#FF9D42}
+      /* só a bolinha, chamando atenção: dois anéis que se abrem e somem, um depois do outro */
+      .launcher::before, .launcher::after{content:"";position:absolute;inset:0;border-radius:50%;border:2px solid var(--anel);opacity:0;pointer-events:none;animation:anel 2.8s ease-out infinite}
+      .launcher::after{animation-delay:1.4s}
+      @keyframes anel{0%{transform:scale(1);opacity:.75}70%,100%{transform:scale(1.9);opacity:0}}
+      .launcher:hover{transform:scale(1.1)}
+      .launcher:hover::before, .launcher:hover::after{animation-play-state:paused;opacity:0}
       .launcher:focus-visible{outline:2px solid #6BAAC9;outline-offset:3px}
-      .launcher .mark{width:32px;height:32px;border-radius:16px;background:#fff;display:grid;place-items:center}
-      .launcher .mark img{width:16px;height:20px}
-      .launcher .badge{min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:#3C659B;color:#fff;font:600 11px 'Archivo',sans-serif;display:grid;place-items:center}
+      .launcher .mark{width:34px;height:34px;border-radius:50%;background:#fff;display:grid;place-items:center}
+      .launcher .mark img{width:17px;height:21px}
+      .launcher .badge{position:absolute;top:-5px;right:-5px;min-width:20px;height:20px;padding:0 5px;border-radius:10px;border:2px solid #fff;background:#3C659B;color:#fff;font:600 11px/16px 'Archivo',sans-serif;text-align:center}
       .launcher .badge.late{background:#C2000C}
       .launcher .badge.today{background:#B5530C}
       .launcher .badge[hidden]{display:none}
@@ -40,12 +47,11 @@
       .camada{position:fixed;inset:0;width:100vw;height:100vh;opacity:0;visibility:hidden;transition:opacity .16s ease, visibility 0s linear .16s;background:#E9F1F9}
       .camada.open{opacity:1;visibility:visible;transition:opacity .16s ease}
       iframe{border:0;width:100%;height:100%;display:block;background:#EDF0F3;color-scheme:normal}
-      @media (prefers-reduced-motion: reduce){.camada,.camada.open,.launcher{transition:none}}
+      @media (prefers-reduced-motion: reduce){.camada,.camada.open,.launcher{transition:none}.launcher::before,.launcher::after{animation:none;opacity:.35;transform:scale(1.35)}.launcher::after{display:none}}
       @media print{:host{display:none}}
     </style>
-    <button class="launcher" type="button" aria-label="Voltar ao Control Onvio">
-      <span class="mark"><img alt="" src="${url('logo.svg')}"></span>
-      <span class="lbl">Voltar ao Control Onvio</span><span class="badge" hidden></span>
+    <button class="launcher" type="button" aria-label="Voltar ao Control Onvio" title="Voltar ao Control Onvio">
+      <span class="mark"><img alt="" src="${url('logo.svg')}"></span><span class="badge" hidden></span>
     </button>
     <div class="camada" aria-hidden="true"></div>`;
   const launcher = raiz.querySelector('.launcher');
@@ -89,8 +95,11 @@
     const minhas = ((snap && snap.items) || []).filter(i => i.mine && i.lado === 'esc');
     badge.hidden = !minhas.length;
     badge.textContent = minhas.length > 99 ? '99+' : String(minhas.length);
-    badge.className = 'badge' + (minhas.some(i => i.nivel === 2) ? ' late' : minhas.some(i => i.nivel === 1) ? ' today' : '');
-    launcher.setAttribute('aria-label', 'Voltar ao Control Onvio' + (minhas.length ? ' · ' + minhas.length + ' minha(s) com ação do escritório' : ''));
+    const nivel = minhas.some(i => i.nivel === 2) ? 'late' : minhas.some(i => i.nivel === 1) ? 'today' : '';
+    badge.className = 'badge' + (nivel ? ' ' + nivel : '');
+    launcher.className = 'launcher' + (nivel ? ' ' + nivel : '') + (launcher.classList.contains('hidden') ? ' hidden' : '');   // a cor do anel segue a urgência
+    const txt = 'Voltar ao Control Onvio' + (minhas.length ? ' · ' + minhas.length + ' minha(s) com ação do escritório' : '');
+    launcher.setAttribute('aria-label', txt); launcher.title = txt;
   }
 
   /* ---------- mensagens do service worker (ícone da extensão, atalho) ---------- */
