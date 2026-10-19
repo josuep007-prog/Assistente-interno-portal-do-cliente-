@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.25.2)
+# Control Onvio · ControlTax (v0.25.3)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -40,6 +40,13 @@ Vez do cliente: sem retorno há mais de 5 dias úteis (laranja); a partir de 20 
 **Resolvida sem retorno:** na vez do cliente há mais de 3 dias úteis e a última resposta do analista não pede nada ao cliente = o cliente ficou satisfeito, e a solicitação conta como resolvida (sai da fila, dos prazos e da prescrição e conta como entregue na Equipe). Se a resposta pedir algo ("aguardamos", "favor enviar", "falta"… ou uma pergunta), continua pendente; frases de cortesia ("qualquer dúvida, estamos à disposição") não contam. Nada muda no Onvio.
 
 Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardando resposta** = o escritório precisa responder; **Respondido** = vez do cliente.
+
+## Novidades da v0.25.3 (visual da caixa de resposta)
+
+- **Texto e ferramentas num cartão só:** a caixa de texto traz embaixo **Anexar** e **Guardar como modelo**, com o foco destacado no cartão inteiro.
+- **"Depois do envio" virou um seletor único** (Respondido · aguarda o cliente / Em análise / Em análise interna / Concluído · encerra), com uma bolinha de cor por situação, a escolhida em destaque e a frase do efeito logo abaixo ("↳ A vez passa ao cliente…").
+- **Modelos numa linha só**, que rola para o lado (sem quebrar em várias linhas). **Observações** ficam recolhidas ("4 observações disponíveis para o cliente"); ao abrir, vêm os chips e "Inserir todas no texto".
+- Rótulos alinhados em duas colunas, etiqueta da **vez** em destaque, teclas (`R`, `Ctrl`+`Enter`) desenhadas como teclas e botão **Revisar** com seta. Menos altura: mais da conversa continua visível.
 
 ## Novidades da v0.25.2 (aviso claro em Cadastro e Rubricas)
 
