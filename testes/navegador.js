@@ -1121,6 +1121,8 @@ await passo('app · Tramitação: caixa de resposta fixa; intenção e efeito; m
   await p.keyboard.type('a guia do FGTS de setembro');       // escreve por cima do trecho marcado
   assert.equal(await p.textContent('#cmp-avisos'), '');
   if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/tram-editar.png' });
+  await p.click('.cmp-obs-d summary');
+  assert.equal(await p.isVisible('.cmp-obs[data-obs-add]'), true, 'as observações abrem em chips');
   await p.click('#a-obs');
   assert.match(await p.inputValue('#a-texto'), /a guia do FGTS de setembro\. Pode complementar por aqui, por favor\?\n\nObservações importantes:\n• Prazo de conclusão/);
   await p.setInputFiles('#a-arquivos', { name: 'recibo.txt', mimeType: 'text/plain', buffer: Buffer.from('ola') });
