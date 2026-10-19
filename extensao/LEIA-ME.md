@@ -41,13 +41,22 @@ Vez do cliente: sem retorno há mais de 5 dias úteis (laranja); a partir de 20 
 
 Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardando resposta** = o escritório precisa responder; **Respondido** = vez do cliente.
 
+## Novidades da v0.28.0 (encaminhar e definir responsável em Cadastro e Rubricas)
+
+- **Encaminhar para outro usuário** e **definir responsável** agora funcionam também em Cadastro (empregado, contribuinte, estagiário) e Rubricas, e o **Distribuir** passa a atribuir nelas (mapeado em 19/10/2026, `mapeamento/tramites-cadastro-rubricas-2026-10-19.md`).
+  - Encaminhar é um trâmite com a situação "Encaminhado" (7 no Cadastro, 9 em Rubricas) e o colega escolhido. No **Cadastro** o Onvio recusa encaminhar a partir de "Aguardando o cliente" (HTTP 400), então o botão explica em vez de tentar; em Rubricas, não dá com a situação Respondido.
+  - Definir responsável só vale enquanto a solicitação **não tem** responsável (o primeiro trâmite já define quem respondeu). A tela do Onvio não troca responsável.
+  - Os 3 Cadastros usam a chamada do empregado (`employees-registrations/{id}/assign-staff`).
+- **Alterar expectativa** continua só na Geral (a tela do Onvio não oferece nessas listas).
+- **A confirmar no Onvio:** em Rubricas a chamada de responsável não foi capturada, usa o mesmo padrão do Cadastro (`payroll-entries/{id}/assign-staff`); se o Onvio recusar, a mensagem aparece e nada é alterado. A lista de colegas vem de quem já é responsável por alguma pendência, e o Onvio pede o mesmo `id` nas duas chamadas (confirmado na folha; nas listas novas, a confirmar).
+
 ## Novidades da v0.27.0 (responder em Cadastro e Rubricas)
 
 - **Responder e anexar agora funcionam em Cadastro (empregado, contribuinte, estagiário) e em Lançamento de rubricas**, mapeados na empresa de teste em 19/10/2026 (`mapeamento/tramites-cadastro-rubricas-2026-10-19.md`). A caixa de resposta oferece só as situações que o Onvio oferece ao escritório em cada lista, conforme a situação atual:
   - **Cadastro:** *Aguardando o cliente* (a vez passa ao cliente) e *Concluído · encerra*; quando a solicitação está com o cliente (Aguardando o cliente), só *Respondido pelo cliente · registra o retorno*. "Cadastro efetuado" nunca é oferecido ao escritório (vem de outro processo).
   - **Rubricas:** *Respondido · aguarda o cliente*, *Aguardando correção · pede ajuste ao cliente*, *Aguardando resposta*, *Em análise* e *Concluído · encerra*; depois de Aguardando resposta ou Aguardando correção, só *Respondido*.
 - O efeito de cada botão aparece embaixo ("A vez passa ao cliente; sem retorno, prescreve em N dias", "Encerra a solicitação", "Continua com o escritório"), os modelos e as sugestões de ação usam a situação equivalente de cada lista, e o aviso de coerência (texto pede algo ao cliente × situação que encerra) vale em todas as listas.
-- **Ainda não disponível nessas duas listas** (o botão explica): **encaminhar**, **definir responsável** e **alterar expectativa**. No Cadastro, o Onvio recusa encaminhar a partir de "Aguardando o cliente" (HTTP 400), a chamada de "Definir responsável" não foi capturada e a expectativa a tela não oferece.
+- Encaminhar e responsável nessas listas entraram na 0.28.0; a expectativa a tela do Onvio não oferece.
 - **A confirmar no Onvio:** a vez de *Aguardando resposta* em Rubricas (a extensão a conta como vez do escritório); o ponto da vez em Cadastro depois de *Respondido pelo cliente*.
 
 ## Novidades da v0.26.0 (só a bolinha)
@@ -245,7 +254,7 @@ Feito a partir do mapeamento na empresa de teste (`mapeamento/acoes-2026-10-15.m
 - **Responder pelo detalhe** (caixa fixa embaixo da conversa desde a 0.25.0): escolha o que acontece depois (Respondido, Em análise, Em análise interna ou Concluído; depois de Respondido, só Respondido e Concluído, como no Onvio), escreva o texto e anexe arquivos (até 10, de até 15 MB). Antes de enviar, **Revisar** mostra o rascunho na conversa e só **Enviar** manda (depois de 5 segundos para desfazer).
 - **Encaminhar** para outro usuário (com comentário), **definir responsável** e **alterar expectativa** (só na Geral, a única testada), também com confirmação.
 - **Distribuir:** **Atribuir** em cada linha (com confirmação) e **Atribuir todas**, com o resumo de quantas vão para cada pessoa. O resultado aparece na linha.
-- **Onde funciona:** Geral, Aviso e Cálculo de férias, Aviso e Cálculo de rescisão e Afastamento. Cadastro e Rubricas aceitam só responder e anexar (desde a 0.27.0); encaminhar, responsável e expectativa seguem bloqueados nelas (o botão explica). O Onvio também bloqueia: definir responsável na folha quando já tem um; na Geral, com a situação Respondido; encaminhar com Respondido.
+- **Onde funciona:** Geral, Aviso e Cálculo de férias, Aviso e Cálculo de rescisão e Afastamento. Cadastro e Rubricas aceitam responder, anexar, encaminhar e definir responsável (0.27.0 e 0.28.0); a expectativa segue só na Geral (o botão explica). O Onvio também bloqueia: definir responsável na folha quando já tem um; na Geral, com a situação Respondido; encaminhar com Respondido.
 - **Segurança:** o envio sai de dentro da aba do Onvio, com a sessão e a autorização da própria tela (a autorização fica só na memória da página, nunca é gravada). Só os endereços de trâmite, anexo do trâmite, responsável e expectativa podem receber escrita; **nunca exclui** nada nem cria solicitação. Texto e anexos não são guardados. Se o Onvio recusar, a mensagem diz o código e nada se perde do que você escreveu.
 - O Onvio às vezes responde 503 na primeira leitura; a extensão tenta de novo uma vez.
 - Lembrete do Onvio: o primeiro trâmite de uma solicitação sem responsável define quem respondeu como responsável.

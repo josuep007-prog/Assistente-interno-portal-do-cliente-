@@ -1067,8 +1067,8 @@ await passo('app · Distribuir: mostra para quem vai cada sem responsável, com 
   assert.equal(await p.$('[data-dias]'), null, 'só 30 dias: 7 e 14 saíram');
   assert.match(await p.textContent('.dist-l'), /#103GAMA.*Aviso de rescisão · Ciclano.*atendeu 3 de 4 solicitações desta empresa nos últimos 30 dias · depois: Ana Teste \(1\)/);
   assert.equal(await p.$eval('.dist-l select', s => s.value), 'id-bia');
-  assert.match(await p.textContent('#d-todas'), /Atribuir todas \(1\)/, 'Rubricas fica de fora (não mapeado)');
-  assert.equal(await p.$eval('[data-atr="rubricas:z"]', b => b.disabled), true);
+  assert.match(await p.textContent('#d-todas'), /Atribuir todas \(2\)/, 'Rubricas entra (responsável mapeado em 19/10/2026)');
+  assert.equal(await p.$eval('[data-atr="rubricas:z"]', b => b.disabled), false);
   // troca a sugestão e atribui uma, com confirmação
   await p.selectOption('[data-esc="avisoRescisao:c"]', 'id-ana');
   await p.click('[data-atr="avisoRescisao:c"]');
@@ -1077,7 +1077,7 @@ await passo('app · Distribuir: mostra para quem vai cada sem responsável, com 
   await p.waitForSelector('.dist-l .ok-t');
   const m = await p.evaluate(() => window.__msgs.find(x => x.cmd === 'acao'));
   assert.deepEqual([m.acao, m.type, m.num, m.analista], ['responsavel', 'avisoRescisao', '103', 'id-ana']);
-  assert.match(await p.textContent('#d-todas'), /Atribuir todas \(0\)/);
+  assert.match(await p.textContent('#d-todas'), /Atribuir todas \(1\)/);
   assert.deepEqual(p.erros, []);
 });
 
@@ -1289,8 +1289,8 @@ await passo('app · Tramitação: modelo pessoal sem dado de cliente; passar par
   await p.click('#corpo [data-k="rubricas:d"]');
   await p.waitForSelector('#g-mais');
   await p.click('#g-mais summary');
-  assert.equal(await p.$eval('[data-acao="passar"]', b => b.disabled), true);
-  assert.match(await p.textContent('[data-acao="passar"] .mi-motivo'), /ainda não disponível/, 'passar para outro analista segue só em Geral e na folha');
+  assert.equal(await p.$eval('[data-acao="passar"]', b => b.disabled), false, 'Rubricas também encaminha e define responsável (0.28.0)');
+  assert.equal(await p.$('[data-acao="expectativa"]'), null, 'expectativa: só a Geral');
   assert.deepEqual(p.erros, []);
 });
 
