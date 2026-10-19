@@ -1823,7 +1823,7 @@ test('aba Dados: campos e valores comuns do DP saem em português, e o desconhec
 test('tramitação: intenções em vez de situações, com o efeito do envio e só as que o Onvio aceita agora', () => {
   const geral = { type: 'geral', code: 1 };
   const a = OC.intencoesDe(geral, {});
-  assert.deepEqual(plano(a.map(x => [x.sit, x.rot])), [[4, 'Aguardar o cliente'], [2, 'Em análise'], [8, 'Em análise interna'], [5, 'Concluir']]);
+  assert.deepEqual(plano(a.map(x => [x.sit, x.rot])), [[4, 'Respondido · aguarda o cliente'], [2, 'Em análise'], [8, 'Em análise interna'], [5, 'Concluído · encerra']]);
   assert.match(a[0].efeito, /A vez passa ao cliente; sem retorno, prescreve em 30 dias/);
   assert.equal(a[3].efeito, 'Encerra a solicitação: ela sai da fila');
   assert.equal(a[1].efeito, 'Continua com o escritório');
@@ -1846,7 +1846,7 @@ test('tramitação: variáveis dos modelos, saudação por horário, e o que fal
   assert.equal(av[0].bloqueia, true);
   assert.match(av[0].msg, /Falta preencher: \{numero\}/);
   assert.deepEqual(plano(OC.avisosResposta('Tudo certo.', 4, {}).map(x => !!x.bloqueia)), [false], 'sem pedido e aguardando o cliente: só uma dica');
-  assert.match(OC.avisosResposta('Tudo certo.', 4, {})[0].msg, /prefira "Concluir"/);
+  assert.match(OC.avisosResposta('Tudo certo.', 4, {})[0].msg, /prefira "Concluído"/);
   assert.match(OC.avisosResposta('Pode enviar o RG do empregado?', 5, {})[0].msg, /pede algo ao cliente/);
   assert.deepEqual(plano(OC.avisosResposta('Concluído. Qualquer dúvida, estamos à disposição.', 5, {})), [], 'cortesia não conta como pedido');
   assert.deepEqual(plano(OC.avisosResposta('', 5, {})), []);

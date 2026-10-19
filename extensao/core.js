@@ -2094,10 +2094,10 @@
    * Intenções (o que acontece depois do envio) em vez de situações do Onvio, variáveis dos modelos e avisos de coerência.
    * Tudo local e só com o que a tela já leu; nada disso é guardado. */
   const INTENCOES = [
-    { sit: 4, rot: 'Aguardar o cliente', onvio: 'Respondido' },
+    { sit: 4, rot: 'Respondido · aguarda o cliente', onvio: 'Respondido' },
     { sit: 2, rot: 'Em análise', onvio: 'Em análise' },
     { sit: 8, rot: 'Em análise interna', onvio: 'Em análise interna' },
-    { sit: 5, rot: 'Concluir', onvio: 'Concluído' }
+    { sit: 5, rot: 'Concluído · encerra', onvio: 'Concluído' }
   ];
   // As situações que o Onvio aceita agora (de situacoesTramite) com o texto simples e o efeito do envio
   function intencoesDe(item, settings) {
@@ -2149,8 +2149,8 @@
     if (m.length) out.push({ bloqueia: true, msg: 'Falta preencher: ' + m.join(', ') });
     if (t && sit) {
       const pede = pedeAlgoAoCliente(t, settings).pede;
-      if (pede && sit === 5) out.push({ msg: 'O texto pede algo ao cliente, mas "Concluir" encerra a solicitação. Prefira "Aguardar o cliente".' });
-      else if (!pede && sit === 4) out.push({ msg: 'O texto não pede nada ao cliente. Se a solicitação terminou, prefira "Concluir"; senão ela fica aguardando o cliente.' });
+      if (pede && sit === 5) out.push({ msg: 'O texto pede algo ao cliente, mas "Concluído" encerra a solicitação. Prefira "Respondido".' });
+      else if (!pede && sit === 4) out.push({ msg: 'O texto não pede nada ao cliente. Se a solicitação terminou, prefira "Concluído"; senão ela fica aguardando o cliente.' });
     }
     return out;
   }

@@ -1276,8 +1276,8 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .cmp-atalho{margin-left:auto; font-size:11px; color:var(--ink-3)}
 .cmp textarea{width:100%; min-height:52px; max-height:220px; resize:none; font:inherit; font-size:13.5px; line-height:1.5; color:var(--ink); padding:9px 12px; border:1px solid var(--rule-strong); border-radius:var(--r); background:var(--surface)}
 .cmp textarea:focus{border-color:var(--blue-deep); box-shadow:0 0 0 3px var(--blue-pale); outline:none}
-.cmp:not(.aberto):not(:focus-within) .cmp-mais{display:none}
-.cmp-mais{display:flex; flex-direction:column; gap:8px}
+.cmp:not(.aberto):not(:focus-within) .cmp-extra{display:none}
+.cmp-extra{display:flex; flex-direction:column; gap:8px}
 .cmp-linha{display:flex; align-items:center; gap:8px 10px; flex-wrap:wrap}
 .cmp-rot{flex:none; min-width:96px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-3)}
 .cmp-ints, .cmp-chips{display:flex; gap:6px; flex-wrap:wrap}
