@@ -5,12 +5,12 @@ const OC = window.OC;
 
 const CHAVES = {
   snapshot: 'snap', status: 'status', settings: 'usuario', regrasEscritorio: 'regras', ultimaVerificacao: 'ultima',
-  eventos: 'eventos', lembretes: 'lembretes', serie: 'serie', alertasVistosEm: 'alertasVistosEm', semCalculoMarcas: 'semCalcMarcas', avaliacaoExcecoes: 'excecoes', sugestoesIgnoradas: 'sugIgnoradas'
+  eventos: 'eventos', lembretes: 'lembretes', serie: 'serie', alertasVistosEm: 'alertasVistosEm', semCalculoMarcas: 'semCalcMarcas', avaliacaoExcecoes: 'excecoes', sugestoesIgnoradas: 'sugIgnoradas', modelosPessoais: 'modelosPessoais'
 };
 
 export const estado = {
   snap: null, status: null, usuario: {}, regras: null, ultima: null,
-  eventos: [], lembretes: [], serie: {}, alertasVistosEm: null, semCalcMarcas: {}, excecoes: {}, sugIgnoradas: {},
+  eventos: [], lembretes: [], serie: {}, alertasVistosEm: null, semCalcMarcas: {}, excecoes: {}, sugIgnoradas: {}, modelosPessoais: [],
   settings: Object.assign({}, OC.DEFAULTS)
 };
 
@@ -21,7 +21,7 @@ function aplicar(d) {
   for (const [k, campo] of Object.entries(CHAVES)) {
     if (!(k in d)) continue;
     const v = d[k];
-    estado[campo] = v == null ? (['eventos', 'lembretes'].includes(campo) ? [] : ['serie', 'usuario', 'semCalcMarcas', 'excecoes', 'sugIgnoradas'].includes(campo) ? {} : null) : v;
+    estado[campo] = v == null ? (['eventos', 'lembretes', 'modelosPessoais'].includes(campo) ? [] : ['serie', 'usuario', 'semCalcMarcas', 'excecoes', 'sugIgnoradas'].includes(campo) ? {} : null) : v;
   }
   estado.settings = OC.combinarSettings(estado.regras, estado.usuario);
 }
@@ -68,6 +68,12 @@ export async function marcarExcecao(k, fora) {
   const novo = Object.fromEntries(ord);
   estado.excecoes = novo;
   await chrome.storage.local.set({ avaliacaoExcecoes: novo });
+}
+// Modelos de resposta pessoais (texto padrão, sem dado de cliente): até 20, no Chrome da pessoa
+export async function salvarModelosPessoais(lista) {
+  const l = (lista || []).filter(m => m && m.rot && m.texto).slice(0, 20).map(m => ({ id: m.id, rot: String(m.rot).slice(0, 40), texto: String(m.texto).slice(0, 800), situacao: m.situacao || null }));
+  estado.modelosPessoais = l;
+  await chrome.storage.local.set({ modelosPessoais: l });
 }
 // Sugestões de ação: "não é o caso" guarda só o k e a última movimentação (volta se a solicitação mexer)
 export async function ignorarSugestao(k, item) {

@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.24.1)
+# Control Onvio · ControlTax (v0.25.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -40,6 +40,22 @@ Vez do cliente: sem retorno há mais de 5 dias úteis (laranja); a partir de 20 
 **Resolvida sem retorno:** na vez do cliente há mais de 3 dias úteis e a última resposta do analista não pede nada ao cliente = o cliente ficou satisfeito, e a solicitação conta como resolvida (sai da fila, dos prazos e da prescrição e conta como entregue na Equipe). Se a resposta pedir algo ("aguardamos", "favor enviar", "falta"… ou uma pergunta), continua pendente; frases de cortesia ("qualquer dúvida, estamos à disposição") não contam. Nada muda no Onvio.
 
 Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardando resposta** = o escritório precisa responder; **Respondido** = vez do cliente.
+
+## Novidades da v0.25.0 (Tramitação v2: caixa de resposta fixa)
+
+- **Caixa de resposta fixa embaixo da conversa.** Responder deixou de trocar a conversa por um formulário: a mensagem do cliente continua visível enquanto você escreve. A caixa começa com uma linha só e abre ao clicar (ou com a tecla **R**). Em cima, a **vez** e há quantos dias está parada. O botão **Responder** ao lado da última mensagem do cliente leva o cursor para ela.
+- **Escolha o que acontece depois do envio, não a situação do Onvio:** **Aguardar o cliente** (Respondido), **Em análise**, **Em análise interna** e **Concluir**, sempre só as que o Onvio aceita naquele momento. Uma frase diz o efeito ("A vez passa ao cliente; sem retorno, prescreve em 30 dias"; "Encerra a solicitação: ela sai da fila"). Se o texto pede algo ao cliente, **Aguardar o cliente** aparece como sugerido.
+- **Modelos com variáveis:** chips de modelos do escritório (arquivo de regras, `modelosTramite`; vêm 8 de exemplo: Recebido, Falta informação, Pedir documento, Concluído, Cálculo concluído, Resolvida fora do portal, Lista errada, Repete outra solicitação) e **pessoais** ("Guardar o texto como modelo": nomes e datas da solicitação voltam a ser `{variáveis}` e você confere antes de guardar; até 20, no seu Chrome). Variáveis: `{saudacao}` (Bom dia/Boa tarde/Boa noite), `{cliente}`, `{empregado}`, `{tipo}`, `{inicio}`, `{pagamento}`, `{aba}`, `{analista}`. O que não tiver valor fica marcado e o cursor já cai nele.
+- **Avisos antes de enviar:** texto com pergunta e "Concluir"; texto sem pedido e "Aguardar o cliente"; e, **barrando o envio**, qualquer marcador que sobrou ("(descreva o que falta)", `{numero}`).
+- **Revisar mostra o rascunho na própria conversa** (bolha tracejada, "ainda não enviado"). **Enviar** espera **5 segundos** (Configurações > Respostas ao cliente, 0 desliga) com a barra e o botão **Desfazer**; só depois escreve no Onvio. Fechar a janela ou ir para outra solicitação nesse intervalo cancela o envio. Trâmite não pode ser excluído, então essa espera é a rede de segurança. **Ctrl+Enter** revisa (nunca envia).
+- **Enviar e ir para a próxima** abre a seguinte da lista depois do envio. Depois de enviar, a bolha nova pisca e a caixa diz "Trâmite enviado às HH:MM".
+- **Rascunho que não se perde:** texto, escolha e anexos ficam por solicitação **só na memória desta visita** (nunca gravados); somem ao enviar ou ao sair do Chrome.
+- **Anexos por arrastar e soltar** na caixa e **colar imagem** (Ctrl+V). Observações para o cliente entram com um clique (cada uma ou todas).
+- **Rodapé enxuto:** Abrir no Onvio, **Baixar anexos** (antes só "Anexos", que parecia ser de enviar), **Mais ações** e Lembrete. Em **Mais ações**: **Passar para outro analista**, Alterar expectativa, Nova solicitação para o cliente e Copiar observações. Item que não dá para usar mostra o motivo **na própria linha**.
+- **Passar para outro analista** junta "Encaminhar" e "Responsável" num formulário só, com a explicação do que cada opção faz no Onvio: *encaminhar com comentário* (trâmite "Encaminhado para outro usuário"; o responsável continua o mesmo) ou *trocar o responsável* (sem trâmite).
+- **Conversa mais limpa:** a situação sai das bolhas e vira uma linha entre elas quando muda ("Situação passou a: Em análise").
+- **A confirmar no Onvio real:** se "Em análise interna" (8) é invisível para o cliente (por isso a extensão não promete isso); a caixa só manda o que o Onvio já aceitava.
+- **Fica para depois (precisa da sua autorização):** responder várias solicitações de uma vez (lote), lista de documentos pendentes por tipo (o escritório define nas regras) e ação direta no cartão da lista.
 
 ## Novidades da v0.24.1 (destaque do Hoje sempre escuro)
 
@@ -194,7 +210,7 @@ Criar uma solicitação nova para o cliente chegou na v0.17.0.
 
 Feito a partir do mapeamento na empresa de teste (`mapeamento/acoes-2026-10-15.md`).
 
-- **Responder pelo detalhe:** escolha a situação (Em análise, Em análise interna, Respondido ou Concluído; depois de Respondido, só Respondido e Concluído, como no Onvio), escreva o texto e anexe arquivos (até 10, de até 15 MB). **Inserir observações para o cliente** coloca no texto as observações de prazo da aba "Para o cliente". Antes de enviar, **Revisar e enviar** mostra o resumo e só **Confirmar envio ao Onvio** manda.
+- **Responder pelo detalhe** (caixa fixa embaixo da conversa desde a 0.25.0): escolha o que acontece depois (Aguardar o cliente, Em análise, Em análise interna ou Concluir; depois de Respondido, só Aguardar o cliente e Concluir, como no Onvio), escreva o texto e anexe arquivos (até 10, de até 15 MB). Antes de enviar, **Revisar** mostra o rascunho na conversa e só **Enviar** manda (depois de 5 segundos para desfazer).
 - **Encaminhar** para outro usuário (com comentário), **definir responsável** e **alterar expectativa** (só na Geral, a única testada), também com confirmação.
 - **Distribuir:** **Atribuir** em cada linha (com confirmação) e **Atribuir todas**, com o resumo de quantas vão para cada pessoa. O resultado aparece na linha.
 - **Onde funciona:** Geral, Aviso e Cálculo de férias, Aviso e Cálculo de rescisão e Afastamento. Cadastro e Rubricas ficam bloqueados (o botão explica) até serem mapeados. O Onvio também bloqueia: definir responsável na folha quando já tem um; na Geral, com a situação Respondido; encaminhar com Respondido.

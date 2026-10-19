@@ -1265,3 +1265,82 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .hj-hero .hj-step:hover{border-color:color-mix(in srgb, var(--c, var(--blue-deep)) 55%, transparent); box-shadow:0 4px 14px rgba(0,0,0,.35)}
 .hj-hero .btn{background:rgba(255,255,255,.05); border-color:rgba(255,255,255,.14); color:var(--ink-2)}
 .hj-hero .btn:hover{border-color:var(--blue-deep); color:var(--blue-deep)}
+
+/* ============ Tramitação v2: caixa de resposta fixa embaixo da conversa ============ */
+.cmp{flex:none; padding:10px 22px 12px; border-top:1px solid var(--rule); background:color-mix(in srgb, var(--surface-2) 70%, var(--surface)); max-height:56%; overflow-y:auto; display:flex; flex-direction:column; gap:8px}
+.cmp.arrastando{outline:2px dashed var(--blue-deep); outline-offset:-6px; background:var(--blue-pale)}
+.cmp-cab{display:flex; align-items:baseline; gap:10px; flex-wrap:wrap}
+.cmp-cab b{font:700 13px "Archivo",sans-serif}
+.cmp-vez{font-size:12px; color:var(--ink-3)}
+.cmp-vez.esc{color:var(--blue-deep); font-weight:600}
+.cmp-atalho{margin-left:auto; font-size:11px; color:var(--ink-3)}
+.cmp textarea{width:100%; min-height:52px; max-height:220px; resize:none; font:inherit; font-size:13.5px; line-height:1.5; color:var(--ink); padding:9px 12px; border:1px solid var(--rule-strong); border-radius:var(--r); background:var(--surface)}
+.cmp textarea:focus{border-color:var(--blue-deep); box-shadow:0 0 0 3px var(--blue-pale); outline:none}
+.cmp:not(.aberto):not(:focus-within) .cmp-mais{display:none}
+.cmp-mais{display:flex; flex-direction:column; gap:8px}
+.cmp-linha{display:flex; align-items:center; gap:8px 10px; flex-wrap:wrap}
+.cmp-rot{flex:none; min-width:96px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-3)}
+.cmp-ints, .cmp-chips{display:flex; gap:6px; flex-wrap:wrap}
+.cmp-int{padding:5px 12px; border:1px solid var(--rule-strong); border-radius:var(--r); background:var(--surface); color:var(--ink-2); font:600 12.5px "IBM Plex Sans",sans-serif; cursor:pointer; transition:border-color .15s, background .15s, color .15s}
+.cmp-int:hover{border-color:var(--blue-deep); color:var(--blue-deep)}
+.cmp-int.on{border-color:var(--blue-deep); background:var(--blue-deep); color:#fff}
+.cmp-int.sug:not(.on){border-style:dashed; border-color:var(--blue-deep); color:var(--blue-deep)}
+.cmp-int.sug:not(.on)::after{content:" · sugerido"; font-weight:500}
+.cmp-efeito{margin:-2px 0 0 106px; font-size:12px; color:var(--ink-2)}
+.cmp-modelo, .cmp-obs{padding:3px 10px; border:1px solid var(--rule-strong); border-radius:3px; background:var(--surface); color:var(--ink-2); font:500 12px "IBM Plex Sans",sans-serif; cursor:pointer; max-width:340px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.cmp-modelo:hover, .cmp-obs:hover{border-color:var(--blue-deep); color:var(--blue-deep)}
+.cmp-modelo-p{display:inline-flex; align-items:stretch}
+.cmp-modelo-p .cmp-modelo{border-radius:3px 0 0 3px; border-right:0; border-style:dashed}
+.cmp-m-tira{padding:0 6px; border:1px dashed var(--rule-strong); border-radius:0 3px 3px 0; background:var(--surface); color:var(--ink-3); cursor:pointer}
+.cmp-m-tira:hover{color:var(--late); border-color:var(--late)}
+.cmp-arqs{display:flex; gap:6px; flex-wrap:wrap}
+.cmp-arq{display:inline-flex; align-items:center; gap:6px; padding:3px 8px; border:1px solid var(--rule); border-radius:3px; background:var(--surface); font-size:12px}
+.cmp-avisos:empty{display:none}
+.cmp-aviso{display:flex; align-items:flex-start; gap:8px; padding:6px 10px; border-radius:var(--r); background:color-mix(in srgb, var(--viz-warn) 14%, transparent); font-size:12.5px; color:var(--ink-2)}
+.cmp-aviso.bloqueia{background:color-mix(in srgb, var(--brand-red) 12%, transparent); color:var(--ink)}
+.cmp-aviso .ic{margin-top:2px; color:var(--status-warn)}
+.cmp-aviso.bloqueia .ic{color:var(--brand-red)}
+.cmp-erro{display:flex; align-items:flex-start; gap:8px; padding:7px 10px; border-radius:var(--r); background:color-mix(in srgb, var(--brand-red) 12%, transparent); font-size:12.5px}
+.cmp-erro .ic{margin-top:2px; color:var(--brand-red)}
+.cmp-ok{display:flex; align-items:center; gap:8px; padding:7px 10px; border-radius:var(--r); background:color-mix(in srgb, var(--status-green) 14%, transparent); font-size:12.5px; font-weight:600; color:var(--ink)}
+.cmp-ok .ic{color:var(--status-green)}
+.cmp-pe{display:flex; align-items:center; gap:8px; justify-content:flex-end}
+.cmp-pe .fraco{margin-right:auto; font-size:11.5px}
+.cmp-guardar{display:flex; flex-direction:column; gap:8px; padding:10px 12px; border:1px dashed var(--blue-deep); border-radius:var(--r); background:var(--surface)}
+.cmp-guardar .field{display:flex; flex-direction:column; gap:4px; font-size:12px; font-weight:600; color:var(--ink-3)}
+.cmp-guardar textarea{min-height:80px}
+.cmp-nota{flex-direction:row; align-items:center; font-size:12.5px; color:var(--ink-3)}
+.cmp-conf{max-width:none; margin:0}
+.cmp-contagem{display:flex; align-items:center; gap:12px; padding:8px 12px; border:1px solid var(--blue-deep); border-radius:var(--r); background:var(--blue-pale); font-size:13px; font-weight:600}
+.cmp-barra{flex:1; height:4px; border-radius:2px; background:color-mix(in srgb, var(--blue-deep) 20%, transparent); overflow:hidden}
+.cmp-barra > i{display:block; height:100%; width:100%; background:var(--blue-deep); transform-origin:left; animation:cmp-barra var(--dur, 5s) linear forwards}
+@keyframes cmp-barra{from{transform:scaleX(0)} to{transform:scaleX(1)}}
+/* rascunho na conversa */
+.tr-item.rascunho .tr-bolha{border-style:dashed; border-color:var(--blue-deep); background:color-mix(in srgb, var(--blue-pale) 55%, var(--surface))}
+.tr-arq.off{opacity:.8; cursor:default}
+.tr-nova .tr-bolha{animation:tr-nova 1.8s ease-out}
+@keyframes tr-nova{from{box-shadow:0 0 0 3px color-mix(in srgb, var(--status-green) 55%, transparent); background:color-mix(in srgb, var(--status-green) 14%, var(--blue-pale))} to{box-shadow:none}}
+/* a situação como linha na conversa, em vez de uma etiqueta em cada bolha */
+.tr-sit{display:flex; align-items:center; gap:10px; color:var(--ink-3); font-size:11.5px; align-self:stretch}
+.tr-sit::before, .tr-sit::after{content:""; flex:1; height:1px; background:var(--rule)}
+.tr-sit span{padding:2px 10px; border:1px solid var(--rule); border-radius:3px; background:var(--surface-2)}
+.tr-sit b{color:var(--ink-2)}
+/* menu "Mais ações" do rodapé: abre para cima */
+.g-mais .menu-list{top:auto; bottom:calc(100% + 6px); right:0; min-width:300px}
+.g-mais .menu-item{align-items:flex-start}
+.mi-tx{display:flex; flex-direction:column; gap:1px}
+.mi-motivo{font-size:11.5px; color:var(--ink-3)}
+.g-mais .menu-item:disabled{opacity:1}
+.g-mais .menu-item:disabled .mi-tx{opacity:.7}
+/* passar para outro analista */
+.acao-ops{display:flex; flex-direction:column; gap:8px}
+.acao-op{display:flex; align-items:flex-start; gap:10px; padding:10px 12px; border:1px solid var(--rule); border-radius:var(--r); background:var(--surface); cursor:pointer}
+.acao-op:has(input:checked){border-color:var(--blue-deep); background:var(--blue-pale)}
+.acao-op.off{cursor:default; opacity:.7}
+.acao-op span{display:flex; flex-direction:column; gap:2px}
+.acao-op small{font-size:12px; color:var(--ink-3); font-weight:400}
+@media (prefers-reduced-motion: reduce){ .tr-nova .tr-bolha{animation:none} .cmp-barra > i{animation-duration:.01s} }
+.cmp .linkish{all:unset; box-sizing:border-box; cursor:pointer; font:500 12px "IBM Plex Sans",sans-serif; color:var(--blue-deep); text-decoration:underline; text-underline-offset:2px}
+.cmp .linkish:hover{color:var(--ink)}
+.cmp .linkish:focus-visible{outline:2px solid var(--blue-mid); outline-offset:2px; border-radius:2px}
+.cmp .cmp-arq .linkish{font-size:14px; line-height:1; text-decoration:none; color:var(--ink-3)}

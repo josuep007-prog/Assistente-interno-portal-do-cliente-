@@ -20,6 +20,9 @@ const GRUPOS = [
     { k: 'prescricaoAviso', rot: 'Alerta de prescrição a partir de', un: 'dias parada', ajuda: 'Fica vermelho com a contagem até a prescrição.' },
     { k: 'prescricaoDias', rot: 'Prescrição no Onvio', un: 'dias', ajuda: 'Regra do Onvio: só mude se o Onvio mudar.' }
   ] },
+  { titulo: 'Respostas ao cliente', ic: 'i-chat', campos: [
+    { k: 'desfazerSeg', rot: 'Tempo para desfazer o envio', un: 'segundos', ajuda: 'Depois de "Enviar", a extensão espera esse tempo antes de escrever no Onvio (trâmite não pode ser excluído). 0 desliga.' }
+  ] },
   { titulo: 'Prazos legais e admissão', ic: 'i-calendar', campos: [
     { k: 'pagamentoFeriasAntes', rot: 'Pagar férias até', un: 'dias antes do início', ajuda: 'CLT, art. 145.' },
     { k: 'pagamentoRescisaoDias', rot: 'Pagar rescisão em até', un: 'dias após o término', ajuda: 'CLT, art. 477, §6º.' },
