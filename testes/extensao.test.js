@@ -1392,9 +1392,21 @@ test('ações: formatos do Onvio real (trâmite, encaminhar, responsável, expec
   assert.throws(() => OC.pedidoAcao({ acao: 'tramite', type: 'geral', texto: '  ', situacao: 4 }, reg, geral), /escreva o texto/);
   assert.match(OC.podeAcao('responsavel', { type: 'avisoFerias', code: 2, lado: 'esc', resp: 'Ana' }).motivo, /só permite definir responsável quando ainda não há/);
   assert.match(OC.podeAcao('responsavel', { type: 'geral', code: 4, lado: 'cli' }).motivo, /Respondido/);
-  assert.match(OC.podeAcao('expectativa', ferias).motivo, /ainda não mapeada/);
-  for (const k of ['cadEmpregado', 'cadContribuinte', 'cadEstagiario', 'rubricas']) assert.equal(OC.podeAcao('tramite', { type: k, code: 2, lado: 'esc' }).ok, false, k + ' não mapeado');
-  assert.throws(() => OC.pedidoAcao({ acao: 'tramite', type: 'rubricas', texto: 'x', situacao: 4 }, { id: 'r' }, { type: 'rubricas', code: 2, lado: 'esc' }), /ainda não mapeada/);
+  assert.match(OC.podeAcao('expectativa', ferias).motivo, /ainda não mapeada|ainda não disponível/);
+  // Cadastro e Rubricas (mapeados em 19/10/2026): trâmite e anexo sim; encaminhar, responsável e expectativa ainda não
+  for (const k of ['cadEmpregado', 'cadContribuinte', 'cadEstagiario', 'rubricas']) {
+    const i = { type: k, code: 2, lado: 'esc' };
+    assert.equal(OC.podeAcao('tramite', i).ok, true, k + ' responde');
+    assert.equal(OC.podeAcao('anexo', i).ok, true, k + ' anexa');
+    for (const a of ['encaminhar', 'responsavel', 'expectativa']) assert.match(OC.podeAcao(a, i).motivo, /ainda não disponível/, k + ' ' + a);
+  }
+  assert.deepEqual(plano(OC.pedidoAcao({ acao: 'tramite', type: 'cadEmpregado', texto: 'ok', situacao: 3 }, { id: 'c1' }, { type: 'cadEmpregado', code: 2, lado: 'esc' })), { metodo: 'POST', url: OC.API + 'br-payroll-sr/v1/employees-registrations/c1/topics', corpo: { description: 'ok', status: 3 } });
+  assert.equal(OC.pedidoAcao({ acao: 'tramite', type: 'cadEstagiario', texto: 'ok', situacao: 6 }, { id: 'c2' }, { type: 'cadEstagiario', code: 4, lado: 'esc' }).url, OC.API + 'br-payroll-sr/v1/employees-registrations/c2/topics', 'as 3 listas de Cadastro usam o mesmo caminho de trâmites');
+  assert.equal(OC.pedidoAcao({ acao: 'tramite', type: 'rubricas', texto: 'ok', situacao: 6 }, { id: 'r1' }, { type: 'rubricas', code: 2, lado: 'esc' }).url, OC.API + 'br-payroll-sr/v1/payroll-entries/r1/topics');
+  assert.throws(() => OC.pedidoAcao({ acao: 'tramite', type: 'rubricas', texto: 'x', situacao: 3 }, { id: 'r' }, { type: 'rubricas', code: 2, lado: 'esc' }), /escolha a situação/, 'Importação realizada não é escolha do escritório');
+  assert.throws(() => OC.pedidoAcao({ acao: 'tramite', type: 'cadEmpregado', texto: 'x', situacao: 5 }, { id: 'c' }, { type: 'cadEmpregado', code: 2, lado: 'esc' }), /escolha a situação/, 'Cadastro efetuado vem do cliente/sistema');
+  assert.throws(() => OC.pedidoAcao({ acao: 'responsavel', type: 'rubricas', analista: 'u9' }, { id: 'r' }, { type: 'rubricas', code: 2, lado: 'esc' }), /ainda não disponível/);
+  assert.equal(OC.escritaPermitida('POST', OC.API + 'br-payroll-sr/v1/employees-registrations/c1/topics/t1/attachments'), true);
   // só estes endereços recebem escrita; nunca DELETE nem /delete
   assert.equal(OC.escritaPermitida('POST', OC.API + 'service-requesting/v1/tickets/g1/topics'), true);
   assert.equal(OC.escritaPermitida('POST', OC.API + 'service-requesting/v1/tickets/g1/topics/t7/attachments'), true);
@@ -1408,6 +1420,26 @@ test('ações: formatos do Onvio real (trâmite, encaminhar, responsável, expec
   assert.equal(OC.escritaPermitida('POST', 'https://outro.com/api/service-requesting/v1/tickets/g1/topics'), false);
   assert.equal(OC.idDoLocation('https://onvio.com.br/api/service-requesting/v1/tickets/g1/topics/abc123'), 'abc123');
   assert.deepEqual(plano(OC.equipeDe([{ resp: 'Bia', respId: 'b' }, { resp: 'Ana', respId: 'a' }, { resp: 'Ana', respId: 'a' }, { resp: '', respId: '' }])), [{ id: 'a', nome: 'Ana' }, { id: 'b', nome: 'Bia' }]);
+});
+
+test('tramitação: Cadastro e Rubricas oferecem só as situações do Onvio e dizem o efeito de cada uma', () => {
+  const ints = i => plano(OC.intencoesDe(i, {}).map(x => x.sit + ':' + x.tom));
+  assert.deepEqual(ints({ type: 'cadEmpregado', code: 2 }), ['3:cli', '6:fim'], 'Enviado: Aguardando o cliente ou Concluído');
+  assert.deepEqual(ints({ type: 'cadEstagiario', code: 3 }), ['4:esc'], 'com o cliente: só registrar o retorno');
+  assert.deepEqual(ints({ type: 'cadContribuinte', code: 4 }), ['3:cli', '6:fim']);
+  assert.deepEqual(ints({ type: 'rubricas', code: 2 }), ['6:cli', '5:esc', '2:esc', '8:fim']);
+  assert.deepEqual(ints({ type: 'rubricas', code: 6 }), ['4:cli'], 'depois de Aguardando correção só Respondido');
+  assert.deepEqual(ints({ type: 'rubricas', code: 5 }), ['4:cli'], 'depois de Aguardando resposta só Respondido');
+  assert.deepEqual(ints({ type: 'rubricas', code: 9 }), ['4:cli', '6:cli', '5:esc', '2:esc', '8:fim']);
+  assert.match(OC.intencoesDe({ type: 'cadEmpregado', code: 2 }, {})[0].efeito, /A vez passa ao cliente/);
+  assert.match(OC.intencoesDe({ type: 'rubricas', code: 2 }, {})[0].efeito, /prescreve em 30 dias/);
+  // avisos de coerência com as situações da lista
+  assert.match(OC.avisosResposta('Pode nos enviar o RG do empregado?', 6, {}, { type: 'cadEmpregado', code: 2 })[0].msg, /encerra a solicitação.*Aguardando o cliente/);
+  assert.match(OC.avisosResposta('Cadastro do empregado concluído.', 3, {}, { type: 'cadEmpregado', code: 2 })[0].msg, /Concluído/);
+  // modelos e casos usam a situação equivalente da lista
+  const concl = OC.modelosPara({ type: 'cadEmpregado', code: 2, cliente: 'X' }, {}, []).find(m => m.situacao);
+  assert.ok(concl && [3, 6].includes(concl.situacao));
+  assert.equal(OC.modelosPara({ type: 'rubricas', code: 2, cliente: 'X' }, {}, []).filter(m => m.situacao).every(m => [2, 4, 8].includes(m.situacao)), true, 'em Rubricas Concluído é o 8');
 });
 
 test('background: criar solicitação Geral pela aba do Onvio, com o cliente da solicitação de origem, e passar a vez ao cliente', async () => {
@@ -1580,7 +1612,8 @@ test('sugestões de ação: casos específicos (fora do portal, duplicada, lista
   assert.match(dup.acao.texto, /repete a nº 110/);
   assert.match(casos.find(c => c.k === 'aba').acao.texto, /aba própria no Portal do Cliente: Aviso de férias/);
   const cad = casos.find(c => c.k === 'cad');
-  assert.equal(cad.pode.ok, false, 'Cadastro ainda não tem trâmite mapeado: o caso aparece só para abrir');
+  assert.equal(cad.pode.ok, true, 'Cadastro tem trâmite mapeado desde 0.27.0');
+  assert.equal(cad.acao.situacao, '6', 'concluir em Cadastro é Concluído (6)');
   // 0 desliga a regra dos 30 dias; "não é o caso" some até a solicitação mexer
   assert.ok(!OC.casosSugeridos([it('velha', { parado: 31 })], {}, { foraDoPortalDias: 0 }).length);
   const ig = OC.ignorarCaso({}, 'velha', { last: '2026-10-10T10:00:00' }, new Date('2026-10-16T12:00:00Z'));
@@ -1605,7 +1638,7 @@ test('sugestões de ação: lidas nos trâmites (fora do portal, anexo que não 
   const f = async url => { lidos.push(url); return { items: [tp(1, 1, 'Podem desconsiderar, enviei por e-mail')] }; };
   const it = (k, o) => Object.assign({ k, type: 'geral', id: 'g' + k, lado: 'esc', last: '2026-10-10T10:00:00' }, o);
   const r = await OC.analisarCasos(f, [it('a'), it('b', { lado: 'cli' }), it('c', { type: 'cadEmpregado' }), it('d')], { d: { l: '2026-10-10T10:00:00', tipo: null, trecho: '' } }, {});
-  assert.equal(lidos.length, 1, 'só a "a" é lida (b é do cliente, c sem trâmite mapeado, d no cache)');
+  assert.equal(lidos.length, 2, 'lê "a" e "c" (Cadastro agora tem trâmite); b é do cliente e d está no cache');
   assert.deepEqual(plano([r.analises.a.l, r.analises.a.tipo, Object.keys(r.analises.a).sort()]), ['2026-10-10T10:00:00', 'fora', ['l', 'tipo', 'trecho']]);
   assert.ok(['podem desconsiderar', 'enviei por e-mail'].includes(r.analises.a.trecho), 'só o trecho da lista que casou');
   assert.ok(!JSON.stringify(r).includes('Podem desconsiderar,'), 'o texto do trâmite não sai');

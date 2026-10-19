@@ -1294,7 +1294,7 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .cmp-seg{display:flex; flex-wrap:wrap; width:fit-content; max-width:100%; border:1px solid var(--rule-strong); border-radius:var(--r); background:var(--surface); overflow:hidden}
 .cmp-int{--c:var(--ink-3); display:inline-flex; align-items:center; gap:8px; padding:7px 14px; border:0; border-right:1px solid var(--rule); background:none; color:var(--ink-2); font:600 12.5px "IBM Plex Sans",sans-serif; cursor:pointer; transition:background .15s, box-shadow .15s}
 .cmp-int:last-child{border-right:0}
-.cmp-int[data-sit="4"]{--c:var(--blue-deep)} .cmp-int[data-sit="2"]{--c:var(--status-warn)} .cmp-int[data-sit="8"]{--c:var(--ink-3)} .cmp-int[data-sit="5"]{--c:var(--status-green)}
+.cmp-int[data-tom="cli"]{--c:var(--blue-deep)} .cmp-int[data-tom="esc"]{--c:var(--status-warn)} .cmp-int[data-tom="int"]{--c:var(--ink-3)} .cmp-int[data-tom="fim"]{--c:var(--status-green)}
 .cmp-pt{flex:none; width:8px; height:8px; border-radius:50%; background:var(--c)}
 .cmp-int .s{font-weight:400; color:var(--ink-3)}
 .cmp-int:hover{background:var(--surface-2)}
