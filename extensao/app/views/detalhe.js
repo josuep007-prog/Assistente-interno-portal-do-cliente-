@@ -2,7 +2,8 @@
  * Lê dados e trâmites na hora; nada disso é guardado. Com a lista de onde veio, anda para a
  * anterior/próxima (setas ← → ou os botões do topo) sem fechar. */
 import { estado, itens, enviar, salvarLembretes, aoMudar } from '../estado.js';
-import { formAcao, ligarAcao, novaAcao, acaoAberta } from './acao-form.js';
+import { formAcao, ligarAcao, novaAcao, acaoAberta, fecharAcao, opcoesPassar } from './acao-form.js';
+import { respostaHtml, ligarResposta, prepararResposta, bolhaRascunho, recemEnviado, respostaEmAndamento, cancelarPendente, focarResposta } from './resposta.js';
 import { esc, pillSituacao, motivosHtml, porqueGrav, fmtDataHora, fmtData, textoPuro, toast, ladoTexto, relativo, iniciais, $, $$ } from '../util.js';
 import { abrirLembrete, lembreteAberto } from './lembrete-dlg.js';
 import { abrirNova, novaAberta } from './nova-dlg.js';
@@ -14,10 +15,13 @@ let aba = 'tramites';
 let lista = null;        // lista de onde a pessoa abriu (para anterior/próxima)
 let ultimo = null;       // { i, r, erro, carregando } para redesenhar ao trocar de aba ou ao mudar lembretes
 let rolada = null;       // solicitação cuja conversa já foi levada ao fim (uma vez por abertura)
+let ultimaChave = '', ultimaAba = '';   // para manter a rolagem da conversa quando só a caixa de resposta muda
 
 export const detalheAberto = () => !$('#gaveta').hidden;
 export function fecharDetalhe() {
   const estava = detalheAberto();
+  cancelarPendente(); fecharAcao();
+  ultimaChave = ''; ultimaAba = '';
   $('#gaveta').hidden = true; $('#fundo').hidden = true;
   $('#gaveta').innerHTML = '';
   atual = null; lista = null; ultimo = null; rolada = null;
@@ -25,15 +29,18 @@ export function fecharDetalhe() {
 }
 
 // ref: item da fila, evento do sino ou lembrete (precisa de type e num); fonte: lista para navegar
-// opcoes.acao: já abre no formulário dessa ação (com opcoes.preset), por exemplo "Avisar o cliente" no Hoje
+// opcoes.acao: já abre na caixa de resposta ('tramite') ou no formulário da ação (com opcoes.preset), por exemplo "Avisar o cliente" no Hoje
 export async function abrirDetalhe(ref, fonte, opcoes) {
   if (!ref || !ref.type || ref.num == null) return;
   const t = OC.TYPE_BY_KEY[ref.type];
   if (!t) return;
   if (fonte !== undefined) lista = Array.isArray(fonte) && fonte.length > 1 ? fonte : null;
+  const mesma = !!atual && atual.type === ref.type && atual.num === String(ref.num);
+  if (!mesma) { cancelarPendente(); fecharAcao(); if (aba === 'acao') aba = 'tramites'; }
   atual = { type: ref.type, num: String(ref.num) };
   if ((aba === 'lembretes' || aba === 'acao') && !ultimo) aba = 'tramites';
-  if (opcoes && opcoes.acao) { novaAcao(opcoes.acao, opcoes.preset); aba = 'acao'; }
+  if (opcoes && opcoes.acao === 'tramite') { prepararResposta({ type: ref.type, num: String(ref.num) }, opcoes.preset); aba = 'tramites'; }
+  else if (opcoes && opcoes.acao) { novaAcao(opcoes.acao, opcoes.preset); aba = 'acao'; }
   const doResumo = itens().find(i => i.type === ref.type && String(i.num) === String(ref.num));
   const base = doResumo || (ref.status ? ref : { type: ref.type, typeLabel: t.label, num: ref.num, status: 'Carregando…', lado: 'desc', apelido: ref.cliente || '' });
   const g = $('#gaveta');
@@ -59,6 +66,7 @@ const meusLembretes = i => (estado.lembretes || []).filter(l => l.type === i.typ
 function desenhar(i, r, erro, carregando) {
   ultimo = { i, r, erro, carregando };
   const g = $('#gaveta');
+  const corpoAntes = $('#g-corpo'), stAntes = corpoAntes ? corpoAntes.scrollTop : 0;   // só a caixa de resposta mudou: a conversa fica onde estava
   const tramites = r && r.tramites;
   const lems = meusLembretes(i);
   const p = posicao();
@@ -96,23 +104,26 @@ function desenhar(i, r, erro, carregando) {
       '<button class="dtab' + (aba === 'lembretes' ? ' on' : '') + '" data-aba="lembretes" role="tab">Lembretes<span class="n">' + (lems.filter(l => !l.feito).length || '') + '</span></button>' +
     '</div>' +
     '<div class="dlg-body" id="g-corpo">' + (erro ? '<div class="faixa"><svg class="ic"><use href="#i-alert"/></svg>' + esc(erro) + '</div>' : '') +
-      (aba === 'acao' && acaoAberta() ? formAcao(i, obs) : aba === 'dados' ? dados(i, r, carregando) : aba === 'cliente' ? clienteHtml(obs, carregando) : aba === 'lembretes' ? lembretesHtml(lems) : tramitesHtml(r, carregando, i)) + '</div>' +
+      (aba === 'acao' && acaoAberta() ? formAcao(i) : aba === 'dados' ? dados(i, r, carregando) : aba === 'cliente' ? clienteHtml(obs, carregando) : aba === 'lembretes' ? lembretesHtml(lems) : tramitesHtml(r, carregando, i)) + '</div>' +
+    (aba === 'tramites' && !carregando && r && !erro ? respostaHtml(i, obs, { datas: r.datas, proxima: p >= 0 && p < lista.length - 1 }) : '') +
     '<div class="dlg-actions">' +
       '<button class="btn btn-sm" id="g-onvio"><svg class="ic ic-sm"><use href="#i-link"/></svg> Abrir no Onvio</button>' +
-      (nAnexos ? '<button class="btn btn-sm" id="g-anexos" title="Escolha quais anexos baixar"><svg class="ic ic-sm"><use href="#i-paperclip"/></svg> Anexos<span class="n-anexos">' + nAnexos + '</span></button>' : '') +
-      botoesAcao(i, carregando) +
-      '<button class="btn btn-sm" id="g-nova" title="Cria uma solicitação Geral para este cliente"><svg class="ic ic-sm"><use href="#i-plus"/></svg> Nova para o cliente</button>' +
+      (nAnexos ? '<button class="btn btn-sm" id="g-anexos" title="Escolha quais anexos baixar"><svg class="ic ic-sm"><use href="#i-download"/></svg> Baixar anexos<span class="n-anexos">' + nAnexos + '</span></button>' : '') +
       '<span class="spacer"></span>' +
-      (obs.some(o => !o.interno) ? '<button class="btn btn-sm" id="g-copiar-obs" title="Copia as observações de prazo e os avisos para colar na resposta ao cliente"><svg class="ic ic-sm"><use href="#i-copy"/></svg> Copiar observações</button>' : '') +
+      maisAcoes(i, obs, carregando) +
       '<button class="btn btn-primary btn-sm" id="g-lembrete"><svg class="ic ic-sm"><use href="#i-clock"/></svg> Lembrete</button>' +
-      (OC.ACOES.tramite(i.type) ? '' : '<p class="dlg-nota">Responder, encaminhar e definir responsável ainda não foram mapeados para ' + esc(i.typeLabel) + ': use "Abrir no Onvio".</p>') +
     '</div>';
 
   $('#g-fechar').onclick = fecharDetalhe;
   // conversa: ao chegar, mostra o fim (o trâmite mais recente), uma vez por solicitação aberta
   const chave = atual ? atual.type + ':' + atual.num : '';
-  const rolar = aba === 'tramites' && !carregando && tramites && tramites.length && rolada !== chave;
-  if (rolar) { rolada = chave; const c = $('#g-corpo'); if (c) c.scrollTop = c.scrollHeight; }
+  const primeira = aba === 'tramites' && !carregando && tramites && tramites.length && rolada !== chave;
+  const emAndamento = aba === 'tramites' && respostaEmAndamento(i) && !carregando;    // o rascunho fica no fim da conversa
+  const rolar = !!(primeira || emAndamento);
+  if (primeira) rolada = chave;
+  if (rolar) { const c = $('#g-corpo'); if (c) c.scrollTop = c.scrollHeight; }
+  else if (ultimaChave === chave && ultimaAba === aba && stAntes) { const c = $('#g-corpo'); if (c) c.scrollTop = stAntes; }
+  ultimaChave = chave; ultimaAba = aba;
   const anexos = marcar => abrirAnexos({ item: i, r, marcar });
   if ($('#g-anexos')) $('#g-anexos').onclick = () => anexos();
   if ($('#g-anexos2')) $('#g-anexos2').onclick = () => anexos();
@@ -142,10 +153,18 @@ function desenhar(i, r, erro, carregando) {
   if ($('#g-copiar-obs2')) $('#g-copiar-obs2').onclick = copiarObs;
   $$('#g-obs [data-obs]', g).forEach(c => c.onchange = () => { const pv = $('#g-obs-texto', g); if (pv) pv.textContent = textoParaCliente(obs.filter(o => $$('#g-obs [data-obs]', g).some(x => x.dataset.obs === o.id && x.checked))); });
   $$('[data-acao]', g).forEach(b => b.onclick = () => { novaAcao(b.dataset.acao); aba = 'acao'; desenhar(i, r, erro, carregando); });
+  $$('[data-responder]', g).forEach(b => b.onclick = () => { if (!focarResposta()) toast('A caixa de resposta não está disponível aqui', true); });
+  $$('.g-mais .menu-item', g).forEach(b => b.addEventListener('click', () => { const m = b.closest('details'); if (m) m.open = false; }));
+  document.addEventListener('click', fechaMais);
+  const mesma = () => !!atual && atual.type === i.type && atual.num === String(i.num);
   if (aba === 'acao' && acaoAberta()) ligarAcao(g, i, obs, {
-    redesenhar: () => desenhar(i, r, erro, carregando),
+    redesenhar: () => { if (mesma()) desenhar(i, r, erro, carregando); },
     cancelar: () => { aba = 'tramites'; desenhar(i, r, erro, carregando); },
     feito: () => { aba = 'tramites'; abrirDetalhe({ type: i.type, num: i.num }); }
+  });
+  if (aba === 'tramites' && !carregando && r && !erro) ligarResposta(g, i, r, obs, {
+    redesenhar: () => { if (mesma()) desenhar(i, r, erro, carregando); },
+    feito: prox => { if (!mesma()) return; const pp = posicao(); if (prox && pp >= 0 && lista[pp + 1]) abrirDetalhe(lista[pp + 1]); else abrirDetalhe({ type: i.type, num: i.num }); }
   });
   $('#g-nova').onclick = () => abrirNova({ origem: Object.assign({}, i, { type: i.type, num: String(i.num) }) });
   $('#g-lembrete').onclick = () => abrirLembrete({ vinculo: { type: i.type, num: String(i.num), k: i.k || null, cliente: i.apelido || i.cliente } });
@@ -158,10 +177,24 @@ function desenhar(i, r, erro, carregando) {
   }));
 }
 
-// Botões das ações no Onvio: habilitados só onde o formato foi mapeado e o Onvio permite (OC.podeAcao)
-function botoesAcao(i, carregando) {
-  const b = (acao, rot, ic) => { const p = carregando ? { ok: false, motivo: 'carregando' } : OC.podeAcao(acao, i); return '<button class="btn btn-sm' + (acao === 'tramite' ? ' btn-acao' : '') + '" data-acao="' + acao + '"' + (p.ok ? '' : ' disabled title="' + esc(p.motivo) + '"') + '>' + (ic ? '<svg class="ic ic-sm"><use href="#i-' + ic + '"/></svg> ' : '') + rot + '</button>'; };
-  return b('tramite', 'Responder', 'chat') + b('encaminhar', 'Encaminhar', 'repeat') + b('responsavel', 'Responsável', 'user') + (OC.ACOES.expectativa(i.type) ? b('expectativa', 'Expectativa', 'calendar') : '');
+// "Mais ações": o resto fica num menu, cada item com o motivo na própria linha quando não dá para usar (OC.podeAcao)
+function maisAcoes(i, obs, carregando) {
+  const item = (rot, ic, attrs, pode) => '<button type="button" class="menu-item"' + attrs + (pode.ok ? '' : ' disabled') + '><svg class="ic ic-sm"><use href="#i-' + ic + '"/></svg><span class="mi-tx">' + rot + (pode.ok ? '' : '<small class="mi-motivo">' + esc(pode.motivo) + '</small>') + '</span></button>';
+  const livre = { ok: true }, espera = { ok: false, motivo: 'lendo a solicitação…' };
+  const op = carregando ? { encaminhar: espera, responsavel: espera } : opcoesPassar(i);
+  const passar = op.encaminhar.ok || op.responsavel.ok ? livre : { ok: false, motivo: op.encaminhar.motivo };
+  return '<details class="menu g-mais" id="g-mais"><summary class="btn btn-sm" title="Passar para outro analista, expectativa, nova solicitação e mais"><svg class="ic ic-sm"><use href="#i-more"/></svg> Mais ações</summary><div class="menu-list">' +
+    item('Passar para outro analista', 'repeat', ' data-acao="passar"', passar) +
+    (OC.ACOES.expectativa(i.type) ? item('Alterar expectativa de conclusão', 'calendar', ' data-acao="expectativa"', carregando ? espera : OC.podeAcao('expectativa', i)) : '') +
+    item('Nova solicitação para o cliente', 'plus', ' id="g-nova"', livre) +
+    (!carregando && obs.some(o => !o.interno) ? item('Copiar observações para o cliente', 'copy', ' id="g-copiar-obs"', livre) : '') +
+    '</div></details>';
+}
+// o menu fecha ao clicar fora
+function fechaMais(e) {
+  const m = $('#g-mais');
+  if (!m) { document.removeEventListener('click', fechaMais); return; }
+  if (m.open && !m.contains(e.target)) m.open = false;
 }
 
 // Trâmites como conversa, sempre na ordem em que aconteceram (sem filtros): cliente à esquerda, escritório à direita,
@@ -171,16 +204,19 @@ function tramitesHtml(r, carregando, i) {
   if (!r) return '<div class="vazio">Sem trâmites para mostrar.</div>';
   if (r.erroTramites) return '<div class="faixa warn"><svg class="ic"><use href="#i-alert"/></svg>Não foi possível ler os trâmites (' + esc(r.erroTramites) + '). Use "Abrir no Onvio" para ver o histórico.</div>';
   const todos = r.tramites || [];
-  if (!todos.length) return '<div class="vazio"><b>Nenhum trâmite ainda</b>A solicitação ainda não teve resposta.</div>';
+  const rasc = i ? bolhaRascunho(i) : '';
+  if (!todos.length && !rasc) return '<div class="vazio"><b>Nenhum trâmite ainda</b>A solicitação ainda não teve resposta.</div>';
   const ult = todos[todos.length - 1];
+  const novo = !!i && recemEnviado(i);
   // "Responder" ao lado da última mensagem do cliente (abre o formulário do trâmite, como o botão do rodapé)
   const ultCli = todos.filter(x => x.lado !== 'esc').pop();
   const pode = i ? OC.podeAcao('tramite', i) : { ok: false, motivo: '' };
-  const responder = '<button type="button" class="btn btn-sm' + (ultCli === ult ? ' btn-primary' : '') + ' tr-responder" data-acao="tramite"' + (pode.ok ? '' : ' disabled title="' + esc(pode.motivo) + '"') + '><svg class="ic ic-sm"><use href="#i-chat"/></svg> Responder</button>';
+  const responder = '<button type="button" class="btn btn-sm' + (ultCli === ult ? ' btn-primary' : '') + ' tr-responder" data-responder="1"' + (pode.ok ? '' : ' disabled title="' + esc(pode.motivo) + '"') + '><svg class="ic ic-sm"><use href="#i-chat"/></svg> Responder</button>';
   const dias = (a, b) => Math.round((new Date(b) - new Date(a)) / 864e5);
   let ant = null;
   const corpo = todos.map(x => {
     // tempo entre este trâmite e o anterior na leitura (só quando passou ao menos 1 dia)
+    const ant0 = ant;
     let gap = '';
     if (ant) { const d = Math.abs(dias(ant.em, x.em)); if (d >= 1) gap = '<div class="tr-gap"><span>' + d + (d === 1 ? ' dia' : ' dias') + ' depois</span></div>'; }
     ant = x;
@@ -188,16 +224,17 @@ function tramitesHtml(r, carregando, i) {
     const quem = x.autor || (lado === 'esc' ? 'Escritório' : 'Cliente');
     const anexos = (x.arquivos && x.arquivos.length ? x.arquivos : (x.anexos || []).map(nome => ({ nome })));
     const gi = (r.arquivos && r.arquivos.length ? 1 : 0) + todos.filter(t => t.n < x.n && t.arquivos && t.arquivos.length).length;
-    return gap + '<div class="tr-item ' + lado + (x === ult ? ' ultimo' : '') + '">' +
+    const sit = ant0 && x.situacao !== ant0.situacao ? '<div class="tr-sit"><span>Situação passou a: <b>' + esc(x.situacao) + '</b></span></div>' : '';
+    return gap + '<div class="tr-item ' + lado + (x === ult ? ' ultimo' : '') + (novo && x === ult && lado === 'esc' ? ' tr-nova' : '') + '">' +
       '<span class="tr-av" title="' + esc(quem) + '">' + esc(iniciais(quem) || (lado === 'esc' ? 'E' : 'C')) + '</span>' +
       '<div class="tr-bolha">' +
-        '<div class="tr-meta"><b>' + esc(quem) + '</b><span class="tr-lado">' + (x.n === 1 ? 'abertura' : lado === 'esc' ? 'escritório' : 'cliente') + '</span><span class="pill">' + esc(x.situacao) + '</span>' + (x === ult ? '<span class="pill pill-soon">último</span>' : '') +
+        '<div class="tr-meta"><b>' + esc(quem) + '</b><span class="tr-lado">' + (x.n === 1 ? 'abertura' : lado === 'esc' ? 'escritório' : 'cliente') + '</span>' + (x === ult ? '<span class="pill pill-soon">último</span>' : '') +
           '<span class="tr-quando" title="' + esc(fmtDataHora(x.em)) + '">#' + String(x.n).padStart(2, '0') + ' · ' + esc(relativo(x.em) !== fmtDataHora(x.em) ? relativo(x.em) : fmtDataHora(x.em)) + '</span></div>' +
         (x.texto ? '<div class="tr-texto">' + esc(textoPuro(x.texto)) + '</div><button type="button" class="tr-mais">Ver tudo</button>' : '<div class="tr-texto fraco">Sem texto' + (anexos.length ? ' (só anexo)' : '') + '</div>') +
         (anexos.length ? '<div class="tr-anexos">' + anexos.map((a, ai) => { const tp = tipoArquivo(a.nome); return '<button type="button" class="tr-arq"' + (a.id ? ' data-ax-abrir="' + gi + ':' + ai + '"' : ' disabled') + ' title="Baixar ' + esc(a.nome) + '"><span class="ax-ic ' + tp.cls + '">' + tp.rot + '</span><span class="ax-nome">' + esc(a.nome) + '</span></button>'; }).join('') + '</div>' : '') +
-      '</div>' + (x === ultCli ? responder : '') + '</div>';
+      '</div>' + (x === ultCli ? responder : '') + '</div>' + sit;
   }).join('');
-  return '<div class="tr-lista" id="tr-lista">' + corpo + '</div>';
+  return '<div class="tr-lista" id="tr-lista">' + corpo + rasc + '</div>';
 }
 
 // Em destaque (sutil): as datas e os dados que definem o atendimento, tirados da solicitação completa.
@@ -257,6 +294,10 @@ addEventListener('keydown', e => {
   if (!detalheAberto() || lembreteAberto() || novaAberta() || anexosAbertos() || e.target.matches('input, select, textarea')) return;
   if (e.key === 'ArrowLeft') andar(-1);
   else if (e.key === 'ArrowRight') andar(1);
+  else if ((e.key === 'r' || e.key === 'R') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    if (focarResposta()) e.preventDefault();
+    else if (ultimo && ultimo.r && aba !== 'tramites') { aba = 'tramites'; desenhar(ultimo.i, ultimo.r, ultimo.erro, ultimo.carregando); if (focarResposta()) e.preventDefault(); }
+  }
 });
 aoMudar(quais => {
   if (quais.includes('lembretes') && detalheAberto() && ultimo) desenhar(ultimo.i, ultimo.r, ultimo.erro, ultimo.carregando);
