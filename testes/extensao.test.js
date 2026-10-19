@@ -502,7 +502,8 @@ test('o arquivo de regras de exemplo é válido e cobre prazos, feriados e palav
   const ex = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'regras', 'escritorio.exemplo.json'), 'utf8'));
   const r = OC.normalizarRegras(ex);
   assert.ok(r);
-  assert.equal(Object.keys(r.config).length, 9, 'todos os prazos do exemplo passam na validação');
+  assert.equal(Object.keys(r.config).length, 10, 'todos os prazos do exemplo passam na validação');
+  assert.equal(r.modelosTramite.length, 2, 'modelos de resposta do exemplo');
   assert.ok(r.textosSugestao && r.foraDoPortal, 'frases e textos das sugestões de ação');
   assert.equal(r.feriados.length, 2);
   assert.equal(r.abaErrada.length, 4);
@@ -1816,4 +1817,69 @@ test('aba Dados: campos e valores comuns do DP saem em português, e o desconhec
   assert.equal(d['Escolaridade'], 'Médio completo');
   assert.equal(d['Sexo'], 'Não informado');
   assert.equal(d['Nome'], 'Ana Paula', 'texto comum não é mexido');
+});
+
+/* ---------- v0.25: Tramitação v2 (caixa de resposta) ---------- */
+test('tramitação: intenções em vez de situações, com o efeito do envio e só as que o Onvio aceita agora', () => {
+  const geral = { type: 'geral', code: 1 };
+  const a = OC.intencoesDe(geral, {});
+  assert.deepEqual(plano(a.map(x => [x.sit, x.rot])), [[4, 'Aguardar o cliente'], [2, 'Em análise'], [8, 'Em análise interna'], [5, 'Concluir']]);
+  assert.match(a[0].efeito, /A vez passa ao cliente; sem retorno, prescreve em 30 dias/);
+  assert.equal(a[3].efeito, 'Encerra a solicitação: ela sai da fila');
+  assert.equal(a[1].efeito, 'Continua com o escritório');
+  // Respondido: o Onvio só aceita Respondido ou Concluído
+  assert.deepEqual(plano(OC.intencoesDe({ type: 'geral', code: 4 }, {}).map(x => x.sit)), [4, 5]);
+  assert.deepEqual(plano(OC.intencoesDe({ type: 'inexistente', code: 1 }, {})), []);
+});
+
+test('tramitação: variáveis dos modelos, saudação por horário, e o que falta barra o envio', () => {
+  const item = { type: 'avisoFerias', typeLabel: 'Aviso de férias', num: 7, apelido: 'ACME', detalhe: 'Fulano', abaProvavel: null };
+  const v = OC.variaveisTramite(item, { inicio: '2026-11-03' }, {}, new Date(2026, 9, 19, 9, 0), 'Ana');
+  assert.deepEqual(plano([v.saudacao, v.cliente, v.empregado, v.tipo, v.inicio, v.analista]), ['Bom dia', 'ACME', 'Fulano', 'aviso de férias', '03/11/2026', 'Ana']);
+  assert.match(v.pagamento, /^\d\d\/\d\d\/2026$/, 'pagamento calculado do início das férias');
+  assert.equal(OC.variaveisTramite({}, {}, {}, new Date(2026, 9, 19, 14, 0)).saudacao, 'Boa tarde');
+  assert.equal(OC.variaveisTramite({}, {}, {}, new Date(2026, 9, 19, 20, 0)).saudacao, 'Boa noite');
+  const t = OC.preencherModelo('{saudacao}! Sobre {empregado} e o nº {numero}.', v);
+  assert.equal(t, 'Bom dia! Sobre Fulano e o nº {numero}.', 'sem valor, a variável fica como está');
+  assert.deepEqual(plano(OC.marcadoresPendentes(t + ' (descreva o que falta) [preencher]')), ['{numero}', '(descreva o que falta)', '[preencher]']);
+  const av = OC.avisosResposta(t, 4, {});
+  assert.equal(av[0].bloqueia, true);
+  assert.match(av[0].msg, /Falta preencher: \{numero\}/);
+  assert.deepEqual(plano(OC.avisosResposta('Tudo certo.', 4, {}).map(x => !!x.bloqueia)), [false], 'sem pedido e aguardando o cliente: só uma dica');
+  assert.match(OC.avisosResposta('Tudo certo.', 4, {})[0].msg, /prefira "Concluir"/);
+  assert.match(OC.avisosResposta('Pode enviar o RG do empregado?', 5, {})[0].msg, /pede algo ao cliente/);
+  assert.deepEqual(plano(OC.avisosResposta('Concluído. Qualquer dúvida, estamos à disposição.', 5, {})), [], 'cortesia não conta como pedido');
+  assert.deepEqual(plano(OC.avisosResposta('', 5, {})), []);
+});
+
+test('tramitação: modelos valem por tipo e aba própria; pessoais entram junto; a situação só vem se o Onvio a aceita', () => {
+  const geral = { type: 'geral', code: 4, abaProvavel: null };
+  const l = OC.modelosPara(geral, {}, [{ rot: 'Meu texto', texto: 'Olá {cliente}', situacao: 2 }]);
+  const rots = l.map(m => m.rot);
+  assert.ok(rots.includes('Concluído') && rots.includes('Meu texto'));
+  assert.ok(!rots.includes('Lista errada'), 'sem aba própria, o modelo da lista errada não aparece');
+  assert.ok(!rots.includes('Cálculo concluído'), 'só nos cálculos');
+  assert.equal(l.find(m => m.rot === 'Recebido, em análise').situacao, null, 'de Respondido o Onvio só aceita Respondido ou Concluído');
+  assert.equal(l.find(m => m.rot === 'Concluído').situacao, 5);
+  assert.equal(l.find(m => m.rot === 'Meu texto').pessoal, true);
+  const c = OC.modelosPara({ type: 'calcFerias', code: 1, abaProvavel: null }, {}, []).map(m => m.rot);
+  assert.ok(c.includes('Cálculo concluído'));
+  const e = OC.modelosPara({ type: 'geral', code: 1, abaProvavel: { label: 'Aviso de férias' } }, {}, []).map(m => m.rot);
+  assert.ok(e.includes('Lista errada'));
+  // os modelos padrão passam nos avisos (marcadores só onde a pessoa precisa preencher)
+  const faltam = OC.modelosPara({ type: 'geral', code: 1 }, {}, []).filter(m => OC.marcadoresPendentes(OC.preencherModelo(m.texto, { saudacao: 'Bom dia', aba: 'x' })).length).map(m => m.rot);
+  assert.deepEqual(plano(faltam.sort()), ['Falta informação', 'Pedir documento', 'Repete outra solicitação']);
+});
+
+test('tramitação: modelo pessoal guardado sem dado do cliente; regras trazem modelos do escritório e o tempo para desfazer', () => {
+  const v = { cliente: 'ACME', empregado: 'Fulano de Tal', pagamento: '30/10/2026', analista: 'Ana' };
+  assert.equal(OC.despersonalizar('Bom dia, ACME! Pagamento de Fulano de Tal até 30/10/2026. Ana', v), 'Bom dia, {cliente}! Pagamento de {empregado} até {pagamento}. {analista}');
+  const r = OC.normalizarRegras({ modelosTramite: [{ rot: 'Meu', texto: 'Texto', situacao: 5, tipos: ['geral', 'x'] }, { rot: '', texto: 'x' }, { rot: 'Longo', texto: 'y'.repeat(900) }, { rot: 'Sit', texto: 'z', situacao: 99 }], prazos: { desfazerSeg: 8 } });
+  assert.deepEqual(plano(r.modelosTramite), [{ rot: 'Meu', texto: 'Texto', situacao: 5, tipos: ['geral'] }, { rot: 'Sit', texto: 'z' }]);
+  assert.equal(r.config.desfazerSeg, 8);
+  assert.equal(OC.normalizarRegras({ prazos: { desfazerSeg: 99 }, feriados: ['2026-12-24'] }).config.desfazerSeg, undefined, 'fora do limite é ignorado');
+  const s = OC.combinarSettings({ regras: r }, {});
+  assert.equal(s.modelosTramite.length, 2);
+  assert.equal(s.desfazerSeg, 8);
+  assert.equal(OC.combinarSettings(null, {}).desfazerSeg, 5);
 });

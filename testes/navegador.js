@@ -353,7 +353,7 @@ await passo('app · Hoje (analista): destaque com rosca, carrossel e próximos p
   await p.click('#hj-sug [data-cs-acao="calcFerias:a"]');
   await p.waitForSelector('#a-texto');
   assert.match(await p.$eval('#a-texto', t => t.value), /já foi resolvida fora do portal/);
-  assert.equal(await p.$eval('#a-situacao', x => x.value), '5', 'concluir');
+  assert.equal(await p.$eval('#gaveta .cmp-int.on', x => x.dataset.sit), '5', 'concluir');
   await p.keyboard.press('Escape');
   await p.waitForSelector('#gaveta', { state: 'hidden' });
   await p.click('#hj-sug .cs-abaErrada summary');
@@ -826,7 +826,7 @@ await passo('app · Hoje: avisos sem cálculo com Férias e Rescisões separadas
     { k: 'avisoFerias:f1', type: 'avisoFerias', typeLabel: 'Aviso de férias', id: 'f1', num: 201, code: 1, status: 'Sem análise', lado: 'esc', nivel: 0, grav: 0, parado: 1, motivos: [], resp: 'Ana Teste', mine: true, apelido: 'DELTA', cliente: 'DELTA', detalhe: 'Fulano', created: agoraIso(2), last: agoraIso(1), semCalculo: { alvo: '2026-10-30', faltam: 3, ref: 'início das férias em 03/11/2026', calculo: 'Cálculo de férias' } },
     { k: 'avisoRescisao:r1', type: 'avisoRescisao', typeLabel: 'Aviso de rescisão', id: 'r1', num: 202, code: 2, status: 'Em análise', lado: 'esc', nivel: 0, grav: 0, parado: 1, motivos: [], resp: 'Ana Teste', mine: true, apelido: 'ÔMEGA', cliente: 'ÔMEGA', detalhe: 'Joana', created: agoraIso(2), last: agoraIso(1), semCalculo: { alvo: '2026-10-14', faltam: -1, ref: 'aviso em 04/10/2026', calculo: 'Cálculo de rescisão' } }
   ]);
-  const p = await abrirApp('#/inicio', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens }) });
+  const p = await abrirApp('#/inicio', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens }), settings: { __v: 2, desfazerSeg: 0 } });
   await p.waitForSelector('#hj-semcalc .sc-cols');
   const grupo = (tipo, g) => p.$$eval('#hj-semcalc [data-tipo="' + tipo + '"] [data-grupo="' + g + '"] .sc-abre', e => e.map(x => x.dataset.k));
   const menu = async (tipo, sel) => { await p.click('#hj-semcalc [data-tipo="' + tipo + '"] [data-grupo="avisar"] .sc-mais summary'); await p.click('#hj-semcalc [data-tipo="' + tipo + '"] .sc-mais[open] ' + sel); };
@@ -859,7 +859,7 @@ await passo('app · Hoje: avisos sem cálculo com Férias e Rescisões separadas
   await p.evaluate(() => { window.__respostas = Object.assign(window.__respostas || {}, { acao: { ok: true, acao: 'tramite', anexos: 0 }, detalhe: { ok: true, item: { assunto: 'Férias' }, tramites: [], datas: {} } }); });
   await menu('avisoFerias', '[data-sc-avisar]');
   await p.waitForSelector('#gaveta #a-texto');
-  assert.equal(await p.$eval('#a-situacao', s => s.value), '4', 'Respondido: a vez passa ao cliente');
+  assert.equal(await p.$eval('#gaveta .cmp-int.on', x => x.dataset.sit), '4', 'Respondido: a vez passa ao cliente');
   const txt = await p.$eval('#a-texto', t => t.value);
   assert.match(txt, /^Recebemos o aviso de férias de Fulano, mas ainda não há a solicitação de cálculo de férias desse empregado\. Para o pagamento sair dentro do prazo legal \(até 30\/10\/2026, início das férias em 03\/11\/2026\)/);
   assert.equal(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'acao')), false, 'abrir o formulário não envia');
@@ -911,6 +911,7 @@ await passo('app · Nova solicitação (Geral): do quadro de avisos, das Solicit
   assert.match(await p.textContent('#toast'), /Solicitação #1501 criada no Onvio · a vez passou ao cliente/);
   await p.waitForFunction(() => { try { return JSON.parse(localStorage.getItem('__mem')).semCalculoMarcas['avisoFerias:f1'].st === 'avisado'; } catch (e) { return false; } });
   // do detalhe: "Nova para o cliente" trava o cliente da solicitação aberta
+  await p.click('#g-mais summary');
   await p.click('#g-nova');
   await p.waitForSelector('#dlg-nova #nv-assunto');
   assert.equal(await p.$('#nv-cliente'), null);
@@ -974,11 +975,10 @@ await passo('app · detalhe: destaques sutis; trâmites como conversa (filtro, o
   assert.equal(await p.$eval('#g-corpo .tr-bolha.longo', e => e.classList.contains('aberto')), true, 'Ver tudo abre o texto longo');
   if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/detalhe-tramites.png' });
   await p.click('#g-corpo .tr-responder');
-  await p.waitForSelector('#a-texto');
-  await p.click('#a-cancelar');
-  await p.waitForSelector('#g-corpo .tr-item');
+  assert.equal(await p.evaluate(() => document.activeElement && document.activeElement.id), 'a-texto', 'Responder leva o cursor para a caixa de resposta, que já está embaixo da conversa');
+  assert.equal(await p.$eval('#cmp', c => c.closest('#g-corpo') === null), true, 'a caixa fica fora da área que rola: a conversa continua visível');
   // um botão só para os anexos: abre a escolha com todos marcados
-  assert.match(await p.textContent('#g-anexos'), /Anexos\s*4/);
+  assert.match(await p.textContent('#g-anexos'), /Baixar anexos\s*4/);
   await p.click('#g-anexos');
   await p.waitForSelector('#dlg-anexos [data-ax]');
   assert.equal(await p.$$eval('#dlg-anexos [data-ax]:checked', e => e.length), 4);
@@ -1078,46 +1078,197 @@ await passo('app · Distribuir: mostra para quem vai cada sem responsável, com 
   assert.deepEqual(p.erros, []);
 });
 
-await passo('app · detalhe: Responder com situação, observações e anexo; revisa, confirma e envia; listas não mapeadas ficam bloqueadas', async () => {
-  const p = await abrirApp('#/fila', {});
+await passo('app · Tramitação: caixa de resposta fixa; intenção e efeito; modelos e variáveis; avisos; rascunho na conversa; envio com anexo; erro mantém o texto; lista não mapeada', async () => {
+  const p = await abrirApp('#/fila', { settings: { __v: 2, desfazerSeg: 0 } });
   await p.evaluate(() => { window.__respostas = { acao: { ok: true, acao: 'tramite', anexos: 1 }, detalhe: { ok: true, item: { assunto: 'Férias' }, tramites: [], datas: {} } }; });
   await p.click('#corpo [data-k="geral:b"]');
-  await p.waitForSelector('#gaveta [data-acao="tramite"]:not([disabled])');
-  assert.equal(await p.$eval('#gaveta [data-acao="expectativa"]', b => b.disabled), false);
-  await p.click('#gaveta [data-acao="tramite"]');
-  assert.deepEqual(await p.$$eval('#a-situacao option', o => o.map(x => x.textContent)), ['Escolha…', 'Em análise', 'Em análise interna', 'Respondido', 'Concluído']);
+  await p.waitForSelector('#cmp #a-texto');
+  assert.equal(await p.$eval('#cmp', c => c.closest('#g-corpo') === null), true, 'a caixa fica fora da área que rola');
+  assert.deepEqual(await p.$$eval('.cmp-int', e => e.map(x => x.textContent)), ['Aguardar o cliente', 'Em análise', 'Em análise interna', 'Concluir']);
+  // revisar sem texto: o aviso diz o que falta, sem sair da tela (a caixa abre ao clicar nela)
+  await p.click('#a-texto');
   await p.click('#a-revisar');
-  assert.match(await p.textContent('#g-corpo'), /Escolha a situação do trâmite/);
-  await p.selectOption('#a-situacao', '4');
-  await p.fill('#a-texto', 'Bom dia, segue o retorno.');
+  assert.match(await p.textContent('.cmp-erro'), /Escreva o texto da resposta/);
+  // o texto pede algo ao cliente: sugere "Aguardar o cliente"; "Concluir" avisa do conflito
+  await p.fill('#a-texto', 'Pode enviar o RG do empregado?');
+  assert.equal(await p.$eval('.cmp-int.sug', b => b.dataset.sit), '4');
+  await p.click('.cmp-int[data-sit="5"]');
+  assert.equal(await p.textContent('#cmp-efeito'), 'Depois do envio: Encerra a solicitação: ela sai da fila.');
+  assert.match(await p.textContent('#cmp-avisos'), /pede algo ao cliente, mas "Concluir" encerra/);
+  await p.click('.cmp-int[data-sit="4"]');
+  assert.match(await p.textContent('#cmp-efeito'), /A vez passa ao cliente; sem retorno, prescreve em 30 dias/);
+  assert.equal(await p.textContent('#cmp-avisos'), '');
+  // modelo com variável: a saudação vem pelo horário e o cursor já cai no que falta preencher
+  await p.fill('#a-texto', '');
+  await p.click('.cmp-modelo:has-text("Falta informação")');
+  assert.match(await p.inputValue('#a-texto'), /^(Bom dia|Boa tarde|Boa noite)! Para seguirmos com a solicitação, precisamos de mais informações: \(descreva o que falta\)\./);
+  assert.equal(await p.evaluate(() => { const t = document.querySelector('#a-texto'); return t.value.slice(t.selectionStart, t.selectionEnd); }), '(descreva o que falta)');
+  assert.equal(await p.$eval('.cmp-int.on', b => b.dataset.sit), '4', 'o modelo escolhe o que acontece depois');
+  assert.match(await p.textContent('#cmp-avisos'), /Falta preencher: \(descreva o que falta\)/);
+  await p.click('#a-revisar');
+  assert.match(await p.textContent('.cmp-erro'), /Falta preencher/);
+  assert.equal(await p.$('#a-enviar'), null, 'com marcador sobrando não chega à revisão');
+  await p.keyboard.type('a guia do FGTS de setembro');       // escreve por cima do trecho marcado
+  assert.equal(await p.textContent('#cmp-avisos'), '');
+  if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/tram-editar.png' });
   await p.click('#a-obs');
-  assert.match(await p.inputValue('#a-texto'), /^Bom dia, segue o retorno\.\n\nObservações importantes:\n• Prazo de conclusão/);
+  assert.match(await p.inputValue('#a-texto'), /a guia do FGTS de setembro\. Pode complementar por aqui, por favor\?\n\nObservações importantes:\n• Prazo de conclusão/);
   await p.setInputFiles('#a-arquivos', { name: 'recibo.txt', mimeType: 'text/plain', buffer: Buffer.from('ola') });
-  assert.match(await p.textContent('.acao-anexos'), /recibo\.txt · 3 B/);
+  assert.match(await p.textContent('.cmp-arqs'), /recibo\.txt · 3 B/);
+  // revisar: o rascunho aparece na conversa, tracejado, e nada é enviado
   await p.click('#a-revisar');
-  assert.match(await p.textContent('#a-conf'), /Trâmite com a situação "Respondido"[\s\S]*1 anexo\(s\): recibo\.txt/);
+  await p.waitForSelector('#a-enviar');
+  if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/tram-revisar.png' });
+  assert.match(await p.textContent('#tr-rascunho'), /rascunho.*Respondido.*a guia do FGTS de setembro.*recibo\.txt/s);
+  assert.equal(await p.$eval('#tr-rascunho', e => e.closest('#g-corpo') !== null), true);
+  assert.match(await p.textContent('#a-conf'), /Respondido \(a vez passa ao cliente.*\)[\s\S]*1 anexo\(s\): recibo\.txt/);
   assert.equal(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'acao')), false, 'revisar não envia');
+  await p.click('#a-voltar');
+  assert.match(await p.inputValue('#a-texto'), /a guia do FGTS de setembro/, 'voltar e editar mantém o texto');
+  assert.match(await p.textContent('.cmp-arqs'), /recibo\.txt/, 'e o anexo');
+  await p.click('#a-revisar');
   await p.click('#a-enviar');
   await p.waitForFunction(() => window.__msgs.some(m => m.cmd === 'acao'));
   const m = await p.evaluate(() => window.__msgs.find(x => x.cmd === 'acao'));
   assert.deepEqual([m.acao, m.type, m.num, m.situacao, m.arquivos.length, m.arquivos[0].nome, m.arquivos[0].b64], ['tramite', 'geral', '102', '4', 1, 'recibo.txt', 'b2xh']);
   await p.waitForFunction(() => /Trâmite enviado ao Onvio com 1 anexo/.test(document.querySelector('#toast').textContent));
   await p.waitForFunction(() => window.__msgs.filter(x => x.cmd === 'detalhe').length >= 2, null, { timeout: 3000 });
+  await p.waitForSelector('.cmp-ok');
+  assert.match(await p.textContent('.cmp-ok'), /Trâmite enviado às \d\d:\d\d/);
+  assert.equal(await p.$('#tr-rascunho'), null, 'depois de enviado, o rascunho sai da conversa');
   // erro do Onvio aparece e nada se perde
   await p.evaluate(() => { window.__respostas.acao = { ok: false, erro: 'o Onvio recusou a ação (HTTP 403)' }; });
-  await p.click('#gaveta [data-acao="tramite"]');
-  await p.selectOption('#a-situacao', '5'); await p.fill('#a-texto', 'Concluído.');
+  await p.fill('#a-texto', 'Concluído.');
+  await p.click('.cmp-int[data-sit="5"]');
   await p.click('#a-revisar'); await p.click('#a-enviar');
-  await p.waitForFunction(() => /Não foi enviado: o Onvio recusou a ação \(HTTP 403\)/.test(document.querySelector('#g-corpo').textContent));
+  await p.waitForFunction(() => /Não foi enviado: o Onvio recusou a ação \(HTTP 403\)/.test(document.querySelector('.cmp-erro') ? document.querySelector('.cmp-erro').textContent : ''));
   assert.equal(await p.inputValue('#a-texto'), 'Concluído.');
   // Rubricas: não mapeado
   await p.click('#g-fechar');
   await p.evaluate(() => { location.hash = '#/fila?escopo=equipe'; });
   await p.click('#corpo [data-k="rubricas:d"]');
-  await p.waitForSelector('#gaveta [data-acao="tramite"]');
-  await p.waitForFunction(() => { const b = document.querySelector('#gaveta [data-acao="tramite"]'); return b && b.title && b.title !== 'carregando'; });
-  assert.equal(await p.$eval('#gaveta [data-acao="tramite"]', b => b.disabled), true);
-  assert.match(await p.getAttribute('#gaveta [data-acao="tramite"]', 'title'), /ainda não mapeada/);
+  await p.waitForSelector('#gaveta .cmp-nota');
+  assert.match(await p.textContent('#gaveta .cmp-nota'), /ainda não mapeada/);
+  assert.equal(await p.$('#a-texto'), null);
+  assert.deepEqual(p.erros, []);
+});
+
+await passo('app · Tramitação: 5 s para desfazer; enviar e ir para a próxima; rascunho só na memória; atalho R e Ctrl+Enter; situação como linha na conversa', async () => {
+  const p = await abrirApp('#/fila?escopo=equipe', { settings: { __v: 2, desfazerSeg: 3 } });
+  await p.evaluate(() => { window.__respostas = { acao: { ok: true, acao: 'tramite', anexos: 0 }, detalhe: { ok: true, item: { assunto: 'Férias' }, datas: {}, tramites: [
+    { n: 1, em: '2026-10-01T10:00:00', situacao: 'Sem análise', lado: 'cli', autor: 'Cliente BETA', texto: 'Abertura', anexos: [] },
+    { n: 2, em: '2026-10-02T10:00:00', situacao: 'Em análise', lado: 'esc', autor: 'Ana Teste', texto: 'Vamos ver.', anexos: [] },
+    { n: 3, em: '2026-10-02T11:00:00', situacao: 'Em análise', lado: 'esc', autor: 'Ana Teste', texto: 'Ainda vendo.', anexos: [] },
+    { n: 4, em: '2026-10-03T10:00:00', situacao: 'Aguardando resposta', lado: 'esc', autor: 'Ana Teste', texto: 'Falta o RG.', anexos: [] }] } }; });
+  await p.click('#corpo [data-k="geral:b"]');
+  await p.waitForSelector('#g-corpo .tr-item');
+  // a situação vira uma linha quando muda (não uma etiqueta em cada bolha)
+  assert.deepEqual(await p.$$eval('#g-corpo .tr-sit span', e => e.map(x => x.textContent)), ['Situação passou a: Em análise', 'Situação passou a: Aguardando resposta']);
+  assert.equal(await p.$$eval('#g-corpo .tr-bolha .pill', e => e.length), 1, 'só o "último" fica como etiqueta');
+  // atalho R leva o cursor à caixa; Ctrl+Enter revisa
+  await p.keyboard.press('r');
+  assert.equal(await p.evaluate(() => document.activeElement.id), 'a-texto');
+  await p.keyboard.type('Rascunho que não pode se perder');
+  await p.click('.cmp-int[data-sit="4"]');
+  const nav0 = await p.textContent('.dlg-nav span');
+  await p.click('#g-prox');
+  await p.waitForFunction(n => document.querySelector('.dlg-nav span').textContent !== n, nav0);
+  assert.equal(await p.evaluate(() => (document.querySelector('#a-texto') || { value: '' }).value), '', 'outra solicitação, outra caixa');
+  await p.click('#g-ant');
+  await p.waitForFunction(() => document.querySelector('#a-texto') && /Rascunho que não/.test(document.querySelector('#a-texto').value));
+  assert.equal(await p.$eval('.cmp-int.on', b => b.dataset.sit), '4', 'o rascunho volta com a escolha');
+  assert.equal(await p.evaluate(() => /Rascunho que não/.test(localStorage.getItem('__mem'))), false, 'o rascunho nunca é gravado');
+  await p.focus('#a-texto');
+  await p.keyboard.press('Control+Enter');
+  await p.waitForSelector('#a-enviar');
+  assert.equal(await p.$('#a-desfazer'), null, 'um Ctrl+Enter só revisa, nunca envia');
+  // enviar espera alguns segundos: dá para desfazer e nada vai ao Onvio
+  await p.click('#a-enviar');
+  await p.waitForSelector('#a-desfazer');
+  assert.match(await p.textContent('#cmp-conta-tx'), /Enviando em [123] s/);
+  await p.click('#a-desfazer');
+  await p.waitForSelector('#a-enviar');
+  await p.waitForTimeout(3500);
+  assert.equal(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'acao')), false, 'desfeito: nada foi enviado');
+  assert.ok(await p.$('#tr-rascunho'), 'o rascunho continua na conversa');
+  // fechar a janela durante a contagem cancela o envio
+  await p.click('#a-enviar');
+  await p.waitForSelector('#a-desfazer');
+  await p.keyboard.press('Escape');
+  await p.waitForSelector('#gaveta', { state: 'hidden' });
+  await p.waitForTimeout(3500);
+  assert.equal(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'acao')), false, 'janela fechada: o envio foi cancelado');
+  // enviar e ir para a próxima: manda depois da contagem e abre a seguinte da lista
+  await p.click('#corpo [data-k="geral:b"]');
+  await p.waitForSelector('#a-enviar-prox');                  // o rascunho voltou na revisão, sem ter sido enviado
+  const posAntes = await p.textContent('.dlg-nav span');
+  await p.click('#a-enviar-prox');
+  await p.waitForFunction(() => window.__msgs.some(m => m.cmd === 'acao'), null, { timeout: 8000 });
+  await p.waitForFunction(n => document.querySelector('.dlg-nav span') && document.querySelector('.dlg-nav span').textContent !== n, posAntes, { timeout: 8000 });
+  assert.equal(await p.evaluate(() => window.__msgs.filter(m => m.cmd === 'acao').length), 1);
+  assert.deepEqual(p.erros, []);
+});
+
+await passo('app · Tramitação: modelo pessoal sem dado de cliente; passar para outro analista; Mais ações com o motivo na linha', async () => {
+  const itens = ITENS_APP.map(i => Object.assign({}, i, i.resp === 'Ana Teste' ? { respId: 'id-ana' } : i.resp === 'Bia' ? { respId: 'id-bia' } : {}));
+  const p = await abrirApp('#/fila?escopo=equipe', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens }), settings: { __v: 2, desfazerSeg: 0 } });
+  await p.evaluate(() => { window.__respostas = { acao: { ok: true, acao: 'tramite', anexos: 0 }, detalhe: { ok: true, item: { assunto: 'Férias' }, datas: {}, tramites: [] } }; });
+  await p.click('#corpo [data-k="geral:b"]');
+  await p.waitForSelector('#a-texto');
+  // guardar como modelo: os dados desta solicitação voltam a ser {variáveis}
+  await p.fill('#a-texto', 'Olá, BETA! Enviamos o documento de hoje.');
+  await p.click('#a-guardar');
+  assert.equal(await p.inputValue('#mg-texto'), 'Olá, {cliente}! Enviamos o documento de hoje.');
+  await p.fill('#mg-rot', 'Meu aviso');
+  await p.click('#mg-salvar');
+  await p.waitForSelector('.cmp-modelo:has-text("Meu aviso")');
+  const guardado = await p.evaluate(() => JSON.parse(localStorage.getItem('__mem')).modelosPessoais);
+  assert.deepEqual([guardado.length, guardado[0].rot, guardado[0].texto], [1, 'Meu aviso', 'Olá, {cliente}! Enviamos o documento de hoje.']);
+  assert.equal(JSON.stringify(guardado).includes('BETA'), false, 'o modelo guardado não leva o nome do cliente');
+  await p.fill('#a-texto', '');
+  await p.click('.cmp-modelo:has-text("Meu aviso")');
+  assert.equal(await p.inputValue('#a-texto'), 'Olá, BETA! Enviamos o documento de hoje.', 'ao usar, a variável vira o cliente da vez');
+  await p.click('.cmp-m-tira');
+  await p.waitForFunction(() => !document.querySelector('.cmp-m-tira'));
+  // Mais ações: passar para outro analista (encaminhar com comentário)
+  await p.click('#g-mais summary');
+  assert.equal(await p.$eval('[data-acao="passar"]', b => b.disabled), false);
+  await p.click('[data-acao="passar"]');
+  await p.waitForSelector('.acao-ops');
+  assert.deepEqual(await p.$$eval('#a-analista option', o => o.map(x => x.textContent)), ['Escolha…', 'Bia'], 'ao encaminhar, não oferece o responsável de agora');
+  await p.selectOption('#a-analista', 'id-bia');
+  await p.fill('#a-texto', 'Pode assumir?');
+  await p.click('#a-revisar');
+  assert.match(await p.textContent('#a-conf'), /Encaminhar para Bia[\s\S]*Pode assumir\?/);
+  await p.click('#a-enviar');
+  await p.waitForFunction(() => window.__msgs.some(m => m.cmd === 'acao'));
+  const e = await p.evaluate(() => window.__msgs.find(x => x.cmd === 'acao'));
+  assert.deepEqual([e.acao, e.encaminharPara, e.texto], ['tramite', 'id-bia', 'Pode assumir?']);
+  await p.waitForSelector('#cmp #a-texto');
+  // trocar o responsável é a outra opção do mesmo formulário
+  await p.click('#g-mais summary'); await p.click('[data-acao="passar"]');
+  await p.click('input[name="a-modo"][value="responsavel"]');
+  await p.waitForSelector('#a-analista');
+  assert.equal(await p.$('#a-texto'), null, 'sem comentário ao trocar o responsável');
+  await p.selectOption('#a-analista', 'id-bia');
+  await p.click('#a-revisar'); await p.click('#a-enviar');
+  await p.waitForFunction(() => window.__msgs.filter(m => m.cmd === 'acao').length === 2);
+  assert.deepEqual(await p.evaluate(() => { const x = window.__msgs.filter(m => m.cmd === 'acao')[1]; return [x.acao, x.analista]; }), ['responsavel', 'id-bia']);
+  // o motivo aparece na própria linha (não só no mouse)
+  await p.click('#g-fechar');
+  await p.click('#corpo [data-k="calcFerias:a"]');
+  await p.waitForSelector('#a-texto');
+  await p.click('#g-mais summary'); await p.click('[data-acao="passar"]');
+  await p.waitForSelector('.acao-op.off');
+  assert.match(await p.textContent('.acao-op.off'), /só permite definir responsável quando ainda não há um/);
+  assert.equal(await p.$eval('input[name="a-modo"][value="responsavel"]', i => i.disabled), true);
+  await p.click('#a-cancelar');
+  await p.click('#g-fechar');
+  await p.click('#corpo [data-k="rubricas:d"]');
+  await p.waitForSelector('#g-mais');
+  await p.click('#g-mais summary');
+  assert.equal(await p.$eval('[data-acao="passar"]', b => b.disabled), true);
+  assert.match(await p.textContent('[data-acao="passar"] .mi-motivo'), /ainda não mapeada/);
   assert.deepEqual(p.erros, []);
 });
 
