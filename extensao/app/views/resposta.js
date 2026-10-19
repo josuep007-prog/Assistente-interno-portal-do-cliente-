@@ -69,8 +69,8 @@ export function bolhaRascunho(i) {
 }
 
 export function respostaHtml(i, obs, ctx) {
-  const nota = t => '<div class="cmp cmp-nota"><span>' + ic('alert', 'ic-sm') + ' ' + esc(t) + '</span></div>';
-  if (!OC.ACOES.tramite(i.type)) return nota('Responder (Respondido, Concluído...) ainda não está mapeado no Onvio para ' + i.typeLabel + ': use "Abrir no Onvio". Para liberar, rode a Parte 3 de mapeamento/prompt-pendencias-onvio.md.');
+  const nota = (t, onvio) => '<div class="cmp cmp-nota"><span>' + ic('alert', 'ic-sm') + ' ' + esc(t) + '</span>' + (onvio ? '<button type="button" class="btn btn-sm" data-abrir-onvio>' + ic('link', 'ic-sm') + ' Abrir no Onvio</button>' : '') + '</div>';
+  if (!OC.ACOES.tramite(i.type)) return nota('Responder ainda não está disponível na extensão para ' + i.typeLabel + ': as situações desta lista são outras e ainda estão sendo mapeadas. Responda pelo Onvio.', true);
   const pode = OC.podeAcao('tramite', i);
   if (!pode.ok) return nota('Não dá para responder: ' + pode.motivo + '.');
   const r = rascunho(i);
