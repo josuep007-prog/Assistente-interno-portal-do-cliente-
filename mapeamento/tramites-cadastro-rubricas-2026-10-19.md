@@ -133,3 +133,29 @@ Todas na EMPRESA EXEMPLO SIMPLES NACIONAL LTDA, criadas pelo Josué.
 - O código numérico do filtro de Rubricas para "Encaminhado" é 9, por observação ao encaminhar; não li o valor direto do filtro.
 - Rubricas 3 (Importação realizada) aparece em solicitações já existentes, mas não é oferecida ao escritório.
 - A página recarregou sozinha várias vezes e as capturas de tela saíam em branco. Operei pela estrutura da página e conferi tudo por GET.
+---
+
+# Complemento (2ª coleta, 19/10/2026): responsável e encaminhar
+
+Mesma empresa de teste. Solicitações: Cadastro empregado 1634 e 1637, estagiário 1635 e 1638, contribuinte 1636 e 1639, Rubricas 1761; todas deixadas Concluídas por trâmite, nada excluído.
+
+## Definir responsável (Cadastro)
+- `PUT v1/employees-registrations/{id}/assign-staff`, `application/json`, corpo `{ id: string }`; resposta HTTP 200, sem corpo e sem `location`.
+- Não cria trâmite nem muda a situação. Mesma chamada confirmada em empregado, estagiário e contribuinte (o `{id}` é o do próprio item, como nos trâmites).
+- Depois de existir responsável, o item do menu MAIS fica `disabled`; o 1º trâmite do escritório também grava o autor como responsável. A tela não troca responsável.
+- O combobox de funcionário é pesquisável e virtualizado.
+
+## Encaminhar (Cadastro)
+- `POST v1/employees-registrations/{id}/topics`, corpo `{ status, description, forwardedToEmployeeExpanded: { id } }` → 201; o trâmite criado ganha `forwardedToEmployeeExpanded` e `sequentialGroup`.
+- A partir de 2 e de 4: 201. A partir de 3 (Aguardando o cliente): HTTP 400, `reason` `EmployeeRegistrationInvalidStatus`, apesar de o item do menu aparecer habilitado (empregado e estagiário; contribuinte não testado).
+
+## Rubricas
+- "Segue o mesmo padrão do Cadastro": responsável com `staffResponsibleExpanded` (inclui `created` e `changed`); encaminhar com o mesmo corpo (`forwardedToEmployeeExpanded { id }`), situação 9. O caminho de `assign-staff` em Rubricas **não foi capturado** (a extensão usa `v1/payroll-entries/{id}/assign-staff`, por analogia).
+
+## Expectativa
+- A tela não oferece em nenhuma das quatro listas.
+
+## Dúvidas em aberto
+- "Cadastro efetuado" (5) nunca é oferecido ao escritório (provável integração com o Domínio).
+- Concluído com texto vazio: o botão fica habilitado, mas nenhum envio foi feito assim.
+- Encaminhar a partir de 2 no estagiário e no contribuinte não foi testado.
