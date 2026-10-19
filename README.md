@@ -2,7 +2,7 @@
 
 Ferramentas internas da ControlTax para facilitar o uso e o controle do **Portal do Cliente Onvio** por analistas e gestores.
 
-## Control Onvio (extensão do Chrome) · v0.25.3
+## Control Onvio (extensão do Chrome) · v0.26.0
 
 Página de trabalho em tela cheia **por cima do Onvio Portal do Cliente**: Hoje como visão do dia (admissões em destaque, vencimentos de férias e rescisões, sugestões de ação por solicitação (resolvida fora do portal, duplicada, lista errada, falta informação) com o trâmite já preenchido, uso do portal pelo cliente e previsão por empresa), Solicitações (filas das 10 listas (com cartões por tipo e ordem por prioridade, empresa ou mais recente), avisos de férias e rescisão sem cálculo perto do prazo legal (Férias e Rescisões lado a lado, com criar solicitação ou responder no aviso, já avisei e desconsiderar), detalhe completo da solicitação com observações prontas para o cliente, módulo Distribuir (quem mais atendeu a empresa nos últimos 30 dias), dashboards em tempo real (Hoje no formato da tela Convenções do Departamento Pessoal: carteira, destaque com rosca, carrossel e próximos passos, Equipe como área do gestor com senha: avaliação de desempenho e qualidade dos atendimentos), agenda, detalhe com o essencial em destaque, trâmites como conversa com a caixa de resposta fixa embaixo (intenção em vez de situação, modelos com variáveis, rascunho na conversa e 5 segundos para desfazer o envio) e anexos baixados de uma vez (o analista escolhe quais), alertas, lembretes pessoais e Configurações que mostram o efeito de cada prazo na fila antes de salvar. Solicitações na vez do cliente sem retorno há mais de 3 dias úteis, cuja última resposta não pedia nada, contam como resolvidas. O Onvio continua aberto por trás e mantém a sessão.
 
@@ -27,7 +27,7 @@ Para atualizar: baixe de novo, substitua a pasta e clique em **Recarregar** no c
 | `core.js` | Tipos de solicitação, códigos de situação, coleta na API do Onvio e regras de prazo |
 | `background.js` | Leitura periódica, contador no ícone, notificações e abertura da solicitação no Onvio |
 | `app/` | O app em si: trilho lateral, telas (Hoje, Solicitações, Agenda e lembretes, Equipe, Distribuir), detalhe e busca. Visual do Control Hub (Departamento Pessoal e Portal do Cliente) |
-| `shell.js` | Camada em tela cheia com o app dentro do Onvio, botão "Voltar ao Control Onvio", verificação ao vivo, modo aprender |
+| `shell.js` | Camada em tela cheia com o app dentro do Onvio, bolinha "Voltar ao Control Onvio", verificação ao vivo, modo aprender |
 | `acao-hook.js` | Percebe ações que alteram solicitações na página e pede leitura imediata (sem ler conteúdo); aprende o molde do download de anexos quando o Onvio baixa um |
 | `app/` | O app: `app.html/css/js`, `estado.js` (espelho do armazenamento), `graficos.js` (SVG), `views/` (Início, fila, Equipe, Distribuir, busca, detalhe, anexos, Lembretes, Configurações) |
 | `content.js` | Filtra a grade do Onvio pelo ID quando a solicitação é aberta por "Abrir no Onvio" |

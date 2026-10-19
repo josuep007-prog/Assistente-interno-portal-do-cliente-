@@ -263,7 +263,10 @@ await passo('shell: ao entrar no Onvio o app cobre a tela inteira; "Ver Onvio" e
   await p.evaluate(() => window.__ouvintes.forEach(f => f({ type: 'fechar' })));       // "Ver Onvio"
   await p.waitForFunction(() => !document.documentElement.classList.contains('controlonvio-cheia'));
   await p.waitForTimeout(300);                                                            // fim da animação de saída
-  await p.mouse.click(1220, 755);                                                         // botão "Voltar ao Control Onvio"
+  assert.equal(await p.evaluate(() => { const e = document.elementFromPoint(1318, 758); return e && e.id; }), 'controlonvio-host', 'a bolinha fica no canto');
+  assert.notEqual(await p.evaluate(() => { const e = document.elementFromPoint(1230, 758); return e && e.id; }), 'controlonvio-host', 'só a bolinha: o resto da página fica livre (antes o botão ocupava ~200 px)');
+  if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/bolinha.png', clip: { x: 1100, y: 640, width: 260, height: 160 } });
+  await p.mouse.click(1318, 758);                                                         // bolinha "Voltar ao Control Onvio"
   await p.waitForFunction(() => document.documentElement.classList.contains('controlonvio-cheia'));
   await p.evaluate(() => window.__ouvintes.forEach(f => f({ type: 'fechar' })));
   await p.reload();

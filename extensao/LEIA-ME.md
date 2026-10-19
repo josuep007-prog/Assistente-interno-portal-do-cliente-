@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.25.3)
+# Control Onvio · ControlTax (v0.26.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -15,7 +15,7 @@ Para atualizar a versão: substitua os arquivos da pasta, clique em **Recarregar
 ## Como usar
 
 - **Trilho lateral** (à esquerda, escuro, como no Control Hub): Hoje, Solicitações, Agenda e lembretes, Equipe (área do gestor, com senha) e Distribuir. A busca (/ ou Ctrl+K) procura nas 10 listas do Onvio, inclusive concluídas. Passe o mouse num ícone para ver o nome; os números vermelhos/azuis são o que pede atenção.
-- **Ver Onvio** (canto superior direito) mostra a tela nativa do Onvio; o botão **Voltar ao Control Onvio**, no canto inferior direito, traz o app de volta. O ícone da extensão e o atalho **Alt+Shift+O** fazem o mesmo, e em qualquer outro site levam ao Onvio.
+- **Ver Onvio** (canto superior direito) mostra a tela nativa do Onvio; a **bolinha** com a logo, no canto inferior direito, traz o app de volta. O ícone da extensão e o atalho **Alt+Shift+O** fazem o mesmo, e em qualquer outro site levam ao Onvio.
 - **Busca** em janela central: tecla **/** ou **Ctrl+K**. Já mostra, enquanto você digita, as pendências lidas e os clientes; **Enter** busca em todas as listas do Onvio, inclusive concluídas (ou abre direto a solicitação, se você digitou o ID exato).
 - Clique numa solicitação para abrir o **detalhe** (dados e trâmites lidos na hora). Setas **← →** passam para a anterior/próxima da mesma lista sem fechar. "Abrir no Onvio" leva à lista certa do Onvio já filtrada pelo ID.
 - Nas listas: **↑ ↓** andam entre as linhas e **Enter** abre.
@@ -40,6 +40,11 @@ Vez do cliente: sem retorno há mais de 5 dias úteis (laranja); a partir de 20 
 **Resolvida sem retorno:** na vez do cliente há mais de 3 dias úteis e a última resposta do analista não pede nada ao cliente = o cliente ficou satisfeito, e a solicitação conta como resolvida (sai da fila, dos prazos e da prescrição e conta como entregue na Equipe). Se a resposta pedir algo ("aguardamos", "favor enviar", "falta"… ou uma pergunta), continua pendente; frases de cortesia ("qualquer dúvida, estamos à disposição") não contam. Nada muda no Onvio.
 
 Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardando resposta** = o escritório precisa responder; **Respondido** = vez do cliente.
+
+## Novidades da v0.26.0 (só a bolinha)
+
+- O botão "Voltar ao Control Onvio" virou uma **bolinha** de 48 px no canto inferior direito, sem texto, para não cobrir paginação e botões do Onvio (o nome fica no balãozinho do mouse e para leitores de tela).
+- **Chama atenção sem incomodar:** dois anéis que se abrem e somem, um depois do outro. A cor do anel segue a urgência das suas solicitações (azul normal, âmbar quando algo vence hoje, vermelho quando há fora do prazo), e o contador fica preso ao canto da bolinha. Com o mouse em cima, os anéis param; com "reduzir movimento" no sistema, vira um anel fixo.
 
 ## Novidades da v0.25.3 (visual da caixa de resposta)
 
