@@ -1158,17 +1158,20 @@ await passo('app · Tramitação: caixa de resposta fixa; intenção e efeito; m
   await p.click('#a-revisar'); await p.click('#a-enviar');
   await p.waitForFunction(() => /Não foi enviado: o Onvio recusou a ação \(HTTP 403\)/.test(document.querySelector('.cmp-erro') ? document.querySelector('.cmp-erro').textContent : ''));
   assert.equal(await p.inputValue('#a-texto'), 'Concluído.');
-  // Rubricas: não mapeado
+  // Rubricas (mapeada em 19/10/2026): a caixa de resposta existe, com as situações da lista e o efeito de cada uma
   await p.click('#g-fechar');
   await p.evaluate(() => { location.hash = '#/fila?escopo=equipe'; });
   await p.click('#corpo [data-k="rubricas:d"]');
-  await p.waitForSelector('#gaveta .cmp-nota');
-  assert.match(await p.textContent('#gaveta .cmp-nota'), /ainda não está disponível na extensão para Lançamento de rubricas/);
-  await p.click('#gaveta .cmp-nota [data-abrir-onvio]');
-  await p.waitForFunction(() => window.__msgs.some(m => m.cmd === 'abrir'));
-  assert.equal(await p.$eval('#g-responder', b => b.disabled), true, 'Responder do rodapé desativado, com o motivo');
-  assert.match(await p.getAttribute('#g-responder', 'title'), /ainda não mapeada/);
-  assert.equal(await p.$('#a-texto'), null);
+  await p.waitForSelector('#a-texto');
+  assert.equal(await p.$('#gaveta .cmp-nota'), null);
+  assert.deepEqual(await p.$$eval('.cmp-int', b => b.map(x => x.dataset.sit + ':' + x.dataset.tom)), ['6:cli', '5:esc', '2:esc', '8:fim'], 'Aguardando correção, Aguardando resposta, Em análise, Concluído');
+  await p.click('.cmp-int[data-sit="6"]');
+  assert.match(await p.textContent('#cmp-efeito'), /A vez passa ao cliente/);
+  await p.fill('#a-texto', 'Por favor, corrija a rubrica.');
+  await p.click('#a-revisar');
+  assert.match(await p.textContent('#a-conf'), /Aguardando correção/);
+  assert.equal(await p.$eval('#g-responder', b => b.disabled), false, 'Responder do rodapé ativo');
+  await p.click('#a-voltar'); await p.click('#a-descartar');
   assert.deepEqual(p.erros, []);
 });
 
@@ -1287,7 +1290,7 @@ await passo('app · Tramitação: modelo pessoal sem dado de cliente; passar par
   await p.waitForSelector('#g-mais');
   await p.click('#g-mais summary');
   assert.equal(await p.$eval('[data-acao="passar"]', b => b.disabled), true);
-  assert.match(await p.textContent('[data-acao="passar"] .mi-motivo'), /ainda não mapeada/);
+  assert.match(await p.textContent('[data-acao="passar"] .mi-motivo'), /ainda não disponível/, 'passar para outro analista segue só em Geral e na folha');
   assert.deepEqual(p.erros, []);
 });
 

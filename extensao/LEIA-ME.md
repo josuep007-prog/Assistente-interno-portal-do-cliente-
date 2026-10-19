@@ -41,6 +41,15 @@ Vez do cliente: sem retorno há mais de 5 dias úteis (laranja); a partir de 20 
 
 Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardando resposta** = o escritório precisa responder; **Respondido** = vez do cliente.
 
+## Novidades da v0.27.0 (responder em Cadastro e Rubricas)
+
+- **Responder e anexar agora funcionam em Cadastro (empregado, contribuinte, estagiário) e em Lançamento de rubricas**, mapeados na empresa de teste em 19/10/2026 (`mapeamento/tramites-cadastro-rubricas-2026-10-19.md`). A caixa de resposta oferece só as situações que o Onvio oferece ao escritório em cada lista, conforme a situação atual:
+  - **Cadastro:** *Aguardando o cliente* (a vez passa ao cliente) e *Concluído · encerra*; quando a solicitação está com o cliente (Aguardando o cliente), só *Respondido pelo cliente · registra o retorno*. "Cadastro efetuado" nunca é oferecido ao escritório (vem de outro processo).
+  - **Rubricas:** *Respondido · aguarda o cliente*, *Aguardando correção · pede ajuste ao cliente*, *Aguardando resposta*, *Em análise* e *Concluído · encerra*; depois de Aguardando resposta ou Aguardando correção, só *Respondido*.
+- O efeito de cada botão aparece embaixo ("A vez passa ao cliente; sem retorno, prescreve em N dias", "Encerra a solicitação", "Continua com o escritório"), os modelos e as sugestões de ação usam a situação equivalente de cada lista, e o aviso de coerência (texto pede algo ao cliente × situação que encerra) vale em todas as listas.
+- **Ainda não disponível nessas duas listas** (o botão explica): **encaminhar**, **definir responsável** e **alterar expectativa**. No Cadastro, o Onvio recusa encaminhar a partir de "Aguardando o cliente" (HTTP 400), a chamada de "Definir responsável" não foi capturada e a expectativa a tela não oferece.
+- **A confirmar no Onvio:** a vez de *Aguardando resposta* em Rubricas (a extensão a conta como vez do escritório); o ponto da vez em Cadastro depois de *Respondido pelo cliente*.
+
 ## Novidades da v0.26.0 (só a bolinha)
 
 - O botão "Voltar ao Control Onvio" virou uma **bolinha** de 48 px no canto inferior direito, sem texto, para não cobrir paginação e botões do Onvio (o nome fica no balãozinho do mouse e para leitores de tela).
@@ -62,7 +71,7 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 
 - **Os nomes do Onvio voltaram aos botões:** **Respondido · aguarda o cliente**, **Em análise**, **Em análise interna** e **Concluído · encerra**. A 0.25.0 usava "Aguardar o cliente" e "Concluir", e parecia que o trâmite Respondido tinha sumido.
 - **Situação, modelos e Revisar ficam sempre à vista**, sem precisar clicar na caixa. Só observações, anexos e "Guardar como modelo" abrem ao clicar ou digitar.
-- **Responder no rodapé, de qualquer aba:** leva à caixa de resposta (e à aba Trâmites). Em Cadastro e Rubricas, onde responder ainda não está mapeado, o botão fica desativado com o motivo e a caixa explica como liberar (Parte 3 de `mapeamento/prompt-pendencias-onvio.md`).
+- **Responder no rodapé, de qualquer aba:** leva à caixa de resposta (e à aba Trâmites). (Em Cadastro e Rubricas o botão estava desativado até a 0.27.0.)
 
 ## Novidades da v0.25.0 (Tramitação v2: caixa de resposta fixa)
 
@@ -92,7 +101,7 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
   - foi aberta na **lista Geral mas tem aba própria**: **Orientar e concluir**, com o nome da aba certa;
   - o cliente **diz que anexou e nenhum arquivo chegou**: **Pedir o anexo**;
   - na Geral, o pedido é **curto demais e sem anexo**, sem resposta do escritório ainda: **Pedir informações**.
-- **Poucos cliques:** o botão abre o detalhe já no trâmite preenchido (texto e situação: Concluído ou Respondido). Você revisa, edita se quiser e confirma; nada é enviado sozinho. Listas sem trâmite mapeado (Cadastro, Rubricas) mostram só "Abrir". No menu "⋯": ver a solicitação ou **Não é o caso** (some até a solicitação mexer; fica só o id e a data da última movimentação).
+- **Poucos cliques:** o botão abre o detalhe já no trâmite preenchido (texto e situação: Concluído ou Respondido). Você revisa, edita se quiser e confirma; nada é enviado sozinho. Listas sem trâmite mapeado mostram só "Abrir" (desde a 0.27.0 todas têm). No menu "⋯": ver a solicitação ou **Não é o caso** (some até a solicitação mexer; fica só o id e a data da última movimentação).
 - **Como lê:** os trâmites das pendências na vez do escritório (até 80, as mais recentes) são conferidos ao abrir o Hoje, no máximo a cada 10 minutos, e só quando mudaram; volta só o veredito (qual caso e qual trecho da lista casou), nunca o texto. As frases e os textos sugeridos ficam em `foraDoPortal`, `anexoCitado` e `textosSugestao` (arquivo de regras).
 - **Responder na conversa:** nos trâmites do detalhe, o botão **Responder** fica ao lado da última mensagem do cliente (em destaque quando ela é a mais recente). O do rodapé continua.
 - **Distribuir só com 30 dias:** "quem mais atendeu cada empresa" olha sempre os últimos 30 dias; os botões de 7 e 14 dias saíram (como na avaliação da equipe).
@@ -236,7 +245,7 @@ Feito a partir do mapeamento na empresa de teste (`mapeamento/acoes-2026-10-15.m
 - **Responder pelo detalhe** (caixa fixa embaixo da conversa desde a 0.25.0): escolha o que acontece depois (Respondido, Em análise, Em análise interna ou Concluído; depois de Respondido, só Respondido e Concluído, como no Onvio), escreva o texto e anexe arquivos (até 10, de até 15 MB). Antes de enviar, **Revisar** mostra o rascunho na conversa e só **Enviar** manda (depois de 5 segundos para desfazer).
 - **Encaminhar** para outro usuário (com comentário), **definir responsável** e **alterar expectativa** (só na Geral, a única testada), também com confirmação.
 - **Distribuir:** **Atribuir** em cada linha (com confirmação) e **Atribuir todas**, com o resumo de quantas vão para cada pessoa. O resultado aparece na linha.
-- **Onde funciona:** Geral, Aviso e Cálculo de férias, Aviso e Cálculo de rescisão e Afastamento. Cadastro e Rubricas ficam bloqueados (o botão explica) até serem mapeados. O Onvio também bloqueia: definir responsável na folha quando já tem um; na Geral, com a situação Respondido; encaminhar com Respondido.
+- **Onde funciona:** Geral, Aviso e Cálculo de férias, Aviso e Cálculo de rescisão e Afastamento. Cadastro e Rubricas aceitam só responder e anexar (desde a 0.27.0); encaminhar, responsável e expectativa seguem bloqueados nelas (o botão explica). O Onvio também bloqueia: definir responsável na folha quando já tem um; na Geral, com a situação Respondido; encaminhar com Respondido.
 - **Segurança:** o envio sai de dentro da aba do Onvio, com a sessão e a autorização da própria tela (a autorização fica só na memória da página, nunca é gravada). Só os endereços de trâmite, anexo do trâmite, responsável e expectativa podem receber escrita; **nunca exclui** nada nem cria solicitação. Texto e anexos não são guardados. Se o Onvio recusar, a mensagem diz o código e nada se perde do que você escreveu.
 - O Onvio às vezes responde 503 na primeira leitura; a extensão tenta de novo uma vez.
 - Lembrete do Onvio: o primeiro trâmite de uma solicitação sem responsável define quem respondeu como responsável.

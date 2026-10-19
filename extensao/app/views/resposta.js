@@ -51,8 +51,8 @@ export function focarResposta() {
 const vars = (i, ctx) => OC.variaveisTramite(i, ctx && ctx.datas, estado.settings, new Date(), primeiroNome());
 const horaDe = ms => new Date(ms).toTimeString().slice(0, 5);
 
-function avisosHtml(r) {
-  return OC.avisosResposta(r.texto, r.sit, estado.settings).map(a => '<div class="cmp-aviso' + (a.bloqueia ? ' bloqueia' : '') + '">' + ic(a.bloqueia ? 'alert' : 'chat', 'ic-sm') + '<span>' + esc(a.msg) + '</span></div>').join('');
+function avisosHtml(r, i) {
+  return OC.avisosResposta(r.texto, r.sit, estado.settings, i).map(a => '<div class="cmp-aviso' + (a.bloqueia ? ' bloqueia' : '') + '">' + ic(a.bloqueia ? 'alert' : 'chat', 'ic-sm') + '<span>' + esc(a.msg) + '</span></div>').join('');
 }
 
 // Bolha tracejada "rascunho" no fim da conversa, enquanto a resposta é revisada ou enviada
@@ -70,7 +70,7 @@ export function bolhaRascunho(i) {
 
 export function respostaHtml(i, obs, ctx) {
   const nota = (t, onvio) => '<div class="cmp cmp-nota"><span>' + ic('alert', 'ic-sm') + ' ' + esc(t) + '</span>' + (onvio ? '<button type="button" class="btn btn-sm" data-abrir-onvio>' + ic('link', 'ic-sm') + ' Abrir no Onvio</button>' : '') + '</div>';
-  if (!OC.ACOES.tramite(i.type)) return nota('Responder ainda não está disponível na extensão para ' + i.typeLabel + ': as situações desta lista são outras e ainda estão sendo mapeadas. Responda pelo Onvio.', true);
+  if (!OC.ACOES.tramite(i.type)) return nota('Responder ainda não está disponível na extensão para ' + i.typeLabel + ': responda pelo Onvio.', true);
   const pode = OC.podeAcao('tramite', i);
   if (!pode.ok) return nota('Não dá para responder: ' + pode.motivo + '.');
   const r = rascunho(i);
@@ -97,7 +97,7 @@ export function respostaHtml(i, obs, ctx) {
       '<li>Situação depois do envio: ' + esc(it ? it.onvio + ' (' + it.efeito.toLowerCase() + ')' : '?') + '</li>' +
       '<li>Texto: "' + esc(r.texto.length > 140 ? r.texto.slice(0, 140) + '…' : r.texto) + '"</li>' +
       (r.arquivos.length ? '<li>' + r.arquivos.length + ' anexo(s): ' + esc(r.arquivos.map(a => a.name).join(', ')) + '</li>' : '') +
-      '</ul><p class="fraco">Fica registrado no Onvio em seu nome e o cliente pode ver o trâmite. Depois de enviado, não dá para desfazer pela extensão.</p>' + avisosHtml(r) + '</div>' + pe + '</div>';
+      '</ul><p class="fraco">Fica registrado no Onvio em seu nome e o cliente pode ver o trâmite. Depois de enviado, não dá para desfazer pela extensão.</p>' + avisosHtml(r, i) + '</div>' + pe + '</div>';
   }
 
   const modelos = OC.modelosPara(i, estado.settings, estado.modelosPessoais);
@@ -127,14 +127,14 @@ export function respostaHtml(i, obs, ctx) {
     '<div class="cmp-grade">' +
       '<span class="cmp-rot">Depois do envio</span>' +
       '<div class="cmp-col"><div class="cmp-seg" role="radiogroup" aria-label="O que acontece depois do envio">' +
-        ints.map(x => { const [t1, t2] = x.rot.split(' · '); return '<button type="button" class="cmp-int' + (String(r.sit) === String(x.sit) ? ' on' : '') + '" role="radio" aria-checked="' + (String(r.sit) === String(x.sit)) + '" data-sit="' + x.sit + '" title="' + esc(x.efeito) + '"><i class="cmp-pt"></i><span class="t">' + esc(t1) + '</span>' + (t2 ? '<span class="s"> · ' + esc(t2) + '</span>' : '') + '</button>'; }).join('') +
+        ints.map(x => { const [t1, t2] = x.rot.split(' · '); return '<button type="button" class="cmp-int' + (String(r.sit) === String(x.sit) ? ' on' : '') + '" role="radio" aria-checked="' + (String(r.sit) === String(x.sit)) + '" data-sit="' + x.sit + '" data-tom="' + x.tom + '" data-pede="' + (x.pedeCliente ? '1' : '0') + '" title="' + esc(x.efeito) + '"><i class="cmp-pt"></i><span class="t">' + esc(t1) + '</span>' + (t2 ? '<span class="s"> · ' + esc(t2) + '</span>' : '') + '</button>'; }).join('') +
       '</div><p class="cmp-efeito" id="cmp-efeito">' + (it ? 'Depois do envio: ' + esc(it.efeito) + '.' : 'Escolha o que acontece depois do envio.') + '</p></div>' +
       '<span class="cmp-rot">Modelos</span>' +
       '<div class="cmp-col"><div class="cmp-chips rola">' + chipsModelos + '</div></div>' +
       '<span class="cmp-rot">Observações</span>' +
       '<div class="cmp-col">' + obsPainel + '</div>' +
     '</div>' +
-    '<div class="cmp-avisos" id="cmp-avisos">' + avisosHtml(r) + '</div>' +
+    '<div class="cmp-avisos" id="cmp-avisos">' + avisosHtml(r, i) + '</div>' +
     (!i.resp ? '<p class="cmp-nota-p">Sem responsável: no Onvio, o primeiro trâmite define você como responsável.</p>' : '') +
     '<div class="cmp-pe"><span class="fraco"><kbd>Ctrl</kbd>+<kbd>Enter</kbd> revisa</span><button class="btn btn-sm" id="a-descartar" type="button"' + (r.texto || r.arquivos.length || r.sit ? '' : ' disabled') + '>Descartar</button><button class="btn btn-sm btn-primary" id="a-revisar" type="button">Revisar ' + ic('chev-r', 'ic-sm') + '</button></div>' +
   '</div>';
@@ -161,8 +161,8 @@ export function ligarResposta(g, i, r0, obs, cb) {
     const x = ints.find(z => String(z.sit) === String(r.sit));
     $('#cmp-efeito', g).textContent = x ? 'Depois do envio: ' + x.efeito + '.' : 'Escolha o que acontece depois do envio.';
     const pede = !!r.texto.trim() && OC.pedeAlgoAoCliente(r.texto, estado.settings).pede;
-    $$('.cmp-int', g).forEach(b => b.classList.toggle('sug', !r.sit && pede && b.dataset.sit === '4'));
-    $('#cmp-avisos', g).innerHTML = avisosHtml(r);
+    $$('.cmp-int', g).forEach(b => b.classList.toggle('sug', !r.sit && pede && b.dataset.pede === '1'));
+    $('#cmp-avisos', g).innerHTML = avisosHtml(r, i);
     $('#a-descartar', g).disabled = !(r.texto || r.arquivos.length || r.sit);
     if (r.texto || r.sit || r.arquivos.length) cmp.classList.add('aberto');
   };
@@ -253,7 +253,7 @@ export function ligarResposta(g, i, r0, obs, cb) {
 
   if ($('#a-descartar', g)) $('#a-descartar', g).onclick = () => { rascunhos.delete(chaveDe(i)); cb.redesenhar(); };
   if ($('#a-revisar', g)) $('#a-revisar', g).onclick = () => {
-    const bloq = OC.avisosResposta(r.texto, r.sit, estado.settings).find(a => a.bloqueia);
+    const bloq = OC.avisosResposta(r.texto, r.sit, estado.settings, i).find(a => a.bloqueia);
     r.erro = !r.texto.trim() ? 'Escreva o texto da resposta.' : !r.sit ? 'Escolha o que acontece depois do envio (Respondido, Em análise, Concluído...).' : bloq ? bloq.msg : '';
     if (!r.erro) r.modo = 'revisar';
     else if (!r.texto.trim() || bloq) { r.focar = true; r.selMarca = bloq ? OC.marcadoresPendentes(r.texto)[0] : ''; }   // volta o cursor para onde falta escrever

@@ -1927,17 +1927,21 @@
    *  - anexo: depois do trâmite, POST {tramites}/{id}/topics/{topicId}/attachments  multipart, campo "file[]".
    *  - responsável: PUT {lista}/{id}/assign-staff  Geral { departmentId, id }; folha { id }.
    *  - expectativa: PUT {lista}/{id}/change-due-date { dueDate } (só confirmado na Geral).
-   * Só Geral e as listas de férias, rescisão e afastamento foram testadas; Cadastro e Rubricas ficam bloqueados.
+   * Geral e as listas de férias, rescisão e afastamento têm todas as ações. Cadastro (3 listas) e Rubricas têm só trâmite e
+   *    anexo (mapeados em 19/10/2026: POST {tramites}/{id}/topics { description, status }, id do próprio item); encaminhar,
+   *    responsável e expectativa ficam de fora (a tela não oferece expectativa, a chamada de responsável não foi capturada e
+   *    o encaminhar do Cadastro volta HTTP 400 a partir de "Aguardando o cliente").
    * Nunca há exclusão. Toda escrita passa por confirmação na tela e pela checagem de escritório no service worker. */
   const FOLHA = new Set(['avisoFerias', 'calcFerias', 'avisoRescisao', 'calcRescisao', 'afastamento']);
+  const CADASTRO = new Set(['cadEmpregado', 'cadContribuinte', 'cadEstagiario']);
   const ACOES = {
-    tramite: k => k === 'geral' || FOLHA.has(k),
-    anexo: k => k === 'geral' || FOLHA.has(k),
+    tramite: k => k === 'geral' || FOLHA.has(k) || CADASTRO.has(k) || k === 'rubricas',
+    anexo: k => k === 'geral' || FOLHA.has(k) || CADASTRO.has(k) || k === 'rubricas',
     encaminhar: k => k === 'geral' || FOLHA.has(k),
     responsavel: k => k === 'geral' || FOLHA.has(k),
     expectativa: k => k === 'geral'
   };
-  const SEM_MAPA = 'ainda não mapeada no Onvio para esta lista: use "Abrir no Onvio"';
+  const SEM_MAPA = 'ainda não disponível na extensão para esta lista: use "Abrir no Onvio"';
   // { ok, motivo } para mostrar o botão habilitado ou explicar por que não
   function podeAcao(acao, item) {
     const t = item && TYPE_BY_KEY[item.type];
@@ -1952,10 +1956,17 @@
     return { ok: true };
   }
   // Situações que a tela do Onvio oferece ao incluir trâmite (depende da situação atual)
+  // Situações que o escritório pode escolher ao incluir trâmite, por lista e situação atual (tela do Onvio, 15 e 19/10/2026).
+  // Códigos que a tela não ofereceu (ou que não foram vistos) usam a regra geral da lista; o Onvio ainda valida cada pedido.
+  const OPCOES_TRAMITE = {
+    padrao: item => (Number(item.code) === 4 ? [4, 5] : [2, 8, 4, 5]),
+    cadastro: item => (Number(item.code) === 3 ? [4] : [3, 6]),
+    rubricas: item => { const c = Number(item.code); return c === 5 || c === 6 ? [4] : c === 9 ? [2, 5, 6, 4, 8] : [2, 5, 6, 8]; }
+  };
   function situacoesTramite(item) {
     const t = TYPE_BY_KEY[item.type];
     const st = FAMILIAS[t.familia].st;
-    return (item.code === 4 ? [4, 5] : [2, 8, 4, 5]).map(c => ({ code: c, rot: st[c][0] }));
+    return OPCOES_TRAMITE[t.familia](item).filter(c => st[c]).map(c => ({ code: c, rot: st[c][0] }));
   }
   const urlNovoTramite = (t, id) => API + t.tramites + '/' + encodeURIComponent(id) + '/topics';
   const urlAnexoTramite = (t, id, topicId) => urlNovoTramite(t, id) + '/' + encodeURIComponent(topicId) + '/attachments';
@@ -2093,24 +2104,34 @@
   /* ---------- Tramitação: caixa de resposta ----------
    * Intenções (o que acontece depois do envio) em vez de situações do Onvio, variáveis dos modelos e avisos de coerência.
    * Tudo local e só com o que a tela já leu; nada disso é guardado. */
-  const INTENCOES = [
-    { sit: 4, rot: 'Respondido · aguarda o cliente', onvio: 'Respondido' },
-    { sit: 2, rot: 'Em análise', onvio: 'Em análise' },
-    { sit: 8, rot: 'Em análise interna', onvio: 'Em análise interna' },
-    { sit: 5, rot: 'Concluído · encerra', onvio: 'Concluído' }
-  ];
+  // [código, texto do botão, efeito (opcional: senão sai da vez que a situação dá na lista)] na ordem em que aparecem
+  const INTENCOES = {
+    padrao: [[4, 'Respondido · aguarda o cliente'], [2, 'Em análise'], [8, 'Em análise interna'], [5, 'Concluído · encerra']],
+    cadastro: [[3, 'Aguardando o cliente'], [4, 'Respondido pelo cliente · registra o retorno', 'Registra que o cliente respondeu; a vez fica com o escritório'], [6, 'Concluído · encerra']],
+    rubricas: [[4, 'Respondido · aguarda o cliente'], [6, 'Aguardando correção · pede ajuste ao cliente'], [5, 'Aguardando resposta', 'Fica "Aguardando resposta"; a lista conta a vez como do escritório (a confirmar no Onvio)'], [2, 'Em análise'], [8, 'Concluído · encerra']]
+  };
   // As situações que o Onvio aceita agora (de situacoesTramite) com o texto simples e o efeito do envio
   function intencoesDe(item, settings) {
     const s = Object.assign({}, DEFAULTS, settings || {});
     const t = TYPE_BY_KEY[item && item.type];
-    const ok = t ? situacoesTramite(item).map(x => x.code) : [];
-    const prescreve = !!(t && FAMILIAS[t.familia].prescreve);
-    return INTENCOES.filter(x => ok.includes(x.sit)).map(x => Object.assign({}, x, {
-      efeito: x.sit === 4 ? 'A vez passa ao cliente' + (prescreve ? '; sem retorno, prescreve em ' + s.prescricaoDias + ' dias' : '')
-        : x.sit === 5 ? 'Encerra a solicitação: ela sai da fila'
-        : 'Continua com o escritório'
-    }));
+    if (!t) return [];
+    const fam = FAMILIAS[t.familia], ok = situacoesTramite(item).map(x => x.code);
+    let achouCli = false;
+    return INTENCOES[t.familia].filter(([c]) => ok.includes(c)).map(([c, rot, efeito]) => {
+      const lado = fam.st[c][1], pedeCliente = lado === 'cli' && !achouCli;
+      if (lado === 'cli') achouCli = true;
+      return {
+        sit: c, rot, onvio: fam.st[c][0], lado, pedeCliente,
+        tom: lado === 'cli' ? 'cli' : lado === 'fim' ? 'fim' : c === 8 && t.familia === 'padrao' ? 'int' : 'esc',
+        efeito: efeito || (lado === 'cli' ? 'A vez passa ao cliente' + (fam.prescreve ? '; sem retorno, prescreve em ' + s.prescricaoDias + ' dias' : '')
+          : lado === 'fim' ? 'Encerra a solicitação: ela sai da fila' : 'Continua com o escritório')
+      };
+    });
   }
+  // A situação "equivalente" de um modelo ou de um caso (escritos com os códigos da lista padrão) em outra lista
+  const TIPO_DE_SIT = { 2: 'analise', 4: 'cliente', 5: 'fim', 8: 'interna' };
+  const SIT_DO_TIPO = { padrao: { analise: 2, cliente: 4, fim: 5, interna: 8 }, cadastro: { cliente: 3, fim: 6 }, rubricas: { analise: 2, cliente: 4, fim: 8 } };
+  const situacaoEquivalente = (codPadrao, item) => { const t = TYPE_BY_KEY[item && item.type]; return t ? (SIT_DO_TIPO[t.familia][TIPO_DE_SIT[codPadrao]] || null) : null; };
   const saudacaoDa = now => { const h = (now || new Date()).getHours(); return h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite'; };
   // valores das {variáveis}; só entram as que têm valor (as outras ficam no texto e barram o envio)
   function variaveisTramite(item, datas, settings, now, analista) {
@@ -2119,7 +2140,7 @@
     v.saudacao = saudacaoDa(now);
     if (item) {
       if (item.apelido || item.cliente) v.cliente = item.apelido || item.cliente;
-      if (item.detalhe && item.type !== 'geral') v.empregado = item.detalhe;
+      if (item.detalhe && item.type !== 'geral' && item.type !== 'rubricas') v.empregado = item.detalhe;
       if (item.typeLabel) v.tipo = item.typeLabel.toLowerCase();
       if (item.abaProvavel && item.abaProvavel.label) v.aba = item.abaProvavel.label;
       const pl = item.pagamentoAte ? diaDe(item.pagamentoAte.alvo) : null;
@@ -2137,20 +2158,24 @@
     const ok = TYPE_BY_KEY[item && item.type] ? situacoesTramite(item).map(x => x.code) : [];
     return (s.modelosTramite || []).concat(Array.isArray(pessoais) ? pessoais.map(m => Object.assign({ pessoal: true }, m)) : [])
       .filter(m => (!m.tipos || m.tipos.includes(item.type)) && (!m.precisaAba || (item.abaProvavel && item.abaProvavel.label)))
-      .map(m => Object.assign({}, m, { situacao: m.situacao && ok.includes(m.situacao) ? m.situacao : null }));
+      .map(m => { const c = m.situacao ? situacaoEquivalente(m.situacao, item) : null; return Object.assign({}, m, { situacao: c && ok.includes(c) ? c : null }); });
   }
   // Marcadores que a pessoa precisa preencher antes de enviar: "(descreva ...)", "{variável}" sem valor, "[preencher]"
   const RE_MARCADOR = /\(\s*descreva[^)\n]*\)|\{[^}\n]{1,40}\}|\[\s*(?:preencher|completar|xx)[^\]\n]*\]/gi;
   const marcadoresPendentes = texto => [...new Set(String(texto || '').match(RE_MARCADOR) || [])];
   // Avisos de coerência entre o texto e a situação escolhida: { bloqueia, msg }[]
-  function avisosResposta(texto, situacao, settings) {
+  function avisosResposta(texto, situacao, settings, item) {
     const out = [], t = String(texto || '').trim(), sit = Number(situacao);
     const m = marcadoresPendentes(t);
     if (m.length) out.push({ bloqueia: true, msg: 'Falta preencher: ' + m.join(', ') });
     if (t && sit) {
-      const pede = pedeAlgoAoCliente(t, settings).pede;
-      if (pede && sit === 5) out.push({ msg: 'O texto pede algo ao cliente, mas "Concluído" encerra a solicitação. Prefira "Respondido".' });
-      else if (!pede && sit === 4) out.push({ msg: 'O texto não pede nada ao cliente. Se a solicitação terminou, prefira "Concluído"; senão ela fica aguardando o cliente.' });
+      const ints = intencoesDe(item || { type: 'geral', code: 1 }, settings);
+      const atual = ints.find(x => x.sit === sit), fim = ints.find(x => x.lado === 'fim'), cli = ints.find(x => x.pedeCliente);
+      if (atual) {
+        const pede = pedeAlgoAoCliente(t, settings).pede;
+        if (pede && atual.lado === 'fim' && cli) out.push({ msg: 'O texto pede algo ao cliente, mas "' + atual.onvio + '" encerra a solicitação. Prefira "' + cli.onvio + '".' });
+        else if (!pede && atual.pedeCliente && fim) out.push({ msg: 'O texto não pede nada ao cliente. Se a solicitação terminou, prefira "' + fim.onvio + '"; senão ela fica aguardando o cliente.' });
+      }
     }
     return out;
   }
@@ -2172,7 +2197,7 @@
    * nenhum arquivo veio, abertura da Geral curta demais e sem anexo. A ação é um trâmite já preenchido, que a pessoa
    * revisa e confirma (nunca automático). */
   const CASOS = {
-    fora: { rot: 'Resolvida fora do portal?', botao: 'Concluir', situacao: 5 },
+    fora: { rot: 'Resolvida fora do portal?', botao: 'Concluir', situacao: 5 },     // códigos da lista padrão; situacaoEquivalente troca na lista do item
     duplicada: { rot: 'Duplicada', botao: 'Encerrar duplicada', situacao: 5 },
     abaErrada: { rot: 'Lista errada', botao: 'Orientar e concluir', situacao: 5 },
     anexo: { rot: 'Anexo não chegou', botao: 'Pedir o anexo', situacao: 4 },
@@ -2259,8 +2284,9 @@
     return [...casos.values()].map(c => {
       const def = CASOS[c.tipo], pode = podeAcao('tramite', c.item);
       const sits = pode.ok ? situacoesTramite(c.item).map(x => x.code) : [];
+      const alvo = situacaoEquivalente(def.situacao, c.item);
       const texto = String(tx[c.tipo] || '').replace(/\{aba\}/g, c.aba || '').replace(/\{outra\}/g, c.outra == null ? '' : String(c.outra));
-      return Object.assign(c, { rot: def.rot, botao: def.botao, pode, acao: { situacao: sits.includes(def.situacao) ? String(def.situacao) : '', texto } });
+      return Object.assign(c, { rot: def.rot, botao: def.botao, pode, acao: { situacao: alvo && sits.includes(alvo) ? String(alvo) : '', texto } });
     }).sort((a, b) => ORDEM_CASOS.indexOf(a.tipo) - ORDEM_CASOS.indexOf(b.tipo) || (b.item.parado || 0) - (a.item.parado || 0));
   }
   // "Não é o caso": guarda só o k e a última movimentação (volta se a solicitação mexer); até 300, nada com mais de 180 dias
