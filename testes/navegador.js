@@ -1084,17 +1084,27 @@ await passo('app · Tramitação: caixa de resposta fixa; intenção e efeito; m
   await p.click('#corpo [data-k="geral:b"]');
   await p.waitForSelector('#cmp #a-texto');
   assert.equal(await p.$eval('#cmp', c => c.closest('#g-corpo') === null), true, 'a caixa fica fora da área que rola');
-  assert.deepEqual(await p.$$eval('.cmp-int', e => e.map(x => x.textContent)), ['Aguardar o cliente', 'Em análise', 'Em análise interna', 'Concluir']);
+  assert.deepEqual(await p.$$eval('.cmp-int', e => e.map(x => x.textContent)), ['Respondido · aguarda o cliente', 'Em análise', 'Em análise interna', 'Concluído · encerra']);
+  if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/tram-fechada.png' });
+  assert.equal(await p.isVisible('.cmp-int[data-sit="4"]'), true, 'Respondido já está à vista, sem precisar clicar na caixa');
+  assert.equal(await p.isVisible('.cmp-modelo'), true, 'e os modelos também');
+  // de outra aba, o Responder do rodapé leva à caixa
+  await p.click('#gaveta [data-aba="dados"]');
+  assert.equal(await p.$('#cmp'), null, 'a caixa é da aba Trâmites');
+  assert.equal(await p.$eval('#g-responder', b => b.disabled), false);
+  await p.click('#g-responder');
+  await p.waitForSelector('#cmp #a-texto');
+  assert.equal(await p.evaluate(() => document.activeElement.id), 'a-texto');
   // revisar sem texto: o aviso diz o que falta, sem sair da tela (a caixa abre ao clicar nela)
   await p.click('#a-texto');
   await p.click('#a-revisar');
   assert.match(await p.textContent('.cmp-erro'), /Escreva o texto da resposta/);
-  // o texto pede algo ao cliente: sugere "Aguardar o cliente"; "Concluir" avisa do conflito
+  // o texto pede algo ao cliente: sugere "Respondido"; "Concluído" avisa do conflito
   await p.fill('#a-texto', 'Pode enviar o RG do empregado?');
   assert.equal(await p.$eval('.cmp-int.sug', b => b.dataset.sit), '4');
   await p.click('.cmp-int[data-sit="5"]');
   assert.equal(await p.textContent('#cmp-efeito'), 'Depois do envio: Encerra a solicitação: ela sai da fila.');
-  assert.match(await p.textContent('#cmp-avisos'), /pede algo ao cliente, mas "Concluir" encerra/);
+  assert.match(await p.textContent('#cmp-avisos'), /pede algo ao cliente, mas "Concluído" encerra/);
   await p.click('.cmp-int[data-sit="4"]');
   assert.match(await p.textContent('#cmp-efeito'), /A vez passa ao cliente; sem retorno, prescreve em 30 dias/);
   assert.equal(await p.textContent('#cmp-avisos'), '');
@@ -1148,7 +1158,9 @@ await passo('app · Tramitação: caixa de resposta fixa; intenção e efeito; m
   await p.evaluate(() => { location.hash = '#/fila?escopo=equipe'; });
   await p.click('#corpo [data-k="rubricas:d"]');
   await p.waitForSelector('#gaveta .cmp-nota');
-  assert.match(await p.textContent('#gaveta .cmp-nota'), /ainda não mapeada/);
+  assert.match(await p.textContent('#gaveta .cmp-nota'), /ainda não está mapeado/);
+  assert.equal(await p.$eval('#g-responder', b => b.disabled), true, 'Responder do rodapé desativado, com o motivo');
+  assert.match(await p.getAttribute('#g-responder', 'title'), /ainda não mapeada/);
   assert.equal(await p.$('#a-texto'), null);
   assert.deepEqual(p.erros, []);
 });
