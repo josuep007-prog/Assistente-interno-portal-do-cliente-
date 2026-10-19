@@ -1,5 +1,5 @@
 /* Caixa de resposta do detalhe (trâmite para o cliente), fixa embaixo da conversa.
- * - escolhe o que acontece depois do envio (Aguardar o cliente, Em análise, Concluir...), com o efeito em palavras;
+ * - escolhe o que acontece depois do envio (Respondido, Em análise, Concluído...), com o efeito em palavras;
  * - modelos com variáveis ({saudacao}, {empregado}...), do escritório (regras) e pessoais;
  * - avisos de coerência entre o texto e a situação; marcadores como "(descreva ...)" barram o envio;
  * - "Revisar" mostra o rascunho na própria conversa; "Enviar" espera alguns segundos para desistir (trâmite não pode
@@ -70,7 +70,7 @@ export function bolhaRascunho(i) {
 
 export function respostaHtml(i, obs, ctx) {
   const nota = t => '<div class="cmp cmp-nota"><span>' + ic('alert', 'ic-sm') + ' ' + esc(t) + '</span></div>';
-  if (!OC.ACOES.tramite(i.type)) return nota('Responder ainda não foi mapeado para ' + i.typeLabel + ' (ainda não mapeada no Onvio): use "Abrir no Onvio".');
+  if (!OC.ACOES.tramite(i.type)) return nota('Responder (Respondido, Concluído...) ainda não está mapeado no Onvio para ' + i.typeLabel + ': use "Abrir no Onvio". Para liberar, rode a Parte 3 de mapeamento/prompt-pendencias-onvio.md.');
   const pode = OC.podeAcao('tramite', i);
   if (!pode.ok) return nota('Não dá para responder: ' + pode.motivo + '.');
   const r = rascunho(i);
@@ -113,19 +113,21 @@ export function respostaHtml(i, obs, ctx) {
       '<div class="cmp-pe"><button class="btn btn-sm" id="mg-cancelar" type="button">Cancelar</button><button class="btn btn-sm btn-primary" id="mg-salvar" type="button">Guardar modelo</button></div></div>' : '';
   return '<div class="cmp' + (aberto ? ' aberto' : '') + '" id="cmp">' + cab + ok + erro +
     '<textarea id="a-texto" rows="2" placeholder="Escreva a resposta ao cliente (texto simples; o Onvio não usa formatação)">' + esc(r.texto) + '</textarea>' +
-    '<div class="cmp-mais">' +
-      '<div class="cmp-linha"><span class="cmp-rot">Depois do envio</span><div class="cmp-ints" role="radiogroup" aria-label="O que acontece depois do envio">' +
-        ints.map(x => '<button type="button" class="cmp-int' + (String(r.sit) === String(x.sit) ? ' on' : '') + '" role="radio" aria-checked="' + (String(r.sit) === String(x.sit)) + '" data-sit="' + x.sit + '" title="' + esc(x.efeito) + '">' + esc(x.rot) + '</button>').join('') + '</div></div>' +
-      '<p class="cmp-efeito" id="cmp-efeito">' + (it ? 'Depois do envio: ' + esc(it.efeito) + '.' : 'Escolha o que acontece depois do envio.') + '</p>' +
-      '<div class="cmp-linha"><span class="cmp-rot">Modelos</span><div class="cmp-chips">' + chipsModelos + '</div><button type="button" class="linkish" id="a-guardar">Guardar o texto como modelo</button></div>' +
+    '<div class="cmp-linha cmp-sit"><span class="cmp-rot">Depois do envio</span><div class="cmp-ints" role="radiogroup" aria-label="O que acontece depois do envio">' +
+      ints.map(x => '<button type="button" class="cmp-int' + (String(r.sit) === String(x.sit) ? ' on' : '') + '" role="radio" aria-checked="' + (String(r.sit) === String(x.sit)) + '" data-sit="' + x.sit + '" title="' + esc(x.efeito) + '">' + esc(x.rot) + '</button>').join('') + '</div></div>' +
+    '<p class="cmp-efeito" id="cmp-efeito">' + (it ? 'Depois do envio: ' + esc(it.efeito) + '.' : 'Escolha o que acontece depois do envio.') + '</p>' +
+    '<div class="cmp-linha"><span class="cmp-rot">Modelos</span><div class="cmp-chips">' + chipsModelos + '</div></div>' +
+    '<div class="cmp-extra">' +
       (cliObs.length ? '<div class="cmp-linha"><span class="cmp-rot">Observações</span><div class="cmp-chips">' + chipsObs + '</div><button class="linkish" id="a-obs" type="button">Inserir todas</button></div>' : '') +
+      '<div class="cmp-linha"><span class="cmp-rot"></span><button type="button" class="linkish" id="a-guardar">Guardar o texto como modelo</button></div>' +
       guardar +
       '<div class="cmp-linha"><label class="btn btn-sm">' + ic('paperclip', 'ic-sm') + ' Anexar ao trâmite<input type="file" id="a-arquivos" multiple hidden></label><span class="fraco">arraste arquivos aqui ou cole uma imagem · até ' + MAX_ANEXOS + ' de 15 MB</span></div>' +
-      arqs +
-      '<div class="cmp-avisos" id="cmp-avisos">' + avisosHtml(r) + '</div>' +
       (!i.resp ? '<p class="fraco">Sem responsável: no Onvio, o primeiro trâmite define você como responsável.</p>' : '') +
-      '<div class="cmp-pe"><span class="fraco">Ctrl+Enter revisa</span><button class="btn btn-sm" id="a-descartar" type="button"' + (r.texto || r.arquivos.length || r.sit ? '' : ' disabled') + '>Descartar</button><button class="btn btn-sm btn-primary" id="a-revisar" type="button">Revisar</button></div>' +
-    '</div></div>';
+    '</div>' +
+    arqs +
+    '<div class="cmp-avisos" id="cmp-avisos">' + avisosHtml(r) + '</div>' +
+    '<div class="cmp-pe"><span class="fraco">Ctrl+Enter revisa</span><button class="btn btn-sm" id="a-descartar" type="button"' + (r.texto || r.arquivos.length || r.sit ? '' : ' disabled') + '>Descartar</button><button class="btn btn-sm btn-primary" id="a-revisar" type="button">Revisar</button></div>' +
+  '</div>';
 }
 
 const base64 = arq => new Promise((ok, falha) => {
@@ -242,7 +244,7 @@ export function ligarResposta(g, i, r0, obs, cb) {
   if ($('#a-descartar', g)) $('#a-descartar', g).onclick = () => { rascunhos.delete(chaveDe(i)); cb.redesenhar(); };
   if ($('#a-revisar', g)) $('#a-revisar', g).onclick = () => {
     const bloq = OC.avisosResposta(r.texto, r.sit, estado.settings).find(a => a.bloqueia);
-    r.erro = !r.texto.trim() ? 'Escreva o texto da resposta.' : !r.sit ? 'Escolha o que acontece depois do envio (Aguardar o cliente, Em análise, Concluir...).' : bloq ? bloq.msg : '';
+    r.erro = !r.texto.trim() ? 'Escreva o texto da resposta.' : !r.sit ? 'Escolha o que acontece depois do envio (Respondido, Em análise, Concluído...).' : bloq ? bloq.msg : '';
     if (!r.erro) r.modo = 'revisar';
     else if (!r.texto.trim() || bloq) { r.focar = true; r.selMarca = bloq ? OC.marcadoresPendentes(r.texto)[0] : ''; }   // volta o cursor para onde falta escrever
     cb.redesenhar();

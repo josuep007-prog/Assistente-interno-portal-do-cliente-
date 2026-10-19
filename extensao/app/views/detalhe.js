@@ -107,6 +107,7 @@ function desenhar(i, r, erro, carregando) {
       (aba === 'acao' && acaoAberta() ? formAcao(i) : aba === 'dados' ? dados(i, r, carregando) : aba === 'cliente' ? clienteHtml(obs, carregando) : aba === 'lembretes' ? lembretesHtml(lems) : tramitesHtml(r, carregando, i)) + '</div>' +
     (aba === 'tramites' && !carregando && r && !erro ? respostaHtml(i, obs, { datas: r.datas, proxima: p >= 0 && p < lista.length - 1 }) : '') +
     '<div class="dlg-actions">' +
+      responderRodape(i, carregando) +
       '<button class="btn btn-sm" id="g-onvio"><svg class="ic ic-sm"><use href="#i-link"/></svg> Abrir no Onvio</button>' +
       (nAnexos ? '<button class="btn btn-sm" id="g-anexos" title="Escolha quais anexos baixar"><svg class="ic ic-sm"><use href="#i-download"/></svg> Baixar anexos<span class="n-anexos">' + nAnexos + '</span></button>' : '') +
       '<span class="spacer"></span>' +
@@ -153,6 +154,10 @@ function desenhar(i, r, erro, carregando) {
   if ($('#g-copiar-obs2')) $('#g-copiar-obs2').onclick = copiarObs;
   $$('#g-obs [data-obs]', g).forEach(c => c.onchange = () => { const pv = $('#g-obs-texto', g); if (pv) pv.textContent = textoParaCliente(obs.filter(o => $$('#g-obs [data-obs]', g).some(x => x.dataset.obs === o.id && x.checked))); });
   $$('[data-acao]', g).forEach(b => b.onclick = () => { novaAcao(b.dataset.acao); aba = 'acao'; desenhar(i, r, erro, carregando); });
+  if ($('#g-responder')) $('#g-responder').onclick = () => {
+    if (aba !== 'tramites') { aba = 'tramites'; desenhar(i, r, erro, carregando); }
+    if (!focarResposta()) toast('A caixa de resposta não está disponível aqui', true);
+  };
   $$('[data-responder]', g).forEach(b => b.onclick = () => { if (!focarResposta()) toast('A caixa de resposta não está disponível aqui', true); });
   $$('.g-mais .menu-item', g).forEach(b => b.addEventListener('click', () => { const m = b.closest('details'); if (m) m.open = false; }));
   document.addEventListener('click', fechaMais);
@@ -177,6 +182,11 @@ function desenhar(i, r, erro, carregando) {
   }));
 }
 
+// "Responder" sempre à vista no rodapé (de qualquer aba): leva à caixa de resposta; desativado com o motivo quando não dá
+function responderRodape(i, carregando) {
+  const p = carregando ? { ok: false, motivo: 'lendo a solicitação…' } : OC.ACOES.tramite(i.type) ? OC.podeAcao('tramite', i) : { ok: false, motivo: 'ainda não mapeada no Onvio para esta lista: use "Abrir no Onvio"' };
+  return '<button class="btn btn-sm btn-acao" id="g-responder" title="' + esc(p.ok ? 'Escrever a resposta ao cliente (atalho: R)' : p.motivo) + '"' + (p.ok ? '' : ' disabled') + '><svg class="ic ic-sm"><use href="#i-chat"/></svg> Responder</button>';
+}
 // "Mais ações": o resto fica num menu, cada item com o motivo na própria linha quando não dá para usar (OC.podeAcao)
 function maisAcoes(i, obs, carregando) {
   const item = (rot, ic, attrs, pode) => '<button type="button" class="menu-item"' + attrs + (pode.ok ? '' : ' disabled') + '><svg class="ic ic-sm"><use href="#i-' + ic + '"/></svg><span class="mi-tx">' + rot + (pode.ok ? '' : '<small class="mi-motivo">' + esc(pode.motivo) + '</small>') + '</span></button>';
