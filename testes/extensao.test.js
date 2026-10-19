@@ -1393,19 +1393,32 @@ test('ações: formatos do Onvio real (trâmite, encaminhar, responsável, expec
   assert.match(OC.podeAcao('responsavel', { type: 'avisoFerias', code: 2, lado: 'esc', resp: 'Ana' }).motivo, /só permite definir responsável quando ainda não há/);
   assert.match(OC.podeAcao('responsavel', { type: 'geral', code: 4, lado: 'cli' }).motivo, /Respondido/);
   assert.match(OC.podeAcao('expectativa', ferias).motivo, /ainda não mapeada|ainda não disponível/);
-  // Cadastro e Rubricas (mapeados em 19/10/2026): trâmite e anexo sim; encaminhar, responsável e expectativa ainda não
+  // Cadastro e Rubricas (mapeados em 19/10/2026): trâmite, anexo, encaminhar e responsável sim; expectativa não
   for (const k of ['cadEmpregado', 'cadContribuinte', 'cadEstagiario', 'rubricas']) {
     const i = { type: k, code: 2, lado: 'esc' };
-    assert.equal(OC.podeAcao('tramite', i).ok, true, k + ' responde');
-    assert.equal(OC.podeAcao('anexo', i).ok, true, k + ' anexa');
-    for (const a of ['encaminhar', 'responsavel', 'expectativa']) assert.match(OC.podeAcao(a, i).motivo, /ainda não disponível/, k + ' ' + a);
+    for (const a of ['tramite', 'anexo', 'encaminhar', 'responsavel']) assert.equal(OC.podeAcao(a, i).ok, true, k + ' ' + a);
+    assert.match(OC.podeAcao('expectativa', i).motivo, /ainda não disponível/, k + ' expectativa');
+    assert.match(OC.podeAcao('responsavel', Object.assign({ resp: 'Ana' }, i)).motivo, /só permite definir responsável quando ainda não há/, k + ' já tem responsável');
   }
-  assert.deepEqual(plano(OC.pedidoAcao({ acao: 'tramite', type: 'cadEmpregado', texto: 'ok', situacao: 3 }, { id: 'c1' }, { type: 'cadEmpregado', code: 2, lado: 'esc' })), { metodo: 'POST', url: OC.API + 'br-payroll-sr/v1/employees-registrations/c1/topics', corpo: { description: 'ok', status: 3 } });
+  assert.match(OC.podeAcao('encaminhar', { type: 'cadEmpregado', code: 3, lado: 'cli' }).motivo, /Aguardando o cliente/, 'o Onvio devolve 400 a partir do 3');
+  assert.equal(OC.podeAcao('encaminhar', { type: 'cadEstagiario', code: 4, lado: 'esc' }).ok, true, 'Respondido pelo cliente (4) encaminha no Cadastro');
+  assert.match(OC.podeAcao('encaminhar', { type: 'rubricas', code: 4, lado: 'cli' }).motivo, /Respondido/);
+  const cad = c => ({ type: 'cadEmpregado', code: c, lado: 'esc' });
+  assert.deepEqual(plano(OC.pedidoAcao({ acao: 'tramite', type: 'cadEmpregado', texto: 'ok', situacao: 3 }, { id: 'c1' }, cad(2))), { metodo: 'POST', url: OC.API + 'br-payroll-sr/v1/employees-registrations/c1/topics', corpo: { description: 'ok', status: 3 } });
   assert.equal(OC.pedidoAcao({ acao: 'tramite', type: 'cadEstagiario', texto: 'ok', situacao: 6 }, { id: 'c2' }, { type: 'cadEstagiario', code: 4, lado: 'esc' }).url, OC.API + 'br-payroll-sr/v1/employees-registrations/c2/topics', 'as 3 listas de Cadastro usam o mesmo caminho de trâmites');
   assert.equal(OC.pedidoAcao({ acao: 'tramite', type: 'rubricas', texto: 'ok', situacao: 6 }, { id: 'r1' }, { type: 'rubricas', code: 2, lado: 'esc' }).url, OC.API + 'br-payroll-sr/v1/payroll-entries/r1/topics');
   assert.throws(() => OC.pedidoAcao({ acao: 'tramite', type: 'rubricas', texto: 'x', situacao: 3 }, { id: 'r' }, { type: 'rubricas', code: 2, lado: 'esc' }), /escolha a situação/, 'Importação realizada não é escolha do escritório');
-  assert.throws(() => OC.pedidoAcao({ acao: 'tramite', type: 'cadEmpregado', texto: 'x', situacao: 5 }, { id: 'c' }, { type: 'cadEmpregado', code: 2, lado: 'esc' }), /escolha a situação/, 'Cadastro efetuado vem do cliente/sistema');
-  assert.throws(() => OC.pedidoAcao({ acao: 'responsavel', type: 'rubricas', analista: 'u9' }, { id: 'r' }, { type: 'rubricas', code: 2, lado: 'esc' }), /ainda não disponível/);
+  assert.throws(() => OC.pedidoAcao({ acao: 'tramite', type: 'cadEmpregado', texto: 'x', situacao: 5 }, { id: 'c' }, cad(2)), /escolha a situação/, 'Cadastro efetuado vem de outro processo');
+  // encaminhar: status 7 no Cadastro e 9 em Rubricas, com forwardedToEmployeeExpanded { id }
+  assert.deepEqual(plano(OC.pedidoAcao({ acao: 'tramite', type: 'cadContribuinte', texto: 'Veja', encaminharPara: 'u9' }, { id: 'c3' }, cad(4)).corpo), { description: 'Veja', status: 7, forwardedToEmployeeExpanded: { id: 'u9' } });
+  assert.deepEqual(plano(OC.pedidoAcao({ acao: 'tramite', type: 'rubricas', texto: 'Veja', encaminharPara: 'u9' }, { id: 'r2' }, { type: 'rubricas', code: 2, lado: 'esc' }).corpo), { description: 'Veja', status: 9, forwardedToEmployeeExpanded: { id: 'u9' } });
+  assert.throws(() => OC.pedidoAcao({ acao: 'tramite', type: 'cadEmpregado', texto: 'Veja', encaminharPara: 'u9' }, { id: 'c3' }, { type: 'cadEmpregado', code: 3, lado: 'cli' }), /Aguardando o cliente/);
+  // responsável: PUT {id}; nos Cadastros o caminho é o do empregado
+  assert.deepEqual(plano(OC.pedidoAcao({ acao: 'responsavel', type: 'cadEstagiario', analista: 'u9' }, { id: 'c4' }, cad(2))), { metodo: 'PUT', url: OC.API + 'br-payroll-sr/v1/employees-registrations/c4/assign-staff', corpo: { id: 'u9' } });
+  assert.deepEqual(plano(OC.pedidoAcao({ acao: 'responsavel', type: 'rubricas', analista: 'u9' }, { id: 'r3' }, { type: 'rubricas', code: 2, lado: 'esc' })), { metodo: 'PUT', url: OC.API + 'br-payroll-sr/v1/payroll-entries/r3/assign-staff', corpo: { id: 'u9' } });
+  assert.throws(() => OC.pedidoAcao({ acao: 'expectativa', type: 'rubricas', data: '2026-10-30' }, { id: 'r' }, { type: 'rubricas', code: 2, lado: 'esc' }), /ainda não disponível/);
+  assert.equal(OC.escritaPermitida('PUT', OC.API + 'br-payroll-sr/v1/employees-registrations/c4/assign-staff'), true);
+  assert.equal(OC.escritaPermitida('PUT', OC.API + 'br-payroll-sr/v1/payroll-entries/r3/assign-staff'), true);
   assert.equal(OC.escritaPermitida('POST', OC.API + 'br-payroll-sr/v1/employees-registrations/c1/topics/t1/attachments'), true);
   // só estes endereços recebem escrita; nunca DELETE nem /delete
   assert.equal(OC.escritaPermitida('POST', OC.API + 'service-requesting/v1/tickets/g1/topics'), true);

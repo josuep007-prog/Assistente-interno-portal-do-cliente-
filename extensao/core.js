@@ -1927,18 +1927,20 @@
    *  - anexo: depois do trâmite, POST {tramites}/{id}/topics/{topicId}/attachments  multipart, campo "file[]".
    *  - responsável: PUT {lista}/{id}/assign-staff  Geral { departmentId, id }; folha { id }.
    *  - expectativa: PUT {lista}/{id}/change-due-date { dueDate } (só confirmado na Geral).
-   * Geral e as listas de férias, rescisão e afastamento têm todas as ações. Cadastro (3 listas) e Rubricas têm só trâmite e
-   *    anexo (mapeados em 19/10/2026: POST {tramites}/{id}/topics { description, status }, id do próprio item); encaminhar,
-   *    responsável e expectativa ficam de fora (a tela não oferece expectativa, a chamada de responsável não foi capturada e
-   *    o encaminhar do Cadastro volta HTTP 400 a partir de "Aguardando o cliente").
+   * Geral e as listas de férias, rescisão e afastamento têm todas as ações. Cadastro (3 listas) e Rubricas (mapeados em
+   *    19/10/2026) têm trâmite, anexo, encaminhar e responsável; só a expectativa fica de fora (a tela não oferece):
+   *      trâmite POST {tramites}/{id}/topics { description, status }; encaminhar = o mesmo POST com status 7 (Cadastro) ou 9
+   *      (Rubricas) e forwardedToEmployeeExpanded { id }; responsável PUT {tramites}/{id}/assign-staff { id } (o caminho dos
+   *      3 Cadastros é o do empregado; em Rubricas é o mesmo padrão, a confirmar). O Cadastro recusa (HTTP 400) encaminhar a
+   *      partir de "Aguardando o cliente"; o Onvio só deixa definir responsável quando ainda não há um.
    * Nunca há exclusão. Toda escrita passa por confirmação na tela e pela checagem de escritório no service worker. */
   const FOLHA = new Set(['avisoFerias', 'calcFerias', 'avisoRescisao', 'calcRescisao', 'afastamento']);
   const CADASTRO = new Set(['cadEmpregado', 'cadContribuinte', 'cadEstagiario']);
   const ACOES = {
     tramite: k => k === 'geral' || FOLHA.has(k) || CADASTRO.has(k) || k === 'rubricas',
     anexo: k => k === 'geral' || FOLHA.has(k) || CADASTRO.has(k) || k === 'rubricas',
-    encaminhar: k => k === 'geral' || FOLHA.has(k),
-    responsavel: k => k === 'geral' || FOLHA.has(k),
+    encaminhar: k => k === 'geral' || FOLHA.has(k) || CADASTRO.has(k) || k === 'rubricas',
+    responsavel: k => k === 'geral' || FOLHA.has(k) || CADASTRO.has(k) || k === 'rubricas',
     expectativa: k => k === 'geral'
   };
   const SEM_MAPA = 'ainda não disponível na extensão para esta lista: use "Abrir no Onvio"';
@@ -1949,10 +1951,13 @@
     if (!ACOES[acao](t.key)) return { ok: false, motivo: SEM_MAPA };
     if (item.lado === 'fim') return { ok: false, motivo: 'solicitação encerrada' };
     if (acao === 'responsavel') {
-      if (FOLHA.has(t.key) && item.resp) return { ok: false, motivo: 'o Onvio só permite definir responsável quando ainda não há um' };
+      if ((FOLHA.has(t.key) || CADASTRO.has(t.key) || t.key === 'rubricas') && item.resp) return { ok: false, motivo: 'o Onvio só permite definir responsável quando ainda não há um' };
       if (t.key === 'geral' && item.code === 4) return { ok: false, motivo: 'o Onvio não permite definir responsável com a situação Respondido' };
     }
-    if (acao === 'encaminhar' && item.code === 4) return { ok: false, motivo: 'o Onvio não permite encaminhar com a situação Respondido' };
+    if (acao === 'encaminhar') {
+      if (CADASTRO.has(t.key) && Number(item.code) === 3) return { ok: false, motivo: 'o Onvio não permite encaminhar com a situação Aguardando o cliente' };
+      if (!CADASTRO.has(t.key) && Number(item.code) === 4) return { ok: false, motivo: 'o Onvio não permite encaminhar com a situação Respondido' };
+    }
     return { ok: true };
   }
   // Situações que a tela do Onvio oferece ao incluir trâmite (depende da situação atual)
@@ -1970,7 +1975,8 @@
   }
   const urlNovoTramite = (t, id) => API + t.tramites + '/' + encodeURIComponent(id) + '/topics';
   const urlAnexoTramite = (t, id, topicId) => urlNovoTramite(t, id) + '/' + encodeURIComponent(topicId) + '/attachments';
-  const urlResponsavel = (t, id) => API + t.path + '/' + encodeURIComponent(id) + '/assign-staff';
+  // Cadastro e Rubricas usam o caminho dos trâmites (nos 3 Cadastros é o do empregado); as outras, o da lista
+  const urlResponsavel = (t, id) => API + (t.familia === 'padrao' ? t.path : t.tramites) + '/' + encodeURIComponent(id) + '/assign-staff';
   const urlExpectativa = (t, id) => API + t.path + '/' + encodeURIComponent(id) + '/change-due-date';
   // id do trâmite criado, do cabeçalho "location" (último pedaço do caminho)
   const idDoLocation = loc => { const m = /\/([^/?#]+)\/?(?:[?#].*)?$/.exec(String(loc || '')); return m ? decodeURIComponent(m[1]) : null; };
@@ -1989,8 +1995,9 @@
       if (texto.length > 20000) throw new Error('texto longo demais');
       const corpo = { description: texto };
       if (o.encaminharPara) {
-        corpo.status = 7;
-        corpo.forwardedToExpanded = t.key === 'geral' ? { departmentId: registro.departmentId || '', id: String(o.encaminharPara) } : { id: String(o.encaminharPara) };
+        corpo.status = t.familia === 'rubricas' ? 9 : 7;
+        if (t.familia === 'padrao') corpo.forwardedToExpanded = t.key === 'geral' ? { departmentId: registro.departmentId || '', id: String(o.encaminharPara) } : { id: String(o.encaminharPara) };
+        else corpo.forwardedToEmployeeExpanded = { id: String(o.encaminharPara) };
       } else {
         const ok = situacoesTramite(item).map(x => x.code);
         if (!ok.includes(Number(o.situacao))) throw new Error('escolha a situação do trâmite');
