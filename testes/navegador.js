@@ -321,6 +321,8 @@ async function abrirApp(rota, extra) {
   await p.waitForFunction(() => document.querySelector('#vista').children.length > 0, null, { timeout: 5000 });
   return p;
 }
+// a caixa de resposta começa recolhida (a conversa fica com a janela): abre pela barra, se preciso
+const abrirCaixa = async p => { await p.waitForSelector('#cmp'); if (await p.$('#cmp-rec[aria-expanded="false"]')) await p.click('#cmp-rec'); await p.waitForSelector('#a-texto'); };
 const linhas = (p, sel) => p.$$eval(sel || '#corpo [data-k]', e => e.map(x => x.dataset.k));
 
 await passo('app · Hoje (analista): destaque com rosca, carrossel e próximos passos; painéis de vencimentos, avisos, sugestões, uso e previsão; sem cartões de situação', async () => {
@@ -354,7 +356,7 @@ await passo('app · Hoje (analista): destaque com rosca, carrossel e próximos p
   assert.match(cs[1], /^Lista errada#102 BETA · Férias do JoãoAberta na lista Geral, mas tem aba própria: Aviso de férias.*Orientar e concluir/);
   assert.match(await p.textContent('#hj-sug .cs-resumo'), /Resolvida fora do portal\? 1Lista errada 1/);
   await p.click('#hj-sug [data-cs-acao="calcFerias:a"]');
-  await p.waitForSelector('#a-texto');
+  await abrirCaixa(p);
   assert.match(await p.$eval('#a-texto', t => t.value), /já foi resolvida fora do portal/);
   assert.equal(await p.$eval('#gaveta .cmp-int.on', x => x.dataset.sit), '5', 'concluir');
   await p.keyboard.press('Escape');
@@ -1085,18 +1087,35 @@ await passo('app · Tramitação: caixa de resposta fixa; intenção e efeito; m
   const p = await abrirApp('#/fila', { settings: { __v: 2, desfazerSeg: 0 } });
   await p.evaluate(() => { window.__respostas = { acao: { ok: true, acao: 'tramite', anexos: 1 }, detalhe: { ok: true, item: { assunto: 'Férias' }, tramites: [], datas: {} } }; });
   await p.click('#corpo [data-k="geral:b"]');
-  await p.waitForSelector('#cmp #a-texto');
+  await p.waitForSelector('#cmp');
+  assert.equal(await p.$('#a-texto'), null, 'a caixa de resposta começa recolhida: a conversa fica com a janela');
+  assert.equal(await p.getAttribute('#cmp-rec', 'aria-expanded'), 'false');
+  await abrirCaixa(p);
   assert.equal(await p.$eval('#cmp', c => c.closest('#g-corpo') === null), true, 'a caixa fica fora da área que rola');
   assert.deepEqual(await p.$$eval('.cmp-int', e => e.map(x => x.textContent)), ['Respondido · aguarda o cliente', 'Em análise', 'Em análise interna', 'Concluído · encerra']);
   if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/tram-fechada.png' });
   assert.equal(await p.isVisible('.cmp-int[data-sit="4"]'), true, 'Respondido já está à vista, sem precisar clicar na caixa');
   assert.equal(await p.isVisible('.cmp-modelo'), true, 'e os modelos também');
+  // recolher: sobra só a barra, o rascunho fica; o atalho R e o Responder do rodapé abrem de novo
+  await p.fill('#a-texto', 'Rascunho que fica.');
+  await p.click('#cmp-rec');
+  assert.equal(await p.$('#a-texto'), null, 'recolhida: sem a caixa de texto');
+  assert.match(await p.textContent('.cmp-min-rasc'), /Rascunho guardado \(18 caracteres\)/);
+  assert.equal(await p.getAttribute('#cmp-rec', 'aria-expanded'), 'false');
+  await p.click('#g-responder');
+  await abrirCaixa(p);
+  assert.equal(await p.inputValue('#a-texto'), 'Rascunho que fica.');
+  assert.equal(await p.evaluate(() => document.activeElement.id), 'a-texto');
+  await p.click('#cmp-rec');
+  await p.click('#cmp-rec');
+  await abrirCaixa(p);
+  await p.click('#a-descartar');
   // de outra aba, o Responder do rodapé leva à caixa
   await p.click('#gaveta [data-aba="dados"]');
   assert.equal(await p.$('#cmp'), null, 'a caixa é da aba Trâmites');
   assert.equal(await p.$eval('#g-responder', b => b.disabled), false);
   await p.click('#g-responder');
-  await p.waitForSelector('#cmp #a-texto');
+  await abrirCaixa(p);
   assert.equal(await p.evaluate(() => document.activeElement.id), 'a-texto');
   // revisar sem texto: o aviso diz o que falta, sem sair da tela (a caixa abre ao clicar nela)
   await p.click('#a-texto');
@@ -1162,7 +1181,7 @@ await passo('app · Tramitação: caixa de resposta fixa; intenção e efeito; m
   await p.click('#g-fechar');
   await p.evaluate(() => { location.hash = '#/fila?escopo=equipe'; });
   await p.click('#corpo [data-k="rubricas:d"]');
-  await p.waitForSelector('#a-texto');
+  await abrirCaixa(p);
   assert.equal(await p.$('#gaveta .cmp-nota'), null);
   assert.deepEqual(await p.$$eval('.cmp-int', b => b.map(x => x.dataset.sit + ':' + x.dataset.tom)), ['6:cli', '5:esc', '2:esc', '8:fim'], 'Aguardando correção, Aguardando resposta, Em análise, Concluído');
   await p.click('.cmp-int[data-sit="6"]');
@@ -1173,6 +1192,27 @@ await passo('app · Tramitação: caixa de resposta fixa; intenção e efeito; m
   assert.equal(await p.$eval('#g-responder', b => b.disabled), false, 'Responder do rodapé ativo');
   await p.click('#a-voltar'); await p.click('#a-descartar');
   assert.deepEqual(p.erros, []);
+});
+
+await passo('app · detalhe em janela baixa: a caixa de resposta não empurra o rodapé para fora da tela', async () => {
+  for (const h of [560, 640, 720]) {
+    const p = await abrirApp('#/fila?escopo=equipe', { settings: { __v: 2 } });
+    await p.setViewportSize({ width: 1280, height: h });
+    await p.evaluate(() => { window.__respostas = { detalhe: { ok: true, item: { assunto: 'Férias' }, datas: {}, tramites: [
+      { n: 1, em: '2026-10-01T10:00:00', situacao: 'Sem análise', lado: 'cli', autor: 'Cliente BETA', texto: 'Abertura', anexos: [] }] } }; });
+    await p.click('#corpo [data-k="geral:b"]');
+    await abrirCaixa(p);
+    if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/baixa-' + h + '.png' });
+    const m = await p.evaluate(() => {
+      const r = s => { const e = document.querySelector(s); if (!e) return null; const b = e.getBoundingClientRect(); return { t: Math.round(b.top), b: Math.round(b.bottom) }; };
+      const c = document.querySelector('#g-corpo');
+      return { vh: innerHeight, dlg: r('.dlg'), acoes: r('.dlg-actions'), cmp: r('#cmp'), corpo: r('#g-corpo'), cmpRola: !!document.querySelector('#cmp').scrollHeight };
+    });
+    assert.ok(m.dlg.b <= m.vh && m.dlg.t >= 0, h + ': a janela cabe na tela ' + JSON.stringify(m));
+    assert.ok(m.acoes.b <= m.dlg.b + 1, h + ': o rodapé fica dentro da janela ' + JSON.stringify(m));
+    assert.ok(m.corpo.b - m.corpo.t >= 80, h + ': a conversa ainda aparece ' + JSON.stringify(m));
+    assert.deepEqual(p.erros, []);
+  }
 });
 
 await passo('app · Tramitação: 5 s para desfazer; enviar e ir para a próxima; rascunho só na memória; atalho R e Ctrl+Enter; situação como linha na conversa', async () => {
@@ -1236,7 +1276,7 @@ await passo('app · Tramitação: modelo pessoal sem dado de cliente; passar par
   const p = await abrirApp('#/fila?escopo=equipe', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens }), settings: { __v: 2, desfazerSeg: 0 } });
   await p.evaluate(() => { window.__respostas = { acao: { ok: true, acao: 'tramite', anexos: 0 }, detalhe: { ok: true, item: { assunto: 'Férias' }, datas: {}, tramites: [] } }; });
   await p.click('#corpo [data-k="geral:b"]');
-  await p.waitForSelector('#a-texto');
+  await abrirCaixa(p);
   // guardar como modelo: os dados desta solicitação voltam a ser {variáveis}
   await p.fill('#a-texto', 'Olá, BETA! Enviamos o documento de hoje.');
   await p.click('#a-guardar');
@@ -1266,7 +1306,7 @@ await passo('app · Tramitação: modelo pessoal sem dado de cliente; passar par
   await p.waitForFunction(() => window.__msgs.some(m => m.cmd === 'acao'));
   const e = await p.evaluate(() => window.__msgs.find(x => x.cmd === 'acao'));
   assert.deepEqual([e.acao, e.encaminharPara, e.texto], ['tramite', 'id-bia', 'Pode assumir?']);
-  await p.waitForSelector('#cmp #a-texto');
+  await abrirCaixa(p);
   // trocar o responsável é a outra opção do mesmo formulário
   await p.click('#g-mais summary'); await p.click('[data-acao="passar"]');
   await p.click('input[name="a-modo"][value="responsavel"]');
@@ -1279,7 +1319,7 @@ await passo('app · Tramitação: modelo pessoal sem dado de cliente; passar par
   // o motivo aparece na própria linha (não só no mouse)
   await p.click('#g-fechar');
   await p.click('#corpo [data-k="calcFerias:a"]');
-  await p.waitForSelector('#a-texto');
+  await abrirCaixa(p);
   await p.click('#g-mais summary'); await p.click('[data-acao="passar"]');
   await p.waitForSelector('.acao-op.off');
   assert.match(await p.textContent('.acao-op.off'), /só permite definir responsável quando ainda não há um/);

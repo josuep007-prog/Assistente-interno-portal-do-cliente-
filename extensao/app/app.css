@@ -1267,7 +1267,7 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .hj-hero .btn:hover{border-color:var(--blue-deep); color:var(--blue-deep)}
 
 /* ============ Tramitação v2: caixa de resposta fixa embaixo da conversa ============ */
-.cmp{flex:none; display:flex; flex-direction:column; gap:8px; padding:10px 22px 12px; border-top:1px solid var(--rule); background:var(--surface-2); max-height:62%; overflow-y:auto; box-shadow:0 -10px 18px -14px rgba(16,24,32,.28)}
+.cmp{flex:0 1 auto; min-height:0; display:flex; flex-direction:column; gap:8px; padding:10px 22px 12px; border-top:1px solid var(--rule); background:var(--surface-2); max-height:50%; overflow-y:auto; box-shadow:0 -10px 18px -14px rgba(16,24,32,.28)}
 .cmp.arrastando{outline:2px dashed var(--blue-deep); outline-offset:-6px; background:var(--blue-pale)}
 .cmp-cab{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
 .cmp-cab b{font:700 13.5px "Archivo",sans-serif}
@@ -1275,6 +1275,11 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .cmp-vez.esc{background:var(--blue-pale); color:var(--blue-deep)}
 .cmp-vez.cli{background:color-mix(in srgb, var(--status-warn) 16%, transparent); color:var(--status-warn)}
 .cmp-atalho{margin-left:auto; font-size:11.5px; color:var(--ink-3)}
+.cmp-rec{display:inline-flex; align-items:center; gap:4px; padding:3px 8px; border:1px solid var(--rule-strong); border-radius:var(--r); background:var(--surface); color:var(--ink-2); font:600 12px "IBM Plex Sans",sans-serif; cursor:pointer}
+.cmp-rec:hover{background:var(--surface-2); color:var(--ink)}
+.cmp-rec:focus-visible{outline:2px solid var(--blue-mid); outline-offset:2px}
+.cmp-min{cursor:pointer; padding-top:8px; padding-bottom:8px; gap:4px; overflow:visible}
+.cmp-min .cmp-min-rasc{font-size:11.5px}
 /* o texto e a barra de ferramentas formam um cartão só */
 .cmp-caixa{border:1px solid var(--rule-strong); border-radius:var(--r); background:var(--surface); transition:border-color .15s, box-shadow .15s}
 .cmp-caixa:focus-within{border-color:var(--blue-deep); box-shadow:0 0 0 3px var(--blue-pale)}
@@ -1330,7 +1335,11 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .cmp-ok{display:flex; align-items:center; gap:8px; padding:7px 10px; border-radius:var(--r); background:color-mix(in srgb, var(--status-green) 14%, transparent); font-size:12.5px; font-weight:600; color:var(--ink)}
 .cmp-ok .ic{color:var(--status-green)}
 .cmp-nota-p{margin:0; font-size:12px; color:var(--ink-3)}
-.cmp-pe{display:flex; align-items:center; gap:8px; justify-content:flex-end; padding-top:10px; border-top:1px solid var(--rule)}
+.cmp-pe{display:flex; align-items:center; gap:8px; justify-content:flex-end; padding:10px 0 2px; border-top:1px solid var(--rule); position:sticky; bottom:-12px; background:var(--surface-2); z-index:1}
+/* janela baixa: a conversa nunca some; a caixa de resposta encolhe e rola (com os botões sempre à vista) */
+.dlg-lg .dlg-body{min-height:120px}
+@media (max-height:760px){ .dlg-destaques{display:none} .cmp{max-height:44%} .cmp.aberto .cmp-caixa textarea, .cmp-caixa textarea{min-height:52px} }
+@media (max-height:620px){ .dlg-lg .dlg-body{min-height:90px} .dp-last{display:none} }
 .cmp-pe .fraco{margin-right:auto; font-size:11.5px}
 .cmp-pe .btn-primary .ic{margin-left:2px}
 .cmp-guardar{display:flex; flex-direction:column; gap:8px; padding:12px 14px; border:1px dashed var(--blue-deep); border-radius:var(--r); background:var(--surface)}

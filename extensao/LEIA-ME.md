@@ -41,6 +41,11 @@ Vez do cliente: sem retorno há mais de 5 dias úteis (laranja); a partir de 20 
 
 Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardando resposta** = o escritório precisa responder; **Respondido** = vez do cliente.
 
+## Novidades da v0.28.1 (caixa de resposta recolhível e janela baixa)
+
+- **A caixa "Responder ao cliente" começa recolhida**: só a barra de título, para a conversa ocupar a janela. Clique na barra (ou em **Abrir**), use o atalho **R** ou o botão **Responder** do rodapé para abrir; o botão **Recolher** guarda o rascunho e fecha de novo. Ao revisar ou enviar, ela fica aberta.
+- **Janela baixa:** a caixa de resposta encolhe e rola por dentro (os botões Revisar e Enviar ficam sempre à vista), a conversa mantém um mínimo de altura e o rodapé do detalhe (Responder, Abrir no Onvio, Mais ações, Lembrete) não sai mais da tela. Em telas baixas, a linha de destaques e a de datas são escondidas.
+
 ## Novidades da v0.28.0 (encaminhar e definir responsável em Cadastro e Rubricas)
 
 - **Encaminhar para outro usuário** e **definir responsável** agora funcionam também em Cadastro (empregado, contribuinte, estagiário) e Rubricas, e o **Distribuir** passa a atribuir nelas (mapeado em 19/10/2026, `mapeamento/tramites-cadastro-rubricas-2026-10-19.md`).
