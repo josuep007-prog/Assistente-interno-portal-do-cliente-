@@ -156,6 +156,22 @@
       falta: 'Olá! Para seguirmos com a solicitação, precisamos de mais informações: (descreva o que falta). Pode completar por aqui, por favor?',
       anexo: 'Olá! A mensagem fala em anexo, mas nenhum arquivo chegou. Pode anexar de novo por aqui, por favor?'
     },
+    // Modelos de resposta (caixa de resposta do detalhe). Texto padrão, nunca de cliente. {variáveis}: saudacao, cliente,
+    // empregado, tipo, inicio, pagamento, aba, analista, numero. O que não tiver valor fica como está e o envio é barrado
+    // até a pessoa preencher. situacao: 2 Em análise, 4 Respondido (aguarda o cliente), 5 Concluído, 8 Em análise interna.
+    // tipos (opcional): só aparece nesses tipos de solicitação; precisaAba: só quando a solicitação tem aba própria.
+    modelosTramite: [
+      { rot: 'Recebido, em análise', situacao: 2, texto: '{saudacao}! Recebemos a sua solicitação e já estamos analisando. Retornamos assim que houver novidades.' },
+      { rot: 'Falta informação', situacao: 4, texto: '{saudacao}! Para seguirmos com a solicitação, precisamos de mais informações: (descreva o que falta). Pode complementar por aqui, por favor?' },
+      { rot: 'Pedir documento', situacao: 4, texto: '{saudacao}! Para seguirmos, precisamos que envie: (descreva o documento). Pode anexar por aqui, por favor?' },
+      { rot: 'Concluído', situacao: 5, texto: '{saudacao}! Solicitação concluída. Qualquer dúvida, estamos à disposição.' },
+      { rot: 'Cálculo concluído', situacao: 5, tipos: ['calcFerias', 'calcRescisao'], texto: '{saudacao}! O {tipo} de {empregado} foi concluído e segue em anexo. O pagamento deve ser feito até {pagamento}.' },
+      { rot: 'Resolvida fora do portal', situacao: 5, texto: 'Pelo que consta, esta solicitação já foi resolvida fora do portal. Estamos concluindo por aqui. Se ainda precisar de algo, é só abrir uma nova solicitação.' },
+      { rot: 'Lista errada', situacao: 5, precisaAba: true, texto: '{saudacao}! Este pedido tem uma aba própria no Portal do Cliente: {aba}. Por favor, abra a solicitação por lá, com os campos preenchidos, para conseguirmos atender dentro do prazo. Estamos concluindo esta da lista Geral.' },
+      { rot: 'Repete outra solicitação', situacao: 5, texto: 'Esta solicitação repete a nº {numero}, que já está em atendimento. Seguimos por lá e estamos concluindo esta.' }
+    ],
+    // Segundos entre "Enviar" e a chamada ao Onvio, para a pessoa desistir (trâmite não pode ser excluído). 0 desliga.
+    desfazerSeg: 5,
     // Frases de cortesia que não são pedido: são tiradas do texto antes de procurar os trechos acima.
     cortesiaCliente: [
       'qualquer duvida', 'quaisquer duvidas', 'fico a disposicao', 'ficamos a disposicao', 'estamos a disposicao',
@@ -750,7 +766,7 @@
    * Tudo é validado: número dentro de limites, datas AAAA-MM-DD, textos curtos. Nada é executado. */
   const LIMITES = {
     primeiroTramite: [0, 30], conclusaoSimples: [1, 60], conclusaoCalculo: [1, 60], clienteSemRetorno: [1, 60], resolvidaClienteDias: [0, 30],
-    parada: [1, 90], foraDoPortalDias: [0, 180], prescricaoDias: [1, 120], prescricaoAviso: [1, 120], tempoRealSeg: [0, 600],
+    parada: [1, 90], foraDoPortalDias: [0, 180], desfazerSeg: [0, 15], prescricaoDias: [1, 120], prescricaoAviso: [1, 120], tempoRealSeg: [0, 600],
     tempoOcupado: [0, 30], admissaoAviso: [0, 15], estagiarioPrazoDias: [0, 60], pagamentoFeriasAntes: [0, 30], pagamentoRescisaoDias: [0, 60], avisoFeriasDias: [0, 90]
   };
   const inteiro = (v, [min, max]) => (typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max ? v : undefined);
@@ -784,6 +800,18 @@
     for (const k of ['pedidoAoCliente', 'cortesiaCliente', 'foraDoPortal', 'anexoCitado']) {
       if (Array.isArray(raw[k])) out[k] = [...new Set(raw[k].filter(p => typeof p === 'string' && p.trim() && p.length <= 60).map(p => semAcento(p).trim()))].slice(0, 80);
     }
+    if (Array.isArray(raw.modelosTramite)) {
+      const ms = [];
+      for (const m of raw.modelosTramite.slice(0, 30)) {
+        if (!m || typeof m.rot !== 'string' || typeof m.texto !== 'string' || !m.rot.trim() || !m.texto.trim() || m.rot.length > 40 || m.texto.length > 800) continue;
+        const o = { rot: m.rot.trim(), texto: m.texto.trim() };
+        if ([2, 4, 5, 8].includes(m.situacao)) o.situacao = m.situacao;
+        if (Array.isArray(m.tipos)) { const ts = m.tipos.filter(k => typeof k === 'string' && TYPE_BY_KEY[k]); if (ts.length) o.tipos = ts; }
+        if (m.precisaAba === true) o.precisaAba = true;
+        ms.push(o);
+      }
+      if (ms.length) out.modelosTramite = ms;
+    }
     if (raw.textosSugestao && typeof raw.textosSugestao === 'object' && !Array.isArray(raw.textosSugestao)) {
       const ts = {};
       for (const k of Object.keys(DEFAULTS.textosSugestao)) if (typeof raw.textosSugestao[k] === 'string' && raw.textosSugestao[k].trim() && raw.textosSugestao[k].length <= 800) ts[k] = raw.textosSugestao[k].trim();
@@ -808,7 +836,7 @@
         if (t && t.key !== 'geral' && palavras.length) out.abaErrada.push({ tipo: t.key, palavras });
       }
     }
-    const util = Object.keys(out.config).length || out.feriados.length || out.abaErrada.length || (out.observacoes && Object.keys(out.observacoes).length) || out.avisoSemCalculo || out.assuntoSemCalculo || out.tramiteCriacao || out.criacao || out.senhaGestorSha256 || out.avaliacao || out.pedidoAoCliente || out.cortesiaCliente || out.foraDoPortal || out.anexoCitado || out.textosSugestao;
+    const util = Object.keys(out.config).length || out.feriados.length || out.abaErrada.length || (out.observacoes && Object.keys(out.observacoes).length) || out.avisoSemCalculo || out.assuntoSemCalculo || out.tramiteCriacao || out.criacao || out.senhaGestorSha256 || out.avaliacao || out.pedidoAoCliente || out.cortesiaCliente || out.foraDoPortal || out.anexoCitado || out.textosSugestao || out.modelosTramite;
     return util ? out : null;
   }
 
@@ -832,6 +860,7 @@
       if (r.cortesiaCliente) base.cortesiaCliente = r.cortesiaCliente;
       if (r.foraDoPortal) base.foraDoPortal = r.foraDoPortal;
       if (r.anexoCitado) base.anexoCitado = r.anexoCitado;
+      if (r.modelosTramite) base.modelosTramite = r.modelosTramite;
       if (r.textosSugestao) base.textosSugestao = Object.assign({}, DEFAULTS.textosSugestao, r.textosSugestao);
     }
     // a senha da área do gestor vem só do código ou das regras do escritório, nunca dos ajustes da pessoa
@@ -2061,6 +2090,80 @@
       return Object.assign(r, { motivos, pontos: r.abaErrada.length * 2 + r.repetidas.length * 2 + r.paradasCliente.length });
     }).filter(r => r.pontos > 0).sort((a, b) => b.pontos - a.pontos || a.cliente.localeCompare(b.cliente, 'pt-BR'));
   }
+  /* ---------- Tramitação: caixa de resposta ----------
+   * Intenções (o que acontece depois do envio) em vez de situações do Onvio, variáveis dos modelos e avisos de coerência.
+   * Tudo local e só com o que a tela já leu; nada disso é guardado. */
+  const INTENCOES = [
+    { sit: 4, rot: 'Aguardar o cliente', onvio: 'Respondido' },
+    { sit: 2, rot: 'Em análise', onvio: 'Em análise' },
+    { sit: 8, rot: 'Em análise interna', onvio: 'Em análise interna' },
+    { sit: 5, rot: 'Concluir', onvio: 'Concluído' }
+  ];
+  // As situações que o Onvio aceita agora (de situacoesTramite) com o texto simples e o efeito do envio
+  function intencoesDe(item, settings) {
+    const s = Object.assign({}, DEFAULTS, settings || {});
+    const t = TYPE_BY_KEY[item && item.type];
+    const ok = t ? situacoesTramite(item).map(x => x.code) : [];
+    const prescreve = !!(t && FAMILIAS[t.familia].prescreve);
+    return INTENCOES.filter(x => ok.includes(x.sit)).map(x => Object.assign({}, x, {
+      efeito: x.sit === 4 ? 'A vez passa ao cliente' + (prescreve ? '; sem retorno, prescreve em ' + s.prescricaoDias + ' dias' : '')
+        : x.sit === 5 ? 'Encerra a solicitação: ela sai da fila'
+        : 'Continua com o escritório'
+    }));
+  }
+  const saudacaoDa = now => { const h = (now || new Date()).getHours(); return h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite'; };
+  // valores das {variáveis}; só entram as que têm valor (as outras ficam no texto e barram o envio)
+  function variaveisTramite(item, datas, settings, now, analista) {
+    const d = datas || {}, v = {};
+    const fmt = x => (x ? String(x.getDate()).padStart(2, '0') + '/' + String(x.getMonth() + 1).padStart(2, '0') + '/' + x.getFullYear() : '');
+    v.saudacao = saudacaoDa(now);
+    if (item) {
+      if (item.apelido || item.cliente) v.cliente = item.apelido || item.cliente;
+      if (item.detalhe && item.type !== 'geral') v.empregado = item.detalhe;
+      if (item.typeLabel) v.tipo = item.typeLabel.toLowerCase();
+      if (item.abaProvavel && item.abaProvavel.label) v.aba = item.abaProvavel.label;
+      const pl = item.pagamentoAte ? diaDe(item.pagamentoAte.alvo) : null;
+      const pg = pl || (d && TYPE_BY_KEY[item.type] ? (x => x && x.alvo)(prazoPagamento(item.type, d, settings)) : null);
+      if (pg) v.pagamento = fmt(pg);
+    }
+    if (d.inicio) v.inicio = fmt(diaDe(d.inicio));
+    if (analista) v.analista = analista;
+    return v;
+  }
+  const preencherModelo = (texto, vars) => String(texto || '').replace(/\{(\w+)\}/g, (m, k) => (vars && vars[k] ? String(vars[k]) : m));
+  // modelos que valem para esta solicitação (tipo e aba própria); a situação vem só se a lista do Onvio a aceita agora
+  function modelosPara(item, settings, pessoais) {
+    const s = Object.assign({}, DEFAULTS, settings || {});
+    const ok = TYPE_BY_KEY[item && item.type] ? situacoesTramite(item).map(x => x.code) : [];
+    return (s.modelosTramite || []).concat(Array.isArray(pessoais) ? pessoais.map(m => Object.assign({ pessoal: true }, m)) : [])
+      .filter(m => (!m.tipos || m.tipos.includes(item.type)) && (!m.precisaAba || (item.abaProvavel && item.abaProvavel.label)))
+      .map(m => Object.assign({}, m, { situacao: m.situacao && ok.includes(m.situacao) ? m.situacao : null }));
+  }
+  // Marcadores que a pessoa precisa preencher antes de enviar: "(descreva ...)", "{variável}" sem valor, "[preencher]"
+  const RE_MARCADOR = /\(\s*descreva[^)\n]*\)|\{[^}\n]{1,40}\}|\[\s*(?:preencher|completar|xx)[^\]\n]*\]/gi;
+  const marcadoresPendentes = texto => [...new Set(String(texto || '').match(RE_MARCADOR) || [])];
+  // Avisos de coerência entre o texto e a situação escolhida: { bloqueia, msg }[]
+  function avisosResposta(texto, situacao, settings) {
+    const out = [], t = String(texto || '').trim(), sit = Number(situacao);
+    const m = marcadoresPendentes(t);
+    if (m.length) out.push({ bloqueia: true, msg: 'Falta preencher: ' + m.join(', ') });
+    if (t && sit) {
+      const pede = pedeAlgoAoCliente(t, settings).pede;
+      if (pede && sit === 5) out.push({ msg: 'O texto pede algo ao cliente, mas "Concluir" encerra a solicitação. Prefira "Aguardar o cliente".' });
+      else if (!pede && sit === 4) out.push({ msg: 'O texto não pede nada ao cliente. Se a solicitação terminou, prefira "Concluir"; senão ela fica aguardando o cliente.' });
+    }
+    return out;
+  }
+  // Modelo pessoal: troca de volta os valores desta solicitação por {variáveis}, para o texto guardado não levar dado de cliente
+  function despersonalizar(texto, vars) {
+    let t = String(texto || '');
+    for (const k of ['cliente', 'empregado', 'pagamento', 'inicio', 'aba', 'analista']) {
+      const v = vars && vars[k];
+      if (v && String(v).length >= 3) t = t.split(String(v)).join('{' + k + '}');
+    }
+    return t;
+  }
+
   /* ---------- Sugestões de ação (Hoje): casos específicos, cada um com a ação pronta ----------
    * Solicitações que parecem resolvidas fora do portal, abertas errado (lista errada, repetidas) ou com falta de
    * informação do cliente. Do resumo: na vez do escritório e sem movimentação há mais de foraDoPortalDias dias,
@@ -2196,5 +2299,5 @@
     return { dias, empresas: lista, total: lista.reduce((s2, r) => s2 + r.total, 0), prox30: lista.reduce((s2, r) => s2 + r.prox30, 0) };
   }
 
-  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, quadroSemCalculo, marcarSemCalculo, textoAvisoSemCalculo, assuntoAvisoSemCalculo, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, quadroSemCalculo, marcarSemCalculo, textoAvisoSemCalculo, assuntoAvisoSemCalculo, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, marcadoresPendentes, avisosResposta, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);

@@ -9,6 +9,7 @@
     "resolvidaClienteDias": 3,
     "parada": 15,
     "foraDoPortalDias": 30,
+    "desfazerSeg": 5,
     "prescricaoDias": 30,
     "prescricaoAviso": 20
   },
@@ -19,6 +20,10 @@
   "avisoSemCalculo": "Recebemos o {aviso} de {empregado}, mas ainda não há a solicitação de {calculo} desse empregado. Para o pagamento sair dentro do prazo legal (até {pagamento}, {ref}), abra a solicitação de {calculo} no Portal do Cliente o quanto antes.",
   "assuntoSemCalculo": "{calculo} pendente · {empregado}",
   "tramiteCriacao": "Aguardando o retorno do cliente.",
+  "modelosTramite": [
+    { "rot": "Recebido, em análise", "situacao": 2, "texto": "{saudacao}! Recebemos a sua solicitação e já estamos analisando. Retornamos assim que houver novidades." },
+    { "rot": "Pedir atestado", "situacao": 4, "tipos": ["afastamento"], "texto": "{saudacao}! Para registrar o afastamento de {empregado}, envie o atestado legível, com data, período e assinatura do médico." }
+  ],
   "foraDoPortal": ["ja resolvido", "enviei por e-mail", "pelo whatsapp", "pode desconsiderar"],
   "textosSugestao": {
     "fora": "Pelo que consta, esta solicitação já foi resolvida fora do portal. Estamos concluindo por aqui. Se ainda precisar de algo, é só abrir uma nova solicitação.",
