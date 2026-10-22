@@ -1232,8 +1232,8 @@ await passo('app · Fila: cartões por tipo (todos, enxutos; de novo tira); orde
   assert.ok(tipos.includes('=4') && tipos.includes('geral=1') && tipos.includes('calcFerias=1') && tipos.includes('afastamento=0'), tipos.join());
   assert.match(await p.textContent('#tipos [data-tipo="calcFerias"]'), /sem prazo legal perto/);
   assert.equal(await p.$eval('#tipos [data-tipo="afastamento"]', b => b.classList.contains('zero')), true);
-  const alt = await p.$eval('#tipos .tipo-c', b => b.getBoundingClientRect().height);
-  assert.ok(alt >= 70 && alt <= 120, 'tamanho de cartão: ' + alt);
+  const alt = await p.$$eval('#tipos .tipo-c', e => Math.min(...e.map(b => b.getBoundingClientRect().height)));
+  assert.ok(alt >= 50 && alt <= 100, 'tamanho de cartão: ' + alt);
   await p.click('#tipos [data-tipo="geral"]');
   assert.deepEqual(await linhas(p), ['geral:b']);
   await p.click('#tipos [data-tipo="geral"]');
