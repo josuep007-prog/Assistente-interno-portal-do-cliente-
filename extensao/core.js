@@ -240,6 +240,11 @@
       cadContribuinte: ['Informe a data de início e o valor do pró-labore ou da retirada, para o cadastro no eSocial.'],
       rubricas: ['Lançamentos da competência {competencia} precisam chegar antes do fechamento da folha; depois disso entram na competência seguinte.']
     },
+    // "Pedir ao cliente para concluir" (Mais ações do detalhe, solicitação já entregue e com o cliente): cria uma solicitação Geral.
+    // {numero}, {tipo}, {empregado} e {cliente} vêm da solicitação; o analista revisa antes de criar.
+    pedirConcluirAssunto: 'Conclua a solicitação nº {numero} ({tipo})',
+    pedirConcluirTexto: 'Olá! A solicitação nº {numero} ({tipo}{empregado}) já foi respondida pelo escritório e está só aguardando a sua conclusão no Portal do Cliente. ' +
+      'Por favor, confira a resposta e conclua a solicitação. Se precisar de mais alguma coisa, é só abrir uma nova solicitação.',
     // Criar solicitação (Geral) pela extensão.
     // Texto do trâmite que passa a vez ao cliente logo depois de criar (situação Respondido)
     tramiteCriacao: 'Aguardando o retorno do cliente.',
@@ -882,6 +887,8 @@
         if ((k === 'todas' || TYPE_BY_KEY[k]) && Array.isArray(v)) out.observacoes[k] = v.filter(x => typeof x === 'string' && x.trim() && x.length <= 400).map(x => x.trim()).slice(0, 12);
       }
     }
+    if (typeof raw.pedirConcluirAssunto === 'string' && raw.pedirConcluirAssunto.trim() && raw.pedirConcluirAssunto.length <= 200) out.pedirConcluirAssunto = raw.pedirConcluirAssunto.trim();
+    if (typeof raw.pedirConcluirTexto === 'string' && raw.pedirConcluirTexto.trim() && raw.pedirConcluirTexto.length <= 800) out.pedirConcluirTexto = raw.pedirConcluirTexto.trim();
     if (typeof raw.tramiteCriacao === 'string' && raw.tramiteCriacao.trim() && raw.tramiteCriacao.length <= 400) out.tramiteCriacao = raw.tramiteCriacao.trim();
     if (raw.criacao && typeof raw.criacao === 'object' && !Array.isArray(raw.criacao)) {
       const c = {};
@@ -954,7 +961,7 @@
         if (t && t.key !== 'geral' && palavras.length) out.abaErrada.push({ tipo: t.key, palavras });
       }
     }
-    const util = Object.keys(out.config).length || out.feriados.length || out.abaErrada.length || (out.observacoes && Object.keys(out.observacoes).length) || out.tramiteCriacao || out.criacao || out.sugestoes || out.modelosCriacao || out.equipeDP || out.departamentoDP || out.departamentosDP || out.acidenteTipoIds || out.acidenteCatIds || out.prazoAnalistaPalavras || out.avisoTrabalhadoPalavras || out.acidentePalavras || out.senhaGestorSha256 || out.avaliacao || out.pedidoAoCliente || out.cortesiaCliente || out.foraDoPortal || out.anexoCitado || out.textosSugestao || out.modelosTramite;
+    const util = Object.keys(out.config).length || out.feriados.length || out.abaErrada.length || (out.observacoes && Object.keys(out.observacoes).length) || out.pedirConcluirAssunto || out.pedirConcluirTexto || out.tramiteCriacao || out.criacao || out.sugestoes || out.modelosCriacao || out.equipeDP || out.departamentoDP || out.departamentosDP || out.acidenteTipoIds || out.acidenteCatIds || out.prazoAnalistaPalavras || out.avisoTrabalhadoPalavras || out.acidentePalavras || out.senhaGestorSha256 || out.avaliacao || out.pedidoAoCliente || out.cortesiaCliente || out.foraDoPortal || out.anexoCitado || out.textosSugestao || out.modelosTramite;
     return util ? out : null;
   }
 
@@ -967,6 +974,8 @@
       if (r.feriados && r.feriados.length) base.feriados = [...new Set(DEFAULTS.feriados.concat(r.feriados))].sort();
       if (r.abaErrada && r.abaErrada.length) base.abaErrada = r.abaErrada;
       if (r.observacoes) base.observacoes = Object.assign({}, DEFAULTS.observacoes, r.observacoes);
+      if (r.pedirConcluirAssunto) base.pedirConcluirAssunto = r.pedirConcluirAssunto;
+      if (r.pedirConcluirTexto) base.pedirConcluirTexto = r.pedirConcluirTexto;
       if (r.tramiteCriacao) base.tramiteCriacao = r.tramiteCriacao;
       if (r.criacao) base.criacao = Object.assign({}, DEFAULTS.criacao, r.criacao, { departamentos: Object.assign({}, DEFAULTS.criacao.departamentos, r.criacao.departamentos || {}) });
       if (r.modelosCriacao) base.modelosCriacao = r.modelosCriacao;
@@ -1739,7 +1748,8 @@
         if (c.av) it.avisoEm = c.av;
         const faltam = c.alvo ? uteisAte(now, diaDe(c.alvo), hol) : null;
         if (c.alvo) it.pagamentoAte = { alvo: c.alvo, ref: c.ref };          // para a agenda e o detalhe
-        const perto = faltam != null && faltam <= s.tempoOcupado;
+        // já entregue pelo analista e com o cliente (que só falta concluir): o prazo de pagamento não é mais prioridade do escritório
+        const perto = faltam != null && faltam <= s.tempoOcupado && it.lado !== 'cli';
         if (perto) {
           const dt = c.alvo.slice(8, 10) + '/' + c.alvo.slice(5, 7);
           it.prazoLegal = { alvo: c.alvo, faltam, ref: c.ref };
@@ -1757,6 +1767,20 @@
       novo[it.k] = c;
     }
     out.avisos = { cache: novo };
+  }
+
+  // Pedido ao cliente para concluir uma solicitação já entregue (cria uma Geral; só na memória até o analista confirmar)
+  function pedidoConcluirVars(item) {
+    return { numero: String(item.num), tipo: String(item.typeLabel || 'solicitação').toLowerCase(), empregado: item.detalhe ? ' · ' + item.detalhe : '', cliente: item.apelido || item.cliente || '' };
+  }
+  const preencherConcluir = (modelo, vals) => String(modelo).replace(/\{(\w+)\}/g, (x, k) => (k in vals ? vals[k] : x)).replace(/\s{2,}/g, ' ').trim();
+  function assuntoPedirConcluir(item, settings) {
+    const s = Object.assign({}, DEFAULTS, settings || {});
+    return preencherConcluir(s.pedirConcluirAssunto || DEFAULTS.pedirConcluirAssunto, pedidoConcluirVars(item)).slice(0, 200);
+  }
+  function textoPedirConcluir(item, settings) {
+    const s = Object.assign({}, DEFAULTS, settings || {});
+    return preencherConcluir(s.pedirConcluirTexto || DEFAULTS.pedirConcluirTexto, pedidoConcluirVars(item));
   }
 
   /* ---------- observações para o cliente (detalhe) ----------
@@ -2551,5 +2575,5 @@
     return { dias, empresas: lista, total: lista.reduce((s2, r) => s2 + r.total, 0), prox30: lista.reduce((s2, r) => s2 + r.prox30, 0) };
   }
 
-  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, marcadoresPendentes, avisosResposta, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, marcadoresPendentes, avisosResposta, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);

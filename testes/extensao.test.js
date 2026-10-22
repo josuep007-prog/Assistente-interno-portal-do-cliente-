@@ -1313,6 +1313,29 @@ test('prazo de pagamento: lê a data do aviso uma vez, marca o prazo legal perto
   assert.deepEqual(Object.keys(out.avisos.cache['avisoFerias:v1']).sort(), ['alvo', 'lido', 'ref'], 'cache só com datas');
 });
 
+test('pagamento vencido na vez do cliente (entregue pelo analista) não é prioridade; "pedir ao cliente para concluir" monta a solicitação', async () => {
+  const now = new Date(2026, 9, 15, 10);
+  const f = async () => ({ adviceDate: '2026-09-28T00:00:00' });          // aviso de rescisão há 17 dias: o pagamento (10 dias) já passou
+  const base = { type: 'avisoRescisao', id: 'r1', detalhe: 'Fulano', codCliente: 7, cliente: 'ACME', created: '2026-09-28T12:00:00', nivel: 0, grav: 0, motivos: [] };
+  const out = { items: [Object.assign({ k: 'avisoRescisao:esc', lado: 'esc' }, base), Object.assign({ k: 'avisoRescisao:cli', lado: 'cli' }, base)] };
+  await OC.verificarAvisos(f, out, {}, Object.assign({}, OC.DEFAULTS), now);
+  const [esc, cli] = out.items;
+  assert.ok(esc.prazoLegal && esc.prazoLegal.faltam < 0 && esc.motivos.some(m => m.legal), 'com o escritório, o pagamento vencido segue como prazo legal');
+  assert.equal(cli.prazoLegal, undefined, 'com o cliente, não há prazo legal em cima');
+  assert.ok(!(cli.motivos || []).some(m => m.legal), 'nem motivo legal');
+  assert.equal(cli.nivel, 0);
+  assert.ok(cli.pagamentoAte, 'a data continua à mostra (informação)');
+  assert.equal(OC.motivoDe(cli), 'cliente', 'aparece com as outras da vez do cliente');
+  // pedir ao cliente para concluir: texto padrão e o das regras
+  const it = { num: 1118, typeLabel: 'Cálculo de rescisão', detalhe: 'LEONARDO', apelido: 'MERCOCAMP', lado: 'cli' };
+  assert.equal(OC.assuntoPedirConcluir(it, {}), 'Conclua a solicitação nº 1118 (cálculo de rescisão)');
+  assert.match(OC.textoPedirConcluir(it, {}), /^Olá! A solicitação nº 1118 \(cálculo de rescisão · LEONARDO\) já foi respondida pelo escritório e está só aguardando a sua conclusão/);
+  const r = OC.normalizarRegras({ pedirConcluirAssunto: 'Concluir {numero}', pedirConcluirTexto: 'Falta concluir a {numero} de {cliente}.' });
+  const s = OC.combinarSettings({ regras: r }, {});
+  assert.equal(OC.assuntoPedirConcluir(it, s), 'Concluir 1118');
+  assert.equal(OC.textoPedirConcluir(it, s), 'Falta concluir a 1118 de MERCOCAMP.');
+});
+
 test('distribuição: quem mais atendeu a empresa na semana; admissões fora da conta e com quem mais faz admissões', () => {
   const x = (type, resp, cod, extra) => Object.assign({ k: type + ':' + Math.random(), type, resp, codCliente: cod, cliente: 'C' + cod }, extra || {});
   const mov = [

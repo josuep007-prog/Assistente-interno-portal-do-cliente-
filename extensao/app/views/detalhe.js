@@ -93,7 +93,7 @@ function desenhar(i, r, erro, carregando) {
       (i.last ? '<span>Último trâmite: <b>' + esc(fmtDataHora(i.last)) + '</b>' + (ultimoTr && ultimoTr.autor ? ' por ' + esc(ultimoTr.autor) : '') + '</span>' : '') +
       (i.parado != null ? '<span>Parada há <b>' + i.parado + ' dia(s)</b></span>' : '') +
       (i.lado === 'cli' && i.prescreveEm != null ? '<span title="Regra do Onvio: sem retorno do cliente, a solicitação prescreve sozinha">Prescreve no Onvio em <b>' + i.prescreveEm + ' dia(s)</b></span>' : '') +
-      (pagto ? '<span class="' + (pagto.faltam != null && pagto.faltam <= 1 ? 'late' : '') + '">Pagamento até <b>' + esc(pagto.dt) + '</b> (prazo legal)</span>' : '') +
+      (pagto ? '<span class="' + (pagto.faltam != null && pagto.faltam <= 1 && i.lado !== 'cli' ? 'late' : '') + '">Pagamento até <b>' + esc(pagto.dt) + '</b> (prazo legal)</span>' : '') +
       (i.due ? '<span title="Data informada pelo cliente; não conta como vencimento">Expectativa do cliente: ' + esc(fmtData(i.due)) + '</span>' : '') +
     '</div>' +
     destaquesHtml(r) +
@@ -175,6 +175,7 @@ function desenhar(i, r, erro, carregando) {
     feito: prox => { if (!mesma()) return; const pp = posicao(); if (prox && pp >= 0 && lista[pp + 1]) abrirDetalhe(lista[pp + 1]); else abrirDetalhe({ type: i.type, num: i.num }); }
   });
   $('#g-nova').onclick = () => abrirNova({ origem: Object.assign({}, i, { type: i.type, num: String(i.num) }) });
+  if ($('#g-concluir')) $('#g-concluir').onclick = () => abrirNova({ origem: Object.assign({}, i, { type: i.type, num: String(i.num) }), assunto: OC.assuntoPedirConcluir(i, estado.settings), descricao: OC.textoPedirConcluir(i, estado.settings), passarVez: true });
   $('#g-lembrete').onclick = () => abrirLembrete({ vinculo: { type: i.type, num: String(i.num), k: i.k || null, cliente: i.apelido || i.cliente } });
   $$('[data-l]', g).forEach(row => row.addEventListener('click', async e => {
     const l = estado.lembretes.find(x => x.id === row.dataset.l);
@@ -200,6 +201,7 @@ function maisAcoes(i, obs, carregando) {
     item('Passar para outro analista', 'repeat', ' data-acao="passar"', passar) +
     (OC.ACOES.expectativa(i.type) ? item('Alterar expectativa de conclusão', 'calendar', ' data-acao="expectativa"', carregando ? espera : OC.podeAcao('expectativa', i)) : '') +
     item('Nova solicitação para o cliente', 'plus', ' id="g-nova"', livre) +
+    (i.lado === 'cli' ? item('Pedir ao cliente para concluir', 'check', ' id="g-concluir"', livre) : '') +
     (!carregando && obs.some(o => !o.interno) ? item('Copiar observações para o cliente', 'copy', ' id="g-copiar-obs"', livre) : '') +
     '</div></details>';
 }

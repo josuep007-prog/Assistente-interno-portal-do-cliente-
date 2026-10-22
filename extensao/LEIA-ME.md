@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.33.2)
+# Control Onvio · ControlTax (v0.33.3)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,11 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.33.3 (entregue ao cliente não é prioridade)
+
+- **Solicitação já entregue pelo analista, na vez do cliente (ele só esqueceu de concluir), não conta mais como prazo legal**, mesmo com a data de pagamento vencida: sai do grupo "Prazo legal", não é destaque vermelho, não gera notificação nem sobe na fila e aparece junto das outras "Com o cliente". A data do pagamento continua visível no detalhe, em texto neutro. Se o cliente responder e a vez voltar ao escritório, o prazo legal volta a valer.
+- **Pedir ao cliente para concluir (opcional):** no detalhe de uma solicitação na vez do cliente, em **Mais ações**, **Pedir ao cliente para concluir** abre a Nova solicitação (Geral) já com o cliente, o assunto ("Conclua a solicitação nº 1118 (cálculo de rescisão)") e um texto educado, com "passar a vez ao cliente" marcado. Você revisa e confirma; nada é criado sozinho e não vira sugestão nem alerta. Os textos podem ser trocados nas regras (`pedirConcluirAssunto` e `pedirConcluirTexto`, com `{numero}`, `{tipo}`, `{empregado}` e `{cliente}`).
 
 ## Novidades da v0.33.2 (cartões de Férias e Rescisão mais limpos e botão padrão)
 
