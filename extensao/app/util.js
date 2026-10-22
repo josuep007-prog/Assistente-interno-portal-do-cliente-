@@ -38,7 +38,7 @@ export function textoPuro(html) {
  * O prazo interno e a gravidade ordenam por trás (OC.ordemFila) e só aparecem na Equipe (área do gestor). */
 export function pillSituacao(i) {
   const g = OC.grupoSituacao(i);
-  return '<span class="pill pill-sit g-' + g.k + '" title="' + esc(g.rot) + '">' + esc(i.status) + '</span>';
+  return '<span class="pill pill-sit g-' + g.k + '" title="' + esc(i.status === g.rot ? g.rot : i.status + ' · ' + g.rot) + '">' + esc(i.status) + '</span>';
 }
 export const ladoTexto = i => (i.lado === 'esc' ? 'escritório' : i.lado === 'cli' ? 'cliente' : '—');
 // Justificativa da gravidade (OC.porqueGravidade) com os limites em vigor: só para a Equipe.

@@ -226,6 +226,7 @@ a{color:var(--blue-deep)}
 .lr .num{font-variant-numeric:tabular-nums}
 .lr .mono{font-weight:600; color:var(--ink-2)}
 .lr .pill{white-space:normal; max-width:100%}
+.lr .pill-sit{white-space:nowrap}
 
 /* cartões de solicitação e de cliente */
 .cards{display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:12px}
@@ -716,21 +717,31 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .hj-sc-tx small{font-size:12px; color:var(--ink-3)}
 
 /* Fila · cartões dos tipos de solicitação e agrupamento por empresa */
-.tipos{display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px; margin:0 0 14px}
+.tipos{display:grid; grid-template-columns:repeat(auto-fill,minmax(172px,1fr)); gap:10px; margin:0 0 14px; align-items:stretch}
 /* cartões de tipo: enxutos (sem faixa nem barra), ícone na cor da família, número grande e uma linha de apoio */
-.tipo-c{display:flex; flex-direction:column; align-items:flex-start; gap:6px; padding:12px 14px; border:1px solid var(--rule); border-radius:var(--r); background:var(--surface); color:inherit; font:inherit; text-align:left; cursor:pointer; transition:border-color .15s, box-shadow .15s, background .15s}
+.tipo-c{display:flex; flex-direction:column; align-items:flex-start; gap:6px; padding:12px 14px; border:1px solid color-mix(in srgb, var(--fam) 28%, var(--rule)); border-top:3px solid var(--fam); border-radius:var(--r); background:color-mix(in srgb, var(--fam) 7%, var(--surface)); color:inherit; font:inherit; text-align:left; cursor:pointer; transition:border-color .15s, box-shadow .15s, background .15s}
 .tipo-c:hover{border-color:var(--rule-strong); box-shadow:0 1px 2px rgba(15,23,32,.04), 0 6px 16px rgba(15,23,32,.06)}
-.tipo-c.on{border-color:var(--fam); box-shadow:inset 0 0 0 1px var(--fam); background:color-mix(in srgb, var(--fam) 5%, var(--surface))}
-.tipo-c.zero{opacity:.5}
+.tipo-c.on{border-color:var(--fam); box-shadow:inset 0 0 0 1px var(--fam), 0 4px 14px color-mix(in srgb, var(--fam) 28%, transparent); background:color-mix(in srgb, var(--fam) 15%, var(--surface))}
+.tipo-c.zero{opacity:.55}
 .tipo-c.zero:hover{box-shadow:none}
-.tipo-topo{display:flex; align-items:center; gap:6px; min-width:0; max-width:100%}
+.tipo-topo{display:flex; align-items:flex-start; gap:7px; min-width:0; max-width:100%}
 .tipo-c .tipo-ic.pq{width:16px; height:16px; margin:0; background:none; box-shadow:none; color:var(--fam)}
 .tipo-c .tipo-ic.pq .ic{width:14px; height:14px}
-.tipo-rot{font-size:11.5px; font-weight:500; line-height:1.2; color:var(--ink-3); min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis}
+.tipo-rot{font-size:12.5px; font-weight:600; line-height:1.25; color:var(--ink); min-width:0; white-space:normal; overflow-wrap:anywhere}
 .tipo-c.on .tipo-rot{color:var(--ink)}
-.tipo-c b{font:600 24px/1 "Archivo",sans-serif; letter-spacing:-.02em; font-variant-numeric:tabular-nums}
-.tipo-sub{font-size:11px; color:var(--ink-3)}
+.tipo-c b{font:700 30px/1 "Archivo",sans-serif; letter-spacing:-.02em; font-variant-numeric:tabular-nums}
+.tipo-sub{font-size:11.5px; color:var(--ink-2)}
 .tipo-sub em{font-style:normal; font-weight:600; color:var(--brand-red)}
+.tipo-c .tipo-ic.pq{margin-top:0}
+/* aviso + cálculo: um bloco só na cor da família, cartões lado a lado ligados por um elo */
+.tipo-par{grid-column:span 2; display:flex; flex-direction:column; gap:6px; padding:6px 8px 8px; border:1px solid color-mix(in srgb, var(--fam) 45%, var(--rule)); border-radius:var(--r); background:color-mix(in srgb, var(--fam) 10%, var(--surface))}
+.tipo-par-cab{display:flex; align-items:baseline; gap:8px; padding:0 2px; font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--ink)}
+.tipo-par-cab small{font-size:11px; font-weight:500; letter-spacing:0; text-transform:none; color:var(--ink-3)}
+.tipo-par-in{position:relative; display:grid; grid-template-columns:1fr 1fr; gap:14px; flex:1}
+.tipo-par-in .tipo-c{border-top-width:1px; background:var(--surface)}
+.tipo-par-in .tipo-c.on{background:color-mix(in srgb, var(--fam) 15%, var(--surface))}
+.tipo-elo{position:absolute; left:50%; top:50%; width:26px; height:26px; margin:-13px 0 0 -13px; display:grid; place-items:center; border-radius:50%; background:var(--fam); color:#fff; box-shadow:0 0 0 3px color-mix(in srgb, var(--fam) 10%, var(--surface)); z-index:1; pointer-events:none}
+.tipo-elo .ic{width:14px; height:14px}
 /* ícone do tipo: pastilha com o tom da família e o desenho na cor do texto (contraste garantido nos dois temas) */
 .tipo-ic{flex:none; display:inline-grid; place-items:center; width:24px; height:24px; border-radius:var(--r); color:var(--ink); background:color-mix(in srgb, var(--fam) 22%, var(--surface)); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--fam) 45%, transparent)}
 .tipo-ic .ic{width:14px; height:14px}
@@ -1387,7 +1398,7 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 
 /* ---------- situação em cores (Solicitações 0.29.0) ---------- */
 .g-sem{--sit:var(--sit-sem)} .g-analise{--sit:var(--sit-analise)} .g-encaminhada{--sit:var(--sit-encaminhada)} .g-respondeu{--sit:var(--sit-respondeu)} .g-cliente{--sit:var(--sit-cliente)} .g-desconhecida{--sit:var(--ink-3)}
-.pill-sit{position:relative; padding-left:19px; background:color-mix(in srgb, var(--sit) 13%, var(--surface)); color:var(--ink); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--sit) 40%, transparent)}
+.pill-sit{position:relative; padding-left:19px; white-space:nowrap; max-width:100%; overflow:hidden; text-overflow:ellipsis; display:inline-block; line-height:1.6; vertical-align:middle; background:color-mix(in srgb, var(--sit) 13%, var(--surface)); color:var(--ink); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--sit) 40%, transparent)}
 .pill-sit::before{content:""; position:absolute; left:7px; top:50%; width:7px; height:7px; margin-top:-3.5px; border-radius:50%; background:var(--sit)}
 .sits{display:flex; flex-wrap:wrap; gap:6px; margin:0 0 12px}
 .sit-c{display:inline-flex; align-items:center; gap:8px; padding:5px 11px 5px 9px; border:1px solid var(--rule); border-radius:var(--r); background:var(--surface); color:var(--ink-2); font:600 12.5px "IBM Plex Sans",sans-serif; cursor:pointer; transition:border-color .15s, background .15s}
