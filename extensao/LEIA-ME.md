@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.32.0)
+# Control Onvio · ControlTax (v0.32.1)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,12 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.32.1 (etiquetas e cartões de tipo)
+
+- **Etiqueta de situação numa linha só** (ex.: "Encaminhado para outro usuário"): nunca quebra em duas; se faltar espaço, corta com reticências e o texto completo (e o grupo) fica no `title`.
+- **Cartões de tipo mais chamativos:** faixa e fundo na cor da família, número maior e nome do tipo inteiro (quebra de linha em vez de reticências).
+- **Aviso e cálculo ligados:** Aviso de férias + Cálculo de férias e Aviso de rescisão + Cálculo de rescisão formam um bloco só (cor da família, título "Férias"/"Rescisão" e um elo entre os dois cartões).
 
 ## Novidades da v0.32.0 (o mapeamento de 22/10/2026 aplicado)
 
