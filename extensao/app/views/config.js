@@ -17,6 +17,7 @@ const GRUPOS = [
   { titulo: 'Vez do cliente', ic: 'i-user', campos: [
     { k: 'clienteSemRetorno', rot: 'Cliente sem retorno', un: 'dias úteis', ajuda: 'A partir daí a solicitação pede uma cobrança ao cliente.' },
     { k: 'resolvidaClienteDias', rot: 'Considerar resolvida depois de', un: 'dias úteis', ajuda: 'Se a última resposta do analista não pede nada ao cliente. 0 desliga.' },
+    { k: 'concluirClienteDias', rot: 'Sugerir concluir sem retorno do cliente', un: 'dias corridos', ajuda: 'Aguardando o cliente e sem movimentação: vira sugestão de concluir no Hoje (onde a lista exige, registra "Respondido pelo cliente" antes). 0 desliga.' },
     { k: 'prescricaoDias', rot: 'Prescrição no Onvio', un: 'dias', ajuda: 'Regra do Onvio, só informativa (a prescrição não gera alerta): só mude se o Onvio mudar.' }
   ] },
   { titulo: 'Respostas ao cliente', ic: 'i-chat', campos: [

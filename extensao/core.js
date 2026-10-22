@@ -91,6 +91,9 @@
     // Na vez do escritório e sem nenhuma movimentação há mais que isso (dias corridos): provavelmente foi resolvida fora
     // do portal (Sugestões de ação no Hoje). 0 desliga. Pedido do Josué, 16/10/2026.
     foraDoPortalDias: 30,
+    // Na vez do cliente (aguardando o cliente) e sem nenhuma movimentação há mais que isso (dias corridos): sugestão de concluir
+    // por falta de retorno. Onde a lista exige, primeiro registra "Respondido pelo cliente" e depois conclui. 0 desliga.
+    concluirClienteDias: 14,
     // Notificação do prazo legal (pagamento de férias e rescisão): avisa quando faltam até tantos dias úteis. 0 desliga.
     avisoLegalDias: 2,
     // Casos de Sugestões de ação ligados ou desligados (false desliga). 'falta' (pedido curto demais) vem desligado.
@@ -172,6 +175,8 @@
     textosSugestao: {
       fora: 'Pelo que consta, esta solicitação já foi resolvida fora do portal. Estamos concluindo por aqui. Se ainda precisar de algo, é só abrir uma nova solicitação.',
       abaErrada: 'Olá! Este pedido tem uma aba própria no Portal do Cliente: {aba}. Por favor, abra a solicitação por lá, com os campos preenchidos, para conseguirmos atender dentro do prazo. Estamos concluindo esta da lista Geral.',
+      semRetorno: 'Como não tivemos retorno do cliente nas últimas semanas, estamos concluindo esta solicitação. Se ainda precisar de algo, é só abrir uma nova solicitação.',
+      semRetornoEtapa: 'Registro para o encerramento: solicitação sem retorno do cliente há mais de duas semanas.',
       duplicada: 'Esta solicitação repete a nº {outra}, que já está em atendimento. Seguimos por lá e estamos concluindo esta.',
       falta: 'Olá! Para seguirmos com a solicitação, precisamos de mais informações: (descreva o que falta). Pode completar por aqui, por favor?',
       anexo: 'Olá! A mensagem fala em anexo, mas nenhum arquivo chegou. Pode anexar de novo por aqui, por favor?',
@@ -235,13 +240,7 @@
       cadContribuinte: ['Informe a data de início e o valor do pró-labore ou da retirada, para o cadastro no eSocial.'],
       rubricas: ['Lançamentos da competência {competencia} precisam chegar antes do fechamento da folha; depois disso entram na competência seguinte.']
     },
-    // Trâmite sugerido no aviso de férias/rescisão sem o cálculo ("Avisar o cliente" no Hoje). {empregado}, {aviso},
-    // {calculo}, {pagamento} e {ref} vêm do aviso; o analista revisa antes de enviar. O arquivo de regras pode trocar.
-    avisoSemCalculo: 'Recebemos o {aviso} de {empregado}, mas ainda não há a solicitação de {calculo} desse empregado. ' +
-      'Para o pagamento sair dentro do prazo legal (até {pagamento}, {ref}), abra a solicitação de {calculo} no Portal do Cliente o quanto antes. ' +
-      'Sem ela não conseguimos preparar o cálculo a tempo.',
-    // Criar solicitação (Geral) pela extensão. Assunto da solicitação criada a partir de um aviso sem cálculo.
-    assuntoSemCalculo: '{calculo} pendente · {empregado}',
+    // Criar solicitação (Geral) pela extensão.
     // Texto do trâmite que passa a vez ao cliente logo depois de criar (situação Respondido)
     tramiteCriacao: 'Aguardando o retorno do cliente.',
     // Valores técnicos do corpo da criação, vistos no Onvio em 22/10/2026: tipo GENERIC, meio OTHER (Outro; também PHONE e
@@ -649,7 +648,7 @@
       await enriquecer(fetcher, out, extra.tramites, s, now);
     }
     if (extra && extra.avisos) {
-      if (onProgress) onProgress(TYPES.length, TYPES.length, 'avisos sem cálculo');
+      if (onProgress) onProgress(TYPES.length, TYPES.length, 'prazos legais');
       await verificarAvisos(fetcher, out, extra.avisos, s, now);
     }
     out.items.sort((a, b) => (b.nivel - a.nivel) || (b.parado - a.parado));
@@ -858,7 +857,7 @@
    * Tudo é validado: número dentro de limites, datas AAAA-MM-DD, textos curtos. Nada é executado. */
   const LIMITES = {
     primeiroTramite: [0, 30], conclusaoSimples: [1, 60], conclusaoCalculo: [1, 60], clienteSemRetorno: [1, 60], resolvidaClienteDias: [0, 30],
-    parada: [1, 90], foraDoPortalDias: [0, 180], desfazerSeg: [0, 15], prescricaoDias: [1, 120], prescricaoAviso: [1, 120], tempoRealSeg: [0, 600],
+    parada: [1, 90], foraDoPortalDias: [0, 180], concluirClienteDias: [0, 180], desfazerSeg: [0, 15], prescricaoDias: [1, 120], prescricaoAviso: [1, 120], tempoRealSeg: [0, 600],
     tempoOcupado: [0, 30], avisoLegalDias: [0, 15], admissaoAviso: [0, 15], estagiarioPrazoDias: [0, 60], pagamentoFeriasAntes: [0, 30], pagamentoRescisaoDias: [0, 60], avisoFeriasDias: [0, 90]
   };
   const inteiro = (v, [min, max]) => (typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max ? v : undefined);
@@ -883,8 +882,6 @@
         if ((k === 'todas' || TYPE_BY_KEY[k]) && Array.isArray(v)) out.observacoes[k] = v.filter(x => typeof x === 'string' && x.trim() && x.length <= 400).map(x => x.trim()).slice(0, 12);
       }
     }
-    if (typeof raw.avisoSemCalculo === 'string' && raw.avisoSemCalculo.trim() && raw.avisoSemCalculo.length <= 800) out.avisoSemCalculo = raw.avisoSemCalculo.trim();
-    if (typeof raw.assuntoSemCalculo === 'string' && raw.assuntoSemCalculo.trim() && raw.assuntoSemCalculo.length <= 200) out.assuntoSemCalculo = raw.assuntoSemCalculo.trim();
     if (typeof raw.tramiteCriacao === 'string' && raw.tramiteCriacao.trim() && raw.tramiteCriacao.length <= 400) out.tramiteCriacao = raw.tramiteCriacao.trim();
     if (raw.criacao && typeof raw.criacao === 'object' && !Array.isArray(raw.criacao)) {
       const c = {};
@@ -957,7 +954,7 @@
         if (t && t.key !== 'geral' && palavras.length) out.abaErrada.push({ tipo: t.key, palavras });
       }
     }
-    const util = Object.keys(out.config).length || out.feriados.length || out.abaErrada.length || (out.observacoes && Object.keys(out.observacoes).length) || out.avisoSemCalculo || out.assuntoSemCalculo || out.tramiteCriacao || out.criacao || out.sugestoes || out.modelosCriacao || out.equipeDP || out.departamentoDP || out.departamentosDP || out.acidenteTipoIds || out.acidenteCatIds || out.prazoAnalistaPalavras || out.avisoTrabalhadoPalavras || out.acidentePalavras || out.senhaGestorSha256 || out.avaliacao || out.pedidoAoCliente || out.cortesiaCliente || out.foraDoPortal || out.anexoCitado || out.textosSugestao || out.modelosTramite;
+    const util = Object.keys(out.config).length || out.feriados.length || out.abaErrada.length || (out.observacoes && Object.keys(out.observacoes).length) || out.tramiteCriacao || out.criacao || out.sugestoes || out.modelosCriacao || out.equipeDP || out.departamentoDP || out.departamentosDP || out.acidenteTipoIds || out.acidenteCatIds || out.prazoAnalistaPalavras || out.avisoTrabalhadoPalavras || out.acidentePalavras || out.senhaGestorSha256 || out.avaliacao || out.pedidoAoCliente || out.cortesiaCliente || out.foraDoPortal || out.anexoCitado || out.textosSugestao || out.modelosTramite;
     return util ? out : null;
   }
 
@@ -970,8 +967,6 @@
       if (r.feriados && r.feriados.length) base.feriados = [...new Set(DEFAULTS.feriados.concat(r.feriados))].sort();
       if (r.abaErrada && r.abaErrada.length) base.abaErrada = r.abaErrada;
       if (r.observacoes) base.observacoes = Object.assign({}, DEFAULTS.observacoes, r.observacoes);
-      if (r.avisoSemCalculo) base.avisoSemCalculo = r.avisoSemCalculo;
-      if (r.assuntoSemCalculo) base.assuntoSemCalculo = r.assuntoSemCalculo;
       if (r.tramiteCriacao) base.tramiteCriacao = r.tramiteCriacao;
       if (r.criacao) base.criacao = Object.assign({}, DEFAULTS.criacao, r.criacao, { departamentos: Object.assign({}, DEFAULTS.criacao.departamentos, r.criacao.departamentos || {}) });
       if (r.modelosCriacao) base.modelosCriacao = r.modelosCriacao;
@@ -1685,28 +1680,12 @@
     return null;
   }
 
-  /* ---------- prazo legal de pagamento e aviso sem cálculo (férias e rescisão) ----------
+  /* ---------- prazo legal de pagamento (férias e rescisão) ----------
    * Nas 4 listas de férias e rescisão, o vencimento que conta é o prazo legal de pagamento (não a expectativa do cliente).
    * A data vem do detalhe (lido uma vez por solicitação). Quando faltam "tempoOcupado" dias úteis ou menos (o tempo de
    * atendimento num período cheio), a solicitação ganha o motivo do prazo legal: atenção, ou fora do prazo com 1 dia útil
-   * ou menos. Nos avisos, com o prazo perto, procura o cálculo do mesmo empregado no mesmo cliente (qualquer situação,
-   * aberto até 60 dias antes do aviso); sem ele, entra em "Avisos sem cálculo". Cache: só datas, sim/não e quando conferiu. */
-  const PAR_CALCULO = { avisoFerias: 'calcFerias', avisoRescisao: 'calcRescisao' };
+   * ou menos. Cache: só datas e quando leu. (A busca do cálculo do mesmo empregado, o "aviso sem cálculo", saiu em 22/10/2026.) */
   const PRAZO_LEGAL = new Set(['avisoFerias', 'calcFerias', 'avisoRescisao', 'calcRescisao']);
-  async function temCalculo(fetcher, it) {
-    const tc = TYPE_BY_KEY[PAR_CALCULO[it.type]];
-    if (!it.detalhe) return false;
-    const d = await fetcher(urlConsulta(tc, { search: it.detalhe, per: 50, orderBy: 'created desc' }));
-    const desde = parseDate(it.created) ? parseDate(it.created).getTime() - 60 * 864e5 : 0;
-    const nome = semAcento(it.detalhe).trim();
-    return ((d && d.items) || []).some(r => {
-      const emp = semAcento((r.clientEmployeeExpanded && r.clientEmployeeExpanded.name) || '').trim();
-      const cli = r.clientExpanded || {};
-      const mesmoCli = (it.codCliente && cli.code != null) ? String(cli.code) === String(it.codCliente) : semAcento(cli.name || '') === semAcento(it.cliente || '');
-      const cr = parseDate(r.created);
-      return emp === nome && mesmoCli && (!cr || cr.getTime() >= desde);
-    });
-  }
   // Afastamento por acidente de trabalho: as palavras aparecem no assunto, na descrição ou no tipo de afastamento do detalhe
   // (o campo do tipo, employeeLeaveTypeExpanded, ainda será confirmado no mapeamento: quando houver, o valor entra aqui)
   function temAcidente(d, s) {
@@ -1731,12 +1710,12 @@
     const hol = new Set(s.feriados || []);
     const novo = {};
     let chamadas = 0;
-    const LIMITE = 40, RECONFERE = 6 * 3600e3;
+    const LIMITE = 40;
     for (const it of out.items.filter(i => PRAZO_LEGAL.has(i.type) || i.type === 'afastamento')) {
       const c = Object.assign({}, cache[it.k] || {});
       try {
         if (c.erro && now - new Date(c.erro) < 864e5) { novo[it.k] = c; continue; }   // não insiste por 1 dia
-        delete c.erro;
+        delete c.erro; delete c.calc; delete c.conf;   // sobras da busca do cálculo, que saiu
         if (it.type === 'afastamento' && Number.isInteger(it.tipoAfastamento)) {   // o tipo vem na lista: sem ler o detalhe
           if (ehAcidenteTipo(it.tipoAfastamento, s)) marcarAcidente(it, s);
           continue;
@@ -1771,62 +1750,13 @@
           it.motivos = (it.motivos || []).concat([mo]);
           if (n > (it.nivel || 0)) { it.nivel = n; it.grav = gravidade(it, TYPE_BY_KEY[it.type], s, { nivel: n, parado: it.parado, uteisAberto: it.uteisAberto, prescreveEm: it.prescreveEm }); }
         }
-        if (perto && PAR_CALCULO[it.type] && !c.calc && (!c.conf || now - new Date(c.conf) > RECONFERE) && chamadas < LIMITE) {
-          chamadas++;
-          c.calc = await temCalculo(fetcher, it);
-          c.conf = now.toISOString();
-        }
-        if (perto && PAR_CALCULO[it.type] && c.conf && !c.calc) it.semCalculo = { alvo: c.alvo, faltam, ref: c.ref, calculo: TYPE_BY_KEY[PAR_CALCULO[it.type]].label };
       } catch (e) {
         if (e && e.auth) throw e;
         c.erro = now.toISOString();
       }
       novo[it.k] = c;
     }
-    out.avisos = { cache: novo, semCalculo: out.items.filter(i => i.semCalculo).length };
-  }
-
-  /* Quadro dos avisos sem cálculo (Hoje, em duas colunas): "A avisar" e "Cliente avisado". Cada marca guarda só o
-   * id interno (k), a coluna e quando: { k: { st: 'avisado' | 'desconsiderado', em } }. O aviso some do quadro sozinho
-   * quando o cálculo chega ou quando a solicitação sai das pendentes. */
-  const MARCAS_SC = new Set(['avisado', 'desconsiderado']);
-  function quadroSemCalculo(items, marcas) {
-    marcas = marcas || {};
-    const q = { avisar: [], avisados: [], desconsiderados: [] };
-    (items || []).filter(i => i.semCalculo).sort((a, b) => a.semCalculo.faltam - b.semCalculo.faltam).forEach(item => {
-      const m = marcas[item.k];
-      const st = m && MARCAS_SC.has(m.st) ? m.st : null;
-      (st === 'avisado' ? q.avisados : st === 'desconsiderado' ? q.desconsiderados : q.avisar).push({ item, em: st ? m.em : null });
-    });
-    return q;
-  }
-  // Nova marca (st null tira) e limpeza: some a marca de aviso que já não está entre as pendentes há mais de 7 dias.
-  function marcarSemCalculo(marcas, k, st, items, now) {
-    now = now || new Date();
-    const vivos = new Set((items || []).map(i => i.k));
-    const out = {};
-    for (const [kk, m] of Object.entries(marcas || {})) {
-      if (!m || !MARCAS_SC.has(m.st)) continue;
-      const t = parseDate(m.em);
-      if (vivos.has(kk) || (t && now - t < 7 * 864e5)) out[kk] = { st: m.st, em: m.em };
-    }
-    if (k) { if (MARCAS_SC.has(st)) out[k] = { st, em: now.toISOString() }; else delete out[k]; }
-    return out;
-  }
-  // Assunto da solicitação criada para avisar o cliente (Geral)
-  function assuntoAvisoSemCalculo(item, settings) {
-    const s = Object.assign({}, DEFAULTS, settings || {});
-    const sc = item.semCalculo || {};
-    const vals = { aviso: item.typeLabel || 'Aviso', empregado: item.detalhe || 'empregado', calculo: sc.calculo || 'Cálculo' };
-    return String(s.assuntoSemCalculo || DEFAULTS.assuntoSemCalculo).replace(/\{(\w+)\}/g, (x, k) => (k in vals ? vals[k] : x)).replace(/\s{2,}/g, ' ').trim().slice(0, 200);
-  }
-  // Texto do trâmite "Avisar o cliente" (só na memória até o analista enviar; nunca guardado)
-  function textoAvisoSemCalculo(item, settings) {
-    const s = Object.assign({}, DEFAULTS, settings || {});
-    const sc = item.semCalculo || {};
-    const dt = sc.alvo ? sc.alvo.slice(8, 10) + '/' + sc.alvo.slice(5, 7) + '/' + sc.alvo.slice(0, 4) : '';
-    const vals = { aviso: (item.typeLabel || 'aviso').toLowerCase(), empregado: item.detalhe || 'o empregado', calculo: (sc.calculo || 'cálculo').toLowerCase(), pagamento: dt, ref: sc.ref || '' };
-    return String(s.avisoSemCalculo || DEFAULTS.avisoSemCalculo).replace(/\{(\w+)\}/g, (x, k) => (k in vals ? vals[k] : x)).replace(/\s{2,}/g, ' ').trim();
+    out.avisos = { cache: novo };
   }
 
   /* ---------- observações para o cliente (detalhe) ----------
@@ -2378,6 +2308,19 @@
   // A situação "equivalente" de um modelo ou de um caso (escritos com os códigos da lista padrão) em outra lista
   const TIPO_DE_SIT = { 2: 'analise', 4: 'cliente', 5: 'fim', 8: 'interna' };
   const SIT_DO_TIPO = { padrao: { analise: 2, cliente: 4, fim: 5, interna: 8 }, cadastro: { cliente: 3, fim: 6 }, rubricas: { analise: 2, cliente: 4, fim: 8 } };
+  // Concluir uma solicitação que está com o cliente: a lista pode não deixar concluir direto. No Cadastro (Aguardando o cliente)
+  // e nas Rubricas (Aguardando correção) o Onvio só oferece "Respondido": primeiro registra o retorno e depois conclui.
+  // Devolve { situacao: código de Concluído, antes: [{ situacao, rot }] } ou null (a extensão não consegue concluir).
+  const RESPONDIDO_PELO_CLIENTE = { cadastro: 4, rubricas: 4 };
+  function planoConclusao(item) {
+    const t = TYPE_BY_KEY[item && item.type];
+    if (!t || !ACOES.tramite(item.type)) return null;
+    const fim = SIT_DO_TIPO[t.familia].fim, aceita = x => situacoesTramite(x).map(c => c.code);
+    if (aceita(item).includes(fim)) return { situacao: fim, antes: [] };
+    const resp = RESPONDIDO_PELO_CLIENTE[t.familia];
+    if (resp && aceita(item).includes(resp) && aceita(Object.assign({}, item, { code: resp })).includes(fim)) return { situacao: fim, antes: [{ situacao: resp, rot: FAMILIAS[t.familia].st[resp][0] }] };
+    return null;
+  }
   const situacaoEquivalente = (codPadrao, item) => { const t = TYPE_BY_KEY[item && item.type]; return t ? (SIT_DO_TIPO[t.familia][TIPO_DE_SIT[codPadrao]] || null) : null; };
   const saudacaoDa = now => { const h = (now || new Date()).getHours(); return h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite'; };
   // valores das {variáveis}; só entram as que têm valor (as outras ficam no texto e barram o envio)
@@ -2450,7 +2393,8 @@
     anexo: { rot: 'Anexo não chegou', botao: 'Pedir o anexo', situacao: 4 },
     falta: { rot: 'Falta informação', botao: 'Pedir informações', situacao: 4 },
     feriasNova: { rot: 'Férias nova', botao: 'Pôr em análise', situacao: 2 },
-    avisoTrabalhado: { rot: 'Aviso trabalhado', botao: 'Criar lembrete', situacao: null, lembrete: true }
+    avisoTrabalhado: { rot: 'Aviso trabalhado', botao: 'Criar lembrete', situacao: null, lembrete: true },
+    semRetorno: { rot: 'Sem retorno do cliente', botao: 'Concluir', situacao: 5, conclusao: true }     // em dois passos onde a lista exige (planoConclusao)
   };
   const ORDEM_CASOS = Object.keys(CASOS);
   const textoPlano = x => semAcento(String(x || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/&[a-z#0-9]+;/gi, ' ')).replace(/\s+/g, ' ');
@@ -2539,12 +2483,19 @@
     for (const i of pend) if (i.type === 'avisoRescisao' && acharTrecho(textoPlano(i.detalhe), s.avisoTrabalhadoPalavras)) add(i, 'avisoTrabalhado', {});
     // cálculo de rescisão com aviso trabalhado (terminationType WORKED, que já vem na lista): lembrar de emitir o aviso, sem calcular agora
     for (const i of pend) if (i.type === 'calcRescisao' && i.tipoAviso === 'WORKED' && i.lado === 'esc') add(i, 'avisoTrabalhado', {});
+    // aguardando o cliente há mais de duas semanas: sugestão de concluir por falta de retorno (o plano de passos sai do item)
+    if (s.concluirClienteDias > 0) for (const i of pend) if (i.lado === 'cli' && (i.parado || 0) > s.concluirClienteDias) add(i, 'semRetorno', { porque: 'Aguardando o cliente há ' + i.parado + ' dias, sem retorno: pode ser concluída' });
     for (const i of pend) if (i.abaProvavel) add(i, 'abaErrada', { aba: i.abaProvavel.label, porque: 'Aberta na lista Geral, mas tem aba própria: ' + i.abaProvavel.label });
     return [...casos.values()].map(c => {
       const def = CASOS[c.tipo];
       if (def.lembrete) {                                          // aviso trabalhado: não é trâmite, é um lembrete pessoal
         const lem = lembreteAvisoTrabalhado(c.item, s, new Date());
         return Object.assign(c, { rot: def.rot, botao: def.botao, pode: { ok: true }, porque: 'Aviso prévio trabalhado: lembrar de emitir o aviso (sem cálculo)' + (lem.semData ? ' · a data do aviso não foi lida: lembrete para o próximo dia útil' : ' · lembrete para ' + lem.dia), acao: { lembrete: lem } });
+      }
+      if (def.conclusao) {                                         // concluir por falta de retorno: 1 ou 2 passos, conforme a lista
+        const plano = planoConclusao(c.item), p0 = podeAcao('tramite', c.item);
+        const pode = !p0.ok ? p0 : plano ? p0 : { ok: false, motivo: 'a extensão não consegue concluir esta lista a partir da situação atual: conclua pelo Onvio' };
+        return Object.assign(c, { rot: def.rot, botao: def.botao, pode, acao: plano ? { situacao: String(plano.situacao), texto: String(tx.semRetorno || ''), antes: plano.antes.map(a => ({ situacao: String(a.situacao), rot: a.rot, texto: String(tx.semRetornoEtapa || '') })) } : { situacao: '', texto: String(tx.semRetorno || ''), antes: [] } });
       }
       const pode = podeAcao('tramite', c.item);
       const sits = pode.ok ? situacoesTramite(c.item).map(x => x.code) : [];
@@ -2600,5 +2551,5 @@
     return { dias, empresas: lista, total: lista.reduce((s2, r) => s2 + r.total, 0), prox30: lista.reduce((s2, r) => s2 + r.prox30, 0) };
   }
 
-  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, quadroSemCalculo, marcarSemCalculo, textoAvisoSemCalculo, assuntoAvisoSemCalculo, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, marcadoresPendentes, avisosResposta, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, marcadoresPendentes, avisosResposta, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);

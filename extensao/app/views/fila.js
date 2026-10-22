@@ -17,8 +17,7 @@ const KPI = {
   abaErrada: { rot: 'Possível aba errada', f: i => !!i.abaProvavel },
   cli: { rot: 'Na vez do cliente', f: i => i.lado === 'cli' },
   admissao: { rot: 'Admissões em destaque', f: i => !!i.admissaoAlerta && !OC.escritorioTramitou(i) },
-  pagamento: { rot: 'Pagamento vencendo em até 1 dia útil', f: i => !!i.prazoLegal && i.prazoLegal.faltam <= 1 },
-  semcalc: { rot: 'Avisos sem cálculo', f: i => !!i.semCalculo }
+  pagamento: { rot: 'Pagamento vencendo em até 1 dia útil', f: i => !!i.prazoLegal && i.prazoLegal.faltam <= 1 }
 };
 
 // Colunas da lista. "Responsável" só aparece quando a lista não é só sua.
