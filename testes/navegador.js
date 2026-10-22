@@ -588,6 +588,9 @@ await passo('app · Solicitações: responsável sugerido nas sem responsável a
   assert.equal(await p.textContent('[data-sug-resp="geral:s1"]'), 'Sugerido: Bia');
   assert.match(await p.getAttribute('[data-sug-resp="geral:s1"]', 'title'), /atendeu 3 de 4 solicitações desta empresa/);
   assert.equal(await p.textContent('[data-sug-resp="geral:s2"]'), 'Escolher responsável', 'sem histórico');
+  assert.equal(await p.$eval('[data-sug-resp="geral:s1"]', b => getComputedStyle(b).borderTopStyle), 'solid', 'botão padrão, sem borda tracejada');
+  assert.ok(await p.$eval('[data-sug-resp="geral:s2"]', b => b.classList.contains('btn') && b.classList.contains('btn-sm')), 'o mesmo botão pequeno do resto da tela');
+  if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/sug-resp.png' });
   // acidente: primeiro da fila, com a etiqueta e o porquê no title
   assert.equal((await linhas(p))[0], 'afastamento:z1');
   assert.equal(await p.textContent('#corpo [data-k="afastamento:z1"] .sc-mot-tx'), 'Acidente de trabalho');
@@ -639,7 +642,8 @@ await passo('app · Fila: abas Minhas, Todas e Respondidas, cartões por padrão
   // cartões de tipo: nome inteiro (sem reticências) e aviso + cálculo ligados num bloco só
   assert.deepEqual(await p.$$eval('#tipos .tipo-par', e => e.map(x => x.querySelectorAll('.tipo-c').length + ':' + x.querySelector('.tipo-par-cab span').textContent)), ['2:Férias', '2:Rescisão']);
   assert.deepEqual(await p.$$eval('#tipos .tipo-par', e => e.map(x => [...x.querySelectorAll('.tipo-c')].map(c => c.dataset.tipo).join('+'))), ['avisoFerias+calcFerias', 'avisoRescisao+calcRescisao']);
-  assert.equal(await p.$$eval('#tipos .tipo-par .tipo-elo', e => e.length), 2, 'elo entre aviso e cálculo');
+  assert.equal(await p.$$eval('#tipos .tipo-par .tipo-elo', e => e.length), 0, 'sem o ícone de link entre aviso e cálculo');
+  assert.deepEqual(await p.$$eval('#tipos .tipo-par-cab', e => e.map(x => x.textContent)), ['Férias', 'Rescisão'], 'só o nome da família no título');
   assert.equal(await p.$$eval('#tipos .tipo-rot', e => e.filter(x => x.scrollWidth > x.clientWidth + 1).length), 0, 'nome do tipo sem texto cortado');
   assert.equal(await p.$('#f-vez'), null, 'sem o filtro Aguardando o cliente: o cliente tem a aba Respondidas');
   assert.match(await p.textContent('#vez-tit'), /^Todas as pendências/);
