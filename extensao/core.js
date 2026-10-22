@@ -1067,7 +1067,7 @@
     const em = (now || new Date()).toISOString();
     const antes = new Map(anterior.items.concat(anterior.resolvidas || []).map(i => [i.k, i]));   // resolvida que volta não é nova
     const out = [];
-    const ev = (tipo, it, titulo) => out.push({ id: tipo + ':' + it.k + ':' + em, tipo, titulo, k: it.k, type: it.type, num: String(it.num), typeLabel: it.typeLabel, cliente: it.apelido || it.cliente || '', mine: !!it.mine, em });
+    const ev = (tipo, it, titulo, meu) => out.push({ id: tipo + ':' + it.k + ':' + em, tipo, titulo, k: it.k, type: it.type, num: String(it.num), typeLabel: it.typeLabel, cliente: it.apelido || it.cliente || '', mine: meu == null ? !!it.mine : !!meu, em });
     for (const it of snap.items) {
       const a = antes.get(it.k);
       if (!a) {
@@ -1078,8 +1078,8 @@
       const meu = it.mine || (s.modoGestor && !it.resp);
       if (it.mine && a.lado === 'cli' && it.lado === 'esc') ev('respondeu', it, 'Cliente respondeu');
       const lim = s.avisoLegalDias;
-      if (meu && lim > 0 && it.prazoLegal && it.prazoLegal.faltam <= lim && !(a.prazoLegal && a.prazoLegal.faltam <= lim)) ev('legal', it, 'Prazo legal: pagamento ' + (it.prazoLegal.faltam < 0 ? 'venceu' : it.prazoLegal.faltam === 0 ? 'vence hoje' : 'em ' + it.prazoLegal.faltam + ' d.u.'));
-      if (meu && it.lado === 'esc' && it.grav === 3 && !(a.lado === 'esc' && a.grav === 3)) ev('urgente', it, 'Solicitação urgente');
+      if (meu && lim > 0 && it.prazoLegal && it.prazoLegal.faltam <= lim && !(a.prazoLegal && a.prazoLegal.faltam <= lim)) ev('legal', it, 'Prazo legal: pagamento ' + (it.prazoLegal.faltam < 0 ? 'venceu' : it.prazoLegal.faltam === 0 ? 'vence hoje' : 'em ' + it.prazoLegal.faltam + ' d.u.'), true);
+      if (meu && it.lado === 'esc' && it.grav === 3 && !(a.lado === 'esc' && a.grav === 3)) ev('urgente', it, 'Solicitação urgente', true);
     }
     return out;
   }

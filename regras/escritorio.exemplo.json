@@ -11,8 +11,9 @@
     "foraDoPortalDias": 30,
     "desfazerSeg": 5,
     "prescricaoDias": 30,
-    "prescricaoAviso": 20
+    "avisoLegalDias": 2
   },
+  "sugestoes": { "falta": false },
   "feriados": [
     "2026-12-24",
     "2026-12-31"
