@@ -67,8 +67,8 @@ export function respHtml(i) {
   const s = sugestoesResp && sugestoesResp.get(i.k);
   if (!s || !OC.podeAcao('responsavel', i).ok) return '<span class="today">sem responsável</span>';
   return s.resp && s.respId
-    ? '<button type="button" class="sug-resp" data-sug-resp="' + esc(i.k) + '" title="' + esc('Sugerido: ' + s.resp + ', que ' + s.motivo + '. Clique para atribuir: você revisa e confirma.') + '">Sugerido: ' + esc(s.resp) + '</button>'
-    : '<button type="button" class="sug-resp sem" data-sug-resp="' + esc(i.k) + '" title="' + esc(s.motivo || 'Sem histórico: escolha o responsável') + '">Escolher responsável</button>';
+    ? '<button type="button" class="btn btn-sm sug-resp" data-sug-resp="' + esc(i.k) + '" title="' + esc('Sugerido: ' + s.resp + ', que ' + s.motivo + '. Clique para atribuir: você revisa e confirma.') + '">Sugerido: ' + esc(s.resp) + '</button>'
+    : '<button type="button" class="btn btn-sm sug-resp" data-sug-resp="' + esc(i.k) + '" title="' + esc(s.motivo || 'Sem histórico: escolha o responsável') + '">Escolher responsável</button>';
 }
 // Cartão de solicitação (visão "Cartões" das filas): o prazo legal, quando há, ou a idade em cinza
 export function cartaoItem(i) {

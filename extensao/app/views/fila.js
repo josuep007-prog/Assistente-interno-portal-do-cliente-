@@ -149,8 +149,8 @@ export function render(el, ctx, params) {
         '<b>' + tot + '</b><span class="tipo-sub">' + (leg ? '<em>' + leg + ' com prazo legal</em>' : tot ? 'sem prazo legal perto' : 'nenhuma') + '</span></button>';
     };
     const c = k => cartao(k, OC.TYPE_BY_KEY[k].label, l.filter(i => i.type === k));
-    // aviso e cálculo andam juntos (férias e rescisão): um bloco só, com os dois cartões ligados por um elo
-    const par = (a, b, rot) => '<div class="tipo-par fam-' + tipoVisual(a).fam + '" role="group" aria-label="' + esc(rot) + ': aviso e cálculo"><div class="tipo-par-cab"><span>' + esc(rot) + '</span><small>aviso + cálculo</small></div><div class="tipo-par-in">' + c(a) + '<span class="tipo-elo" aria-hidden="true"><svg class="ic"><use href="#i-elo"/></svg></span>' + c(b) + '</div></div>';
+    // aviso e cálculo andam juntos (férias e rescisão): um bloco só, com os dois cartões lado a lado
+    const par = (a, b, rot) => '<div class="tipo-par fam-' + tipoVisual(a).fam + '" role="group" aria-label="' + esc(rot) + ': aviso e cálculo"><div class="tipo-par-cab"><span>' + esc(rot) + '</span></div><div class="tipo-par-in">' + c(a) + c(b) + '</div></div>';
     $('#tipos', el).innerHTML = cartao('', 'Todos os tipos', l) + ['geral', 'cadEmpregado', 'cadContribuinte', 'cadEstagiario'].map(c).join('') +
       par('avisoFerias', 'calcFerias', 'Férias') + par('avisoRescisao', 'calcRescisao', 'Rescisão') + ['afastamento', 'rubricas'].map(c).join('');
     $$('[data-tipo]', el).forEach(b => b.onclick = () => { filtros.tipo = filtros.tipo === b.dataset.tipo ? '' : b.dataset.tipo; const s = $('#f-tipo', el); if (s) s.value = filtros.tipo; desenhar(); });
