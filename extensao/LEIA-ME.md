@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.26.0)
+# Control Onvio · ControlTax (v0.32.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,18 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.32.0 (o mapeamento de 22/10/2026 aplicado)
+
+Você rodou o roteiro no Onvio real e o relatório está em `mapeamento/pendencias-2026-10-22.md`. O que mudou por causa dele:
+
+- **Acidente de trabalho pelo tipo do afastamento.** O tipo (`employeeLeaveTypeId`) já vem na lista, então a extensão não precisa mais ler o detalhe nem procurar palavras: são acidente os tipos 3, 10, 14, 17, 42 e 44 (`acidenteTipoIds`); os que exigem CAT são 3, 10 e 17 (`acidenteCatIds`). Nos outros dois a etiqueta pede só para conferir a CAT e o benefício. Sem o tipo na lista, vale a busca por palavras de antes.
+- **Aviso trabalhado pelo cálculo de rescisão.** O aviso de rescisão não diz se é trabalhado; o **cálculo** diz (`terminationType = WORKED`, que vem na lista). A sugestão "Criar lembrete" aparece nos cálculos de rescisão trabalhados na vez do escritório, com o lembrete para o dia útil antes do início do aviso (`priorNoticeAdviceDate`). Indenizado e ausência/dispensa não geram o lembrete. A busca por palavras no aviso continua como segunda chance.
+- **Quem é do DP, pelo acesso do usuário.** A extensão lê o departamento do acesso (`company-department-access`) e, de fábrica, considera DP os ids do Pessoal (`departamentosDP`). Quem tem acesso a **outro departamento** vê só as suas solicitações (sem Todas, Equipe e Distribuir) e na Geral some o que é de outro departamento; era isso que mostrava demandas do DP a outros setores, porque a Geral mistura todos. `equipeDP` (nomes) continua valendo mais que o acesso. Se a leitura do acesso falhar, ninguém é escondido.
+- **Baixar anexos funciona de primeira.** As rotas foram mapeadas: a extensão pede o endereço do arquivo (`downloadUrl`) pelo caminho certo de cada lista e baixa. Rubricas e Cadastro usam o `staticFilePath`. Só o anexo de trâmite do **Cadastro** ainda depende de a extensão aprender o caminho (os itens de teste não tinham anexo). Não existe "baixar tudo" no Onvio, então a escolha dos anexos continua aqui.
+- **Expectativa de conclusão** também no **Afastamento** e no **Cálculo de férias** (confirmados). Aviso de férias, rescisão, Cadastro e Rubricas continuam sem.
+- **Criar solicitação sem adivinhar:** o tipo (`GENERIC`), o meio (`OTHER`) e os ids de **Pessoal, Fiscal e Contábil** vêm de fábrica; a janela não precisa mais ler uma Geral recente e o aviso "sem id do departamento" some.
+- **Ainda a confirmar:** o que o cliente vê em "Em análise"; o acesso de uma pessoa de outro setor (o filtro foi feito pelo que o Onvio devolve para o DP); o valor `catType` de "Trajeto" e `terminationType` do aviso indenizado; o anexo de trâmite do Cadastro; criar nas listas da folha (o Onvio oferece "Adicionar", mas a extensão ainda não cria nelas).
 
 ## Novidades da v0.31.0 (setores e prazo prometido)
 
