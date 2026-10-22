@@ -144,7 +144,7 @@ function contadores() {
 }
 
 /* ---------- sino ---------- */
-const ICONE = { nova: 'i-plus', respondeu: 'i-chat', legal: 'i-calendar', urgente: 'i-alert', semresp: 'i-users', lembrete: 'i-clock' };
+const ICONE = { nova: 'i-plus', respondeu: 'i-chat', legal: 'i-calendar', urgente: 'i-alert', semresp: 'i-users', lembrete: 'i-clock', acidente: 'i-alert' };
 function abrirSino(abrir) {
   const p = $('#sino-painel'), b = $('#btn-sino');
   const vai = abrir == null ? p.hidden : abrir;

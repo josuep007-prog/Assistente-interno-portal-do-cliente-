@@ -13,7 +13,7 @@
     "prescricaoDias": 30,
     "avisoLegalDias": 2
   },
-  "sugestoes": { "falta": false },
+  "sugestoes": { "falta": false, "feriasNova": true, "avisoTrabalhado": true },
   "feriados": [
     "2026-12-24",
     "2026-12-31"
@@ -33,8 +33,14 @@
   "criacao": {
     "serviceRequestType": "",
     "requestWay": "",
-    "departmentId": ""
+    "departmentId": "",
+    "departamentos": { "dp": "", "fiscal": "", "contabil": "" }
   },
+  "modelosCriacao": [
+    { "dep": "fiscal", "rot": "Documentos fiscais do mês", "assunto": "Documentos fiscais pendentes da competência", "descricao": "Para apurar os impostos da competência (descreva a competência), precisamos das notas fiscais de entrada e de saída. Pode anexá-las respondendo a esta solicitação, por favor?" }
+  ],
+  "avisoTrabalhadoPalavras": ["trabalhado", "cumprir o aviso"],
+  "acidentePalavras": ["acidente", "cat", "b91"],
   "abaErrada": [
     {
       "tipo": "calcFerias",

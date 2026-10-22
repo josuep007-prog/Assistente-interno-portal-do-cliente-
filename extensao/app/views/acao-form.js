@@ -13,7 +13,7 @@ export const acaoAberta = () => !!f;
 export const fecharAcao = () => { f = null; };
 export function novaAcao(acao, preset) {
   const p = preset || {};
-  f = { acao, modo: 'encaminhar', texto: p.texto || '', analista: '', data: '', confirmar: false, enviando: false, erro: '', aoEnviar: typeof p.aoEnviar === 'function' ? p.aoEnviar : null };
+  f = { acao, modo: p.modo === 'responsavel' ? 'responsavel' : 'encaminhar', texto: p.texto || '', analista: p.analista || '', data: '', confirmar: false, enviando: false, erro: '', aoEnviar: typeof p.aoEnviar === 'function' ? p.aoEnviar : null };
 }
 // o que cada opção de "passar" pode fazer agora, com o motivo na própria linha quando não pode
 export function opcoesPassar(i) {

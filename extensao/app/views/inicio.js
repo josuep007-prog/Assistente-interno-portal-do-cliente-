@@ -67,7 +67,7 @@ export function render(el, ctx) {
   const { extra } = ctx.cab({
     titulo: 'Hoje',
     sub: esc(saudacao() + (nome ? ', ' + nome : '') + ' · ' + dataExtensa()),
-    extra: '<label class="hj-cart">Carteira <select id="hj-carteira" aria-label="Carteira">' + opcoes.map(([v, r]) => '<option value="' + esc(v) + '"' + (v === cart ? ' selected' : '') + '>' + esc(r) + '</option>').join('') + '</select></label>'
+    extra: '<button type="button" class="btn btn-sm btn-primary" id="hj-nova"><svg class="ic ic-sm"><use href="#i-plus"/></svg> Nova solicitação</button><label class="hj-cart">Carteira <select id="hj-carteira" aria-label="Carteira">' + opcoes.map(([v, r]) => '<option value="' + esc(v) + '"' + (v === cart ? ' selected' : '') + '>' + esc(r) + '</option>').join('') + '</select></label>'
   });
 
   // aviso de uma linha, só quando preciso
@@ -127,7 +127,7 @@ export function render(el, ctx) {
           '<span class="cs-tx"><b>#' + esc(i.num) + ' ' + esc(nomeCli(i)) + ' · ' + esc(i.detalhe || i.typeLabel) + '</b>' +
           '<small>' + esc(c.porque) + ' · ' + esc(i.typeLabel) + (cart === MINHA ? '' : ' · ' + esc(i.resp || 'sem analista')) + '</small></span></button>' +
         '<div class="cs-acoes">' + (c.pode.ok
-          ? '<button type="button" class="btn btn-sm btn-primary" data-cs-acao="' + esc(i.k) + '" title="Abre o trâmite já preenchido: você revisa e confirma">' + esc(c.botao) + '</button>'
+          ? '<button type="button" class="btn btn-sm btn-primary" data-cs-acao="' + esc(i.k) + '" title="' + (c.acao.lembrete ? 'Cria um lembrete pessoal na Agenda (nada é enviado ao Onvio)' : 'Abre o trâmite já preenchido: você revisa e confirma') + '">' + esc(c.botao) + '</button>'
           : '<button type="button" class="btn btn-sm" data-k="' + esc(i.k) + '" title="' + esc(c.pode.motivo) + '">Abrir</button>') +
           '<details class="menu sc-mais"><summary class="icon-btn" aria-label="Mais ações" title="Mais ações">' + ic('more', 'ic-sm') + '</summary><div class="menu-list">' +
             '<button type="button" class="menu-item" data-k="' + esc(i.k) + '">' + ic('eye', 'ic-sm') + ' Ver a solicitação</button>' +
@@ -135,11 +135,11 @@ export function render(el, ctx) {
         '</div></div>';
     };
     return painel('hj-sug', ic('chat', 'ic-sm') + ' Sugestões de ação' + (casos.length ? ' <span class="sc-n">' + casos.length + '</span>' : ''),
-      'Solicitações que parecem resolvidas fora do portal, abertas errado ou com falta de informação do cliente. A ação abre o trâmite já preenchido: você revisa e confirma.',
+      'Solicitações que parecem resolvidas fora do portal, abertas errado, férias novas e avisos de rescisão trabalhados. A ação abre o trâmite já preenchido (você revisa e confirma) ou cria um lembrete seu.',
       (porTipo.length ? '<p class="cs-resumo">' + porTipo.map(([t, n]) => '<span class="cs-' + t + '"><i></i>' + esc(OC.CASOS[t].rot) + ' <b>' + n + '</b></span>').join('') + '</p>' : '') +
       (casos.length ? '<div class="cs-lista">' + lista.map(linha).join('') + '</div>' +
         (casos.length > MAX ? '<button type="button" class="hj-painel-mais linkish" id="hj-sug-mais">' + (sugTodas ? 'Mostrar menos' : 'Ver todas as ' + casos.length) + '</button>' : '')
-        : vazio(casosLendo && !casosLidos ? 'Conferindo os trâmites das pendências…' : 'Nenhuma solicitação parece resolvida fora do portal, aberta errado ou com falta de informação.')) +
+        : vazio(casosLendo && !casosLidos ? 'Conferindo os trâmites das pendências…' : 'Nenhuma sugestão de ação por enquanto.')) +
       (situacao ? '<p class="hj-painel-nota" id="hj-sug-sit">' + esc(situacao) + '</p>' : ''),
       '<button class="icon-btn" id="hj-sug-ler" title="Conferir os trâmites de novo" aria-label="Conferir os trâmites de novo"' + (casosLendo ? ' disabled' : '') + '>' + ic('refresh', 'ic-sm') + '</button>');
   }
@@ -313,10 +313,18 @@ export function render(el, ctx) {
     if (!sec) return;
     ligarItens(sec, casos.map(c => c.item), ctx.abrirDetalhe);
     $$('.sc-mais', sec).forEach(d => d.addEventListener('click', e => e.stopPropagation()));
-    $$('[data-cs-acao]', sec).forEach(b => b.addEventListener('click', e => {
+    $$('[data-cs-acao]', sec).forEach(b => b.addEventListener('click', async e => {
       e.stopPropagation();
       const c = casos.find(x => x.k === b.dataset.csAcao);
-      if (c) ctx.abrirDetalhe(c.item, null, { acao: 'tramite', preset: { texto: c.acao.texto, situacao: c.acao.situacao } });
+      if (!c) return;
+      if (c.acao.lembrete) {                                       // aviso trabalhado: lembrete pessoal, sem escrever no Onvio
+        const l = c.acao.lembrete;
+        salvarLembretes((estado.lembretes || []).concat([OC.novoLembrete({ texto: l.texto, quando: l.quando, k: l.k, type: l.type, num: l.num, cliente: l.cliente }, new Date())]));
+        await ignorarSugestao(c.k, c.item);
+        toast('Lembrete criado para ' + l.dia + ' às 9h (veja na Agenda)');
+        return;
+      }
+      ctx.abrirDetalhe(c.item, null, { acao: 'tramite', preset: { texto: c.acao.texto, situacao: c.acao.situacao } });
     }));
     $$('[data-cs-ignorar]', sec).forEach(b => b.addEventListener('click', async e => {
       e.stopPropagation();
@@ -340,6 +348,7 @@ export function render(el, ctx) {
   $$('[data-motivo]', el).forEach(b => b.addEventListener('click', () => { location.hash = linkFila({ motivo: b.dataset.motivo }); }));
   $$('[data-cart]', el).forEach(b => b.addEventListener('click', () => trocarCarteira(b.dataset.cart)));
   $('#hj-carteira', extra).addEventListener('change', e => trocarCarteira(e.target.value));
+  $('#hj-nova', extra).onclick = () => ctx.abrirNova({});
   function trocarCarteira(v) { carteira = v; gravarPref('hojeCarteira', v); redesenhar(); }
   $('#ag-novo', el).onclick = () => ctx.abrirLembrete({ dia: new Date() });
   $$('[data-ag]', el).forEach(d => {

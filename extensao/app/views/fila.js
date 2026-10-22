@@ -4,7 +4,7 @@
  * cliente, com as "consideradas resolvidas" num grupo no fim. A ordem é por prioridade (OC.ordemFila): prazo legal,
  * sem análise, em análise, cliente respondeu, aguardando o cliente. Prazo interno e gravidade não aparecem aqui. */
 import { estado, itens, minhas, clienteRespondeu, enviar } from '../estado.js';
-import { esc, pillSituacao, prazoHtml, cartaoItem, ligarItens, csvItens, fmtDataCurta, normal, tipoVisual, tipoIcone, nivelLegal, $, $$ } from '../util.js';
+import { esc, pillSituacao, prazoHtml, cartaoItem, ligarItens, csvItens, fmtDataCurta, normal, tipoVisual, tipoIcone, nivelLegal, respHtml, definirSugestoesResp, $, $$ } from '../util.js';
 const OC = window.OC;
 
 // Atalhos de outras telas (Equipe, Hoje); hoje/atraso/g3 só chegam da área do gestor
@@ -38,6 +38,8 @@ const ROT_GRUPO = { legal: 'Prazo legal e admissões', sem: 'Sem análise', anal
 
 let ord = (() => { try { const k = localStorage.getItem('controlonvio-fila-ord'); return ORDENS.some(o => o[0] === k) ? { k, desc: DESC.includes(k) } : { k: 'prio', desc: false }; } catch (e) { return { k: 'prio', desc: false }; } })();
 let filtros = { texto: '', tipo: '', legal: '', sit: '', resp: '' };
+// Responsável sugerido para as sem responsável (cmd 'distribuicao', 30 dias): lido ao abrir, no máximo a cada 10 min, só na memória
+let sugEm = 0, sugLendo = false, refazerFila = null, sugResp = new Map();
 let vis = (() => { try { return localStorage.getItem('controlonvio-fila-vis') || 'cartoes'; } catch (e) { return 'cartoes'; } })();
 
 // Que aba abre: a escolhida no endereço; atalhos antigos (equipe, semresp, resolvidas) caem nas novas
@@ -78,7 +80,7 @@ export function render(el, ctx, params) {
   if (idade) base = base.filter(i => (i.parado || 0) >= Number(idade[1]) && (idade[2] === '' || (i.parado || 0) <= Number(idade[2])));
   const umaPessoa = aba === 'minhas' || aba === 'respondidas';
   if (umaPessoa) filtros.resp = '';
-  const cols = COLUNAS.filter(c => !(c.equipe && umaPessoa));
+  const cols = COLUNAS.filter(c => !(c.equipe && umaPessoa && !base.some(i => !i.resp)));      // com sem responsável na lista a coluna aparece, para a sugestão
 
   ctx.cab({
     titulo, sub,
@@ -194,6 +196,15 @@ export function render(el, ctx, params) {
       cols.map(c => '<button data-col="' + c.k + '" class="' + (c.num ? 'num ' : '') + (ord.k === c.k ? 'on' + (ord.desc ? '' : ' asc') : '') + '">' + c.rot + '</button>').join('') + '</div>' +
       (l.length ? comGrupos(comCol, 'emp-cab lr-emp') : vazio) + '</div>';
     ligarItens($('#corpo', el), l, ctx.abrirDetalhe);
+    // responsável sugerido: abre a atribuição (você revisa e confirma), nunca atribui sozinho
+    $$('[data-sug-resp]', el).forEach(b => {
+      b.addEventListener('keydown', e => e.stopPropagation());
+      b.addEventListener('click', e => {
+        e.stopPropagation();
+        const it = l.find(x => x.k === b.dataset.sugResp), s = sugResp.get(b.dataset.sugResp);
+        if (it) ctx.abrirDetalhe(it, l, { acao: 'passar', preset: { modo: 'responsavel', analista: (s && s.respId) || '' } });
+      });
+    });
     $$('[data-col]', el).forEach(b => b.addEventListener('click', () => {
       ord = ord.k === b.dataset.col ? { k: ord.k, desc: !ord.desc } : { k: b.dataset.col, desc: DESC.includes(b.dataset.col) };
       const s = $('#f-ord', el); if (s && ORDENS.some(o => o[0] === ord.k)) s.value = ord.k; desenhar();
@@ -215,7 +226,16 @@ export function render(el, ctx, params) {
   }));
   $('#csv', el).addEventListener('click', () => { csvItens('onvio-' + (aba || 'fila') + '-' + OC.ymd(new Date()) + '.csv', filtrar()); });
   $('#m-onvio', el).addEventListener('click', () => enviar({ cmd: 'fecharPainel' }));
+  refazerFila = desenhar;
   desenhar();
+  if (estado.snap && todas.some(i => !i.resp) && !sugLendo && Date.now() - sugEm > 10 * 60000) {
+    sugLendo = true;
+    enviar({ cmd: 'distribuicao', dias: 30 }).then(r => {
+      sugLendo = false; sugEm = Date.now();
+      if (r && r.ok && Array.isArray(r.sugestoes)) { sugResp = new Map(r.sugestoes.map(x => [x.item.k, x])); definirSugestoesResp(sugResp); }
+      if (refazerFila && el.isConnected && location.hash.startsWith('#/fila')) refazerFila();
+    });
+  }
   if (params.foco) focar(params.foco);
 
   // Vindo do Hoje com uma solicitação escolhida (foco=k): tira os filtros da tela se ela estiver escondida, rola até a
@@ -243,7 +263,7 @@ function linha(i, cols) {
     tipo: '<span class="c-sub c-tipo" style="color:var(--ink-2)">' + tipoIcone(i.type, 'pq') + '<span class="c-tipo-tx">' + esc(i.typeLabel) + '</span></span>',
     cliente: '<span><div class="c-main" title="' + esc(i.cliente) + '">' + esc(i.apelido || i.cliente || '—') + '</div><div class="c-sub" title="' + esc(i.detalhe) + '">' + esc(i.detalhe || '—') + (i.abaProvavel ? ' · pode ser: ' + esc(i.abaProvavel.label) : '') + '</div></span>',
     status: '<span>' + pillSituacao(i) + '</span>',
-    resp: '<span class="c-sub" style="color:var(--ink-2)">' + (i.resp ? esc(i.resp) : '<span class="today">sem responsável</span>') + '</span>',
+    resp: '<span class="c-sub" style="color:var(--ink-2)">' + respHtml(i) + '</span>',
     parado: '<span class="num"><b class="mono">' + (i.parado || 0) + 'd</b><div class="c-sub">' + (i.last ? fmtDataCurta(i.last) : '') + '</div></span>',
     prazo: '<span>' + prazoHtml(i) + '</span>'
   };
