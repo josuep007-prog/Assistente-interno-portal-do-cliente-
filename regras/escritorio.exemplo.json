@@ -31,16 +31,18 @@
     "abaErrada": "Olá! Este pedido tem uma aba própria no Portal do Cliente: {aba}. Por favor, abra a solicitação por lá, com os campos preenchidos. Estamos concluindo esta da lista Geral."
   },
   "criacao": {
-    "serviceRequestType": "",
-    "requestWay": "",
+    "serviceRequestType": "GENERIC",
+    "requestWay": "OTHER",
     "departmentId": "",
-    "departamentos": { "dp": "", "fiscal": "", "contabil": "" }
+    "departamentos": { "dp": "2CDE919421384918A2BF510E5D5F4FD6", "fiscal": "8D6AF452F46D454C849B6C96F8CCF306", "contabil": "26CE2C34F6F44CD99501CEAA43B93F0F" }
   },
   "modelosCriacao": [
     { "dep": "fiscal", "rot": "Documentos fiscais do mês", "assunto": "Documentos fiscais pendentes da competência", "descricao": "Para apurar os impostos da competência (descreva a competência), precisamos das notas fiscais de entrada e de saída. Pode anexá-las respondendo a esta solicitação, por favor?" }
   ],
   "equipeDP": [],
-  "departamentoDP": "",
+  "departamentosDP": ["2CDE919421384918A2BF510E5D5F4FD6", "79E62D04049C4E698394178A9E7A0D87"],
+  "acidenteTipoIds": [3, 10, 14, 17, 42, 44],
+  "acidenteCatIds": [3, 10, 17],
   "prazoAnalistaPalavras": ["prazo", "ate", "entrega", "previsao", "retorno em"],
   "avisoTrabalhadoPalavras": ["trabalhado", "cumprir o aviso"],
   "acidentePalavras": ["acidente", "cat", "b91"],

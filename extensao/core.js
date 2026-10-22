@@ -101,6 +101,12 @@
     // o que é do DP (departmentId) e quem não é da equipe do DP vê só as suas solicitações. Vazios = tudo como antes.
     equipeDP: [],
     departamentoDP: '',
+    // Ids do departamento Pessoal (mapeados em 22/10/2026): o do sistema (DP06) e o personalizado PESSOAL. Quem tem acesso a
+    // outro departamento (company-department-access) vê só as suas solicitações; na Geral, o que é de outro departamento sai.
+    departamentosDP: ['2CDE919421384918A2BF510E5D5F4FD6', '79E62D04049C4E698394178A9E7A0D87'],
+    // Tipos de afastamento (employeeLeaveTypeId, que vem na lista) que são acidente de trabalho; os com CAT: 3, 10 e 17.
+    acidenteTipoIds: [3, 10, 14, 17, 42, 44],
+    acidenteCatIds: [3, 10, 17],
     // Prazo prometido pelo analista: palavras (sem acento) perto de uma data na última resposta do escritório
     prazoAnalistaPalavras: ['prazo', 'ate', 'entrega', 'previsao', 'retorno em', 'retornamos em', 'retornaremos em'],
     avisoTrabalhadoPalavras: ['trabalhado', 'trabalhando', 'cumprir o aviso', 'cumprindo o aviso'],
@@ -238,9 +244,9 @@
     assuntoSemCalculo: '{calculo} pendente · {empregado}',
     // Texto do trâmite que passa a vez ao cliente logo depois de criar (situação Respondido)
     tramiteCriacao: 'Aguardando o retorno do cliente.',
-    // Valores técnicos do corpo da criação. Vazio = descobrir no Onvio: tipo e meio copiados de uma solicitação Geral
-    // recente; departamento pelo acesso do usuário (company-department-access). O arquivo de regras pode fixar.
-    criacao: { serviceRequestType: '', requestWay: '', departmentId: '', departamentos: {} },
+    // Valores técnicos do corpo da criação, vistos no Onvio em 22/10/2026: tipo GENERIC, meio OTHER (Outro; também PHONE e
+    // EMAIL) e os ids dos departamentos do sistema. O arquivo de regras pode trocar; vazio = descobrir no Onvio.
+    criacao: { serviceRequestType: 'GENERIC', requestWay: 'OTHER', departmentId: '', departamentos: { dp: '2CDE919421384918A2BF510E5D5F4FD6', fiscal: '8D6AF452F46D454C849B6C96F8CCF306', contabil: '26CE2C34F6F44CD99501CEAA43B93F0F' } },
     // Modelos da janela "Nova solicitação" por departamento (dp, fiscal, contabil): assunto e descrição editáveis. Texto
     // padrão, nunca de cliente; "(descreva ...)" marca o que a pessoa precisa preencher antes de criar. As regras podem trocar.
     modelosCriacao: [
@@ -366,6 +372,8 @@
       admissao: t.familia === 'cadastro' ? (String(r.admissionDate || r.startDate || '').slice(0, 10) || null) : null,
       solicitante: (r.requesterExpanded && r.requesterExpanded.name) || '',
       departmentId: typeof r.departmentId === 'string' ? r.departmentId : '',
+      tipoAfastamento: t.key === 'afastamento' && typeof r.employeeLeaveTypeId === 'number' ? r.employeeLeaveTypeId : null,   // vem na lista
+      tipoAviso: t.key === 'calcRescisao' && typeof r.terminationType === 'string' ? r.terminationType : '',                 // WORKED, INDEMNIFIED, ABSENSE_DISPENSATION
       mine: mineSet ? mineSet.has(r.id) : false,
       abaProvavel: t.key === 'geral' ? abaProvavel(detalhe, regras || DEFAULTS.abaErrada) : null
     };
@@ -525,7 +533,11 @@
     try {
       const s = await fetcher(API + 'security/v1/session-and-bindings');
       const u = s && s.UdsSession;
-      return u ? { nome: ((u.FirstName || '') + ' ' + (u.LastName || '')).trim(), email: u.EmailAddress || '' } : null;
+      if (!u) return null;
+      // departamento do acesso do usuário (company-department-access): decide o que é "do setor dele"
+      let departmentId = '';
+      try { const a = await fetcher(URL_SO_ESCRITORIO()); if (a && typeof a.departmentId === 'string') departmentId = a.departmentId; } catch (e) { departmentId = ''; }
+      return { nome: ((u.FirstName || '') + ' ' + (u.LastName || '')).trim(), email: u.EmailAddress || '', departmentId };
     } catch (e) { return null; }
   }
 
@@ -896,6 +908,8 @@
     }
     if (Array.isArray(raw.equipeDP)) { const l = [...new Set(raw.equipeDP.filter(x => typeof x === 'string' && x.trim() && x.length <= 80).map(x => x.trim()))].slice(0, 200); if (l.length) out.equipeDP = l; }
     if (typeof raw.departamentoDP === 'string' && /^[A-Za-z0-9_.-]{1,80}$/.test(raw.departamentoDP)) out.departamentoDP = raw.departamentoDP;
+    if (Array.isArray(raw.departamentosDP)) { const l = [...new Set(raw.departamentosDP.filter(x => typeof x === 'string' && /^[A-Za-z0-9_.-]{1,80}$/.test(x)))].slice(0, 20); if (l.length) out.departamentosDP = l; }
+    for (const k of ['acidenteTipoIds', 'acidenteCatIds']) if (Array.isArray(raw[k])) { const l = [...new Set(raw[k].filter(x => Number.isInteger(x) && x > 0 && x < 1000))].slice(0, 60); if (l.length) out[k] = l; }
     for (const k of ['avisoTrabalhadoPalavras', 'acidentePalavras', 'prazoAnalistaPalavras']) {
       if (Array.isArray(raw[k])) { const l = [...new Set(raw[k].filter(p => typeof p === 'string' && p.trim() && p.length <= 40).map(p => semAcento(p).trim()))].slice(0, 40); if (l.length) out[k] = l; }
     }
@@ -943,7 +957,7 @@
         if (t && t.key !== 'geral' && palavras.length) out.abaErrada.push({ tipo: t.key, palavras });
       }
     }
-    const util = Object.keys(out.config).length || out.feriados.length || out.abaErrada.length || (out.observacoes && Object.keys(out.observacoes).length) || out.avisoSemCalculo || out.assuntoSemCalculo || out.tramiteCriacao || out.criacao || out.sugestoes || out.modelosCriacao || out.equipeDP || out.departamentoDP || out.prazoAnalistaPalavras || out.avisoTrabalhadoPalavras || out.acidentePalavras || out.senhaGestorSha256 || out.avaliacao || out.pedidoAoCliente || out.cortesiaCliente || out.foraDoPortal || out.anexoCitado || out.textosSugestao || out.modelosTramite;
+    const util = Object.keys(out.config).length || out.feriados.length || out.abaErrada.length || (out.observacoes && Object.keys(out.observacoes).length) || out.avisoSemCalculo || out.assuntoSemCalculo || out.tramiteCriacao || out.criacao || out.sugestoes || out.modelosCriacao || out.equipeDP || out.departamentoDP || out.departamentosDP || out.acidenteTipoIds || out.acidenteCatIds || out.prazoAnalistaPalavras || out.avisoTrabalhadoPalavras || out.acidentePalavras || out.senhaGestorSha256 || out.avaliacao || out.pedidoAoCliente || out.cortesiaCliente || out.foraDoPortal || out.anexoCitado || out.textosSugestao || out.modelosTramite;
     return util ? out : null;
   }
 
@@ -964,6 +978,9 @@
       if (r.avisoTrabalhadoPalavras) base.avisoTrabalhadoPalavras = r.avisoTrabalhadoPalavras;
       if (r.equipeDP) base.equipeDP = r.equipeDP;
       if (r.departamentoDP) base.departamentoDP = r.departamentoDP;
+      if (r.departamentosDP) base.departamentosDP = r.departamentosDP;
+      if (r.acidenteTipoIds) base.acidenteTipoIds = r.acidenteTipoIds;
+      if (r.acidenteCatIds) base.acidenteCatIds = r.acidenteCatIds;
       if (r.prazoAnalistaPalavras) base.prazoAnalistaPalavras = r.prazoAnalistaPalavras;
       if (r.acidentePalavras) base.acidentePalavras = r.acidentePalavras;
       if (r.senhaGestorSha256) base.senhaGestorSha256 = r.senhaGestorSha256;
@@ -978,22 +995,28 @@
       if (r.sugestoes) base.sugestoes = Object.assign({}, DEFAULTS.sugestoes, r.sugestoes);
     }
     // a senha da área do gestor vem só do código ou das regras do escritório, nunca dos ajustes da pessoa
-    return Object.assign(base, usuario || {}, { senhaGestorSha256: base.senhaGestorSha256, pesosNota: base.pesosNota, avaliacaoMinEntregas: base.avaliacaoMinEntregas, equipeDP: base.equipeDP, departamentoDP: base.departamentoDP });
+    return Object.assign(base, usuario || {}, { senhaGestorSha256: base.senhaGestorSha256, pesosNota: base.pesosNota, avaliacaoMinEntregas: base.avaliacaoMinEntregas, equipeDP: base.equipeDP, departamentoDP: base.departamentoDP, departamentosDP: base.departamentosDP, acidenteTipoIds: base.acidenteTipoIds, acidenteCatIds: base.acidenteCatIds });
   }
 
   /* ---------- setores (DP × outros departamentos) ----------
    * Com equipeDP e/ou departamentoDP nas regras: a lista Geral mostra só o que é do DP (departmentId) e quem não é da
    * equipe do DP vê só as suas solicitações (sem Todas, Equipe e Distribuir). Sem regras, nada muda. */
-  function perfilSetor(settings, nome) {
+  function perfilSetor(settings, nome, deptoAcesso) {
     const s = Object.assign({}, DEFAULTS, settings || {});
-    const eq = (s.equipeDP || []).map(x => semAcento(x).trim()), dep = s.departamentoDP || '';
-    if (!eq.length && !dep) return { ativo: false, fora: false, dep: '' };
+    const eq = (s.equipeDP || []).map(x => semAcento(x).trim());
+    const deps = [...new Set((s.departamentosDP || []).concat(s.departamentoDP || []).filter(Boolean).map(x => String(x).toUpperCase()))];
+    if (!eq.length && !deps.length) return { ativo: false, fora: false, dep: '', deps: [] };
     const n = semAcento(nome || '').trim();
-    return { ativo: true, fora: !!(eq.length && n && !eq.includes(n)), dep };
+    // quem é do DP: pelo nome, se as regras trazem a equipe; senão pelo departamento do próprio acesso no Onvio
+    let fora = false;
+    if (eq.length && n) fora = !eq.includes(n);
+    else if (deptoAcesso && deps.length) fora = !deps.includes(String(deptoAcesso).toUpperCase());
+    return { ativo: true, fora, dep: deps[0] || '', deps };
   }
   function filtrarPorSetor(items, perfil) {
     if (!perfil || !perfil.ativo) return items || [];
-    return (items || []).filter(i => perfil.fora ? !!i.mine : i.mine || !(perfil.dep && i.type === 'geral' && i.departmentId && i.departmentId !== perfil.dep));
+    const deps = perfil.deps || (perfil.dep ? [perfil.dep] : []);
+    return (items || []).filter(i => perfil.fora ? !!i.mine : i.mine || !(deps.length && i.type === 'geral' && i.departmentId && !deps.includes(String(i.departmentId).toUpperCase())));
   }
 
   /* ---------- painel por cliente (dashboard Clientes) ---------- */
@@ -1097,7 +1120,7 @@
     const dd = ymd => ymd ? ymd.slice(8, 10) + '/' + ymd.slice(5, 7) : '';
     switch (motivo || motivoDe(i)) {
       case 'legal': {
-        if (i.acidente) return 'Acidente de trabalho · emitir a CAT';
+        if (i.acidente) return i.acidenteCat === false ? 'Acidente de trabalho · conferir a CAT e o benefício' : 'Acidente de trabalho · emitir a CAT';
         if (i.prazoLegal && i.prazoLegal.faltam <= 1) return (i.prazoLegal.faltam < 0 ? 'Pagamento venceu em ' : 'Pagamento até ') + dd(i.prazoLegal.alvo) + ' (prazo legal)';
         const a = i.admissaoAlerta;
         return a ? (a.estagio ? 'eSocial do estágio até ' + dd(a.prazo) : a.retro ? 'Admissão retroativa · eSocial' : 'Admissão em ' + dd(a.data) + ' · eSocial') : 'Prazo legal';
@@ -1323,7 +1346,12 @@
   // Anexos de um registro do Onvio: id e nome (lidos na hora, nunca guardados).
   function arquivosDe(lista, max) {
     return (Array.isArray(lista) ? lista : []).filter(a => a && (a.name || a.fileName)).slice(0, max || 50)
-      .map(a => ({ id: typeof a.id === 'string' || typeof a.id === 'number' ? String(a.id) : null, nome: String(a.name || a.fileName) }));
+      .map(a => {
+        const f = { id: typeof a.id === 'string' || typeof a.id === 'number' ? String(a.id) : null, nome: String(a.name || a.fileName) };
+        // Cadastro e Rubricas trazem staticFilePath: endereço do arquivo que o Onvio serve sem login (visto em 22/10/2026)
+        if (typeof a.staticFilePath === 'string' && a.staticFilePath.length < 800 && /^https:\/\/onvio\.com\.br\/api\/storage\//i.test(a.staticFilePath) && leituraAnexoPermitida(a.staticFilePath)) f.direto = a.staticFilePath;
+        return f;
+      });
   }
 
   /* ---------- baixar anexos escolhendo ----------
@@ -1359,8 +1387,20 @@
     return /\{(attachments?|files?|anexos?|documents?)\}|\{id\}/i.test(m) ? m.slice(0, 400) : null;
   }
   const papelDoId = nome => (/^topics?$/i.test(nome) ? 'topico' : /^(attachments?|files?|anexos?|documents?)$/i.test(nome) ? 'anexo' : nome === 'id' ? 'anexo' : 'sol');
-  // Endereço de um anexo pelo molde aprendido que sirva para esta lista e este anexo (com ou sem trâmite).
+  // Caminhos mapeados no Onvio real em 22/10/2026: GET .../attachments/{id} devolve { downloadUrl } e o arquivo vem de lá
+  // (mesmo domínio, sem precisar do cabeçalho de autorização). Geral e folha: abertura e trâmite; Rubricas: trâmite (a abertura
+  // não tem anexo); Cadastro: só pelo staticFilePath, ou pelo molde que a extensão aprender (a rota não foi vista).
+  function rotaAnexoFixa(t, ids) {
+    if (!t || !ids || !ids.sol || !ids.anexo) return null;
+    const base = API + t.tramites + '/' + encodeURIComponent(ids.sol);
+    const fim = '/attachments/' + encodeURIComponent(ids.anexo);
+    if (ids.topico) return t.familia === 'cadastro' ? null : { url: base + '/topics/' + encodeURIComponent(ids.topico) + fim, campo: 'downloadUrl' };
+    return t.familia === 'padrao' ? { url: base + fim, campo: 'downloadUrl' } : null;
+  }
+  // Endereço de um anexo: pela rota mapeada ou, na falta dela, pelo molde aprendido (com ou sem trâmite).
   function urlAnexo(t, ids, rotas) {
+    const fixa = rotaAnexoFixa(t, ids);
+    if (fixa && leituraAnexoPermitida(fixa.url)) return fixa;
     const base = API.replace(/\/$/, '');
     const cand = (rotas || []).map(r => (typeof r === 'string' ? { molde: r } : r)).filter(r => r && typeof r.molde === 'string');
     const soDoAnexo = m => (m.match(/\{[a-z-]+\}/gi) || []).every(x => papelDoId(x.slice(1, -1)) === 'anexo' || x === '{nome}');
@@ -1676,9 +1716,14 @@
     return !!acharTrecho(txt, (s && s.acidentePalavras) || DEFAULTS.acidentePalavras);
   }
   // Marca o afastamento como acidente: motivo legal (CAT) no topo da fila, com o porquê
+  // Pelo tipo do afastamento (employeeLeaveTypeId, que já vem na lista; mapeado em 22/10/2026): acidente de trabalho são os
+  // tipos de acidenteTipoIds; os de acidenteCatIds exigem a CAT. Sem o tipo (lista antiga), vale a busca por palavras.
+  const ehAcidenteTipo = (tipo, s) => Number.isInteger(tipo) && ((s && s.acidenteTipoIds) || DEFAULTS.acidenteTipoIds).includes(tipo);
   function marcarAcidente(it, s) {
     it.acidente = true;
-    it.motivos = (it.motivos || []).filter(m => !m.acidente).concat([{ n: 2, m: 'Acidente de trabalho', legal: true, acidente: true, t: 'Afastamento por acidente de trabalho: a CAT (comunicação de acidente de trabalho) deve ser emitida até o 1º dia útil seguinte ao acidente' }]);
+    const cat = !Number.isInteger(it.tipoAfastamento) || ((s && s.acidenteCatIds) || DEFAULTS.acidenteCatIds).includes(it.tipoAfastamento);
+    it.acidenteCat = cat;
+    it.motivos = (it.motivos || []).filter(m => !m.acidente).concat([{ n: 2, m: 'Acidente de trabalho', legal: true, acidente: true, t: cat ? 'Afastamento por acidente de trabalho: a CAT (comunicação de acidente de trabalho) deve ser emitida até o 1º dia útil seguinte ao acidente' : 'Afastamento por acidente de trabalho: confira a CAT e o benefício do INSS' }]);
     if ((it.nivel || 0) < 2) { it.nivel = 2; }
     it.grav = Math.max(it.grav || 0, gravidade(it, TYPE_BY_KEY[it.type], Object.assign({}, DEFAULTS, s || {}), { nivel: 2, parado: it.parado, uteisAberto: it.uteisAberto, prescreveEm: it.prescreveEm }));
   }
@@ -1692,19 +1737,24 @@
       try {
         if (c.erro && now - new Date(c.erro) < 864e5) { novo[it.k] = c; continue; }   // não insiste por 1 dia
         delete c.erro;
-        if (it.type === 'afastamento') {                        // acidente de trabalho: lê o detalhe uma vez e guarda só o sinal
+        if (it.type === 'afastamento' && Number.isInteger(it.tipoAfastamento)) {   // o tipo vem na lista: sem ler o detalhe
+          if (ehAcidenteTipo(it.tipoAfastamento, s)) marcarAcidente(it, s);
+          continue;
+        }
+        if (it.type === 'afastamento') {                        // sem o tipo na lista: lê o detalhe uma vez e guarda só o sinal
           if (c.acid === undefined && chamadas < LIMITE) { chamadas++; c.acid = temAcidente(await fetcher(urlDetalhe(TYPE_BY_KEY.afastamento, it.id)), s) ? 1 : 0; c.lido = true; }
           if (c.acid) marcarAcidente(it, s);
           novo[it.k] = c;
           continue;
         }
-        const precisaAviso = it.type === 'avisoRescisao' && c.av === undefined;    // data do aviso: para o lembrete do aviso trabalhado
+        const guardaAviso = it.type === 'avisoRescisao' || (it.type === 'calcRescisao' && it.tipoAviso === 'WORKED');
+        const precisaAviso = guardaAviso && c.av === undefined;    // data do aviso: para o lembrete do aviso trabalhado
         if ((!c.lido || precisaAviso) && chamadas < LIMITE) {
           chamadas++;
           const dt = datasDe(await fetcher(urlDetalhe(TYPE_BY_KEY[it.type], it.id)));
           const p = prazoPagamento(it.type, dt, s);
           c.lido = true;
-          if (it.type === 'avisoRescisao') c.av = dt.aviso || null;
+          if (guardaAviso) c.av = dt.aviso || null;
           if (p) { c.alvo = ymd(p.alvo); c.ref = p.ref; }
         }
         if (c.av) it.avisoEm = c.av;
@@ -2114,9 +2164,9 @@
    *    -> 201, id do trâmite no cabeçalho "location". Não existe trâmite sem situação.
    *  - anexo: depois do trâmite, POST {tramites}/{id}/topics/{topicId}/attachments  multipart, campo "file[]".
    *  - responsável: PUT {lista}/{id}/assign-staff  Geral { departmentId, id }; folha { id }.
-   *  - expectativa: PUT {lista}/{id}/change-due-date { dueDate } (só confirmado na Geral).
+   *  - expectativa: PUT {lista}/{id}/change-due-date { dueDate } (Geral, afastamento e cálculo de férias; Cadastro e Rubricas não oferecem).
    * Geral e as listas de férias, rescisão e afastamento têm todas as ações. Cadastro (3 listas) e Rubricas (mapeados em
-   *    19/10/2026) têm trâmite, anexo, encaminhar e responsável; só a expectativa fica de fora (a tela não oferece):
+   *    19/10/2026) têm trâmite, anexo, encaminhar e responsável; a expectativa fica de fora (a tela não oferece):
    *      trâmite POST {tramites}/{id}/topics { description, status }; encaminhar = o mesmo POST com status 7 (Cadastro) ou 9
    *      (Rubricas) e forwardedToEmployeeExpanded { id }; responsável PUT {tramites}/{id}/assign-staff { id } (o caminho dos
    *      3 Cadastros é o do empregado; em Rubricas é o mesmo padrão, a confirmar). O Cadastro recusa (HTTP 400) encaminhar a
@@ -2129,7 +2179,7 @@
     anexo: k => k === 'geral' || FOLHA.has(k) || CADASTRO.has(k) || k === 'rubricas',
     encaminhar: k => k === 'geral' || FOLHA.has(k) || CADASTRO.has(k) || k === 'rubricas',
     responsavel: k => k === 'geral' || FOLHA.has(k) || CADASTRO.has(k) || k === 'rubricas',
-    expectativa: k => k === 'geral'
+    expectativa: k => k === 'geral' || k === 'afastamento' || k === 'calcFerias'   // confirmados no Onvio (22/10/2026); aviso de férias tem o menu, mas a chamada não foi capturada
   };
   const SEM_MAPA = 'ainda não disponível na extensão para esta lista: use "Abrir no Onvio"';
   // { ok, motivo } para mostrar o botão habilitado ou explicar por que não
@@ -2487,6 +2537,8 @@
     for (const i of pend) if ((i.type === 'avisoFerias' || i.type === 'calcFerias') && i.lado === 'esc' && grupoSituacao(i).k === 'sem') add(i, 'feriasNova', { porque: 'Solicitação de férias nova, ainda sem análise: pôr em análise e avisar o cliente do prazo de pagamento' });
     // aviso de rescisão com aviso prévio trabalhado: lembrete de emitir o aviso (assunto/empregado aqui; abertura pelos trâmites)
     for (const i of pend) if (i.type === 'avisoRescisao' && acharTrecho(textoPlano(i.detalhe), s.avisoTrabalhadoPalavras)) add(i, 'avisoTrabalhado', {});
+    // cálculo de rescisão com aviso trabalhado (terminationType WORKED, que já vem na lista): lembrar de emitir o aviso, sem calcular agora
+    for (const i of pend) if (i.type === 'calcRescisao' && i.tipoAviso === 'WORKED' && i.lado === 'esc') add(i, 'avisoTrabalhado', {});
     for (const i of pend) if (i.abaProvavel) add(i, 'abaErrada', { aba: i.abaProvavel.label, porque: 'Aberta na lista Geral, mas tem aba própria: ' + i.abaProvavel.label });
     return [...casos.values()].map(c => {
       const def = CASOS[c.tipo];
@@ -2548,5 +2600,5 @@
     return { dias, empresas: lista, total: lista.reduce((s2, r) => s2 + r.total, 0), prox30: lista.reduce((s2, r) => s2 + r.prox30, 0) };
   }
 
-  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, quadroSemCalculo, marcarSemCalculo, textoAvisoSemCalculo, assuntoAvisoSemCalculo, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, marcadoresPendentes, avisosResposta, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, quadroSemCalculo, marcarSemCalculo, textoAvisoSemCalculo, assuntoAvisoSemCalculo, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, marcadoresPendentes, avisosResposta, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);
