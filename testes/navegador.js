@@ -584,6 +584,19 @@ await passo('app · Fila: abas Minhas, Todas e Respondidas, cartões por padrão
   await p.waitForFunction(() => location.hash === '#/fila');
   await p.click('#abas [data-aba="todas"]'); await p.waitForFunction(() => document.querySelectorAll('#corpo [data-k]').length === 4);
   assert.equal(await p.$('[data-lado]'), null, 'sem o seletor de vez antigo');
+  // etiqueta de situação sempre numa linha só (cartões e lista), com o texto completo no title
+  for (const vis of ['cartoes', 'lista']) {
+    await p.click('[data-vis="' + vis + '"]'); await p.waitForSelector('#corpo .pill-sit');
+    const m = await p.$$eval('#corpo .pill-sit', e => e.map(x => ({ h: x.getBoundingClientRect().height, lh: parseFloat(getComputedStyle(x).lineHeight), nowrap: getComputedStyle(x).whiteSpace, t: x.title })));
+    assert.ok(m.length >= 4, vis + ': etiquetas de situação na tela');
+    m.forEach(x => { assert.equal(x.nowrap, 'nowrap', vis + ': sem quebra de linha'); assert.ok(x.h < x.lh * 1.8, vis + ': uma linha só (altura ' + x.h + ')'); assert.ok(x.t.length > 0, vis + ': title com a situação'); });
+  }
+  await p.click('[data-vis="cartoes"]');
+  // cartões de tipo: nome inteiro (sem reticências) e aviso + cálculo ligados num bloco só
+  assert.deepEqual(await p.$$eval('#tipos .tipo-par', e => e.map(x => x.querySelectorAll('.tipo-c').length + ':' + x.querySelector('.tipo-par-cab span').textContent)), ['2:Férias', '2:Rescisão']);
+  assert.deepEqual(await p.$$eval('#tipos .tipo-par', e => e.map(x => [...x.querySelectorAll('.tipo-c')].map(c => c.dataset.tipo).join('+'))), ['avisoFerias+calcFerias', 'avisoRescisao+calcRescisao']);
+  assert.equal(await p.$$eval('#tipos .tipo-par .tipo-elo', e => e.length), 2, 'elo entre aviso e cálculo');
+  assert.equal(await p.$$eval('#tipos .tipo-rot', e => e.filter(x => x.scrollWidth > x.clientWidth + 1).length), 0, 'nome do tipo sem texto cortado');
   assert.equal(await p.$('#f-vez'), null, 'sem o filtro Aguardando o cliente: o cliente tem a aba Respondidas');
   assert.match(await p.textContent('#vez-tit'), /^Todas as pendências/);
   // grupos pela ordem de prioridade: prazo legal, sem análise, em análise, cliente respondeu, aguardando o cliente
@@ -1220,7 +1233,7 @@ await passo('app · Fila: cartões por tipo (todos, enxutos; de novo tira); orde
   assert.match(await p.textContent('#tipos [data-tipo="calcFerias"]'), /sem prazo legal perto/);
   assert.equal(await p.$eval('#tipos [data-tipo="afastamento"]', b => b.classList.contains('zero')), true);
   const alt = await p.$eval('#tipos .tipo-c', b => b.getBoundingClientRect().height);
-  assert.ok(alt >= 70 && alt <= 100, 'tamanho de cartão: ' + alt);
+  assert.ok(alt >= 70 && alt <= 120, 'tamanho de cartão: ' + alt);
   await p.click('#tipos [data-tipo="geral"]');
   assert.deepEqual(await linhas(p), ['geral:b']);
   await p.click('#tipos [data-tipo="geral"]');
