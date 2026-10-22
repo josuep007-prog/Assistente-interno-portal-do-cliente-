@@ -324,7 +324,7 @@ a{color:var(--blue-deep)}
 .fundo{position:fixed; inset:0; z-index:50; background:rgba(10,15,20,.55); backdrop-filter:blur(2px); animation:entra .15s ease-out}
 .dlg{position:fixed; z-index:51; left:50%; top:50%; transform:translate(-50%,-50%); width:min(560px, calc(100vw - 32px)); max-height:calc(100vh - 32px); display:flex; flex-direction:column; background:var(--surface); border:1px solid var(--rule); border-radius:var(--r); box-shadow:0 24px 60px rgba(0,0,0,.35); outline:none; animation:dlgEntra .18s ease}
 @keyframes dlgEntra{from{opacity:0; transform:translate(-50%,calc(-50% + 12px)) scale(.98)}}
-.dlg-lg{width:min(1000px, calc(100vw - 48px)); height:min(820px, calc(100vh - 48px))}
+.dlg-lg{width:min(1320px, calc(100vw - 48px)); height:min(860px, calc(100vh - 48px))}
 .dlg-head{display:flex; align-items:flex-start; gap:12px; padding:18px 22px 0}
 .dlg-head .tt{flex:1; min-width:0}
 .dlg-head h2{font:700 19px/1.25 "Archivo",sans-serif; margin:4px 0 2px; overflow-wrap:anywhere}
@@ -348,6 +348,7 @@ a{color:var(--blue-deep)}
 /* só o corpo encolhe e rola: cabeçalho, linha de dados, abas e botões mantêm a altura (as abas rolam na horizontal,
    e sem isto o navegador as achatava e cortava os nomes) */
 .dlg > *{flex:none}
+.dlg-cols{flex:1 1 0; min-height:0; display:flex; flex-direction:column}
 .dlg-body{flex:1 1 0; min-height:0; overflow-y:auto; padding:16px 22px 18px}
 .dlg:not(.dlg-lg) .dlg-body{flex-basis:auto}
 .dlg-actions{display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:12px 22px; border-top:1px solid var(--rule); background:var(--surface); border-radius:0 0 8px 8px}
@@ -1304,6 +1305,30 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .cmp-ok .ic{color:var(--status-green)}
 .cmp-nota-p{margin:0; font-size:12px; color:var(--ink-3)}
 .cmp-pe{display:flex; align-items:center; gap:8px; justify-content:flex-end; padding:10px 0 2px; border-top:1px solid var(--rule); position:sticky; bottom:-12px; background:var(--surface-2); z-index:1}
+
+/* ============ janela larga: a conversa na esquerda (altura toda) e a resposta ao lado, em seções com título ============ */
+.dlg-cols.lateral{display:grid; grid-template-columns:minmax(0,1fr) minmax(400px, 450px); min-height:0}
+.dlg-cols.lateral .dlg-body{min-height:0; padding:16px 26px 18px}
+.dlg-cols.lateral .cmp{max-height:none; height:100%; padding:14px 20px 0; gap:12px; border-top:0; border-left:1px solid var(--rule); box-shadow:none; overflow-y:auto}
+.dlg-cols.lateral .cmp-cab{position:sticky; top:-14px; z-index:2; margin:-14px -20px 0; padding:14px 20px 10px; border-bottom:1px solid var(--rule); background:var(--surface-2)}
+.dlg-cols.lateral .cmp-atalho{margin-left:auto}
+.dlg-cols.lateral .cmp-caixa textarea, .dlg-cols.lateral .cmp.aberto .cmp-caixa textarea{min-height:112px; max-height:320px}
+.dlg-cols.lateral .cmp-grade{grid-template-columns:minmax(0,1fr); gap:6px; align-items:stretch}
+.dlg-cols.lateral .cmp-rot{padding:10px 0 0; border-top:1px solid var(--rule)}
+.dlg-cols.lateral .cmp-grade > .cmp-rot:first-child{border-top:0; padding-top:0}
+.dlg-cols.lateral .cmp-seg{display:grid; grid-template-columns:1fr 1fr; gap:1px; width:100%; background:var(--rule)}
+.dlg-cols.lateral .cmp-int{display:grid; grid-template-columns:auto 1fr; column-gap:8px; align-items:center; padding:9px 12px; border-right:0; background:var(--surface); text-align:left}
+.dlg-cols.lateral .cmp-int .cmp-pt{grid-row:1 / span 2}
+.dlg-cols.lateral .cmp-int .s{grid-column:2; font-size:11.5px}
+.dlg-cols.lateral .cmp-int .sep{display:none}
+.dlg-cols.lateral .cmp-int:hover{background:var(--surface-2)}
+.dlg-cols.lateral .cmp-int.on{background:color-mix(in srgb, var(--c) 18%, var(--surface))}
+.dlg-cols.lateral .cmp-fer-dica{display:none}
+.dlg-cols.lateral .cmp-fer-b{white-space:nowrap}
+.dlg-cols.lateral .cmp-chips.rola{flex-wrap:wrap; overflow:visible; -webkit-mask-image:none; mask-image:none; padding-bottom:0}
+.dlg-cols.lateral .cmp-modelo, .dlg-cols.lateral .cmp-obs{flex:none}
+.dlg-cols.lateral .cmp-obs-d{border:0; padding:0}
+.dlg-cols.lateral .cmp-pe{bottom:0; margin:auto -20px 0; padding:12px 20px; border-top:1px solid var(--rule)}
 /* janela baixa: a conversa nunca some; a caixa de resposta encolhe e rola (com os botões sempre à vista) */
 .dlg-lg .dlg-body{min-height:120px}
 @media (max-height:760px){ .dlg-destaques{display:none} .cmp{max-height:44%} .cmp.aberto .cmp-caixa textarea, .cmp-caixa textarea{min-height:52px} }

@@ -16,6 +16,7 @@ let pendente = null;             // { chave, timer }: contagem para desistir
 let enviado = null;              // { chave, em }: o último envio, para o aviso e o destaque da bolha
 let recolhida = true;            // começa só com a barra de título, para a conversa ter a janela; abre ao clicar, no atalho R ou ao preparar uma resposta (vale nesta visita)
 let chaveAberta = '';            // a solicitação a que o estado recolhida/aberta se refere: ao abrir outra, volta a recolher
+let lateral = false;              // janela larga: a caixa de resposta fica ao lado da conversa, sempre aberta (sem recolher)
 let aoAbrir = null;              // { r, redesenhar } da caixa na tela, para o atalho R e o botão Responder abrirem a recolhida
 
 const chaveDe = i => i.type + ':' + i.num;
@@ -36,10 +37,11 @@ export function prepararResposta(i, preset) {
   chaveAberta = chaveDe(i); recolhida = false;
 }
 // fechou o detalhe: a próxima solicitação aberta começa recolhida
+export const definirLateral = b => { lateral = !!b; };
 export function reiniciarCaixa() { chaveAberta = ''; recolhida = true; }
 // Clique fora da caixa (dentro do detalhe) recolhe; o rascunho fica. Não recolhe revisando ou enviando.
 export function recolherSeFora(alvo) {
-  if (recolhida || !aoAbrir || !alvo || !alvo.closest || !$('#cmp') || aoAbrir.r.modo !== 'editar') return false;
+  if (lateral || recolhida || !aoAbrir || !alvo || !alvo.closest || !$('#cmp') || aoAbrir.r.modo !== 'editar') return false;
   if (alvo.closest('#cmp') || alvo.closest('.dlg-actions, [data-responder]')) return false;      // o rodapé (Responder, Mais ações...) não conta como "fora"
   recolhida = true; aoAbrir.redesenhar();
   return true;
@@ -57,7 +59,7 @@ export function cancelarPendente() {
   return true;
 }
 export function focarResposta() {
-  if (recolhida && aoAbrir && $('#cmp')) { recolhida = false; aoAbrir.r.focar = true; aoAbrir.redesenhar(); return true; }
+  if (!lateral && recolhida && aoAbrir && $('#cmp')) { recolhida = false; aoAbrir.r.focar = true; aoAbrir.redesenhar(); return true; }
   const t = $('#a-texto');
   if (!t) return false;
   t.focus(); t.setSelectionRange(t.value.length, t.value.length);
@@ -110,13 +112,13 @@ export function respostaHtml(i, obs, ctx) {
   const it = ints.find(x => String(x.sit) === String(r.sit));
   const vez = i.lado === 'esc' ? 'Vez do escritório' : i.lado === 'cli' ? 'Vez do cliente' : '';
   const aberto = r.aberto || r.texto || r.sit || r.arquivos.length || r.guardando || r.erro;
-  const cab = '<div class="cmp-cab"><b>Responder ao cliente</b>' + (vez ? '<span class="cmp-vez ' + esc(i.lado) + '">' + vez + (i.parado != null ? ' · parada há ' + i.parado + ' dia(s)' : '') + '</span>' : '') + '<span class="cmp-atalho">atalho <kbd>R</kbd></span>' + (r.modo !== 'editar' ? '' : '<button type="button" class="cmp-rec" id="cmp-rec" aria-expanded="' + (recolhida && r.modo === 'editar' ? 'false' : 'true') + '" title="' + (recolhida && r.modo === 'editar' ? 'Abrir a caixa de resposta' : 'Recolher a caixa de resposta (o rascunho fica guardado)') + '">' + ic(recolhida && r.modo === 'editar' ? 'chev-r' : 'chev-d', 'ic-sm') + (recolhida && r.modo === 'editar' ? ' Abrir' : '') + '</button>') + '</div>';
+  const cab = '<div class="cmp-cab"><b>Responder ao cliente</b>' + (vez ? '<span class="cmp-vez ' + esc(i.lado) + '">' + vez + (i.parado != null ? ' · parada há ' + i.parado + ' dia(s)' : '') + '</span>' : '') + '<span class="cmp-atalho">atalho <kbd>R</kbd></span>' + (r.modo !== 'editar' || lateral ? '' : '<button type="button" class="cmp-rec" id="cmp-rec" aria-expanded="' + (recolhida && r.modo === 'editar' ? 'false' : 'true') + '" title="' + (recolhida && r.modo === 'editar' ? 'Abrir a caixa de resposta' : 'Recolher a caixa de resposta (o rascunho fica guardado)') + '">' + ic(recolhida && r.modo === 'editar' ? 'chev-r' : 'chev-d', 'ic-sm') + (recolhida && r.modo === 'editar' ? ' Abrir' : '') + '</button>') + '</div>';
   const ok = recemEnviado(i) ? '<div class="cmp-ok">' + ic('check', 'ic-sm') + ' Trâmite enviado às ' + horaDe(enviado.em) + '. Ele aparece no fim da conversa.</div>' : '';
   const erro = r.erro ? '<div class="cmp-erro">' + ic('alert', 'ic-sm') + '<span>' + esc(r.erro) + '</span></div>' : '';
   const arqs = r.arquivos.length ? '<div class="cmp-arqs">' + r.arquivos.map((a, n) => '<span class="cmp-arq">' + ic('paperclip', 'ic-sm') + esc(a.name) + ' · ' + tamanho(a.size) + (r.modo === 'editar' ? ' <button type="button" class="linkish" data-tira-arq="' + n + '" aria-label="Tirar ' + esc(a.name) + '">×</button>' : '') + '</span>').join('') + '</div>' : '';
 
   // recolhida: só a barra de título (com o aviso de que há rascunho)
-  if (recolhida && r.modo === 'editar') {
+  if (recolhida && !lateral && r.modo === 'editar') {
     const ha = r.texto.trim() || r.arquivos.length;
     return '<div class="cmp cmp-min" id="cmp" title="Abrir a caixa de resposta">' + cab + ok + erro + (ha ? '<span class="fraco cmp-min-rasc">Rascunho guardado' + (r.texto.trim() ? ' (' + r.texto.trim().length + ' caracteres)' : '') + (r.arquivos.length ? ' · ' + r.arquivos.length + ' anexo(s)' : '') + '</span>' : '') + '</div>';
   }
@@ -133,7 +135,7 @@ export function respostaHtml(i, obs, ctx) {
       '<button class="btn btn-sm btn-primary" id="a-enviar" type="button">Enviar</button></div>';
     return '<div class="cmp aberto revisando" id="cmp" tabindex="-1">' + cab + erro + '<div class="acao-conf cmp-conf" id="a-conf"><b>Confira o rascunho na conversa e envie ao Onvio:</b><ul>' +
       (r.antes.length ? '<li>Em ' + (r.antes.length + 1) + ' passos, um depois do outro: ' + r.antes.map((a, n) => (n + 1) + ') ' + esc(a.rot) + ' (texto: "' + esc(a.texto) + '")').join(', ') + ', ' + (r.antes.length + 1) + ') ' + esc(it ? it.onvio : '?') + ' (com o texto abaixo)</li>' : '') +
-      '<li>Situação depois do envio: ' + esc(it ? it.onvio + ' (' + it.efeito.toLowerCase() + ')' : '?') + '</li>' +
+      '<li>Situação do trâmite: ' + esc(it ? it.onvio + ' (' + it.efeito.toLowerCase() + ')' : '?') + '</li>' +
       '<li>Texto: "' + esc(r.texto.length > 140 ? r.texto.slice(0, 140) + '…' : r.texto) + '"</li>' +
       (r.arquivos.length ? '<li>' + r.arquivos.length + ' anexo(s): ' + esc(r.arquivos.map(a => a.name).join(', ')) + '</li>' : '') +
       '</ul><p class="fraco">Fica registrado no Onvio em seu nome e o cliente pode ver o trâmite. Depois de enviado, não dá para desfazer pela extensão.</p>' + avisosHtml(r, i) + '</div>' + pe + '</div>';
@@ -164,10 +166,10 @@ export function respostaHtml(i, obs, ctx) {
     '</div>' +
     arqs + guardar +
     '<div class="cmp-grade">' +
-      '<span class="cmp-rot">Depois do envio</span>' +
-      '<div class="cmp-col"><div class="cmp-seg" role="radiogroup" aria-label="O que acontece depois do envio">' +
-        ints.map(x => { const [t1, t2] = x.rot.split(' · '); return '<button type="button" class="cmp-int' + (String(r.sit) === String(x.sit) ? ' on' : '') + '" role="radio" aria-checked="' + (String(r.sit) === String(x.sit)) + '" data-sit="' + x.sit + '" data-tom="' + x.tom + '" data-pede="' + (x.pedeCliente ? '1' : '0') + '" title="' + esc(x.efeito) + '"><i class="cmp-pt"></i><span class="t">' + esc(t1) + '</span>' + (t2 ? '<span class="s"> · ' + esc(t2) + '</span>' : '') + '</button>'; }).join('') +
-      '</div><p class="cmp-efeito" id="cmp-efeito">' + (it ? 'Depois do envio: ' + esc(it.efeito) + '.' : 'Escolha o que acontece depois do envio.') + '</p></div>' +
+      '<span class="cmp-rot">Trâmite</span>' +
+      '<div class="cmp-col"><div class="cmp-seg" role="radiogroup" aria-label="Situação do trâmite">' +
+        ints.map(x => { const [t1, t2] = x.rot.split(' · '); return '<button type="button" class="cmp-int' + (String(r.sit) === String(x.sit) ? ' on' : '') + '" role="radio" aria-checked="' + (String(r.sit) === String(x.sit)) + '" data-sit="' + x.sit + '" data-tom="' + x.tom + '" data-pede="' + (x.pedeCliente ? '1' : '0') + '" title="' + esc(x.efeito) + '"><i class="cmp-pt"></i><span class="t">' + esc(t1) + '</span>' + (t2 ? '<span class="s"><span class="sep"> · </span>' + esc(t2) + '</span>' : '') + '</button>'; }).join('') +
+      '</div><p class="cmp-efeito" id="cmp-efeito">' + (it ? 'Trâmite: ' + esc(it.efeito) + '.' : 'Escolha a situação do trâmite.') + '</p></div>' +
       '<span class="cmp-rot">Modelos</span>' +
       '<div class="cmp-col"><div class="cmp-chips rola">' + chipsModelos + '</div></div>' +
       '<span class="cmp-rot">Observações</span>' +
@@ -207,7 +209,7 @@ export function ligarResposta(g, i, r0, obs, cb) {
     if (!$('#a-texto', g)) return;
     $$('.cmp-int', g).forEach(b => { const on = String(b.dataset.sit) === String(r.sit); b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); });
     const x = ints.find(z => String(z.sit) === String(r.sit));
-    $('#cmp-efeito', g).textContent = x ? 'Depois do envio: ' + x.efeito + '.' : 'Escolha o que acontece depois do envio.';
+    $('#cmp-efeito', g).textContent = x ? 'Trâmite: ' + x.efeito + '.' : 'Escolha a situação do trâmite.';
     const pede = !!r.texto.trim() && OC.pedeAlgoAoCliente(r.texto, estado.settings).pede;
     $$('.cmp-int', g).forEach(b => b.classList.toggle('sug', !r.sit && pede && b.dataset.pede === '1'));
     $('#cmp-avisos', g).innerHTML = avisosHtml(r, i);
@@ -302,7 +304,7 @@ export function ligarResposta(g, i, r0, obs, cb) {
   if ($('#a-descartar', g)) $('#a-descartar', g).onclick = () => { rascunhos.delete(chaveDe(i)); cb.redesenhar(); };
   if ($('#a-revisar', g)) $('#a-revisar', g).onclick = () => {
     const bloq = OC.avisosResposta(r.texto, r.sit, estado.settings, i).find(a => a.bloqueia);
-    r.erro = !r.texto.trim() ? 'Escreva o texto da resposta.' : !r.sit ? 'Escolha o que acontece depois do envio (Respondido, Em análise, Concluído...).' : bloq ? bloq.msg : '';
+    r.erro = !r.texto.trim() ? 'Escreva o texto da resposta.' : !r.sit ? 'Escolha a situação do trâmite (Respondido, Em análise, Concluído...).' : bloq ? bloq.msg : '';
     if (!r.erro) r.modo = 'revisar';
     else if (!r.texto.trim() || bloq) { r.focar = true; r.selMarca = bloq ? OC.marcadoresPendentes(r.texto)[0] : ''; }   // volta o cursor para onde falta escrever
     cb.redesenhar();

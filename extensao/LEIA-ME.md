@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.33.3)
+# Control Onvio · ControlTax (v0.34.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,12 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.34.0 (detalhe em janela larga, conversa e resposta lado a lado)
+
+- **A janela da solicitação ficou mais larga** (até 1320 px). Em telas de 1180 px ou mais, a **conversa ocupa a altura toda à esquerda** e a **resposta ao cliente fica ao lado, sempre aberta** (sem botão de recolher), com seções de título claro: o texto, **Trâmite**, **Modelos** e **Observações**. O cabeçalho "Responder ao cliente" e os botões Descartar e Revisar ficam fixos enquanto a coluna rola.
+- **"Depois do envio" virou "Trâmite"** em toda a caixa (rótulo, frase do efeito e revisão: "Situação do trâmite"). As quatro opções (Respondido, Em análise, Em análise interna, Concluído) ficam em grade de 2 colunas, com o efeito embaixo; os **modelos quebram em linhas** em vez de rolar para o lado.
+- Em janelas mais estreitas (menos de 1180 px) tudo continua como antes: a caixa fica embaixo da conversa e recolhe. Se você mudar o tamanho da janela com o detalhe aberto, o layout troca sozinho e o rascunho não se perde.
 
 ## Novidades da v0.33.3 (entregue ao cliente não é prioridade)
 

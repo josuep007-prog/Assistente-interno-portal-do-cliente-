@@ -1307,6 +1307,7 @@ await passo('app · Distribuir: mostra para quem vai cada sem responsável, com 
 
 await passo('app · Tramitação: caixa de resposta fixa; intenção e efeito; modelos e variáveis; avisos; rascunho na conversa; envio com anexo; erro mantém o texto; lista não mapeada', async () => {
   const p = await abrirApp('#/fila', { settings: { __v: 2, desfazerSeg: 0 } });
+  await p.setViewportSize({ width: 1100, height: 860 });       // janela estreita: a caixa de resposta fica embaixo e recolhe
   await p.evaluate(() => { window.__respostas = { acao: { ok: true, acao: 'tramite', anexos: 1 }, detalhe: { ok: true, item: { assunto: 'Férias' }, tramites: [], datas: {} } }; });
   await p.click('#corpo [data-k="geral:b"]');
   await p.waitForSelector('#cmp');
@@ -1347,7 +1348,7 @@ await passo('app · Tramitação: caixa de resposta fixa; intenção e efeito; m
   await p.fill('#a-texto', 'Pode enviar o RG do empregado?');
   assert.equal(await p.$eval('.cmp-int.sug', b => b.dataset.sit), '4');
   await p.click('.cmp-int[data-sit="5"]');
-  assert.equal(await p.textContent('#cmp-efeito'), 'Depois do envio: Encerra a solicitação: ela sai da fila.');
+  assert.equal(await p.textContent('#cmp-efeito'), 'Trâmite: Encerra a solicitação: ela sai da fila.');
   assert.match(await p.textContent('#cmp-avisos'), /pede algo ao cliente, mas "Concluído" encerra/);
   await p.click('.cmp-int[data-sit="4"]');
   assert.match(await p.textContent('#cmp-efeito'), /A vez passa ao cliente; sem retorno, prescreve em 30 dias/);
@@ -1437,8 +1438,40 @@ await passo('app · detalhe em janela baixa: a caixa de resposta não empurra o 
   }
 });
 
+await passo('app · detalhe em janela larga: conversa à esquerda e resposta ao lado (trâmite, modelos e observações em seções); janela estreita volta a caixa para baixo', async () => {
+  const p = await abrirApp('#/fila', { settings: { __v: 2, desfazerSeg: 0 } });                       // 1360 de largura
+  await p.evaluate(() => { window.__respostas = { acao: { ok: true, acao: 'tramite', anexos: 0 }, detalhe: { ok: true, item: { assunto: 'Férias' }, tramites: [], datas: {} } }; });
+  await p.click('#corpo [data-k="geral:b"]');
+  await p.waitForSelector('.dlg-cols.lateral #a-texto');
+  const m = await p.evaluate(() => { const g = document.querySelector('#gaveta').getBoundingClientRect(), c = document.querySelector('#g-corpo').getBoundingClientRect(), r = document.querySelector('#cmp').getBoundingClientRect(); return { g: g.width, c: [c.left, c.right, c.height], r: [r.left, r.right, r.height], fora: document.querySelector('#cmp-rec') !== null }; });
+  assert.ok(m.g >= 1250, 'a janela ficou mais larga: ' + m.g);
+  assert.ok(m.c[1] <= m.r[0] + 1, 'a conversa fica à esquerda e a resposta ao lado');
+  assert.ok(m.r[2] >= m.c[2] - 2, 'a caixa de resposta tem a altura toda da conversa');
+  assert.equal(m.fora, false, 'sem botão de recolher: a caixa fica sempre aberta');
+  assert.equal(await p.textContent('.cmp-grade > .cmp-rot'), 'Trâmite', 'o rótulo agora é Trâmite');
+  assert.equal(await p.$$eval('.cmp-rot', e => e.map(x => x.textContent).join('|')), 'Trâmite|Modelos|Observações');
+  assert.equal(await p.isVisible('.cmp-modelo'), true);
+  assert.equal(await p.textContent('#cmp-efeito'), 'Escolha a situação do trâmite.');
+  await p.click('.cmp-int[data-sit="5"]');
+  assert.match(await p.textContent('#cmp-efeito'), /^Trâmite: /);
+  assert.equal(await p.$eval('.cmp-chips.rola', e => getComputedStyle(e).flexWrap), 'wrap', 'modelos quebram linha, sem rolar de lado');
+  assert.equal(await p.$eval('.cmp-modelo', e => getComputedStyle(e.closest('.cmp-chips')).overflowX), 'visible');
+  if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/detalhe-larga.png' });
+  // a janela encolhe: a caixa vai para baixo e recolhe; o rascunho continua
+  await p.fill('#a-texto', 'Rascunho que fica.');
+  await p.setViewportSize({ width: 1000, height: 860 });
+  await p.waitForSelector('.dlg-cols:not(.lateral)');
+  assert.equal(await p.$eval('#cmp', c => c.closest('.dlg-cols') !== null && !c.closest('.lateral')), true);
+  await p.waitForSelector('#cmp-rec');
+  await p.setViewportSize({ width: 1360, height: 860 });
+  await p.waitForSelector('.dlg-cols.lateral #a-texto');
+  assert.equal(await p.$eval('#a-texto', t => t.value), 'Rascunho que fica.', 'o rascunho não se perde ao mudar o tamanho');
+  assert.deepEqual(p.erros, []);
+});
+
 await passo('app · Tramitação: 5 s para desfazer; enviar e ir para a próxima; rascunho só na memória; atalho R e Ctrl+Enter; situação como linha na conversa', async () => {
   const p = await abrirApp('#/fila?escopo=equipe', { settings: { __v: 2, desfazerSeg: 3 } });
+  await p.setViewportSize({ width: 1100, height: 860 });       // janela estreita: a caixa de resposta fica embaixo e recolhe
   await p.evaluate(() => { window.__respostas = { acao: { ok: true, acao: 'tramite', anexos: 0 }, detalhe: { ok: true, item: { assunto: 'Férias' }, datas: {}, tramites: [
     { n: 1, em: '2026-10-01T10:00:00', situacao: 'Sem análise', lado: 'cli', autor: 'Cliente BETA', texto: 'Abertura', anexos: [] },
     { n: 2, em: '2026-10-02T10:00:00', situacao: 'Em análise', lado: 'esc', autor: 'Ana Teste', texto: 'Vamos ver.', anexos: [] },
@@ -1500,7 +1533,7 @@ await passo('app · Tramitação: 5 s para desfazer; enviar e ir para a próxima
 await passo('app · tema claro por padrão (mesmo com o sistema escuro); caixa de resposta recolhe ao clicar fora, sem perder o rascunho', async () => {
   const p = await pagina(URL_APP, '');
   await p.emulateMedia({ colorScheme: 'dark' });
-  await p.setViewportSize({ width: 1360, height: 860 });
+  await p.setViewportSize({ width: 1100, height: 860 });
   await semear(p, Object.assign({}, ESTADO_APP, { settings: { __v: 2, desfazerSeg: 0 } }));
   await p.goto(URL_APP + '#/fila');
   await p.waitForFunction(() => document.querySelector('#vista').children.length > 0);

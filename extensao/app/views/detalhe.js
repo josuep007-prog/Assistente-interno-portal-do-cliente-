@@ -3,13 +3,14 @@
  * anterior/próxima (setas ← → ou os botões do topo) sem fechar. */
 import { estado, itens, enviar, salvarLembretes, aoMudar } from '../estado.js';
 import { formAcao, ligarAcao, novaAcao, acaoAberta, fecharAcao, opcoesPassar } from './acao-form.js';
-import { respostaHtml, ligarResposta, prepararResposta, bolhaRascunho, recemEnviado, respostaEmAndamento, cancelarPendente, focarResposta, reiniciarCaixa, recolherSeFora } from './resposta.js';
+import { respostaHtml, ligarResposta, definirLateral, prepararResposta, bolhaRascunho, recemEnviado, respostaEmAndamento, cancelarPendente, focarResposta, reiniciarCaixa, recolherSeFora } from './resposta.js';
 import { esc, pillSituacao, motivosHtml, fmtDataHora, fmtData, textoPuro, toast, ladoTexto, relativo, iniciais, $, $$ } from '../util.js';
 import { abrirLembrete, lembreteAberto } from './lembrete-dlg.js';
 import { abrirNova, novaAberta } from './nova-dlg.js';
 import { abrirAnexos, anexosAbertos, contarAnexos, tipoArquivo } from './anexos-dlg.js';
 const OC = window.OC;
 
+const LARGURA_LATERAL = 1180;   // a partir daqui a caixa de resposta vai para o lado da conversa
 let atual = null;        // { type, num }
 let aba = 'tramites';
 let lista = null;        // lista de onde a pessoa abriu (para anterior/próxima)
@@ -63,12 +64,22 @@ function andar(d) {
 }
 const meusLembretes = i => (estado.lembretes || []).filter(l => l.type === i.type && String(l.num) === String(i.num));
 
+// a janela mudou de tamanho: passa a caixa de resposta para o lado (ou de volta para baixo) sem perder o rascunho
+addEventListener('resize', () => {
+  if (!ultimo || !detalheAberto() || aba !== 'tramites') return;
+  const quer = innerWidth >= LARGURA_LATERAL && !ultimo.carregando && !ultimo.erro && !!ultimo.r;
+  if (quer !== !!document.querySelector('#gaveta .dlg-cols.lateral')) desenhar(ultimo.i, ultimo.r, ultimo.erro, ultimo.carregando);
+});
+
 function desenhar(i, r, erro, carregando) {
   ultimo = { i, r, erro, carregando };
   const g = $('#gaveta');
   const corpoAntes = $('#g-corpo'), stAntes = corpoAntes ? corpoAntes.scrollTop : 0;   // só a caixa de resposta mudou: a conversa fica onde estava
   const tramites = r && r.tramites;
   const lems = meusLembretes(i);
+  // janela larga: a conversa ocupa a altura toda e a caixa de resposta fica ao lado, sempre aberta
+  const lado = aba === 'tramites' && !carregando && !erro && !!r && window.innerWidth >= LARGURA_LATERAL;
+  definirLateral(lado);
   const p = posicao();
   const ultimoTr = tramites && tramites.length ? tramites[tramites.length - 1] : null;
   // prazo legal de pagamento (férias e rescisão): o da leitura ou, no detalhe, calculado das datas lidas agora
@@ -103,9 +114,11 @@ function desenhar(i, r, erro, carregando) {
       '<button class="dtab' + (aba === 'cliente' ? ' on' : '') + '" data-aba="cliente" role="tab">Para o cliente' + (obs.some(o => o.alerta) ? '<span class="n late">!</span>' : '') + '</button>' +
       '<button class="dtab' + (aba === 'lembretes' ? ' on' : '') + '" data-aba="lembretes" role="tab">Lembretes<span class="n">' + (lems.filter(l => !l.feito).length || '') + '</span></button>' +
     '</div>' +
+    '<div class="dlg-cols' + (lado ? ' lateral' : '') + '">' +
     '<div class="dlg-body" id="g-corpo">' + (erro ? '<div class="faixa"><svg class="ic"><use href="#i-alert"/></svg>' + esc(erro) + '</div>' : '') +
       (aba === 'acao' && acaoAberta() ? formAcao(i) : aba === 'dados' ? dados(i, r, carregando) : aba === 'cliente' ? clienteHtml(obs, carregando) : aba === 'lembretes' ? lembretesHtml(lems) : tramitesHtml(r, carregando, i)) + '</div>' +
     (aba === 'tramites' && !carregando && r && !erro ? respostaHtml(i, obs, { datas: r.datas, proxima: p >= 0 && p < lista.length - 1 }) : '') +
+    '</div>' +
     '<div class="dlg-actions">' +
       responderRodape(i, carregando) +
       '<button class="btn btn-sm" id="g-onvio"><svg class="ic ic-sm"><use href="#i-link"/></svg> Abrir no Onvio</button>' +
