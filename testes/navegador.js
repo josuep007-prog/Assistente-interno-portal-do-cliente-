@@ -349,10 +349,11 @@ const ESTADO_APP = {
   serie: { [hojeK]: { entradas: 3, saidas: 1, horas: { '08': 3, '09': 4, '10': 4 } } }
 };
 const OC_ymd = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-async function abrirApp(rota, extra) {
+async function abrirApp(rota, extra, antes) {
   const p = await pagina(URL_APP, '');
   await p.setViewportSize({ width: 1360, height: 860 });
   await semear(p, Object.assign({}, ESTADO_APP, extra || {}));
+  if (antes) await p.addInitScript(antes);                                  // respostas simuladas já na primeira leitura
   await p.goto(URL_APP + (rota || ''));
   await p.waitForFunction(() => document.querySelector('#vista').children.length > 0, null, { timeout: 5000 });
   return p;
@@ -494,6 +495,65 @@ await passo('app · Hoje: admissões sem trâmite do escritório em faixa recolh
   await p.evaluate(() => { location.hash = '#/fila?escopo=equipe&kpi=admissao'; });
   await p.waitForFunction(() => document.querySelectorAll('#corpo [data-k]').length === 3);
   assert.deepEqual((await linhas(p)).sort(), ['cadEmpregado:e1', 'cadEmpregado:e2', 'cadEstagiario:s1']);
+  assert.deepEqual(p.erros, []);
+});
+
+await passo('app · Hoje: sugestões de férias nova (trâmite já preenchido com as variáveis) e de aviso trabalhado (lembrete, sem escrever no Onvio)', async () => {
+  const itens = ITENS_APP.concat([
+    { k: 'avisoFerias:v1', type: 'avisoFerias', typeLabel: 'Aviso de férias', id: 'v1', num: 701, code: 1, status: 'Sem análise', lado: 'esc', nivel: 0, grav: 0, parado: 1, motivos: [], resp: 'Ana Teste', mine: true, apelido: 'VEGA', cliente: 'VEGA', detalhe: 'Beltrano', created: agoraIso(1), last: agoraIso(1), pagamentoAte: { alvo: '2026-12-18', ref: 'início das férias em 22/12/2026' } },
+    { k: 'avisoRescisao:t1', type: 'avisoRescisao', typeLabel: 'Aviso de rescisão', id: 't1', num: 702, code: 2, status: 'Em análise', lado: 'esc', nivel: 0, grav: 0, parado: 1, motivos: [], resp: 'Ana Teste', mine: true, apelido: 'LIRA', cliente: 'LIRA', detalhe: 'Sicrano · aviso trabalhado', created: agoraIso(1), last: agoraIso(1), avisoEm: '2099-03-10' }
+  ]);
+  const p = await abrirApp('#/inicio', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens }) });
+  await p.evaluate(() => { window.__respostas = Object.assign(window.__respostas || {}, { casos: { ok: true, analises: {}, lidas: 0 }, detalhe: { ok: true, item: {}, datas: { inicio: '2026-12-22' }, tramites: [] } }); });
+  await p.waitForSelector('#hj-sug .cs-l.cs-feriasNova');
+  assert.match(await p.textContent('#hj-sug .cs-l.cs-feriasNova'), /Férias nova.*#701 VEGA · Beltrano.*Pôr em análise/s);
+  assert.match(await p.textContent('#hj-sug .cs-l.cs-avisoTrabalhado'), /Aviso trabalhado.*#702 LIRA.*lembrete para 09\/03.*Criar lembrete/s, 'dia útil antes do aviso (10/03/2099)');
+  // férias nova: o trâmite abre preenchido, com a data do pagamento no lugar da variável
+  await p.click('#hj-sug [data-cs-acao="avisoFerias:v1"]');
+  await abrirCaixa(p);
+  const tx = await p.$eval('#a-texto', t => t.value);
+  assert.match(tx, /empréstimos consignados/);
+  assert.match(tx, /até 18\/12\/2026/, 'a variável {pagamentoFerias} foi preenchida');
+  assert.doesNotMatch(tx, /\{[a-zA-Z]+\}/, 'nenhuma variável sobrando: ' + tx);
+  assert.equal(await p.$eval('.cmp-int.on', b => b.dataset.sit), '2', 'Em análise');
+  await p.keyboard.press('Escape');
+  await p.waitForSelector('#gaveta', { state: 'hidden' });
+  // aviso trabalhado: cria o lembrete pessoal e a sugestão some; nada vai ao Onvio
+  const msgs0 = await p.evaluate(() => window.__msgs.filter(m => m.cmd === 'acao' || m.cmd === 'criar').length);
+  await p.click('#hj-sug [data-cs-acao="avisoRescisao:t1"]');
+  await p.waitForFunction(() => !document.querySelector('#hj-sug .cs-l.cs-avisoTrabalhado'));
+  const mem = await p.evaluate(() => JSON.parse(localStorage.getItem('__mem')));
+  const lem = (mem.lembretes || []).find(l => /Emitir o aviso prévio trabalhado/.test(l.texto));
+  assert.ok(lem && lem.num === '702' && new Date(lem.quando).getHours() === 9, 'lembrete criado às 9h');
+  assert.deepEqual(Object.keys(mem.sugestoesIgnoradas || {}), ['avisoRescisao:t1'], 'a sugestão não volta');
+  assert.equal(await p.evaluate(() => window.__msgs.filter(m => m.cmd === 'acao' || m.cmd === 'criar').length), msgs0, 'nada foi enviado ao Onvio');
+  assert.deepEqual(p.erros, []);
+});
+
+await passo('app · Solicitações: responsável sugerido nas sem responsável abre a atribuição preenchida; acidente de trabalho sobe ao topo com o porquê', async () => {
+  const itens = ITENS_APP.map(i => i.k === 'rubricas:d' ? Object.assign({}, i, { respId: 'id-bia' }) : i).concat([
+    { k: 'afastamento:z1', type: 'afastamento', typeLabel: 'Afastamento', id: 'z1', num: 710, code: 2, status: 'Em análise', lado: 'esc', nivel: 2, grav: 2, parado: 1, resp: 'Ana Teste', mine: true, apelido: 'ZETA', cliente: 'ZETA', detalhe: 'Atestado', created: agoraIso(1), last: agoraIso(1), acidente: true, motivos: [{ n: 2, m: 'Acidente de trabalho', legal: true, acidente: true, t: 'CAT: até o 1º dia útil seguinte ao acidente' }] },
+    { k: 'geral:s1', type: 'geral', typeLabel: 'Geral', id: 's1', num: 711, code: 1, status: 'Sem análise', lado: 'esc', nivel: 0, grav: 0, parado: 0, motivos: [], resp: '', mine: false, apelido: 'SOL', cliente: 'SOL', detalhe: 'Dúvida', created: agoraIso(0), last: agoraIso(0) },
+    { k: 'geral:s2', type: 'geral', typeLabel: 'Geral', id: 's2', num: 712, code: 1, status: 'Sem análise', lado: 'esc', nivel: 0, grav: 0, parado: 0, motivos: [], resp: '', mine: false, apelido: 'LUA', cliente: 'LUA', detalhe: 'Outra', created: agoraIso(0), last: agoraIso(0) }
+  ]);
+  const p = await abrirApp('#/fila?escopo=todas', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens }) }, `window.__respostas = { distribuicao: { ok: true, dias: 30, movimentadas: 4, erros: [], sugestoes: [
+    { item: { k: 'geral:s1', type: 'geral', num: 711 }, resp: 'Bia', respId: 'id-bia', n: 3, motivo: 'atendeu 3 de 4 solicitações desta empresa nos últimos 30 dias', alternativas: [] },
+    { item: { k: 'geral:s2', type: 'geral', num: 712 }, resp: '', respId: '', n: 0, motivo: 'ninguém atendeu esta empresa nos últimos 30 dias: escolha o responsável', alternativas: [], semHistorico: true }] } };`);
+  await p.waitForFunction(() => window.__msgs.some(m => m.cmd === 'distribuicao'));
+  await p.waitForSelector('[data-sug-resp="geral:s1"]');
+  assert.equal(await p.textContent('[data-sug-resp="geral:s1"]'), 'Sugerido: Bia');
+  assert.match(await p.getAttribute('[data-sug-resp="geral:s1"]', 'title'), /atendeu 3 de 4 solicitações desta empresa/);
+  assert.equal(await p.textContent('[data-sug-resp="geral:s2"]'), 'Escolher responsável', 'sem histórico');
+  // acidente: primeiro da fila, com a etiqueta e o porquê no title
+  assert.equal((await linhas(p))[0], 'afastamento:z1');
+  assert.equal(await p.textContent('#corpo [data-k="afastamento:z1"] .sc-mot-tx'), 'Acidente de trabalho');
+  assert.match(await p.getAttribute('#corpo [data-k="afastamento:z1"] .sc-mot', 'title'), /CAT: até o 1º dia útil/);
+  // o botão abre o detalhe já na atribuição, com a pessoa escolhida; nada é enviado sem confirmar
+  await p.evaluate(() => { window.__respostas.detalhe = { ok: true, item: {}, tramites: [] }; });
+  await p.click('[data-sug-resp="geral:s1"]');
+  await p.waitForSelector('input[name="a-modo"][value="responsavel"]:checked');
+  assert.equal(await p.$eval('#a-analista', x => x.value), 'id-bia', 'a pessoa sugerida já vem escolhida');
+  assert.equal(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'acao')), false, 'sem confirmar não envia');
   assert.deepEqual(p.erros, []);
 });
 
@@ -987,6 +1047,38 @@ await passo('app · Nova solicitação (Geral): do quadro de avisos, das Solicit
   const m2 = await p.evaluate(() => window.__msgs.filter(x => x.cmd === 'criar').pop());
   assert.deepEqual([m2.assunto, m2.descricao, m2.passarVez, !!m2.origem.num], ['Documentos pendentes', 'Envie os documentos.', false, true]);
   assert.equal(await p.$eval('#nv-assunto', x => x.value), 'Documentos pendentes', 'volta ao formulário com o que foi escrito');
+  assert.deepEqual(p.erros, []);
+});
+
+await passo('app · Nova solicitação por departamento: modelos de DP, Fiscal e Contábil, marcadores barram a criação, aviso quando o departamento não tem id nas regras', async () => {
+  const p = await abrirApp('#/inicio', { settings: { __v: 2, criacao: { serviceRequestType: '', requestWay: '', departmentId: '', departamentos: { fiscal: 'dep-fiscal' } } } });
+  await p.evaluate(() => { window.__respostas = Object.assign(window.__respostas || {}, { criar: { ok: true, criada: true, num: '1601', id: 'n2', tramite: false, erroTramite: null, departamentoPadrao: true }, detalhe: { ok: true, item: {}, tramites: [], datas: {} } }); });
+  await p.click('#hj-nova');                                                              // botão visível no Hoje
+  await p.waitForSelector('#nv-dep');
+  assert.equal(await p.isDisabled('#nv-modelo'), true, 'o modelo espera o departamento');
+  assert.deepEqual(await p.$$eval('#nv-dep option', o => o.map(x => x.textContent)), ['Escolha…', 'DP', 'Fiscal', 'Contábil']);
+  await p.selectOption('#nv-dep', 'dp');
+  assert.ok((await p.$$eval('#nv-modelo option', o => o.length)) >= 4, 'modelos do DP');
+  assert.match(await p.textContent('#dlg-nova #nv-dep-aviso'), /id do departamento DP ainda não está nas regras/, 'DP sem id: avisa');
+  await p.selectOption('#nv-dep', 'fiscal');
+  assert.equal(await p.$('#nv-dep-aviso'), null, 'Fiscal tem id nas regras');
+  await p.selectOption('#nv-modelo', { label: 'Documentos fiscais do mês' });
+  assert.equal(await p.$eval('#nv-assunto', x => x.value), 'Documentos fiscais pendentes da competência');
+  assert.match(await p.$eval('#nv-desc', x => x.value), /\(descreva a competência\)/);
+  assert.equal(await p.evaluate(() => document.activeElement.id), 'nv-desc', 'o cursor vai ao que falta preencher');
+  await p.selectOption('#nv-cliente', 'ACME LTDA');
+  await p.click('#nv-revisar');
+  assert.match(await p.textContent('#dlg-nova .faixa'), /Falta preencher: \(descreva a competência\)/, 'marcadores barram a criação');
+  await p.fill('#nv-desc', 'Para apurar os impostos de setembro, precisamos das notas fiscais.');
+  await p.click('#nv-revisar');
+  await p.waitForSelector('#nv-conf');
+  assert.match(await p.textContent('#nv-conf'), /Departamento: Fiscal/);
+  await p.click('#nv-criar');
+  await p.waitForSelector('#dlg-nova', { state: 'hidden' });
+  const m = await p.evaluate(() => window.__msgs.filter(x => x.cmd === 'criar').pop());
+  assert.equal(m.departamento, 'fiscal', 'o departamento vai ao service worker (que troca o id)');
+  assert.match(await p.textContent('#toast'), /departamento padrão do seu acesso.*Fiscal ainda não está nas regras/, 'avisa quando o service worker usou o padrão');
+  await p.keyboard.press('Escape');
   assert.deepEqual(p.erros, []);
 });
 

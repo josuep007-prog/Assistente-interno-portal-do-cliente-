@@ -31,6 +31,7 @@ export function prepararResposta(i, preset) {
   if (p.situacao) r.sit = String(p.situacao);
   r.aoEnviar = typeof p.aoEnviar === 'function' ? p.aoEnviar : null;
   r.modo = 'editar'; r.aberto = true; r.focar = true; r.erro = '';
+  r.preencherPendente = /\{\w+\}/.test(r.texto);       // {variáveis} do texto sugerido são preenchidas quando o detalhe é lido (datas, empregado)
   chaveAberta = chaveDe(i); recolhida = false;
 }
 // fechou o detalhe: a próxima solicitação aberta começa recolhida
@@ -88,6 +89,11 @@ export function respostaHtml(i, obs, ctx) {
   const pode = OC.podeAcao('tramite', i);
   if (!pode.ok) return nota('Não dá para responder: ' + pode.motivo + '.');
   const r = rascunho(i);
+  if (r.preencherPendente && ctx && ctx.datas !== undefined) {
+    r.preencherPendente = false;
+    r.texto = OC.preencherModelo(r.texto, vars(i, ctx));
+    r.selMarca = OC.marcadoresPendentes(r.texto)[0] || '';       // o que faltar já vem marcado
+  }
   if (chaveAberta !== chaveDe(i)) { chaveAberta = chaveDe(i); recolhida = r.modo === 'editar'; }     // outra solicitação: recolhida (salvo se está revisando ou enviando)
   const ints = OC.intencoesDe(i, estado.settings);
   const it = ints.find(x => String(x.sit) === String(r.sit));

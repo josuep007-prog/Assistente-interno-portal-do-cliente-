@@ -47,7 +47,7 @@ export const porqueGrav = i => OC.porqueGravidade(i, estado.settings);
 export const nivelLegal = i => Math.max(0, ...(i.motivos || []).filter(m => m.legal).map(m => m.n));
 const legais = i => (i.motivos || []).filter(m => m.legal);
 export function motivosHtml(i) {
-  return legais(i).map(m => '<span class="pill ' + (m.n === 2 ? 'pill-late' : 'pill-today') + (m.o === 'cli' ? ' pill-cli" title="O pedido chegou em cima do prazo (origem do cliente)' : '') + '">' + esc(m.m) + '</span>').join('') +
+  return legais(i).map(m => '<span class="pill ' + (m.n === 2 ? 'pill-late' : 'pill-today') + (m.acidente ? ' pill-acidente' : '') + (m.t ? '" title="' + esc(m.t) : m.o === 'cli' ? ' pill-cli" title="O pedido chegou em cima do prazo (origem do cliente)' : '') + '">' + esc(m.m) + '</span>').join('') +
     (i.abaProvavel ? '<span class="pill pill-muted" title="O assunto lembra uma solicitação específica (palavra: ' + esc(i.abaProvavel.palavra) + ')">Pode ser: ' + esc(i.abaProvavel.label) + '</span>' : '');
 }
 const nomeCli = i => i.apelido || i.cliente || 'Cliente não informado';
@@ -57,19 +57,30 @@ const idadeTxt = i => (i.uteisAberto != null ? 'aberta há ' + i.uteisAberto + '
 export function prazoHtml(i) {
   const m = legais(i).sort((a, b) => b.n - a.n)[0];
   if (!m) return '<span class="fraco">' + esc(idadeTxt(i)) + '</span>';
-  return '<span class="c-prazo ' + (m.n === 2 ? 'late' : 'today') + '">' + esc(m.m) + '</span>';
+  return '<span class="c-prazo ' + (m.n === 2 ? 'late' : 'today') + '"' + (m.t ? ' title="' + esc(m.t) + '"' : '') + '>' + esc(m.m) + '</span>';
+}
+// Responsável sugerido para as solicitações sem responsável (lido do histórico dos últimos 30 dias, só na memória do app)
+let sugestoesResp = null;
+export const definirSugestoesResp = m => { sugestoesResp = m; };
+export function respHtml(i) {
+  if (i.resp) return esc(i.resp);
+  const s = sugestoesResp && sugestoesResp.get(i.k);
+  if (!s || !OC.podeAcao('responsavel', i).ok) return '<span class="today">sem responsável</span>';
+  return s.resp && s.respId
+    ? '<button type="button" class="sug-resp" data-sug-resp="' + esc(i.k) + '" title="' + esc('Sugerido: ' + s.resp + ', que ' + s.motivo + '. Clique para atribuir: você revisa e confirma.') + '">Sugerido: ' + esc(s.resp) + '</button>'
+    : '<button type="button" class="sug-resp sem" data-sug-resp="' + esc(i.k) + '" title="' + esc(s.motivo || 'Sem histórico: escolha o responsável') + '">Escolher responsável</button>';
 }
 // Cartão de solicitação (visão "Cartões" das filas): o prazo legal, quando há, ou a idade em cinza
 export function cartaoItem(i) {
   const ms = legais(i).sort((a, b) => b.n - a.n);
   const m = ms[0];
-  const mot = m ? '<div class="sc-mot ' + (m.n === 2 ? 'late' : 'today') + '" title="' + esc(ms.map(x => x.m).join(' · ')) + '"><span class="sc-mot-tx">' + esc(m.m) + (ms.length > 1 ? ' <small>+' + (ms.length - 1) + '</small>' : '') + '</span></div>' : '';
+  const mot = m ? '<div class="sc-mot ' + (m.n === 2 ? 'late' : 'today') + (m.acidente ? ' acidente' : '') + '" title="' + esc(ms.map(x => x.t || x.m).join(' · ')) + '"><span class="sc-mot-tx">' + esc(m.m) + (ms.length > 1 ? ' <small>+' + (ms.length - 1) + '</small>' : '') + '</span></div>' : '';
   return '<div class="sc lvl-' + nivelLegal(i) + '" tabindex="0" data-k="' + esc(i.k) + '">' +
     '<div class="sc-top"><span class="mono">#' + esc(i.num) + '</span><span class="c-tipo">' + tipoIcone(i.type, 'pq') + '<span class="c-tipo-tx">' + esc(i.typeLabel) + '</span></span>' + pillSituacao(i) + '</div>' +
     '<div class="sc-cli" title="' + esc(i.cliente) + '">' + esc(nomeCli(i)) + '</div>' +
     '<div class="sc-sub">' + esc(i.detalhe || '—') + '</div>' +
     mot +
-    '<div class="sc-pe"><span><b>' + (i.parado || 0) + 'd</b> parada</span><span class="resp">' + (i.resp ? esc(i.resp) : '<span class="today">sem responsável</span>') + '</span></div></div>';
+    '<div class="sc-pe"><span><b>' + (i.parado || 0) + 'd</b> parada</span><span class="resp">' + respHtml(i) + '</span></div></div>';
 }
 
 let toastT = null;
