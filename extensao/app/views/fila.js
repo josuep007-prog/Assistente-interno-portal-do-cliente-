@@ -63,7 +63,8 @@ export function render(el, ctx, params) {
   const kpi = KPI[params.kpi];
   const motivo = OC.MOTIVOS.find(x => x.k === params.motivo);          // vindo do anel do Hoje
   const porPessoa = !!(params.analista || params.cliente);
-  const aba = porPessoa ? '' : abaDoEndereco(params, kpi, motivo, todas);
+  let aba = porPessoa ? '' : abaDoEndereco(params, kpi, motivo, todas);
+  if (estado.setor.fora && aba === 'todas') aba = 'minhas';              // fora do DP: sem a equipe toda
   const doMinhas = i => (i.mine || !i.resp) && i.lado !== 'cli';
   const doRespondidas = () => minhas().filter(i => i.lado === 'cli').concat(resolvidasMinhas);
   const n = { minhas: todas.filter(doMinhas).length, todas: todas.length, respondidas: doRespondidas().length };
@@ -86,7 +87,7 @@ export function render(el, ctx, params) {
     titulo, sub,
     abas: [
       { id: 'minhas', rot: 'Minhas', href: '#/fila', n: n.minhas },
-      { id: 'todas', rot: 'Todas', href: '#/fila?escopo=todas', n: n.todas },
+      ...(estado.setor.fora ? [] : [{ id: 'todas', rot: 'Todas', href: '#/fila?escopo=todas', n: n.todas }]),
       { id: 'respondidas', rot: 'Respondidas', href: '#/fila?escopo=respondidas', n: n.respondidas }
     ],
     aba,

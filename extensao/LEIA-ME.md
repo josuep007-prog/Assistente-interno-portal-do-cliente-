@@ -45,6 +45,12 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
 
+## Novidades da v0.31.0 (setores e prazo prometido)
+
+- **Quem vê o quê (regras do escritório):** `equipeDP` (nomes como no Onvio) e `departamentoDP` (id do departamento do DP). Com elas, a lista **Geral** mostra só o que é do DP (pelo `departmentId` de cada solicitação; as que são suas ficam sempre) e quem **não é da equipe do DP** vê só as suas solicitações: sem a aba Todas, sem Equipe e sem Distribuir, com um aviso discreto no alto. Sem as regras preenchidas, tudo continua como antes. Quem é do DP não muda por ajuste pessoal.
+- **Prazo prometido pelo analista:** nas suas solicitações, a data que você escreveu na última resposta ao cliente (perto de "prazo", "até", "entrega", "previsão", "retorno em"; palavras em `prazoAnalistaPalavras`) vira o vencimento visível, "Prometido até dd/mm" (vermelho se venceu), e ordena dentro do grupo da fila (o prometido mais perto primeiro). Só a data é guardada, nunca o texto; sem data, vale a regra de antes por trás.
+- **A confirmar no Onvio real:** se a lista **Geral** traz `departmentId` em todas as solicitações e se mistura departamentos (causa provável de outros setores verem demandas do DP); os ids de DP, Fiscal e Contábil e o nome do campo do tipo de afastamento. O roteiro `mapeamento/prompt-pendencias-onvio.md` (Partes 1 a 4) pede esses valores: preencha `departamentoDP` e `criacao.departamentos` nas regras com o que ele devolver.
+
 ## Novidades da v0.30.0 (automação de férias e rescisão, acidente, responsável sugerido e modelos por departamento)
 
 - **Sugestões de ação novas no Hoje:**
