@@ -97,6 +97,12 @@
     sugestoes: { falta: false },
     // Palavras (sem acento, minúsculas) que, no assunto ou na abertura de um aviso de rescisão, mostram que o aviso prévio é
     // trabalhado: a sugestão cria o lembrete de emitir o aviso (sem cálculo). Idem acidente de trabalho nos afastamentos.
+    // Setores (22/10/2026): nomes como no Onvio de quem é do DP e id do departamento do DP. Com isso a lista Geral mostra só
+    // o que é do DP (departmentId) e quem não é da equipe do DP vê só as suas solicitações. Vazios = tudo como antes.
+    equipeDP: [],
+    departamentoDP: '',
+    // Prazo prometido pelo analista: palavras (sem acento) perto de uma data na última resposta do escritório
+    prazoAnalistaPalavras: ['prazo', 'ate', 'entrega', 'previsao', 'retorno em', 'retornamos em', 'retornaremos em'],
     avisoTrabalhadoPalavras: ['trabalhado', 'trabalhando', 'cumprir o aviso', 'cumprindo o aviso'],
     acidentePalavras: ['acidente', 'cat', 'acidentario', 'acidentaria', 'b91', 'b 91'],
     prescricaoDias: 30,       // regra do Onvio
@@ -359,6 +365,7 @@
       respId: (r.staffResponsibleExpanded && r.staffResponsibleExpanded.id) || '',
       admissao: t.familia === 'cadastro' ? (String(r.admissionDate || r.startDate || '').slice(0, 10) || null) : null,
       solicitante: (r.requesterExpanded && r.requesterExpanded.name) || '',
+      departmentId: typeof r.departmentId === 'string' ? r.departmentId : '',
       mine: mineSet ? mineSet.has(r.id) : false,
       abaProvavel: t.key === 'geral' ? abaProvavel(detalhe, regras || DEFAULTS.abaErrada) : null
     };
@@ -693,6 +700,43 @@
     };
   }
 
+  /* Prazo prometido pelo analista: procura uma data perto das palavras de prazoAnalistaPalavras na última resposta do
+   * escritório ("retornamos até 28/10", "previsão de entrega: 05/11/2026", "prazo até o dia 30"). Devolve só a data
+   * (YYYY-MM-DD) ou null; o texto nunca sai daqui. Datas no passado da própria resposta ou a mais de 180 dias não valem. */
+  function prazoPrometido(topicos, t, s, now) {
+    s = Object.assign({}, DEFAULTS, s || {});
+    const grava = new Set(FAMILIAS[t.familia].clienteGrava);
+    const ord = (topicos || []).filter(x => x && x.created && !x.deletedTopic).sort((a, b) => String(a.created).localeCompare(String(b.created)));
+    let ult = null;
+    ord.forEach((x, n) => { if (n > 0 && !grava.has(Number(x.status))) ult = x; });
+    if (!ult) return null;
+    const txt = textoPlano(ult.description), criada = parseDate(ult.created) || now || new Date();
+    const base = new Date(criada.getFullYear(), criada.getMonth(), criada.getDate());
+    const valida = (y, m, d) => { const x = new Date(y, m - 1, d); return x.getMonth() === m - 1 && x.getDate() === d && x >= base && x - base <= 180 * 864e5 ? x : null; };
+    const achados = [];
+    for (const p of s.prazoAnalistaPalavras || []) {
+      const pal = escRe(semAcento(p));
+      let m = new RegExp('(?:^|[^a-z0-9])' + pal + '[^0-9]{0,30}(\\d{1,2})/(\\d{1,2})(?:/(\\d{2,4}))?').exec(txt);
+      if (m) {
+        const dia = Number(m[1]), mes = Number(m[2]);
+        let ano = m[3] ? Number(m[3]) : base.getFullYear();
+        if (ano < 100) ano += 2000;
+        let x = valida(ano, mes, dia);
+        if (!x && !m[3]) x = valida(ano + 1, mes, dia);
+        if (x) achados.push([m.index, x]);
+      }
+      m = new RegExp('(?:^|[^a-z0-9])' + pal + '[^0-9]{0,25}dia (\\d{1,2})(?![0-9/])').exec(txt);
+      if (m) {
+        const dia = Number(m[1]);
+        let x = valida(base.getFullYear(), base.getMonth() + 1, dia);
+        if (!x) x = valida(base.getFullYear(), base.getMonth() + 2 > 12 ? 1 : base.getMonth() + 2, dia) || (base.getMonth() === 11 ? valida(base.getFullYear() + 1, 1, dia) : null);
+        if (x) achados.push([m.index, x]);
+      }
+    }
+    if (!achados.length) return null;
+    achados.sort((a, b) => a[0] - b[0]);
+    return ymd(achados[0][1]);
+  }
   async function enriquecer(fetcher, out, cache, s, now) {
     out.tramites.porTipo = {};
     const LIMITE = 60, PARALELO = 4;
@@ -703,6 +747,7 @@
       const c = cache[it.k] || {};
       const guarda = {};
       if (c.pt) guarda.pt = c.pt;
+      if (c.pa && c.pa.l === it.last) guarda.pa = c.pa;                      // prazo prometido: só se nada mexeu desde a leitura
       const quieto = quietoNoCliente(it, s, now, hol);
       if (quieto && c.res && c.res.em === it.last) guarda.res = c.res;     // nada mudou desde o veredito
       if (c.erro && now - new Date(c.erro) < 864e5) {                        // não insiste por 1 dia
@@ -712,7 +757,8 @@
       if (Object.keys(guarda).length) novo[it.k] = guarda;
       const pt = !guarda.pt && !/^Sem análise/.test(it.status) && !it.desconhecido;   // ainda sem trâmite do escritório
       const res = quieto && !guarda.res;
-      if (pt || res) { quer[it.k] = { pt, res }; (res ? fila.unshift(it) : fila.push(it)); }
+      const pa = !guarda.pa && !!it.mine && it.lado === 'esc' && !/^Sem análise/.test(it.status) && !it.desconhecido;    // só das suas, para não pesar na leitura
+      if (pt || res || pa) { quer[it.k] = { pt, res, pa }; (res ? fila.unshift(it) : fila.push(it)); }
     }
     const falhou = {};
     let i = 0;
@@ -730,6 +776,7 @@
           const pt = quer[it.k].pt ? primeiroTramiteEsc(lista, t) : null;
           if (pt) e.pt = pt; // sem achar, tenta de novo no próximo ciclo
           if (quer[it.k].res) e.res = vereditoResolvida(lista, t, it, s);
+          if (quer[it.k].pa) e.pa = { l: it.last, d: prazoPrometido(lista, t, s, now) };
           if (Object.keys(e).length) novo[it.k] = e;
         } catch (e) {
           if (e && e.auth) throw e;
@@ -747,6 +794,12 @@
       if (c && c.pt) {
         it.primeiroTramite = c.pt;
         it.ptUteis = diasUteis(parseDate(it.created), parseDate(c.pt), hol);
+      }
+      if (c && c.pa && c.pa.l === it.last && c.pa.d) {                    // vencimento visível: o que o analista prometeu ao cliente
+        const f = uteisAte(now, diaDe(c.pa.d), hol), dt = c.pa.d.slice(8, 10) + '/' + c.pa.d.slice(5, 7);
+        it.prazoPrometido = c.pa.d;
+        it.motivos = (it.motivos || []).concat([{ n: f < 0 ? 2 : f <= 1 ? 1 : 0, m: f < 0 ? 'Prometido até ' + dt + ' (venceu)' : f === 0 ? 'Prometido para hoje (' + dt + ')' : 'Prometido até ' + dt, legal: true, prom: true }]);
+        if (f < 0 && (it.nivel || 0) < 2) it.nivel = 2;
       }
       if (c && c.res && c.res.em === it.last && quietoNoCliente(it, s, now, hol)) {
         if (!c.res.pede) { out.resolvidas.push(resumoResolvida(it, now, hol)); return false; }
@@ -841,7 +894,9 @@
       }
       if (ms.length) out.modelosCriacao = ms;
     }
-    for (const k of ['avisoTrabalhadoPalavras', 'acidentePalavras']) {
+    if (Array.isArray(raw.equipeDP)) { const l = [...new Set(raw.equipeDP.filter(x => typeof x === 'string' && x.trim() && x.length <= 80).map(x => x.trim()))].slice(0, 200); if (l.length) out.equipeDP = l; }
+    if (typeof raw.departamentoDP === 'string' && /^[A-Za-z0-9_.-]{1,80}$/.test(raw.departamentoDP)) out.departamentoDP = raw.departamentoDP;
+    for (const k of ['avisoTrabalhadoPalavras', 'acidentePalavras', 'prazoAnalistaPalavras']) {
       if (Array.isArray(raw[k])) { const l = [...new Set(raw[k].filter(p => typeof p === 'string' && p.trim() && p.length <= 40).map(p => semAcento(p).trim()))].slice(0, 40); if (l.length) out[k] = l; }
     }
     if (raw.sugestoes && typeof raw.sugestoes === 'object' && !Array.isArray(raw.sugestoes)) {
@@ -888,7 +943,7 @@
         if (t && t.key !== 'geral' && palavras.length) out.abaErrada.push({ tipo: t.key, palavras });
       }
     }
-    const util = Object.keys(out.config).length || out.feriados.length || out.abaErrada.length || (out.observacoes && Object.keys(out.observacoes).length) || out.avisoSemCalculo || out.assuntoSemCalculo || out.tramiteCriacao || out.criacao || out.sugestoes || out.modelosCriacao || out.avisoTrabalhadoPalavras || out.acidentePalavras || out.senhaGestorSha256 || out.avaliacao || out.pedidoAoCliente || out.cortesiaCliente || out.foraDoPortal || out.anexoCitado || out.textosSugestao || out.modelosTramite;
+    const util = Object.keys(out.config).length || out.feriados.length || out.abaErrada.length || (out.observacoes && Object.keys(out.observacoes).length) || out.avisoSemCalculo || out.assuntoSemCalculo || out.tramiteCriacao || out.criacao || out.sugestoes || out.modelosCriacao || out.equipeDP || out.departamentoDP || out.prazoAnalistaPalavras || out.avisoTrabalhadoPalavras || out.acidentePalavras || out.senhaGestorSha256 || out.avaliacao || out.pedidoAoCliente || out.cortesiaCliente || out.foraDoPortal || out.anexoCitado || out.textosSugestao || out.modelosTramite;
     return util ? out : null;
   }
 
@@ -907,6 +962,9 @@
       if (r.criacao) base.criacao = Object.assign({}, DEFAULTS.criacao, r.criacao, { departamentos: Object.assign({}, DEFAULTS.criacao.departamentos, r.criacao.departamentos || {}) });
       if (r.modelosCriacao) base.modelosCriacao = r.modelosCriacao;
       if (r.avisoTrabalhadoPalavras) base.avisoTrabalhadoPalavras = r.avisoTrabalhadoPalavras;
+      if (r.equipeDP) base.equipeDP = r.equipeDP;
+      if (r.departamentoDP) base.departamentoDP = r.departamentoDP;
+      if (r.prazoAnalistaPalavras) base.prazoAnalistaPalavras = r.prazoAnalistaPalavras;
       if (r.acidentePalavras) base.acidentePalavras = r.acidentePalavras;
       if (r.senhaGestorSha256) base.senhaGestorSha256 = r.senhaGestorSha256;
       if (r.avaliacao && r.avaliacao.pesos) base.pesosNota = Object.assign({}, DEFAULTS.pesosNota, r.avaliacao.pesos);
@@ -920,7 +978,22 @@
       if (r.sugestoes) base.sugestoes = Object.assign({}, DEFAULTS.sugestoes, r.sugestoes);
     }
     // a senha da área do gestor vem só do código ou das regras do escritório, nunca dos ajustes da pessoa
-    return Object.assign(base, usuario || {}, { senhaGestorSha256: base.senhaGestorSha256, pesosNota: base.pesosNota, avaliacaoMinEntregas: base.avaliacaoMinEntregas });
+    return Object.assign(base, usuario || {}, { senhaGestorSha256: base.senhaGestorSha256, pesosNota: base.pesosNota, avaliacaoMinEntregas: base.avaliacaoMinEntregas, equipeDP: base.equipeDP, departamentoDP: base.departamentoDP });
+  }
+
+  /* ---------- setores (DP × outros departamentos) ----------
+   * Com equipeDP e/ou departamentoDP nas regras: a lista Geral mostra só o que é do DP (departmentId) e quem não é da
+   * equipe do DP vê só as suas solicitações (sem Todas, Equipe e Distribuir). Sem regras, nada muda. */
+  function perfilSetor(settings, nome) {
+    const s = Object.assign({}, DEFAULTS, settings || {});
+    const eq = (s.equipeDP || []).map(x => semAcento(x).trim()), dep = s.departamentoDP || '';
+    if (!eq.length && !dep) return { ativo: false, fora: false, dep: '' };
+    const n = semAcento(nome || '').trim();
+    return { ativo: true, fora: !!(eq.length && n && !eq.includes(n)), dep };
+  }
+  function filtrarPorSetor(items, perfil) {
+    if (!perfil || !perfil.ativo) return items || [];
+    return (items || []).filter(i => perfil.fora ? !!i.mine : i.mine || !(perfil.dep && i.type === 'geral' && i.departmentId && i.departmentId !== perfil.dep));
   }
 
   /* ---------- painel por cliente (dashboard Clientes) ---------- */
@@ -1006,6 +1079,7 @@
       (idx[a.motivo] - idx[b.motivo]) ||
       (a.motivo === 'legal' ? legalFaltam(a.item) - legalFaltam(b.item) : 0) ||
       (a.motivo === 'sem' ? cria(a.item).localeCompare(cria(b.item)) : 0) ||
+      (a.motivo !== 'legal' ? String(a.item.prazoPrometido || '9').localeCompare(String(b.item.prazoPrometido || '9')) : 0) ||      // o prometido mais perto primeiro
       ((b.item.grav || 0) - (a.item.grav || 0)) || ((b.item.parado || 0) - (a.item.parado || 0)));
   }
   // Lista de "o que fazer agora" (Hoje): tudo que espera o escritório ou tem prazo legal; o que está com o cliente não entra
@@ -2474,5 +2548,5 @@
     return { dias, empresas: lista, total: lista.reduce((s2, r) => s2 + r.total, 0), prox30: lista.reduce((s2, r) => s2 + r.prox30, 0) };
   }
 
-  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, quadroSemCalculo, marcarSemCalculo, textoAvisoSemCalculo, assuntoAvisoSemCalculo, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, marcadoresPendentes, avisosResposta, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, quadroSemCalculo, marcarSemCalculo, textoAvisoSemCalculo, assuntoAvisoSemCalculo, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, marcadoresPendentes, avisosResposta, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);

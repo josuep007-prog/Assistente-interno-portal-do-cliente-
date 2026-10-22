@@ -2087,3 +2087,60 @@ test('rodada 2: acidente no topo da fila e na notificação; lembrete do aviso t
     assert.deepEqual(plano(ev3.map(e => e.tipo)), ['acidente'], 'chegou já como acidente: notifica como acidente');
   });
 });
+
+test('rodada 3: setores (equipe do DP e Geral por departamento) e regras novas', () => {
+  const r = OC.normalizarRegras({ equipeDP: ['Ana Teste', 'Bia', 'Ana Teste', 42, ''], departamentoDP: 'dep-dp', prazoAnalistaPalavras: ['Prazo', 'Até', 'prometemos'] });
+  assert.deepEqual(plano(r.equipeDP), ['Ana Teste', 'Bia']);
+  assert.equal(r.departamentoDP, 'dep-dp');
+  assert.deepEqual(plano(r.prazoAnalistaPalavras), ['prazo', 'ate', 'prometemos']);
+  assert.equal(OC.normalizarRegras({ departamentoDP: 'com espaço' }), null);
+  const s = OC.combinarSettings({ regras: r }, { equipeDP: ['Hacker'], departamentoDP: 'x' });
+  assert.deepEqual(plano([s.equipeDP, s.departamentoDP]), [['Ana Teste', 'Bia'], 'dep-dp'], 'o ajuste da pessoa não muda quem é do DP');
+  assert.deepEqual(plano(OC.perfilSetor({}, 'Ana')), { ativo: false, fora: false, dep: '' }, 'sem regras: tudo como antes');
+  const it = (k, o) => Object.assign({ k, type: 'geral', mine: false, resp: 'Bia', departmentId: 'dep-dp' }, o);
+  const todos = [it('g:1'), it('g:2', { departmentId: 'dep-fiscal' }), it('g:3', { departmentId: '' }), it('g:4', { type: 'cadEmpregado', departmentId: 'dep-fiscal' }), it('g:5', { mine: true, departmentId: 'dep-fiscal' })];
+  const dp = OC.perfilSetor(s, 'ANA Teste');                                       // sem acento nem caixa
+  assert.deepEqual(plano(dp), { ativo: true, fora: false, dep: 'dep-dp' });
+  assert.deepEqual(plano(OC.filtrarPorSetor(todos, dp).map(x => x.k)), ['g:1', 'g:3', 'g:4', 'g:5'], 'Geral: só o do DP (ou sem departamento); os outros tipos ficam; a Geral do Fiscal some, menos a que é sua');
+  const fora = OC.perfilSetor(s, 'Carlos Fiscal');
+  assert.equal(fora.fora, true);
+  assert.deepEqual(plano(OC.filtrarPorSetor(todos, fora).map(x => x.k)), ['g:5'], 'fora do DP: só as suas, de qualquer departamento');
+  assert.equal(OC.perfilSetor({ departamentoDP: 'dep-dp' }, 'Qualquer').fora, false, 'só o departamento: ninguém fica de fora');
+  assert.equal(OC.perfilSetor(s, '').fora, false, 'nome desconhecido não esconde nada');
+  // o departmentId da Geral é lido da lista
+  const n = OC.normalize(OC.TYPE_BY_KEY.geral, { id: 'a', identifier: 1, genericStatus: 1, departmentId: 'dep-x', created: '2026-10-01T10:00:00' }, null, []);
+  assert.equal(n.departmentId, 'dep-x');
+});
+
+test('rodada 3: prazo prometido pela descrição do analista (só a data), vencimento visível e ordem dentro do grupo', async () => {
+  const t = OC.TYPE_BY_KEY.geral;
+  const tp = (n, st, d) => ({ created: '2026-10-0' + n + 'T10:00:00', status: st, description: d });
+  const ab = tp(1, 1, 'Abertura: cálculo até 20/10 se possível');                       // a abertura é do cliente: não vale
+  const p = (d, extra) => OC.prazoPrometido([ab, tp(2, 4, d)].concat(extra || []), t, {}, new Date('2026-10-03T12:00:00'));
+  assert.equal(p('Estamos analisando e retornamos com o cálculo até 28/10.'), '2026-10-28');
+  assert.equal(p('Previsão de entrega: 05/11/2026'), '2026-11-05');
+  assert.equal(p('Temos prazo até o dia 30'), '2026-10-30');
+  assert.equal(p('Prazo de 3 dias úteis'), null, 'sem data');
+  assert.equal(p('Retorno em 15/09'), null, '15/09 já passou e o ano seguinte está longe');
+  assert.equal(p('Segue o cálculo, tudo certo.'), null);
+  assert.equal(p('Prazo 28/10', [tp(3, 1, 'Cliente: tudo bem até 02/10')]), '2026-10-28', 'mensagem do cliente depois não vale: vale a última do escritório');
+  assert.equal(p('Entrega até 31/02'), null, 'data impossível');
+  // a leitura guarda só { l, d } e o vencimento aparece como motivo visível
+  const itens = { calcFerias: [{ id: 'g1', identifier: 1, genericStatus: 2, created: '2026-10-05T12:00:00', lastUpdated: '2026-10-08T12:00:00' }] };
+  const topicos = { g1: [tp(5, 1, 'Pedido'), { created: '2026-10-07T12:00:00', status: 2, description: 'Estamos calculando; retornamos até 30/10.' }] };
+  const f = fetcherFalso({ itens, topicos });
+  const s1 = await OC.collect(f, {}, null, { tramites: {} });
+  const i1 = s1.items[0];
+  assert.equal(i1.prazoPrometido, '2026-10-30');
+  const m = i1.motivos.find(x => x.prom);
+  assert.deepEqual([m.m, m.legal], ['Prometido até 30/10', true], 'visível ao analista');
+  assert.deepEqual(plano(s1.tramites.cache[i1.k].pa), { l: i1.last, d: '2026-10-30' });
+  assert.equal(JSON.stringify(s1.tramites.cache).includes('Estamos calculando'), false, 'o texto não é guardado');
+  const lidos = f.chamadas.topicos;
+  const s2 = await OC.collect(f, {}, null, { tramites: s1.tramites.cache });
+  assert.equal(f.chamadas.topicos, lidos, 'cache: não relê enquanto nada mexe');
+  assert.equal(s2.items[0].prazoPrometido, '2026-10-30');
+  // dentro do grupo, o prometido mais perto vem primeiro (sem data, vale a regra de antes)
+  const a = { k: 'g:a', type: 'geral', code: 2, status: 'Em análise', lado: 'esc', grav: 3, parado: 9 }, b = { k: 'g:b', type: 'geral', code: 2, status: 'Em análise', lado: 'esc', grav: 1, parado: 1, prazoPrometido: '2026-10-20' }, c = { k: 'g:c', type: 'geral', code: 2, status: 'Em análise', lado: 'esc', grav: 1, parado: 1, prazoPrometido: '2026-10-12' };
+  assert.deepEqual(plano(OC.ordemFila([a, b, c]).map(x => x.item.k)), ['g:c', 'g:b', 'g:a']);
+});
