@@ -1064,6 +1064,32 @@ await passo('app · Nova solicitação (Geral): do Hoje, das Solicitações e do
   assert.deepEqual(p.erros, []);
 });
 
+await passo('app · detalhe de solicitação com o cliente: "Pedir ao cliente para concluir" abre a Nova solicitação já preenchida (sem tratar como problema)', async () => {
+  const p = await abrirApp('#/fila?escopo=equipe');
+  await p.evaluate(() => { window.__respostas = Object.assign(window.__respostas || {}, { detalhe: { ok: true, item: { assunto: 'x' }, tramites: [] }, criar: { ok: true, criada: true, num: '1700', id: 'n7', tramite: true, erroTramite: null } }); });
+  await p.waitForSelector('#corpo [data-k="avisoRescisao:c"]');
+  await p.click('#corpo [data-k="avisoRescisao:c"]');
+  await p.waitForSelector('#g-mais');
+  await p.click('#g-mais summary');
+  assert.equal(await p.isVisible('#g-concluir'), true, 'na vez do cliente');
+  await p.click('#g-concluir');
+  await p.waitForSelector('#dlg-nova #nv-assunto');
+  assert.equal(await p.$eval('#nv-assunto', x => x.value), 'Conclua a solicitação nº 103 (aviso de rescisão)');
+  assert.match(await p.$eval('#nv-desc', x => x.value), /^Olá! A solicitação nº 103 \(aviso de rescisão · Ciclano\) já foi respondida pelo escritório e está só aguardando a sua conclusão/);
+  assert.equal(await p.$eval('#nv-vez', x => x.checked), true, 'a vez volta ao cliente');
+  assert.equal(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'criar')), false, 'abrir não cria: revisar e confirmar');
+  await p.keyboard.press('Escape');
+  await p.waitForSelector('#dlg-nova', { state: 'hidden' });
+  // na vez do escritório o item não aparece
+  await p.keyboard.press('Escape');
+  await p.waitForSelector('#gaveta', { state: 'hidden' });
+  await p.click('#corpo [data-k="rubricas:d"]');
+  await p.waitForSelector('#g-mais');
+  await p.click('#g-mais summary');
+  assert.equal(await p.$('#g-concluir'), null, 'só na vez do cliente');
+  assert.deepEqual(p.erros, []);
+});
+
 await passo('app · Nova solicitação por departamento: modelos de DP, Fiscal e Contábil, marcadores barram a criação, aviso quando o departamento não tem id nas regras', async () => {
   const p = await abrirApp('#/inicio', { settings: { __v: 2, criacao: { serviceRequestType: '', requestWay: '', departmentId: '', departamentos: { fiscal: 'dep-fiscal' } } } });
   await p.evaluate(() => { window.__respostas = Object.assign(window.__respostas || {}, { criar: { ok: true, criada: true, num: '1601', id: 'n2', tramite: false, erroTramite: null, departamentoPadrao: true }, detalhe: { ok: true, item: {}, tramites: [], datas: {} } }); });
