@@ -2,15 +2,12 @@
  * Destaque: rosca "% em dia" (clique leva às Solicitações com aquele motivo), carrossel e "Próximos passos".
  * Logo abaixo, recolhível: admissões retroativas ou perto do início sem nenhum trâmite do escritório (o eSocial
  * vence no dia anterior).
- * Avisos sem cálculo em painel com Férias e Rescisões lado a lado (em cada uma, os que faltam avisar e, embaixo,
- * "Cliente avisado"): "Criar solicitação" abre a Nova solicitação (Geral) já preenchida; no menu "⋯", responder no
- * próprio aviso, "Já avisei" e "Desconsiderar". Envios sempre revisados e confirmados. Só o k e a marca ficam.
  * Sugestões de ação: solicitações específicas que parecem resolvidas fora do portal (vez do escritório sem resposta
  * há mais de 30 dias ou trâmite que diz isso), duplicadas, na lista errada ou com falta de informação; cada uma com o
  * trâmite já preenchido (revisar e confirmar) e "Não é o caso". Os trâmites são conferidos pelo cmd 'casos'.
  * Painel de previsão de solicitações por empresa (lida na hora, sob demanda). Os painéis de vencimentos e de uso do
- * portal saíram na 0.29.0 (o prazo legal já sobe na fila e nos avisos sem cálculo). Carteira no cabeçalho. */
-import { estado, itens, minhas, primeiroNome, salvarLembretes, enviar, marcarSemCalculo, ignorarSugestao } from '../estado.js';
+ * portal saíram na 0.29.0 (o prazo legal já sobe na fila). O quadro de avisos sem cálculo saiu em 22/10/2026. Carteira no cabeçalho. */
+import { estado, itens, minhas, primeiroNome, salvarLembretes, enviar, ignorarSugestao, resolvidas } from '../estado.js';
 import { esc, plural, num, ligarItens, fmtDataHora, saudacao, dataExtensa, toast, $, $$ } from '../util.js';
 import { anel, anelProgresso, animarNumeros, ligarDicas, cor } from '../graficos.js';
 import { estadoLeitura, dicaLeitura } from './painel-equipe.js';
@@ -33,7 +30,7 @@ const ic = (n, c) => '<svg class="ic' + (c ? ' ' + c : '') + '"><use href="#i-' 
 const nomeCli = i => i.apelido || i.cliente || '—';
 
 // Quantas sugestões de ação há nas suas solicitações (com o que já foi lido nos trâmites; usado na bolinha do trilho)
-export function contagemSugestoes() { return estado.snap ? OC.casosSugeridos(minhas(), casosLidos, estado.settings, estado.sugIgnoradas).length : 0; }
+export function contagemSugestoes() { return estado.snap ? OC.casosSugeridos(minhas().concat(resolvidas().filter(i => i.mine)), casosLidos, estado.settings, estado.sugIgnoradas).length : 0; }
 
 export function render(el, ctx) {
   const animar = !el.querySelector('.hj-hero');      // só ao chegar na tela, não a cada clique ou leitura
@@ -56,9 +53,6 @@ export function render(el, ctx) {
   const fatias = OC.MOTIVOS.map(mo => ({ k: mo.k, rot: mo.rot, n: cont[mo.k], cor: mo.cor }));
   const prio = OC.prioridades(base);
   const lems = (estado.lembretes || []).filter(l => !l.feito && ['hoje', 'atrasado'].includes(OC.situacaoLembrete(l))).sort((a, b) => a.quando.localeCompare(b.quando));
-  // aviso de férias/rescisão com o pagamento perto e sem o cálculo do mesmo empregado (OC.verificarAvisos)
-  const semCalc = base.filter(i => i.semCalculo).sort((a, b) => a.semCalculo.faltam - b.semCalculo.faltam);
-  const quadro = OC.quadroSemCalculo(base, estado.semCalcMarcas);
 
   const rotCart = cart === MINHA ? 'Minha carteira' + (nome ? ' · ' + nome : '') : cart === EQUIPE ? 'Equipe toda' : cart === SEM ? 'Sem analista' : 'Carteira de ' + cart;
   const opcoes = [[MINHA, 'Minha carteira (' + m.length + ')'], [EQUIPE, 'Equipe toda (' + todas.length + ')']]
@@ -76,11 +70,12 @@ export function render(el, ctx) {
     : automatica && cart === EQUIPE ? '<div class="aviso-linha" id="ht-resumo">' + ic('user') + '<span>Nenhuma pendência está com você como responsável no Onvio. Mostrando a equipe toda (' + plural(todas.length, 'pendência', 'pendências') + ').</span></div>' : '';
 
   const admissoes = OC.admissoesCriticas(base);
-  const casos = OC.casosSugeridos(base, casosLidos, estado.settings, estado.sugIgnoradas);
+  const resolvidasBase = resolvidas().filter(i => cart === MINHA ? i.mine : cart === EQUIPE ? true : (i.resp || SEM) === cart);
+  const casos = OC.casosSugeridos(base.concat(resolvidasBase), casosLidos, estado.settings, estado.sugIgnoradas);
   const linkFila = p => '#/fila?' + new URLSearchParams(Object.assign(cart === EQUIPE ? { escopo: 'equipe' } : cart === SEM ? { escopo: 'semresp' } : cart !== MINHA ? { analista: cart } : {}, p));
 
-  el.innerHTML = aviso + heroHtml() + admissoesHtml() + (semCalc.length ? semCalcHtml() : '') +
-    sugHtml() + '<div class="hj-paineis">' + (semCalc.length ? '' : semCalcHtml()) + prevHtml() + '</div>';
+  el.innerHTML = aviso + heroHtml() + admissoesHtml() +
+    sugHtml() + '<div class="hj-paineis">' + prevHtml() + '</div>';
 
   // Admissões: faixa destacada logo abaixo do destaque, só as que o escritório ainda não tocou; recolhível (lembra a escolha)
   function admissoesHtml() {
@@ -135,7 +130,7 @@ export function render(el, ctx) {
         '</div></div>';
     };
     return painel('hj-sug', ic('chat', 'ic-sm') + ' Sugestões de ação' + (casos.length ? ' <span class="sc-n">' + casos.length + '</span>' : ''),
-      'Solicitações que parecem resolvidas fora do portal, abertas errado, férias novas e avisos de rescisão trabalhados. A ação abre o trâmite já preenchido (você revisa e confirma) ou cria um lembrete seu.',
+      'Solicitações que parecem resolvidas fora do portal, paradas com o cliente há mais de duas semanas, abertas errado, férias novas e avisos de rescisão trabalhados. A ação abre o trâmite já preenchido (você revisa e confirma) ou cria um lembrete seu.',
       (porTipo.length ? '<p class="cs-resumo">' + porTipo.map(([t, n]) => '<span class="cs-' + t + '"><i></i>' + esc(OC.CASOS[t].rot) + ' <b>' + n + '</b></span>').join('') + '</p>' : '') +
       (casos.length ? '<div class="cs-lista">' + lista.map(linha).join('') + '</div>' +
         (casos.length > MAX ? '<button type="button" class="hj-painel-mais linkish" id="hj-sug-mais">' + (sugTodas ? 'Mostrar menos' : 'Ver todas as ' + casos.length) + '</button>' : '')
@@ -185,46 +180,6 @@ export function render(el, ctx) {
     '</section>';
   }
 
-  // Avisos sem cálculo: painel no padrão do Hoje, com Férias e Rescisões lado a lado. Em cada coluna, primeiro o que
-  // falta avisar (do mais urgente) e, embaixo, "Cliente avisado". Um botão principal; o resto no menu "⋯".
-  function semCalcHtml() {
-    if (!semCalc.length) return painel('hj-semcalc-v', ic('alert', 'ic-sm') + ' Avisos sem cálculo', 'Férias e rescisões com o pagamento perto e sem a solicitação de cálculo do mesmo empregado.', vazio('Nenhum aviso de férias ou rescisão sem cálculo perto do prazo.'));
-    const quando = f => f < 0 ? 'venceu há ' + f * -1 + ' d.u.' : f === 0 ? 'vence hoje' : 'vence em ' + f + ' d.u.';
-    const dt = ymd => ymd.slice(8, 10) + '/' + ymd.slice(5, 7);
-    const quandoMarca = em => { const d = new Date(em); return isNaN(d) ? '' : fmtDataHora(d.toISOString()); };
-    const linha = ({ item: i, em }, avisado) => {
-      const sc = i.semCalculo, pode = OC.podeAcao('tramite', i);
-      const acoes = avisado
-        ? '<span class="sc-ok">' + ic('check', 'ic-sm') + ' avisado ' + esc(quandoMarca(em)) + '</span><button type="button" class="btn btn-sm btn-ghost" data-sc-marca="" data-sc-k="' + esc(i.k) + '" title="Volta para os que faltam avisar">Voltar</button>'
-        : '<button type="button" class="btn btn-sm btn-primary" data-sc-criar="' + esc(i.k) + '" title="Cria uma solicitação Geral para o cliente, revisada antes de enviar">' + ic('plus', 'ic-sm') + ' Criar solicitação</button>';
-      const menu = '<details class="menu sc-mais"><summary class="icon-btn" aria-label="Mais ações" title="Mais ações">' + ic('more', 'ic-sm') + '</summary><div class="menu-list">' +
-        (avisado ? '' : '<button type="button" class="menu-item" data-sc-avisar="' + esc(i.k) + '"' + (pode.ok ? '' : ' disabled title="' + esc(pode.motivo) + '"') + '>' + ic('chat', 'ic-sm') + ' Responder no próprio aviso</button>' +
-          '<button type="button" class="menu-item" data-sc-marca="avisado" data-sc-k="' + esc(i.k) + '">' + ic('check', 'ic-sm') + ' Já avisei por outro meio</button>') +
-        '<button type="button" class="menu-item" data-sc-marca="desconsiderado" data-sc-k="' + esc(i.k) + '">' + ic('x', 'ic-sm') + ' Desconsiderar</button></div></details>';
-      return '<div class="sc-l' + (avisado ? ' sc-avisado' : sc.faltam <= 0 ? ' sc-vencido' : '') + '">' +
-        '<button type="button" class="sc-abre" data-k="' + esc(i.k) + '">' +
-          '<span class="sc-data"><b>' + esc(dt(sc.alvo)) + '</b><small>' + esc(quando(sc.faltam)) + '</small></span>' +
-          '<span class="sc-tx"><b>#' + esc(i.num) + ' ' + esc(nomeCli(i)) + ' · ' + esc(i.detalhe || i.typeLabel) + '</b>' +
-          '<small>Sem ' + esc(sc.calculo.toLowerCase()) + ' · pagamento até ' + esc(dt(sc.alvo)) + (cart === MINHA ? '' : ' · ' + esc(i.resp || 'sem analista')) + '</small></span></button>' +
-        '<div class="sc-acoes">' + acoes + menu + '</div></div>';
-    };
-    const coluna = (tipo, titulo, vazioTx) => {
-      const av = quadro.avisar.filter(x => x.item.type === tipo), ok = quadro.avisados.filter(x => x.item.type === tipo);
-      return '<div class="sc-col" data-tipo="' + tipo + '"><h4>' + titulo + ' <span class="sc-n' + (av.length ? ' on' : '') + '">' + av.length + '</span>' + (ok.length ? '<small>' + ok.length + ' avisado' + (ok.length > 1 ? 's' : '') + '</small>' : '') + '</h4>' +
-        (av.length ? '<div class="sc-lista" data-grupo="avisar">' + av.map(x => linha(x, false)).join('') + '</div>' : '<div class="sc-vazio">' + ic('check', 'ic-sm') + ' ' + vazioTx + '</div>') +
-        (ok.length ? '<div class="sc-grupo">Cliente avisado · aguardando o cálculo</div><div class="sc-lista" data-grupo="avisados">' + ok.map(x => linha(x, true)).join('') + '</div>' : '') +
-      '</div>';
-    };
-    const desc = quadro.desconsiderados;
-    return '<section class="hj-painel hj-semcalc" id="hj-semcalc" aria-label="Avisos sem cálculo">' +
-      '<header><h3>' + ic('alert', 'ic-sm') + ' Avisos sem cálculo <span class="sc-n' + (quadro.avisar.length ? ' on' : '') + '" id="hj-sc-total">' + quadro.avisar.length + '</span></h3>' +
-        (desc.length ? '<details class="menu sc-desc"><summary class="btn btn-sm btn-ghost">' + plural(desc.length, 'desconsiderado', 'desconsiderados') + '</summary><div class="menu-list">' + desc.map(({ item: i }) => '<button type="button" class="menu-item" data-sc-marca="" data-sc-k="' + esc(i.k) + '" title="Voltar ao quadro">' + ic('repeat', 'ic-sm') + ' #' + esc(i.num) + ' ' + esc(nomeCli(i)) + ' · ' + esc(i.detalhe || i.typeLabel) + '</button>').join('') + '</div></details>' : '') +
-      '</header>' +
-      '<p class="hj-painel-sub">Pagamento perto e sem a solicitação de cálculo do mesmo empregado. Saem daqui sozinhos quando o cálculo chega.</p>' +
-      '<div class="sc-cols">' + coluna('avisoFerias', 'Férias', 'Nenhum aviso de férias sem cálculo.') + coluna('avisoRescisao', 'Rescisões', 'Nenhum aviso de rescisão sem cálculo.') + '</div>' +
-    '</section>';
-  }
-
   function slidesDoCarrossel() {
     const out = [];
     lems.filter(l => OC.situacaoLembrete(l) === 'atrasado').forEach(l => out.push({ n: 'lem', tag: 'Lembrete atrasado', txt: l.texto, sub: fmtDataHora(l.quando) + (l.num ? ' · #' + l.num + ' ' + (l.cliente || '') : ''), lem: l.id, c: 'var(--late)' }));
@@ -254,31 +209,6 @@ export function render(el, ctx) {
   const redesenhar = () => render(el, ctx);
   ligarItens($('#hj-passos', el) || document.createElement('div'), prio.map(p => p.item), ctx.abrirDetalhe);
   ligarItens($('#hj-tick', el), base, ctx.abrirDetalhe);
-  if ($('#hj-semcalc', el)) ligarItens($('#hj-semcalc', el), quadro.avisar.concat(quadro.avisados).map(x => x.item), ctx.abrirDetalhe);
-  // quadro dos avisos sem cálculo: mover de coluna, desconsiderar e avisar o cliente (trâmite revisado e confirmado)
-  $$('[data-sc-marca]', el).forEach(b => b.addEventListener('click', async () => {
-    const m = b.closest('details'); if (m) m.open = false;
-    const st = b.dataset.scMarca || null;
-    await marcarSemCalculo(b.dataset.scK, st);
-    toast(st === 'desconsiderado' ? 'Desconsiderado: o aviso saiu do quadro' : st === 'avisado' ? 'Marcado como cliente avisado' : 'Voltou para os que faltam avisar');
-  }));
-  $$('.sc-mais', el).forEach(d => d.addEventListener('click', e => e.stopPropagation()));
-  $$('[data-sc-criar]', el).forEach(b => b.addEventListener('click', () => {
-    const i = semCalc.find(x => x.k === b.dataset.scCriar);
-    if (!i) return;
-    ctx.abrirNova({ origem: i, assunto: OC.assuntoAvisoSemCalculo(i, estado.settings), descricao: OC.textoAvisoSemCalculo(i, estado.settings), passarVez: true, aoCriar: () => marcarSemCalculo(i.k, 'avisado') });
-  }));
-  $$('[data-sc-avisar]', el).forEach(b => b.addEventListener('click', () => {
-    const m = b.closest('details'); if (m) m.open = false;
-    const i = semCalc.find(x => x.k === b.dataset.scAvisar);
-    if (!i) return;
-    const sits = OC.situacoesTramite(i);
-    ctx.abrirDetalhe(i, null, { acao: 'tramite', preset: {
-      texto: OC.textoAvisoSemCalculo(i, estado.settings),
-      situacao: sits.some(x => x.code === 4) ? '4' : '',
-      aoEnviar: () => marcarSemCalculo(i.k, 'avisado')
-    } });
-  }));
   if ($('#hj-admissao', el)) ligarItens($('#hj-adm-l', el), admissoes, ctx.abrirDetalhe);
   if ($('#hj-adm-toggle', el)) $('#hj-adm-toggle', el).onclick = () => {
     const sec = $('#hj-admissao', el), rec = !sec.classList.contains('recolhida');
@@ -299,7 +229,7 @@ export function render(el, ctx) {
   ligarPrevisao();
   if (estado.snap && !previsaoLendo && (!previsao || Date.now() - previsaoEm > 30 * 60000)) { lerPrevisao(); const pv = $('#hj-prev .hj-painel-vazio', el); if (pv) pv.textContent = 'Lendo as últimas 4 semanas no Onvio…'; }
   // sugestões de ação: confere os trâmites sozinha ao abrir (no máximo a cada 10 min); só o painel é trocado na volta
-  const trocarSug = () => { const sec = $('#hj-sug', el); if (sec && el.isConnected) { const casosNovos = OC.casosSugeridos(base, casosLidos, estado.settings, estado.sugIgnoradas); casos.splice(0, casos.length, ...casosNovos); sec.outerHTML = sugHtml(); ligarSug(); } };
+  const trocarSug = () => { const sec = $('#hj-sug', el); if (sec && el.isConnected) { const casosNovos = OC.casosSugeridos(base.concat(resolvidasBase), casosLidos, estado.settings, estado.sugIgnoradas); casos.splice(0, casos.length, ...casosNovos); sec.outerHTML = sugHtml(); ligarSug(); } };
   const lerCasos = () => {
     casosLendo = true; casosErro = '';
     enviar({ cmd: 'casos' }).then(r => {
@@ -324,7 +254,7 @@ export function render(el, ctx) {
         toast('Lembrete criado para ' + l.dia + ' às 9h (veja na Agenda)');
         return;
       }
-      ctx.abrirDetalhe(c.item, null, { acao: 'tramite', preset: { texto: c.acao.texto, situacao: c.acao.situacao } });
+      ctx.abrirDetalhe(c.item, null, { acao: 'tramite', preset: { texto: c.acao.texto, situacao: c.acao.situacao, antes: c.acao.antes } });
     }));
     $$('[data-cs-ignorar]', sec).forEach(b => b.addEventListener('click', async e => {
       e.stopPropagation();

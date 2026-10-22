@@ -382,7 +382,7 @@ await passo('app · Hoje (analista): destaque com rosca, carrossel e próximos p
   assert.deepEqual(await p.$$eval('.hj-tk', e => e.map(x => x.querySelector('.hj-tk-tag').textContent)), ['Lembrete atrasado', 'Em análise', 'Cliente respondeu']);
   assert.deepEqual(await p.$$eval('#hj-passos .hj-step b', e => e.map(x => x.textContent)), ['Cobrar o BETA', 'Dar andamento · parada há 31 dias', 'Responder o cliente']);
   // painéis
-  assert.deepEqual(await p.$$eval('.hj-paineis > section', e => e.map(x => x.id)), ['hj-semcalc-v', 'hj-prev']);
+  assert.deepEqual(await p.$$eval('.hj-paineis > section', e => e.map(x => x.id)), ['hj-prev']);
   // sugestões de ação: casos específicos, cada um com a ação pronta (trâmite preenchido, revisar e confirmar)
   await p.waitForFunction(() => window.__msgs.some(m => m.cmd === 'casos'));
   await p.click('#hj-sug-ler');                          // a 1ª leitura saiu antes da resposta simulada: confere de novo
@@ -495,6 +495,50 @@ await passo('app · Hoje: admissões sem trâmite do escritório em faixa recolh
   await p.evaluate(() => { location.hash = '#/fila?escopo=equipe&kpi=admissao'; });
   await p.waitForFunction(() => document.querySelectorAll('#corpo [data-k]').length === 3);
   assert.deepEqual((await linhas(p)).sort(), ['cadEmpregado:e1', 'cadEmpregado:e2', 'cadEstagiario:s1']);
+  assert.deepEqual(p.erros, []);
+});
+
+await passo('app · Hoje: sem retorno do cliente há mais de duas semanas: concluir (no Cadastro em dois passos: Respondido pelo cliente e depois Concluído; as "consideradas resolvidas" também entram)', async () => {
+  const base = { nivel: 0, grav: 0, motivos: [], resp: 'Ana Teste', mine: true, lado: 'cli', parado: 20, created: agoraIso(40), last: agoraIso(20) };
+  const itens = ITENS_APP.concat([
+    Object.assign({}, base, { k: 'cadEmpregado:z1', type: 'cadEmpregado', typeLabel: 'Cadastro empregado', id: 'z1', num: 801, code: 3, status: 'Aguardando o cliente', apelido: 'ZETA', cliente: 'ZETA', detalhe: 'Beltrano' }),
+    Object.assign({}, base, { k: 'geral:z2', type: 'geral', typeLabel: 'Geral', id: 'z2', num: 802, code: 4, status: 'Respondido', apelido: 'ZETA', cliente: 'ZETA', detalhe: 'Documentos' }),
+    Object.assign({}, base, { k: 'geral:z3', type: 'geral', typeLabel: 'Geral', id: 'z3', num: 803, code: 4, status: 'Respondido', apelido: 'ZETA', cliente: 'ZETA', detalhe: 'Recente', parado: 10 })
+  ]);
+  const resolvidas = [Object.assign({}, base, { k: 'geral:z4', type: 'geral', typeLabel: 'Geral', id: 'z4', num: 804, code: 4, status: 'Respondido', apelido: 'ZETA', cliente: 'ZETA', detalhe: 'Resolvida', parado: 25, res: { em: agoraIso(25), pede: false, trecho: '' } })];
+  const p = await abrirApp('#/inicio', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens, resolvidas }), settings: { __v: 2, desfazerSeg: 0 } });
+  await p.evaluate(() => { window.__respostas = Object.assign(window.__respostas || {}, { casos: { ok: true, analises: {}, lidas: 0 }, acao: { ok: true, acao: 'tramite', anexos: 0 }, detalhe: { ok: true, item: {}, tramites: [] } }); });
+  await p.waitForSelector('#hj-sug .cs-l.cs-semRetorno');
+  assert.deepEqual(await p.$$eval('#hj-sug .cs-l.cs-semRetorno', e => e.map(x => x.querySelector('[data-cs-acao]').dataset.csAcao)).then(l => l.sort()), ['cadEmpregado:z1', 'geral:z2', 'geral:z4'], 'só passa de 14 dias; as resolvidas entram');
+  assert.match(await p.textContent('#hj-sug .cs-l[class*="cs-semRetorno"]'), /Sem retorno do cliente/);
+  assert.match(await p.textContent('#hj-sug .cs-resumo'), /Sem retorno do cliente 3/);
+  // Cadastro: dois passos; a caixa mostra a conclusão e o resumo conta os dois
+  await p.click('#hj-sug [data-cs-acao="cadEmpregado:z1"]');
+  await abrirCaixa(p);
+  assert.match(await p.$eval('#a-texto', t => t.value), /estamos concluindo esta solicitação/);
+  assert.equal(await p.$eval('#gaveta .cmp-int.on', x => x.dataset.sit), '6', 'Concluído (6)');
+  assert.match(await p.textContent('#cmp-efeito'), /Primeiro registra "Respondido pelo cliente" e em seguida conclui/);
+  await p.click('#a-revisar');
+  await p.waitForSelector('#a-enviar');
+  assert.match(await p.textContent('#a-conf'), /Em 2 passos, um depois do outro: 1\) Respondido pelo cliente \(texto: "Registro para o encerramento.*\), 2\) Concluído/);
+  assert.equal(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'acao')), false, 'revisar não envia');
+  await p.click('#a-enviar');
+  await p.waitForFunction(() => window.__msgs.filter(m => m.cmd === 'acao').length === 2, null, { timeout: 6000 });
+  const acoes = await p.evaluate(() => window.__msgs.filter(m => m.cmd === 'acao').map(m => [m.type, m.num, m.acao, m.situacao, m.texto.slice(0, 12)]));
+  assert.deepEqual(acoes, [['cadEmpregado', '801', 'tramite', '4', 'Registro par'], ['cadEmpregado', '801', 'tramite', '6', 'Como não tiv']], 'primeiro Respondido pelo cliente, depois Concluído');
+  // Geral (Respondido): conclui direto, em um passo
+  await p.keyboard.press('Escape').catch(() => {});
+  await p.evaluate(() => { window.__msgs.length = 0; });
+  if (await p.$('#gaveta:not([hidden])')) await p.keyboard.press('Escape');
+  await p.click('#hj-sug [data-cs-acao="geral:z2"]');
+  await abrirCaixa(p);
+  assert.equal(await p.$eval('#gaveta .cmp-int.on', x => x.dataset.sit), '5');
+  await p.click('#a-revisar');
+  await p.waitForSelector('#a-enviar');
+  assert.doesNotMatch(await p.textContent('#a-conf'), /passos/);
+  await p.click('#a-enviar');
+  await p.waitForFunction(() => window.__msgs.filter(m => m.cmd === 'acao').length === 1);
+  assert.equal(await p.evaluate(() => window.__msgs.find(m => m.cmd === 'acao').situacao), '5');
   assert.deepEqual(p.erros, []);
 });
 
@@ -944,95 +988,48 @@ await passo('app · detalhe: aba Dados com a solicitação completa em grupos e 
   assert.deepEqual(p.erros, []);
 });
 
-await passo('app · Hoje: avisos sem cálculo com Férias e Rescisões separadas; menu com responder no aviso, já avisei e desconsiderar', async () => {
+await passo('app · Hoje: o quadro de avisos sem cálculo saiu (nem com avisos de férias e rescisão com o pagamento perto)', async () => {
   const itens = ITENS_APP.concat([
     { k: 'avisoFerias:f1', type: 'avisoFerias', typeLabel: 'Aviso de férias', id: 'f1', num: 201, code: 1, status: 'Sem análise', lado: 'esc', nivel: 0, grav: 0, parado: 1, motivos: [], resp: 'Ana Teste', mine: true, apelido: 'DELTA', cliente: 'DELTA', detalhe: 'Fulano', created: agoraIso(2), last: agoraIso(1), semCalculo: { alvo: '2026-10-30', faltam: 3, ref: 'início das férias em 03/11/2026', calculo: 'Cálculo de férias' } },
     { k: 'avisoRescisao:r1', type: 'avisoRescisao', typeLabel: 'Aviso de rescisão', id: 'r1', num: 202, code: 2, status: 'Em análise', lado: 'esc', nivel: 0, grav: 0, parado: 1, motivos: [], resp: 'Ana Teste', mine: true, apelido: 'ÔMEGA', cliente: 'ÔMEGA', detalhe: 'Joana', created: agoraIso(2), last: agoraIso(1), semCalculo: { alvo: '2026-10-14', faltam: -1, ref: 'aviso em 04/10/2026', calculo: 'Cálculo de rescisão' } }
   ]);
   const p = await abrirApp('#/inicio', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens }), settings: { __v: 2, desfazerSeg: 0 } });
-  await p.waitForSelector('#hj-semcalc .sc-cols');
-  const grupo = (tipo, g) => p.$$eval('#hj-semcalc [data-tipo="' + tipo + '"] [data-grupo="' + g + '"] .sc-abre', e => e.map(x => x.dataset.k));
-  const menu = async (tipo, sel) => { await p.click('#hj-semcalc [data-tipo="' + tipo + '"] [data-grupo="avisar"] .sc-mais summary'); await p.click('#hj-semcalc [data-tipo="' + tipo + '"] .sc-mais[open] ' + sel); };
-  assert.equal(await p.$('.hj-paineis #hj-semcalc'), null, 'o painel fica acima dos outros, em largura total');
-  assert.deepEqual(await p.$$eval('#hj-semcalc .sc-col h4', e => e.map(x => x.textContent)), ['Férias 1', 'Rescisões 1'], 'férias e rescisões separadas');
-  assert.deepEqual(await grupo('avisoFerias', 'avisar'), ['avisoFerias:f1']);
-  assert.deepEqual(await grupo('avisoRescisao', 'avisar'), ['avisoRescisao:r1']);
-  assert.match(await p.textContent('#hj-semcalc [data-tipo="avisoRescisao"] .sc-l'), /14\/10venceu há 1 d\.u\.#202 ÔMEGA · Joana.*Sem cálculo de rescisão · pagamento até 14\/10/);
-  assert.match(await p.textContent('#hj-semcalc [data-tipo="avisoFerias"] .sc-l'), /30\/10vence em 3 d\.u\.#201 DELTA · Fulano/);
-  assert.equal(await p.$eval('#hj-semcalc [data-tipo="avisoRescisao"] .sc-tx b', b => getComputedStyle(b).color) === await p.$eval('#hj-semcalc [data-tipo="avisoFerias"] .sc-tx b', b => getComputedStyle(b).color), true, 'título com a mesma cor, vencido ou não');
-  assert.equal(await p.isVisible('#hj-semcalc [data-sc-marca="desconsiderado"]'), false, 'ações secundárias no menu');
-  // "Já avisei" passa para a 2ª coluna; "Voltar" devolve
-  await menu('avisoFerias', '[data-sc-marca="avisado"]');
-  await p.waitForFunction(() => document.querySelectorAll('#hj-semcalc [data-tipo="avisoFerias"] [data-grupo="avisados"] .sc-l').length === 1);
-  assert.deepEqual(await grupo('avisoFerias', 'avisados'), ['avisoFerias:f1']);
-  assert.match(await p.textContent('#hj-semcalc [data-tipo="avisoFerias"] [data-grupo="avisados"]'), /avisado \d{2}\/\d{2} \d{2}:\d{2}/);
-  assert.match(await p.textContent('#hj-semcalc [data-tipo="avisoFerias"] h4'), /Férias 01 avisado/);
-  const marcas = await p.evaluate(() => JSON.parse(localStorage.getItem('__mem')).semCalculoMarcas);
-  assert.deepEqual(Object.keys(marcas), ['avisoFerias:f1']);
-  assert.deepEqual(Object.keys(marcas['avisoFerias:f1']).sort(), ['em', 'st'], 'guarda só a coluna e quando');
-  await p.click('#hj-semcalc [data-grupo="avisados"] [data-sc-marca=""]');
-  await p.waitForFunction(() => document.querySelectorAll('#hj-semcalc [data-grupo="avisar"] .sc-l').length === 2);
-  // desconsiderar tira do quadro (fica na lista de desconsiderados, de onde pode voltar)
-  await menu('avisoRescisao', '[data-sc-marca="desconsiderado"]');
-  await p.waitForFunction(() => document.querySelectorAll('#hj-semcalc [data-grupo="avisar"] .sc-l').length === 1);
-  assert.match(await p.textContent('#hj-semcalc [data-tipo="avisoRescisao"] .sc-vazio'), /Nenhum aviso de rescisão sem cálculo/);
-  assert.match(await p.textContent('#hj-semcalc .sc-desc summary'), /1 desconsiderado/);
-  assert.match(await p.textContent('#hj-sc-total'), /^1$/);
-  // avisar o cliente: abre o detalhe já no formulário de trâmite, com texto e situação sugeridos; só envia depois de confirmar
-  await p.evaluate(() => { window.__respostas = Object.assign(window.__respostas || {}, { acao: { ok: true, acao: 'tramite', anexos: 0 }, detalhe: { ok: true, item: { assunto: 'Férias' }, tramites: [], datas: {} } }); });
-  await menu('avisoFerias', '[data-sc-avisar]');
-  await p.waitForSelector('#gaveta #a-texto');
-  assert.equal(await p.$eval('#gaveta .cmp-int.on', x => x.dataset.sit), '4', 'Respondido: a vez passa ao cliente');
-  const txt = await p.$eval('#a-texto', t => t.value);
-  assert.match(txt, /^Recebemos o aviso de férias de Fulano, mas ainda não há a solicitação de cálculo de férias desse empregado\. Para o pagamento sair dentro do prazo legal \(até 30\/10\/2026, início das férias em 03\/11\/2026\)/);
-  assert.equal(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'acao')), false, 'abrir o formulário não envia');
-  await p.click('#a-revisar');
-  await p.waitForSelector('#a-enviar');
-  assert.equal(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'acao')), false, 'revisar não envia');
-  await p.click('#a-enviar');
-  await p.waitForFunction(() => window.__msgs.some(m => m.cmd === 'acao'));
-  const m = await p.evaluate(() => window.__msgs.find(x => x.cmd === 'acao'));
-  assert.deepEqual([m.acao, m.type, m.num, m.situacao], ['tramite', 'avisoFerias', '201', '4']);
-  await p.waitForFunction(() => { try { return JSON.parse(localStorage.getItem('__mem')).semCalculoMarcas['avisoFerias:f1'].st === 'avisado'; } catch (e) { return false; } });
-  await p.keyboard.press('Escape');
-  await p.waitForSelector('#gaveta', { state: 'hidden' });
-  await p.waitForFunction(() => document.querySelectorAll('#hj-semcalc [data-grupo="avisados"] .sc-l').length === 1, null, { timeout: 4000 });
-  assert.ok(!/semCalculo|Fulano/.test(JSON.stringify(await p.evaluate(() => JSON.parse(localStorage.getItem('__mem')).semCalculoMarcas))), 'texto e nome não são guardados');
-  // o cartão abre o detalhe
-  await p.click('#hj-semcalc .sc-abre[data-k="avisoFerias:f1"]');
-  await p.waitForFunction(() => (window.__msgs || []).filter(m => m.cmd === 'detalhe' && String(m.num) === '201').length >= 2);
+  await p.waitForSelector('.hj-hero');
+  assert.equal(await p.$('#hj-semcalc'), null);
+  assert.equal(await p.$('.sc-cols'), null);
+  assert.ok(!/sem cálculo/i.test(await p.textContent('.app-body')), 'nenhum texto de aviso sem cálculo no Hoje');
   assert.deepEqual(p.erros, []);
 });
 
-await passo('app · Nova solicitação (Geral): do quadro de avisos, das Solicitações e do detalhe; revisa, confirma, cria e abre a nova', async () => {
+await passo('app · Nova solicitação (Geral): do Hoje, das Solicitações e do detalhe; revisa, confirma, cria e abre a nova', async () => {
   const itens = ITENS_APP.concat([
     { k: 'avisoFerias:f1', type: 'avisoFerias', typeLabel: 'Aviso de férias', id: 'f1', num: 201, code: 1, status: 'Sem análise', lado: 'esc', nivel: 0, grav: 0, parado: 1, motivos: [], resp: 'Ana Teste', mine: true, apelido: 'DELTA', cliente: 'DELTA COMERCIO', detalhe: 'Fulano', created: agoraIso(2), last: agoraIso(1), semCalculo: { alvo: '2026-10-30', faltam: 3, ref: 'início das férias em 03/11/2026', calculo: 'Cálculo de férias' } }
   ]);
   const p = await abrirApp('#/inicio', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens }) });
   await p.evaluate(() => { window.__respostas = Object.assign(window.__respostas || {}, { criar: { ok: true, criada: true, num: '1501', id: 'n1', tramite: true, erroTramite: null }, detalhe: { ok: true, item: { assunto: 'x' }, tramites: [], datas: {} } }); });
-  // do quadro: já vem com cliente travado, assunto, texto e "passar a vez"
-  await p.click('#hj-semcalc [data-sc-criar="avisoFerias:f1"]');
+  // do Hoje: escolhe o cliente, escreve assunto e texto, marca "passar a vez"
+  await p.click('#hj-nova');
   await p.waitForSelector('#dlg-nova #nv-assunto');
-  assert.match(await p.textContent('#dlg-nova .vinculo'), /Cliente: DELTA · DELTA COMERCIO/);
-  assert.equal(await p.$eval('#nv-assunto', x => x.value), 'Cálculo de férias pendente · Fulano');
-  assert.match(await p.$eval('#nv-desc', x => x.value), /^Recebemos o aviso de férias de Fulano/);
-  assert.equal(await p.$eval('#nv-vez', x => x.checked), true);
+  await p.selectOption('#nv-dep', 'dp');
+  await p.selectOption('#nv-cliente', 'DELTA COMERCIO');
+  assert.equal(await p.$eval('#nv-vez', x => x.checked), false);
+  await p.check('#nv-vez');
   await p.fill('#nv-assunto', '');
+  await p.fill('#nv-desc', 'Precisamos do cálculo de férias.');
   await p.click('#nv-revisar');
   assert.match(await p.textContent('#dlg-nova .faixa'), /Escreva o assunto/);
-  await p.fill('#nv-assunto', 'Cálculo de férias pendente · Fulano');
+  await p.fill('#nv-assunto', 'Cálculo de férias pendente');
   await p.click('#nv-revisar');
   await p.waitForSelector('#nv-conf');
-  assert.match(await p.textContent('#nv-conf'), /Cliente: DELTA · DELTA COMERCIO.*Assunto: "Cálculo de férias pendente · Fulano".*trâmite "Respondido"/);
+  assert.match(await p.textContent('#nv-conf'), /Cliente: DELTA · DELTA COMERCIO.*Assunto: "Cálculo de férias pendente".*trâmite "Respondido"/);
   assert.equal(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'criar')), false, 'revisar não cria');
   await p.click('#nv-criar');
   await p.waitForFunction(() => window.__msgs.some(m => m.cmd === 'criar'));
   const m = await p.evaluate(() => window.__msgs.find(x => x.cmd === 'criar'));
-  assert.deepEqual([m.origem.type, m.origem.num, m.assunto, m.passarVez], ['avisoFerias', '201', 'Cálculo de férias pendente · Fulano', true]);
+  assert.deepEqual([!!m.origem.num, m.assunto, m.passarVez], [true, 'Cálculo de férias pendente', true]);
   await p.waitForSelector('#dlg-nova', { state: 'hidden' });
   await p.waitForFunction(() => (window.__msgs || []).some(x => x.cmd === 'detalhe' && x.type === 'geral' && String(x.num) === '1501'), null, { timeout: 4000 });
   assert.match(await p.textContent('#toast'), /Solicitação #1501 criada no Onvio · a vez passou ao cliente/);
-  await p.waitForFunction(() => { try { return JSON.parse(localStorage.getItem('__mem')).semCalculoMarcas['avisoFerias:f1'].st === 'avisado'; } catch (e) { return false; } });
   // do detalhe: "Nova para o cliente" trava o cliente da solicitação aberta
   await p.click('#g-mais summary');
   await p.click('#g-nova');

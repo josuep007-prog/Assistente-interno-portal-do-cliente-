@@ -19,7 +19,7 @@ let chaveAberta = '';            // a solicitação a que o estado recolhida/abe
 let aoAbrir = null;              // { r, redesenhar } da caixa na tela, para o atalho R e o botão Responder abrirem a recolhida
 
 const chaveDe = i => i.type + ':' + i.num;
-const novoRascunho = () => ({ texto: '', sit: '', arquivos: [], modo: 'editar', erro: '', aoEnviar: null, guardando: false, guardTexto: '', guardRot: '', aberto: false, focar: false, selMarca: '', proxima: false, fimEm: 0, segTotal: 0 });
+const novoRascunho = () => ({ texto: '', sit: '', arquivos: [], modo: 'editar', erro: '', aoEnviar: null, antes: [], guardando: false, guardTexto: '', guardRot: '', aberto: false, focar: false, selMarca: '', proxima: false, fimEm: 0, segTotal: 0 });
 const rascunho = i => { const k = chaveDe(i); if (!rascunhos.has(k)) rascunhos.set(k, novoRascunho()); return rascunhos.get(k); };
 const ic = (n, c) => '<svg class="ic' + (c ? ' ' + c : '') + '"><use href="#i-' + n + '"/></svg>';
 const tamanho = n => n < 1024 ? n + ' B' : n < 1048576 ? Math.round(n / 1024) + ' KB' : (n / 1048576).toFixed(1).replace('.', ',') + ' MB';
@@ -30,6 +30,7 @@ export function prepararResposta(i, preset) {
   if (p.texto) r.texto = p.texto;
   if (p.situacao) r.sit = String(p.situacao);
   r.aoEnviar = typeof p.aoEnviar === 'function' ? p.aoEnviar : null;
+  r.antes = Array.isArray(p.antes) ? p.antes.filter(a => a && a.situacao && a.texto).map(a => ({ situacao: String(a.situacao), rot: String(a.rot || ''), texto: String(a.texto) })) : [];     // passos antes do trâmite da caixa (ex.: Respondido pelo cliente e só depois Concluído)
   r.modo = 'editar'; r.aberto = true; r.focar = true; r.erro = '';
   r.preencherPendente = /\{\w+\}/.test(r.texto);       // {variáveis} do texto sugerido são preenchidas quando o detalhe é lido (datas, empregado)
   chaveAberta = chaveDe(i); recolhida = false;
@@ -64,6 +65,16 @@ export function focarResposta() {
 }
 
 const vars = (i, ctx) => OC.variaveisTramite(i, ctx && ctx.datas, estado.settings, new Date(), primeiroNome());
+// As intenções do Onvio agora e, quando a caixa veio de uma sugestão em dois passos, a conclusão que só vale depois do 1º passo
+function intsDe(i, r) {
+  const ints = OC.intencoesDe(i, estado.settings);
+  const t = OC.TYPE_BY_KEY[i.type];
+  if (!r.antes.length || !t || ints.some(x => String(x.sit) === String(r.sit))) return ints;
+  const rot = OC.FAMILIAS[t.familia].st[Number(r.sit)];
+  if (!rot) return ints;
+  return ints.concat([{ sit: Number(r.sit), rot: rot[0] + ' · encerra', onvio: rot[0], lado: 'fim', pedeCliente: false, tom: 'fim',
+    efeito: 'Primeiro registra "' + r.antes.map(a => a.rot).join('" e "') + '" e em seguida conclui: a solicitação sai da fila' }]);
+}
 const horaDe = ms => new Date(ms).toTimeString().slice(0, 5);
 
 function avisosHtml(r, i) {
@@ -74,7 +85,7 @@ function avisosHtml(r, i) {
 export function bolhaRascunho(i) {
   const r = rascunhos.get(chaveDe(i));
   if (!r || r.modo === 'editar') return '';
-  const it = OC.intencoesDe(i, estado.settings).find(x => String(x.sit) === String(r.sit));
+  const it = intsDe(i, r).find(x => String(x.sit) === String(r.sit));
   const quem = primeiroNome() || 'Você';
   return '<div class="tr-item esc rascunho" id="tr-rascunho"><span class="tr-av" title="' + esc(quem) + '">' + esc((quem[0] || 'V').toUpperCase()) + '</span><div class="tr-bolha">' +
     '<div class="tr-meta"><b>' + esc(quem) + '</b><span class="tr-lado">rascunho</span>' + (it ? '<span class="pill">' + esc(it.onvio) + '</span>' : '') + '<span class="tr-quando">ainda não enviado</span></div>' +
@@ -95,7 +106,7 @@ export function respostaHtml(i, obs, ctx) {
     r.selMarca = OC.marcadoresPendentes(r.texto)[0] || '';       // o que faltar já vem marcado
   }
   if (chaveAberta !== chaveDe(i)) { chaveAberta = chaveDe(i); recolhida = r.modo === 'editar'; }     // outra solicitação: recolhida (salvo se está revisando ou enviando)
-  const ints = OC.intencoesDe(i, estado.settings);
+  const ints = intsDe(i, r);
   const it = ints.find(x => String(x.sit) === String(r.sit));
   const vez = i.lado === 'esc' ? 'Vez do escritório' : i.lado === 'cli' ? 'Vez do cliente' : '';
   const aberto = r.aberto || r.texto || r.sit || r.arquivos.length || r.guardando || r.erro;
@@ -121,6 +132,7 @@ export function respostaHtml(i, obs, ctx) {
       (proxDisp ? '<button class="btn btn-sm" id="a-enviar-prox" type="button" title="Envia e abre a próxima solicitação da lista">Enviar e ir para a próxima</button>' : '') +
       '<button class="btn btn-sm btn-primary" id="a-enviar" type="button">Enviar</button></div>';
     return '<div class="cmp aberto revisando" id="cmp" tabindex="-1">' + cab + erro + '<div class="acao-conf cmp-conf" id="a-conf"><b>Confira o rascunho na conversa e envie ao Onvio:</b><ul>' +
+      (r.antes.length ? '<li>Em ' + (r.antes.length + 1) + ' passos, um depois do outro: ' + r.antes.map((a, n) => (n + 1) + ') ' + esc(a.rot) + ' (texto: "' + esc(a.texto) + '")').join(', ') + ', ' + (r.antes.length + 1) + ') ' + esc(it ? it.onvio : '?') + ' (com o texto abaixo)</li>' : '') +
       '<li>Situação depois do envio: ' + esc(it ? it.onvio + ' (' + it.efeito.toLowerCase() + ')' : '?') + '</li>' +
       '<li>Texto: "' + esc(r.texto.length > 140 ? r.texto.slice(0, 140) + '…' : r.texto) + '"</li>' +
       (r.arquivos.length ? '<li>' + r.arquivos.length + ' anexo(s): ' + esc(r.arquivos.map(a => a.name).join(', ')) + '</li>' : '') +
@@ -179,7 +191,7 @@ export function ligarResposta(g, i, r0, obs, cb) {
   const r = rascunho(i), ctx = { datas: r0 && r0.datas };
   const cmp = $('#cmp', g);
   if (!cmp) return;
-  const ints = OC.intencoesDe(i, estado.settings);
+  const ints = intsDe(i, r);
   aoAbrir = { r, redesenhar: cb.redesenhar };
   const alternar = () => {
     if (r.modo !== 'editar') return;                 // revisando ou enviando: não recolhe
@@ -226,7 +238,7 @@ export function ligarResposta(g, i, r0, obs, cb) {
   cmp.ondragleave = e => { if (!cmp.contains(e.relatedTarget)) cmp.classList.remove('arrastando'); };
   cmp.ondrop = e => { cmp.classList.remove('arrastando'); if (r.modo === 'editar' && e.dataTransfer && e.dataTransfer.files.length) { e.preventDefault(); adicionar([...e.dataTransfer.files]); } };
 
-  $$('.cmp-int', g).forEach(b => b.onclick = () => { r.sit = b.dataset.sit; limparErro(); atualizar(); });
+  $$('.cmp-int', g).forEach(b => b.onclick = () => { if (String(r.sit) !== b.dataset.sit) r.antes = []; r.sit = b.dataset.sit; limparErro(); atualizar(); });
 
   // modelos: preenche as {variáveis}; o que não tiver valor fica marcado e o cursor já cai nele
   const modelos = OC.modelosPara(i, estado.settings, estado.modelosPessoais);
@@ -323,7 +335,18 @@ export function ligarResposta(g, i, r0, obs, cb) {
     cb.redesenhar();
     try {
       const arquivos = await Promise.all(r.arquivos.map(async a => ({ nome: a.name, tipo: a.type, b64: await base64(a) })));
-      const resp = await enviar({ cmd: 'acao', type: i.type, num: String(i.num), acao: 'tramite', texto: r.texto, situacao: r.sit, analista: '', data: '', arquivos });
+      // sugestão em dois passos: cada um só segue se o anterior foi aceito (o service worker confere a situação de verdade antes de cada envio)
+      const passos = r.antes.slice();
+      for (let n = 0; n < passos.length; n++) {
+        const pr = await enviar({ cmd: 'acao', type: i.type, num: String(i.num), acao: 'tramite', texto: passos[n].texto, situacao: passos[n].situacao, analista: '', data: '', arquivos: [] });
+        if (!pr.ok) throw new Error('passo ' + (n + 1) + ' (' + passos[n].rot + '): ' + (pr.erro || 'o Onvio não aceitou') + '. Nada foi concluído');
+        r.antes.shift();
+        await new Promise(ok => setTimeout(ok, 500));
+      }
+      let resp;
+      try { resp = await enviar({ cmd: 'acao', type: i.type, num: String(i.num), acao: 'tramite', texto: r.texto, situacao: r.sit, analista: '', data: '', arquivos }); }
+      catch (e) { if (passos.length) { r.erro = 'O passo "' + passos[passos.length - 1].rot + '" foi enviado, mas a conclusão não: ' + (e.message || e) + '. Atualize e conclua de novo.'; r.modo = 'editar'; cb.redesenhar(); return; } throw e; }
+      if (!resp.ok && passos.length) { r.erro = 'O passo "' + passos[passos.length - 1].rot + '" foi enviado, mas a conclusão não: ' + (resp.erro || 'o Onvio não aceitou') + '. Atualize e conclua de novo.'; r.modo = 'editar'; cb.redesenhar(); return; }
       if (!resp.ok) throw new Error(resp.erro || 'o Onvio não aceitou');
       if (resp.erroAnexos) toast('Trâmite enviado ao Onvio, mas: ' + resp.erroAnexos, true);
       else toast('Trâmite enviado ao Onvio' + (resp.anexos ? ' com ' + resp.anexos + ' anexo(s)' : ''));

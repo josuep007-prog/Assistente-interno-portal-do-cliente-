@@ -742,7 +742,7 @@ chrome.runtime.onInstalled.addListener(iniciar);
 // de trâmites guardados, para o 1º trâmite ser procurado de novo já na próxima leitura.
 chrome.runtime.onInstalled.addListener(async () => {
   const { tramites } = await chrome.storage.local.get('tramites');
-  await chrome.storage.local.remove('rotasTramites');
+  await chrome.storage.local.remove(['rotasTramites', 'semCalculoMarcas']);   // as marcas do quadro de avisos sem cálculo (saiu na 0.33.0)
   if (tramites) await chrome.storage.local.set({ tramites: Object.fromEntries(Object.entries(tramites).filter(([, v]) => !(v && v.erro))) });
 });
 chrome.runtime.onStartup.addListener(iniciar);

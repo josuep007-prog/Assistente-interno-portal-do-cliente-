@@ -9,17 +9,16 @@
     "resolvidaClienteDias": 3,
     "parada": 15,
     "foraDoPortalDias": 30,
+    "concluirClienteDias": 14,
     "desfazerSeg": 5,
     "prescricaoDias": 30,
     "avisoLegalDias": 2
   },
-  "sugestoes": { "falta": false, "feriasNova": true, "avisoTrabalhado": true },
+  "sugestoes": { "falta": false, "feriasNova": true, "avisoTrabalhado": true, "semRetorno": true },
   "feriados": [
     "2026-12-24",
     "2026-12-31"
   ],
-  "avisoSemCalculo": "Recebemos o {aviso} de {empregado}, mas ainda não há a solicitação de {calculo} desse empregado. Para o pagamento sair dentro do prazo legal (até {pagamento}, {ref}), abra a solicitação de {calculo} no Portal do Cliente o quanto antes.",
-  "assuntoSemCalculo": "{calculo} pendente · {empregado}",
   "tramiteCriacao": "Aguardando o retorno do cliente.",
   "modelosTramite": [
     { "rot": "Recebido, em análise", "situacao": 2, "texto": "{saudacao}! Recebemos a sua solicitação e já estamos analisando. Retornamos assim que houver novidades." },
@@ -27,6 +26,8 @@
   ],
   "foraDoPortal": ["ja resolvido", "enviei por e-mail", "pelo whatsapp", "pode desconsiderar"],
   "textosSugestao": {
+    "semRetorno": "Como não tivemos retorno do cliente nas últimas semanas, estamos concluindo esta solicitação. Se ainda precisar de algo, é só abrir uma nova solicitação.",
+    "semRetornoEtapa": "Registro para o encerramento: solicitação sem retorno do cliente há mais de duas semanas.",
     "fora": "Pelo que consta, esta solicitação já foi resolvida fora do portal. Estamos concluindo por aqui. Se ainda precisar de algo, é só abrir uma nova solicitação.",
     "abaErrada": "Olá! Este pedido tem uma aba própria no Portal do Cliente: {aba}. Por favor, abra a solicitação por lá, com os campos preenchidos. Estamos concluindo esta da lista Geral."
   },

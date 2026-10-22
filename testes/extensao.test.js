@@ -1218,28 +1218,10 @@ test('aba Dados: só o que serve para atender (sem campos técnicos, sem repetir
   assert.ok(!('Hire date' in emp) && !('Sort order' in emp) && !('Client employee relationship' in emp));
 });
 
-test('avisos sem cálculo: quadro em duas colunas, marcas só com k/coluna/hora e texto do aviso ao cliente pelas regras', () => {
-  const now = new Date(2026, 9, 16, 10);
-  const it = (k, faltam, extra) => Object.assign({ k, type: 'avisoFerias', typeLabel: 'Aviso de férias', num: k.slice(-1), detalhe: 'Fulano', semCalculo: { alvo: '2026-10-30', faltam, ref: 'início das férias em 03/11/2026', calculo: 'Cálculo de férias' } }, extra || {});
-  const itens = [it('avisoFerias:a', 3), it('avisoFerias:b', -1), it('avisoFerias:c', 1), { k: 'geral:x', type: 'geral' }];
-  let marcas = OC.marcarSemCalculo({}, 'avisoFerias:c', 'avisado', itens, now);
-  marcas = OC.marcarSemCalculo(marcas, 'avisoFerias:a', 'desconsiderado', itens, now);
-  assert.deepEqual(plano(marcas['avisoFerias:c']), { st: 'avisado', em: now.toISOString() });
-  const q = OC.quadroSemCalculo(itens, marcas);
-  assert.deepEqual(plano(q.avisar.map(x => x.item.k)), ['avisoFerias:b']);
-  assert.deepEqual(plano(q.avisados.map(x => x.item.k)), ['avisoFerias:c']);
-  assert.deepEqual(plano(q.desconsiderados.map(x => x.item.k)), ['avisoFerias:a']);
-  // voltar tira a marca; marca de aviso que saiu das pendentes some depois de 7 dias; coluna desconhecida é ignorada
-  assert.ok(!('avisoFerias:c' in OC.marcarSemCalculo(marcas, 'avisoFerias:c', null, itens, now)));
-  const velha = { 'avisoFerias:z': { st: 'avisado', em: '2026-10-01T10:00:00.000Z' }, 'avisoFerias:y': { st: 'avisado', em: '2026-10-14T10:00:00.000Z' }, 'avisoFerias:a': { st: 'xx', em: now.toISOString() } };
-  assert.deepEqual(Object.keys(OC.marcarSemCalculo(velha, null, null, itens, now)), ['avisoFerias:y']);
-  // texto: padrão e o do arquivo de regras
-  assert.equal(OC.textoAvisoSemCalculo(it('avisoFerias:a', 3), {}),
-    'Recebemos o aviso de férias de Fulano, mas ainda não há a solicitação de cálculo de férias desse empregado. Para o pagamento sair dentro do prazo legal (até 30/10/2026, início das férias em 03/11/2026), abra a solicitação de cálculo de férias no Portal do Cliente o quanto antes. Sem ela não conseguimos preparar o cálculo a tempo.');
-  const r = OC.normalizarRegras({ avisoSemCalculo: 'Falta o {calculo} de {empregado} (pagar até {pagamento}). {outro}' });
-  const s = OC.combinarSettings({ regras: r }, {});
-  assert.equal(OC.textoAvisoSemCalculo(it('avisoFerias:a', 3), s), 'Falta o cálculo de férias de Fulano (pagar até 30/10/2026). {outro}', 'chave desconhecida fica como está');
-  assert.equal(OC.normalizarRegras({ avisoSemCalculo: 'x'.repeat(801) }), null, 'texto grande demais é ignorado');
+test('avisos sem cálculo saíram: sem quadro, sem busca do cálculo e as regras antigas são ignoradas', () => {
+  for (const f of ['quadroSemCalculo', 'marcarSemCalculo', 'textoAvisoSemCalculo', 'assuntoAvisoSemCalculo']) assert.equal(OC[f], undefined, f);
+  assert.equal(OC.normalizarRegras({ avisoSemCalculo: 'Texto', assuntoSemCalculo: 'Assunto' }), null, 'só havia essas chaves: nada útil');
+  assert.equal(OC.DEFAULTS.avisoSemCalculo, undefined);
 });
 
 test('criar solicitação Geral: corpo do formato mapeado, tipo/meio/departamento das regras ou do Onvio, e achar a nova', () => {
@@ -1264,7 +1246,6 @@ test('criar solicitação Geral: corpo do formato mapeado, tipo/meio/departament
   ];
   assert.equal(OC.acharCriada(regs, 'Cálculo pendente', 'cli1', agora).id, 'n1', 'mesmo assunto e cliente, criada há pouco');
   assert.equal(OC.acharCriada(regs, 'Outro', 'cli1', agora), null);
-  assert.equal(OC.assuntoAvisoSemCalculo({ typeLabel: 'Aviso de férias', detalhe: 'Fulano', semCalculo: { calculo: 'Cálculo de férias' } }, {}), 'Cálculo de férias pendente · Fulano');
   const r = OC.normalizarRegras({ criacao: { serviceRequestType: 'GENERIC', requestWay: 'x y', departmentId: 'abc-1' }, tramiteCriacao: 'Aguardamos.' });
   assert.deepEqual(plano(r.criacao), { serviceRequestType: 'GENERIC', departmentId: 'abc-1' }, 'valor com espaço é ignorado');
   const s2 = OC.combinarSettings({ regras: r }, {});
@@ -1303,7 +1284,7 @@ test('observações para o cliente: frases do tipo com as datas, avisos fora do 
   assert.ok(OC.observacoesCliente({ type: 'geral', created: '2026-10-14T12:00:00', lado: 'esc' }, {}, s, now).some(x => x.texto === 'Frase do escritório.'));
 });
 
-test('aviso sem cálculo: lê a data do aviso uma vez, só procura o cálculo perto do prazo e marca quem não tem', async () => {
+test('prazo de pagamento: lê a data do aviso uma vez, marca o prazo legal perto e nunca procura o cálculo', async () => {
   const now = new Date(2026, 9, 15, 10);
   const urls = [];
   const det = { v1: { vacationStartDate: '2026-10-22T00:00:00' }, v2: { vacationStartDate: '2026-10-21T00:00:00' }, v3: { vacationStartDate: '2027-01-10T00:00:00' }, r1: { adviceDate: '2026-10-05T00:00:00' } };
@@ -1317,21 +1298,19 @@ test('aviso sem cálculo: lê a data do aviso uma vez, só procura o cálculo pe
   const item = (k, type, id, emp) => ({ k, type, id, detalhe: emp, codCliente: 7, cliente: 'ACME', created: '2026-10-01T12:00:00' });
   const out = { items: [item('avisoFerias:v1', 'avisoFerias', 'v1', 'Fulano'), item('avisoFerias:v2', 'avisoFerias', 'v2', 'Beltrano'), item('avisoFerias:v3', 'avisoFerias', 'v3', 'Ciclano'), item('avisoRescisao:r1', 'avisoRescisao', 'r1', 'Joana'), { k: 'geral:g', type: 'geral', id: 'g' }] };
   await OC.verificarAvisos(f, out, {}, Object.assign({}, OC.DEFAULTS), now);
-  const v1 = out.items[0].semCalculo;
-  assert.deepEqual([v1.alvo, v1.faltam, v1.calculo], ['2026-10-20', 3, 'Cálculo de férias']);
-  assert.equal(out.items[1].semCalculo, undefined, 'Beltrano já tem cálculo');
-  assert.equal(out.items[2].semCalculo, undefined, 'férias longe: nem procura o cálculo');
-  assert.ok(!urls.includes('/api/br-payroll-sr/v1/vacation-calculations?Ciclano'));
-  assert.equal(out.items[3].semCalculo.alvo, '2026-10-15', 'rescisão: 10 dias do aviso');
-  assert.equal(out.avisos.semCalculo, 2);
-  assert.ok(!urls.some(u => /\/g\?|generic/.test(u)), 'só avisos de férias e rescisão');
-  // segunda leitura: cache evita reler o detalhe e reconferir antes de 6 h
+  const v1 = out.items[0];
+  assert.deepEqual([v1.prazoLegal.alvo, v1.prazoLegal.faltam], ['2026-10-20', 3]);
+  assert.equal(out.items[2].prazoLegal, undefined, 'férias longe do prazo');
+  assert.equal(out.items[3].prazoLegal.alvo, '2026-10-15', 'rescisão: 10 dias do aviso');
+  assert.ok(out.items.every(i => i.semCalculo === undefined), 'não há mais aviso sem cálculo');
+  assert.ok(!urls.some(u => /vacation-calculations|termination-calculations|\/g\?|generic/.test(u)), 'só o detalhe dos avisos, nunca a busca do cálculo');
+  // segunda leitura: o cache evita reler o detalhe
   urls.length = 0;
-  const out2 = { items: out.items.map(i => Object.assign({}, i, { semCalculo: undefined })) };
+  const out2 = { items: out.items.map(i => Object.assign({}, i, { prazoLegal: undefined })) };
   await OC.verificarAvisos(f, out2, out.avisos.cache, Object.assign({}, OC.DEFAULTS), new Date(2026, 9, 15, 11));
   assert.deepEqual(urls, []);
-  assert.equal(out2.items[0].semCalculo.alvo, '2026-10-20');
-  assert.deepEqual(Object.keys(out.avisos.cache['avisoFerias:v1']).sort(), ['alvo', 'calc', 'conf', 'lido', 'ref'], 'cache só com datas e sim/não');
+  assert.equal(out2.items[0].prazoLegal.alvo, '2026-10-20');
+  assert.deepEqual(Object.keys(out.avisos.cache['avisoFerias:v1']).sort(), ['alvo', 'lido', 'ref'], 'cache só com datas');
 });
 
 test('distribuição: quem mais atendeu a empresa na semana; admissões fora da conta e com quem mais faz admissões', () => {
@@ -1696,14 +1675,14 @@ test('sugestões de ação: casos específicos (fora do portal, duplicada, lista
   const it = (k, o) => Object.assign({ k, type: 'geral', typeLabel: 'Geral', id: 'g' + k, num: 100, code: 2, lado: 'esc', codCliente: 1, cliente: 'ACME', apelido: 'ACME', parado: 1, resp: 'Ana', last: '2026-10-10T10:00:00' }, o);
   const casos = OC.casosSugeridos([
     it('velha', { num: 101, parado: 31 }),                                         // vez do escritório há mais de 30 dias
-    it('noCli', { num: 102, parado: 40, lado: 'cli', code: 4 }),                   // parada com o cliente: é prescrição, não "fora"
+    it('noCli', { num: 102, parado: 40, lado: 'cli', code: 4 }),                   // parada com o cliente: não é "fora", é "sem retorno"
     it('d1', { num: 110, type: 'avisoFerias', typeLabel: 'Aviso de férias', detalhe: 'Fulano' }),
     it('d2', { num: 115, type: 'avisoFerias', typeLabel: 'Aviso de férias', detalhe: 'fulano ' }),
     it('aba', { num: 120, abaProvavel: { tipo: 'avisoFerias', label: 'Aviso de férias' } }),
     it('cad', { num: 130, type: 'cadEmpregado', typeLabel: 'Cadastro empregado', parado: 45 }),
     it('ok', { num: 140 })
   ], {}, {});
-  assert.deepEqual(plano(casos.map(c => c.k + '=' + c.tipo)), ['cad=fora', 'velha=fora', 'd2=duplicada', 'aba=abaErrada']);
+  assert.deepEqual(plano(casos.map(c => c.k + '=' + c.tipo)), ['cad=fora', 'velha=fora', 'd2=duplicada', 'aba=abaErrada', 'noCli=semRetorno']);
   const velha = casos.find(c => c.k === 'velha');
   assert.match(velha.porque, /Sem resposta do escritório há 31 dias/);
   assert.equal(velha.botao, 'Concluir');
@@ -1717,11 +1696,49 @@ test('sugestões de ação: casos específicos (fora do portal, duplicada, lista
   assert.equal(cad.acao.situacao, '6', 'concluir em Cadastro é Concluído (6)');
   // 0 desliga a regra dos 30 dias; "não é o caso" some até a solicitação mexer
   assert.ok(!OC.casosSugeridos([it('velha', { parado: 31 })], {}, { foraDoPortalDias: 0 }).length);
+  assert.ok(!OC.casosSugeridos([it('noCli', { parado: 40, lado: 'cli', code: 4 })], {}, { concluirClienteDias: 0 }).length, '0 desliga a conclusão por falta de retorno');
+  assert.ok(!OC.casosSugeridos([it('noCli', { parado: 14, lado: 'cli', code: 4 })], {}, {}).length, 'só passa de duas semanas');
   const ig = OC.ignorarCaso({}, 'velha', { last: '2026-10-10T10:00:00' }, new Date('2026-10-16T12:00:00Z'));
   assert.deepEqual(Object.keys(ig), ['velha']);
   assert.ok(!OC.casosSugeridos([it('velha', { parado: 31 })], {}, {}, ig).length);
   assert.equal(OC.casosSugeridos([it('velha', { parado: 31, last: '2026-10-15T09:00:00' })], {}, {}, ig).length, 1, 'mexeu: volta');
   assert.deepEqual(Object.keys(OC.ignorarCaso(ig, 'velha', null)), [], 'desfazer');
+});
+
+test('sem retorno do cliente: aguardando há mais de 14 dias conclui, em dois passos onde a lista exige (Respondido pelo cliente e depois Concluído)', () => {
+  const it = (k, o) => Object.assign({ k, type: 'geral', typeLabel: 'Geral', id: 'x' + k, num: 100, code: 4, lado: 'cli', codCliente: 1, cliente: 'ACME', apelido: 'ACME', parado: 15, resp: 'Ana', last: '2026-10-01T10:00:00' }, o);
+  const casos = OC.casosSugeridos([
+    it('geral', { num: 1 }),                                                                   // Respondido: conclui direto
+    it('cad3', { num: 2, type: 'cadEmpregado', typeLabel: 'Cadastro empregado', code: 3 }),    // Aguardando o cliente: 4 e depois 6
+    it('cad5', { num: 3, type: 'cadContribuinte', typeLabel: 'Cadastro contribuinte', code: 5 }),   // Cadastro efetuado: conclui direto (6)
+    it('rub6', { num: 4, type: 'rubricas', typeLabel: 'Rubricas', code: 6 }),                  // Aguardando correção: 4 e depois 8
+    it('rub3', { num: 5, type: 'rubricas', typeLabel: 'Rubricas', code: 3 }),                  // Importação realizada: conclui direto (8)
+    it('novo', { num: 6, parado: 10 })
+  ], {}, {});
+  const por = Object.fromEntries(casos.map(c => [c.k, c]));
+  assert.deepEqual(Object.keys(por).sort(), ['cad3', 'cad5', 'geral', 'rub3', 'rub6']);
+  assert.equal(por.geral.rot, 'Sem retorno do cliente');
+  assert.match(por.geral.porque, /Aguardando o cliente há 15 dias, sem retorno/);
+  const f = c => plano({ s: c.acao.situacao, antes: c.acao.antes.map(a => a.situacao) });
+  assert.deepEqual(f(por.geral), { s: '5', antes: [] });
+  assert.deepEqual(f(por.cad3), { s: '6', antes: ['4'] }, 'Cadastro: Respondido pelo cliente (4) e depois Concluído (6)');
+  assert.deepEqual(f(por.cad5), { s: '6', antes: [] });
+  assert.deepEqual(f(por.rub6), { s: '8', antes: ['4'] });
+  assert.deepEqual(f(por.rub3), { s: '8', antes: [] });
+  assert.equal(por.cad3.acao.antes[0].rot, 'Respondido pelo cliente');
+  assert.match(por.cad3.acao.antes[0].texto, /sem retorno do cliente/);
+  assert.match(por.cad3.acao.texto, /estamos concluindo esta solicitação/);
+  assert.ok(Object.values(por).every(c => c.pode.ok));
+  // regras: texto, tempo e liga/desliga
+  const r = OC.normalizarRegras({ prazos: { concluirClienteDias: 21 }, textosSugestao: { semRetorno: 'Encerrando.' }, sugestoes: { semRetorno: false } });
+  const s = OC.combinarSettings({ regras: r }, {});
+  assert.equal(s.concluirClienteDias, 21);
+  assert.equal(OC.casosSugeridos([it('a', { parado: 20 })], {}, s).length, 0, '21 dias: ainda não');
+  assert.equal(OC.casosSugeridos([it('a', { parado: 30 })], {}, s).length, 0, 'sugestão desligada pelas regras');
+  assert.equal(OC.casosSugeridos([it('a', { parado: 30 })], {}, Object.assign({}, s, { sugestoes: {} }))[0].acao.texto, 'Encerrando.');
+  // sem trâmite mapeado ou sem caminho até Concluído: não dá para concluir pela extensão
+  assert.equal(OC.planoConclusao({ type: 'desconhecido', code: 3 }), null);
+  assert.equal(OC.planoConclusao({ type: 'cadEmpregado', code: 7 }) && OC.planoConclusao({ type: 'cadEmpregado', code: 7 }).antes.length, 0, 'Encaminhado: conclui direto');
 });
 
 test('sugestões de ação: lidas nos trâmites (fora do portal, anexo que não chegou, falta informação), só o veredito sai', async () => {
