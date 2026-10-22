@@ -1211,8 +1211,8 @@ test('avisos sem cálculo: quadro em duas colunas, marcas só com k/coluna/hora 
 test('criar solicitação Geral: corpo do formato mapeado, tipo/meio/departamento das regras ou do Onvio, e achar a nova', () => {
   const ex = { serviceRequestType: 'TIPO_GERAL', requestWay: 'WEB', departmentId: 'depX', subject: 'não usar', clientExpanded: { id: 'outro' } };
   const m = OC.modeloCriacao({}, ex, { departmentId: 'depDP' });
-  assert.deepEqual(plano(m), { serviceRequestType: 'TIPO_GERAL', requestWay: 'WEB', departmentId: 'depDP', faltam: [] }, 'departamento do acesso do usuário antes do exemplo');
-  assert.deepEqual(plano(OC.modeloCriacao({ criacao: { serviceRequestType: 'R', requestWay: 'PHONE', departmentId: 'D' } }, ex, null)), { serviceRequestType: 'R', requestWay: 'PHONE', departmentId: 'D', faltam: [] }, 'regras do escritório valem primeiro');
+  assert.deepEqual(plano(m), { serviceRequestType: 'TIPO_GERAL', requestWay: 'WEB', departmentId: 'depDP', departamentoPadrao: false, faltam: [] }, 'departamento do acesso do usuário antes do exemplo');
+  assert.deepEqual(plano(OC.modeloCriacao({ criacao: { serviceRequestType: 'R', requestWay: 'PHONE', departmentId: 'D' } }, ex, null)), { serviceRequestType: 'R', requestWay: 'PHONE', departmentId: 'D', departamentoPadrao: false, faltam: [] }, 'regras do escritório valem primeiro');
   assert.deepEqual(plano(OC.modeloCriacao({}, null, null).faltam), ['tipo', 'meio', 'departamento']);
   assert.deepEqual(plano(OC.pedidoCriacao({ assunto: '  Cálculo   pendente ', descricao: ' Texto ' }, 'cli1', m)), {
     metodo: 'POST', url: OC.API + 'service-requesting/v1/tickets/generic',
@@ -1234,7 +1234,7 @@ test('criar solicitação Geral: corpo do formato mapeado, tipo/meio/departament
   const r = OC.normalizarRegras({ criacao: { serviceRequestType: 'GENERIC', requestWay: 'x y', departmentId: 'abc-1' }, tramiteCriacao: 'Aguardamos.' });
   assert.deepEqual(plano(r.criacao), { serviceRequestType: 'GENERIC', departmentId: 'abc-1' }, 'valor com espaço é ignorado');
   const s2 = OC.combinarSettings({ regras: r }, {});
-  assert.deepEqual(plano(s2.criacao), { serviceRequestType: 'GENERIC', requestWay: '', departmentId: 'abc-1' });
+  assert.deepEqual(plano(s2.criacao), { serviceRequestType: 'GENERIC', requestWay: '', departmentId: 'abc-1', departamentos: {} });
   assert.equal(s2.tramiteCriacao, 'Aguardamos.');
 });
 
@@ -1508,6 +1508,43 @@ test('background: criar solicitação Geral pela aba do Onvio, com o cliente da 
   const r3 = await pedir({ cmd: 'criar', origem: { type: 'avisoFerias', num: 901 }, assunto: '', descricao: 'y' });
   assert.match(r3.erro, /escreva o assunto/);
   assert.equal(escritas.length, 2);
+});
+
+test('background: criar solicitação usa o departamento escolhido (id das regras) e avisa quando cai no padrão', async () => {
+  const origem = pend('f1', 901, { clientExpanded: { id: 'cli-guid', name: 'ACME' } });
+  const exemplo = pend('ex1', 1490, { departmentId: 'depEx', requestWay: 'WEB' });
+  let criada = null;
+  const escritas = [];
+  const json = o => respHttp(200, 'application/json', JSON.stringify(o));
+  const api = async (url, init) => {
+    const u = new URL(url);
+    if (init && init.method && init.method !== 'GET') {
+      escritas.push({ url: u.pathname, corpo: JSON.parse(init.body) });
+      if (u.pathname.endsWith('/tickets/generic')) criada = { id: 'novo-guid', identifier: 1502, subject: JSON.parse(init.body).subject, clientExpanded: { id: 'cli-guid', name: 'ACME' }, created: new Date().toISOString().slice(0, 19) };
+      return respHttp(201, 'application/json', '');
+    }
+    if (u.pathname.endsWith('/company-department-access')) return json({ id: 'a', departmentId: 'depDP' });
+    if (u.pathname.endsWith('/tickets/generic/ex1')) return json({ id: 'ex1', serviceRequestType: 'TIPO_GERAL', requestWay: 'WEB', departmentId: 'depEx', subject: 'outro' });
+    if (u.pathname.endsWith('/tickets/generic')) return json({ items: u.searchParams.get('searchText') ? (criada ? [criada] : []) : [exemplo], totalItems: 1 });
+    if (u.pathname.endsWith('/prior-notice-vacations')) return json({ items: [origem], totalItems: 1 });
+    return json({ items: [] });
+  };
+  const { ctx, ouvintes, store } = carregarBackground({ abas: [aba(5, ONVIO_PORTAL)], fetchPorMundo: { MAIN: api }, fetch: api });
+  ctx.__controlOnvioAutorizacao = () => 'Bearer x';
+  store.settings = { __v: 2, criacao: { serviceRequestType: '', requestWay: '', departmentId: '', departamentos: { fiscal: 'dep-fiscal' } } };
+  const pedir = m => new Promise(res => ouvintes[0](m, { tab: { id: 5 } }, res));
+  const base = { cmd: 'criar', origem: { type: 'avisoFerias', num: 901 }, assunto: 'Documentos fiscais', descricao: 'Texto' };
+  const a = await pedir(Object.assign({ departamento: 'fiscal' }, base));
+  assert.equal(a.ok, true, a.erro);
+  assert.equal(escritas[0].corpo.departmentId, 'dep-fiscal', 'o id do departamento Fiscal, das regras');
+  assert.equal(a.departamentoPadrao, false);
+  const b = await pedir(Object.assign({ departamento: 'contabil', assunto: 'Extratos' }, base));
+  assert.equal(b.ok, true, b.erro);
+  assert.equal(escritas[1].corpo.departmentId, 'depDP', 'sem id do Contábil nas regras: o departamento do acesso');
+  assert.equal(b.departamentoPadrao, true, 'a tela avisa');
+  const c = await pedir(Object.assign({ departamento: 'invalido', assunto: 'Outro' }, base));
+  assert.equal(c.ok, true);
+  assert.equal(c.departamentoPadrao, false, 'departamento fora da lista é ignorado');
 });
 
 test('background: ação manda o trâmite pela aba do Onvio, com a autorização da página, e o anexo no trâmite criado', async () => {
@@ -1971,4 +2008,82 @@ test('rodada 1: prescrição é só informação, motivos legais marcados, caso 
   assert.deepEqual(plano(s.sugestoes), { falta: true, fora: false });
   assert.equal(OC.combinarSettings(null, {}).avisoLegalDias, 2);
   assert.equal(OC.normalizarRegras({ prazos: { avisoLegalDias: 99 } }), null, 'fora do limite não vale');
+});
+
+test('rodada 2: férias nova em análise, aviso trabalhado com lembrete, acidente de trabalho e modelos de texto', () => {
+  const it = (k, o) => Object.assign({ k, type: 'avisoFerias', typeLabel: 'Aviso de férias', id: 'x' + k, num: Number(k.split(':')[1]), code: 1, status: 'Sem análise', lado: 'esc', parado: 1, apelido: 'ACME', cliente: 'ACME LTDA', detalhe: 'Fulano', resp: 'Ana', last: '2026-10-20T10:00:00' }, o);
+  const casos = OC.casosSugeridos([it('avisoFerias:1'), it('calcFerias:2', { type: 'calcFerias', code: 2, status: 'Em análise' }), it('avisoRescisao:3', { type: 'avisoRescisao', typeLabel: 'Aviso de rescisão', detalhe: 'Fulano · aviso trabalhado', avisoEm: '2026-11-05' })], {}, OC.DEFAULTS);
+  assert.deepEqual(plano(casos.map(c => c.k + '=' + c.tipo).sort()), ['avisoFerias:1=feriasNova', 'avisoRescisao:3=avisoTrabalhado']);
+  const fe = casos.find(c => c.tipo === 'feriasNova');
+  assert.deepEqual(plano([fe.botao, fe.acao.situacao]), ['Pôr em análise', '2']);
+  assert.match(fe.acao.texto, /empréstimos consignados.*\{pagamentoFerias\}.*30 dias/s);
+  const at = casos.find(c => c.tipo === 'avisoTrabalhado');
+  assert.equal(at.botao, 'Criar lembrete');
+  assert.match(at.acao.lembrete.texto, /^Emitir o aviso prévio trabalhado \(sem cálculo\) · #3 ACME · Fulano/);
+  assert.equal(new Date(at.acao.lembrete.quando).getDate(), 4, 'dia útil antes do aviso (05/11/2026)');
+  assert.equal(new Date(at.acao.lembrete.quando).getHours(), 9);
+  assert.doesNotThrow(() => OC.novoLembrete({ texto: at.acao.lembrete.texto, quando: at.acao.lembrete.quando, k: at.k, type: 'avisoRescisao', num: 3 }, new Date()));
+  assert.equal(OC.casosSugeridos([it('avisoFerias:1')], {}, Object.assign({}, OC.DEFAULTS, { sugestoes: { feriasNova: false } })).length, 0, 'as regras desligam o caso');
+  // a abertura (lida nos trâmites) também diz que é trabalhado; "falta de data" cai no próximo dia útil
+  const ab = OC.analisarCaso([{ created: '2026-10-01T10:00:00', status: 1, description: 'Funcionário vai cumprir o aviso trabalhado' }], OC.TYPE_BY_KEY.avisoRescisao, {}, {});
+  assert.deepEqual(plano(ab), { tipo: 'avisoTrabalhado', trecho: 'trabalhado' });
+  assert.equal(OC.analisarCaso([{ created: '2026-10-01T10:00:00', status: 1, description: 'Aviso indenizado' }], OC.TYPE_BY_KEY.avisoRescisao, {}, {}), null);
+  // acidente de trabalho nos afastamentos
+  assert.equal(OC.temAcidente({ subject: 'Atestado', description: 'Acidente de trabalho, CAT emitida' }, {}), true);
+  assert.equal(OC.temAcidente({ subject: 'Atestado médico', employeeLeaveTypeExpanded: { name: 'Doença' } }, {}), false);
+  assert.equal(OC.temAcidente({ employeeLeaveTypeExpanded: { name: 'Acidente de trabalho' } }, {}), true, 'pelo tipo do afastamento, quando vier');
+  assert.equal(OC.temAcidente({ description: 'Vacinação' }, {}), false, '"cat" só como palavra inteira');
+  // modelos de texto e variáveis de pagamento
+  const mFer = OC.modelosPara({ type: 'calcFerias', code: 1, apelido: 'X', detalhe: 'Beltrano' }, {}, []).find(m => m.rot === 'Férias em análise');
+  assert.equal(mFer.situacao, 2);
+  assert.ok(OC.modelosPara({ type: 'calcRescisao', code: 2 }, {}, []).some(m => m.rot === 'Envio da rescisão' && m.situacao === 4));
+  assert.ok(!OC.modelosPara({ type: 'geral', code: 2 }, {}, []).some(m => /Envio da rescisão|Férias em análise/.test(m.rot)), 'só nos tipos certos');
+  const v = OC.variaveisTramite({ type: 'calcFerias', apelido: 'X', detalhe: 'Beltrano', typeLabel: 'Cálculo de férias', pagamentoAte: { alvo: '2026-10-30' } }, {}, {}, new Date('2026-10-20T10:00:00'), 'Ana');
+  assert.deepEqual([v.pagamentoFerias, v.pagamentoRescisao], ['30/10/2026', undefined]);
+  const vr = OC.variaveisTramite({ type: 'calcRescisao', apelido: 'X', detalhe: 'Beltrano', pagamentoAte: { alvo: '2026-11-10' } }, {}, {}, new Date('2026-10-20T10:00:00'), 'Ana');
+  assert.equal(vr.pagamentoRescisao, '10/11/2026');
+  assert.equal(OC.preencherModelo('até {pagamentoRescisao}', vr), 'até 10/11/2026');
+});
+
+test('rodada 2: modelos de criação por departamento e ids dos departamentos nas regras', () => {
+  assert.deepEqual(plano(OC.DEPARTAMENTOS), ['dp', 'fiscal', 'contabil']);
+  const d = OC.DEFAULTS.modelosCriacao;
+  for (const dep of OC.DEPARTAMENTOS) assert.ok(d.filter(m => m.dep === dep).length >= 3, dep + ': 3 a 5 modelos');
+  assert.ok(d.every(m => m.rot && m.assunto && m.descricao && m.assunto.length <= 200 && m.descricao.length <= 800));
+  assert.ok(d.every(m => !/\d{3}\.\d{3}|@|https?:/.test(m.assunto + m.descricao)), 'só texto padrão, sem dado de ninguém');
+  const r = OC.normalizarRegras({ criacao: { departamentos: { fiscal: 'dep-fisc', inventado: 'x', dp: 'tem espaço' } }, modelosCriacao: [{ dep: 'fiscal', rot: 'Meu', assunto: 'A', descricao: 'B' }, { dep: 'rh', rot: 'x', assunto: 'a', descricao: 'b' }, { dep: 'dp', rot: '', assunto: 'a', descricao: 'b' }] });
+  assert.deepEqual(plano(r.criacao.departamentos), { fiscal: 'dep-fisc' });
+  assert.deepEqual(plano(r.modelosCriacao), [{ dep: 'fiscal', rot: 'Meu', assunto: 'A', descricao: 'B' }]);
+  const s = OC.combinarSettings({ regras: r }, {});
+  assert.equal(s.criacao.departamentos.fiscal, 'dep-fisc');
+  assert.equal(s.modelosCriacao.length, 1);
+  // o departamento escolhido troca o id; sem id nas regras vale o padrão e o modelo avisa
+  const ex = { serviceRequestType: 'T', requestWay: 'WEB', departmentId: 'depX' };
+  const a = OC.modeloCriacao(s, ex, { departmentId: 'depDP' }, 'fiscal');
+  assert.deepEqual([a.departmentId, a.departamentoPadrao], ['dep-fisc', false]);
+  const b = OC.modeloCriacao(s, ex, { departmentId: 'depDP' }, 'contabil');
+  assert.deepEqual([b.departmentId, b.departamentoPadrao], ['depDP', true], 'sem id nas regras: o do acesso, e avisa');
+  assert.equal(OC.modeloCriacao(s, ex, { departmentId: 'depDP' }).departamentoPadrao, false, 'sem departamento escolhido: como antes');
+});
+
+test('rodada 2: acidente no topo da fila e na notificação; lembrete do aviso trabalhado', () => {
+  const af = (k, o) => Object.assign({ k, id: 'x' + k, type: 'afastamento', typeLabel: 'Afastamento', num: Number(k.split(':')[1]), code: 2, status: 'Em análise', lado: 'esc', parado: 1, apelido: 'ACME', cliente: 'ACME', resp: 'Ana', mine: true }, o);
+  const x = af('afastamento:1', {}); const y = af('afastamento:2', {});
+  // verificarAvisos marca o item (aqui direto pelo que ele grava)
+  const out = { items: [x, y] };
+  const fetcher = async url => (url.includes('afastamento%3A2') ? { description: 'acidente de trabalho' } : { description: 'consulta' });
+  return OC.verificarAvisos(fetcher, out, {}, OC.DEFAULTS, new Date('2026-10-20T10:00:00')).then(() => {
+    assert.equal(!!x.acidente, false); assert.equal(y.acidente, true);
+    assert.ok(y.motivos.some(m => m.legal && m.acidente && /CAT/.test(m.t)), 'motivo legal com o porquê');
+    assert.deepEqual(plano(OC.ordemFila([x, y]).map(p => p.item.k + ':' + p.motivo)), ['afastamento:2:legal', 'afastamento:1:analise'], 'acidente sobe ao topo');
+    assert.equal(OC.acaoDe(y), 'Acidente de trabalho · emitir a CAT');
+    assert.deepEqual(plano(Object.values(out.avisos.cache).map(c => c.acid)), [0, 1], 'o cache guarda só o sinal');
+    assert.equal(JSON.stringify(out.avisos).includes('consulta'), false);
+    const ev = OC.eventos({ items: [af('afastamento:2', { mine: true })] }, { items: [y] }, {}, new Date());
+    assert.deepEqual(plano(ev.map(e => e.tipo)), ['acidente']);
+    const ev2 = OC.eventos(null, { items: [y] }, {}, new Date());
+    assert.deepEqual(plano(ev2.map(e => e.tipo)), [], 'primeira leitura vira base');
+    const ev3 = OC.eventos({ items: [af('afastamento:9')] }, { items: [af('afastamento:9'), y] }, {}, new Date());
+    assert.deepEqual(plano(ev3.map(e => e.tipo)), ['acidente'], 'chegou já como acidente: notifica como acidente');
+  });
 });

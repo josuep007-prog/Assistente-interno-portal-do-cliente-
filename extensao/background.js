@@ -444,9 +444,9 @@ async function executarAcao(msg) {
  * ou o próprio Onvio (uma Geral recente e o acesso do usuário); na memória, só esses 3 valores técnicos, por 6 h.
  * Opcional: logo depois, um trâmite "Respondido" passa a vez ao cliente. Texto nenhum é guardado. */
 let modeloCriacaoCache = null;
-async function modeloDeCriacao(f, s) {
+async function modeloDeCriacao(f, s, dep) {
   const c = Object.assign({}, OC.DEFAULTS.criacao, s.criacao || {});
-  if (c.serviceRequestType && c.requestWay && c.departmentId) return OC.modeloCriacao(s, null, null);
+  if (c.serviceRequestType && c.requestWay && c.departmentId) return OC.modeloCriacao(s, null, null, dep);
   if (!modeloCriacaoCache || Date.now() - modeloCriacaoCache.em > 6 * 3600e3) {
     const so = (e) => { if (e && (e.auth || e.cliente)) throw e; return null; };
     const acesso = await f(OC.URL_SO_ESCRITORIO()).catch(so);
@@ -458,7 +458,7 @@ async function modeloDeCriacao(f, s) {
     const pega = o => (o ? { serviceRequestType: o.serviceRequestType, requestWay: o.requestWay || (r0 && r0.requestWay), departmentId: o.departmentId || (r0 && r0.departmentId) } : r0 ? { requestWay: r0.requestWay, departmentId: r0.departmentId } : null);
     modeloCriacaoCache = { exemplo: pega(exemplo), acesso: acesso && typeof acesso.departmentId === 'string' ? { departmentId: acesso.departmentId } : null, em: Date.now() };
   }
-  return OC.modeloCriacao(s, modeloCriacaoCache.exemplo, modeloCriacaoCache.acesso);
+  return OC.modeloCriacao(s, modeloCriacaoCache.exemplo, modeloCriacaoCache.acesso, dep);
 }
 function conferirEscrita(res) {
   if (res.status === 401 || res.status === 403) throw new Error('o Onvio recusou (HTTP ' + res.status + '). Faça pelo Onvio e avise quem mantém a extensão.');
@@ -476,12 +476,14 @@ async function criarSolicitacao(msg) {
   const clienteId = r.clientExpanded && r.clientExpanded.id;
   if (!clienteId) throw new Error('o Onvio não trouxe o id do cliente; crie pelo Onvio');
   const s = await getSettings();
-  const p = OC.pedidoCriacao({ assunto: msg.assunto, descricao: msg.descricao }, clienteId, await modeloDeCriacao(f, s));
+  const dep = OC.DEPARTAMENTOS.includes(msg.departamento) ? msg.departamento : '';
+  const modelo = await modeloDeCriacao(f, s, dep);
+  const p = OC.pedidoCriacao({ assunto: msg.assunto, descricao: msg.descricao }, clienteId, modelo);
   if (!OC.escritaPermitida(p.metodo, p.url)) throw new Error('endereço de escrita não permitido');
   const escreve = escritaPorAba(tab.id);
   const desde = Date.now();
   conferirEscrita(await escreve(p.metodo, p.url, p.corpo));
-  const out = { criada: true, num: null, id: null, tramite: false, erroTramite: null };
+  const out = { criada: true, num: null, id: null, tramite: false, erroTramite: null, departamentoPadrao: !!modelo.departamentoPadrao };
   const geral = OC.TYPE_BY_KEY.geral;
   try {
     const l = await f(OC.urlConsulta(geral, { search: p.corpo.subject, per: 20, orderBy: 'created desc' }));
