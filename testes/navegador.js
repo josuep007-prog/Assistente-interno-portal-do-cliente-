@@ -1082,6 +1082,37 @@ await passo('app · Nova solicitação por departamento: modelos de DP, Fiscal e
   assert.deepEqual(p.erros, []);
 });
 
+await passo('app · setores: fora da equipe do DP só as suas (sem Todas, Equipe e Distribuir, com aviso); no DP a Geral mostra só o departamento do DP; prazo prometido visível', async () => {
+  const geral = (k, num, dep, extra) => Object.assign({ k: 'geral:' + k, type: 'geral', typeLabel: 'Geral', id: k, num, code: 2, status: 'Em análise', lado: 'esc', nivel: 0, grav: 0, parado: 1, motivos: [], resp: 'Bia', mine: false, apelido: 'X' + k, cliente: 'X' + k, detalhe: 'Assunto ' + k, departmentId: dep, created: agoraIso(2), last: agoraIso(1) }, extra || {});
+  const itens = [geral('d1', 801, 'dep-dp'), geral('f1', 802, 'dep-fiscal'), geral('m1', 803, 'dep-fiscal', { mine: true, resp: 'Ana Teste', prazoPrometido: '2099-01-10', motivos: [{ n: 0, m: 'Prometido até 10/01', legal: true, prom: true }] })];
+  const regras = eq => ({ regrasEscritorio: { url: 'https://exemplo.com/r.json', versao: 't1', regras: { versao: 't1', config: {}, feriados: [], abaErrada: [], equipeDP: eq, departamentoDP: 'dep-dp' } } });
+  // fora do DP (o nome do usuário não está em equipeDP)
+  const p = await abrirApp('#/fila', Object.assign({ snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens }) }, regras(['Bia', 'Caio'])));
+  await p.waitForSelector('#aviso-setor');
+  assert.match(await p.textContent('#aviso-setor'), /Você vê só as suas solicitações/);
+  assert.deepEqual(await p.$$eval('#abas .aba', e => e.map(x => x.dataset.aba)), ['minhas', 'respondidas'], 'sem a aba Todas');
+  assert.deepEqual(await linhas(p), ['geral:m1'], 'só as suas, de qualquer departamento');
+  assert.match(await p.textContent('#corpo [data-k="geral:m1"]'), /Prometido até 10\/01/, 'o prazo prometido é o vencimento visível');
+  assert.equal(await p.isVisible('.trilho [data-rota="equipe"]'), false);
+  assert.equal(await p.isVisible('.trilho [data-rota="distribuir"]'), false);
+  await p.goto(URL_APP + '#/equipe');
+  await p.waitForFunction(() => location.hash.startsWith('#/equipe') || document.querySelector('#titulo').textContent === 'Solicitações');
+  assert.equal(await p.textContent('#titulo'), 'Solicitações', 'Equipe leva de volta às Solicitações');
+  await p.goto(URL_APP + '#/fila?escopo=todas');
+  assert.equal(await p.$eval('#abas .aba.on', a => a.dataset.aba), 'minhas', 'escopo=todas cai em Minhas');
+  assert.deepEqual(p.erros, []);
+  // no DP (o usuário está em equipeDP): a Geral do Fiscal some, a do DP e a sua ficam
+  const p2 = await abrirApp('#/fila?escopo=todas', Object.assign({ snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens }) }, regras(['Ana Teste', 'Bia'])));
+  await p2.waitForSelector('#corpo [data-k]');
+  assert.deepEqual((await linhas(p2)).sort(), ['geral:d1', 'geral:m1'], 'a Geral do Fiscal (dep-fiscal) some; a do DP e a que é sua ficam');
+  assert.equal(await p2.$('#aviso-setor'), null);
+  assert.equal(await p2.isVisible('.trilho [data-rota="equipe"]'), true);
+  // sem regras de setor, tudo como antes
+  const p3 = await abrirApp('#/fila?escopo=todas', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens }) });
+  await p3.waitForSelector('#corpo [data-k]');
+  assert.equal((await linhas(p3)).length, 3);
+});
+
 await passo('app · detalhe: destaques sutis; trâmites como conversa (filtro, ordem, ver tudo); Anexos num botão só com escolha do que baixar', async () => {
   const p = await abrirApp('#/fila', {});
   await p.evaluate(() => { window.__respostas = { detalhe: { ok: true, item: { assunto: 'Férias' }, datas: {},

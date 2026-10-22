@@ -9,6 +9,7 @@ const CHAVES = {
 };
 
 export const estado = {
+  snapBruto: null, setor: { ativo: false, fora: false, dep: '' },
   snap: null, status: null, usuario: {}, regras: null, ultima: null,
   eventos: [], lembretes: [], serie: {}, alertasVistosEm: null, semCalcMarcas: {}, excecoes: {}, sugIgnoradas: {}, modelosPessoais: [],
   settings: Object.assign({}, OC.DEFAULTS)
@@ -21,9 +22,15 @@ function aplicar(d) {
   for (const [k, campo] of Object.entries(CHAVES)) {
     if (!(k in d)) continue;
     const v = d[k];
+    if (campo === 'snap') { estado.snapBruto = v == null ? null : v; continue; }       // o resumo passa pelo filtro do setor abaixo
     estado[campo] = v == null ? (['eventos', 'lembretes', 'modelosPessoais'].includes(campo) ? [] : ['serie', 'usuario', 'semCalcMarcas', 'excecoes', 'sugIgnoradas'].includes(campo) ? {} : null) : v;
   }
   estado.settings = OC.combinarSettings(estado.regras, estado.usuario);
+  // Setores: quem não é da equipe do DP vê só as suas; a Geral mostra só o que é do DP (regras do escritório)
+  const raw = estado.snapBruto;
+  estado.setor = OC.perfilSetor(estado.settings, raw && raw.user && raw.user.nome);
+  estado.snap = raw && estado.setor.ativo ? Object.assign({}, raw, { items: OC.filtrarPorSetor(raw.items, estado.setor), resolvidas: OC.filtrarPorSetor(raw.resolvidas, estado.setor) }) : raw;
+  if (estado.setor.fora) estado.eventos = (estado.eventos || []).filter(e => e.mine);
 }
 
 export async function iniciarEstado() {

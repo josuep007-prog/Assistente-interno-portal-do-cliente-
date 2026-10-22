@@ -1417,3 +1417,5 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .sug-resp:hover{background:color-mix(in srgb, var(--blue-deep) 16%, transparent)}
 .sug-resp.sem{border-color:var(--status-warn); color:var(--status-warn); background:color-mix(in srgb, var(--status-warn) 8%, transparent)}
 .sug-resp:focus-visible{outline:2px solid var(--blue-mid); outline-offset:2px}
+
+body.setor-fora .trilho [data-rota="equipe"], body.setor-fora .trilho [data-rota="distribuir"]{display:none}

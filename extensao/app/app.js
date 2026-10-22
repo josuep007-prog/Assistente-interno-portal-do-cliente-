@@ -25,11 +25,14 @@ let rota = { nome: 'inicio', params: {} };
 let aoRedim = null;
 let redesenharDepois = false;   // mudança que chegou com uma janela aberta
 
+// Fora da equipe do DP (regras do escritório): só as suas solicitações, sem Equipe e Distribuir
+const SO_DO_SETOR = new Set(['equipe', 'distribuir']);
 function lerRota() {
   const h = location.hash.replace(/^#\/?/, '');
   const [nome, q] = h.split('?');
   const params = Object.fromEntries(new URLSearchParams(q || ''));
-  return { nome: VISTAS[nome] ? nome : 'inicio', params };
+  const n = VISTAS[nome] ? nome : 'inicio';
+  return { nome: estado.setor.fora && SO_DO_SETOR.has(n) ? 'fila' : n, params: estado.setor.fora && SO_DO_SETOR.has(n) ? {} : params };
 }
 function navegar(nome, params) {
   const q = new URLSearchParams(params || {}).toString();
@@ -72,6 +75,7 @@ function desenhar() {
   rota = lerRota();
   aoRedim = null;
   document.body.classList.toggle('bloqueado', bloqueado());
+  document.body.classList.toggle('setor-fora', !!estado.setor.fora);
   if (bloqueado()) { fecharAnexos(); fecharDetalhe(); fecharLembrete(); fecharNova(); fecharBusca(); abrirSino(false); $$('.trilho [data-rota]').forEach(a => a.classList.remove('on')); telaBloqueio($('#vista')); return; }
   const p = rota.params;
   const ativo = rota.nome === 'busca' ? '' : rota.nome === 'fila' && p.analista ? 'equipe' : rota.nome;
@@ -84,6 +88,18 @@ function desenhar() {
   try { VISTAS[rota.nome].render(v, ctx, params); }
   catch (e) { console.error(e); v.innerHTML = '<div class="faixa"><b>Algo deu errado ao montar esta tela.</b> ' + esc(e.message) + '</div>'; }
   avisoSessao();
+  avisoSetor();
+}
+
+/* ---------- aviso discreto: visão restrita ao seu setor ---------- */
+function avisoSetor() {
+  const v = $('#vista'), velho = $('#aviso-setor', v);
+  if (velho) velho.remove();
+  if (!estado.setor.fora) return;
+  const d = document.createElement('div');
+  d.id = 'aviso-setor'; d.className = 'aviso-linha';
+  d.innerHTML = '<svg class="ic"><use href="#i-lock"/></svg><span>Você vê só as suas solicitações: a equipe toda, a Equipe e o Distribuir são do DP (quem é do DP está nas regras do escritório).</span>';
+  v.prepend(d);
 }
 
 /* ---------- aviso de leitura (sem sessão / erro) no topo da tela ---------- */
@@ -174,14 +190,14 @@ function avisarNovos() {
 }
 
 /* ---------- busca em janela central (Ctrl+K ou /) ---------- */
-const TELAS = [
+const TELAS_TODAS = [
   { rot: 'Hoje', sub: 'o que fazer agora', ic: 'i-home', ir: () => navegar('inicio') },
   { rot: 'Solicitações', sub: 'minhas pendências', ic: 'i-inbox', ir: () => navegar('fila') },
-  { rot: 'Solicitações da equipe', sub: 'todas as pendências', ic: 'i-users', ir: () => navegar('fila', { escopo: 'equipe' }) },
-  { rot: 'Sem responsável', sub: 'para distribuir', ic: 'i-users', ir: () => navegar('fila', { escopo: 'semresp' }) },
+  { rot: 'Solicitações da equipe', sub: 'todas as pendências', ic: 'i-users', ir: () => navegar('fila', { escopo: 'equipe' }), dp: true },
+  { rot: 'Sem responsável', sub: 'para distribuir', ic: 'i-users', ir: () => navegar('fila', { escopo: 'semresp' }), dp: true },
   { rot: 'Agenda e lembretes', sub: 'calendário do mês', ic: 'i-calendar', ir: () => navegar('lembretes') },
   { rot: 'Novo lembrete', sub: 'criar agora', ic: 'i-plus', ir: () => abrirLembrete() },
-  { rot: 'Equipe', sub: 'painel do gestor', ic: 'i-users', ir: () => navegar('equipe') },
+  { rot: 'Equipe', sub: 'painel do gestor', ic: 'i-users', ir: () => navegar('equipe'), dp: true },
   { rot: 'Configurações', sub: 'prazos, leitura, diagnóstico', ic: 'i-gear', ir: () => navegar('config') }
 ];
 let opcoes = [], marcada = 0;
@@ -197,6 +213,7 @@ function resultados(q) {
   const termos = n.split(/\s+/).filter(Boolean);
   const casa = txt => termos.every(t => normal(txt).includes(t));
   const grupos = [];
+  const TELAS = TELAS_TODAS.filter(t => !(t.dp && estado.setor.fora));
   if (!n) grupos.push({ rot: 'Ir para', l: TELAS.map(t => ({ ic: t.ic, rot: t.rot, sub: t.sub, ir: t.ir })) });
   else {
     const exato = itens().filter(i => String(i.num) === n.replace(/^#/, ''));
