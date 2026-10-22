@@ -503,7 +503,7 @@ test('o arquivo de regras de exemplo é válido e cobre prazos, feriados e palav
   const ex = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'regras', 'escritorio.exemplo.json'), 'utf8'));
   const r = OC.normalizarRegras(ex);
   assert.ok(r);
-  assert.equal(Object.keys(r.config).length, 10, 'todos os prazos do exemplo passam na validação');
+  assert.equal(Object.keys(r.config).length, 11, 'todos os prazos do exemplo passam na validação');
   assert.equal(r.modelosTramite.length, 2, 'modelos de resposta do exemplo');
   assert.ok(r.textosSugestao && r.foraDoPortal, 'frases e textos das sugestões de ação');
   assert.equal(r.feriados.length, 2);
