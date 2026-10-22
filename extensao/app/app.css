@@ -717,9 +717,9 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .hj-sc-tx small{font-size:12px; color:var(--ink-3)}
 
 /* Fila · cartões dos tipos de solicitação e agrupamento por empresa */
-.tipos{display:grid; grid-template-columns:repeat(auto-fill,minmax(172px,1fr)); gap:10px; margin:0 0 14px; align-items:stretch}
+.tipos{display:grid; grid-template-columns:repeat(auto-fill,minmax(128px,1fr)); gap:7px; margin:0 0 10px; align-items:stretch}
 /* cartões de tipo: enxutos (sem faixa nem barra), ícone na cor da família, número grande e uma linha de apoio */
-.tipo-c{display:flex; flex-direction:column; align-items:flex-start; gap:6px; padding:12px 14px; border:1px solid color-mix(in srgb, var(--fam) 28%, var(--rule)); border-top:3px solid var(--fam); border-radius:var(--r); background:color-mix(in srgb, var(--fam) 7%, var(--surface)); color:inherit; font:inherit; text-align:left; cursor:pointer; transition:border-color .15s, box-shadow .15s, background .15s}
+.tipo-c{display:flex; flex-direction:column; align-items:flex-start; gap:2px; padding:7px 10px 8px; border:1px solid color-mix(in srgb, var(--fam) 28%, var(--rule)); border-top:2px solid var(--fam); border-radius:var(--r); background:color-mix(in srgb, var(--fam) 7%, var(--surface)); color:inherit; font:inherit; text-align:left; cursor:pointer; transition:border-color .15s, box-shadow .15s, background .15s}
 .tipo-c:hover{border-color:var(--rule-strong); box-shadow:0 1px 2px rgba(15,23,32,.04), 0 6px 16px rgba(15,23,32,.06)}
 .tipo-c.on{border-color:var(--fam); box-shadow:inset 0 0 0 1px var(--fam), 0 4px 14px color-mix(in srgb, var(--fam) 28%, transparent); background:color-mix(in srgb, var(--fam) 15%, var(--surface))}
 .tipo-c.zero{opacity:.55}
@@ -727,17 +727,17 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .tipo-topo{display:flex; align-items:flex-start; gap:7px; min-width:0; max-width:100%}
 .tipo-c .tipo-ic.pq{width:16px; height:16px; margin:0; background:none; box-shadow:none; color:var(--fam)}
 .tipo-c .tipo-ic.pq .ic{width:14px; height:14px}
-.tipo-rot{font-size:12.5px; font-weight:600; line-height:1.25; color:var(--ink); min-width:0; white-space:normal; overflow-wrap:anywhere}
+.tipo-rot{font-size:12px; font-weight:600; line-height:1.25; color:var(--ink); min-width:0; white-space:normal; overflow-wrap:anywhere}
 .tipo-c.on .tipo-rot{color:var(--ink)}
-.tipo-c b{font:700 30px/1 "Archivo",sans-serif; letter-spacing:-.02em; font-variant-numeric:tabular-nums}
-.tipo-sub{font-size:11.5px; color:var(--ink-2)}
+.tipo-c b{font:700 21px/1.1 "Archivo",sans-serif; letter-spacing:-.02em; font-variant-numeric:tabular-nums}
+.tipo-sub{font-size:10.5px; color:var(--ink-2)}
 .tipo-sub em{font-style:normal; font-weight:600; color:var(--brand-red)}
 .tipo-c .tipo-ic.pq{margin-top:0}
 /* aviso + cálculo: um bloco só na cor da família, cartões lado a lado ligados por um elo */
-.tipo-par{grid-column:span 2; display:flex; flex-direction:column; gap:6px; padding:6px 8px 8px; border:1px solid color-mix(in srgb, var(--fam) 45%, var(--rule)); border-radius:var(--r); background:color-mix(in srgb, var(--fam) 10%, var(--surface))}
+.tipo-par{grid-column:span 2; display:flex; flex-direction:column; gap:4px; padding:4px 6px 6px; border:1px solid color-mix(in srgb, var(--fam) 45%, var(--rule)); border-radius:var(--r); background:color-mix(in srgb, var(--fam) 10%, var(--surface))}
 .tipo-par-cab{display:flex; align-items:baseline; gap:8px; padding:0 2px; font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--ink)}
 .tipo-par-cab small{font-size:11px; font-weight:500; letter-spacing:0; text-transform:none; color:var(--ink-3)}
-.tipo-par-in{position:relative; display:grid; grid-template-columns:1fr 1fr; gap:14px; flex:1}
+.tipo-par-in{position:relative; display:grid; grid-template-columns:1fr 1fr; gap:10px; flex:1}
 .tipo-par-in .tipo-c{border-top-width:1px; background:var(--surface)}
 .tipo-par-in .tipo-c.on{background:color-mix(in srgb, var(--fam) 15%, var(--surface))}
 .tipo-elo{position:absolute; left:50%; top:50%; width:26px; height:26px; margin:-13px 0 0 -13px; display:grid; place-items:center; border-radius:50%; background:var(--fam); color:#fff; box-shadow:0 0 0 3px color-mix(in srgb, var(--fam) 10%, var(--surface)); z-index:1; pointer-events:none}

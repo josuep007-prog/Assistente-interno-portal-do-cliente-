@@ -45,6 +45,10 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
 
+## Novidades da v0.32.2 (cartões de tipo menores)
+
+- Os cartões de tipo das Solicitações ficaram mais compactos (menos altura e largura, número e textos menores), sem perder o aviso + cálculo ligados nem o destaque de prazo legal.
+
 ## Novidades da v0.32.1 (etiquetas e cartões de tipo)
 
 - **Etiqueta de situação numa linha só** (ex.: "Encaminhado para outro usuário"): nunca quebra em duas; se faltar espaço, corta com reticências e o texto completo (e o grupo) fica no `title`.
