@@ -8,8 +8,8 @@
  * Sugestões de ação: solicitações específicas que parecem resolvidas fora do portal (vez do escritório sem resposta
  * há mais de 30 dias ou trâmite que diz isso), duplicadas, na lista errada ou com falta de informação; cada uma com o
  * trâmite já preenchido (revisar e confirmar) e "Não é o caso". Os trâmites são conferidos pelo cmd 'casos'.
- * Painéis: vencimentos de férias e rescisões (prazo legal), uso do portal pelo cliente e previsão de solicitações por
- * empresa (lida na hora, sob demanda). Carteira no cabeçalho. */
+ * Painel de previsão de solicitações por empresa (lida na hora, sob demanda). Os painéis de vencimentos e de uso do
+ * portal saíram na 0.29.0 (o prazo legal já sobe na fila e nos avisos sem cálculo). Carteira no cabeçalho. */
 import { estado, itens, minhas, primeiroNome, salvarLembretes, enviar, marcarSemCalculo, ignorarSugestao } from '../estado.js';
 import { esc, plural, num, ligarItens, fmtDataHora, saudacao, dataExtensa, toast, $, $$ } from '../util.js';
 import { anel, anelProgresso, animarNumeros, ligarDicas, cor } from '../graficos.js';
@@ -24,13 +24,16 @@ let casosLidos = null, casosEm = 0, casosLendo = false, casosErro = '', sugTodas
 
 const corMotivo = Object.fromEntries(OC.MOTIVOS.map(m => [m.k, m.cor]));
 const rotMotivo = Object.fromEntries(OC.MOTIVOS.map(m => [m.k, m.rot]));
-const ICONE = { atraso: 'alert', prescreve: 'clock', hoje: 'clock', respondeu: 'chat', emdia: 'check', sem: 'user' };
-const TAG = { atraso: 'Urgente', prescreve: 'Prescreve', hoje: 'Atenção', respondeu: 'Cliente respondeu', emdia: 'Em dia' };
+const ICONE = { legal: 'alert', sem: 'user', analise: 'clock', respondeu: 'chat', cliente: 'check' };
+const TAG = { legal: 'Prazo legal', sem: 'Sem análise', analise: 'Em análise', respondeu: 'Cliente respondeu', cliente: 'Com o cliente' };
 
 function lerPref(k, padrao) { try { return localStorage.getItem('oc.' + k) || padrao; } catch { return padrao; } }
 function gravarPref(k, v) { try { localStorage.setItem('oc.' + k, v); } catch { /* sem armazenamento: vale só nesta visita */ } }
 const ic = (n, c) => '<svg class="ic' + (c ? ' ' + c : '') + '"><use href="#i-' + n + '"/></svg>';
 const nomeCli = i => i.apelido || i.cliente || '—';
+
+// Quantas sugestões de ação há nas suas solicitações (com o que já foi lido nos trâmites; usado na bolinha do trilho)
+export function contagemSugestoes() { return estado.snap ? OC.casosSugeridos(minhas(), casosLidos, estado.settings, estado.sugIgnoradas).length : 0; }
 
 export function render(el, ctx) {
   const animar = !el.querySelector('.hj-hero');      // só ao chegar na tela, não a cada clique ou leitura
@@ -47,9 +50,9 @@ export function render(el, ctx) {
   // números
   const cont = OC.contarMotivos(base);
   const total = base.length;
-  const atencao = total - cont.emdia;
+  const atencao = total - cont.cliente;               // o que espera o escritório ou tem prazo legal
   const semN = base.filter(i => !i.resp).length;
-  const pctDia = total ? Math.round(cont.emdia / total * 100) : 100;
+  const pctDia = total ? Math.round((total - cont.legal) / total * 100) : 100;     // sem prazo legal em cima
   const fatias = OC.MOTIVOS.map(mo => ({ k: mo.k, rot: mo.rot, n: cont[mo.k], cor: mo.cor }));
   const prio = OC.prioridades(base);
   const lems = (estado.lembretes || []).filter(l => !l.feito && ['hoje', 'atrasado'].includes(OC.situacaoLembrete(l))).sort((a, b) => a.quando.localeCompare(b.quando));
@@ -73,16 +76,11 @@ export function render(el, ctx) {
     : automatica && cart === EQUIPE ? '<div class="aviso-linha" id="ht-resumo">' + ic('user') + '<span>Nenhuma pendência está com você como responsável no Onvio. Mostrando a equipe toda (' + plural(todas.length, 'pendência', 'pendências') + ').</span></div>' : '';
 
   const admissoes = OC.admissoesCriticas(base);
-  const vencs = OC.vencimentosLegais(base, estado.settings, new Date());
-  const uso = OC.malUso(base, estado.settings);
-  // os avisos sem cálculo já estão no quadro: o painel de vencimentos mostra o resto, e as sugestões não repetem
-  // o que já tem painel próprio na tela (admissões e avisos sem cálculo)
-  const vencLista = vencs.filter(v => !v.item.semCalculo), vencNoQuadro = vencs.length - vencLista.length;
   const casos = OC.casosSugeridos(base, casosLidos, estado.settings, estado.sugIgnoradas);
   const linkFila = p => '#/fila?' + new URLSearchParams(Object.assign(cart === EQUIPE ? { escopo: 'equipe' } : cart === SEM ? { escopo: 'semresp' } : cart !== MINHA ? { analista: cart } : {}, p));
 
   el.innerHTML = aviso + heroHtml() + admissoesHtml() + (semCalc.length ? semCalcHtml() : '') +
-    sugHtml() + '<div class="hj-paineis">' + vencHtml() + (semCalc.length ? '' : semCalcHtml()) + usoHtml() + prevHtml() + '</div>';
+    sugHtml() + '<div class="hj-paineis">' + (semCalc.length ? '' : semCalcHtml()) + prevHtml() + '</div>';
 
   // Admissões: faixa destacada logo abaixo do destaque, só as que o escritório ainda não tocou; recolhível (lembra a escolha)
   function admissoesHtml() {
@@ -115,15 +113,6 @@ export function render(el, ctx) {
   function vazio(t) { return '<div class="hj-painel-vazio">' + ic('check', 'ic-sm') + ' ' + esc(t) + '</div>'; }
   function dtc(ymd) { return ymd.slice(8, 10) + '/' + ymd.slice(5, 7); }
 
-  function vencHtml() {
-    const quando = f => f < 0 ? 'venceu' : f === 0 ? 'hoje' : f === 1 ? 'amanhã' : 'em ' + f + ' d.u.';
-    const nota = vencNoQuadro ? '<p class="hj-painel-nota">' + plural(vencNoQuadro, 'aviso sem cálculo está', 'avisos sem cálculo estão') + ' no quadro acima.</p>' : '';
-    return painel('hj-venc', ic('calendar', 'ic-sm') + ' Vencimentos de férias e rescisões', 'Prazo legal de pagamento: férias até 2 dias antes do início; rescisão até 10 dias após o desligamento.',
-      vencLista.length ? '<div class="hj-mini-l">' + vencLista.slice(0, 8).map(v => '<button type="button" class="hj-mini' + (v.faltam <= 1 ? ' hj-mini-urg' : '') + '" data-k="' + esc(v.item.k) + '"><b class="hj-mini-q">' + esc(dtc(v.alvo)) + '<small>' + esc(quando(v.faltam)) + '</small></b><span><b>' + esc(nomeCli(v.item)) + ' · ' + esc(v.item.detalhe || '') + '</b><small>' + esc(v.item.typeLabel) + ' · ' + esc(v.ref || '') + '</small></span></button>').join('') + '</div>' +
-        (vencLista.length > 8 ? '<a class="hj-painel-mais" href="' + linkFila({ kpi: 'pagamento' }) + '">Ver as que vencem em até 1 dia útil</a>' : '') + nota
-        : vazio('Nenhum outro pagamento de férias ou rescisão vencendo nos próximos ' + (estado.settings.tempoOcupado || 5) * 2 + ' dias úteis.') + nota);
-  }
-
   // Sugestões de ação: solicitações específicas que parecem resolvidas fora do portal, abertas errado ou com falta de
   // informação do cliente. Um botão abre o detalhe já no trâmite preenchido (revisar e confirmar); "⋯" tem "Não é o caso".
   function sugHtml() {
@@ -153,12 +142,6 @@ export function render(el, ctx) {
         : vazio(casosLendo && !casosLidos ? 'Conferindo os trâmites das pendências…' : 'Nenhuma solicitação parece resolvida fora do portal, aberta errado ou com falta de informação.')) +
       (situacao ? '<p class="hj-painel-nota" id="hj-sug-sit">' + esc(situacao) + '</p>' : ''),
       '<button class="icon-btn" id="hj-sug-ler" title="Conferir os trâmites de novo" aria-label="Conferir os trâmites de novo"' + (casosLendo ? ' disabled' : '') + '>' + ic('refresh', 'ic-sm') + '</button>');
-  }
-
-  function usoHtml() {
-    return painel('hj-uso', ic('building', 'ic-sm') + ' Uso do portal pelo cliente', 'Empresas com sinais de uso errado do portal: lista errada, pedido repetido, solicitação abandonada.',
-      uso.length ? '<div class="hj-uso-l">' + uso.slice(0, 6).map(u => '<a class="hj-uso" href="' + esc('#/fila?' + new URLSearchParams({ escopo: 'equipe', cliente: u.cliente })) + '"><b>' + esc(u.apelido || u.cliente) + '</b><small>' + esc(u.motivos.join(' · ')) + '</small></a>').join('') + '</div>'
-        : vazio('Nenhum sinal de uso errado nas pendências desta carteira.'));
   }
 
   function prevHtml() {
@@ -245,7 +228,7 @@ export function render(el, ctx) {
   function slidesDoCarrossel() {
     const out = [];
     lems.filter(l => OC.situacaoLembrete(l) === 'atrasado').forEach(l => out.push({ n: 'lem', tag: 'Lembrete atrasado', txt: l.texto, sub: fmtDataHora(l.quando) + (l.num ? ' · #' + l.num + ' ' + (l.cliente || '') : ''), lem: l.id, c: 'var(--late)' }));
-    prio.filter(p => p.motivo !== 'emdia').slice(0, 12).forEach(p => {
+    prio.slice(0, 12).forEach(p => {
       const i = p.item;
       out.push({ n: p.motivo, tag: TAG[p.motivo], txt: '#' + i.num + ' ' + nomeCli(i) + ': ' + OC.acaoDe(i, p.motivo).toLowerCase(), sub: [i.typeLabel, i.detalhe, cart === MINHA ? '' : (i.resp || 'sem analista')].filter(Boolean).join(' · '), k: i.k, c: cor(corMotivo[p.motivo]) });
     });
@@ -260,7 +243,7 @@ export function render(el, ctx) {
       const atr = OC.situacaoLembrete(l) === 'atrasado', h = new Date(l.quando);
       li.push('<li style="--i:' + (n++) + '"><div class="hj-step n-lem' + (atr ? ' late' : '') + '" tabindex="0" data-ag="lembrete|' + esc(l.id) + '"><i></i><span><b>' + esc(l.texto) + '</b><small>' + (atr ? 'Lembrete atrasado · ' + fmtDataHora(l.quando) : 'Lembrete · ' + String(h.getHours()).padStart(2, '0') + ':' + String(h.getMinutes()).padStart(2, '0')) + (l.rep && l.rep !== 'nao' ? ' · ' + esc(OC.REPETICOES[l.rep]) : '') + (l.num ? ' · #' + esc(l.num) + ' ' + esc(l.cliente) : '') + '</small></span><button class="btn btn-sm" data-feito title="Marcar como feito">' + ic('check', 'ic-sm') + ' Feito</button></div></li>');
     });
-    prio.filter(p => p.motivo !== 'emdia').slice(0, 8).forEach(p => {
+    prio.slice(0, 8).forEach(p => {
       const i = p.item;
       li.push('<li style="--i:' + (n++) + '"><div class="hj-step" tabindex="0" data-k="' + esc(i.k) + '" style="--c:' + cor(corMotivo[p.motivo]) + '"><i></i><span><b>' + esc(OC.acaoDe(i, p.motivo)) + '</b><small>#' + esc(i.num) + ' ' + esc(nomeCli(i)) + ' · ' + esc(i.typeLabel) + (cart === MINHA ? '' : ' · ' + esc(i.resp || 'sem analista')) + '</small></span>' + ic('chev-r', 'ic-sm') + '</div></li>');
     });
@@ -305,8 +288,6 @@ export function render(el, ctx) {
     $('#hj-adm-toggle', el).setAttribute('aria-expanded', String(!rec));
     $('#hj-adm-toggle', el).title = rec ? 'Mostrar' : 'Recolher';
   };
-  // vencimentos: leva às Solicitações da carteira, com a solicitação piscando em vermelho (foco)
-  if ($('#hj-venc .hj-mini-l', el)) ligarItens($('#hj-venc', el), vencLista.map(v => v.item), it => { location.hash = linkFila({ foco: it.k }); });
   // previsão por empresa: calcula sozinha ao abrir (no máximo a cada 30 min); o botão recalcula
   // só o painel da previsão é trocado quando ela chega (o resto da tela e as faixas de aviso ficam)
   const trocarPrevisao = () => { const sec = $('#hj-prev', el); if (sec && el.isConnected) { sec.outerHTML = prevHtml(); ligarPrevisao(); } };

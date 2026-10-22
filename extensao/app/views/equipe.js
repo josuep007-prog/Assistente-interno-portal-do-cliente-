@@ -8,7 +8,7 @@
 import { estado, itens, enviar, marcarExcecao } from '../estado.js';
 import { esc, plural, num, fmtDataCurta, toast, ligarItens, porqueGrav, $, $$ } from '../util.js';
 import { barrasEmpilhadas, barrasAgrupadas, linhaDoDia, ligarDicas, anelProgresso, miniBarras, animarNumeros, cor } from '../graficos.js';
-import { prescricaoHtml, mapaIdadeHtml, ligarEquipe } from './painel-equipe.js';
+import { mapaIdadeHtml, ligarEquipe } from './painel-equipe.js';
 import { detalheAberto } from './detalhe.js';
 const OC = window.OC;
 
@@ -84,7 +84,7 @@ const COMP = [
   ['pontualidade', 'Pontualidade', 'entregas dentro do prazo interno (3 d.u. simples, 5 cálculo), contando só os dias em que a vez era do escritório'],
   ['ritmo', 'Ritmo', 'tempo com o escritório de cada entrega comparado com o normal da equipe no mesmo tipo de solicitação (75 = no normal da equipe)'],
   ['emDia', 'Carteira em dia', 'pendências com o escritório sem atraso agora, sem contar atrasos de origem do cliente (pedido que já chegou tarde)'],
-  ['cuidado', 'Cuidado', 'críticas (G3) na vez do escritório e prescritas sem nenhuma cobrança ao cliente, a cada 10 solicitações'],
+  ['cuidado', 'Cuidado', 'críticas (G3) na vez do escritório, a cada 10 solicitações'],
   ['agilidade', 'Agilidade', 'dias úteis até o 1º trâmite do escritório, incluindo as que seguem sem resposta']
 ];
 const CURTO = { pontualidade: 'Pontual.', ritmo: 'Ritmo', emDia: 'Em dia', cuidado: 'Cuidado', agilidade: 'Agilid.' };
@@ -136,7 +136,7 @@ function desempenho(el, ctx, params) {
         kpi('av-k-tempo', 'Tempo com o escritório', fmt1(e.tempoMedio) + '<small> d.u.</small>', '<span class="av-d">média por entrega, sem a espera pelo cliente</span>') +
         kpi('av-k-emdia', 'Carteira em dia', pctTxt(e.pctEmDia), '<span class="av-d">' + plural(e.esc, 'pendência', 'pendências') + ' com o escritório agora</span>', '<i class="av-barra"><i style="width:' + (e.pctEmDia || 0) + '%"></i></i>') +
         kpi('av-k-pt', '1º trâmite', fmt1(e.primeiroTramite) + '<small> d.u.</small>', '<span class="av-d">média · inclui as ainda sem resposta</span>') +
-        kpi('av-k-qual', 'Alertas evitáveis', '<span class="' + (e.g3Esc + e.prescSemCobranca ? 'late' : '') + '">' + num(e.g3Esc + e.prescSemCobranca) + '</span>', '<span class="av-d">' + e.g3Esc + ' G3 na vez do escritório · ' + e.prescSemCobranca + ' prescritas sem cobrança</span>') +
+        kpi('av-k-qual', 'Alertas evitáveis', '<span class="' + (e.g3Esc ? 'late' : '') + '">' + num(e.g3Esc) + '</span>', '<span class="av-d">críticas (G3) na vez do escritório</span>') +
       '</div>' +
     '</section>' +
     '<div class="av-como" id="av-como-txt" hidden><b>Como a nota é calculada (0 a 100)</b><ul>' + COMP.map(([k, rot, d]) => '<li><b>' + rot + ' · peso ' + r.pesos[k] + '</b> ' + esc(d) + '</li>').join('') + '</ul>' +
@@ -333,7 +333,6 @@ function carga(el, ctx) {
   const it = itens(), an = OC.porAnalista(it);
   const semResp = it.filter(i => !i.resp);
 
-  const prescreve = it.filter(i => i.prescreveEm != null && i.prescreveEm <= 5).sort((a, b) => a.prescreveEm - b.prescreveEm);
   const pts = it.filter(i => i.ptUteis != null);
   const ptMedia = pts.length ? Math.round(pts.reduce((s, i) => s + i.ptUteis, 0) / pts.length * 10) / 10 : null;
   const hojeK = OC.ymd(new Date());
@@ -343,7 +342,6 @@ function carga(el, ctx) {
     { k: 'todas', rot: 'Pendências', val: it.length, det: plural(it.filter(i => i.lado === 'esc').length, 'com o escritório', 'com o escritório'), cls: '' },
     { k: 'semresp', rot: 'Sem responsável', val: semResp.length, det: 'para distribuir', cls: semResp.length ? 'today' : 'ok' },
     { k: 'atraso', rot: 'Fora do prazo', val: it.filter(i => i.nivel === 2).length, det: plural(it.filter(i => i.grav === 3).length, 'crítica (G3)', 'críticas (G3)'), cls: 'late' },
-    { k: 'prescreve', rot: 'Prescrevem em 5 dias', val: prescreve.length, det: 'vez do cliente', cls: prescreve.length ? 'late' : 'ok' },
     { k: 'pt', rot: '1º trâmite (média)', val: ptMedia == null ? '–' : String(ptMedia).replace('.', ','), det: 'dias úteis · estimativa', cls: 'estatico' },
     { k: 'dia', rot: 'Hoje', val: hoje.entradas + ' / ' + hoje.saidas, det: 'entradas / saídas', cls: 'estatico' }
   ];
@@ -367,7 +365,7 @@ function carga(el, ctx) {
       card('g-horas', 'Pendências ao longo de hoje', 'contagem a cada leitura') +
       card('g-tipo', 'Por tipo de solicitação', 'com o escritório × com o cliente') +
     '</div>' +
-    '<div style="margin-top:16px">' + prescricaoHtml() + '</div>';
+    '';
 
   const desenhar = () => {
     const w = id => Math.max(320, Math.round($(id, el).clientWidth));
@@ -384,7 +382,7 @@ function carga(el, ctx) {
   $$('[data-kpi]', el).forEach(b => b.addEventListener('click', () => {
     const k = b.dataset.kpi;
     if (k === 'semresp') ctx.navegar('fila', { escopo: 'semresp' });
-    else if (k === 'atraso' || k === 'prescreve') ctx.navegar('fila', { escopo: 'equipe', kpi: k });
+    else if (k === 'atraso') ctx.navegar('fila', { escopo: 'equipe', kpi: k });
     else if (k === 'todas') ctx.navegar('fila', { escopo: 'equipe' });
   }));
   ligarEquipe(el, ctx);

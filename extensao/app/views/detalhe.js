@@ -3,8 +3,8 @@
  * anterior/próxima (setas ← → ou os botões do topo) sem fechar. */
 import { estado, itens, enviar, salvarLembretes, aoMudar } from '../estado.js';
 import { formAcao, ligarAcao, novaAcao, acaoAberta, fecharAcao, opcoesPassar } from './acao-form.js';
-import { respostaHtml, ligarResposta, prepararResposta, bolhaRascunho, recemEnviado, respostaEmAndamento, cancelarPendente, focarResposta } from './resposta.js';
-import { esc, pillSituacao, motivosHtml, porqueGrav, fmtDataHora, fmtData, textoPuro, toast, ladoTexto, relativo, iniciais, $, $$ } from '../util.js';
+import { respostaHtml, ligarResposta, prepararResposta, bolhaRascunho, recemEnviado, respostaEmAndamento, cancelarPendente, focarResposta, reiniciarCaixa, recolherSeFora } from './resposta.js';
+import { esc, pillSituacao, motivosHtml, fmtDataHora, fmtData, textoPuro, toast, ladoTexto, relativo, iniciais, $, $$ } from '../util.js';
 import { abrirLembrete, lembreteAberto } from './lembrete-dlg.js';
 import { abrirNova, novaAberta } from './nova-dlg.js';
 import { abrirAnexos, anexosAbertos, contarAnexos, tipoArquivo } from './anexos-dlg.js';
@@ -20,7 +20,7 @@ let ultimaChave = '', ultimaAba = '';   // para manter a rolagem da conversa qua
 export const detalheAberto = () => !$('#gaveta').hidden;
 export function fecharDetalhe() {
   const estava = detalheAberto();
-  cancelarPendente(); fecharAcao();
+  cancelarPendente(); fecharAcao(); reiniciarCaixa();
   ultimaChave = ''; ultimaAba = '';
   $('#gaveta').hidden = true; $('#fundo').hidden = true;
   $('#gaveta').innerHTML = '';
@@ -81,8 +81,7 @@ function desenhar(i, r, erro, carregando) {
       '<div class="dlg-l1"><span class="mono">#' + esc(i.num) + '</span><span>' + esc(i.typeLabel) + '</span>' + pillSituacao(i) + (i.lado === 'esc' || i.lado === 'cli' ? '<span>vez: <b>' + ladoTexto(i) + '</b></span>' : '') + '</div>' +
       '<h2>' + esc(i.apelido || i.cliente || 'Solicitação') + '</h2>' +
       '<div class="dlg-l3">' + esc(i.detalhe || i.assunto || '') + '</div>' +
-      ((i.motivos && i.motivos.length) || i.abaProvavel || i.grav === 3 ? '<div class="motivos">' + motivosHtml(i) + '</div>' : '') +
-      ((pg => pg ? '<div class="grav-porque g' + i.grav + '"><b>' + (i.grav === 3 ? 'Por que é crítica (G3):' : i.grav === 2 ? 'Por que está fora do prazo (G2):' : 'Por que pede atenção (G1):') + '</b> ' + esc(pg.texto.replace(/^[^:]*?(porque |: )/, '')) + '</div>' : '')(porqueGrav(i))) +
+      (((i.motivos || []).some(m => m.legal) || i.abaProvavel) ? '<div class="motivos">' + motivosHtml(i) + '</div>' : '') +
       (i.resolvida ? '<div class="dlg-resolvida"><svg class="ic ic-sm"><use href="#i-check"/></svg><span><b>Considerada resolvida:</b> o cliente não respondeu' + (i.semRetorno != null ? ' em ' + i.semRetorno + ' dias úteis' : '') + ' e a última resposta não pedia nada. No Onvio ela continua aberta.</span></div>'
         : i.pedidoAoCliente ? '<div class="dlg-resolvida pede"><svg class="ic ic-sm"><use href="#i-clock"/></svg><span>' + porquePendente(i.pedidoAoCliente) + '</span></div>' : '') +
     '</div>' +
@@ -93,6 +92,7 @@ function desenhar(i, r, erro, carregando) {
       (i.created ? '<span>Aberta em <b>' + esc(fmtDataHora(i.created)) + '</b>' + (i.solicitante ? ' por ' + esc(i.solicitante) : '') + '</span>' : '') +
       (i.last ? '<span>Último trâmite: <b>' + esc(fmtDataHora(i.last)) + '</b>' + (ultimoTr && ultimoTr.autor ? ' por ' + esc(ultimoTr.autor) : '') + '</span>' : '') +
       (i.parado != null ? '<span>Parada há <b>' + i.parado + ' dia(s)</b></span>' : '') +
+      (i.lado === 'cli' && i.prescreveEm != null ? '<span title="Regra do Onvio: sem retorno do cliente, a solicitação prescreve sozinha">Prescreve no Onvio em <b>' + i.prescreveEm + ' dia(s)</b></span>' : '') +
       (pagto ? '<span class="' + (pagto.faltam != null && pagto.faltam <= 1 ? 'late' : '') + '">Pagamento até <b>' + esc(pagto.dt) + '</b> (prazo legal)</span>' : '') +
       (i.due ? '<span title="Data informada pelo cliente; não conta como vencimento">Expectativa do cliente: ' + esc(fmtData(i.due)) + '</span>' : '') +
     '</div>' +
@@ -116,6 +116,7 @@ function desenhar(i, r, erro, carregando) {
     '</div>';
 
   $('#g-fechar').onclick = fecharDetalhe;
+  g.onclick = e => { recolherSeFora(e.target); };               // clique fora da caixa de resposta a recolhe (o rascunho fica)
   // conversa: ao chegar, mostra o fim (o trâmite mais recente), uma vez por solicitação aberta
   const chave = atual ? atual.type + ':' + atual.num : '';
   const primeira = aba === 'tramites' && !carregando && tramites && tramites.length && rolada !== chave;
@@ -130,9 +131,10 @@ function desenhar(i, r, erro, carregando) {
   if ($('#g-anexos2')) $('#g-anexos2').onclick = () => anexos();
   $$('[data-ax-abrir]', g).forEach(b => b.onclick = e => { e.stopPropagation(); anexos(b.dataset.axAbrir); });
   $$('.tr-mais', g).forEach(b => b.onclick = () => { const c = b.closest('.tr-bolha'); const ab = c.classList.toggle('aberto'); b.textContent = ab ? 'Ver menos' : 'Ver tudo'; });
-  // texto longo ganha "Ver tudo" depois de medido; se a conversa acabou de ser levada ao fim, continua no fim
+  // texto longo ganha "Ver tudo" na hora (medido já na montagem, sem piscar); se a conversa acabou de ser levada ao fim, continua no fim
+  $$('.tr-texto', g).forEach(t => { if (t.scrollHeight > t.clientHeight + 4) t.closest('.tr-bolha').classList.add('longo'); });
+  if (rolar) { const c0 = $('#g-corpo'); if (c0) c0.scrollTop = c0.scrollHeight; }
   requestAnimationFrame(() => {
-    $$('.tr-texto', g).forEach(t => { if (t.scrollHeight > t.clientHeight + 4) t.closest('.tr-bolha').classList.add('longo'); });
     const c = $('#g-corpo');
     if (rolar && c) c.scrollTop = c.scrollHeight;
   });
@@ -224,6 +226,10 @@ function tramitesHtml(r, carregando, i) {
   const pode = i ? OC.podeAcao('tramite', i) : { ok: false, motivo: '' };
   const responder = '<button type="button" class="btn btn-sm' + (ultCli === ult ? ' btn-primary' : '') + ' tr-responder" data-responder="1"' + (pode.ok ? '' : ' disabled title="' + esc(pode.motivo) + '"') + '><svg class="ic ic-sm"><use href="#i-chat"/></svg> Responder</button>';
   const dias = (a, b) => Math.round((new Date(b) - new Date(a)) / 864e5);
+  // índice de cada trâmite na lista de anexos (primeiro os da abertura), calculado uma vez
+  let acum = r.arquivos && r.arquivos.length ? 1 : 0;
+  const gis = new Map();
+  for (const t of todos) { gis.set(t, acum); if (t.arquivos && t.arquivos.length) acum++; }
   let ant = null;
   const corpo = todos.map(x => {
     // tempo entre este trâmite e o anterior na leitura (só quando passou ao menos 1 dia)
@@ -234,16 +240,16 @@ function tramitesHtml(r, carregando, i) {
     const lado = x.lado === 'esc' ? 'esc' : 'cli';
     const quem = x.autor || (lado === 'esc' ? 'Escritório' : 'Cliente');
     const anexos = (x.arquivos && x.arquivos.length ? x.arquivos : (x.anexos || []).map(nome => ({ nome })));
-    const gi = (r.arquivos && r.arquivos.length ? 1 : 0) + todos.filter(t => t.n < x.n && t.arquivos && t.arquivos.length).length;
+    const gi = gis.get(x);
     const sit = ant0 && x.situacao !== ant0.situacao ? '<div class="tr-sit"><span>Situação passou a: <b>' + esc(x.situacao) + '</b></span></div>' : '';
     return gap + '<div class="tr-item ' + lado + (x === ult ? ' ultimo' : '') + (novo && x === ult && lado === 'esc' ? ' tr-nova' : '') + '">' +
       '<span class="tr-av" title="' + esc(quem) + '">' + esc(iniciais(quem) || (lado === 'esc' ? 'E' : 'C')) + '</span>' +
       '<div class="tr-bolha">' +
-        '<div class="tr-meta"><b>' + esc(quem) + '</b><span class="tr-lado">' + (x.n === 1 ? 'abertura' : lado === 'esc' ? 'escritório' : 'cliente') + '</span>' + (x === ult ? '<span class="pill pill-soon">último</span>' : '') +
-          '<span class="tr-quando" title="' + esc(fmtDataHora(x.em)) + '">#' + String(x.n).padStart(2, '0') + ' · ' + esc(relativo(x.em) !== fmtDataHora(x.em) ? relativo(x.em) : fmtDataHora(x.em)) + '</span></div>' +
+        '<div class="tr-meta"><b>' + esc(quem) + '</b><span class="tr-lado">' + (x.n === 1 ? 'abertura' : lado === 'esc' ? 'escritório' : 'cliente') + '</span>' +
+          '<span class="tr-quando" title="' + esc(fmtDataHora(x.em)) + '">#' + String(x.n).padStart(2, '0') + ' · ' + esc(relativo(x.em) !== fmtDataHora(x.em) ? relativo(x.em) + ' · ' + fmtDataHora(x.em) : fmtDataHora(x.em)) + '</span></div>' +
         (x.texto ? '<div class="tr-texto">' + esc(textoPuro(x.texto)) + '</div><button type="button" class="tr-mais">Ver tudo</button>' : '<div class="tr-texto fraco">Sem texto' + (anexos.length ? ' (só anexo)' : '') + '</div>') +
         (anexos.length ? '<div class="tr-anexos">' + anexos.map((a, ai) => { const tp = tipoArquivo(a.nome); return '<button type="button" class="tr-arq"' + (a.id ? ' data-ax-abrir="' + gi + ':' + ai + '"' : ' disabled') + ' title="Baixar ' + esc(a.nome) + '"><span class="ax-ic ' + tp.cls + '">' + tp.rot + '</span><span class="ax-nome">' + esc(a.nome) + '</span></button>'; }).join('') + '</div>' : '') +
-      '</div>' + (x === ultCli ? responder : '') + '</div>' + sit;
+      '</div>' + (x === ultCli && x.n !== 1 ? responder : '') + '</div>' + sit;
   }).join('');
   return '<div class="tr-lista" id="tr-lista">' + corpo + rasc + '</div>';
 }

@@ -4,7 +4,7 @@
  * "Atribuir" define o responsável no Onvio (cmd 'acao', assign-staff) depois de confirmar; só nas listas em que o
  * formato foi mapeado (OC.podeAcao). Nas outras, abra no Onvio. */
 import { estado, itens, enviar } from '../estado.js';
-import { esc, toast, ligarItens, plural, pillSituacao, $, $$ } from '../util.js';
+import { esc, toast, ligarItens, plural, pillSituacao, $, $$, nivelLegal } from '../util.js';
 const OC = window.OC;
 
 const dias = 30;          // período fixo, como a avaliação da equipe (7 e 14 dias saíram)
@@ -100,7 +100,7 @@ function corpo(sem) {
         : st === 'enviando' ? '<span class="fraco">Enviando…</span>'
         : confirmar === i.k ? '<span class="dist-conf"><button class="btn btn-sm" data-canc-k="1">Não</button><button class="btn btn-sm btn-primary" data-conf-k="' + esc(i.k) + '">Confirmar</button></span>'
         : '<button class="btn btn-sm" data-atr="' + esc(i.k) + '"' + (pode.ok && atual && !trabalhando ? '' : ' disabled title="' + esc(pode.ok ? 'escolha o responsável' : pode.motivo) + '"') + '>Atribuir</button>';
-      return '<div class="lr dist-l lvl-' + (i.nivel || 0) + '" tabindex="0" data-k="' + esc(i.k) + '">' +
+      return '<div class="lr dist-l lvl-' + nivelLegal(i) + '" tabindex="0" data-k="' + esc(i.k) + '">' +
         '<span class="mono">#' + esc(i.num) + '</span>' +
         '<span><div class="c-main">' + esc(i.apelido || i.cliente || '—') + '</div><div class="c-sub">' + esc([i.typeLabel, i.detalhe].filter(Boolean).join(' · ')) + '</div></span>' +
         '<span>' + pillSituacao(i) + '<div class="c-sub">parada há ' + (i.parado || 0) + 'd</div></span>' +

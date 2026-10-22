@@ -1,7 +1,7 @@
 /* Busca universal (#/busca?q=): procura nas 10 listas do Onvio, inclusive concluídas, na hora, pelo service worker.
  * A tela "Consultar no Onvio" (as listas uma a uma) saiu na v0.19.0, a pedido do Josué. */
 import { enviar } from '../estado.js';
-import { esc, pillSituacao, ligarItens, fmtDataHora, fmtData, $ } from '../util.js';
+import { esc, pillSituacao, ligarItens, fmtDataHora, fmtData, $, nivelLegal } from '../util.js';
 
 const COLS = '64px 168px 112px minmax(0,1.1fr) minmax(0,1.4fr) 140px 120px';
 
@@ -22,7 +22,7 @@ async function renderBusca(el, ctx, q) {
 }
 
 function linha(i, comTipo) {
-  return '<div class="lr lvl-' + (i.nivel || 0) + '" data-k="' + esc(i.k) + '" tabindex="0">' +
+  return '<div class="lr lvl-' + nivelLegal(i) + '" data-k="' + esc(i.k) + '" tabindex="0">' +
     '<span class="mono">#' + esc(i.num) + '</span><span>' + pillSituacao(i) + '</span><span class="c-sub">' + esc(fmtDataHora(i.last)) + '</span>' +
     '<span class="c-main" title="' + esc(i.cliente) + '">' + esc(i.apelido || i.cliente || '—') + '</span>' +
     '<span class="c-sub" style="color:var(--ink)" title="' + esc(i.detalhe) + '">' + esc(i.detalhe || '—') + '</span>' +

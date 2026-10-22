@@ -17,8 +17,7 @@ const GRUPOS = [
   { titulo: 'Vez do cliente', ic: 'i-user', campos: [
     { k: 'clienteSemRetorno', rot: 'Cliente sem retorno', un: 'dias úteis', ajuda: 'A partir daí a solicitação pede uma cobrança ao cliente.' },
     { k: 'resolvidaClienteDias', rot: 'Considerar resolvida depois de', un: 'dias úteis', ajuda: 'Se a última resposta do analista não pede nada ao cliente. 0 desliga.' },
-    { k: 'prescricaoAviso', rot: 'Alerta de prescrição a partir de', un: 'dias parada', ajuda: 'Fica vermelho com a contagem até a prescrição.' },
-    { k: 'prescricaoDias', rot: 'Prescrição no Onvio', un: 'dias', ajuda: 'Regra do Onvio: só mude se o Onvio mudar.' }
+    { k: 'prescricaoDias', rot: 'Prescrição no Onvio', un: 'dias', ajuda: 'Regra do Onvio, só informativa (a prescrição não gera alerta): só mude se o Onvio mudar.' }
   ] },
   { titulo: 'Respostas ao cliente', ic: 'i-chat', campos: [
     { k: 'desfazerSeg', rot: 'Tempo para desfazer o envio', un: 'segundos', ajuda: 'Depois de "Enviar", a extensão espera esse tempo antes de escrever no Onvio (trâmite não pode ser excluído). 0 desliga.' }
@@ -37,7 +36,6 @@ const IMPACTO = [
   { k: 'fora', rot: 'Fora do prazo', f: i => i.nivel === 2, cor: 'late' },
   { k: 'hoje', rot: 'Pedem atenção', f: i => i.nivel === 1, cor: 'today' },
   { k: 'g3', rot: 'Críticas (G3)', f: i => i.grav === 3, cor: 'late' },
-  { k: 'prescreve', rot: 'Prescrevem em até 5 dias', f: i => i.prescreveEm != null && i.prescreveEm <= 5, cor: 'today' },
   { k: 'admissao', rot: 'Admissões em destaque', f: i => !!i.admissaoAlerta, cor: 'today' }
 ];
 
@@ -152,7 +150,7 @@ function leitura(el) {
       '</section>' +
       '<section class="cfg-card"><h3><svg class="ic"><use href="#i-bell"/></svg>Avisos</h3>' +
         sw('abrirAoEntrar', 'Abrir o Control Onvio ao entrar no Onvio', 'Desligado, o Onvio abre normal e o Control Onvio fica no botão.') +
-        sw('notificar', 'Notificações do Chrome', 'Nova solicitação para você, cliente respondeu, prazo estourou, prescrição perto.') +
+        sw('notificar', 'Notificações do Chrome', 'Nova solicitação para você, cliente respondeu, prazo legal perto e solicitação urgente.') +
         sw('modoGestor', 'Modo gestor', 'Avisa também as novas solicitações sem responsável.') +
       '</section>' +
       '<div class="cfg-acoes"><span class="spacer"></span><button type="button" class="btn btn-primary btn-sm" id="cf-salvar-l">Salvar</button></div>' +

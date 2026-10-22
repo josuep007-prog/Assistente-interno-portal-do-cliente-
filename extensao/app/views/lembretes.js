@@ -2,7 +2,7 @@
  * Aba Agenda: calendário do mês (como o do Departamento Pessoal) com lembretes e expectativas de conclusão
  * das suas solicitações; aba Lista: atrasados, hoje, próximos e concluídos. */
 import { estado, minhas, salvarLembretes } from '../estado.js';
-import { esc, fmtDataHora, plural, $, $$ } from '../util.js';
+import { esc, fmtDataHora, plural, $, $$, nivelLegal } from '../util.js';
 const OC = window.OC;
 const SEMANA = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
 const nomeMes = d => { const m = d.toLocaleDateString('pt-BR', { month: 'long' }); return m[0].toUpperCase() + m.slice(1) + ' de ' + d.getFullYear(); };
@@ -42,7 +42,7 @@ function agenda(el, ctx, l) {
     const d = new Date(ini); d.setDate(ini.getDate() + n);
     if (n >= 35 && d.getMonth() !== mes.getMonth()) break;
     const k = OC.ymd(d), x = doDia(k);
-    const pts = x.l.filter(y => !y.feito).map(y => OC.situacaoLembrete(y) === 'atrasado' ? 'late' : '').concat(x.i.map(i => i.nivel === 2 ? 'late' : 'today'));
+    const pts = x.l.filter(y => !y.feito).map(y => OC.situacaoLembrete(y) === 'atrasado' ? 'late' : '').concat(x.i.map(i => nivelLegal(i) === 2 ? 'late' : 'today'));
     const q = pts.length;
     const cls = ['cal-d', d.getMonth() !== mes.getMonth() ? 'fora' : '', d.getDay() === 0 || d.getDay() === 6 ? 'fds' : '', hol.has(k) ? 'fer' : '', k === hojeK ? 'hoje' : '', k === diaSel ? 'sel' : '', q ? 'n' + Math.min(3, q) : ''].filter(Boolean).join(' ');
     cal += '<button class="' + cls + '" data-d="' + k + '"' + (hol.has(k) ? ' title="Feriado"' : '') + '>' + d.getDate() + '<span class="cal-pts">' + pts.slice(0, 4).map(c => '<i class="' + c + '"></i>').join('') + '</span></button>';
@@ -59,7 +59,7 @@ function agenda(el, ctx, l) {
     '</div></section>' +
     '<section class="card"><div class="card-h"><h3>' + esc(diaSel === hojeK ? 'Hoje, ' : '') + esc(dSel.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })) + '</h3><span class="sub">' + plural(linhas.length + x.i.length, 'item', 'itens') + '</span><button class="lk" id="ag-novo">+ Lembrete neste dia</button></div><div class="card-b" id="ag-dia">' +
       (linhas.length ? linhas.map(item).join('') : '') +
-      x.i.map(i => '<div class="item-ag clicavel ' + (i.nivel === 2 ? 'late' : 'soon') + '" data-k="' + esc(i.k) + '"><svg class="ic"><use href="#i-alert"/></svg><div class="tx"><b>Pagamento (prazo legal) · #' + esc(i.num) + ' ' + esc(i.typeLabel) + '</b><small>' + esc(i.apelido || i.cliente) + (i.detalhe ? ' · ' + esc(i.detalhe) : '') + '</small></div></div>').join('') +
+      x.i.map(i => '<div class="item-ag clicavel ' + (nivelLegal(i) === 2 ? 'late' : 'soon') + '" data-k="' + esc(i.k) + '"><svg class="ic"><use href="#i-alert"/></svg><div class="tx"><b>Pagamento (prazo legal) · #' + esc(i.num) + ' ' + esc(i.typeLabel) + '</b><small>' + esc(i.apelido || i.cliente) + (i.detalhe ? ' · ' + esc(i.detalhe) : '') + '</small></div></div>').join('') +
       (linhas.length + x.i.length ? '' : '<div class="vazio" style="padding:14px 0">Nada marcado para este dia.</div>') +
     '</div></section></div>';
   const ir = d => { mes = new Date(mes.getFullYear(), mes.getMonth() + d, 1); render(el, ctx, {}); };

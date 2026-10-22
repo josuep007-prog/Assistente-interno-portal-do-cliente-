@@ -1,15 +1,15 @@
-/* Peças da equipe: bolinha da leitura ao vivo (Hoje); mapa de calor por idade, próximas a prescrever e
+/* Peças da equipe: bolinha da leitura ao vivo (Hoje); mapa de calor por idade e
  * sugestão de distribuição (Equipe). Tudo lido do resumo (estado.snap); nada aqui grava no Onvio:
  * a distribuição é só sugestão. */
 import { estado, itens } from '../estado.js';
-import { esc, plural, ligarItens, fmtHoraS, $ } from '../util.js';
+import { esc, plural, ligarItens, fmtHoraS, $, nivelLegal } from '../util.js';
 import { mapaDeCalor } from '../graficos.js';
 const OC = window.OC;
 
 const SEM = '(sem responsável)';
 
-// mesma ordem da fila "Prazo, mais grave primeiro"
-export const porPrioridade = l => l.slice().sort((a, b) => ((b.nivel || 0) - (a.nivel || 0)) || ((b.grav || 0) - (a.grav || 0)) || ((b.parado || 0) - (a.parado || 0)));
+// mesma ordem das Solicitações (OC.ordemFila)
+export const porPrioridade = l => OC.ordemFila(l).map(p => p.item);
 const eu = () => (itens().find(i => i.mine) || {}).resp || '';
 const nomeResp = r => (r === SEM ? 'Sem analista' : r);
 
@@ -26,14 +26,7 @@ export function dicaLeitura(e) {
   return e === 'ok' ? 'Lendo o Onvio ao vivo · última leitura ' + fmtHoraS(ver) : e === 'erro' ? 'Sem leitura do Onvio agora' : 'Leitura parada' + (ver ? ' · última ' + fmtHoraS(ver) : '');
 }
 
-/* ---------- prescrição e mapa de calor (tela Equipe) ---------- */
-const prescLista = () => itens().filter(i => i.lado === 'cli' && i.prescreveEm != null && i.prescreveEm <= 7).sort((a, b) => a.prescreveEm - b.prescreveEm);
-export function prescricaoHtml() {
-  const presc = prescLista();
-  return '<section class="card"><div class="card-h"><h3>Próximas a prescrever</h3><span class="sub">vez do cliente · ' + presc.length + '</span><a href="#/fila?escopo=equipe&kpi=prescreve">Ver todas</a></div><div class="card-b" id="l-presc">' +
-    (presc.length ? presc.slice(0, 7).map(i => '<div class="item-ag clicavel presc" tabindex="0" data-k="' + esc(i.k) + '"><span class="cd' + (i.prescreveEm <= 3 ? ' late' : '') + '"><b>' + i.prescreveEm + '</b>' + (i.prescreveEm === 1 ? 'dia' : 'dias') + '</span><div class="tx"><b>' + esc(i.apelido || i.cliente || '—') + '</b><small>#' + esc(i.num) + ' ' + esc(i.typeLabel) + ' · ' + esc(i.resp || 'sem analista') + '</small></div></div>').join('') : '<div class="vazio" style="padding:10px 0">Nada perto de prescrever na próxima semana.</div>') +
-    '</div></section>';
-}
+/* ---------- mapa de calor (tela Equipe) ---------- */
 export function mapaIdadeHtml() {
   const m = OC.mapaIdade(itens());
   const colunas = OC.FAIXAS_IDADE.map(f => ({ id: f.de + '-' + (f.ate == null ? '' : f.ate), rotulo: f.rot }));
@@ -50,7 +43,7 @@ export function distribuicaoHtml() {
   return '<section class="card" id="distribuicao"><div class="card-h"><h3>Sem analista: sugestão de distribuição</h3><span class="sub">' + plural(sem.length, 'solicitação', 'solicitações') + '</span><a href="#/fila?escopo=semresp">Ver todas</a></div><div class="card-b">' +
     (sem.length
       ? (cargas.length ? '<p class="dist-res">Menos carregados agora: ' + cargas.slice(0, 4).map(([r, c]) => '<b>' + esc(r) + '</b> (' + c + ')').join(', ') + '. Carga = pendências na vez do escritório, pesadas pela gravidade.</p>' : '') +
-        '<div class="dist" id="l-dist">' + sem.slice(0, 8).map(i => { const s = sug.get(i.k); return '<div class="dist-i lvl-' + (i.nivel || 0) + '" tabindex="0" data-k="' + esc(i.k) + '"><div class="tx"><div class="m-top"><span class="mono">#' + esc(i.num) + '</span><span>' + esc(i.typeLabel) + '</span></div><b>' + esc(i.apelido || i.cliente || '—') + ' <span class="fraco">· ' + (i.parado || 0) + 'd parada</span></b></div>' + (s ? '<span class="sug">sugerido: <b>' + esc(s.sugerido) + '</b><small>carga ' + s.carga + '</small></span>' : '') + '</div>'; }).join('') + '</div>' +
+        '<div class="dist" id="l-dist">' + sem.slice(0, 8).map(i => { const s = sug.get(i.k); return '<div class="dist-i lvl-' + nivelLegal(i) + '" tabindex="0" data-k="' + esc(i.k) + '"><div class="tx"><div class="m-top"><span class="mono">#' + esc(i.num) + '</span><span>' + esc(i.typeLabel) + '</span></div><b>' + esc(i.apelido || i.cliente || '—') + ' <span class="fraco">· ' + (i.parado || 0) + 'd parada</span></b></div>' + (s ? '<span class="sug">sugerido: <b>' + esc(s.sugerido) + '</b><small>carga ' + s.carga + '</small></span>' : '') + '</div>'; }).join('') + '</div>' +
         '<p class="card-nota">Só sugestão: defina o responsável no Onvio.</p>'
       : '<div class="vazio" style="padding:10px 0"><b>Todas as solicitações têm analista</b>Quando chegar uma sem responsável, a sugestão aparece aqui.</div>') +
     '</div></section>';
@@ -58,8 +51,6 @@ export function distribuicaoHtml() {
 
 /* ---------- liga o que estiver na tela (Equipe) ---------- */
 export function ligarEquipe(el, ctx) {
-  const presc = $('#l-presc', el);
-  if (presc) ligarItens(presc, prescLista().slice(0, 7), ctx.abrirDetalhe);
   const dist = $('#l-dist', el);
   if (dist) ligarItens(dist, porPrioridade(itens().filter(i => !i.resp)).slice(0, 8), ctx.abrirDetalhe);
   const mapa = $('#mapa-idade', el);

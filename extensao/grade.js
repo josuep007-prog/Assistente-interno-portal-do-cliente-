@@ -88,13 +88,15 @@
   }
 
   /* ---------- marca ---------- */
+  // O analista vê só a idade e o prazo legal (pagamento, eSocial): o prazo interno e a prescrição não aparecem
+  const legais = it => (it.motivos || []).filter(m => m.legal);
+  const nivelL = it => Math.max(0, ...legais(it).map(m => m.n));
   function textoMarca(it) {
-    const d = (it.parado || 0) + 'd parada';
-    if (it.lado === 'cli' && it.prescreveEm != null && it.nivel === 2) return d + ' · prescreve em ' + it.prescreveEm + 'd';
-    return d;
+    return (it.parado || 0) + 'd parada';
   }
   function estilo(it) {
-    const cor = it.nivel === 2 ? ['#C2000C', '#FBEAEA'] : it.nivel === 1 ? ['#B5530C', '#FDF0E3'] : ['#3F4B55', '#E9EEF2'];
+    const n = nivelL(it);
+    const cor = n === 2 ? ['#C2000C', '#FBEAEA'] : n === 1 ? ['#B5530C', '#FDF0E3'] : ['#3F4B55', '#E9EEF2'];
     return 'display:inline-block;margin-left:6px;padding:0 6px;border-radius:3px;font:600 11px/18px "IBM Plex Sans",system-ui,sans-serif;white-space:nowrap;vertical-align:middle;color:' + cor[0] + ';background:' + cor[1];
   }
 
@@ -112,12 +114,12 @@
       let marca = alvo.querySelector(':scope > .controlonvio-marca');
       if (!it) { if (marca) marca.remove(); continue; }
       const texto = textoMarca(it);
-      if (marca && marca.textContent === texto && marca.dataset.n === String(it.nivel)) continue;
+      if (marca && marca.textContent === texto && marca.dataset.n === String(nivelL(it))) continue;
       if (!marca) { marca = document.createElement('span'); marca.className = 'controlonvio-marca'; alvo.appendChild(marca); }
       marca.textContent = texto;
-      marca.dataset.n = String(it.nivel);
+      marca.dataset.n = String(nivelL(it));
       marca.style.cssText = estilo(it);
-      marca.title = (it.motivos && it.motivos.length ? it.motivos.map(m => m.m).join(' · ') : 'Dentro do prazo') + ' (Control Onvio)';
+      marca.title = (legais(it).length ? legais(it).map(m => m.m).join(' · ') : 'Sem prazo legal perto') + ' (Control Onvio)';
     }
   }
 

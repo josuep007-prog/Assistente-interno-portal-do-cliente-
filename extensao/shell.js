@@ -60,6 +60,7 @@
   let iframe = null;
   let aberto = false;
   let visaoCliente = false;      // Onvio com login de cliente: não abre sozinho nem mostra o botão
+  let statusAtual = null;        // último estado da leitura (para o aviso no botão quando não há dados)
 
   // O app só é carregado na primeira vez que a camada aparece.
   function garantirIframe() {
@@ -83,7 +84,37 @@
     if (abrir && iframe) setTimeout(() => { try { iframe.focus(); } catch (e) {} }, 50);
     try { sessionStorage.setItem(CHAVE_ABERTO, abrir ? '1' : '0'); } catch (e) {}   // só nesta aba
   }
-  launcher.addEventListener('click', () => definirPainel(true));
+  /* ---------- botão arrastável ----------
+   * O botão atrapalha em algumas telas do Onvio: dá para arrastá-lo para outro canto. O clique só conta sem arraste
+   * (limiar de 4 px). A posição (distância das bordas direita e de baixo) fica em chrome.storage.local.posBotao e é
+   * mantida dentro da janela. */
+  const TAM = 48, MARGEM = 4;
+  let pos = null, arraste = null, moveu = false;
+  const dentro = p => ({ r: Math.min(Math.max(MARGEM, Math.round(p.r)), Math.max(MARGEM, innerWidth - TAM - MARGEM)), b: Math.min(Math.max(MARGEM, Math.round(p.b)), Math.max(MARGEM, innerHeight - TAM - MARGEM)) });
+  function aplicarPos(p) { pos = p ? dentro(p) : null; launcher.style.right = pos ? pos.r + 'px' : ''; launcher.style.bottom = pos ? pos.b + 'px' : ''; }
+  launcher.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    const r = launcher.getBoundingClientRect();
+    arraste = { x: e.clientX, y: e.clientY, r: innerWidth - r.right, b: innerHeight - r.bottom };
+    moveu = false;
+    try { launcher.setPointerCapture(e.pointerId); } catch (er) {}
+  });
+  launcher.addEventListener('pointermove', e => {
+    if (!arraste) return;
+    const dx = e.clientX - arraste.x, dy = e.clientY - arraste.y;
+    if (!moveu && Math.hypot(dx, dy) < 4) return;
+    moveu = true;
+    aplicarPos({ r: arraste.r - dx, b: arraste.b - dy });
+  });
+  const soltou = () => {
+    if (!arraste) return;
+    arraste = null;
+    if (moveu && pos && viva()) chrome.storage.local.set({ posBotao: pos });
+  };
+  launcher.addEventListener('pointerup', soltou);
+  launcher.addEventListener('pointercancel', soltou);
+  addEventListener('resize', () => { if (pos) aplicarPos(pos); });
+  launcher.addEventListener('click', () => { if (moveu) { moveu = false; return; } definirPainel(true); });
 
   const estilo = document.createElement('style');
   estilo.textContent = 'html.controlonvio-cheia,html.controlonvio-cheia body{overflow:hidden!important}';
@@ -93,12 +124,15 @@
   /* ---------- contador no botão: minhas solicitações com ação do escritório ---------- */
   function atualizarContador(snap) {
     const minhas = ((snap && snap.items) || []).filter(i => i.mine && i.lado === 'esc');
-    badge.hidden = !minhas.length;
-    badge.textContent = minhas.length > 99 ? '99+' : String(minhas.length);
-    const nivel = minhas.some(i => i.nivel === 2) ? 'late' : minhas.some(i => i.nivel === 1) ? 'today' : '';
+    const semLeitura = statusAtual && (statusAtual.estado === 'erro' || statusAtual.estado === 'sem_sessao');
+    badge.hidden = !minhas.length && !semLeitura;
+    badge.textContent = semLeitura ? '!' : minhas.length > 99 ? '99+' : String(minhas.length);
+    // a cor segue o prazo legal (o prazo interno não aparece para o analista)
+    const legal = (i, n) => (i.motivos || []).some(m => m.legal && m.n === n);
+    const nivel = semLeitura || minhas.some(i => legal(i, 2)) ? 'late' : minhas.some(i => legal(i, 1)) ? 'today' : '';
     badge.className = 'badge' + (nivel ? ' ' + nivel : '');
     launcher.className = 'launcher' + (nivel ? ' ' + nivel : '') + (launcher.classList.contains('hidden') ? ' hidden' : '');   // a cor do anel segue a urgência
-    const txt = 'Voltar ao Control Onvio' + (minhas.length ? ' · ' + minhas.length + ' minha(s) com ação do escritório' : '');
+    const txt = 'Voltar ao Control Onvio' + (semLeitura ? ' · sem leitura do Onvio agora: clique para ver o aviso' : minhas.length ? ' · ' + minhas.length + ' minha(s) com ação do escritório' : '');
     launcher.setAttribute('aria-label', txt); launcher.title = txt;
   }
 
@@ -112,7 +146,8 @@
   chrome.storage.onChanged.addListener((ch, area) => {
     if (area !== 'local') return;
     if (ch.snapshot) atualizarContador(ch.snapshot.newValue);
-    if (ch.status) { visaoCliente = !!(ch.status.newValue && ch.status.newValue.estado === 'visao_cliente'); launcher.classList.toggle('hidden', aberto || visaoCliente); }
+    if (ch.status) { statusAtual = ch.status.newValue || null; visaoCliente = !!(statusAtual && statusAtual.estado === 'visao_cliente'); launcher.classList.toggle('hidden', aberto || visaoCliente); chrome.storage.local.get('snapshot', d => atualizarContador(d.snapshot)); }
+    if (ch.posBotao) aplicarPos(ch.posBotao.newValue);
   });
 
   /* ---------- tempo real ----------
@@ -178,7 +213,9 @@
   /* ---------- estado inicial ----------
    * Abre ao entrar no Onvio (configurável). Fica escondido se nesta aba a pessoa escolheu "Ver Onvio", ou se
    * chegou aqui por "Abrir no Onvio" (quer ver a tela nativa). O pedido do ícone fora do Onvio sempre abre. */
-  chrome.storage.local.get(['snapshot', 'status', 'abrirPainelAoCarregar', 'verOnvioAoCarregar', 'settings', 'regrasEscritorio'], d => {
+  chrome.storage.local.get(['snapshot', 'status', 'abrirPainelAoCarregar', 'verOnvioAoCarregar', 'settings', 'regrasEscritorio', 'posBotao'], d => {
+    statusAtual = d.status || null;
+    if (d.posBotao && typeof d.posBotao.r === 'number' && typeof d.posBotao.b === 'number') aplicarPos(d.posBotao);
     atualizarContador(d.snapshot);
     visaoCliente = !!(d.status && d.status.estado === 'visao_cliente');
     let naAba = null;
@@ -189,8 +226,10 @@
     if (pedido) chrome.storage.local.remove('abrirPainelAoCarregar');
     if (verOnvio) chrome.storage.local.remove('verOnvioAoCarregar');
     const abrirAoEntrar = !(d.settings && d.settings.abrirAoEntrar === false);
-    // com acesso de cliente só abre a pedido (ícone), para mostrar o aviso; nunca sozinho
-    const abrir = pedido || (!visaoCliente && !verOnvio && (naAba === '1' || (naAba === null && abrirAoEntrar)));
+    // com acesso de cliente só abre a pedido (ícone), para mostrar o aviso; nunca sozinho. Sozinha, a camada também só abre
+    // quando já há leitura (resumo guardado e estado sem erro): sem dados fica só o botão, com o aviso, e o clique abre igual.
+    const comDados = !!(d.snapshot && d.snapshot.items && !(d.status && ['erro', 'sem_sessao', 'visao_cliente'].includes(d.status.estado)));
+    const abrir = pedido || (!visaoCliente && !verOnvio && comDados && (naAba === '1' || (naAba === null && abrirAoEntrar)));
     definirPainel(abrir);
   });
 })();
