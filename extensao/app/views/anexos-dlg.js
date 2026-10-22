@@ -22,9 +22,9 @@ export function tipoArquivo(nome) { const e = EXT.find(([re]) => re.test(nome ||
 export function gruposDeAnexos(r) {
   const g = [];
   const sol = (r && r.arquivos) || [];
-  if (sol.length) g.push({ titulo: 'Na abertura da solicitação', sub: '', arquivos: sol.map(a => ({ id: a.id, nome: a.nome, topico: null })) });
+  if (sol.length) g.push({ titulo: 'Na abertura da solicitação', sub: '', arquivos: sol.map(a => ({ id: a.id, nome: a.nome, topico: null, direto: a.direto || null })) });
   ((r && r.tramites) || []).forEach(t => {
-    const l = (t.arquivos || []).map(a => ({ id: a.id, nome: a.nome, topico: t.id }));
+    const l = (t.arquivos || []).map(a => ({ id: a.id, nome: a.nome, topico: t.id, direto: a.direto || null }));
     if (l.length) g.push({ titulo: 'Trâmite #' + String(t.n).padStart(2, '0') + ' · ' + (t.lado === 'cli' ? 'cliente' : 'escritório'), sub: (t.autor ? t.autor + ' · ' : '') + fmtDataHora(t.em), arquivos: l });
   });
   return g;
@@ -47,7 +47,7 @@ export function abrirAnexos(o) {
     '<div class="dlg-body">' +
       (lista.length ? '<label class="ax-todos"><input type="checkbox" id="ax-todos"' + (o.marcar ? '' : ' checked') + '> <b>Marcar todos</b></label>' +
         grupos.map((g, gi) => '<section class="ax-grupo"><h4 class="dados-tit">' + esc(g.titulo) + (g.sub ? '<small>' + esc(g.sub) + '</small>' : '') + '</h4>' +
-          g.arquivos.map((a, ai) => { const c = gi + ':' + ai, tp = tipoArquivo(a.nome); return '<label class="ax-arq"><input type="checkbox" data-ax="' + c + '"' + (marcada(c) ? ' checked' : '') + (a.id ? '' : ' disabled') + '><span class="ax-ic ' + tp.cls + '">' + tp.rot + '</span><span class="ax-nome" title="' + esc(a.nome) + '">' + esc(a.nome) + '</span>' + (a.id ? '' : '<small class="fraco">sem identificação: baixe pelo Onvio</small>') + '</label>'; }).join('') +
+          g.arquivos.map((a, ai) => { const c = gi + ':' + ai, tp = tipoArquivo(a.nome); return '<label class="ax-arq"><input type="checkbox" data-ax="' + c + '"' + (marcada(c) ? ' checked' : '') + (a.id || a.direto ? '' : ' disabled') + '><span class="ax-ic ' + tp.cls + '">' + tp.rot + '</span><span class="ax-nome" title="' + esc(a.nome) + '">' + esc(a.nome) + '</span>' + (a.id ? '' : '<small class="fraco">sem identificação: baixe pelo Onvio</small>') + '</label>'; }).join('') +
           '</section>').join('')
         : '<div class="vazio"><b>Nenhum anexo nesta solicitação</b>Os anexos da abertura e dos trâmites aparecem aqui.</div>') +
       '<div id="ax-msg"></div>' +
@@ -76,7 +76,7 @@ async function baixar(lista) {
   const b = $('#ax-baixar'), msg = $('#ax-msg');
   b.disabled = true; d.dataset.baixando = '1';
   msg.innerHTML = '<div class="faixa"><svg class="ic"><use href="#i-download"/></svg>Baixando ' + lista.length + (lista.length === 1 ? ' anexo' : ' anexos') + ' pelo Onvio… Se o Chrome perguntar, permita vários downloads.</div>';
-  const r = await enviar({ cmd: 'baixarAnexos', type: ctx.item.type, num: String(ctx.item.num), anexos: lista.map(a => ({ id: a.id, topico: a.topico, nome: a.nome })) });
+  const r = await enviar({ cmd: 'baixarAnexos', type: ctx.item.type, num: String(ctx.item.num), anexos: lista.map(a => ({ id: a.id, topico: a.topico, nome: a.nome, direto: a.direto || null })) });
   delete d.dataset.baixando;
   if (!ctx) return;
   b.disabled = false;

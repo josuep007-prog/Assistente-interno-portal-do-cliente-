@@ -355,7 +355,8 @@ async function baixarAnexos(msg) {
   if (!pedidos.length) throw new Error('escolha ao menos um anexo');
   if (pedidos.length > MAX_DOWNLOADS) throw new Error('no máximo ' + MAX_DOWNLOADS + ' anexos de uma vez');
   const ok = v => typeof v === 'string' && /^[\w-]{1,80}$/.test(v);
-  if (pedidos.some(a => !a || !ok(a.id) || (a.topico != null && !ok(a.topico)))) throw new Error('anexo inválido');
+  const direto = u => typeof u === 'string' && u.length < 800 && /^https:\/\/onvio\.com\.br\/api\/storage\//i.test(u) && OC.leituraAnexoPermitida(u);
+  if (pedidos.some(a => !a || !(ok(a.id) || direto(a.direto)) || (a.id != null && !ok(a.id)) || (a.topico != null && !ok(a.topico)) || (a.direto != null && !direto(a.direto)))) throw new Error('anexo inválido');
   const { f } = await escolherFetcher(true);                     // confere de novo que é o escritório
   const tab = await abaOnvio();
   if (!tab) throw new Error('Abra o Onvio numa aba para baixar.');
@@ -367,6 +368,7 @@ async function baixarAnexos(msg) {
   const itens = [], semRota = [];
   for (const a of pedidos) {
     const nome = nomeSeguro(a.nome);
+    if (a.direto) { itens.push({ url: a.direto, campo: null, direto: true, nome }); continue; }      // staticFilePath: o próprio arquivo
     const u = OC.urlAnexo(t, { sol: r.id, topico: a.topico || null, anexo: a.id, nome }, rotasAnexo || []);
     if (u && OC.leituraAnexoPermitida(u.url)) itens.push({ url: u.url, campo: u.campo, nome }); else semRota.push(nome);
   }
@@ -378,16 +380,20 @@ async function baixarAnexos(msg) {
       const out = [];
       for (const it of lista) {
         try {
-          const headers = { Accept: '*/*' };
-          if (auth) headers.Authorization = auth;
-          const r = await fetch(it.url, { method: 'GET', headers, credentials: 'include' });
-          if (!r.ok) { out.push({ nome: it.nome, erro: 'HTTP ' + r.status }); continue; }
+          const doOnvio = h => { try { const u = new URL(h); return u.protocol === 'https:' && /(^|\.)onvio\.com\.br$/i.test(u.hostname) && !u.username; } catch (e) { return false; } };
           let href, blob = null;
-          if (it.campo) {
-            const j = await r.json();
-            href = j && j[it.campo];
-            if (typeof href !== 'string' || !/^https:\/\//.test(href)) { out.push({ nome: it.nome, erro: 'o Onvio não devolveu o endereço do arquivo' }); continue; }
-          } else { blob = await r.blob(); href = URL.createObjectURL(blob); }
+          if (it.direto) href = it.url;                         // staticFilePath: o arquivo já está nesse endereço
+          else {
+            const headers = { Accept: '*/*' };
+            if (auth) headers.Authorization = auth;
+            const r = await fetch(it.url, { method: 'GET', headers, credentials: 'include' });
+            if (!r.ok) { out.push({ nome: it.nome, erro: 'HTTP ' + r.status }); continue; }
+            if (it.campo) {
+              const j = await r.json();
+              href = j && j[it.campo];
+              if (typeof href !== 'string' || !doOnvio(href)) { out.push({ nome: it.nome, erro: 'o Onvio não devolveu o endereço do arquivo' }); continue; }
+            } else { blob = await r.blob(); href = URL.createObjectURL(blob); }
+          }
           const a = document.createElement('a');
           a.href = href; a.download = it.nome; a.rel = 'noopener'; a.style.display = 'none';
           document.body.appendChild(a); a.click(); a.remove();
@@ -446,7 +452,7 @@ async function executarAcao(msg) {
 let modeloCriacaoCache = null;
 async function modeloDeCriacao(f, s, dep) {
   const c = Object.assign({}, OC.DEFAULTS.criacao, s.criacao || {});
-  if (c.serviceRequestType && c.requestWay && c.departmentId) return OC.modeloCriacao(s, null, null, dep);
+  if (c.serviceRequestType && c.requestWay && (c.departmentId || (dep && c.departamentos && c.departamentos[dep]))) return OC.modeloCriacao(s, null, null, dep);
   if (!modeloCriacaoCache || Date.now() - modeloCriacaoCache.em > 6 * 3600e3) {
     const so = (e) => { if (e && (e.auth || e.cliente)) throw e; return null; };
     const acesso = await f(OC.URL_SO_ESCRITORIO()).catch(so);

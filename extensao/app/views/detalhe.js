@@ -248,7 +248,7 @@ function tramitesHtml(r, carregando, i) {
         '<div class="tr-meta"><b>' + esc(quem) + '</b><span class="tr-lado">' + (x.n === 1 ? 'abertura' : lado === 'esc' ? 'escritório' : 'cliente') + '</span>' +
           '<span class="tr-quando" title="' + esc(fmtDataHora(x.em)) + '">#' + String(x.n).padStart(2, '0') + ' · ' + esc(relativo(x.em) !== fmtDataHora(x.em) ? relativo(x.em) + ' · ' + fmtDataHora(x.em) : fmtDataHora(x.em)) + '</span></div>' +
         (x.texto ? '<div class="tr-texto">' + esc(textoPuro(x.texto)) + '</div><button type="button" class="tr-mais">Ver tudo</button>' : '<div class="tr-texto fraco">Sem texto' + (anexos.length ? ' (só anexo)' : '') + '</div>') +
-        (anexos.length ? '<div class="tr-anexos">' + anexos.map((a, ai) => { const tp = tipoArquivo(a.nome); return '<button type="button" class="tr-arq"' + (a.id ? ' data-ax-abrir="' + gi + ':' + ai + '"' : ' disabled') + ' title="Baixar ' + esc(a.nome) + '"><span class="ax-ic ' + tp.cls + '">' + tp.rot + '</span><span class="ax-nome">' + esc(a.nome) + '</span></button>'; }).join('') + '</div>' : '') +
+        (anexos.length ? '<div class="tr-anexos">' + anexos.map((a, ai) => { const tp = tipoArquivo(a.nome); return '<button type="button" class="tr-arq"' + (a.id || a.direto ? ' data-ax-abrir="' + gi + ':' + ai + '"' : ' disabled') + ' title="Baixar ' + esc(a.nome) + '"><span class="ax-ic ' + tp.cls + '">' + tp.rot + '</span><span class="ax-nome">' + esc(a.nome) + '</span></button>'; }).join('') + '</div>' : '') +
       '</div>' + (x === ultCli && x.n !== 1 ? responder : '') + '</div>' + sit;
   }).join('');
   return '<div class="tr-lista" id="tr-lista">' + corpo + rasc + '</div>';
