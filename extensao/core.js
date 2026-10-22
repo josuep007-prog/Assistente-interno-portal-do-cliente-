@@ -91,6 +91,10 @@
     // Na vez do escritório e sem nenhuma movimentação há mais que isso (dias corridos): provavelmente foi resolvida fora
     // do portal (Sugestões de ação no Hoje). 0 desliga. Pedido do Josué, 16/10/2026.
     foraDoPortalDias: 30,
+    // Notificação do prazo legal (pagamento de férias e rescisão): avisa quando faltam até tantos dias úteis. 0 desliga.
+    avisoLegalDias: 2,
+    // Casos de Sugestões de ação ligados ou desligados (false desliga). 'falta' (pedido curto demais) vem desligado.
+    sugestoes: { falta: false },
     prescricaoDias: 30,       // regra do Onvio
     prescricaoAviso: 20,      // a partir de quantos dias parada vira alerta vermelho
     tempoOcupado: 5,          // dias úteis que um analista leva para atender num período cheio: prazo legal mais perto que isso já pede ação
@@ -369,7 +373,8 @@
     let nivel = 0; const motivos = [];
     // o: 'cli' marca atraso de origem do cliente (pedido que já chegou tarde, ou prazo que inclui o tempo em que a vez
     // era do cliente): continua no semáforo, mas não pesa na avaliação do analista (OC.avaliarEquipe).
-    const alerta = (n, m, o) => { motivos.push(o ? { n, m, o } : { n, m }); if (n > nivel) nivel = n; };
+    // legal: motivo de prazo legal (eSocial da admissão, pagamento): é o único que o analista vê como prazo (o interno só ordena)
+    const alerta = (n, m, o, legal) => { const x = { n, m }; if (o) x.o = o; if (legal) x.legal = true; motivos.push(x); if (n > nivel) nivel = n; };
     let prescreveEm = null;
     const chegouTarde = (alvo, margem) => !!(created && alvo && uteisAte(created, alvo, hol) <= margem);
 
@@ -389,9 +394,9 @@
       alerta(1, it.status + ': avise quem mantém a extensão');
     } else if (it.lado === 'cli') {
       if (fam.prescreve) {
+        // prescrição é só informação (o Onvio prescreve sozinho): não gera alerta nem pesa na gravidade
         prescreveEm = Math.max(0, s.prescricaoDias - parado);
-        if (parado >= s.prescricaoAviso) alerta(2, 'Prescreve em ' + prescreveEm + ' dia(s)');
-        else if (uteisParado > s.clienteSemRetorno) alerta(1, 'Cliente sem retorno há ' + uteisParado + ' d.u.');
+        if (uteisParado > s.clienteSemRetorno) alerta(1, 'Cliente sem retorno há ' + uteisParado + ' d.u.');
       } else {
         if (parado > s.parada) alerta(2, 'Cliente parado há ' + parado + ' dias');
         else if (uteisParado > s.clienteSemRetorno) alerta(1, 'Cliente sem retorno há ' + uteisParado + ' d.u.');
@@ -406,29 +411,28 @@
       const ini = diaDe(it.admissao), prazo = somaDias(ini, s.estagiarioPrazoDias);
       const faltam = uteisAte(now, prazo, hol), dp = fmtData(prazo);
       const tarde = chegouTarde(prazo, s.admissaoAviso) ? 'cli' : undefined;
-      if (faltam < 0) alerta(2, 'Estágio iniciado em ' + fmtData(ini) + ': prazo do eSocial (' + dp + ') já passou', tarde);
-      else if (faltam <= s.admissaoAviso) alerta(faltam === 0 ? 2 : 1, faltam === 0 ? 'Prazo do eSocial do estágio vence hoje (' + dp + ')' : 'Estágio: eSocial até ' + dp + ' (' + s.estagiarioPrazoDias + ' dias após o início)', tarde);
+      if (faltam < 0) alerta(2, 'Estágio iniciado em ' + fmtData(ini) + ': prazo do eSocial (' + dp + ') já passou', tarde, true);
+      else if (faltam <= s.admissaoAviso) alerta(faltam === 0 ? 2 : 1, faltam === 0 ? 'Prazo do eSocial do estágio vence hoje (' + dp + ')' : 'Estágio: eSocial até ' + dp + ' (' + s.estagiarioPrazoDias + ' dias após o início)', tarde, true);
       if (faltam <= s.admissaoAviso) admissaoAlerta = { data: it.admissao, prazo: ymd(prazo), faltam, retro: false, estagio: true };
     } else if (fam === FAMILIAS.cadastro && it.admissao && it.code !== 5 && it.code !== 6) {
       const ini = diaDe(it.admissao), aberta = created ? new Date(created.getFullYear(), created.getMonth(), created.getDate()) : null;
       const faltam = uteisAte(now, ini, hol), dt = fmtData(ini);
       const retro = !!(aberta && ini < aberta);
       const tarde = chegouTarde(ini, s.admissaoAviso) ? 'cli' : undefined;
-      if (retro) alerta(2, 'Admissão retroativa: início em ' + dt + ', pedida depois', 'cli');
-      else if (faltam < 0) alerta(2, 'Admissão em ' + dt + ' já passou', tarde);
-      else if (faltam <= s.admissaoAviso) alerta(faltam <= 1 ? 2 : 1, faltam === 0 ? 'Admissão hoje (' + dt + '): eSocial já fora do prazo' : 'Admissão em ' + dt + ': eSocial até o dia anterior', tarde);
+      if (retro) alerta(2, 'Admissão retroativa: início em ' + dt + ', pedida depois', 'cli', true);
+      else if (faltam < 0) alerta(2, 'Admissão em ' + dt + ' já passou', tarde, true);
+      else if (faltam <= s.admissaoAviso) alerta(faltam <= 1 ? 2 : 1, faltam === 0 ? 'Admissão hoje (' + dt + '): eSocial já fora do prazo' : 'Admissão em ' + dt + ': eSocial até o dia anterior', tarde, true);
       if (retro || faltam <= s.admissaoAviso) admissaoAlerta = { data: it.admissao, faltam, retro };
     }
     return { nivel, motivos, parado, uteisAberto, prescreveEm, admissaoAlerta, grav: gravidade(it, t, s, { nivel, parado, uteisAberto, prescreveEm }) };
   }
 
   /* Gravidade para o painel do gestor. 0 em dia | 1 atenção | 2 fora do prazo |
-   * 3 crítica: fora do prazo e (prescreve em até 5 dias, parada há 2x o limite de parada,
-   * ou aberta há 2x o prazo de conclusão). Definição em um lugar só para ajustar depois. */
+   * 3 crítica: fora do prazo e (parada há 2x o limite de parada, ou aberta há 2x o prazo de conclusão).
+   * Prescrição não entra (é só informação). A gravidade ordena por trás; o analista não a vê (só a Equipe). Definição em um lugar só para ajustar depois. */
   function gravidade(it, t, s, e) {
     if (e.nivel < 2) return e.nivel;
     const lim = t.calculo ? s.conclusaoCalculo : s.conclusaoSimples;
-    if (e.prescreveEm != null && e.prescreveEm <= 5) return 3;
     if (e.parado >= 2 * s.parada) return 3;
     if (it.lado === 'esc' && e.uteisAberto >= 2 * lim) return 3;
     return 2;
@@ -446,7 +450,6 @@
     const fim = x => x.replace(/\.*$/, '.');                       // "d.u." no fim não ganha outro ponto
     if (it.grav === 3) {
       const l = [], c = [];
-      if (it.prescreveEm != null && it.prescreveEm <= 5) { l.push('prescreve em ' + it.prescreveEm + ' dia(s) (crítica a partir de 5)'); c.push('prescreve em ' + it.prescreveEm + ' d'); }
       if (it.parado != null && it.parado >= 2 * s.parada) { l.push('parada há ' + it.parado + ' dias, o dobro do limite de ' + s.parada); c.push('parada 2× o limite'); }
       if (it.lado === 'esc' && it.uteisAberto != null && it.uteisAberto >= 2 * lim) { l.push('aberta há ' + it.uteisAberto + ' d.u., o dobro do prazo de ' + lim + ' d.u. (' + (t.calculo ? 'cálculo' : 'demanda simples') + ')'); c.push('aberta 2× o prazo'); }
       if (!l.length) motivos(2).forEach(m => { l.push(minus(m)); c.push(minus(m)); });   // leitura antiga sem os números
@@ -767,7 +770,7 @@
   const LIMITES = {
     primeiroTramite: [0, 30], conclusaoSimples: [1, 60], conclusaoCalculo: [1, 60], clienteSemRetorno: [1, 60], resolvidaClienteDias: [0, 30],
     parada: [1, 90], foraDoPortalDias: [0, 180], desfazerSeg: [0, 15], prescricaoDias: [1, 120], prescricaoAviso: [1, 120], tempoRealSeg: [0, 600],
-    tempoOcupado: [0, 30], admissaoAviso: [0, 15], estagiarioPrazoDias: [0, 60], pagamentoFeriasAntes: [0, 30], pagamentoRescisaoDias: [0, 60], avisoFeriasDias: [0, 90]
+    tempoOcupado: [0, 30], avisoLegalDias: [0, 15], admissaoAviso: [0, 15], estagiarioPrazoDias: [0, 60], pagamentoFeriasAntes: [0, 30], pagamentoRescisaoDias: [0, 60], avisoFeriasDias: [0, 90]
   };
   const inteiro = (v, [min, max]) => (typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max ? v : undefined);
 
@@ -796,6 +799,11 @@
       const c = {};
       for (const k of ['serviceRequestType', 'requestWay', 'departmentId']) if (typeof raw.criacao[k] === 'string' && /^[A-Za-z0-9_.-]{1,80}$/.test(raw.criacao[k])) c[k] = raw.criacao[k];
       if (Object.keys(c).length) out.criacao = c;
+    }
+    if (raw.sugestoes && typeof raw.sugestoes === 'object' && !Array.isArray(raw.sugestoes)) {
+      const sg = {};
+      for (const k of Object.keys(CASOS)) if (typeof raw.sugestoes[k] === 'boolean') sg[k] = raw.sugestoes[k];
+      if (Object.keys(sg).length) out.sugestoes = sg;
     }
     for (const k of ['pedidoAoCliente', 'cortesiaCliente', 'foraDoPortal', 'anexoCitado']) {
       if (Array.isArray(raw[k])) out[k] = [...new Set(raw[k].filter(p => typeof p === 'string' && p.trim() && p.length <= 60).map(p => semAcento(p).trim()))].slice(0, 80);
@@ -836,7 +844,7 @@
         if (t && t.key !== 'geral' && palavras.length) out.abaErrada.push({ tipo: t.key, palavras });
       }
     }
-    const util = Object.keys(out.config).length || out.feriados.length || out.abaErrada.length || (out.observacoes && Object.keys(out.observacoes).length) || out.avisoSemCalculo || out.assuntoSemCalculo || out.tramiteCriacao || out.criacao || out.senhaGestorSha256 || out.avaliacao || out.pedidoAoCliente || out.cortesiaCliente || out.foraDoPortal || out.anexoCitado || out.textosSugestao || out.modelosTramite;
+    const util = Object.keys(out.config).length || out.feriados.length || out.abaErrada.length || (out.observacoes && Object.keys(out.observacoes).length) || out.avisoSemCalculo || out.assuntoSemCalculo || out.tramiteCriacao || out.criacao || out.sugestoes || out.senhaGestorSha256 || out.avaliacao || out.pedidoAoCliente || out.cortesiaCliente || out.foraDoPortal || out.anexoCitado || out.textosSugestao || out.modelosTramite;
     return util ? out : null;
   }
 
@@ -862,6 +870,7 @@
       if (r.anexoCitado) base.anexoCitado = r.anexoCitado;
       if (r.modelosTramite) base.modelosTramite = r.modelosTramite;
       if (r.textosSugestao) base.textosSugestao = Object.assign({}, DEFAULTS.textosSugestao, r.textosSugestao);
+      if (r.sugestoes) base.sugestoes = Object.assign({}, DEFAULTS.sugestoes, r.sugestoes);
     }
     // a senha da área do gestor vem só do código ou das regras do escritório, nunca dos ajustes da pessoa
     return Object.assign(base, usuario || {}, { senhaGestorSha256: base.senhaGestorSha256, pesosNota: base.pesosNota, avaliacaoMinEntregas: base.avaliacaoMinEntregas });
@@ -872,16 +881,15 @@
     const m = {};
     for (const it of items || []) {
       const k = it.cliente || it.apelido || '(cliente não informado)';
-      const r = m[k] || (m[k] = { cliente: k, apelido: it.apelido || '', total: 0, esc: 0, cli: 0, atraso: 0, prescreve: 0, abaErrada: 0, diasCliSoma: 0, diasCliN: 0 });
+      const r = m[k] || (m[k] = { cliente: k, apelido: it.apelido || '', total: 0, esc: 0, cli: 0, atraso: 0, abaErrada: 0, diasCliSoma: 0, diasCliN: 0 });
       r.total++;
       if (it.lado === 'esc') r.esc++;
       if (it.lado === 'cli') { r.cli++; r.diasCliSoma += it.parado || 0; r.diasCliN++; }
       if (it.nivel === 2) r.atraso++;
-      if (it.prescreveEm != null && it.prescreveEm <= 5) r.prescreve++;
       if (it.abaProvavel) r.abaErrada++;
     }
     for (const r of Object.values(m)) r.diasCliMedia = r.diasCliN ? Math.round(r.diasCliSoma / r.diasCliN * 10) / 10 : null;
-    return Object.values(m).sort((a, b) => (b.atraso - a.atraso) || (b.prescreve - a.prescreve) || (b.total - a.total));
+    return Object.values(m).sort((a, b) => (b.atraso - a.atraso) || (b.total - a.total));
   }
 
   /* ---------- série do dia (gráficos do gestor) ----------
@@ -902,48 +910,80 @@
     return out;
   }
 
-  /* ---------- prioridades da tela Hoje ----------
-   * Uma classificação só para o anel, o radar e a lista: cada pendência tem um motivo (o mais forte). */
+  /* ---------- situação em grupos, motivo e ordem da fila ----------
+   * O analista não vê prazo interno nem gravidade (só a Equipe vê): a fila se ordena pelo que pede ação primeiro.
+   * 1) prazo legal em até 1 d.u. (pagamento de férias e rescisão) ou admissão em destaque; 2) Sem análise (as mais
+   * antigas primeiro); 3) Em análise, análise interna e encaminhadas; 4) Cliente respondeu; 5) Com o cliente.
+   * Dentro de cada grupo a gravidade desempata por trás, sem aparecer. */
   const clienteRespondeu = i => i.lado === 'esc' && /^(Aguardando resposta|Respondido pelo cliente)$/.test(i.status || '');
-  const MOTIVOS = [
-    { k: 'atraso', rot: 'Fora do prazo', cor: 'crit' },
-    { k: 'prescreve', rot: 'Perto de prescrever', cor: 'serious' },
-    { k: 'hoje', rot: 'Vence hoje', cor: 'warn' },
-    { k: 'respondeu', rot: 'Cliente respondeu', cor: 's1' },
-    { k: 'emdia', rot: 'Em dia', cor: 'ok' }
+  // Grupos de situação (cores e cartões de filtro): os códigos das 3 famílias caem em 6 grupos
+  const GRUPOS_SIT = [
+    { k: 'sem', rot: 'Sem análise' }, { k: 'analise', rot: 'Em análise' }, { k: 'encaminhada', rot: 'Encaminhada' },
+    { k: 'respondeu', rot: 'Cliente respondeu' }, { k: 'cliente', rot: 'Com o cliente' }, { k: 'desconhecida', rot: 'Desconhecida' }
   ];
+  const SIT_GRUPO = {
+    padrao: { 1: 'sem', 2: 'analise', 8: 'analise', 7: 'encaminhada', 9: 'encaminhada', 3: 'respondeu', 4: 'cliente' },
+    cadastro: { 1: 'sem', 2: 'encaminhada', 7: 'encaminhada', 4: 'respondeu', 3: 'cliente', 5: 'cliente' },
+    rubricas: { 0: 'sem', 1: 'sem', 2: 'analise', 7: 'analise', 9: 'encaminhada', 11: 'encaminhada', 5: 'respondeu', 12: 'respondeu', 3: 'cliente', 4: 'cliente', 6: 'cliente' }
+  };
+  function grupoSituacao(it) {
+    const t = it && TYPE_BY_KEY[it.type];
+    if (!t || it.desconhecido || it.lado === 'desc') return GRUPOS_SIT[5];
+    let k = it.code != null ? SIT_GRUPO[t.familia][Number(it.code)] : null;
+    if (!k) {                                                   // sem código (leitura antiga): pelo texto e pela vez
+      const st = it.status || '';
+      k = clienteRespondeu(it) ? 'respondeu' : /^Sem análise/.test(st) ? 'sem' : /^(Encaminhado|Enviado para o escritório)/.test(st) ? 'encaminhada' : it.lado === 'cli' ? 'cliente' : 'analise';
+    }
+    return GRUPOS_SIT.find(g => g.k === k) || GRUPOS_SIT[5];
+  }
+  const MOTIVOS = [
+    { k: 'legal', rot: 'Prazo legal', cor: 'crit' },
+    { k: 'sem', rot: 'Sem análise', cor: 'serious' },
+    { k: 'analise', rot: 'Em análise', cor: 'warn' },
+    { k: 'respondeu', rot: 'Cliente respondeu', cor: 's1' },
+    { k: 'cliente', rot: 'Com o cliente', cor: 'ok' }
+  ];
+  // Prazo legal chegando (pagamento em até 1 d.u.) ou admissão em destaque sem trâmite do escritório
+  const legalUrgente = i => !!(i && ((i.prazoLegal && i.prazoLegal.faltam <= 1) || (i.admissaoAlerta && !escritorioTramitou(i))));
+  const legalFaltam = i => Math.min(i.prazoLegal ? i.prazoLegal.faltam : 99, i.admissaoAlerta ? (i.admissaoAlerta.retro ? -99 : i.admissaoAlerta.faltam) : 99);
   function motivoDe(i) {
-    if (i.lado === 'esc' && i.nivel === 2) return 'atraso';
-    if (i.lado === 'cli' && (i.nivel === 2 || (i.prescreveEm != null && i.prescreveEm <= 5))) return 'prescreve';
-    if (i.nivel === 1) return 'hoje';
-    if (clienteRespondeu(i)) return 'respondeu';
-    return 'emdia';
+    if (legalUrgente(i)) return 'legal';
+    const g = grupoSituacao(i).k;
+    return g === 'sem' ? 'sem' : g === 'respondeu' ? 'respondeu' : g === 'cliente' ? 'cliente' : 'analise';
   }
-  // Lista de "o que fazer agora": fora do prazo (G3 e mais parada primeiro), perto de prescrever (menos dias primeiro),
-  // vence hoje, cliente respondeu e, por fim, o resto na vez do escritório por dias parada. Em dia na vez do cliente não entra.
-  function prioridades(items) {
-    const ordemMotivo = { atraso: 0, prescreve: 1, hoje: 2, respondeu: 3, emdia: 4 };
-    return (items || []).map(item => ({ item, motivo: motivoDe(item) }))
-      .filter(p => p.motivo !== 'emdia' || p.item.lado === 'esc')
-      .sort((a, b) => (ordemMotivo[a.motivo] - ordemMotivo[b.motivo]) ||
-        (a.motivo === 'prescreve' ? ((a.item.prescreveEm == null ? 99 : a.item.prescreveEm) - (b.item.prescreveEm == null ? 99 : b.item.prescreveEm)) : 0) ||
-        ((b.item.grav || 0) - (a.item.grav || 0)) || ((b.item.parado || 0) - (a.item.parado || 0)));
+  // A fila inteira na ordem de prioridade: [{ item, motivo }]
+  function ordemFila(items) {
+    const idx = Object.fromEntries(MOTIVOS.map((m, n) => [m.k, n]));
+    const cria = i => String(i.created || '~');
+    return (items || []).map(item => ({ item, motivo: motivoDe(item) })).sort((a, b) =>
+      (idx[a.motivo] - idx[b.motivo]) ||
+      (a.motivo === 'legal' ? legalFaltam(a.item) - legalFaltam(b.item) : 0) ||
+      (a.motivo === 'sem' ? cria(a.item).localeCompare(cria(b.item)) : 0) ||
+      ((b.item.grav || 0) - (a.item.grav || 0)) || ((b.item.parado || 0) - (a.item.parado || 0)));
   }
+  // Lista de "o que fazer agora" (Hoje): tudo que espera o escritório ou tem prazo legal; o que está com o cliente não entra
+  function prioridades(items) { return ordemFila(items).filter(p => p.motivo !== 'cliente'); }
   function contarMotivos(items) {
-    const c = { atraso: 0, prescreve: 0, hoje: 0, respondeu: 0, emdia: 0 };
+    const c = Object.fromEntries(MOTIVOS.map(m => [m.k, 0]));
     for (const i of items || []) c[motivoDe(i)]++;
     return c;
   }
 
   // Próximo passo de uma pendência, em poucas palavras (Hoje: próximos passos, carrossel e rodapé dos cartões).
+  // Nunca cita prazo interno: só o prazo legal e a idade da solicitação.
   function acaoDe(i, motivo) {
     const d = i.parado || 0, dias = n => n + (n === 1 ? ' dia' : ' dias');
+    const dd = ymd => ymd ? ymd.slice(8, 10) + '/' + ymd.slice(5, 7) : '';
     switch (motivo || motivoDe(i)) {
-      case 'atraso': return 'Fora do prazo · parada há ' + dias(d);
-      case 'prescreve': return i.prescreveEm != null ? 'Cobrar o cliente · prescreve em ' + dias(i.prescreveEm) : 'Cobrar o cliente antes de prescrever';
-      case 'hoje': return i.lado === 'cli' ? 'Cobrar o cliente · sem retorno' : 'Concluir hoje · o prazo vence hoje';
+      case 'legal': {
+        if (i.prazoLegal && i.prazoLegal.faltam <= 1) return (i.prazoLegal.faltam < 0 ? 'Pagamento venceu em ' : 'Pagamento até ') + dd(i.prazoLegal.alvo) + ' (prazo legal)';
+        const a = i.admissaoAlerta;
+        return a ? (a.estagio ? 'eSocial do estágio até ' + dd(a.prazo) : a.retro ? 'Admissão retroativa · eSocial' : 'Admissão em ' + dd(a.data) + ' · eSocial') : 'Prazo legal';
+      }
+      case 'sem': return 'Fazer o 1º trâmite' + (i.uteisAberto ? ' · aberta há ' + i.uteisAberto + ' d.u.' : '');
       case 'respondeu': return 'Responder o cliente';
-      default: return i.lado === 'cli' ? 'Aguardando o cliente · ' + dias(d) : 'Em dia · parada há ' + dias(d);
+      case 'cliente': return 'Aguardando o cliente · ' + dias(d);
+      default: return 'Dar andamento · parada há ' + dias(d);
     }
   }
   // Anel do cartão: quanto do limite já passou (vez do cliente: prescrição; do escritório: "parada").
@@ -1035,9 +1075,11 @@
         else if (!it.resp) ev('semresp', it, 'Nova solicitação sem responsável');
         continue;
       }
+      const meu = it.mine || (s.modoGestor && !it.resp);
       if (it.mine && a.lado === 'cli' && it.lado === 'esc') ev('respondeu', it, 'Cliente respondeu');
-      if (it.mine && it.prescreveEm != null && it.prescreveEm <= 5 && (a.prescreveEm == null || a.prescreveEm > 5)) ev('prescreve', it, 'Prescreve em ' + it.prescreveEm + ' dia(s)');
-      if (it.mine && it.nivel === 2 && (a.nivel || 0) < 2) ev('atrasou', it, 'Ficou fora do prazo');
+      const lim = s.avisoLegalDias;
+      if (meu && lim > 0 && it.prazoLegal && it.prazoLegal.faltam <= lim && !(a.prazoLegal && a.prazoLegal.faltam <= lim)) ev('legal', it, 'Prazo legal: pagamento ' + (it.prazoLegal.faltam < 0 ? 'venceu' : it.prazoLegal.faltam === 0 ? 'vence hoje' : 'em ' + it.prazoLegal.faltam + ' d.u.'));
+      if (meu && it.lado === 'esc' && it.grav === 3 && !(a.lado === 'esc' && a.grav === 3)) ev('urgente', it, 'Solicitação urgente');
     }
     return out;
   }
@@ -1525,7 +1567,7 @@
           const dt = c.alvo.slice(8, 10) + '/' + c.alvo.slice(5, 7);
           it.prazoLegal = { alvo: c.alvo, faltam, ref: c.ref };
           const n = faltam <= 1 ? 2 : 1;
-          const mo = { n, m: faltam < 0 ? 'Pagamento (prazo legal) venceu em ' + dt : 'Pagamento (prazo legal) vence ' + (faltam === 0 ? 'hoje' : 'em ' + faltam + ' d.u., ' + dt) };
+          const mo = { n, m: faltam < 0 ? 'Pagamento (prazo legal) venceu em ' + dt : 'Pagamento (prazo legal) vence ' + (faltam === 0 ? 'hoje' : 'em ' + faltam + ' d.u., ' + dt), legal: true };
           const ab = parseDate(it.created);
           if (ab && uteisAte(ab, diaDe(c.alvo), hol) <= s.tempoOcupado) mo.o = 'cli';   // o pedido já chegou em cima do prazo
           it.motivos = (it.motivos || []).concat([mo]);
@@ -1787,7 +1829,7 @@
     const pessoa = nome => { if (!pessoas.has(nome)) pessoas.set(nome, novo(nome)); return pessoas.get(nome); };
     function novo(nome) {
       return { resp: nome, carteira: 0, esc: 0, emDiaEsc: 0, g3: 0, g3Esc: 0, paradas: 0, respondeu: 0, agSoma: 0, agN: 0, concl: 0, noPrazo: 0, tempoSoma: 0, estimadas: 0,
-        prescritas: 0, prescSemCobranca: 0, razoes: [], ant: { concl: 0, noPrazo: 0, prescritas: 0 }, porDia: {}, atencao: [], foraDoPrazo: [], evitaveis: [], lentas: [], atrasadas: [], semResposta: [] };
+        prescritas: 0, razoes: [], ant: { concl: 0, noPrazo: 0, prescritas: 0 }, porDia: {}, atencao: [], foraDoPrazo: [], evitaveis: [], lentas: [], atrasadas: [], semResposta: [] };
     }
     const equipe = novo('Equipe');
     const contar = (fn, quem) => { if (quem) fn(pessoa(quem)); fn(equipe); };
@@ -1834,7 +1876,6 @@
         const alvo = atual ? r : r.ant;
         if (prescrita) {
           alvo.prescritas++;
-          if (atual && !(a && a.c)) r.prescSemCobranca++;          // sem leitura dos trâmites, conta (como antes)
           return;
         }
         alvo.concl++;
@@ -1846,7 +1887,6 @@
         const k = ymd(dia); r.porDia[k] = (r.porDia[k] || 0) + 1;
       }, quem);
       if (atual && quem && !prescrita && !noPrazo) pessoa(quem).foraDoPrazo.push({ item: x, tempo, prazo, estimado: !a });
-      if (atual && quem && prescrita && !(a && a.c)) pessoa(quem).evitaveis.push({ item: x, motivo: 'prescrita sem cobrança ao cliente' + (a ? '' : ' (sem leitura dos trâmites)') });
       if (atual && !prescrita && tempo != null) doPeriodo.push({ quem, type: x.type, tempo, item: x });
     }
     // ritmo: cada entrega comparada com a mediana da equipe no mesmo tipo (no período)
@@ -1871,7 +1911,7 @@
         pontualidade: pct(r.noPrazo, r.concl),
         ritmo: raz == null ? null : lim(75 - (raz - 1) * 50),
         emDia: pct(r.emDiaEsc, r.esc),
-        cuidado: base || r.prescritas ? lim(100 - 25 * (r.g3Esc + r.prescSemCobranca) / Math.max(10, base) * 10) : null,
+        cuidado: base || r.prescritas ? lim(100 - 25 * r.g3Esc / Math.max(10, base) * 10) : null,
         agilidade: ag == null ? null : lim(100 - (ag - s.primeiroTramite) * 25)
       };
     }
@@ -1900,7 +1940,7 @@
         poucosDados: !!eq && r.concl < minimo, estimadas: r.estimadas,
         concluidas: r.concl, noPrazo: r.noPrazo, pctNoPrazo: b.pontualidade, tempoMedio: r.concl ? Math.round(r.tempoSoma / r.concl * 10) / 10 : null,
         ritmo: r.razoes.length ? Math.round(mediana(r.razoes) * 100) / 100 : null,
-        prescritas: r.prescritas, prescSemCobranca: r.prescSemCobranca, carteira: r.carteira, esc: r.esc, pctEmDia: b.emDia, g3: r.g3, g3Esc: r.g3Esc, paradas: r.paradas, respondeu: r.respondeu,
+        prescritas: r.prescritas, carteira: r.carteira, esc: r.esc, pctEmDia: b.emDia, g3: r.g3, g3Esc: r.g3Esc, paradas: r.paradas, respondeu: r.respondeu,
         primeiroTramite: r.agN ? Math.round(r.agSoma / r.agN * 10) / 10 : null,
         anterior: { concluidas: r.ant.concl, pctNoPrazo: antPont, prescritas: r.ant.prescritas },
         variacao: { concluidas: r.concl - r.ant.concl, pctNoPrazo: b.pontualidade == null || antPont == null ? null : b.pontualidade - antPont },
@@ -2265,7 +2305,9 @@
     const tx = Object.assign({}, DEFAULTS.textosSugestao, s.textosSugestao || {});
     const pend = (items || []).filter(i => i && i.k && i.lado !== 'fim' && !i.desconhecido);
     const casos = new Map();
+    const desligado = tipo => !!(s.sugestoes && s.sugestoes[tipo] === false);
     const add = (i, tipo, extra) => {
+      if (desligado(tipo)) return;
       const ig = ignorados && ignorados[i.k];
       if (ig && ig.l === i.last) return;
       const atual = casos.get(i.k);
@@ -2332,5 +2374,5 @@
     return { dias, empresas: lista, total: lista.reduce((s2, r) => s2 + r.total, 0), prox30: lista.reduce((s2, r) => s2 + r.prox30, 0) };
   }
 
-  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, quadroSemCalculo, marcarSemCalculo, textoAvisoSemCalculo, assuntoAvisoSemCalculo, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, marcadoresPendentes, avisosResposta, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, ordemFila, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, quadroSemCalculo, marcarSemCalculo, textoAvisoSemCalculo, assuntoAvisoSemCalculo, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, marcadoresPendentes, avisosResposta, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);
