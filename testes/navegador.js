@@ -1107,10 +1107,24 @@ await passo('app · setores: fora da equipe do DP só as suas (sem Todas, Equipe
   assert.deepEqual((await linhas(p2)).sort(), ['geral:d1', 'geral:m1'], 'a Geral do Fiscal (dep-fiscal) some; a do DP e a que é sua ficam');
   assert.equal(await p2.$('#aviso-setor'), null);
   assert.equal(await p2.isVisible('.trilho [data-rota="equipe"]'), true);
-  // sem regras de setor, tudo como antes
+  // sem regras de setor: valem os ids do Pessoal de fábrica; o que é de outro departamento (aqui, ids de teste) some, menos o que é seu
   const p3 = await abrirApp('#/fila?escopo=todas', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens }) });
   await p3.waitForSelector('#corpo [data-k]');
-  assert.equal((await linhas(p3)).length, 3);
+  assert.deepEqual(await linhas(p3), ['geral:m1']);
+  // pelo acesso do usuário (company-department-access): do Pessoal vê a Geral do DP; do Fiscal vê só as suas
+  const DP = '2CDE919421384918A2BF510E5D5F4FD6', FISCAL = '8D6AF452F46D454C849B6C96F8CCF306';
+  const reais = itens.map(i => i.k === 'geral:d1' ? Object.assign({}, i, { departmentId: DP }) : i.k === 'geral:f1' ? Object.assign({}, i, { departmentId: FISCAL }) : i);
+  const snap = u => ({ snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: reais, user: Object.assign({ nome: 'Ana Teste' }, u) }) });
+  const p4 = await abrirApp('#/fila?escopo=todas', snap({ departmentId: DP }));
+  await p4.waitForSelector('#corpo [data-k]');
+  assert.deepEqual((await linhas(p4)).sort(), ['geral:d1', 'geral:m1'], 'acesso ao Pessoal: a Geral do Fiscal some');
+  assert.equal(await p4.$('#aviso-setor'), null);
+  const p5 = await abrirApp('#/fila', snap({ departmentId: FISCAL }));
+  await p5.waitForSelector('#aviso-setor');
+  assert.deepEqual(await p5.$$eval('#abas .aba', e => e.map(x => x.dataset.aba)), ['minhas', 'respondidas'], 'acesso ao Fiscal: só as suas');
+  const p6 = await abrirApp('#/fila?escopo=todas', snap({}));
+  await p6.waitForSelector('#corpo [data-k]');
+  assert.deepEqual((await linhas(p6)).sort(), ['geral:d1', 'geral:f1', 'geral:m1'].filter(k => k !== 'geral:f1'), 'acesso desconhecido não esconde pessoas, mas a Geral só mostra o DP');
 });
 
 await passo('app · detalhe: destaques sutis; trâmites como conversa (filtro, ordem, ver tudo); Anexos num botão só com escolha do que baixar', async () => {
@@ -1166,7 +1180,7 @@ await passo('app · detalhe: destaques sutis; trâmites como conversa (filtro, o
   await p.click('#ax-baixar');
   await p.waitForSelector('#dlg-anexos', { state: 'hidden' });
   const m = await p.evaluate(() => window.__msgs.find(x => x.cmd === 'baixarAnexos'));
-  assert.deepEqual([m.type, m.num, JSON.stringify(m.anexos)], ['geral', '102', JSON.stringify([{ id: 'a0', topico: null, nome: 'pedido.pdf' }, { id: 'a2', topico: 't2', nome: 'aviso.pdf' }])]);
+  assert.deepEqual([m.type, m.num, JSON.stringify(m.anexos)], ['geral', '102', JSON.stringify([{ id: 'a0', topico: null, nome: 'pedido.pdf', direto: null }, { id: 'a2', topico: 't2', nome: 'aviso.pdf', direto: null }])]);
   assert.equal(await p.isHidden('#gaveta'), false, 'o detalhe continua aberto');
   // clicar num anexo do trâmite abre a escolha só com ele marcado; sem caminho conhecido, explica como ensinar
   await p.evaluate(() => { window.__respostas.baixarAnexos = { ok: true, baixados: 0, falhas: [], semRota: 1 }; });
