@@ -1,5 +1,7 @@
 # Prompt: mapear o que ainda falta no Onvio (atualizado em 22/10/2026)
 
+> **Rodado em 22/10/2026** (relatório em `pendencias-2026-10-22.md`, já aplicado na v0.32.0). Para uma próxima rodada, só falta: o que o cliente vê em "Em análise"; o `company-department-access` de um usuário de **outro setor** (Fiscal ou Contábil) e a lista Geral dele; o valor de `catType` "Trajeto"; o `terminationType` do aviso indenizado; o anexo de trâmite e a abertura do **Cadastro** (precisa de uma solicitação de Cadastro aberta, com anexo); e o arquivo do `batch-download` (qual `{id}` usar).
+
 Como usar: cole o texto abaixo no Claude com acesso ao Chrome, já logado no Onvio com o **usuário do escritório**. Depois, devolva o relatório que ele gerar.
 
 O roteiro junta num só lugar tudo o que a extensão ainda trata como "a confirmar". Ele começa pelo que as melhorias de 22/10/2026 precisam:

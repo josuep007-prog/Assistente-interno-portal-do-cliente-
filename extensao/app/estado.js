@@ -28,7 +28,7 @@ function aplicar(d) {
   estado.settings = OC.combinarSettings(estado.regras, estado.usuario);
   // Setores: quem não é da equipe do DP vê só as suas; a Geral mostra só o que é do DP (regras do escritório)
   const raw = estado.snapBruto;
-  estado.setor = OC.perfilSetor(estado.settings, raw && raw.user && raw.user.nome);
+  estado.setor = OC.perfilSetor(estado.settings, raw && raw.user && raw.user.nome, raw && raw.user && raw.user.departmentId);
   estado.snap = raw && estado.setor.ativo ? Object.assign({}, raw, { items: OC.filtrarPorSetor(raw.items, estado.setor), resolvidas: OC.filtrarPorSetor(raw.resolvidas, estado.setor) }) : raw;
   if (estado.setor.fora) estado.eventos = (estado.eventos || []).filter(e => e.mine);
 }
