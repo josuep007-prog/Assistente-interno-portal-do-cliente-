@@ -1011,29 +1011,32 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .ax-falhas{margin:6px 0 0; padding-left:18px}
 .n-anexos{margin-left:6px; padding:0 6px; border-radius:3px; background:var(--blue-pale); color:var(--blue-deep); font:600 11px "IBM Plex Mono", monospace}
 
-/* ============ fundo do Control Hub (tela inicial), sobre um azul-claro: nuances leves de azul, lilás e verde-água,
-   brilho vermelho suave embaixo à direita e a logo da ControlTax grande, cortada no canto inferior direito ============ */
+/* ============ fundo do app: base que contrasta com os cartões (cinza-azulado no claro, quase preto no escuro), só dois brilhos
+   (azul e violeta) e a logo da ControlTax grande, discreta, cortada no canto inferior direito ============ */
+:root{ --app-fundo:#DAE3ED }
 .app-body{background:
-  radial-gradient(900px 600px at 100% 100%, rgba(194,0,12,.07), transparent 70%),
-  radial-gradient(760px 520px at 0% 0%, rgba(60,120,200,.16), transparent 70%),
-  radial-gradient(680px 480px at 62% -8%, rgba(132,110,220,.09), transparent 70%),
-  radial-gradient(620px 520px at 8% 100%, rgba(40,170,170,.08), transparent 70%),
-  linear-gradient(180deg, #EEF5FC 0%, var(--page) 60%)}
-.app-body::before{content:""; position:fixed; z-index:0; pointer-events:none; right:0; bottom:0; width:min(86vh, 130vw, 780px); aspect-ratio:258/320; transform:translate(46%, 16%); background:url("../logo.svg") no-repeat center / contain; opacity:.12}
+  radial-gradient(820px 560px at 0% 0%, rgba(42,120,214,.14), transparent 70%),
+  radial-gradient(700px 480px at 100% 0%, rgba(98,80,214,.08), transparent 70%),
+  linear-gradient(180deg, #E3EBF4 0%, #D3DEEA 100%)}
+.app-body::before{content:""; position:fixed; z-index:0; pointer-events:none; right:0; bottom:0; width:min(86vh, 130vw, 780px); aspect-ratio:258/320; transform:translate(46%, 16%); background:url("../logo.svg") no-repeat center / contain; opacity:.045}
 .app{position:relative; z-index:1}
-.mod-cab{background:color-mix(in srgb, var(--page) 88%, transparent)}
+.mod-cab{background:color-mix(in srgb, var(--app-fundo) 88%, transparent)}
 @media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){ --app-fundo:#070B0F }
   :root:not([data-theme="light"]) .app-body{background:
-    radial-gradient(900px 600px at 100% 100%, rgba(194,0,12,.35), transparent 70%),
-    radial-gradient(700px 500px at 0% 0%, rgba(60,101,155,.30), transparent 70%),
-    #0B1116}
-  :root:not([data-theme="light"]) .app-body::before{opacity:.18}
+    radial-gradient(820px 560px at 0% 0%, rgba(60,120,200,.22), transparent 70%),
+    radial-gradient(700px 480px at 100% 0%, rgba(98,80,214,.12), transparent 70%),
+    radial-gradient(900px 600px at 100% 100%, rgba(194,0,12,.10), transparent 70%),
+    #070B0F}
+  :root:not([data-theme="light"]) .app-body::before{opacity:.10}
 }
+:root[data-theme="dark"]{ --app-fundo:#070B0F }
 :root[data-theme="dark"] .app-body{background:
-  radial-gradient(900px 600px at 100% 100%, rgba(194,0,12,.35), transparent 70%),
-  radial-gradient(700px 500px at 0% 0%, rgba(60,101,155,.30), transparent 70%),
-  #0B1116}
-:root[data-theme="dark"] .app-body::before{opacity:.18}
+  radial-gradient(820px 560px at 0% 0%, rgba(60,120,200,.22), transparent 70%),
+  radial-gradient(700px 480px at 100% 0%, rgba(98,80,214,.12), transparent 70%),
+  radial-gradient(900px 600px at 100% 100%, rgba(194,0,12,.10), transparent 70%),
+  #070B0F}
+:root[data-theme="dark"] .app-body::before{opacity:.10}
 @media print{ .app-body::before{display:none} }
 
 /* ============ Configurações ============ */
