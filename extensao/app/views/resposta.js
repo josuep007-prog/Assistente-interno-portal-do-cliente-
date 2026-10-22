@@ -15,6 +15,7 @@ const rascunhos = new Map();     // 'tipo:num' -> rascunho (só na memória)
 let pendente = null;             // { chave, timer }: contagem para desistir
 let enviado = null;              // { chave, em }: o último envio, para o aviso e o destaque da bolha
 let recolhida = true;            // começa só com a barra de título, para a conversa ter a janela; abre ao clicar, no atalho R ou ao preparar uma resposta (vale nesta visita)
+let chaveAberta = '';            // a solicitação a que o estado recolhida/aberta se refere: ao abrir outra, volta a recolher
 let aoAbrir = null;              // { r, redesenhar } da caixa na tela, para o atalho R e o botão Responder abrirem a recolhida
 
 const chaveDe = i => i.type + ':' + i.num;
@@ -30,7 +31,16 @@ export function prepararResposta(i, preset) {
   if (p.situacao) r.sit = String(p.situacao);
   r.aoEnviar = typeof p.aoEnviar === 'function' ? p.aoEnviar : null;
   r.modo = 'editar'; r.aberto = true; r.focar = true; r.erro = '';
-  recolhida = false;
+  chaveAberta = chaveDe(i); recolhida = false;
+}
+// fechou o detalhe: a próxima solicitação aberta começa recolhida
+export function reiniciarCaixa() { chaveAberta = ''; recolhida = true; }
+// Clique fora da caixa (dentro do detalhe) recolhe; o rascunho fica. Não recolhe revisando ou enviando.
+export function recolherSeFora(alvo) {
+  if (recolhida || !aoAbrir || !alvo || !alvo.closest || !$('#cmp') || aoAbrir.r.modo !== 'editar') return false;
+  if (alvo.closest('#cmp') || alvo.closest('.dlg-actions, [data-responder]')) return false;      // o rodapé (Responder, Mais ações...) não conta como "fora"
+  recolhida = true; aoAbrir.redesenhar();
+  return true;
 }
 export const recemEnviado = i => !!(enviado && enviado.chave === chaveDe(i) && Date.now() - enviado.em < 20000);
 export const respostaEmAndamento = i => { const r = rascunhos.get(chaveDe(i)); return !!r && r.modo !== 'editar'; };
@@ -78,6 +88,7 @@ export function respostaHtml(i, obs, ctx) {
   const pode = OC.podeAcao('tramite', i);
   if (!pode.ok) return nota('Não dá para responder: ' + pode.motivo + '.');
   const r = rascunho(i);
+  if (chaveAberta !== chaveDe(i)) { chaveAberta = chaveDe(i); recolhida = r.modo === 'editar'; }     // outra solicitação: recolhida (salvo se está revisando ou enviando)
   const ints = OC.intencoesDe(i, estado.settings);
   const it = ints.find(x => String(x.sit) === String(r.sit));
   const vez = i.lado === 'esc' ? 'Vez do escritório' : i.lado === 'cli' ? 'Vez do cliente' : '';

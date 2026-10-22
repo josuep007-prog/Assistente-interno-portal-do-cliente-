@@ -45,6 +45,22 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
 
+## Novidades da v0.29.0 (fila por prioridade, só prazo legal e mais calma)
+
+- **Solicitações em três abas:** **Minhas** (as suas e as sem responsável, na vez do escritório), **Todas** e **Respondidas** (as suas na vez do cliente; as "consideradas resolvidas" entram como um grupo no fim). Saíram "Equipe toda", "Sem responsável", "Resolvidas" e o seletor "Aguardando o cliente". Abre em **cartões** e no **tema claro**; o escuro só por escolha no botão.
+- **Ordem por prioridade:** primeiro o que tem **prazo legal** em até 1 dia útil (pagamento de férias e rescisão) ou admissão em destaque; depois **Sem análise** (as mais antigas primeiro), **Em análise** (inclui análise interna e encaminhadas), **Cliente respondeu** e **Aguardando o cliente**.
+- **Situação em cores:** cada situação cai num de 6 grupos (Sem análise, Em análise, Encaminhada, Cliente respondeu, Com o cliente, Desconhecida), com cor própria na etiqueta e **cartões de situação** com contagem entre os cartões de tipo e a lista: clique filtra.
+- **O analista vê só prazos legais e a idade da solicitação.** O prazo interno e a gravidade continuam ordenando por trás, mas não aparecem mais na fila, nos cartões, no detalhe, nos próximos passos, na grade do Onvio nem nas notificações; a justificativa fica só na **Equipe** (gestor). Saiu o filtro "Gravidade" (entrou "Prazo legal perto").
+- **Prescrição é só informação:** não gera alerta, gravidade nem notificação, e saíram o painel "Próximas a prescrever", o cartão da Equipe e o evento. O detalhe diz, em texto neutro, "Prescreve no Onvio em N dias".
+- **Hoje** sem os painéis "Vencimentos de férias e rescisões" e "Uso do portal pelo cliente". A rosca e os próximos passos usam os mesmos grupos da fila.
+- **Notificações novas:** "Prazo legal: pagamento…" (em até 2 dias úteis; `avisoLegalDias`) e "Solicitação urgente". Sai "Ficou fora do prazo" e "Prescreve".
+- **Bolinhas vermelhas no trilho** com resumo ao passar o mouse: Hoje (prazo legal + sugestões de ação), Solicitações (sem análise + cliente respondeu), Agenda (lembretes), Equipe (críticas G3) e Distribuir (sem responsável).
+- **Caixa de resposta** começa recolhida a cada solicitação aberta; clicar fora dela recolhe (o rascunho fica; revisando ou enviando não recolhe). Corrigido o caso de ela abrir sozinha em Rubricas.
+- **Botão do Onvio arrastável** (a posição fica guardada) e a camada só **abre sozinha quando já há leitura** do Onvio; sem dados ou com erro fica só o botão (com "!"), e o clique abre igual.
+- **Detalhe:** "Responder" não fica mais ao lado da abertura, sem a etiqueta "último" repetida, "Ver tudo" medido na hora (sem piscar) e data absoluta ao lado da relativa.
+- **Sugestão "falta informação" desligada por padrão** (`sugestoes: { falta: true }` nas regras liga de novo).
+- **A confirmar no Onvio real:** a mudança é só de tela e de ordem; nenhuma chamada nova.
+
 ## Novidades da v0.28.1 (caixa de resposta recolhível e janela baixa)
 
 - **A caixa "Responder ao cliente" começa recolhida**: só a barra de título, para a conversa ocupar a janela. Clique na barra (ou em **Abrir**), use o atalho **R** ou o botão **Responder** do rodapé para abrir; o botão **Recolher** guarda o rascunho e fecha de novo. Ao revisar ou enviar, ela fica aberta.

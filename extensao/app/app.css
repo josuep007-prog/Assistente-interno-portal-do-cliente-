@@ -5,6 +5,8 @@
 
 /* cores dos gráficos: paleta validada (2 séries) e cores de status, claro e escuro */
 :root{
+  /* cores dos grupos de situação (paleta categórica validada com o validador da skill dataviz, claro e escuro) */
+  --sit-sem:#e34948; --sit-analise:#2a78d6; --sit-encaminhada:#eda100; --sit-respondeu:#6250d6; --sit-cliente:#1baf7a; --sit-desconhecida:var(--ink-3);
   --viz-s1:#2a78d6; --viz-s2:#eb6834;
   --viz-ok:#0ca30c; --viz-warn:#fab219; --viz-serious:#ec835a; --viz-crit:#d03b3b;
   --viz-grid:#e1e0d9; --viz-axis:#c3c2b7; --viz-muted:#7a7873;
@@ -13,9 +15,9 @@
   --trilho:64px;
 }
 @media (prefers-color-scheme: dark){
-  :root:not([data-theme="light"]){ --viz-s1:#3987e5; --viz-s2:#d95926; --viz-grid:#2c2c2a; --viz-axis:#383835; --viz-muted:#9a9890; --shadow-1:0 1px 2px rgba(0,0,0,.3), 0 6px 18px rgba(0,0,0,.35); --shadow-card:0 1px 2px rgba(0,0,0,.25) }
+  :root:not([data-theme="light"]){ --sit-sem:#e66767; --sit-analise:#3987e5; --sit-encaminhada:#c98500; --sit-respondeu:#9085e9; --sit-cliente:#199e70; --viz-s1:#3987e5; --viz-s2:#d95926; --viz-grid:#2c2c2a; --viz-axis:#383835; --viz-muted:#9a9890; --shadow-1:0 1px 2px rgba(0,0,0,.3), 0 6px 18px rgba(0,0,0,.35); --shadow-card:0 1px 2px rgba(0,0,0,.25) }
 }
-:root[data-theme="dark"]{ --viz-s1:#3987e5; --viz-s2:#d95926; --viz-grid:#2c2c2a; --viz-axis:#383835; --viz-muted:#9a9890; --shadow-1:0 1px 2px rgba(0,0,0,.3), 0 6px 18px rgba(0,0,0,.35); --shadow-card:0 1px 2px rgba(0,0,0,.25) }
+:root[data-theme="dark"]{ --sit-sem:#e66767; --sit-analise:#3987e5; --sit-encaminhada:#c98500; --sit-respondeu:#9085e9; --sit-cliente:#199e70; --viz-s1:#3987e5; --viz-s2:#d95926; --viz-grid:#2c2c2a; --viz-axis:#383835; --viz-muted:#9a9890; --shadow-1:0 1px 2px rgba(0,0,0,.3), 0 6px 18px rgba(0,0,0,.35); --shadow-card:0 1px 2px rgba(0,0,0,.25) }
 
 html.app-html, .app-body{height:100%}
 .app-body{overflow:hidden; font-size:13.5px}
@@ -315,7 +317,7 @@ a{color:var(--blue-deep)}
 .ev .tx b{font-weight:600; display:block}
 .ev .tx small{color:var(--ink-3); font-size:12px}
 .ev.novo{background:var(--soon-bg); box-shadow:inset 3px 0 0 var(--blue-deep)}
-.ev-respondeu .ic{color:var(--blue-deep)} .ev-prescreve .ic,.ev-atrasou .ic{color:var(--late)} .ev-lembrete .ic{color:var(--today)} .ev-nova .ic{color:var(--ok)}
+.ev-respondeu .ic{color:var(--blue-deep)} .ev-legal .ic,.ev-urgente .ic{color:var(--late)} .ev-lembrete .ic{color:var(--today)} .ev-nova .ic{color:var(--ok)}
 
 /* ============ janelas de diálogo (detalhe da solicitação, lembrete) ============ */
 .fundo{position:fixed; inset:0; z-index:50; background:rgba(10,15,20,.55); backdrop-filter:blur(2px); animation:entra .15s ease-out}
@@ -1138,11 +1140,11 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .fila-cab h3 .linkish:hover{text-decoration:underline}
 .fila-cab .count{font-size:12px; color:var(--ink-3)}
 /* grupos por urgência na ordem de prioridade */
-.emp-cab.grp-atraso b{color:var(--late)}
-.emp-cab.grp-prescreve b{color:var(--late)}
-.emp-cab.grp-hoje b{color:var(--today)}
-.emp-cab.grp-respondeu b{color:var(--blue-deep)}
-.emp-cab.grp-emdia b, .emp-cab.grp-cli b{color:var(--ink-2)}
+.emp-cab.grp-legal b{color:var(--late)}
+.emp-cab.grp-sem b{color:var(--sit-sem)}
+.emp-cab.grp-analise b{color:var(--sit-analise)}
+.emp-cab.grp-respondeu b{color:var(--sit-respondeu)}
+.emp-cab.grp-cliente b, .emp-cab.grp-resolvida b{color:var(--ink-2)}
 .fila-cab h3{flex:none}
 
 /* cartão de solicitação: um motivo em texto (sem caixa) e nada estourando a borda */
@@ -1382,3 +1384,23 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .cmp .linkish:hover{color:var(--ink)}
 .cmp .linkish:focus-visible{outline:2px solid var(--blue-mid); outline-offset:2px; border-radius:2px}
 .cmp .cmp-arq .linkish{font-size:14px; line-height:1; text-decoration:none; color:var(--ink-3)}
+
+/* ---------- situação em cores (Solicitações 0.29.0) ---------- */
+.g-sem{--sit:var(--sit-sem)} .g-analise{--sit:var(--sit-analise)} .g-encaminhada{--sit:var(--sit-encaminhada)} .g-respondeu{--sit:var(--sit-respondeu)} .g-cliente{--sit:var(--sit-cliente)} .g-desconhecida{--sit:var(--ink-3)}
+.pill-sit{position:relative; padding-left:19px; background:color-mix(in srgb, var(--sit) 13%, var(--surface)); color:var(--ink); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--sit) 40%, transparent)}
+.pill-sit::before{content:""; position:absolute; left:7px; top:50%; width:7px; height:7px; margin-top:-3.5px; border-radius:50%; background:var(--sit)}
+.sits{display:flex; flex-wrap:wrap; gap:6px; margin:0 0 12px}
+.sit-c{display:inline-flex; align-items:center; gap:8px; padding:5px 11px 5px 9px; border:1px solid var(--rule); border-radius:var(--r); background:var(--surface); color:var(--ink-2); font:600 12.5px "IBM Plex Sans",sans-serif; cursor:pointer; transition:border-color .15s, background .15s}
+.sit-c i{width:8px; height:8px; border-radius:50%; background:var(--sit)}
+.sit-c b{font:700 13px "Archivo",sans-serif; color:var(--ink); font-variant-numeric:tabular-nums}
+.sit-c:hover{border-color:var(--rule-strong)}
+.sit-c.on{border-color:var(--sit); background:color-mix(in srgb, var(--sit) 10%, var(--surface)); color:var(--ink)}
+.sit-c.zero{opacity:.5}
+.sit-c:focus-visible{outline:2px solid var(--blue-mid); outline-offset:2px}
+.nota-res{margin-top:0}
+/* trilho: bolinhas sempre vermelhas e o resumo ao passar o mouse */
+.ti-ic .n, .ti-ic .n.late{background:#C2000C}
+.ti-tx{display:flex; flex-direction:column; gap:2px; align-items:flex-start}
+.ti-tx b{font-weight:600}
+.ti-res{font-size:11.5px; font-weight:500; color:#C9D3DA; white-space:normal; max-width:240px}
+.ti-res[hidden]{display:none}

@@ -117,12 +117,24 @@ function aoVivo() {
   el.classList.add(velha || !(seg > 0) ? 'parado' : 'ok');
   tx.textContent = (seg > 0 && !velha ? 'Ao vivo · ' : 'Atualizado ') + fmtHoraS(ver);
 }
+// Bolinhas vermelhas do trilho e o resumo que aparece ao passar o mouse (o resumo explica o número)
+function bolinha(id, n, partes) {
+  const b = $('#n-' + id); b.textContent = n || '';
+  const r = $('#res-' + id); r.textContent = partes.filter(Boolean).join(' · ');
+  r.hidden = !r.textContent;
+}
 function contadores() {
-  const m = minhas().filter(i => i.lado === 'esc');
-  const nf = $('#n-fila'); nf.textContent = m.length || ''; nf.classList.toggle('late', m.some(i => i.nivel === 2));
-  const late = itens().filter(i => i.nivel === 2).length;
-  const ne = $('#n-equipe'); ne.textContent = late || ''; ne.classList.toggle('late', !!late);
-  const nl = lembretes.contarPendentes(); const el = $('#n-lembretes'); el.textContent = nl || ''; el.classList.toggle('late', nl > 0);
+  const todas = itens(), m = minhas();
+  const legais = m.filter(i => OC.motivoDe(i) === 'legal').length, sug = inicio.contagemSugestoes();
+  bolinha('hoje', legais + sug, [legais ? legais + (legais === 1 ? ' com prazo legal' : ' com prazo legal') : '', sug ? sug + (sug === 1 ? ' sugestão de ação' : ' sugestões de ação') : '']);
+  const sem = m.filter(i => i.lado === 'esc' && OC.grupoSituacao(i).k === 'sem').length, resp = m.filter(OC.clienteRespondeu).length;
+  bolinha('fila', sem + resp, [sem ? sem + ' sem análise' : '', resp ? resp + ' cliente respondeu' : '']);
+  const nl = lembretes.contarPendentes();
+  bolinha('lembretes', nl, [nl ? nl + (nl === 1 ? ' lembrete para hoje ou atrasado' : ' lembretes para hoje ou atrasados') : '']);
+  const g3 = todas.filter(i => i.lado === 'esc' && i.grav === 3).length;
+  bolinha('equipe', g3, [g3 ? g3 + (g3 === 1 ? ' crítica (G3)' : ' críticas (G3)') : '']);
+  const semResp = todas.filter(i => !i.resp).length;
+  bolinha('distribuir', semResp, [semResp ? semResp + ' sem responsável' : '']);
   const vistos = estado.alertasVistosEm ? new Date(estado.alertasVistosEm) : new Date(0);
   const novos = (estado.eventos || []).filter(e => new Date(e.em) > vistos && (e.mine || e.tipo === 'semresp')).length;
   $('#sino-cont').textContent = novos ? (novos > 99 ? '99+' : novos) : '';
@@ -132,7 +144,7 @@ function contadores() {
 }
 
 /* ---------- sino ---------- */
-const ICONE = { nova: 'i-plus', respondeu: 'i-chat', prescreve: 'i-alert', atrasou: 'i-alert', semresp: 'i-users', lembrete: 'i-clock' };
+const ICONE = { nova: 'i-plus', respondeu: 'i-chat', legal: 'i-calendar', urgente: 'i-alert', semresp: 'i-users', lembrete: 'i-clock' };
 function abrirSino(abrir) {
   const p = $('#sino-painel'), b = $('#btn-sino');
   const vai = abrir == null ? p.hidden : abrir;
@@ -213,7 +225,7 @@ function marcar(n) {
 function escolher(n) { const o = opcoes[n]; if (!o) return; fecharBusca(); o.ir(); }
 
 /* ---------- tema ---------- */
-const temaAtual = () => document.documentElement.getAttribute('data-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+const temaAtual = () => document.documentElement.getAttribute('data-theme') || 'light';     // padrão claro; escuro só por escolha
 const iconeTema = () => { const esc_ = temaAtual() === 'dark'; $('#btn-tema use').setAttribute('href', esc_ ? '#i-sun' : '#i-moon'); $('#tema-tx').textContent = esc_ ? 'Tema claro' : 'Tema escuro'; };
 
 async function atualizar() {

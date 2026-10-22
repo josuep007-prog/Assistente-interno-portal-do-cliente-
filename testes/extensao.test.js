@@ -94,7 +94,8 @@ test('gravidade: 0 em dia, 1 atenção, 2 fora do prazo, 3 crítica', () => {
   assert.equal(OC.gravidade({ lado: 'esc' }, t, s, { nivel: 2, parado: 16, uteisAberto: 4 }), 2);
   assert.equal(OC.gravidade({ lado: 'esc' }, t, s, { nivel: 2, parado: 30, uteisAberto: 4 }), 3);
   assert.equal(OC.gravidade({ lado: 'esc' }, t, s, { nivel: 2, parado: 5, uteisAberto: 6 }), 3);
-  assert.equal(OC.gravidade({ lado: 'cli' }, t, s, { nivel: 2, parado: 26, uteisAberto: 20, prescreveEm: 4 }), 3);
+  assert.equal(OC.gravidade({ lado: 'cli' }, t, s, { nivel: 2, parado: 26, uteisAberto: 20, prescreveEm: 4 }), 2, 'prescrição é só informação: não pesa na gravidade');
+  assert.equal(OC.gravidade({ lado: 'cli' }, t, s, { nivel: 2, parado: 30, uteisAberto: 20 }), 3);
 });
 
 /* ---------- primeiro trâmite ---------- */
@@ -169,11 +170,11 @@ test('trâmites: a coleta lê cada lista no seu caminho e marca por lista o que 
 });
 
 /* ---------- por que a gravidade (justificativa mostrada nas etiquetas) ---------- */
-test('gravidade: G3 diz o porquê com os números (prescrição, parada, prazo de simples e de cálculo)', () => {
-  const p = OC.porqueGravidade({ type: 'avisoRescisao', grav: 3, nivel: 2, lado: 'cli', prescreveEm: 3, parado: 27, motivos: [{ n: 2, m: 'Prescreve em 3 dia(s)' }] });
+test('gravidade: G3 diz o porquê com os números (parada, prazo de simples e de cálculo)', () => {
+  const p = OC.porqueGravidade({ type: 'avisoRescisao', grav: 3, nivel: 2, lado: 'cli', parado: 31, motivos: [{ n: 2, m: 'Cliente parado há 31 dias' }] });
   assert.equal(p.rot, 'Crítica (G3)');
-  assert.equal(p.texto, 'Crítica (G3) porque prescreve em 3 dia(s) (crítica a partir de 5).');
-  assert.equal(p.curto, 'G3: prescreve em 3 d');
+  assert.equal(p.texto, 'Crítica (G3) porque parada há 31 dias, o dobro do limite de 15.');
+  assert.equal(p.curto, 'G3: parada 2× o limite');
   const q = OC.porqueGravidade({ type: 'calcFerias', grav: 3, nivel: 2, lado: 'esc', parado: 31, uteisAberto: 12, motivos: [{ n: 2, m: 'Parada há 31 dias' }] });
   assert.equal(q.texto, 'Crítica (G3) porque parada há 31 dias, o dobro do limite de 15; aberta há 12 d.u., o dobro do prazo de 5 d.u. (cálculo).');
   assert.equal(q.curto, 'G3: parada 2× o limite · aberta 2× o prazo');
@@ -819,11 +820,11 @@ const itemT = (k, extra) => Object.assign({ k, type: 'geral', typeLabel: 'Geral'
 
 test('porCliente: soma por empresa, média de dias com o cliente e ordena pelo que está pior', () => {
   const r = OC.porCliente([
-    itemT('geral:1', { lado: 'cli', parado: 10 }), itemT('geral:2', { lado: 'cli', parado: 20, prescreveEm: 3, nivel: 2 }), itemT('geral:3', { abaProvavel: { label: 'x' } }),
+    itemT('geral:1', { lado: 'cli', parado: 10 }), itemT('geral:2', { lado: 'cli', parado: 20, nivel: 2 }), itemT('geral:3', { abaProvavel: { label: 'x' } }),
     itemT('geral:4', { cliente: 'BETA SA', apelido: 'BETA' })
   ]);
   const acme = r.find(c => c.cliente === 'ACME LTDA');
-  assert.deepEqual([acme.total, acme.esc, acme.cli, acme.atraso, acme.prescreve, acme.abaErrada, acme.diasCliMedia], [3, 1, 2, 1, 1, 1, 15]);
+  assert.deepEqual([acme.total, acme.esc, acme.cli, acme.atraso, acme.abaErrada, acme.diasCliMedia], [3, 1, 2, 1, 1, 15]);
   assert.equal(r[0].cliente, 'ACME LTDA', 'quem tem atraso vem primeiro');
   assert.equal(r.find(c => c.cliente === 'BETA SA').diasCliMedia, null);
 });
@@ -839,13 +840,18 @@ test('série do dia: entradas e saídas por diferença entre leituras, pendentes
   assert.equal(Object.keys(OC.atualizarSerie(velha, a, b, agora)).length, 60);
 });
 
-test('eventos: nova para mim, sem responsável, cliente respondeu, prescreve e ficou fora do prazo; só campos mínimos', () => {
-  const antes = { items: [itemT('geral:1', { lado: 'cli' }), itemT('geral:2', { lado: 'cli', prescreveEm: 9 }), itemT('geral:3', { nivel: 1 })] };
-  const depois = { items: [itemT('geral:1', { lado: 'esc' }), itemT('geral:2', { lado: 'cli', prescreveEm: 4 }), itemT('geral:3', { nivel: 2 }), itemT('geral:9'), itemT('geral:8', { mine: false, resp: '' }), itemT('geral:7', { mine: false, resp: 'Bia' })] };
+test('eventos: nova para mim, sem responsável, cliente respondeu, prazo legal e urgente; só campos mínimos', () => {
+  const antes = { items: [itemT('geral:1', { lado: 'cli' }), itemT('geral:2', { lado: 'cli', prescreveEm: 9 }), itemT('geral:3', { nivel: 2, grav: 2 }), itemT('avisoFerias:5', { type: 'avisoFerias', prazoLegal: { alvo: '2026-10-20', faltam: 4 } }), itemT('avisoFerias:6', { type: 'avisoFerias', prazoLegal: { alvo: '2026-10-20', faltam: 2 }, mine: false, resp: 'Bia' })] };
+  const depois = { items: [itemT('geral:1', { lado: 'esc' }), itemT('geral:2', { lado: 'cli', prescreveEm: 1 }), itemT('geral:3', { nivel: 2, grav: 3 }), itemT('avisoFerias:5', { type: 'avisoFerias', prazoLegal: { alvo: '2026-10-16', faltam: 2 } }), itemT('avisoFerias:6', { type: 'avisoFerias', prazoLegal: { alvo: '2026-10-16', faltam: 1 }, mine: false, resp: 'Bia' }), itemT('geral:9'), itemT('geral:8', { mine: false, resp: '' }), itemT('geral:7', { mine: false, resp: 'Bia' })] };
   const ev = OC.eventos(antes, depois, {}, new Date('2026-10-14T10:00:00'));
-  assert.deepEqual(plano(ev.map(e => e.tipo + ':' + e.num).sort()), ['atrasou:3', 'nova:9', 'prescreve:2', 'respondeu:1', 'semresp:8'].sort());
+  assert.deepEqual(plano(ev.map(e => e.tipo + ':' + e.num).sort()), ['legal:5', 'nova:9', 'respondeu:1', 'semresp:8', 'urgente:3'].sort(), 'prescrição e prazo interno não notificam; legal e urgente só das minhas');
   assert.deepEqual(plano(Object.keys(ev[0]).sort()), ['cliente', 'em', 'id', 'k', 'mine', 'num', 'tipo', 'titulo', 'type', 'typeLabel']);
+  assert.equal(ev.find(e => e.tipo === 'urgente').titulo, 'Solicitação urgente', 'sem citar prazo interno');
+  assert.match(ev.find(e => e.tipo === 'legal').titulo, /^Prazo legal: pagamento em 2 d\.u\.$/);
+  assert.deepEqual(plano(OC.eventos(antes, depois, { avisoLegalDias: 0 }, new Date()).map(e => e.tipo)).includes('legal'), false, 'avisoLegalDias 0 desliga');
   assert.deepEqual(plano(OC.eventos(null, depois, {})), [], 'primeira leitura vira base');
+  const g = OC.eventos(antes, depois, { modoGestor: true }, new Date()).map(e => e.tipo + ':' + e.num);
+  assert.ok(g.includes('semresp:8'));
 });
 
 test('lembretes: criar valida texto e data; adiar 1 h ou amanhã 9h (pulando fim de semana); situação', () => {
@@ -881,24 +887,34 @@ test('lembretes que repetem: feito pula para a próxima vez que ainda não passo
   assert.equal(OC.concluirLembrete({ id: 'antigo', texto: 'sem rep', quando: '2026-10-16T09:00:00' }, agora).feito, true, 'lembrete de versão anterior');
 });
 
-test('Hoje: motivo de cada pendência e lista única de prioridades na ordem certa', () => {
+test('Hoje: motivo de cada pendência, grupos de situação e a ordem da fila (prazo legal, sem análise, em análise, respondeu, cliente)', () => {
   const it = [
-    { k: 'emdia-esc', lado: 'esc', nivel: 0, parado: 3, status: 'Em análise' },
-    { k: 'resp', lado: 'esc', nivel: 0, parado: 1, status: 'Aguardando resposta' },
-    { k: 'hoje', lado: 'esc', nivel: 1, parado: 2, status: 'Em análise' },
-    { k: 'presc-4', lado: 'cli', nivel: 2, prescreveEm: 4, parado: 26, status: 'Respondido' },
-    { k: 'presc-1', lado: 'cli', nivel: 2, prescreveEm: 1, parado: 29, status: 'Respondido' },
-    { k: 'atraso-g2', lado: 'esc', nivel: 2, grav: 2, parado: 20, status: 'Em análise' },
-    { k: 'atraso-g3', lado: 'esc', nivel: 2, grav: 3, parado: 5, status: 'Aguardando resposta' },
-    { k: 'emdia-cli', lado: 'cli', nivel: 0, parado: 2, status: 'Respondido' }
+    { k: 'cli', lado: 'cli', parado: 2, status: 'Respondido', code: 4, type: 'geral' },
+    { k: 'analise-g3', lado: 'esc', grav: 3, parado: 5, status: 'Em análise', code: 2, type: 'geral' },
+    { k: 'analise-g1', lado: 'esc', grav: 1, parado: 9, status: 'Em análise', code: 2, type: 'geral' },
+    { k: 'resp', lado: 'esc', parado: 1, status: 'Aguardando resposta', code: 3, type: 'geral' },
+    { k: 'sem-nova', lado: 'esc', parado: 0, status: 'Sem análise', code: 1, type: 'geral', created: '2026-10-14T10:00:00' },
+    { k: 'sem-velha', lado: 'esc', parado: 3, status: 'Sem análise', code: 1, type: 'geral', created: '2026-10-10T10:00:00' },
+    { k: 'legal-2', lado: 'esc', parado: 1, status: 'Sem análise', code: 1, type: 'calcFerias', prazoLegal: { alvo: '2026-10-16', faltam: 1 } },
+    { k: 'legal-0', lado: 'cli', parado: 1, status: 'Respondido', code: 4, type: 'calcFerias', prazoLegal: { alvo: '2026-10-15', faltam: 0 } },
+    { k: 'legal-longe', lado: 'esc', parado: 1, status: 'Em análise', code: 2, type: 'calcFerias', prazoLegal: { alvo: '2026-10-22', faltam: 5 } },
+    { k: 'adm', lado: 'esc', parado: 1, status: 'Enviado para o escritório', code: 2, type: 'cadEmpregado', admissaoAlerta: { data: '2026-10-16', faltam: 1, retro: false } }
   ];
-  assert.deepEqual(plano(OC.prioridades(it).map(p => p.item.k + ':' + p.motivo)), [
-    'atraso-g3:atraso', 'atraso-g2:atraso', 'presc-1:prescreve', 'presc-4:prescreve', 'hoje:hoje', 'resp:respondeu', 'emdia-esc:emdia'
-  ], 'fora do prazo vence "cliente respondeu" no mesmo item; em dia na vez do cliente não entra');
-  assert.deepEqual(plano(OC.contarMotivos(it)), { atraso: 2, prescreve: 2, hoje: 1, respondeu: 1, emdia: 2 }, 'o anel conta todas, inclusive as em dia do cliente');
+  assert.deepEqual(plano(OC.ordemFila(it).map(p => p.item.k + ':' + p.motivo)), [
+    'legal-0:legal', 'legal-2:legal', 'adm:legal', 'sem-velha:sem', 'sem-nova:sem', 'analise-g3:analise', 'analise-g1:analise', 'legal-longe:analise', 'resp:respondeu', 'cli:cliente'
+  ], 'prazo legal/admissão primeiro (o que vence antes na frente), sem análise (mais antiga primeiro), em análise (gravidade por trás), cliente respondeu, com o cliente');
+  assert.deepEqual(plano(OC.prioridades(it).map(p => p.item.k)), ['legal-0', 'legal-2', 'adm', 'sem-velha', 'sem-nova', 'analise-g3', 'analise-g1', 'legal-longe', 'resp'], 'o que está com o cliente não entra nos próximos passos, salvo prazo legal');
+  assert.deepEqual(plano(OC.contarMotivos(it)), { legal: 3, sem: 2, analise: 3, respondeu: 1, cliente: 1 });
   assert.equal(Object.values(OC.contarMotivos(it)).reduce((a, b) => a + b, 0), it.length);
-  assert.equal(OC.motivoDe({ lado: 'cli', nivel: 1 }), 'hoje', 'cliente sem retorno (atenção) entra como "vence hoje / atenção"');
-  assert.deepEqual(plano(OC.MOTIVOS.map(m => m.k)), ['atraso', 'prescreve', 'hoje', 'respondeu', 'emdia']);
+  assert.deepEqual(plano(OC.MOTIVOS.map(m => m.k)), ['legal', 'sem', 'analise', 'respondeu', 'cliente']);
+  // grupos de situação das 3 famílias
+  const g = (type, code, extra) => OC.grupoSituacao(Object.assign({ type, code, lado: 'esc' }, extra)).k;
+  assert.deepEqual(plano([[1, 'sem'], [2, 'analise'], [8, 'analise'], [7, 'encaminhada'], [9, 'encaminhada'], [3, 'respondeu'], [4, 'cliente']].map(([c, k]) => g('geral', c) === k)), [true, true, true, true, true, true, true]);
+  assert.deepEqual(plano([[1, 'sem'], [2, 'encaminhada'], [7, 'encaminhada'], [4, 'respondeu'], [3, 'cliente'], [5, 'cliente']].map(([c, k]) => g('cadEmpregado', c) === k)), [true, true, true, true, true, true]);
+  assert.deepEqual(plano([[0, 'sem'], [1, 'sem'], [2, 'analise'], [7, 'analise'], [9, 'encaminhada'], [11, 'encaminhada'], [5, 'respondeu'], [12, 'respondeu'], [3, 'cliente'], [4, 'cliente'], [6, 'cliente']].map(([c, k]) => g('rubricas', c) === k)), new Array(11).fill(true));
+  assert.equal(g('geral', 77, { desconhecido: true }), 'desconhecida');
+  assert.equal(OC.grupoSituacao({ type: 'geral', status: 'Aguardando resposta', lado: 'esc' }).k, 'respondeu', 'sem código: pelo texto');
+  assert.deepEqual(plano(OC.GRUPOS_SIT.map(x => x.rot)), ['Sem análise', 'Em análise', 'Encaminhada', 'Cliente respondeu', 'Com o cliente', 'Desconhecida']);
 });
 
 test('painel do Hoje: tendência (nova, piorou, melhorou) e a marca dura 2 horas', () => {
@@ -1112,14 +1128,15 @@ test('background: cada leitura grava eventos (máx. 300) e a série do dia, sem 
   assert.ok(!tudo.includes('123.456.789'), 'descrição com CPF não é guardada');
 });
 
-test('Hoje: próximo passo de cada motivo e anel do prazo (escritório × cliente, teto em 100%)', () => {
-  assert.equal(OC.acaoDe({ lado: 'esc', nivel: 2, parado: 31 }), 'Fora do prazo · parada há 31 dias');
-  assert.equal(OC.acaoDe({ lado: 'cli', nivel: 2, prescreveEm: 4, parado: 26 }), 'Cobrar o cliente · prescreve em 4 dias');
-  assert.equal(OC.acaoDe({ lado: 'esc', nivel: 1, parado: 2 }), 'Concluir hoje · o prazo vence hoje');
-  assert.equal(OC.acaoDe({ lado: 'cli', nivel: 1, parado: 8 }), 'Cobrar o cliente · sem retorno');
-  assert.equal(OC.acaoDe({ lado: 'esc', nivel: 0, status: 'Aguardando resposta', parado: 1 }), 'Responder o cliente');
-  assert.equal(OC.acaoDe({ lado: 'esc', nivel: 0, parado: 1 }), 'Em dia · parada há 1 dia');
-  assert.equal(OC.acaoDe({ lado: 'cli', nivel: 0, parado: 3 }), 'Aguardando o cliente · 3 dias');
+test('Hoje: próximo passo de cada motivo (sem citar prazo interno) e anel do prazo (escritório × cliente, teto em 100%)', () => {
+  assert.equal(OC.acaoDe({ type: 'calcFerias', lado: 'esc', prazoLegal: { alvo: '2026-10-16', faltam: 1 } }), 'Pagamento até 16/10 (prazo legal)');
+  assert.equal(OC.acaoDe({ type: 'calcFerias', lado: 'esc', prazoLegal: { alvo: '2026-10-13', faltam: -1 } }), 'Pagamento venceu em 13/10 (prazo legal)');
+  assert.equal(OC.acaoDe({ type: 'cadEmpregado', lado: 'esc', code: 2, admissaoAlerta: { data: '2026-10-16', faltam: 1, retro: false } }), 'Admissão em 16/10 · eSocial');
+  assert.equal(OC.acaoDe({ type: 'geral', lado: 'esc', code: 1, status: 'Sem análise', uteisAberto: 3 }), 'Fazer o 1º trâmite · aberta há 3 d.u.');
+  assert.equal(OC.acaoDe({ type: 'geral', lado: 'esc', code: 2, status: 'Em análise', parado: 4 }), 'Dar andamento · parada há 4 dias');
+  assert.equal(OC.acaoDe({ type: 'geral', lado: 'esc', code: 3, status: 'Aguardando resposta', parado: 1 }), 'Responder o cliente');
+  assert.equal(OC.acaoDe({ type: 'geral', lado: 'cli', code: 4, status: 'Respondido', parado: 3 }), 'Aguardando o cliente · 3 dias');
+  for (const i of [{ type: 'geral', lado: 'esc', code: 2, status: 'Em análise', parado: 40, nivel: 2, grav: 3 }, { type: 'geral', lado: 'cli', code: 4, status: 'Respondido', prescreveEm: 2, parado: 28 }]) assert.doesNotMatch(OC.acaoDe(i), /prazo|prescre|fora/i, 'nada de prazo interno nem prescrição');
   assert.deepEqual(plano(OC.progressoPrazo({ lado: 'esc', parado: 6 }, { parada: 15 })), { pct: 40, dias: 6, limite: 15 });
   assert.deepEqual(plano(OC.progressoPrazo({ lado: 'cli', parado: 15 }, { prescricaoDias: 30 })), { pct: 50, dias: 15, limite: 30 });
   assert.equal(OC.progressoPrazo({ lado: 'esc', parado: 40 }, {}).pct, 100, 'nunca passa de 100%');
@@ -1723,7 +1740,7 @@ test('avaliação da equipe: entregas no período, % no prazo, carteira em dia, 
   assert.deepEqual(plano([ana.anterior.concluidas, ana.variacao.concluidas]), [1, 1]);
   assert.deepEqual(plano(ana.atencao.map(i => i.k)), ['p2'], 'crítica e parada vão para os pontos de atenção');
   assert.deepEqual(plano(ana.foraDoPrazo.map(x => [x.tempo, x.prazo, x.estimado])), [[6, 5, true]]);
-  assert.deepEqual([bia.concluidas, bia.prescritas, bia.prescSemCobranca, bia.brutos.emDia, bia.brutos.agilidade], [2, 1, 1, null, null]);
+  assert.deepEqual([bia.concluidas, bia.prescritas, bia.brutos.emDia, bia.brutos.agilidade], [2, 1, null, null]);
   assert.deepEqual([bia.componentes.emDia, bia.componentes.agilidade], [r.equipe.brutos.emDia, r.equipe.brutos.agilidade], 'sem dado: recebe o valor da equipe (não some da conta)');
   assert.deepEqual([ana.poucosDados, ana.pos, bia.poucosDados, bia.pos], [true, null, true, null], 'menos de 5 entregas: sem posição no ranking');
   assert.equal(r.analistas.some(a => a.resp === '(sem responsável)'), false);
@@ -1928,4 +1945,30 @@ test('tramitação: modelo pessoal guardado sem dado do cliente; regras trazem m
   assert.equal(s.modelosTramite.length, 2);
   assert.equal(s.desfazerSeg, 8);
   assert.equal(OC.combinarSettings(null, {}).desfazerSeg, 5);
+});
+
+test('rodada 1: prescrição é só informação, motivos legais marcados, caso "falta" desligado por padrão e regras novas', () => {
+  const agora = new Date('2026-10-14T10:00:00');
+  // vez do cliente com 28 dias parada: antes era "prescreve" (G3); agora só informa o prazo do Onvio
+  const cli = OC.evaluate({ type: 'calcFerias', lado: 'cli', status: 'Respondido', created: '2026-09-10T10:00:00', last: '2026-09-16T10:00:00' }, {}, agora);
+  assert.equal(cli.prescreveEm, 2, 'continua calculada, para informação');
+  assert.equal(cli.motivos.some(m => /Prescreve/i.test(m.m)), false, 'não gera motivo');
+  assert.ok(cli.grav < 3, 'e não deixa a solicitação crítica');
+  // admissão e pagamento são motivos legais; o prazo interno não
+  const adm = OC.evaluate({ type: 'cadEmpregado', code: 2, lado: 'esc', status: 'Enviado para o escritório', created: '2026-10-13T10:00:00', last: '2026-10-13T10:00:00', admissao: '2026-10-15' }, {}, agora);
+  assert.ok(adm.motivos.length && adm.motivos.every(m => m.legal), 'admissão: eSocial é prazo legal');
+  const interno = OC.evaluate({ type: 'geral', code: 2, lado: 'esc', status: 'Em análise', created: '2026-10-01T10:00:00', last: '2026-10-02T10:00:00' }, {}, agora);
+  assert.ok(interno.motivos.length && interno.motivos.every(m => !m.legal), 'prazo interno não é legal');
+  // caso "falta" desligado por padrão; as regras do escritório podem religar
+  const abertura = [{ k: 'geral:1', id: 'g1', type: 'geral', typeLabel: 'Geral', num: 1, lado: 'esc', last: '2026-10-10T10:00:00', parado: 1, cliente: 'X', apelido: 'X', resp: 'Ana' }];
+  const analises = { 'geral:1': { l: '2026-10-10T10:00:00', tipo: 'falta', trecho: '' } };
+  assert.equal(OC.casosSugeridos(abertura, analises, OC.DEFAULTS).length, 0, 'sugestão "falta informação" vem desligada');
+  assert.equal(OC.casosSugeridos(abertura, analises, Object.assign({}, OC.DEFAULTS, { sugestoes: { falta: true } })).length, 1);
+  const r = OC.normalizarRegras({ sugestoes: { falta: true, fora: false, inventado: true }, prazos: { avisoLegalDias: 3 } });
+  assert.deepEqual(plano(r.sugestoes), { falta: true, fora: false });
+  assert.equal(r.config.avisoLegalDias, 3);
+  const s = OC.combinarSettings({ regras: r }, {});
+  assert.deepEqual(plano(s.sugestoes), { falta: true, fora: false });
+  assert.equal(OC.combinarSettings(null, {}).avisoLegalDias, 2);
+  assert.equal(OC.normalizarRegras({ prazos: { avisoLegalDias: 99 } }), null, 'fora do limite não vale');
 });

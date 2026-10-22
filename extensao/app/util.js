@@ -33,38 +33,38 @@ export function textoPuro(html) {
   return (doc.body.textContent || '').replace(/\n{3,}/g, '\n\n').trim();
 }
 
-/* ---------- peças de interface ---------- */
+/* ---------- peças de interface ----------
+ * O analista vê só prazos legais (pagamento de férias e rescisão, eSocial da admissão) e a idade da solicitação.
+ * O prazo interno e a gravidade ordenam por trás (OC.ordemFila) e só aparecem na Equipe (área do gestor). */
 export function pillSituacao(i) {
-  const cls = i.lado === 'esc' ? 'pill-soon' : i.lado === 'cli' ? '' : 'pill-muted';
-  return '<span class="pill ' + cls + '">' + esc(i.status) + '</span>';
+  const g = OC.grupoSituacao(i);
+  return '<span class="pill pill-sit g-' + g.k + '" title="' + esc(g.rot) + '">' + esc(i.status) + '</span>';
 }
 export const ladoTexto = i => (i.lado === 'esc' ? 'escritório' : i.lado === 'cli' ? 'cliente' : '—');
-// Justificativa da gravidade (OC.porqueGravidade) com os limites em vigor.
+// Justificativa da gravidade (OC.porqueGravidade) com os limites em vigor: só para a Equipe.
 export const porqueGrav = i => OC.porqueGravidade(i, estado.settings);
+// 0 sem prazo legal, 1 perto, 2 vencendo: é o que pinta a borda e o texto do prazo
+export const nivelLegal = i => Math.max(0, ...(i.motivos || []).filter(m => m.legal).map(m => m.n));
+const legais = i => (i.motivos || []).filter(m => m.legal);
 export function motivosHtml(i) {
-  const pg = i.grav === 3 ? porqueGrav(i) : null;
-  return (pg ? '<span class="pill pill-late" title="' + esc(pg.texto) + '">' + esc(pg.rot) + '</span>' : '') +
-    (i.motivos || []).map(m => '<span class="pill ' + (m.n === 2 ? 'pill-late' : 'pill-today') + (m.o === 'cli' ? ' pill-cli" title="Atraso de origem do cliente (o pedido chegou tarde ou o prazo inclui a espera pelo cliente): continua pedindo ação, mas não pesa na avaliação do analista' : '') + '">' + esc(m.m) + (m.o === 'cli' ? ' · origem do cliente' : '') + '</span>').join('') +
+  return legais(i).map(m => '<span class="pill ' + (m.n === 2 ? 'pill-late' : 'pill-today') + (m.o === 'cli' ? ' pill-cli" title="O pedido chegou em cima do prazo (origem do cliente)' : '') + '">' + esc(m.m) + '</span>').join('') +
     (i.abaProvavel ? '<span class="pill pill-muted" title="O assunto lembra uma solicitação específica (palavra: ' + esc(i.abaProvavel.palavra) + ')">Pode ser: ' + esc(i.abaProvavel.label) + '</span>' : '');
 }
 const nomeCli = i => i.apelido || i.cliente || 'Cliente não informado';
-// Prazo em uma linha: o motivo mais grave, ou "em dia".
+// Idade da solicitação, em cinza e sem juízo: "aberta há N d.u." (ou parada, quando já mexeram)
+const idadeTxt = i => (i.uteisAberto != null ? 'aberta há ' + i.uteisAberto + ' d.u.' : i.parado != null ? 'parada há ' + i.parado + (i.parado === 1 ? ' dia' : ' dias') : '');
+// Prazo em uma linha: o prazo legal mais urgente, ou a idade
 export function prazoHtml(i) {
-  const m = (i.motivos || [])[0];
-  if (!m) return '<span class="fraco">em dia</span>';
-  const pg = porqueGrav(i);
-  return '<span class="c-prazo ' + (m.n === 2 ? 'late' : 'today') + '"' + (pg ? ' title="' + esc(pg.texto) + '"' : '') + '>' + esc(m.m) + '</span>' +
-    (i.grav === 3 && pg ? '<span class="c-porque">' + esc(pg.curto) + '</span>' : '');
+  const m = legais(i).sort((a, b) => b.n - a.n)[0];
+  if (!m) return '<span class="fraco">' + esc(idadeTxt(i)) + '</span>';
+  return '<span class="c-prazo ' + (m.n === 2 ? 'late' : 'today') + '">' + esc(m.m) + '</span>';
 }
-// Cartão de solicitação (visão "Cartões" das filas).
-// Cartão de solicitação: um motivo só (o mais grave), em texto e sem caixa; os outros ficam no "+N" (passe o mouse)
+// Cartão de solicitação (visão "Cartões" das filas): o prazo legal, quando há, ou a idade em cinza
 export function cartaoItem(i) {
-  const ms = (i.motivos || []).map((m, n) => [m, n]).sort((a, b) => (b[0].n - a[0].n) || (a[1] - b[1])).map(x => x[0]);
-  const m = ms[0], pg = i.grav === 3 ? porqueGrav(i) : null;
-  const tudo = ms.map(x => x.m + (x.o === 'cli' ? ' (origem do cliente)' : '')).concat(pg ? [pg.texto] : []).join(' · ');
-  const mot = m ? '<div class="sc-mot ' + (m.n === 2 ? 'late' : 'today') + '" title="' + esc(tudo) + '">' + (i.grav === 3 ? '<span class="sc-g3">G3</span>' : '') +
-    '<span class="sc-mot-tx">' + esc(m.m) + (m.o === 'cli' ? ' <small>· origem do cliente</small>' : '') + (ms.length > 1 ? ' <small>+' + (ms.length - 1) + '</small>' : '') + '</span></div>' : '';
-  return '<div class="sc lvl-' + (i.nivel || 0) + '" tabindex="0" data-k="' + esc(i.k) + '">' +
+  const ms = legais(i).sort((a, b) => b.n - a.n);
+  const m = ms[0];
+  const mot = m ? '<div class="sc-mot ' + (m.n === 2 ? 'late' : 'today') + '" title="' + esc(ms.map(x => x.m).join(' · ')) + '"><span class="sc-mot-tx">' + esc(m.m) + (ms.length > 1 ? ' <small>+' + (ms.length - 1) + '</small>' : '') + '</span></div>' : '';
+  return '<div class="sc lvl-' + nivelLegal(i) + '" tabindex="0" data-k="' + esc(i.k) + '">' +
     '<div class="sc-top"><span class="mono">#' + esc(i.num) + '</span><span class="c-tipo">' + tipoIcone(i.type, 'pq') + '<span class="c-tipo-tx">' + esc(i.typeLabel) + '</span></span>' + pillSituacao(i) + '</div>' +
     '<div class="sc-cli" title="' + esc(i.cliente) + '">' + esc(nomeCli(i)) + '</div>' +
     '<div class="sc-sub">' + esc(i.detalhe || '—') + '</div>' +
@@ -107,8 +107,8 @@ export function baixarCsv(nome, cabecalho, linhas) {
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 export function csvItens(nome, lista) {
-  baixarCsv(nome, ['Tipo', 'ID', 'Situação', 'Vez de', 'Cliente', 'Apelido', 'Empregado/Assunto', 'Responsável', 'Aberta em', 'Último trâmite', 'Expectativa', 'Dias parada', 'Prescreve em (dias)', 'Gravidade', '1º trâmite (d.u.)', 'Possível aba certa', 'Motivos'],
-    lista.map(i => [i.typeLabel, i.num, i.status, ladoTexto(i), i.cliente, i.apelido, i.detalhe, i.resp, fmtDataHora(i.created), fmtDataHora(i.last), i.due ? fmtData(i.due) : '', i.parado, i.prescreveEm == null ? '' : i.prescreveEm, i.grav ? 'G' + i.grav : '', i.ptUteis == null ? '' : i.ptUteis, i.abaProvavel ? i.abaProvavel.label : '', (i.motivos || []).map(m => m.m).join(' | ')]));
+  baixarCsv(nome, ['Tipo', 'ID', 'Situação', 'Vez de', 'Cliente', 'Apelido', 'Empregado/Assunto', 'Responsável', 'Aberta em', 'Último trâmite', 'Expectativa', 'Dias parada', '1º trâmite (d.u.)', 'Possível aba certa', 'Prazo legal'],
+    lista.map(i => [i.typeLabel, i.num, i.status, ladoTexto(i), i.cliente, i.apelido, i.detalhe, i.resp, fmtDataHora(i.created), fmtDataHora(i.last), i.due ? fmtData(i.due) : '', i.parado, i.ptUteis == null ? '' : i.ptUteis, i.abaProvavel ? i.abaProvavel.label : '', legais(i).map(m => m.m).join(' | ')]));
 }
 
 // Identidade visual de cada tipo de solicitação: ícone (o que é) e família (cor do acento). Sem emoji.

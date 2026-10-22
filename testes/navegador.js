@@ -84,8 +84,8 @@ await passo('grade Wijmo: marca só as pendentes, na célula Último Trâmite, e
   assert.equal(marcas.length, 2);
   assert.deepEqual(marcas.map(m => m.col), ['300px', '300px']);
   assert.equal(marcas[0].t, '6d parada');
-  assert.equal(marcas[1].t, '26d parada · prescreve em 4d');
-  assert.match(marcas[0].titulo, /Aberta há 6 d\.u\./);
+  assert.equal(marcas[1].t, '26d parada', 'sem prescrição na marca');
+  assert.match(marcas[0].titulo, /Sem prazo legal perto \(Control Onvio\)/, 'o prazo interno não aparece');
   // simula o Wijmo redesenhando a célula ao rolar
   await p.$eval('.wj-cells .wj-cell[style*="left:300px"][style*="top:0px"]', e => { e.textContent = '10/10/2026 09:00'; });
   await p.waitForFunction(() => document.querySelectorAll('.controlonvio-marca').length === 2, null, { timeout: 4000 });
@@ -248,11 +248,12 @@ await passo('aprender: registra método, caminho e formato (sem valores); deslig
 /* ---------- shell: camada em tela cheia por cima do Onvio ---------- */
 const appFrame = p => p.frames().find(f => /\/app\/app\.html$/.test(f.url()));
 const cheia = p => p.evaluate(() => document.documentElement.classList.contains('controlonvio-cheia'));
+const COM_DADOS = { snapshot: { fetchedAt: new Date().toISOString(), items: [] }, status: { estado: 'ok' } };      // a camada só abre sozinha com leitura
 await passo('shell: ao entrar no Onvio o app cobre a tela inteira; "Ver Onvio" esconde e o botão volta; lembra na aba', async () => {
   const p = await pagina(URL_PORTAL, '<!doctype html><body style="height:3000px">Onvio</body>');
   await p.setViewportSize({ width: 1360, height: 800 });
   await p.emulateMedia({ reducedMotion: 'reduce' });                                     // sem transição: o clique no botão não depende do tempo
-  await semear(p);
+  await semear(p, COM_DADOS);
   await p.goto(URL_PORTAL);
   await p.addScriptTag({ content: lerExt('shell.js') });
   await esperar(() => appFrame(p));
@@ -287,12 +288,47 @@ await passo('shell: "Abrir no Onvio" chega com a camada escondida; desligar "abr
     await p.waitForTimeout(500);
     return cheia(p);
   };
-  assert.equal(await caso({ verOnvioAoCarregar: Date.now() }), false);
-  assert.equal(await caso({ settings: { abrirAoEntrar: false } }), false);
-  assert.equal(await caso({ settings: { abrirAoEntrar: false }, abrirPainelAoCarregar: Date.now() }), true);
-  assert.equal(await caso({ verOnvioAoCarregar: Date.now() - 10 * 60000 }), true, 'pedido antigo não vale');
+  assert.equal(await caso(Object.assign({ verOnvioAoCarregar: Date.now() }, COM_DADOS)), false);
+  assert.equal(await caso(Object.assign({ settings: { abrirAoEntrar: false } }, COM_DADOS)), false);
+  assert.equal(await caso(Object.assign({ settings: { abrirAoEntrar: false }, abrirPainelAoCarregar: Date.now() }, COM_DADOS)), true);
+  assert.equal(await caso(Object.assign({ verOnvioAoCarregar: Date.now() - 10 * 60000 }, COM_DADOS)), true, 'pedido antigo não vale');
   assert.equal(await caso({ status: { estado: 'visao_cliente' } }), false, 'acesso de cliente: não abre sozinho');
   assert.equal(await caso({ status: { estado: 'visao_cliente' }, abrirPainelAoCarregar: Date.now() }), true, 'pelo ícone abre (para mostrar o aviso)');
+  // só abre sozinha quando já há leitura: sem dados ou com erro fica o botão (e o clique abre igual)
+  assert.equal(await caso({ snapshot: null }), false, 'sem leitura nenhuma: só o botão');
+  assert.equal(await caso({ snapshot: COM_DADOS.snapshot, status: { estado: 'erro', msg: 'x' } }), false, 'leitura com erro: só o botão');
+  assert.equal(await caso({ snapshot: COM_DADOS.snapshot, status: { estado: 'sem_sessao' } }), false, 'sem sessão: só o botão');
+  assert.equal(await caso({ snapshot: COM_DADOS.snapshot, status: { estado: 'erro' }, abrirPainelAoCarregar: Date.now() }), true, 'pelo ícone abre para mostrar o erro');
+});
+
+await passo('shell: o botão é arrastável (clique só sem arraste), a posição fica guardada e é mantida dentro da janela', async () => {
+  const p = await pagina(URL_PORTAL, '<!doctype html><body>Onvio</body>');
+  await p.setViewportSize({ width: 1000, height: 700 });
+  await p.emulateMedia({ reducedMotion: 'reduce' });
+  await semear(p, COM_DADOS);
+  await p.goto(URL_PORTAL);
+  await p.addScriptTag({ content: lerExt('shell.js') });
+  await esperar(() => appFrame(p));
+  await p.evaluate(() => window.__ouvintes.forEach(f => f({ type: 'fechar' })));
+  await p.waitForFunction(() => !document.documentElement.classList.contains('controlonvio-cheia'));
+  const ponto = () => p.evaluate(() => { const e = document.elementFromPoint(958, 658); return e && e.id; });
+  assert.equal(await ponto(), 'controlonvio-host', 'começa no canto inferior direito');
+  // arrasta 300 px para a esquerda e 200 para cima: não abre
+  await p.mouse.move(958, 658); await p.mouse.down(); await p.mouse.move(900, 620, { steps: 4 }); await p.mouse.move(658, 458, { steps: 6 }); await p.mouse.up();
+  assert.equal(await cheia(p), false, 'arrastar não abre a camada');
+  assert.equal(await p.evaluate(() => { const e = document.elementFromPoint(958, 658); return e && e.id; }) === 'controlonvio-host', false, 'saiu do canto');
+  assert.equal(await p.evaluate(() => { const e = document.elementFromPoint(658, 458); return e && e.id; }), 'controlonvio-host', 'ficou onde foi solto');
+  const pos = await p.evaluate(() => JSON.parse(localStorage.getItem('__mem')).posBotao);
+  assert.ok(pos && pos.r > 250 && pos.b > 150, 'posição guardada: ' + JSON.stringify(pos));
+  await p.mouse.click(658, 458);                                                         // um clique de verdade abre
+  await p.waitForFunction(() => document.documentElement.classList.contains('controlonvio-cheia'));
+  // reabrindo a página, o botão volta ao lugar escolhido; arrastar para fora da janela fica dentro dela
+  await p.evaluate(() => window.__ouvintes.forEach(f => f({ type: 'fechar' })));
+  await p.waitForFunction(() => !document.documentElement.classList.contains('controlonvio-cheia'));
+  await p.mouse.move(658, 458); await p.mouse.down(); await p.mouse.move(300, 300, { steps: 5 }); await p.mouse.move(-500, -500, { steps: 5 }); await p.mouse.up();
+  const pos2 = await p.evaluate(() => JSON.parse(localStorage.getItem('__mem')).posBotao);
+  assert.ok(pos2.r <= 1000 - 48 && pos2.b <= 700 - 48 && pos2.r >= 0 && pos2.b >= 0, 'dentro da janela: ' + JSON.stringify(pos2));
+  assert.deepEqual(p.erros, []);
 });
 
 /* ---------- app: telas com dados simulados ---------- */
@@ -325,26 +361,27 @@ async function abrirApp(rota, extra) {
 const abrirCaixa = async p => { await p.waitForSelector('#cmp'); if (await p.$('#cmp-rec[aria-expanded="false"]')) await p.click('#cmp-rec'); await p.waitForSelector('#a-texto'); };
 const linhas = (p, sel) => p.$$eval(sel || '#corpo [data-k]', e => e.map(x => x.dataset.k));
 
-await passo('app · Hoje (analista): destaque com rosca, carrossel e próximos passos; painéis de vencimentos, avisos, sugestões, uso e previsão; sem cartões de situação', async () => {
+await passo('app · Hoje (analista): destaque com rosca, carrossel e próximos passos; painéis de avisos, sugestões e previsão; sem os painéis de vencimentos e de uso do portal', async () => {
   const p = await abrirApp('#/inicio');
   await p.evaluate(() => { window.__respostas = Object.assign(window.__respostas || {}, { casos: { ok: true, analises: {}, lidas: 2 }, detalhe: { ok: true, item: {}, tramites: [] }, previsao: { ok: true, dias: 28, total: 12, prox30: 13, erros: [], empresas: [{ cliente: 'ACME LTDA', apelido: 'ACME', total: 8, porSemana: 2, prox7: 3, prox30: 11, tendencia: 'sobe', tipos: [{ tipo: 'Geral', n: 5 }, { tipo: 'Cálculo de férias', n: 3 }] }] } }); });
   assert.equal(await p.textContent('#titulo'), 'Hoje');
   assert.match(await p.textContent('#subtitulo'), /, Ana · /);
-  for (const sel of ['.painel-ctrl', '#fita', '#g-radar', '#g-pulso', '.mosaico', '.semana', '#mapa-idade', '.hj-sits', '.hj-card', '.hj-sec', '#hj-busca']) assert.equal(await p.$(sel), null, sel + ' saiu do Hoje');
+  for (const sel of ['.painel-ctrl', '#fita', '#g-radar', '#g-pulso', '.mosaico', '.semana', '#mapa-idade', '.hj-sits', '.hj-card', '.hj-sec', '#hj-busca', '#hj-venc', '#hj-uso']) assert.equal(await p.$(sel), null, sel + ' saiu do Hoje');
   // carteira: abre na sua
   assert.equal(await p.$eval('#hj-carteira', s => s.value), '__minha');
   assert.deepEqual(await p.$$eval('#hj-carteira option', o => o.map(x => x.textContent)), ['Minha carteira (2)', 'Equipe toda (4)', 'Ana Teste (2)', 'Bia (1)', 'Sem analista (1)']);
   // destaque: rosca, título, resumo e legenda
-  await p.waitForFunction(() => document.querySelector('.hj-donut .an-total').textContent === '0%' && document.querySelector('#hj-titulo em').textContent === '2');
+  await p.waitForFunction(() => document.querySelector('#hj-titulo em').textContent === '2');
   assert.match(await p.textContent('#hj-titulo'), /^2 solicitações pedem sua atenção$/);
   assert.match(await p.textContent('.hj-hero-tx p'), /^2 pendências · 2 com o escritório · 0 com o cliente$/);
-  assert.match(await p.textContent('.hj-legenda'), /Fora do prazo 1.*Vence hoje 1/);
+  assert.match(await p.textContent('.hj-legenda'), /Em análise 1.*Cliente respondeu 1/);
+  assert.doesNotMatch(await p.textContent('.hj-legenda'), /Fora do prazo|Prescreve|Vence hoje/, 'prazo interno e prescrição não aparecem');
   // carrossel e próximos passos
   assert.equal(await p.getAttribute('#hj-tick', 'class'), 'hj-tick ok');
-  assert.deepEqual(await p.$$eval('.hj-tk', e => e.map(x => x.querySelector('.hj-tk-tag').textContent)), ['Lembrete atrasado', 'Urgente', 'Atenção']);
-  assert.deepEqual(await p.$$eval('#hj-passos .hj-step b', e => e.map(x => x.textContent)), ['Cobrar o BETA', 'Fora do prazo · parada há 31 dias', 'Concluir hoje · o prazo vence hoje']);
+  assert.deepEqual(await p.$$eval('.hj-tk', e => e.map(x => x.querySelector('.hj-tk-tag').textContent)), ['Lembrete atrasado', 'Em análise', 'Cliente respondeu']);
+  assert.deepEqual(await p.$$eval('#hj-passos .hj-step b', e => e.map(x => x.textContent)), ['Cobrar o BETA', 'Dar andamento · parada há 31 dias', 'Responder o cliente']);
   // painéis
-  assert.deepEqual(await p.$$eval('.hj-paineis > section', e => e.map(x => x.id)), ['hj-venc', 'hj-semcalc-v', 'hj-uso', 'hj-prev']);
+  assert.deepEqual(await p.$$eval('.hj-paineis > section', e => e.map(x => x.id)), ['hj-semcalc-v', 'hj-prev']);
   // sugestões de ação: casos específicos, cada um com a ação pronta (trâmite preenchido, revisar e confirmar)
   await p.waitForFunction(() => window.__msgs.some(m => m.cmd === 'casos'));
   await p.click('#hj-sug-ler');                          // a 1ª leitura saiu antes da resposta simulada: confere de novo
@@ -365,7 +402,6 @@ await passo('app · Hoje (analista): destaque com rosca, carrossel e próximos p
   await p.click('#hj-sug [data-cs-ignorar="geral:b"]');
   await p.waitForFunction(() => document.querySelectorAll('#hj-sug .cs-l').length === 1);
   assert.equal(await p.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('__mem')).sugestoesIgnoradas || {}).join()), 'geral:b', 'só o k (e a última movimentação) fica');
-  assert.match(await p.textContent('#hj-uso'), /BETA1 na lista Geral com aba própria/);
   // previsão por empresa: pedida sozinha ao abrir, mostrada em tabela
   await p.waitForFunction(() => window.__msgs.some(m => m.cmd === 'previsao'));
   await p.click('#hj-prev-ler');                         // a 1ª leitura saiu antes da resposta simulada: recalcula
@@ -377,7 +413,7 @@ await passo('app · Hoje (analista): destaque com rosca, carrossel e próximos p
   await p.waitForTimeout(250);
   const ponto = await p.evaluate(() => { const r = document.querySelector('.hj-donut .an-svg').getBoundingClientRect(), k = r.width / 150; return [r.left + (75 + 64) * k, r.top + 75 * k]; });
   await p.mouse.click(ponto[0], ponto[1]);
-  await p.waitForFunction(() => location.hash === '#/fila?motivo=atraso');
+  await p.waitForFunction(() => location.hash === '#/fila?motivo=analise');
   await p.waitForFunction(() => document.querySelector('#titulo').textContent === 'Solicitações', null, { timeout: 3000 }).catch(() => {});
   assert.equal(await p.textContent('#titulo'), 'Solicitações');
   await p.evaluate(() => { location.hash = '#/inicio'; });
@@ -391,14 +427,18 @@ await passo('app · Hoje (analista): destaque com rosca, carrossel e próximos p
   await p.waitForFunction(() => !/Cobrar o BETA/.test(document.querySelector('#hj-passos').textContent));
   // carteira Equipe toda
   await p.selectOption('#hj-carteira', '__equipe');
-  await p.waitForFunction(() => document.querySelector('.hj-donut .an-total').textContent === '25%');
+  await p.waitForFunction(() => document.querySelector('.hj-donut .an-total').textContent === '100%');
   assert.match(await p.textContent('.hj-hero-tx p'), /4 pendências · 3 com o escritório · 1 com o cliente · 1 sem analista/);
-  await p.selectOption('#hj-carteira', 'Bia');
-  await p.waitForFunction(() => /Tudo em dia/.test(document.querySelector('#hj-titulo').textContent));
+  await p.selectOption('#hj-carteira', '(sem responsável)');
+  await p.waitForFunction(() => /Tudo em dia/.test(document.querySelector('#hj-titulo').textContent), null, { timeout: 4000 });      // só a que está com o cliente
   await p.reload(); await p.waitForSelector('#hj-carteira');
-  assert.equal(await p.$eval('#hj-carteira', s => s.value), 'Bia');
+  assert.equal(await p.$eval('#hj-carteira', s => s.value), '(sem responsável)');
   await p.selectOption('#hj-carteira', '__minha');
-  assert.equal(await p.textContent('#n-fila'), '2');
+  assert.equal(await p.textContent('#n-fila'), '1', 'bolinha das Solicitações: minhas sem análise + cliente respondeu');
+  assert.equal(await p.textContent('#res-fila'), '1 cliente respondeu', 'o resumo explica o número ao passar o mouse');
+  assert.equal(await p.textContent('#n-distribuir'), '1');
+  assert.equal(await p.textContent('#res-distribuir'), '1 sem responsável');
+  assert.equal(await p.textContent('#n-equipe'), '1', 'G3 da equipe na vez do escritório');
   assert.match(await p.textContent('#aovivo-tx'), /^Ao vivo · \d\d:\d\d:\d\d$/);
   assert.match(await p.textContent('.trilho [data-rota="fila"]'), /Solicitações/);
   assert.equal(await p.$('.trilho [data-rota="solicitacoes"]'), null, 'Consultar no Onvio saiu');
@@ -406,7 +446,7 @@ await passo('app · Hoje (analista): destaque com rosca, carrossel e próximos p
   assert.deepEqual(p.erros, []);
 });
 
-await passo('app · Hoje: admissões sem trâmite do escritório em faixa recolhível abaixo do destaque; vencimentos legais em painel', async () => {
+await passo('app · Hoje: admissões sem trâmite do escritório em faixa recolhível abaixo do destaque; o prazo legal sobe na fila', async () => {
   const itens = ITENS_APP.concat([
     { k: 'cadEmpregado:e1', type: 'cadEmpregado', typeLabel: 'Cadastro empregado', id: 'e1', num: 301, code: 2, status: 'Enviado para o escritório', lado: 'esc', nivel: 2, grav: 2, parado: 1, motivos: [{ n: 2, m: 'Admissão retroativa' }], resp: 'Ana Teste', mine: true, apelido: 'DELTA', cliente: 'DELTA', detalhe: 'Fulano', created: agoraIso(1), last: agoraIso(1), admissao: '2026-10-10', admissaoAlerta: { data: '2026-10-10', faltam: -4, retro: true } },
     { k: 'cadEmpregado:e2', type: 'cadEmpregado', typeLabel: 'Cadastro empregado', id: 'e2', num: 302, code: 1, status: 'Sem análise', lado: 'esc', nivel: 1, grav: 1, parado: 0, motivos: [], resp: 'Ana Teste', mine: true, apelido: 'ÔMEGA', cliente: 'ÔMEGA', detalhe: 'Joana', created: agoraIso(0), last: agoraIso(0), admissao: '2026-10-20', admissaoAlerta: { data: '2026-10-20', faltam: 2, retro: false } },
@@ -426,7 +466,6 @@ await passo('app · Hoje: admissões sem trâmite do escritório em faixa recolh
   assert.match(l[1], /^20\/10em 2 dias úteis#302 ÔMEGA · Joana/);
   assert.match(l[2], /^22\/10prazo · em 2 dias úteis#305 KAPPA · Lia.*Cadastro estagiário · início em 07\/10/, 'estagiário: a data é o prazo do eSocial (15 dias após o início)');
   assert.match(await p.textContent('#hj-adm-l .hj-adm-nota'), /Estagiário: até 15 dias depois do início/);
-  assert.match(await p.textContent('#hj-venc'), /hoje.*ZETA · Beltrano.*Cálculo de férias · início das férias em 20\/10/);
   await p.click('#hj-admissao [data-k="cadEmpregado:e2"]');
   await p.waitForFunction(() => (window.__msgs || []).some(m => m.cmd === 'detalhe' && String(m.num) === '302'));
   await p.keyboard.press('Escape');
@@ -441,13 +480,11 @@ await passo('app · Hoje: admissões sem trâmite do escritório em faixa recolh
   assert.match(await p.textContent('#hj-adm-toggle'), /3 admissões pedem prioridade.*1 retroativa/, 'recolhida, o resumo continua à vista');
   await p.click('#hj-adm-toggle');
   assert.equal(await p.isHidden('#hj-adm-l'), false);
-  // vencimento: leva às Solicitações com a solicitação piscando em vermelho (mesmo com um filtro de texto que a esconderia)
+  // foco: leva às Solicitações com a solicitação piscando em vermelho (mesmo com um filtro de texto que a esconderia)
   await p.evaluate(() => { location.hash = '#/fila'; });
   await p.waitForSelector('#corpo [data-k]');
   await p.fill('#f-texto', 'delta');
-  await p.evaluate(() => { location.hash = '#/inicio'; });
-  await p.waitForSelector('#hj-venc [data-k="calcFerias:f9"]');
-  await p.click('#hj-venc [data-k="calcFerias:f9"]');
+  await p.evaluate(() => { location.hash = '#/fila?foco=calcFerias:f9'; });
   await p.waitForSelector('#corpo .foco-pisca[data-k="calcFerias:f9"]');
   assert.equal(await p.inputValue('#f-texto'), '', 'o filtro que a escondia sai');
   assert.ok(!/foco=/.test(await p.evaluate(() => location.hash)), 'o foco sai do endereço (uma leitura nova não pisca de novo): ' + await p.evaluate(() => location.hash));
@@ -474,56 +511,64 @@ await passo('app · Hoje sem nada com você: abre na equipe toda e a frase expli
   assert.deepEqual(p.erros.concat(vazio.erros), []);
 });
 
-await passo('app · Fila: A responder por padrão, Aguardando o cliente como filtro secundário, filtros e chips, ordenação, cartões, ↑↓ e Enter', async () => {
+await passo('app · Fila: abas Minhas, Todas e Respondidas, cartões por padrão, grupos por prioridade, filtros e chips, cartões de situação, ordenação, ↑↓ e Enter', async () => {
   const p = await abrirApp('#/fila');
   assert.equal(await p.textContent('#titulo'), 'Solicitações');
-  assert.deepEqual(await p.$$eval('#abas .aba', e => e.map(x => x.textContent)), ['Minhas2', 'Equipe toda4', 'Sem responsável1', 'Resolvidas']);
-  assert.equal((await linhas(p)).length, 2);
+  assert.deepEqual(await p.$$eval('#abas .aba', e => e.map(x => x.textContent)), ['Minhas2', 'Todas4', 'Respondidas']);
+  assert.equal(await p.$eval('[data-vis="cartoes"]', b => b.classList.contains('on')), true, 'cartões por padrão');
+  assert.equal((await linhas(p)).length, 2, 'Minhas: as suas e as sem responsável, na vez do escritório');
   await p.goto(URL_APP + '#/fila?kpi=atraso'); await p.waitForSelector('#corpo [data-k]');
   assert.deepEqual(await linhas(p), ['calcFerias:a']);
   assert.match(await p.textContent('#ativos'), /Só: Fora do prazo/);
   await p.click('#ativos [data-tira="kpi"]');
   await p.waitForFunction(() => location.hash === '#/fila');
-  // padrão: só o que espera o escritório, sem o seletor Todas/Escritório/Cliente
-  await p.click('#abas [data-aba="equipe"]'); await p.waitForFunction(() => document.querySelectorAll('#corpo [data-k]').length === 3);
+  await p.click('#abas [data-aba="todas"]'); await p.waitForFunction(() => document.querySelectorAll('#corpo [data-k]').length === 4);
   assert.equal(await p.$('[data-lado]'), null, 'sem o seletor de vez antigo');
-  assert.match(await p.textContent('#vez-tit'), /^A responder/);
-  assert.match(await p.textContent('#f-vez'), /Aguardando o cliente\s*1/);
-  assert.deepEqual((await linhas(p)).sort(), ['calcFerias:a', 'geral:b', 'rubricas:d']);
-  // grupos por urgência (ordem de prioridade)
-  assert.deepEqual(await p.$$eval('#corpo .emp-cab b', e => e.map(x => x.textContent)), ['Fora do prazo', 'Vence hoje', 'Em dia']);
+  assert.equal(await p.$('#f-vez'), null, 'sem o filtro Aguardando o cliente: o cliente tem a aba Respondidas');
+  assert.match(await p.textContent('#vez-tit'), /^Todas as pendências/);
+  // grupos pela ordem de prioridade: prazo legal, sem análise, em análise, cliente respondeu, aguardando o cliente
+  assert.deepEqual(await p.$$eval('#corpo .emp-cab b', e => e.map(x => x.textContent)), ['Sem análise', 'Em análise', 'Cliente respondeu', 'Aguardando o cliente']);
+  assert.deepEqual(await linhas(p), ['rubricas:d', 'calcFerias:a', 'geral:b', 'avisoRescisao:c']);
   await p.fill('#f-texto', 'acme');
   assert.equal((await linhas(p)).length, 2);
   await p.fill('#f-texto', '');
-  // filtro secundário: aguardando o cliente
-  await p.click('#f-vez');
-  assert.deepEqual(await linhas(p), ['avisoRescisao:c']);
-  assert.match(await p.textContent('#vez-tit'), /Aguardando o cliente voltar para a responder \(3\)/);
-  await p.click('#vez-tit [data-vez="esc"]');
-  assert.equal((await linhas(p)).length, 3);
+  // cartões de situação (cor por grupo, com contagem) filtram e viram etiqueta
+  assert.deepEqual(await p.$$eval('#sits .sit-c', e => e.map(x => x.textContent)), ['Sem análise1', 'Em análise1', 'Encaminhada0', 'Cliente respondeu1', 'Com o cliente1']);
+  if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/fila-todas.png' });
+  await p.click('#sits [data-sit="analise"]');
+  assert.deepEqual(await linhas(p), ['calcFerias:a']);
+  assert.match(await p.textContent('#ativos'), /Situação: Em análise/);
+  await p.click('#ativos [data-tira="sit"]');
+  assert.equal((await linhas(p)).length, 4);
   await p.click('#b-filtros'); await p.selectOption('#f-resp', 'Bia');
   assert.deepEqual(await linhas(p), ['rubricas:d']);
   assert.equal(await p.textContent('#n-filtros'), '1');
   await p.click('#f-limpar');
-  assert.equal((await linhas(p)).length, 3);
-  await p.click('#vista .lh [data-col="num"]');
-  assert.deepEqual(await linhas(p), ['rubricas:d', 'geral:b', 'calcFerias:a'], 'ID, mais nova primeiro');
-  await p.click('[data-vis="cartoes"]');
-  assert.equal(await p.$$eval('#corpo .sc', e => e.length), 3);
+  assert.equal((await linhas(p)).length, 4);
+  assert.equal(await p.$('#f-grav'), null, 'o filtro de gravidade saiu: o prazo interno não aparece');
+  assert.equal(await p.$$eval('#corpo .sc', e => e.length), 4);
   await p.click('[data-vis="lista"]');
+  if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/fila-lista.png' });
+  await p.click('#vista .lh [data-col="num"]');
+  assert.deepEqual(await linhas(p), ['rubricas:d', 'avisoRescisao:c', 'geral:b', 'calcFerias:a'], 'ID, mais nova primeiro');
+  assert.deepEqual(await p.$$eval('#vista .lh button', e => e.map(x => x.textContent)), ['ID', 'Tipo', 'Cliente · assunto', 'Situação', 'Responsável', 'Parada', 'Prazo legal']);
   await p.focus('#corpo [data-k="rubricas:d"]'); await p.keyboard.press('ArrowDown'); await p.keyboard.press('Enter');
   await p.waitForSelector('#gaveta .dlg-nav');
-  assert.match(await p.textContent('#gaveta .dlg-nav'), /2 de 3/);
-  assert.match(await p.textContent('#gaveta h2'), /BETA/);
+  assert.match(await p.textContent('#gaveta .dlg-nav'), /2 de 4/);
+  assert.match(await p.textContent('#gaveta h2'), /GAMA/);
   await p.keyboard.press('ArrowRight');
-  await p.waitForFunction(() => /ACME/.test(document.querySelector('#gaveta h2').textContent));
+  await p.waitForFunction(() => /BETA/.test(document.querySelector('#gaveta h2').textContent));
   await p.keyboard.press('Escape');
-  // atalho de outra tela escolhe a vez: prescrição é do lado do cliente
-  await p.goto(URL_APP + '#/fila?escopo=equipe&kpi=prescreve'); await p.waitForSelector('#corpo [data-k]');
+  // atalhos de outras telas caem nas abas novas
+  await p.goto(URL_APP + '#/fila?escopo=equipe&kpi=cli'); await p.waitForSelector('#corpo [data-k]');
   assert.deepEqual(await linhas(p), ['avisoRescisao:c']);
+  assert.equal(await p.$eval('#abas .aba.on', a => a.dataset.aba), 'todas');
   await p.goto(URL_APP + '#/fila?escopo=semresp'); await p.waitForSelector('#corpo [data-k]');
   assert.equal(await p.textContent('#titulo'), 'Solicitações');
   assert.match(await p.textContent('#subtitulo'), /^Sem responsável/);
+  assert.deepEqual(await linhas(p), ['avisoRescisao:c']);
+  await p.goto(URL_APP + '#/fila?escopo=respondidas'); await p.waitForSelector('#nota-res');
+  assert.equal(await p.$eval('#abas .aba.on', a => a.dataset.aba), 'respondidas');
   assert.deepEqual(p.erros, []);
 });
 
@@ -632,9 +677,9 @@ await passo('app · Equipe (área do gestor): pede a senha; Desempenho com nota,
   await p.click('#abas [data-aba="carga"]');
   await p.waitForSelector('#g-carga svg');
   const kpis = await p.$$eval('.kpi', e => e.map(x => x.querySelector('.rot').textContent + '=' + x.querySelector('.val').textContent));
-  assert.deepEqual(kpis, ['Pendências=5', 'Sem responsável=1', 'Fora do prazo=2', 'Prescrevem em 5 dias=1', '1º trâmite (média)=1', 'Hoje=3 / 1']);
+  assert.deepEqual(kpis, ['Pendências=5', 'Sem responsável=1', 'Fora do prazo=2', '1º trâmite (média)=1', 'Hoje=3 / 1']);
   for (const id of ['#g-carga', '#g-dias', '#g-horas', '#g-tipo']) assert.ok(await p.$(id + ' svg'), 'gráfico ' + id);
-  assert.match(await p.textContent('#l-presc'), /4dias[\s\S]*GAMA/);
+  assert.equal(await p.$('#l-presc'), null, 'o painel de prescrição saiu da Equipe');
   assert.equal(await p.$('#distribuicao'), null, 'sem a sugestão por quem tem menos pendências');
   await p.hover('#g-carga [data-tip]');
   assert.equal(await p.isVisible('#dica'), true, 'dica ao passar o mouse');
@@ -653,24 +698,23 @@ await passo('app · Equipe (área do gestor): pede a senha; Desempenho com nota,
   assert.deepEqual(p.erros, []);
 });
 
-await passo('app · Solicitações > Resolvidas: vez do cliente sem retorno e sem pedido; detalhe explica; pendente com pedido também', async () => {
+await passo('app · Solicitações > Respondidas: as suas na vez do cliente, com as consideradas resolvidas num grupo; detalhe explica; pendente com pedido também', async () => {
   const resolvidas = [{ k: 'avisoFerias:r1', type: 'avisoFerias', typeLabel: 'Aviso de férias', id: 'r1', num: 801, status: 'Respondido', lado: 'cli', resp: 'Ana Teste', mine: true, apelido: 'OMEGA', cliente: 'OMEGA LTDA', detalhe: 'Beltrano', created: agoraIso(9), last: agoraIso(6), semRetorno: 4 },
     { k: 'geral:r2', type: 'geral', typeLabel: 'Geral', id: 'r2', num: 802, status: 'Respondido', lado: 'cli', resp: 'Bia', mine: false, apelido: 'SIGMA', cliente: 'SIGMA SA', detalhe: 'Dúvida', created: agoraIso(12), last: agoraIso(8), semRetorno: 5 }];
   const itens = ITENS_APP.map(i => i.k === 'avisoRescisao:c' ? Object.assign({}, i, { pedidoAoCliente: 'aguardamos' }) : i);
   const p = await abrirApp('#/fila?escopo=resolvidas', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens, resolvidas }) });
   await p.waitForSelector('.nota-regra');
   assert.match(await p.textContent('.nota-regra'), /mais de 3 dias úteis/);
-  assert.match(await p.textContent('#abas'), /Resolvidas\s*2/);
-  assert.deepEqual(await linhas(p, '.list-card [data-k]'), ['avisoFerias:r1', 'geral:r2']);
-  await p.click('[data-de="minhas"]');
-  assert.deepEqual(await linhas(p, '.list-card [data-k]'), ['avisoFerias:r1']);
+  assert.match(await p.textContent('#abas'), /Respondidas\s*1/, 'só as suas');
+  assert.deepEqual(await linhas(p), ['avisoFerias:r1']);
+  assert.deepEqual(await p.$$eval('#corpo .emp-cab b', e => e.map(x => x.textContent)), ['Consideradas resolvidas']);
   await p.evaluate(() => { window.__respostas = { detalhe: { ok: true, item: { assunto: 'Aviso' }, tramites: [] } }; });
-  await p.click('.list-card [data-k="avisoFerias:r1"]');
+  await p.click('#corpo [data-k="avisoFerias:r1"]');
   await p.waitForSelector('#gaveta .dlg-resolvida');
   assert.match(await p.textContent('#gaveta .dlg-resolvida'), /Considerada resolvida.*4 dias úteis/);
   await p.keyboard.press('Escape');
   // pendente com pedido ao cliente: o detalhe diz por que continua na fila
-  await p.evaluate(() => { location.hash = '#/fila?escopo=equipe&vez=cli'; });
+  await p.evaluate(() => { location.hash = '#/fila?escopo=todas'; });
   await p.waitForSelector('#corpo [data-k="avisoRescisao:c"]');
   await p.click('#corpo [data-k="avisoRescisao:c"]');
   await p.waitForSelector('#gaveta .dlg-resolvida.pede');
@@ -695,7 +739,7 @@ await passo('app · Configurações: prazos com efeito na fila antes de salvar, 
   assert.equal(await orig('conclusaoSimples'), 'não salvo');
   assert.match(await p.textContent('#cf-imp-nota'), /ainda não salvos/);
   await p.fill('#cf-conclusaoSimples', '1');
-  assert.equal(await p.$$eval('#cf-imp em', e => e.length), 5);
+  assert.equal(await p.$$eval('#cf-imp em', e => e.length), 4, 'sem a prescrição no efeito dos prazos');
   assert.match(await p.textContent('#cf-salvar'), /Salvar 1 ajuste/);
   await p.click('#cf-salvar');
   await p.waitForFunction(() => JSON.parse(localStorage.getItem('__mem')).settings.conclusaoSimples === 1);
@@ -736,16 +780,17 @@ await passo('app · Configurações: prazos com efeito na fila antes de salvar, 
   assert.deepEqual(p.erros, []);
 });
 
-await passo('app · gravidade com o porquê (lista, detalhe) e cantos quadrados em botões, etiquetas e janelas', async () => {
-  const p = await abrirApp('#/fila?escopo=equipe', {});
+await passo('app · o analista não vê prazo interno nem gravidade (só o prazo legal); cantos quadrados em botões, etiquetas e janelas', async () => {
+  const p = await abrirApp('#/fila?escopo=todas', {});
   await p.waitForSelector('#corpo [data-k="calcFerias:a"]');
-  assert.match(await p.textContent('#corpo [data-k="calcFerias:a"] .c-porque'), /G3: parada 2× o limite/);
-  assert.match(await p.getAttribute('#corpo [data-k="calcFerias:a"] .c-prazo', 'title'), /Crítica \(G3\) porque parada há 31 dias, o dobro do limite de 15/);
+  assert.equal(await p.$('#corpo .c-porque'), null, 'sem G3 nem o porquê na lista');
+  assert.equal(await p.$('#corpo .sc-g3'), null);
+  assert.doesNotMatch(await p.textContent('#corpo [data-k="calcFerias:a"]'), /Parada há 31 dias|G3|Crítica/, 'o motivo interno não aparece no cartão');
   await p.evaluate(() => { window.__respostas = { detalhe: { ok: true, item: {}, tramites: [] } }; });
   await p.click('#corpo [data-k="calcFerias:a"]');
-  await p.waitForSelector('#gaveta .grav-porque');
-  assert.equal(await p.textContent('#gaveta .grav-porque'), 'Por que é crítica (G3): parada há 31 dias, o dobro do limite de 15.');
-  assert.match(await p.textContent('#gaveta .motivos'), /Crítica \(G3\)/);
+  await p.waitForSelector('#gaveta h2');
+  assert.equal(await p.$('#gaveta .grav-porque'), null, 'o detalhe não explica gravidade ao analista');
+  assert.equal(await p.$('#gaveta .motivos'), null, 'nem motivos internos');
   // cantos: até 4 px em botões, etiquetas, chips e janelas; iniciais continuam redondas
   const raio = sel => p.$eval(sel, e => parseFloat(getComputedStyle(e).borderTopLeftRadius));
   // a janela é redesenhada quando a leitura chega: mede depois que ela parou de mudar
@@ -1031,24 +1076,24 @@ await passo('app · detalhe: abas inteiras (não achatadas) mesmo com muito cont
 });
 
 await passo('app · Fila: cartões por tipo (todos, enxutos; de novo tira); ordem por prioridade, empresa (agrupada) e mais recente', async () => {
-  const p = await abrirApp('#/fila?escopo=equipe');
+  const p = await abrirApp('#/fila?escopo=todas');
   const tipos = await p.$$eval('#tipos .tipo-c', e => e.map(x => x.dataset.tipo + '=' + x.querySelector('b').textContent));
   assert.equal(tipos.length, 11, 'todos os tipos, como antes');
-  assert.ok(tipos.includes('=3') && tipos.includes('calcFerias=1') && tipos.includes('afastamento=0'), tipos.join());
-  assert.match(await p.textContent('#tipos [data-tipo="calcFerias"]'), /1 fora do prazo/);
+  assert.ok(tipos.includes('=4') && tipos.includes('geral=1') && tipos.includes('calcFerias=1') && tipos.includes('afastamento=0'), tipos.join());
+  assert.match(await p.textContent('#tipos [data-tipo="calcFerias"]'), /sem prazo legal perto/);
   assert.equal(await p.$eval('#tipos [data-tipo="afastamento"]', b => b.classList.contains('zero')), true);
   const alt = await p.$eval('#tipos .tipo-c', b => b.getBoundingClientRect().height);
   assert.ok(alt >= 70 && alt <= 100, 'tamanho de cartão: ' + alt);
   await p.click('#tipos [data-tipo="geral"]');
   assert.deepEqual(await linhas(p), ['geral:b']);
   await p.click('#tipos [data-tipo="geral"]');
-  assert.equal((await linhas(p)).length, 3, 'clicar de novo volta a todos');
+  assert.equal((await linhas(p)).length, 4, 'clicar de novo volta a todos');
   // prioridade (padrão): a mesma ordem do Hoje
   assert.equal(await p.$eval('#f-ord', s => s.value), 'prio');
-  assert.equal((await linhas(p))[0], 'calcFerias:a');
+  assert.equal((await linhas(p))[0], 'rubricas:d', 'sem análise primeiro');
   await p.selectOption('#f-ord', 'cliente');
-  assert.deepEqual(await p.$$eval('#corpo .emp-cab b', e => e.map(x => x.textContent)), ['ACME', 'BETA']);
-  assert.deepEqual(await linhas(p), ['calcFerias:a', 'rubricas:d', 'geral:b']);
+  assert.deepEqual(await p.$$eval('#corpo .emp-cab b', e => e.map(x => x.textContent)), ['ACME', 'BETA', 'GAMA']);
+  assert.deepEqual(await linhas(p), ['rubricas:d', 'calcFerias:a', 'geral:b', 'avisoRescisao:c']);
   await p.selectOption('#f-ord', 'recente');
   assert.equal((await linhas(p))[0], 'rubricas:d');
   assert.equal(await p.evaluate(() => localStorage.getItem('controlonvio-fila-ord')), 'recente', 'a ordem escolhida fica lembrada');
@@ -1226,7 +1271,8 @@ await passo('app · Tramitação: 5 s para desfazer; enviar e ir para a próxima
   await p.waitForSelector('#g-corpo .tr-item');
   // a situação vira uma linha quando muda (não uma etiqueta em cada bolha)
   assert.deepEqual(await p.$$eval('#g-corpo .tr-sit span', e => e.map(x => x.textContent)), ['Situação passou a: Em análise', 'Situação passou a: Aguardando resposta']);
-  assert.equal(await p.$$eval('#g-corpo .tr-bolha .pill', e => e.length), 1, 'só o "último" fica como etiqueta');
+  assert.equal(await p.$$eval('#g-corpo .tr-bolha .pill', e => e.length), 0, 'sem etiqueta "último" repetida em cada bolha');
+  assert.equal(await p.$$eval('#g-corpo .tr-item.ultimo', e => e.length), 1);
   // atalho R leva o cursor à caixa; Ctrl+Enter revisa
   await p.keyboard.press('r');
   assert.equal(await p.evaluate(() => document.activeElement.id), 'a-texto');
@@ -1237,6 +1283,9 @@ await passo('app · Tramitação: 5 s para desfazer; enviar e ir para a próxima
   await p.waitForFunction(n => document.querySelector('.dlg-nav span').textContent !== n, nav0);
   assert.equal(await p.evaluate(() => (document.querySelector('#a-texto') || { value: '' }).value), '', 'outra solicitação, outra caixa');
   await p.click('#g-ant');
+  await p.waitForSelector('.cmp-min-rasc');
+  assert.match(await p.textContent('.cmp-min-rasc'), /Rascunho guardado/, 'outra solicitação aberta: a caixa começa recolhida, com o rascunho guardado');
+  await p.click('#cmp-rec');
   await p.waitForFunction(() => document.querySelector('#a-texto') && /Rascunho que não/.test(document.querySelector('#a-texto').value));
   assert.equal(await p.$eval('.cmp-int.on', b => b.dataset.sit), '4', 'o rascunho volta com a escolha');
   assert.equal(await p.evaluate(() => /Rascunho que não/.test(localStorage.getItem('__mem'))), false, 'o rascunho nunca é gravado');
@@ -1268,6 +1317,39 @@ await passo('app · Tramitação: 5 s para desfazer; enviar e ir para a próxima
   await p.waitForFunction(() => window.__msgs.some(m => m.cmd === 'acao'), null, { timeout: 8000 });
   await p.waitForFunction(n => document.querySelector('.dlg-nav span') && document.querySelector('.dlg-nav span').textContent !== n, posAntes, { timeout: 8000 });
   assert.equal(await p.evaluate(() => window.__msgs.filter(m => m.cmd === 'acao').length), 1);
+  assert.deepEqual(p.erros, []);
+});
+
+await passo('app · tema claro por padrão (mesmo com o sistema escuro); caixa de resposta recolhe ao clicar fora, sem perder o rascunho', async () => {
+  const p = await pagina(URL_APP, '');
+  await p.emulateMedia({ colorScheme: 'dark' });
+  await p.setViewportSize({ width: 1360, height: 860 });
+  await semear(p, Object.assign({}, ESTADO_APP, { settings: { __v: 2, desfazerSeg: 0 } }));
+  await p.goto(URL_APP + '#/fila');
+  await p.waitForFunction(() => document.querySelector('#vista').children.length > 0);
+  assert.equal(await p.evaluate(() => document.documentElement.getAttribute('data-theme')), 'light', 'sem escolha salva o tema é o claro');
+  assert.equal(await p.evaluate(() => getComputedStyle(document.body).colorScheme.includes('dark')), false);
+  await p.click('#btn-tema');
+  assert.equal(await p.evaluate(() => document.documentElement.getAttribute('data-theme')), 'dark', 'o escuro só por escolha');
+  await p.reload(); await p.waitForSelector('#vista');
+  assert.equal(await p.evaluate(() => document.documentElement.getAttribute('data-theme')), 'dark', 'a escolha fica');
+  await p.click('#btn-tema');
+  // caixa de resposta: clique fora recolhe e o rascunho fica; revisando, não recolhe
+  await p.evaluate(() => { window.__respostas = { detalhe: { ok: true, item: { assunto: 'Férias' }, datas: {}, tramites: [{ n: 1, em: '2026-10-01T10:00:00', situacao: 'Sem análise', lado: 'cli', autor: 'Cliente', texto: 'Abertura', anexos: [] }, { n: 2, em: '2026-10-02T10:00:00', situacao: 'Aguardando resposta', lado: 'cli', autor: 'Cliente', texto: 'Segue o RG', anexos: [] }] } }; });
+  await p.click('#corpo [data-k="geral:b"]');
+  await abrirCaixa(p);
+  await p.fill('#a-texto', 'Rascunho que fica');
+  await p.click('#g-corpo .tr-texto');                                                     // clique fora da caixa
+  await p.waitForSelector('.cmp-min-rasc');
+  assert.equal(await p.$('#a-texto'), null, 'recolheu');
+  await p.click('#cmp-rec');
+  await p.waitForSelector('#a-texto');
+  assert.equal(await p.inputValue('#a-texto'), 'Rascunho que fica', 'o rascunho ficou');
+  await p.click('.cmp-int[data-sit="4"]');
+  await p.click('#a-revisar');
+  await p.waitForSelector('#a-enviar');
+  await p.click('#g-corpo .tr-texto');
+  assert.ok(await p.$('#a-enviar'), 'revisando: não recolhe');
   assert.deepEqual(p.erros, []);
 });
 
