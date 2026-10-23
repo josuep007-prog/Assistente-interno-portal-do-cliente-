@@ -1297,7 +1297,7 @@ test('prazo de pagamento: férias 2 dias antes do início e rescisão 10 dias ap
   assert.equal(OC.ymd(r2.alvo), '2026-10-09', '12/10 é feriado e 10 e 11 fim de semana: antecipa para 09/10');
   assert.equal(OC.prazoPagamento('avisoFerias', {}, {}), null);
   assert.deepEqual(plano(OC.datasDe({ vacationStartDate: '2026-11-03T00:00:00', adviceDate: '2026-10-01T00:00:00', name: 'Fulano', nationalIdentity: '123' })),
-    { inicio: '2026-11-03', aviso: '2026-10-01', desligamento: null, admissao: null, competencia: null, afastamento: null, pagamento: null }, 'só datas, nada pessoal');
+    { inicio: '2026-11-03', aviso: '2026-10-01', desligamento: null, admissao: null, competencia: null, afastamento: null, pagamento: null, abono: false }, 'só datas e o sinal de abono (sim/não), nada pessoal');
 });
 
 test('observações para o cliente: frases do tipo com as datas, avisos fora do prazo primeiro e linha sem dado some', () => {
@@ -2282,6 +2282,25 @@ test('rodada 2: férias nova em análise, aviso trabalhado com lembrete, acident
   const vr = OC.variaveisTramite({ type: 'calcRescisao', apelido: 'X', detalhe: 'Beltrano', pagamentoAte: { alvo: '2026-11-10' } }, {}, {}, new Date('2026-10-20T10:00:00'), 'Ana');
   assert.equal(vr.pagamentoRescisao, '10/11/2026');
   assert.equal(OC.preencherModelo('até {pagamentoRescisao}', vr), 'até 10/11/2026');
+});
+
+test('férias em análise: com abono pecuniário o texto manda o empregado pedir em carta de próprio punho (art. 143 da CLT); sem abono, nada muda', () => {
+  const item = { type: 'calcFerias', code: 3, lado: 'esc', apelido: 'X', detalhe: 'Beltrano', typeLabel: 'Cálculo de férias' };
+  assert.equal(OC.datasDe({ payBonusDays: true }).abono, true);
+  assert.equal(OC.datasDe({ bonusDays: 10 }).abono, true);
+  assert.equal(OC.datasDe({ payBonusDays: false, bonusDays: 0 }).abono, false);
+  assert.equal(OC.datasDe({}).abono, false);
+  const monta = (txt, datas) => OC.preencherModelo(txt, OC.variaveisTramite(item, datas, {}, new Date('2026-10-20T10:00:00'), 'Ana'));
+  const modelo = OC.modelosPara(item, {}, []).find(m => m.rot === 'Férias em análise').texto;
+  for (const txt of [modelo, OC.acaoAnalise(item, {}).acao.texto]) {
+    const com = monta(txt, { inicio: '2026-11-10', abono: true }), sem = monta(txt, { inicio: '2026-11-10', abono: false });
+    assert.match(com, /abono pecuniário.*carta de próprio punho.*15 dias antes do término do período aquisitivo.*art\. 143/s);
+    assert.doesNotMatch(sem, /abono|carta/i, 'sem abono, nada do abono');
+    assert.ok(!/\{\w+\}/.test(com) && !/\{\w+\}/.test(sem), 'nenhuma variável sobra');
+    assert.ok(sem.endsWith('(aviso de férias).'), 'sem espaço sobrando no fim');
+  }
+  // sem o detalhe lido ainda, o abono é desconhecido: o marcador fica e barra o envio (como o prazo de pagamento)
+  assert.deepEqual(OC.marcadoresPendentes(monta(modelo, null)).includes('{abono}'), true);
 });
 
 test('rodada 2: modelos de criação por departamento e ids dos departamentos nas regras', () => {
