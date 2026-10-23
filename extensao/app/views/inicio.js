@@ -8,10 +8,11 @@
  * Painel de previsão de solicitações por empresa (lida na hora, sob demanda). Os painéis de vencimentos e de uso do
  * portal saíram na 0.29.0 (o prazo legal já sobe na fila). O quadro de avisos sem cálculo saiu em 22/10/2026. Carteira no cabeçalho. */
 import { estado, itens, minhas, primeiroNome, salvarLembretes, enviar, ignorarSugestao, resolvidas } from '../estado.js';
-import { esc, plural, num, ligarItens, fmtDataHora, saudacao, dataExtensa, toast, $, $$, lerPref, gravarPref, simples } from '../util.js';
+import { esc, plural, num, ligarItens, fmtDataHora, saudacao, dataExtensa, toast, toastAcao, $, $$, lerPref, gravarPref, simples } from '../util.js';
 import { anel, anelProgresso, animarNumeros, ligarDicas, cor } from '../graficos.js';
 import { estadoLeitura, dicaLeitura } from './painel-equipe.js';
 import { tiposHtml, subPorMotivo } from './tipos.js';
+import { abrirFoco } from './foco-sug.js';
 import { abrirLote } from './lote-dlg.js';
 const OC = window.OC;
 const SEM = '(sem responsável)';
@@ -26,9 +27,13 @@ const recolhidosLidos = () => { try { return JSON.parse(lerPref('hojeRecolhidos'
 const recolhido = id => { const r = recolhidosLidos(); return id in r ? !!r[id] : id === 'hj-prev'; };
 const gravarRecolhido = (id, rec) => gravarPref('hojeRecolhidos', JSON.stringify(Object.assign(recolhidosLidos(), { [id]: rec })));
 
-// Barras recolhíveis das sugestões (categoria e tipo): o que a pessoa abriu ou fechou fica lembrado neste navegador
-const sugBarras = (() => { try { return new Map(Object.entries(JSON.parse(localStorage.getItem('oc.hojeSugBarras') || '{}'))); } catch { return new Map(); } })();
-const gravarBarras = () => { try { localStorage.setItem('oc.hojeSugBarras', JSON.stringify(Object.fromEntries(sugBarras))); } catch { /* sem armazenamento: vale só nesta visita */ } };
+// Sugestões de ação: lista única com filtro por categoria (lembrado neste navegador) e "Ver todas"; ordem do que depende do
+// escritório (orientar, pôr em análise, pedir) para a limpeza (concluir sem retorno, resolvida fora)
+let filtroSug = lerPref('hojeSugFiltro', ''), sugTodas = false;
+const PRIO_SUG = ['abaErrada', 'feriasNova', 'rescisaoNova', 'falta', 'anexo', 'duplicada', 'avisoTrabalhado', 'fora', 'semRetorno'];
+const SUG_VISIVEIS = 8;
+
+let casosAtuais = [];      // as sugestões da última tela desenhada (o modo foco lê daqui, para saber o que já saiu)
 
 const corMotivo = Object.fromEntries(OC.MOTIVOS.map(m => [m.k, m.cor]));
 const rotMotivo = Object.fromEntries(OC.MOTIVOS.map(m => [m.k, m.rot]));
@@ -81,6 +86,7 @@ export function render(el, ctx) {
   const admissoes = OC.admissoesCriticas(base);
   const resolvidasBase = resolvidas().filter(i => cart === MINHA ? i.mine : cart === EQUIPE ? true : (i.resp || SEM) === cart);
   const casos = OC.casosSugeridos(base.concat(resolvidasBase), casosLidos, estado.settings, estado.sugIgnoradas);
+  casosAtuais = casos;
   const linkFila = p => '#/fila?' + new URLSearchParams(Object.assign(cart === EQUIPE ? { escopo: 'equipe' } : cart === SEM ? { escopo: 'semresp' } : cart !== MINHA ? { analista: cart } : {}, p));
 
   el.innerHTML = aviso + heroHtml() + admissoesHtml() + tiposPainel() +
@@ -133,46 +139,59 @@ export function render(el, ctx) {
 
   // Sugestões de ação: solicitações específicas que parecem resolvidas fora do portal, abertas errado ou com falta de
   // informação do cliente. Um botão abre o detalhe já no trâmite preenchido (revisar e confirmar); "⋯" tem "Não é o caso".
+  // O que o botão vai fazer, para mostrar antes do clique (dica do botão e modo foco): situação e texto do trâmite, ou o lembrete
+  function previa(c, html) {
+    if (c.acao.lembrete) return html ? '<div class="fo-prev"><div class="fo-prev-cab">Cria um lembrete pessoal na Agenda</div><div class="fo-prev-tx">' + esc(c.acao.lembrete.texto) + ' · ' + esc(c.acao.lembrete.dia) + ' às 9h</div><small>Nada é enviado ao Onvio.</small></div>'
+      : 'Cria um lembrete pessoal na Agenda (' + c.acao.lembrete.dia + ' às 9h). Nada é enviado ao Onvio.';
+    const sit = (OC.situacoesTramite(c.item).find(x => String(x.code) === String(c.acao.situacao)) || {}).rot || '';
+    const texto = OC.preencherModelo(c.acao.texto, OC.variaveisTramite(c.item, null, estado.settings, new Date(), primeiroNome()));
+    const passos = (c.acao.antes || []).length ? 'em ' + (c.acao.antes.length + 1) + ' passos (' + c.acao.antes.map(x => x.rot).join(', ') + ' e depois ' + (sit || 'a situação final') + ')' : '';
+    if (!html) return 'Abre o trâmite já preenchido para você revisar e confirmar' + (sit ? '. Situação: ' + sit : '') + (passos ? ', ' + passos : '') + '. Texto: “' + (texto.length > 220 ? texto.slice(0, 220) + '…' : texto) + '”';
+    return '<div class="fo-prev"><div class="fo-prev-cab">Vai enviar' + (sit ? ' · situação <b>' + esc(sit) + '</b>' : '') + (passos ? ' · ' + esc(passos) : '') + '</div>' +
+      '<div class="fo-prev-tx">' + esc(texto) + '</div>' +
+      '<small>' + (/\{\w+\}/.test(texto) ? 'Os campos entre chaves são preenchidos ao abrir, com os dados lidos no Onvio. ' : '') + 'Você revisa e confirma antes de enviar.</small></div>';
+  }
+  function ordemSug() { return casos.slice().sort((x, y) => (PRIO_SUG.indexOf(x.tipo) + 1 || 99) - (PRIO_SUG.indexOf(y.tipo) + 1 || 99) || (y.item.parado || 0) - (x.item.parado || 0)); }
+
   function sugHtml() {
     const grupos = OC.agruparSugestoes(casos);
+    const cats = grupos.slice().sort((x, y) => (PRIO_SUG.indexOf(x.tipo) + 1 || 99) - (PRIO_SUG.indexOf(y.tipo) + 1 || 99));
+    const f = cats.some(g => g.tipo === filtroSug) ? filtroSug : '';
     const hora = casosEm ? new Date(casosEm).toTimeString().slice(0, 5) : '';
     const situacao = casosLendo ? 'Conferindo os trâmites…' : casosErro ? 'Não deu para ler os trâmites: ' + casosErro : hora ? 'Trâmites conferidos às ' + hora : '';
-    const aberta = (k, padrao) => sugBarras.has(k) ? sugBarras.get(k) : padrao;
+    const lista = ordemSug().filter(c => !f || c.tipo === f);
+    const visiveis = sugTodas ? lista : lista.slice(0, SUG_VISIVEIS);
+    // filtro por categoria, com a contagem
+    const chips = '<div class="sg-filtros" role="group" aria-label="Filtrar sugestões">' +
+      '<button type="button" class="sg-chip' + (!f ? ' on' : '') + '" data-sg-f="" aria-pressed="' + !f + '">Todas <b>' + casos.length + '</b></button>' +
+      cats.map(g => '<button type="button" class="sg-chip cs-' + g.tipo + (f === g.tipo ? ' on' : '') + '" data-sg-f="' + esc(g.tipo) + '" aria-pressed="' + (f === g.tipo) + '"><i></i>' + esc(g.rot) + ' <b>' + g.casos.length + '</b></button>').join('') + '</div>';
+    // em lote: com uma categoria escolhida, uma ação por tipo de solicitação (você revisa a lista e confirma)
+    const g = f && cats.find(x => x.tipo === f);
+    const lotes = g ? g.porTipo.filter(t => t.lote.ok) : [];
+    const barraLote = g ? '<div class="sg-lote">' + (lotes.length
+      ? '<span>Fazer de uma vez:</span>' + lotes.map(t => '<button type="button" class="btn btn-sm btn-primary sug-lote" data-cs-lote="' + esc(g.tipo + '|' + t.type) + '" title="' + (g.lembrete ? 'Cria um lembrete para cada uma' : 'Abre a lista para você revisar e confirmar: um trâmite para cada solicitação marcada') + '">' + esc(g.botao) + ' · ' + esc(t.typeLabel) + ' (' + t.lote.n + ')</button>').join('')
+      : '<span class="fraco">' + (g.casos.length > 1 ? 'Em lote indisponível: ' + esc((g.porTipo.find(t => t.casos.length > 1 && !t.lote.ok) || { lote: { motivo: 'uma de cada tipo' } }).lote.motivo || 'uma de cada tipo') : 'Só uma nesta categoria.') + '</span>') + '</div>'
+      : cats.some(x => x.porTipo.some(t => t.lote.ok)) ? '<p class="sg-dica">Escolha uma categoria acima para fazer as de mesmo tipo de uma vez.</p>' : '';
     const linha = c => {
       const i = c.item;
-      return '<div class="cs-l cs-' + c.tipo + '">' +
+      return '<div class="cs-l sg-l cs-' + c.tipo + '">' +
+        '<i class="sg-pt" aria-hidden="true"></i>' +
         '<button type="button" class="cs-abre" data-k="' + esc(i.k) + '" title="' + esc(c.porque) + '">' +
           '<span class="cs-tx"><b>#' + esc(i.num) + ' ' + esc(nomeCli(i)) + ' · ' + esc(i.detalhe || i.typeLabel) + '</b>' +
-          '<small>' + esc(c.porque) + (cart === MINHA ? '' : ' · ' + esc(i.resp || 'sem analista')) + '</small></span></button>' +
+          '<small><span class="sg-cat">' + esc(c.rot.replace(/\?$/, '')) + '</span> · ' + esc(i.typeLabel) + ' · ' + esc(c.curto || c.porque) + (cart === MINHA ? '' : ' · ' + esc(i.resp || 'sem analista')) + '</small></span></button>' +
         '<div class="cs-acoes">' + (c.pode.ok
-          ? '<button type="button" class="btn btn-sm btn-primary" data-cs-acao="' + esc(i.k) + '" title="' + (c.acao.lembrete ? 'Cria um lembrete pessoal na Agenda (nada é enviado ao Onvio)' : 'Abre o trâmite já preenchido: você revisa e confirma') + '">' + esc(c.botao) + '</button>'
+          ? '<button type="button" class="btn btn-sm sg-fazer" data-cs-acao="' + esc(i.k) + '" title="' + esc(previa(c)) + '">' + esc(c.botao) + '</button>'
           : '<button type="button" class="btn btn-sm" data-k="' + esc(i.k) + '" title="' + esc(c.pode.motivo) + '">Abrir</button>') +
-          '<details class="menu sc-mais"><summary class="icon-btn" aria-label="Mais ações" title="Mais ações">' + ic('more', 'ic-sm') + '</summary><div class="menu-list">' +
-            '<button type="button" class="menu-item" data-k="' + esc(i.k) + '">' + ic('eye', 'ic-sm') + ' Ver a solicitação</button>' +
-            '<button type="button" class="menu-item" data-cs-ignorar="' + esc(i.k) + '">' + ic('x', 'ic-sm') + ' Não é o caso</button></div></details>' +
+          '<button type="button" class="icon-btn sg-nao" data-cs-ignorar="' + esc(i.k) + '" title="Não é o caso (sai das sugestões; volta se a solicitação mexer)" aria-label="Não é o caso">' + ic('x', 'ic-sm') + '</button>' +
         '</div></div>';
     };
-    const tipoBarra = (g, t) => {
-      const k = 'tipo:' + g.tipo + ':' + t.type;
-      const lote = t.lote.ok
-        ? '<button type="button" class="btn btn-sm btn-primary sug-lote" data-cs-lote="' + esc(g.tipo + '|' + t.type) + '" title="' + (g.lembrete ? 'Cria um lembrete para cada uma' : 'Abre a lista para você revisar e confirmar: um trâmite para cada solicitação marcada') + '">' + esc(g.botao) + ' nas ' + t.lote.n + '</button>'
-        : t.casos.length > 1 ? '<span class="sug-lote-no" title="' + esc(t.lote.motivo) + '">em lote indisponível</span>' : '';
-      return '<details class="sug-tipo" data-sug-k="' + esc(k) + '"' + (aberta(k, t.casos.length <= 4) ? ' open' : '') + '><summary>' +
-        '<span class="sug-seta">' + ic('chev-d', 'ic-sm') + '</span><b>' + esc(t.typeLabel) + '</b><span class="sc-n">' + t.casos.length + '</span><span class="spacer"></span>' + lote + '</summary>' +
-        '<div class="cs-lista">' + t.casos.map(linha).join('') + '</div></details>';
-    };
-    const catBarra = g => {
-      const k = 'cat:' + g.tipo;
-      return '<details class="sug-cat cs-' + g.tipo + '" data-sug-k="' + esc(k) + '"' + (aberta(k, true) ? ' open' : '') + '><summary>' +
-        '<span class="sug-seta">' + ic('chev-d', 'ic-sm') + '</span><i></i><b>' + esc(g.rot) + '</b><span class="sc-n">' + g.casos.length + '</span>' +
-        '<span class="sug-res">' + g.porTipo.map(t => esc(t.typeLabel) + ' ' + t.casos.length).join(' · ') + '</span></summary>' +
-        '<div class="sug-corpo">' + g.porTipo.map(t => tipoBarra(g, t)).join('') + '</div></details>';
-    };
+    const mais = lista.length > SUG_VISIVEIS ? '<button type="button" class="sg-mais" id="sg-mais">' + (sugTodas ? 'Mostrar menos' : 'Ver todas (' + lista.length + ')') + '</button>' : '';
     return painel('hj-sug', ic('chat', 'ic-sm') + ' Sugestões de ação' + (casos.length ? ' <span class="sc-n">' + casos.length + '</span>' : ''),
-      'Divididas por categoria e por tipo de solicitação. A ação abre o trâmite já preenchido (você revisa e confirma) ou cria um lembrete seu; nas de mesmo tipo dá para fazer todas de uma vez, revisando a lista antes de confirmar.',
-      (casos.length ? '<div class="sug-lista">' + grupos.map(catBarra).join('') + '</div>'
+      'Uma lista só, do que depende do escritório para a limpeza. Filtre por categoria para fazer as de mesmo tipo de uma vez, ou revise uma a uma. A ação abre o trâmite já preenchido (você revisa e confirma) ou cria um lembrete seu.',
+      (casos.length ? chips + barraLote + '<div class="sg-lista">' + visiveis.map(linha).join('') + '</div>' + mais
         : vazio(casosLendo && !casosLidos ? 'Conferindo os trâmites das pendências…' : 'Nenhuma sugestão de ação por enquanto.')) +
       (situacao && (!simples() || casosErro) ? '<p class="hj-painel-nota" id="hj-sug-sit">' + esc(situacao) + '</p>' : ''),
+      (casos.length ? '<button type="button" class="btn btn-sm" id="hj-sug-foco" title="Uma sugestão por vez, com o que será enviado (← → para andar)">' + ic('eye', 'ic-sm') + ' Revisar uma a uma</button>' : '') +
       '<button class="icon-btn" id="hj-sug-ler" title="' + esc('Conferir os trâmites de novo' + (simples() && situacao ? ' · ' + situacao : '')) + '" aria-label="Conferir os trâmites de novo"' + (casosLendo ? ' disabled' : '') + '>' + ic('refresh', 'ic-sm') + '</button>');
   }
 
@@ -325,35 +344,41 @@ export function render(el, ctx) {
       aoTerminar: async feitas => { for (const k of feitas) { const c = porK.get(k); if (c && g.lembrete) await ignorarSugestao(c.k, c.item); } }
     });
   }
+  // Fazer a sugestão: lembrete na hora (sem escrever no Onvio) ou o detalhe com o trâmite preenchido. antesDeAbrir: o modo foco some
+  async function fazerSug(c, antesDeAbrir) {
+    if (c.acao.lembrete) {
+      const l = c.acao.lembrete;
+      await salvarLembretes((estado.lembretes || []).concat([OC.novoLembrete({ texto: l.texto, quando: l.quando, k: l.k, type: l.type, num: l.num, cliente: l.cliente }, new Date())]));
+      await ignorarSugestao(c.k, c.item);
+      toast('Lembrete criado para ' + l.dia + ' às 9h (veja na Agenda)');
+      return 'feito';
+    }
+    if (antesDeAbrir) antesDeAbrir();
+    ctx.abrirDetalhe(c.item, null, { acao: 'tramite', preset: { texto: c.acao.texto, situacao: c.acao.situacao, antes: c.acao.antes } });
+    return 'detalhe';
+  }
+  // "Não é o caso": sai na hora, com "Desfazer" no aviso
+  async function ignorarSug(c) {
+    await ignorarSugestao(c.k, c.item);
+    toastAcao('Saiu das sugestões. Volta se a solicitação mexer.', 'Desfazer', () => ignorarSugestao(c.k, null));
+  }
   function ligarSug() {
     const sec = $('#hj-sug', el);
     if (!sec) return;
     ligarRec(sec);
     ligarItens(sec, casos.map(c => c.item), ctx.abrirDetalhe);
-    $$('.sc-mais', sec).forEach(d => d.addEventListener('click', e => e.stopPropagation()));
-    $$('[data-cs-acao]', sec).forEach(b => b.addEventListener('click', async e => {
+    $$('[data-sg-f]', sec).forEach(b => b.onclick = () => { filtroSug = b.dataset.sgF; gravarPref('hojeSugFiltro', filtroSug); sugTodas = false; trocarSug(); });
+    if ($('#sg-mais', sec)) $('#sg-mais', sec).onclick = () => { sugTodas = !sugTodas; trocarSug(); };
+    $$('[data-cs-acao]', sec).forEach(b => b.addEventListener('click', e => {
       e.stopPropagation();
       const c = casos.find(x => x.k === b.dataset.csAcao);
-      if (!c) return;
-      if (c.acao.lembrete) {                                       // aviso trabalhado: lembrete pessoal, sem escrever no Onvio
-        const l = c.acao.lembrete;
-        salvarLembretes((estado.lembretes || []).concat([OC.novoLembrete({ texto: l.texto, quando: l.quando, k: l.k, type: l.type, num: l.num, cliente: l.cliente }, new Date())]));
-        await ignorarSugestao(c.k, c.item);
-        toast('Lembrete criado para ' + l.dia + ' às 9h (veja na Agenda)');
-        return;
-      }
-      ctx.abrirDetalhe(c.item, null, { acao: 'tramite', preset: { texto: c.acao.texto, situacao: c.acao.situacao, antes: c.acao.antes } });
+      if (c) fazerSug(c);
     }));
-    $$('[data-cs-ignorar]', sec).forEach(b => b.addEventListener('click', async e => {
+    $$('[data-cs-ignorar]', sec).forEach(b => b.addEventListener('click', e => {
       e.stopPropagation();
-      const m = b.closest('details'); if (m) m.open = false;
       const c = casos.find(x => x.k === b.dataset.csIgnorar);
-      if (!c) return;
-      await ignorarSugestao(c.k, c.item);
-      toast('Saiu das sugestões. Volta se a solicitação mexer.');
+      if (c) ignorarSug(c);
     }));
-    // barras recolhíveis: lembra o que foi aberto ou fechado
-    $$('details[data-sug-k]', sec).forEach(d => d.addEventListener('toggle', () => { if (sugBarras.get(d.dataset.sugK) !== d.open) { sugBarras.set(d.dataset.sugK, d.open); gravarBarras(); } }));
     // em lote: as de mesmo tipo e mesma categoria, numa janela para revisar e confirmar
     $$('[data-cs-lote]', sec).forEach(b => b.addEventListener('click', e => {
       e.preventDefault(); e.stopPropagation();
@@ -361,7 +386,13 @@ export function render(el, ctx) {
       const g = OC.agruparSugestoes(casos).find(x => x.tipo === tipoCaso), t = g && g.porTipo.find(x => x.type === tipoSol);
       if (t && t.lote.ok) abrirLoteDe(g, t);
     }));
-    if ($('#hj-sug-ler', sec)) $('#hj-sug-ler', sec).onclick = () => { lerCasos(); trocarSug(); };
+    // uma a uma: a fila na ordem da lista (com o filtro da tela), começando na primeira
+    if ($('#hj-sug-foco', sec)) $('#hj-sug-foco', sec).onclick = e => {
+      e.stopPropagation();
+      const ks = ordemSug().filter(c => !filtroSug || c.tipo === filtroSug || !casos.some(x => x.tipo === filtroSug)).map(c => c.k);
+      abrirFoco({ ks, inicio: ks[0], casos: () => casosAtuais, previa: c => previa(c, true), fazer: fazerSug, ignorar: ignorarSug, ver: c => ctx.abrirDetalhe(c.item) });
+    };
+    if ($('#hj-sug-ler', sec)) $('#hj-sug-ler', sec).onclick = e => { e.stopPropagation(); lerCasos(); trocarSug(); };
   }
   ligarSug();
   if (estado.snap && !casosLendo && (!casosLidos || Date.now() - casosEm > 10 * 60000)) { lerCasos(); trocarSug(); }

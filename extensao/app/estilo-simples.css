@@ -201,19 +201,6 @@
 :root[data-estilo="simples"] .hj-rec-corpo .tipos{ margin:8px 0 0 }
 :root[data-estilo="simples"] .hj-rec-corpo .hj-painel-nota{ margin-top:6px }
 
-/* sugestões de ação: sem o resumo por tipo e com uma borda a menos */
-:root[data-estilo="simples"] .sug-res{ display:none }
-:root[data-estilo="simples"] .sug-lista{ gap:0; margin-top:8px }
-:root[data-estilo="simples"] .sug-cat{ border:0; border-top:1px solid var(--rule); border-radius:0; background:none }
-:root[data-estilo="simples"] .sug-cat:first-child{ border-top:0 }
-:root[data-estilo="simples"] .sug-cat > summary{ padding:8px 4px; font-size:13px }
-:root[data-estilo="simples"] .sug-cat > summary b{ font-weight:600 }
-:root[data-estilo="simples"] .sug-corpo{ padding:0 0 10px 18px }
-:root[data-estilo="simples"] .sug-tipo{ border:0; background:none }
-:root[data-estilo="simples"] .sug-tipo > summary{ padding:5px 4px }
-:root[data-estilo="simples"] .sug-tipo > summary:hover{ background:var(--surface-2) }
-:root[data-estilo="simples"] .sug-tipo > .cs-lista{ padding:0 0 0 18px }
-:root[data-estilo="simples"] .sug-tipo .cs-l, :root[data-estilo="simples"] .cs-l{ background:var(--surface); border-left:1px solid var(--rule) }
 :root[data-estilo="simples"] .sc-n{ background:none; border:0; padding:0 2px; color:var(--ink-3); font-weight:500 }
 :root[data-estilo="simples"] .cs-tx b{ font-weight:600 }
 
