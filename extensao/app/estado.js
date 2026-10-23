@@ -5,13 +5,14 @@ const OC = window.OC;
 
 const CHAVES = {
   snapshot: 'snap', status: 'status', settings: 'usuario', regrasEscritorio: 'regras', ultimaVerificacao: 'ultima',
-  eventos: 'eventos', lembretes: 'lembretes', serie: 'serie', alertasVistosEm: 'alertasVistosEm', avaliacaoExcecoes: 'excecoes', sugestoesIgnoradas: 'sugIgnoradas', modelosPessoais: 'modelosPessoais'
+  eventos: 'eventos', lembretes: 'lembretes', serie: 'serie', alertasVistosEm: 'alertasVistosEm', avaliacaoExcecoes: 'excecoes', sugestoesIgnoradas: 'sugIgnoradas', modelosPessoais: 'modelosPessoais',
+  distribuicaoAuto: 'distAuto', distribuicaoLog: 'distLog'
 };
 
 export const estado = {
   snapBruto: null, setor: { ativo: false, fora: false, dep: '' },
   snap: null, status: null, usuario: {}, regras: null, ultima: null,
-  eventos: [], lembretes: [], serie: {}, alertasVistosEm: null, excecoes: {}, sugIgnoradas: {}, modelosPessoais: [],
+  eventos: [], lembretes: [], serie: {}, alertasVistosEm: null, excecoes: {}, sugIgnoradas: {}, modelosPessoais: [], distAuto: null, distLog: [],
   settings: Object.assign({}, OC.DEFAULTS)
 };
 
@@ -23,7 +24,7 @@ function aplicar(d) {
     if (!(k in d)) continue;
     const v = d[k];
     if (campo === 'snap') { estado.snapBruto = v == null ? null : v; continue; }       // o resumo passa pelo filtro do setor abaixo
-    estado[campo] = v == null ? (['eventos', 'lembretes', 'modelosPessoais'].includes(campo) ? [] : ['serie', 'usuario', 'excecoes', 'sugIgnoradas'].includes(campo) ? {} : null) : v;
+    estado[campo] = v == null ? (['eventos', 'lembretes', 'modelosPessoais', 'distLog'].includes(campo) ? [] : ['serie', 'usuario', 'excecoes', 'sugIgnoradas'].includes(campo) ? {} : null) : v;
   }
   estado.settings = OC.combinarSettings(estado.regras, estado.usuario);
   // Setores: quem não é da equipe do DP vê só as suas; a Geral mostra só o que é do DP (regras do escritório)

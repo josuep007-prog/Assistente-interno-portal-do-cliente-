@@ -5,6 +5,7 @@
 importScripts('core.js');
 
 const ALARME = 'controlOnvio.coleta';
+const ALARME_DIST = 'controlOnvio.distribuicao';
 let rodando = null;
 
 /* ---------- configurações ---------- */
@@ -18,6 +19,10 @@ async function agendar() {
   const s = await getSettings();
   await chrome.alarms.clear(ALARME);
   chrome.alarms.create(ALARME, { periodInMinutes: Math.max(5, Number(s.intervalo) || 10), delayInMinutes: 0.1 });
+  // distribuição automática de responsáveis: só com o interruptor ligado (Equipe, gestor); a cada N minutos (padrão 15)
+  await chrome.alarms.clear(ALARME_DIST);
+  const da = await lerDistAuto();
+  if (da.ligada) chrome.alarms.create(ALARME_DIST, { periodInMinutes: Math.max(5, Number(s.distribuicaoAuto && s.distribuicaoAuto.minutos) || 15), delayInMinutes: 1 });
 }
 
 /* ---------- regras do escritório (arquivo JSON, só dados) ---------- */
@@ -421,6 +426,8 @@ async function executarAcao(msg) {
   if (!r) throw new Error('solicitação #' + msg.num + ' não encontrada em ' + t.label);
   const s = await getSettings();
   const item = OC.normalize(t, r, null, s.abaErrada);
+  // distribuição automática: nunca troca quem já é responsável (a Geral deixaria sobrescrever; aqui só vale para quem está sem ninguém)
+  if (msg.soSemResponsavel && item.resp) { const e = new Error('já tem responsável (' + item.resp + ')'); e.jaTem = true; throw e; }
   const p = OC.pedidoAcao(msg, r, item);
   if (!OC.escritaPermitida(p.metodo, p.url)) throw new Error('endereço de escrita não permitido');
   const arquivos = Array.isArray(msg.arquivos) ? msg.arquivos : [];
@@ -428,7 +435,7 @@ async function executarAcao(msg) {
   if (arquivos.some(a => !a || typeof a.b64 !== 'string' || a.b64.length * 0.75 > MAX_BYTES)) throw new Error('anexo inválido ou maior que 15 MB');
   const escreve = escritaPorAba(tab.id);
   const res = await escreve(p.metodo, p.url, p.corpo);
-  if (res.status === 401 || res.status === 403) throw new Error('o Onvio recusou a ação (HTTP ' + res.status + '). Faça pelo Onvio e avise quem mantém a extensão.');
+  if (res.status === 401 || res.status === 403) { const e = new Error('o Onvio recusou a ação (HTTP ' + res.status + '). Faça pelo Onvio e avise quem mantém a extensão.'); e.recusado = true; throw e; }
   if (res.status < 200 || res.status >= 300) throw new Error('o Onvio não aceitou (' + (res.status ? 'HTTP ' + res.status : res.erro || 'falha de rede') + ')');
   const out = { acao: msg.acao, anexos: 0, erroAnexos: null };
   if (msg.acao === 'tramite' && arquivos.length) {
@@ -442,8 +449,84 @@ async function executarAcao(msg) {
       else out.erroAnexos = 'o trâmite foi enviado, mas o anexo não (' + (ra.status ? 'HTTP ' + ra.status : ra.erro || 'falha de rede') + '). Anexe pelo Onvio.';
     }
   }
-  coletar(false).catch(() => {});                                // a fila e o Hoje já refletem a ação
+  if (!msg.semColetar) coletar(false).catch(() => {});           // a fila e o Hoje já refletem a ação
   return out;
+}
+
+/* ---------- distribuição automática de responsáveis (liga o gestor, na Equipe) ----------
+ * Exceção registrada no CLAUDE.md à regra de confirmar na tela: só "definir responsável" de solicitação SEM responsável, pelos mesmos
+ * critérios da aba Distribuir, a cada N minutos (15), em horário comercial, no Chrome de quem ligou, com uma aba do Onvio aberta.
+ * Para na primeira recusa (401/403), nunca troca quem já é responsável e nunca escreve outra coisa. */
+let rodandoDist = false;
+async function lerDistAuto() { const { distribuicaoAuto } = await chrome.storage.local.get('distribuicaoAuto'); return distribuicaoAuto || { ligada: false }; }
+async function gravarDistAuto(p) { const novo = Object.assign({}, await lerDistAuto(), p); await chrome.storage.local.set({ distribuicaoAuto: novo }); return novo; }
+async function estadoDistAuto() {
+  const [est, { distribuicaoLog }, s] = [await lerDistAuto(), await chrome.storage.local.get('distribuicaoLog'), await getSettings()];
+  return { ok: true, ligada: !!est.ligada, ligadaEm: est.ligadaEm || null, ultima: est.ultima || null, log: distribuicaoLog || [], config: Object.assign({}, OC.DEFAULTS.distribuicaoAuto, s.distribuicaoAuto || {}), rodando: rodandoDist };
+}
+// A leitura da aba Distribuir: movimentadas dos últimos 30 dias + sugestões por empresa (nada é guardado)
+async function calcularDistribuicao(f, pend) {
+  const dias = 30;                                 // período fixo (7 e 14 dias saíram)
+  const mov = await OC.lerMovimentadas(f, dias, new Date());
+  // concluídas valem para quem as concluiu, quando a avaliação da equipe já leu os trâmites (sem chamadas novas aqui)
+  const { desempenhoCache } = await chrome.storage.local.get('desempenhoCache');
+  return { dias, movimentadas: mov.itens.length, erros: mov.erros, sugestoes: OC.distribuirPorCliente(pend, OC.creditarQuemConcluiu(mov.itens, desempenhoCache || {}), dias) };
+}
+async function distribuirAutomatico(manual) {
+  if (rodandoDist) return { pulou: 'já está rodando' };
+  rodandoDist = true;
+  const ultima = { em: new Date().toISOString(), atribuidas: 0, falhas: 0, puladas: {}, parou: '' };
+  const log = [];
+  try {
+    const est = await lerDistAuto();
+    if (!est.ligada) return { pulou: 'desligada' };
+    const s = await getSettings();
+    if (!manual && !OC.dentroDoHorario(new Date(), s)) return { pulou: 'fora do horário' };
+    const { snapshot } = await chrome.storage.local.get('snapshot');
+    const pend = (snapshot && snapshot.items) || [];
+    if (!pend.some(i => !i.resp)) { ultima.parou = 'nada sem responsável'; }
+    else if (!(await abaOnvio())) { ultima.parou = 'sem aba do Onvio aberta'; }
+    else {
+      let f;
+      try { f = (await escolherFetcher(true)).f; }
+      catch (e) { if (e && e.cliente) await bloquearVisaoCliente(e); ultima.parou = e && e.cliente ? 'acesso de cliente' : String((e && e.message) || e); }
+      if (f) {
+        const d = await calcularDistribuicao(f, pend);
+        const perfil = OC.perfilSetor(s, snapshot.user && snapshot.user.nome, snapshot.user && snapshot.user.departmentId);
+        const plano = OC.planoDistribuicaoAuto(pend, d.sugestoes, perfil);
+        ultima.puladas = plano.puladas;
+        for (const a of plano.atribuir) {
+          try {
+            await executarAcao({ cmd: 'acao', type: a.item.type, num: String(a.item.num), acao: 'responsavel', analista: a.respId, soSemResponsavel: true, semColetar: true });
+            ultima.atribuidas++;
+            log.push({ k: a.item.k, num: a.item.num, type: a.item.type, typeLabel: a.item.typeLabel, cliente: a.item.apelido || a.item.cliente || '', resp: a.resp, em: new Date().toISOString() });
+          } catch (e) {
+            if (e && e.jaTem) { ultima.puladas.jaTemResponsavel = (ultima.puladas.jaTemResponsavel || 0) + 1; continue; }
+            ultima.falhas++;
+            if (e && (e.recusado || e.auth || e.cliente || /Abra o Onvio/.test(e.message))) { if (e.cliente) await bloquearVisaoCliente(e); ultima.parou = String(e.message || e); break; }
+          }
+          await new Promise(r => setTimeout(r, 500));
+        }
+      }
+    }
+    await gravarDistAuto({ ultima });
+    if (log.length) {
+      const { distribuicaoLog } = await chrome.storage.local.get('distribuicaoLog');
+      await chrome.storage.local.set({ distribuicaoLog: log.reverse().concat(distribuicaoLog || []).slice(0, 100) });
+      coletar(false).catch(() => {});                // uma leitura só no fim da rodada
+    }
+    if (s.notificar && (ultima.atribuidas || (ultima.parou && !['nada sem responsável', 'sem aba do Onvio aberta'].includes(ultima.parou)))) {
+      const por = {};
+      for (const l of log) por[l.resp] = (por[l.resp] || 0) + 1;
+      const resumo = Object.entries(por).map(([n, q]) => n.split(' ')[0] + ' ' + q).join(', ');
+      await chrome.notifications.create('dist-' + Date.now(), { type: 'basic', iconUrl: 'icons/128.png', title: ultima.atribuidas ? 'Distribuição automática: ' + ultima.atribuidas + (ultima.atribuidas === 1 ? ' atribuída' : ' atribuídas') : 'Distribuição automática parou', message: ultima.parou ? ultima.parou : resumo, priority: 0 });
+    }
+    return { ultima };
+  } catch (e) {
+    const ult = Object.assign(ultima, { parou: String((e && e.message) || e) });
+    await gravarDistAuto({ ultima: ult }).catch(() => {});
+    return { ultima: ult };
+  } finally { rodandoDist = false; }
 }
 
 /* ---------- criar solicitação Geral (autorizado em 16/10/2026) ----------
@@ -711,14 +794,18 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       }
       else if (msg.cmd === 'distribuicao') {        // sob demanda: quem mais atendeu cada empresa nos últimos dias (nada é guardado)
         const { f } = await escolherFetcher();
-        const dias = 30;                             // período fixo (7 e 14 dias saíram)
         const { snapshot } = await chrome.storage.local.get('snapshot');
-        const mov = await OC.lerMovimentadas(f, dias, new Date());
-        const pend = (snapshot && snapshot.items) || [];
-        // concluídas valem para quem as concluiu, quando a avaliação da equipe já leu os trâmites (sem chamadas novas aqui)
-        const { desempenhoCache } = await chrome.storage.local.get('desempenhoCache');
-        reply({ ok: true, dias, movimentadas: mov.itens.length, erros: mov.erros, sugestoes: OC.distribuirPorCliente(pend, OC.creditarQuemConcluiu(mov.itens, desempenhoCache || {}), dias) });
+        const d = await calcularDistribuicao(f, (snapshot && snapshot.items) || []);
+        reply({ ok: true, dias: d.dias, movimentadas: d.movimentadas, erros: d.erros, sugestoes: d.sugestoes });
       }
+      else if (msg.cmd === 'distribuicaoAuto') {     // interruptor da distribuição automática (Equipe, gestor): liga, desliga ou só devolve o estado
+        if (typeof msg.ligar === 'boolean') {
+          await gravarDistAuto(msg.ligar ? { ligada: true, ligadaEm: new Date().toISOString() } : { ligada: false });
+          await agendar();
+        }
+        reply(await estadoDistAuto());
+      }
+      else if (msg.cmd === 'distribuicaoAutoAgora') { reply(Object.assign({ ok: true }, await distribuirAutomatico(true))); }
       else if (msg.cmd === 'consultar') { reply(Object.assign({ ok: true }, await consultar(msg))); }
       else if (msg.cmd === 'acao') { reply(Object.assign({ ok: true }, await executarAcao(msg))); }
       else if (msg.cmd === 'criar') { reply(Object.assign({ ok: true }, await criarSolicitacao(msg))); }
@@ -814,6 +901,7 @@ chrome.alarms.onAlarm.addListener(a => {
   if (a.name === ALARME) coletar(false);
   else if (a.name.startsWith(PREFIXO_LEMBRETE)) dispararLembrete(a.name.slice(PREFIXO_LEMBRETE.length));
   else if (a.name === ALARME_REGRAS) atualizarRegras();
+  else if (a.name === ALARME_DIST) distribuirAutomatico(false);
 });
 chrome.storage.onChanged.addListener((ch, area) => {
   if (area !== 'local') return;

@@ -57,11 +57,11 @@ function telaSenha(el, ctx, params) {
 export function render(el, ctx, params) {
   params = params || {};
   if (!liberada) return telaSenha(el, ctx, params);
-  const aba = ['carga', 'resp'].includes(params.aba) ? params.aba : 'desempenho';
+  const aba = ['carga', 'resp', 'dist'].includes(params.aba) ? params.aba : 'desempenho';
   const an = OC.porAnalista(itens());
   const { extra } = ctx.cab({
     titulo: 'Equipe', sub: 'Desempenho e qualidade dos atendimentos · área do gestor',
-    abas: [{ id: 'desempenho', rot: 'Desempenho', href: '#/equipe' }, { id: 'carga', rot: 'Carga de hoje', href: '#/equipe?aba=carga' }, { id: 'resp', rot: 'Responsáveis', href: '#/equipe?aba=resp', n: an.length }],
+    abas: [{ id: 'desempenho', rot: 'Desempenho', href: '#/equipe' }, { id: 'carga', rot: 'Carga de hoje', href: '#/equipe?aba=carga' }, { id: 'resp', rot: 'Responsáveis', href: '#/equipe?aba=resp', n: an.length }, { id: 'dist', rot: 'Distribuição automática', href: '#/equipe?aba=dist' }],
     aba,
     extra: (aba === 'desempenho' ? '<span class="av-periodo" id="av-periodo">Últimos 30 dias</span>' : '') +
       '<button class="btn btn-sm" id="av-bloquear" title="Bloquear a área do gestor"><svg class="ic ic-sm"><use href="#i-lock"/></svg> Bloquear</button>'
@@ -69,6 +69,7 @@ export function render(el, ctx, params) {
   $('#av-bloquear', extra).onclick = () => { travar(false); resultado = null; render(el, ctx, params); };
   if (aba === 'carga') return carga(el, ctx);
   if (aba === 'resp') return responsaveis(el, ctx);
+  if (aba === 'dist') return distribuicaoAuto(el, ctx);
   return desempenho(el, ctx, params);
 }
 
@@ -386,6 +387,47 @@ function carga(el, ctx) {
     else if (k === 'todas') ctx.navegar('fila', { escopo: 'equipe' });
   }));
   ligarEquipe(el, ctx);
+}
+
+/* Distribuição automática (gestor): liga e desliga, mostra a última rodada e o que foi atribuído. Quem roda é o service worker,
+ * a cada N minutos, só neste Chrome e só em horário comercial; os critérios são os da aba Distribuir. */
+let confirmarLigar = false, rodandoAgora = false;
+function distribuicaoAuto(el, ctx) {
+  const d = estado.distAuto || { ligada: false }, u = d.ultima, log = estado.distLog || [];
+  const cfg = Object.assign({ minutos: 15, inicio: 8, fim: 18 }, estado.settings.distribuicaoAuto || {});
+  const hora = iso => { const x = new Date(iso); return isNaN(x) ? '' : x.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }); };
+  const pul = u && u.puladas ? [['semHistorico', 'sem histórico da empresa (decisão manual)'], ['semId', 'sem o identificador do responsável'], ['naoPode', 'lista em que a extensão não define responsável'], ['outroSetor', 'Geral de outro departamento'], ['jaTemResponsavel', 'já tinham responsável']].filter(([k]) => u.puladas[k]).map(([k, t]) => u.puladas[k] + ' ' + t) : [];
+  el.innerHTML =
+    '<section class="card da-card"><div class="card-h"><h3>Distribuição automática de responsáveis</h3><span class="sub">a cada ' + cfg.minutos + ' min · seg a sex, ' + cfg.inicio + 'h às ' + cfg.fim + 'h · neste Chrome</span></div>' +
+      '<div class="da-estado"><span class="da-pt ' + (d.ligada ? 'on' : '') + '"></span><b id="da-estado">' + (d.ligada ? 'Ligada' : 'Desligada') + '</b>' + (d.ligada && d.ligadaEm ? '<span class="fraco"> desde ' + esc(hora(d.ligadaEm)) + '</span>' : '') +
+        '<span class="spacer" style="flex:1"></span>' +
+        (d.ligada ? '<button class="btn btn-sm" id="da-agora"' + (rodandoAgora ? ' disabled' : '') + '>' + (rodandoAgora ? 'Rodando…' : 'Rodar agora') + '</button><button class="btn btn-sm" id="da-desligar">Desligar</button>'
+          : confirmarLigar ? '' : '<button class="btn btn-sm btn-primary" id="da-ligar">Ligar</button>') + '</div>' +
+      (!d.ligada && confirmarLigar ? '<div class="acao-conf" id="da-conf"><b>Ligar a distribuição automática?</b><ul><li>A cada ' + cfg.minutos + ' minutos, em horário comercial, a extensão define no Onvio, <b>em seu nome</b>, o responsável das solicitações que estão <b>sem responsável</b>.</li><li>Critério igual ao da aba Distribuir: quem mais atendeu a empresa nos últimos 30 dias (Cadastros: quem mais fez admissões). Sem histórico, fica para decisão manual.</li><li>Nunca troca quem já é responsável e não escreve mais nada no Onvio. Para sozinha se o Onvio recusar.</li><li>Precisa de uma aba do Onvio aberta neste Chrome.</li></ul>' +
+        '<div class="acao-pe"><button class="btn btn-sm" id="da-cancelar">Cancelar</button><button class="btn btn-sm btn-primary" id="da-confirmar">Confirmar e ligar</button></div></div>' : '') +
+      '<p class="card-nota">Só o gestor liga, e só este Chrome distribui (assim duas pessoas não atribuem a mesma solicitação). O que a aba <a href="#/distribuir">Distribuir</a> sugeria para você confirmar linha a linha, aqui é feito sozinho.</p>' +
+    '</section>' +
+    '<section class="card" style="margin-top:14px"><div class="card-h"><h3>Última rodada</h3><span class="sub">' + (u ? esc(hora(u.em)) : 'ainda não rodou') + '</span></div>' +
+      (u ? '<div class="da-num"><div><b>' + (u.atribuidas || 0) + '</b><small>atribuídas</small></div><div><b' + (u.falhas ? ' class="late"' : '') + '>' + (u.falhas || 0) + '</b><small>com erro</small></div></div>' +
+        (u.parou ? '<p class="da-parou">' + esc(u.parou === 'nada sem responsável' ? 'Nenhuma solicitação sem responsável.' : u.parou === 'sem aba do Onvio aberta' ? 'Não rodou: abra o Onvio numa aba deste Chrome.' : 'Parou: ' + u.parou) + '</p>' : '') +
+        (pul.length ? '<p class="card-nota">Ficaram de fora: ' + esc(pul.join('; ')) + '.</p>' : '') : '<p class="card-nota">Quando a primeira rodada acontecer, o resultado aparece aqui.</p>') +
+    '</section>' +
+    '<section class="card" style="margin-top:14px"><div class="card-h"><h3>Últimas atribuições</h3><span class="sub">' + log.length + (log.length === 1 ? ' registro' : ' registros') + ' · só identificação e responsável</span></div>' +
+      (log.length ? '<div class="tabela-wrap"><table class="tabela"><thead><tr><th>Quando</th><th>Solicitação</th><th>Cliente</th><th>Responsável</th></tr></thead><tbody>' +
+        log.slice(0, 30).map(l => '<tr data-k="' + esc(l.k) + '" tabindex="0"><td>' + esc(hora(l.em)) + '</td><td><b>#' + esc(l.num) + '</b> ' + esc(l.typeLabel || '') + '</td><td>' + esc(l.cliente) + '</td><td>' + esc(l.resp) + '</td></tr>').join('') + '</tbody></table></div>' : '<p class="card-nota">Nenhuma atribuição automática ainda.</p>') +
+    '</section>';
+  const mandar = async m => { const r = await enviar(m); if (r && r.ok === false) toast(r.erro || 'Não foi possível', true); return r; };
+  if ($('#da-ligar', el)) $('#da-ligar', el).onclick = () => { confirmarLigar = true; distribuicaoAuto(el, ctx); };
+  if ($('#da-cancelar', el)) $('#da-cancelar', el).onclick = () => { confirmarLigar = false; distribuicaoAuto(el, ctx); };
+  if ($('#da-confirmar', el)) $('#da-confirmar', el).onclick = async () => { confirmarLigar = false; await mandar({ cmd: 'distribuicaoAuto', ligar: true }); toast('Distribuição automática ligada'); };
+  if ($('#da-desligar', el)) $('#da-desligar', el).onclick = async () => { await mandar({ cmd: 'distribuicaoAuto', ligar: false }); toast('Distribuição automática desligada'); };
+  if ($('#da-agora', el)) $('#da-agora', el).onclick = async () => {
+    rodandoAgora = true; distribuicaoAuto(el, ctx);
+    const r = await mandar({ cmd: 'distribuicaoAutoAgora' });
+    rodandoAgora = false; if (el.isConnected) distribuicaoAuto(el, ctx);
+    if (r && r.ultima) toast(r.ultima.atribuidas + (r.ultima.atribuidas === 1 ? ' atribuída' : ' atribuídas') + (r.ultima.parou && r.ultima.parou !== 'nada sem responsável' ? ' · ' + r.ultima.parou : ''), !!r.ultima.falhas);
+  };
+  ligarItens(el, log.map(l => ({ k: l.k, type: l.type, num: l.num })), ctx.abrirDetalhe);
 }
 
 function responsaveis(el, ctx) {

@@ -15,6 +15,16 @@ let confirmar = null;   // null | 'todas' | k (confirmação pendente)
 let estadoK = {};       // k -> 'enviando' | 'ok' | mensagem de erro
 let trabalhando = false;
 
+// Quando a distribuição automática está ligada neste Chrome (Equipe, gestor): uma linha com a última rodada
+function faixaAuto() {
+  const d = estado.distAuto;
+  if (!d || !d.ligada) return '';
+  const u = d.ultima, min = (estado.settings.distribuicaoAuto || {}).minutos || 15;
+  const hora = u && u.em ? new Date(u.em).toTimeString().slice(0, 5) : '';
+  return '<div class="aviso-linha" id="d-auto"><svg class="ic"><use href="#i-refresh"/></svg><span>Distribuição automática <b>ligada</b> neste Chrome: a cada ' + min + ' min, em horário comercial, pelos mesmos critérios desta tela.' +
+    (u ? ' Última rodada às ' + esc(hora) + ': ' + plural(u.atribuidas || 0, 'atribuída', 'atribuídas') + (u.parou ? ' · ' + esc(u.parou) : '') + '.' : ' Ainda não rodou.') + ' <a href="#/equipe?aba=dist">Ver na Equipe</a></span></div>';
+}
+
 export function render(el, ctx) {
   ctx.cab({
     titulo: 'Distribuir',
@@ -23,6 +33,7 @@ export function render(el, ctx) {
   const sem = (estado.snap ? estado.snap.items || [] : []).filter(i => !i.resp);
   const atribuiveis = resultado ? resultado.sugestoes.filter(x => OC.podeAcao('responsavel', x.item).ok && idEscolhido(x) && estadoK[x.item.k] !== 'ok') : [];
   el.innerHTML =
+    faixaAuto() +
     '<div class="barra">' +
       '<button class="btn btn-sm" id="d-recalc"' + (lendo || trabalhando ? ' disabled' : '') + '><svg class="ic ic-sm"><use href="#i-refresh"/></svg> ' + (lendo ? 'Lendo o Onvio…' : 'Recalcular') + '</button>' +
       '<span class="count">' + plural(sem.length, 'sem responsável', 'sem responsável') + (resultado ? ' · ' + plural(resultado.movimentadas, 'movimentada', 'movimentadas') + ' no período' : '') + '</span>' +
@@ -30,7 +41,7 @@ export function render(el, ctx) {
       '<button class="btn btn-sm btn-primary" id="d-todas"' + (atribuiveis.length && !trabalhando ? '' : ' disabled') + '><svg class="ic ic-sm"><use href="#i-user"/></svg> Atribuir todas (' + atribuiveis.length + ')</button>' +
     '</div>' +
     (confirmar === 'todas' ? '<div class="acao-conf" id="d-conf"><b>Definir o responsável de ' + plural(atribuiveis.length, 'solicitação', 'solicitações') + ' no Onvio?</b><ul>' +
-      porPessoa(atribuiveis).map(([n, q]) => '<li>' + esc(n) + ': ' + q + '</li>').join('') + '</ul><p class="fraco">Fica registrado no Onvio em seu nome. Cadastro e Rubricas ficam de fora (ainda não mapeados).</p>' +
+      porPessoa(atribuiveis).map(([n, q]) => '<li>' + esc(n) + ': ' + q + '</li>').join('') + '</ul><p class="fraco">Fica registrado no Onvio em seu nome.</p>' +
       '<div class="acao-pe"><button class="btn btn-sm" id="d-cancelar">Cancelar</button><button class="btn btn-sm btn-primary" id="d-confirmar">Confirmar e atribuir</button></div></div>' : '') +
     (resultado && resultado.erros && resultado.erros.length ? '<div class="faixa warn"><svg class="ic"><use href="#i-alert"/></svg>Algumas listas não foram lidas: ' + esc(resultado.erros.join(' · ')) + '. As sugestões podem estar incompletas.</div>' : '') +
     '<div id="d-corpo">' + corpo(sem) + '</div>';
