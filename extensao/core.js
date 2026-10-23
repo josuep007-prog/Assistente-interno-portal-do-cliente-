@@ -182,6 +182,9 @@
       duplicada: 'Esta solicitação repete a nº {outra}, que já está em atendimento. Seguimos por lá e estamos concluindo esta.',
       falta: 'Olá! Para seguirmos com a solicitação, precisamos de mais informações: (descreva o que falta). Pode completar por aqui, por favor?',
       anexo: 'Olá! A mensagem fala em anexo, mas nenhum arquivo chegou. Pode anexar de novo por aqui, por favor?',
+      rescisaoAnalise: '{saudacao}! Recebemos a solicitação de rescisão de {empregado} e já estamos analisando. Para o cálculo sair correto, confirme o último dia trabalhado, o tipo de rescisão e se o aviso prévio é trabalhado ou indenizado, e nos informe descontos como empréstimo consignado e adiantamentos. ' +
+        'Pontos importantes, para qualquer tipo de rescisão: (1) o pagamento das verbas rescisórias e a entrega dos documentos ao empregado devem ser feitos em até 10 dias corridos do término do contrato (CLT, art. 477, §6º), ou seja, até {pagamentoRescisao}; ' +
+        '(2) o exame demissional (ASO) precisa ser feito quando exigido, e o ideal é agendá-lo já, para não atrasar a rescisão; (3) o envio do desligamento ao eSocial e o FGTS da rescisão também têm prazo de 10 dias. Qualquer dúvida, estamos à disposição.',
       feriasAnalise: '{saudacao}! Recebemos a solicitação de férias de {empregado} e já estamos analisando. Antes de calcular, precisamos aguardar a atualização dos empréstimos consignados, para o cálculo sair correto. O pagamento das férias deve ser feito até {pagamentoFerias} (prazo legal: 2 dias antes do início). Lembramos que o empregado precisa ser comunicado das férias com 30 dias de antecedência (aviso de férias).'
     },
     // Modelos de resposta (caixa de resposta do detalhe). Texto padrão, nunca de cliente. {variáveis}: saudacao, cliente,
@@ -2479,6 +2482,7 @@
     anexo: { rot: 'Anexo não chegou', botao: 'Pedir o anexo', situacao: 4 },
     falta: { rot: 'Falta informação', botao: 'Pedir informações', situacao: 4 },
     feriasNova: { rot: 'Férias nova', botao: 'Pôr em análise', situacao: 2 },
+    rescisaoNova: { rot: 'Rescisão nova', botao: 'Pôr em análise', situacao: 2 },
     avisoTrabalhado: { rot: 'Aviso trabalhado', botao: 'Criar lembrete', situacao: null, lembrete: true },
     semRetorno: { rot: 'Sem retorno do cliente', botao: 'Concluir', situacao: 5, conclusao: true }     // em dois passos onde a lista exige (planoConclusao)
   };
@@ -2573,6 +2577,8 @@
     }
     // férias novas (Sem análise): pôr em análise e avisar dos consignados e do prazo de pagamento
     for (const i of pend) if ((i.type === 'avisoFerias' || i.type === 'calcFerias') && i.lado === 'esc' && grupoSituacao(i).k === 'sem') add(i, 'feriasNova', { porque: 'Solicitação de férias nova, ainda sem análise: pôr em análise e avisar o cliente do prazo de pagamento' });
+    // rescisões novas (Sem análise), de qualquer tipo: pôr em análise e avisar do prazo de pagamento, dos documentos, do exame demissional e do eSocial/FGTS
+    for (const i of pend) if ((i.type === 'avisoRescisao' || i.type === 'calcRescisao') && i.lado === 'esc' && grupoSituacao(i).k === 'sem') add(i, 'rescisaoNova', { porque: 'Solicitação de rescisão nova, ainda sem análise: pôr em análise e avisar o cliente do prazo de pagamento, dos documentos e do exame demissional' });
     // aviso de rescisão com aviso prévio trabalhado: lembrete de emitir o aviso (assunto/empregado aqui; abertura pelos trâmites)
     for (const i of pend) if (i.type === 'avisoRescisao' && acharTrecho(textoPlano(i.detalhe), s.avisoTrabalhadoPalavras)) add(i, 'avisoTrabalhado', {});
     // cálculo de rescisão com aviso trabalhado (terminationType WORKED, que já vem na lista): lembrar de emitir o aviso, sem calcular agora
@@ -2593,7 +2599,7 @@
       const pode = podeAcao('tramite', c.item);
       const sits = pode.ok ? situacoesTramite(c.item).map(x => x.code) : [];
       const alvo = situacaoEquivalente(def.situacao, c.item);
-      const texto = String(tx[({ feriasNova: 'feriasAnalise' })[c.tipo] || c.tipo] || '').replace(/\{aba\}/g, c.aba || '').replace(/\{outra\}/g, c.outra == null ? '' : String(c.outra));
+      const texto = String(tx[({ feriasNova: 'feriasAnalise', rescisaoNova: 'rescisaoAnalise' })[c.tipo] || c.tipo] || '').replace(/\{aba\}/g, c.aba || '').replace(/\{outra\}/g, c.outra == null ? '' : String(c.outra));
       return Object.assign(c, { rot: def.rot, botao: def.botao, pode, acao: { situacao: alvo && sits.includes(alvo) ? String(alvo) : '', texto } });
     }).sort((a, b) => ORDEM_CASOS.indexOf(a.tipo) - ORDEM_CASOS.indexOf(b.tipo) || (b.item.parado || 0) - (a.item.parado || 0));
   }

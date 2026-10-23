@@ -2215,8 +2215,21 @@ test('rodada 1: prescrição é só informação, motivos legais marcados, caso 
 
 test('rodada 2: férias nova em análise, aviso trabalhado com lembrete, acidente de trabalho e modelos de texto', () => {
   const it = (k, o) => Object.assign({ k, type: 'avisoFerias', typeLabel: 'Aviso de férias', id: 'x' + k, num: Number(k.split(':')[1]), code: 1, status: 'Sem análise', lado: 'esc', parado: 1, apelido: 'ACME', cliente: 'ACME LTDA', detalhe: 'Fulano', resp: 'Ana', last: '2026-10-20T10:00:00' }, o);
-  const casos = OC.casosSugeridos([it('avisoFerias:1'), it('calcFerias:2', { type: 'calcFerias', code: 2, status: 'Em análise' }), it('avisoRescisao:3', { type: 'avisoRescisao', typeLabel: 'Aviso de rescisão', detalhe: 'Fulano · aviso trabalhado', avisoEm: '2026-11-05' })], {}, OC.DEFAULTS);
-  assert.deepEqual(plano(casos.map(c => c.k + '=' + c.tipo).sort()), ['avisoFerias:1=feriasNova', 'avisoRescisao:3=avisoTrabalhado']);
+  const casos = OC.casosSugeridos([it('avisoFerias:1'), it('calcFerias:2', { type: 'calcFerias', code: 2, status: 'Em análise' }), it('avisoRescisao:3', { type: 'avisoRescisao', typeLabel: 'Aviso de rescisão', code: 2, status: 'Em análise', detalhe: 'Fulano · aviso trabalhado', avisoEm: '2026-11-05' }),
+    it('avisoRescisao:4', { type: 'avisoRescisao', typeLabel: 'Aviso de rescisão' }), it('calcRescisao:5', { type: 'calcRescisao', typeLabel: 'Cálculo de rescisão' }), it('calcRescisao:6', { type: 'calcRescisao', typeLabel: 'Cálculo de rescisão', detalhe: 'Beltrano', code: 4, status: 'Respondido', lado: 'cli' })], {}, OC.DEFAULTS);
+  assert.deepEqual(plano(casos.map(c => c.k + '=' + c.tipo).sort()), ['avisoFerias:1=feriasNova', 'avisoRescisao:3=avisoTrabalhado', 'avisoRescisao:4=rescisaoNova', 'calcRescisao:5=rescisaoNova']);
+  // rescisão nova (qualquer tipo): põe em análise e avisa do pagamento, dos documentos, do exame demissional e do eSocial/FGTS
+  const re = casos.find(c => c.k === 'calcRescisao:5');
+  assert.deepEqual(plano([re.rot, re.botao, re.acao.situacao]), ['Rescisão nova', 'Pôr em análise', '2']);
+  assert.match(re.acao.texto, /rescisão de \{empregado\}.*último dia trabalhado.*trabalhado ou indenizado.*consignado.*qualquer tipo de rescisão.*documentos.*10 dias corridos.*art\. 477.*\{pagamentoRescisao\}.*exame demissional.*eSocial.*FGTS/s);
+  assert.doesNotMatch(re.acao.texto, /pagamentoFerias|férias/i, 'texto de rescisão, sem nada de férias');
+  assert.equal(OC.casosSugeridos([it('avisoRescisao:4', { type: 'avisoRescisao' })], {}, Object.assign({}, OC.DEFAULTS, { sugestoes: { rescisaoNova: false } })).length, 0, 'as regras desligam o caso');
+  const rg = OC.combinarSettings({ regras: OC.normalizarRegras({ textosSugestao: { rescisaoAnalise: 'Olá {empregado}, até {pagamentoRescisao}.' } }) }, {});
+  assert.equal(OC.casosSugeridos([it('avisoRescisao:4', { type: 'avisoRescisao' })], {}, rg)[0].acao.texto, 'Olá {empregado}, até {pagamentoRescisao}.', 'o texto vem das regras');
+  // as variáveis são preenchidas com a data do pagamento lida do detalhe
+  const vres = OC.variaveisTramite(it('calcRescisao:5', { type: 'calcRescisao', typeLabel: 'Cálculo de rescisão' }), { desligamento: '2026-10-20' }, OC.DEFAULTS, new Date(2026, 9, 23, 10), 'Ana');
+  assert.equal(vres.pagamentoRescisao, '30/10/2026');
+  assert.equal(OC.preencherModelo(re.acao.texto, vres).includes('{'), false, 'nenhuma variável sobrando');
   const fe = casos.find(c => c.tipo === 'feriasNova');
   assert.deepEqual(plano([fe.botao, fe.acao.situacao]), ['Pôr em análise', '2']);
   assert.match(fe.acao.texto, /empréstimos consignados.*\{pagamentoFerias\}.*30 dias/s);

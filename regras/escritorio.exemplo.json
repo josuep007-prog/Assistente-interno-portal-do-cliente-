@@ -14,7 +14,7 @@
     "prescricaoDias": 30,
     "avisoLegalDias": 2
   },
-  "sugestoes": { "falta": false, "feriasNova": true, "avisoTrabalhado": true, "semRetorno": true },
+  "sugestoes": { "falta": false, "feriasNova": true, "rescisaoNova": true, "avisoTrabalhado": true, "semRetorno": true },
   "feriados": [
     "2026-12-24",
     "2026-12-31"

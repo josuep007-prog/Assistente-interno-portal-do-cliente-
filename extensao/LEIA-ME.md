@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.39.3)
+# Control Onvio · ControlTax (v0.40.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,13 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.40.0 (sugestão "Rescisão nova")
+
+- **Nova sugestão de ação, "Rescisão nova",** igual à de férias: toda **aviso de rescisão** ou **cálculo de rescisão** ainda **sem análise** (qualquer tipo de rescisão: pedido de demissão, dispensa, acordo, término de contrato, justa causa) aparece no Hoje com o botão **Pôr em análise**. Ele abre a caixa de resposta já com a situação "Em análise" e um texto para o cliente, que você revisa e confirma antes de enviar.
+- **O que o texto avisa:** pede para confirmar o último dia trabalhado, o tipo de rescisão e se o aviso prévio é trabalhado ou indenizado, e para informar descontos (empréstimo consignado e adiantamentos); lembra que o **pagamento das verbas e a entrega dos documentos** têm prazo de 10 dias corridos do término do contrato (CLT, art. 477, §6º), já com a **data** preenchida; que o **exame demissional (ASO)** deve ser agendado quando exigido; e que o **envio do desligamento ao eSocial** e o **FGTS da rescisão** têm o mesmo prazo de 10 dias. Vale para os dois tipos (aviso e cálculo).
+- **Revisão do texto:** o DP deve conferir a redação (principalmente o item do eSocial e do FGTS). Dá para trocá-la no arquivo de regras (`textosSugestao.rescisaoAnalise`, com `{saudacao}`, `{empregado}` e `{pagamentoRescisao}`) e ligar ou desligar a sugestão em `sugestoes.rescisaoNova`.
+- Se a rescisão também tiver aviso prévio trabalhado, primeiro aparece a "Rescisão nova"; depois de pôr em análise, aparece o lembrete do aviso trabalhado.
 
 ## Novidades da v0.39.3 (campo em destaque dos Dados no padrão)
 
