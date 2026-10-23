@@ -2,9 +2,11 @@
  * período (solicitações movimentadas, em qualquer situação). Admissões (os 3 Cadastros) não entram nessa conta e vão
  * para quem mais fez admissões. Lido na hora pelo service worker (cmd 'distribuicao'); nada é guardado.
  * "Atribuir" define o responsável no Onvio (cmd 'acao', assign-staff) depois de confirmar; só nas listas em que o
- * formato foi mapeado (OC.podeAcao). Nas outras, abra no Onvio. */
+ * formato foi mapeado (OC.podeAcao). Nas outras, abra no Onvio.
+ * No topo, a distribuição automática (dist-auto.js): ligar pede a senha do gestor. */
 import { estado, itens, enviar } from '../estado.js';
 import { esc, toast, ligarItens, plural, pillSituacao, $, $$, nivelLegal } from '../util.js';
+import { montarDistAuto } from './dist-auto.js';
 const OC = window.OC;
 
 const dias = 30;          // período fixo, como a avaliação da equipe (7 e 14 dias saíram)
@@ -15,16 +17,6 @@ let confirmar = null;   // null | 'todas' | k (confirmação pendente)
 let estadoK = {};       // k -> 'enviando' | 'ok' | mensagem de erro
 let trabalhando = false;
 
-// Quando a distribuição automática está ligada neste Chrome (Equipe, gestor): uma linha com a última rodada
-function faixaAuto() {
-  const d = estado.distAuto;
-  if (!d || !d.ligada) return '';
-  const u = d.ultima, min = (estado.settings.distribuicaoAuto || {}).minutos || 15;
-  const hora = u && u.em ? new Date(u.em).toTimeString().slice(0, 5) : '';
-  return '<div class="aviso-linha" id="d-auto"><svg class="ic"><use href="#i-refresh"/></svg><span>Distribuição automática <b>ligada</b> neste Chrome: a cada ' + min + ' min, em horário comercial, pelos mesmos critérios desta tela.' +
-    (u ? ' Última rodada às ' + esc(hora) + ': ' + plural(u.atribuidas || 0, 'atribuída', 'atribuídas') + (u.parou ? ' · ' + esc(u.parou) : '') + '.' : ' Ainda não rodou.') + ' <a href="#/equipe?aba=dist">Ver na Equipe</a></span></div>';
-}
-
 export function render(el, ctx) {
   ctx.cab({
     titulo: 'Distribuir',
@@ -33,7 +25,7 @@ export function render(el, ctx) {
   const sem = (estado.snap ? estado.snap.items || [] : []).filter(i => !i.resp);
   const atribuiveis = resultado ? resultado.sugestoes.filter(x => OC.podeAcao('responsavel', x.item).ok && idEscolhido(x) && estadoK[x.item.k] !== 'ok') : [];
   el.innerHTML =
-    faixaAuto() +
+    '<div id="d-auto-host"></div>' +
     '<div class="barra">' +
       '<button class="btn btn-sm" id="d-recalc"' + (lendo || trabalhando ? ' disabled' : '') + '><svg class="ic ic-sm"><use href="#i-refresh"/></svg> ' + (lendo ? 'Lendo o Onvio…' : 'Recalcular') + '</button>' +
       '<span class="count">' + plural(sem.length, 'sem responsável', 'sem responsável') + (resultado ? ' · ' + plural(resultado.movimentadas, 'movimentada', 'movimentadas') + ' no período' : '') + '</span>' +
@@ -46,6 +38,7 @@ export function render(el, ctx) {
     (resultado && resultado.erros && resultado.erros.length ? '<div class="faixa warn"><svg class="ic"><use href="#i-alert"/></svg>Algumas listas não foram lidas: ' + esc(resultado.erros.join(' · ')) + '. As sugestões podem estar incompletas.</div>' : '') +
     '<div id="d-corpo">' + corpo(sem) + '</div>';
 
+  montarDistAuto($('#d-auto-host', el), ctx);
   $('#d-recalc', el).onclick = () => { resultado = null; estadoK = {}; render(el, ctx); };
   $$('[data-esc]', el).forEach(s => s.onchange = e => { escolha[s.dataset.esc] = e.target.value; render(el, ctx); });
   $$('[data-esc], [data-atr], [data-conf-k], [data-canc-k]', el).forEach(s => s.addEventListener('click', e => e.stopPropagation()));
