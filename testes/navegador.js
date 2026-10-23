@@ -649,7 +649,8 @@ await passo('app · Solicitações: responsável sugerido nas sem responsável a
   const itens = ITENS_APP.map(i => i.k === 'rubricas:d' ? Object.assign({}, i, { respId: 'id-bia' }) : i).concat([
     { k: 'afastamento:z1', type: 'afastamento', typeLabel: 'Afastamento', id: 'z1', num: 710, code: 2, status: 'Em análise', lado: 'esc', nivel: 2, grav: 2, parado: 1, resp: 'Ana Teste', mine: true, apelido: 'ZETA', cliente: 'ZETA', detalhe: 'Atestado', created: agoraIso(1), last: agoraIso(1), acidente: true, motivos: [{ n: 2, m: 'Acidente de trabalho', legal: true, acidente: true, t: 'CAT: até o 1º dia útil seguinte ao acidente' }] },
     { k: 'geral:s1', type: 'geral', typeLabel: 'Geral', id: 's1', num: 711, code: 1, status: 'Sem análise', lado: 'esc', nivel: 0, grav: 0, parado: 0, motivos: [], resp: '', mine: false, apelido: 'SOL', cliente: 'SOL', detalhe: 'Dúvida', created: agoraIso(0), last: agoraIso(0) },
-    { k: 'geral:s2', type: 'geral', typeLabel: 'Geral', id: 's2', num: 712, code: 1, status: 'Sem análise', lado: 'esc', nivel: 0, grav: 0, parado: 0, motivos: [], resp: '', mine: false, apelido: 'LUA', cliente: 'LUA', detalhe: 'Outra', created: agoraIso(0), last: agoraIso(0) }
+    { k: 'geral:s2', type: 'geral', typeLabel: 'Geral', id: 's2', num: 712, code: 1, status: 'Sem análise', lado: 'esc', nivel: 0, grav: 0, parado: 0, motivos: [], resp: '', mine: false, apelido: 'LUA', cliente: 'LUA', detalhe: 'Outra', created: agoraIso(0), last: agoraIso(0) },
+    { k: 'geral:s3', type: 'geral', typeLabel: 'Geral', id: 's3', num: 713, code: 1, status: 'Sem análise', lado: 'esc', nivel: 0, grav: 0, parado: 0, motivos: [], resp: '', mine: false, apelido: 'MAR', cliente: 'MAR', detalhe: 'Nova', created: agoraIso(0), last: agoraIso(0) }   // chegou depois da leitura do histórico
   ]);
   const p = await abrirApp('#/fila?escopo=todas', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens }) }, `window.__respostas = { distribuicao: { ok: true, dias: 30, movimentadas: 4, erros: [], sugestoes: [
     { item: { k: 'geral:s1', type: 'geral', num: 711 }, resp: 'Lizzianne Souza Alves', respId: 'id-bia', n: 3, motivo: 'atendeu 3 de 4 solicitações desta empresa nos últimos 30 dias', alternativas: [] },
@@ -667,6 +668,8 @@ await passo('app · Solicitações: responsável sugerido nas sem responsável a
   await p.click('[data-vis="cartoes"]');
   assert.match(await p.getAttribute('[data-sug-resp="geral:s1"]', 'title'), /atendeu 3 de 4 solicitações desta empresa/);
   assert.equal(await p.textContent('[data-sug-resp="geral:s2"]'), 'Escolher responsável', 'sem histórico');
+  assert.equal(await p.textContent('[data-sug-resp="geral:s3"]'), 'Escolher responsável', 'sem sugestão (chegou depois da leitura): o botão de escolher continua');
+  assert.equal(await p.$('#corpo .c-sub .today'), null, 'nenhuma sem responsável fica sem o botão');
   assert.equal(await p.$eval('[data-sug-resp="geral:s1"]', b => getComputedStyle(b).borderTopStyle), 'solid', 'botão padrão, sem borda tracejada');
   assert.ok(await p.$eval('[data-sug-resp="geral:s2"]', b => b.classList.contains('btn') && b.classList.contains('btn-sm')), 'o mesmo botão pequeno do resto da tela');
   if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/sug-resp.png' });
