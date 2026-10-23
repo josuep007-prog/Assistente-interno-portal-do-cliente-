@@ -1422,6 +1422,7 @@ body.setor-fora .trilho [data-rota="equipe"], body.setor-fora .trilho [data-rota
 .btn-concluir:hover:not(:disabled){background:var(--blue-deep); color:#fff}
 .btn-concluir:disabled{opacity:.5}
 .sc-pe .btn-concluir{margin-left:8px}
+.btn-analise{white-space:nowrap}
 
 /* Hoje · sugestões de ação em barras recolhíveis: categoria > tipo de solicitação, com a ação em lote por tipo */
 .sug-lista{display:flex; flex-direction:column; gap:8px}

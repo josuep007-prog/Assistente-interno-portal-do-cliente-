@@ -29,6 +29,7 @@
   ],
   "foraDoPortal": ["ja resolvido", "enviei por e-mail", "pelo whatsapp", "pode desconsiderar"],
   "textosSugestao": {
+    "emAnalise": "Olá! Estamos cientes da solicitação e daremos continuidade a ela.",
     "semRetorno": "Como não tivemos retorno do cliente nas últimas semanas, estamos concluindo esta solicitação. Se ainda precisar de algo, é só abrir uma nova solicitação.",
     "semRetornoEtapa": "Registro para o encerramento: solicitação sem retorno do cliente há mais de duas semanas.",
     "fora": "Pelo que consta, esta solicitação já foi resolvida fora do portal. Estamos concluindo por aqui. Se ainda precisar de algo, é só abrir uma nova solicitação.",

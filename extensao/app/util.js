@@ -74,6 +74,14 @@ export function respHtml(i) {
 // Cartão de solicitação (visão "Cartões" das filas): o prazo legal, quando há, ou a idade em cinza
 // "Concluir" nas Solicitações, para o que está aguardando o cliente: abre o trâmite já preenchido (1 ou 2 passos, conforme a lista),
 // você revisa e confirma. Só aparece na vez do cliente; sem como concluir por aqui, fica desativado com o motivo.
+// "Pôr em análise": só onde cabe (vez do escritório, lista com trâmite e Em análise oferecido, ainda não em análise; OC.acaoAnalise)
+export function analiseBtn(i) {
+  if (!i || i.lado !== 'esc') return '';
+  const a = OC.acaoAnalise(i, estado.settings);
+  if (!a.cabe) return '';
+  return '<button type="button" class="btn btn-sm btn-concluir btn-analise" data-analise="' + esc(i.k) + '" title="Pôr em análise: abre o trâmite já preenchido (situação Em análise); você revisa e confirma.">' +
+    '<svg class="ic ic-sm"><use href="#i-clock"/></svg> Pôr em análise</button>';
+}
 export function concluirBtn(i) {
   if (!i || i.lado !== 'cli') return '';
   const a = OC.acaoConcluir(i, estado.settings);
@@ -89,7 +97,7 @@ export function cartaoItem(i) {
     '<div class="sc-cli" title="' + esc(i.cliente) + '">' + esc(nomeCli(i)) + '</div>' +
     '<div class="sc-sub">' + esc(i.detalhe || '—') + '</div>' +
     mot +
-    '<div class="sc-pe"><span><b>' + (i.parado || 0) + 'd</b> parada</span><span class="resp">' + respHtml(i) + '</span>' + concluirBtn(i) + '</div></div>';
+    '<div class="sc-pe"><span><b>' + (i.parado || 0) + 'd</b> parada</span><span class="resp">' + respHtml(i) + '</span>' + concluirBtn(i) + analiseBtn(i) + '</div></div>';
 }
 
 let toastT = null;

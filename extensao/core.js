@@ -182,6 +182,8 @@
       duplicada: 'Esta solicitação repete a nº {outra}, que já está em atendimento. Seguimos por lá e estamos concluindo esta.',
       falta: 'Olá! Para seguirmos com a solicitação, precisamos de mais informações: (descreva o que falta). Pode completar por aqui, por favor?',
       anexo: 'Olá! A mensagem fala em anexo, mas nenhum arquivo chegou. Pode anexar de novo por aqui, por favor?',
+      // "Pôr em análise" das outras listas (e do cálculo de rescisão): curto e sem {variáveis}, para dar para mandar em lote
+      emAnalise: 'Olá! Estamos cientes da solicitação e daremos continuidade a ela.',
       rescisaoAnalise: '{saudacao}! Recebemos a solicitação de rescisão de {empregado} e já estamos analisando. Para o cálculo sair correto, confirme o último dia trabalhado, o tipo de rescisão e se o aviso prévio é trabalhado ou indenizado, e nos informe descontos como empréstimo consignado e adiantamentos. ' +
         'Pontos importantes, para qualquer tipo de rescisão: (1) o pagamento das verbas rescisórias e a entrega dos documentos ao empregado devem ser feitos em até 10 dias corridos do término do contrato (CLT, art. 477, §6º), ou seja, até {pagamentoRescisao}; ' +
         '(2) o exame demissional (ASO) precisa ser feito quando exigido, e o ideal é agendá-lo já, para não atrasar a rescisão; (3) o envio do desligamento ao eSocial e o FGTS da rescisão também têm prazo de 10 dias. Qualquer dúvida, estamos à disposição.',
@@ -2539,6 +2541,24 @@
   // Lista de casos para o painel, do mais forte ao mais fraco. ignorados: { k: { l } } (a pessoa disse "não é o caso";
   // volta se a solicitação mexer). Cada caso: { k, item, tipo, rot, porque, botao, acao: { situacao, texto }, pode }
   // Concluir por falta de retorno do cliente (Hoje e Solicitações): se pode, e o trâmite já preenchido (1 ou 2 passos, conforme a lista)
+  // "Pôr em análise" (Solicitações, uma a uma ou em lote; Hoje, nas sugestões de férias e de rescisão novas): na vez do escritório, nas
+  // listas em que a extensão inclui trâmite e o Onvio oferece "Em análise" a partir da situação atual, e que ainda não estão nela.
+  // Férias e aviso de rescisão levam o texto com prazos (feriasAnalise/rescisaoAnalise, com {variáveis} preenchidas na hora);
+  // as outras, inclusive o cálculo de rescisão (pedido do Josué em 23/10/2026), o texto curto emAnalise.
+  const TEXTO_ANALISE = { avisoFerias: 'feriasAnalise', calcFerias: 'feriasAnalise', avisoRescisao: 'rescisaoAnalise' };
+  function acaoAnalise(item, settings) {
+    const s = Object.assign({}, DEFAULTS, settings || {});
+    const tx = Object.assign({}, DEFAULTS.textosSugestao, s.textosSugestao || {});
+    const t = TYPE_BY_KEY[item && item.type];
+    const texto = String(tx[TEXTO_ANALISE[item && item.type] || 'emAnalise'] || tx.emAnalise || '');
+    if (!t) return { cabe: false, pode: { ok: false, motivo: 'tipo desconhecido' }, acao: null };
+    const alvo = situacaoEquivalente(2, item);
+    const p0 = podeAcao('tramite', item);
+    if (!alvo) return { cabe: false, pode: { ok: false, motivo: 'esta lista não tem a situação Em análise' }, acao: null };
+    if (item.lado !== 'esc' || Number(item.code) === alvo) return { cabe: false, pode: { ok: false, motivo: item.lado !== 'esc' ? 'está com o cliente' : 'já está em análise' }, acao: null };
+    const oferece = p0.ok && situacoesTramite(item).some(x => x.code === alvo);
+    return { cabe: p0.ok && oferece, pode: !p0.ok ? p0 : oferece ? p0 : { ok: false, motivo: 'o Onvio não oferece Em análise a partir da situação atual' }, acao: { situacao: String(alvo), texto } };
+  }
   function acaoConcluir(item, settings) {
     const s = Object.assign({}, DEFAULTS, settings || {});
     const tx = Object.assign({}, DEFAULTS.textosSugestao, s.textosSugestao || {});
@@ -2577,8 +2597,8 @@
     }
     // férias novas (Sem análise): pôr em análise e avisar dos consignados e do prazo de pagamento
     for (const i of pend) if ((i.type === 'avisoFerias' || i.type === 'calcFerias') && i.lado === 'esc' && grupoSituacao(i).k === 'sem') add(i, 'feriasNova', { porque: 'Solicitação de férias nova, ainda sem análise: pôr em análise e avisar o cliente do prazo de pagamento' });
-    // rescisões novas (Sem análise), de qualquer tipo: pôr em análise e avisar do prazo de pagamento, dos documentos, do exame demissional e do eSocial/FGTS
-    for (const i of pend) if ((i.type === 'avisoRescisao' || i.type === 'calcRescisao') && i.lado === 'esc' && grupoSituacao(i).k === 'sem') add(i, 'rescisaoNova', { porque: 'Solicitação de rescisão nova, ainda sem análise: pôr em análise e avisar o cliente do prazo de pagamento, dos documentos e do exame demissional' });
+    // avisos de rescisão novos (Sem análise), de qualquer tipo de rescisão (o cálculo de rescisão não leva esse texto): pôr em análise e avisar do prazo de pagamento, dos documentos, do exame demissional e do eSocial/FGTS
+    for (const i of pend) if (i.type === 'avisoRescisao' && i.lado === 'esc' && grupoSituacao(i).k === 'sem') add(i, 'rescisaoNova', { porque: 'Solicitação de rescisão nova, ainda sem análise: pôr em análise e avisar o cliente do prazo de pagamento, dos documentos e do exame demissional' });
     // aviso de rescisão com aviso prévio trabalhado: lembrete de emitir o aviso (assunto/empregado aqui; abertura pelos trâmites)
     for (const i of pend) if (i.type === 'avisoRescisao' && acharTrecho(textoPlano(i.detalhe), s.avisoTrabalhadoPalavras)) add(i, 'avisoTrabalhado', {});
     // cálculo de rescisão com aviso trabalhado (terminationType WORKED, que já vem na lista): lembrar de emitir o aviso, sem calcular agora
@@ -2703,5 +2723,5 @@
     };
   }
 
-  g.OC = { montarLoteHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, dentroDoHorario, planoDistribuicaoAuto, acaoConcluir, agruparSugestoes, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, marcadoresPendentes, avisosResposta, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { montarLoteHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, dentroDoHorario, planoDistribuicaoAuto, acaoConcluir, agruparSugestoes, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, acaoAnalise, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, marcadoresPendentes, avisosResposta, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);

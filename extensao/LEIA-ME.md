@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.40.1)
+# Control Onvio · ControlTax (v0.41.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,13 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.41.0 (Pôr em análise em cada solicitação e em lote)
+
+- **Botão "Pôr em análise" nas Solicitações:** aparece em cada solicitação na vez do escritório que ainda não está "Em análise", nas listas em que o Onvio oferece essa situação a partir da atual (não aparece nos Cadastros, que não têm "Em análise", nem nas que estão com o cliente). O clique abre a caixa de resposta já com a situação "Em análise" e o texto preenchido; você revisa e confirma, como sempre.
+- **Em lote:** com duas ou mais solicitações que podem ir para análise na tela (respeitando a aba, os filtros e a busca), o botão **"Pôr em análise (N)"** no alto da lista abre a janela de lote: mostra o texto que vai para cada tipo, a lista (dá para desmarcar), uma confirmação só e um trâmite por vez, com o resultado de cada. Para na primeira recusa de acesso do Onvio.
+- **Texto curto no cálculo de rescisão (e nas demais listas):** "Olá! Estamos cientes da solicitação e daremos continuidade a ela." O texto longo (prazo de pagamento, documentos, exame demissional, eSocial/FGTS) ficou só no **aviso de rescisão**, e a sugestão "Rescisão nova" do Hoje agora vale só para o aviso. Férias continuam com o texto de férias; no lote, nome e datas de cada uma são lidos na hora (nada é guardado) e, se faltar algum dado, aquela fica para ser feita pelo detalhe.
+- **Regras:** o texto curto pode ser trocado em `textosSugestao.emAnalise` no arquivo de regras.
 
 ## Novidades da v0.40.1 (Próximos passos não corta mais)
 
