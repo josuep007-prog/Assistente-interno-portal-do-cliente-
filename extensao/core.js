@@ -187,7 +187,8 @@
       rescisaoAnalise: '{saudacao}! Recebemos a solicitação de rescisão de {empregado} e já estamos analisando. Para o cálculo sair correto, confirme o último dia trabalhado, o tipo de rescisão e se o aviso prévio é trabalhado ou indenizado, e nos informe descontos como empréstimo consignado e adiantamentos. ' +
         'Pontos importantes, para qualquer tipo de rescisão: (1) o pagamento das verbas rescisórias e a entrega dos documentos ao empregado devem ser feitos em até 10 dias corridos do término do contrato (CLT, art. 477, §6º), ou seja, até {pagamentoRescisao}; ' +
         '(2) o exame demissional (ASO) precisa ser feito quando exigido, e o ideal é agendá-lo já, para não atrasar a rescisão; (3) o envio do desligamento ao eSocial e o FGTS da rescisão também têm prazo de 10 dias. Qualquer dúvida, estamos à disposição.',
-      feriasAnalise: '{saudacao}! Recebemos a solicitação de férias de {empregado} e já estamos analisando. Antes de calcular, precisamos aguardar a atualização dos empréstimos consignados, para o cálculo sair correto. O pagamento das férias deve ser feito até {pagamentoFerias} (prazo legal: 2 dias antes do início). Lembramos que o empregado precisa ser comunicado das férias com 30 dias de antecedência (aviso de férias).'
+      feriasAnalise: '{saudacao}! Recebemos a solicitação de férias de {empregado} e já estamos analisando. Antes de calcular, precisamos aguardar a atualização dos empréstimos consignados, para o cálculo sair correto. O pagamento das férias deve ser feito até {pagamentoFerias} (prazo legal: 2 dias antes do início). Lembramos que o empregado precisa ser comunicado das férias com 30 dias de antecedência (aviso de férias).{abono}',
+      feriasAbono: ' Como há pagamento de abono pecuniário (venda de 1/3 das férias), o abono deve ser solicitado pelo próprio empregado, em carta de próprio punho, até 15 dias antes do término do período aquisitivo (art. 143 e §1º da CLT). Precisamos receber essa carta para incluir o abono no cálculo.'
     },
     // Modelos de resposta (caixa de resposta do detalhe). Texto padrão, nunca de cliente. {variáveis}: saudacao, cliente,
     // empregado, tipo, inicio, pagamento, aba, analista, numero. O que não tiver valor fica como está e o envio é barrado
@@ -202,7 +203,7 @@
       { rot: 'Resolvida fora do portal', situacao: 5, texto: 'Pelo que consta, esta solicitação já foi resolvida fora do portal. Estamos concluindo por aqui. Se ainda precisar de algo, é só abrir uma nova solicitação.' },
       { rot: 'Lista errada', situacao: 5, precisaAba: true, texto: '{saudacao}! Este pedido tem uma aba própria no Portal do Cliente: {aba}. Por favor, abra a solicitação por lá, com os campos preenchidos, para conseguirmos atender dentro do prazo. Estamos concluindo esta da lista Geral.' },
       { rot: 'Repete outra solicitação', situacao: 5, texto: 'Esta solicitação repete a nº {numero}, que já está em atendimento. Seguimos por lá e estamos concluindo esta.' },
-      { rot: 'Férias em análise', situacao: 2, tipos: ['avisoFerias', 'calcFerias'], texto: '{saudacao}! Recebemos a solicitação de férias de {empregado} e já estamos analisando. Antes de calcular, precisamos aguardar a atualização dos empréstimos consignados, para o cálculo sair correto. O pagamento das férias deve ser feito até {pagamentoFerias} (prazo legal: 2 dias antes do início). Lembramos que o empregado precisa ser comunicado das férias com 30 dias de antecedência (aviso de férias).' },
+      { rot: 'Férias em análise', situacao: 2, tipos: ['avisoFerias', 'calcFerias'], texto: '{saudacao}! Recebemos a solicitação de férias de {empregado} e já estamos analisando. Antes de calcular, precisamos aguardar a atualização dos empréstimos consignados, para o cálculo sair correto. O pagamento das férias deve ser feito até {pagamentoFerias} (prazo legal: 2 dias antes do início). Lembramos que o empregado precisa ser comunicado das férias com 30 dias de antecedência (aviso de férias).{abono}' },
       { rot: 'Envio da rescisão', situacao: 4, tipos: ['calcRescisao'], texto: '{saudacao}! Segue o cálculo da rescisão de {empregado}. Lembramos que o pagamento das verbas rescisórias e a entrega dos documentos ao empregado devem ser feitos em até 10 dias corridos do término do contrato (CLT, art. 477, §6º), ou seja, até {pagamentoRescisao}. Qualquer dúvida, estamos à disposição.' }
     ],
     // Segundos entre "Enviar" e a chamada ao Onvio, para a pessoa desistir (trâmite não pode ser excluído). 0 desliga.
@@ -1738,7 +1739,7 @@
   function datasDe(d) {
     d = d || {};
     const pick = k => (d[k] && /^\d{4}-\d{2}-\d{2}/.test(d[k]) ? String(d[k]).slice(0, 10) : null);
-    return { inicio: pick('vacationStartDate'), aviso: pick('adviceDate') || pick('noticeDate') || pick('priorNoticeAdviceDate'), desligamento: pick('resignationDate'), admissao: pick('admissionDate') || pick('startDate'), competencia: pick('effectiveDate'), afastamento: pick('leaveDate'), pagamento: pick('paymentDate') };
+    return { inicio: pick('vacationStartDate'), aviso: pick('adviceDate') || pick('noticeDate') || pick('priorNoticeAdviceDate'), desligamento: pick('resignationDate'), admissao: pick('admissionDate') || pick('startDate'), competencia: pick('effectiveDate'), afastamento: pick('leaveDate'), pagamento: pick('paymentDate'), abono: d.payBonusDays === true || Number(d.bonusDays || d.abonoDays) > 0 };
   }
 
   /* ---------- prazo de pagamento de férias e rescisão ----------
@@ -2429,10 +2430,17 @@
       if (pg) { v.pagamento = fmt(pg); if (/Ferias$/.test(item.type)) v.pagamentoFerias = fmt(pg); else if (/Rescisao$/.test(item.type)) v.pagamentoRescisao = fmt(pg); }
     }
     if (d.inicio) v.inicio = fmt(diaDe(d.inicio));
+    // {abono}: com o detalhe lido, a frase do abono (carta de próprio punho, art. 143 da CLT) só quando há pagamento de abono; senão, vazio
+    if (datas && item && /Ferias$/.test(item.type)) v.abono = d.abono ? String(Object.assign({}, DEFAULTS.textosSugestao, (settings && settings.textosSugestao) || {}).feriasAbono || '') : '';
     if (analista) v.analista = analista;
     return v;
   }
-  const preencherModelo = (texto, vars) => String(texto || '').replace(/\{(\w+)\}/g, (m, k) => (vars && vars[k] ? String(vars[k]) : m));
+  // variável com valor vazio (como {abono} sem abono) some do texto, sem deixar espaço sobrando; as sem valor algum ficam, para barrar o envio
+  const preencherModelo = (texto, vars) => {
+    let vazia = false;
+    const t = String(texto || '').replace(/\{(\w+)\}/g, (m, k) => { if (vars && vars[k]) return String(vars[k]); if (vars && vars[k] === '') { vazia = true; return ''; } return m; });
+    return vazia ? t.replace(/[ \t]+$/gm, '').replace(/ {2,}/g, ' ').trim() : t;
+  };
   // modelos que valem para esta solicitação (tipo e aba própria); a situação vem só se a lista do Onvio a aceita agora
   function modelosPara(item, settings, pessoais) {
     const s = Object.assign({}, DEFAULTS, settings || {});
