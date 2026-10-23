@@ -784,6 +784,7 @@ await passo('app · Equipe: Distribuição automática atrás da senha; ligar pe
   // ligar pede a confirmação com o que vai acontecer; cancelar não liga
   await p.click('#da-ligar');
   await p.waitForSelector('#da-conf');
+  if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/dist-auto-confirmar.png' });
   assert.match(await p.textContent('#da-conf'), /em seu nome.*sem responsável.*Nunca troca quem já é responsável/s);
   await p.click('#da-cancelar');
   assert.equal(await p.evaluate(() => (window.__msgs || []).some(m => m.cmd === 'distribuicaoAuto')), false, 'cancelar não liga');
