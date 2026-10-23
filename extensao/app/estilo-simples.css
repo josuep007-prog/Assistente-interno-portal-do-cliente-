@@ -1,0 +1,4 @@
+/* Control Onvio · estilo Simplificado (padrão desde a 0.42.0)
+ * Carregado depois de app.css. TUDO aqui fica sob :root[data-estilo="simples"]: com data-estilo="atual" nada deste arquivo se aplica
+ * e o app é idêntico ao de antes. Claro/escuro é escolha à parte (data-theme). */
+@import url("../estilo-simples-tokens.css");

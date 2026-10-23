@@ -69,14 +69,14 @@ function reavaliar(s) {
 }
 
 export function render(el, ctx, params) {
-  const aba = ['prazos', 'leitura', 'feriados', 'palavras', 'avancado'].includes(params && params.aba) ? params.aba : 'prazos';
+  const aba = ['aparencia', 'prazos', 'leitura', 'feriados', 'palavras', 'avancado'].includes(params && params.aba) ? params.aba : 'aparencia';
   ctx.cab({
     titulo: 'Configurações', sub: 'As regras em vigor, em linguagem simples',
-    abas: [['prazos', 'Prazos'], ['leitura', 'Leitura e avisos'], ['feriados', 'Feriados'], ['palavras', 'Palavras'], ['avancado', 'Avançado']].map(([id, rot]) => ({ id, rot, href: '#/config' + (id === 'prazos' ? '' : '?aba=' + id) })),
+    abas: [['aparencia', 'Aparência'], ['prazos', 'Prazos'], ['leitura', 'Leitura e avisos'], ['feriados', 'Feriados'], ['palavras', 'Palavras'], ['avancado', 'Avançado']].map(([id, rot]) => ({ id, rot, href: '#/config' + (id === 'aparencia' ? '' : '?aba=' + id) })),
     aba
   });
   if (aba !== 'prazos') rascunho = {};
-  ({ prazos, leitura, feriados, palavras, avancado })[aba](el);
+  ({ aparencia, prazos, leitura, feriados, palavras, avancado })[aba](el, ctx);
   // Salvou (aqui ou na aba Avançado) ou chegou leitura nova: redesenha, a não ser no meio de uma edição ou no Avançado
   if (desligar) desligar();
   desligar = aoMudar(quais => {
@@ -85,6 +85,30 @@ export function render(el, ctx, params) {
     // fora do laço dos ouvintes: redesenhar registra um ouvinte novo, que entraria no mesmo laço
     if (quais.some(q => ['usuario', 'regras', 'snap'].includes(q))) { clearTimeout(redesenho); redesenho = setTimeout(() => { if (el.isConnected && /^#\/config/.test(location.hash)) render(el, ctx, params); }, 0); }
   });
+}
+
+/* ---------- Aparência: o estilo (Simplificado ou Atual) e claro/escuro, com troca na hora e sem "Salvar" ---------- */
+// Só no localStorage deste Chrome (como o tema claro/escuro): não vai para o armazenamento da extensão nem para as regras.
+const MINI = (estilo) => '<div class="apar-mini apar-' + estilo + '" aria-hidden="true"><i class="am-trilho"></i><div class="am-corpo"><i class="am-cab"></i>' +
+  (estilo === 'atual' ? '<i class="am-hero"></i><div class="am-grade"><i></i><i></i><i></i><i></i></div>' : '<div class="am-linha"><i></i><i></i></div><div class="am-linha"><i></i><i></i></div><div class="am-linha"><i></i><i></i></div>') + '</div></div>';
+function aparencia(el, ctx) {
+  const est = ctx.estilo(), tema = ctx.tema();
+  const cartao = (id, rot, desc) => '<button type="button" class="apar-card' + (est === id ? ' on' : '') + '" data-estilo-op="' + id + '" role="radio" aria-checked="' + (est === id) + '">' + MINI(id) +
+    '<span class="apar-tx"><b>' + esc(rot) + (est === id ? ' <em>em uso</em>' : '') + '</b><small>' + esc(desc) + '</small></span></button>';
+  const op = (id, rot) => '<button type="button" class="apar-op' + (tema === id ? ' on' : '') + '" data-tema-op="' + id + '" role="radio" aria-checked="' + (tema === id) + '">' + rot + '</button>';
+  el.innerHTML = '<div class="cfg-grade"><div class="cfg-col">' +
+    '<section class="cfg-card"><h3><svg class="ic"><use href="#i-eye"/></svg>Estilo</h3>' +
+      '<p class="fraco">A troca vale na hora e só neste Chrome. Os dados e as regras são os mesmos nos dois.</p>' +
+      '<div class="apar-cards" role="radiogroup" aria-label="Estilo">' +
+        cartao('simples', 'Simplificado', 'Menos cores, bordas e textos; o que é secundário fica recolhido ou numa dica. Cabe melhor em telas pequenas.') +
+        cartao('atual', 'Atual', 'O desenho de antes da 0.42.0: destaque escuro no Hoje, cartões de tipo coloridos e todas as explicações à vista.') +
+      '</div></section>' +
+    '<section class="cfg-card"><h3><svg class="ic"><use href="#i-moon"/></svg>Claro ou escuro</h3>' +
+      '<p class="fraco">Vale nos dois estilos (é o mesmo botão do menu à esquerda).</p>' +
+      '<div class="apar-ops" role="radiogroup" aria-label="Tema">' + op('light', '<svg class="ic ic-sm"><use href="#i-sun"/></svg> Claro') + op('dark', '<svg class="ic ic-sm"><use href="#i-moon"/></svg> Escuro') + '</div></section>' +
+    '</div></div>';
+  $$('[data-estilo-op]', el).forEach(b => b.onclick = () => { if (b.dataset.estiloOp !== est) ctx.definirEstilo(b.dataset.estiloOp); });
+  $$('[data-tema-op]', el).forEach(b => b.onclick = () => { if (b.dataset.temaOp !== tema) ctx.definirTema(b.dataset.temaOp); });
 }
 
 /* ---------- Prazos: editar e ver o efeito na fila antes de salvar ---------- */

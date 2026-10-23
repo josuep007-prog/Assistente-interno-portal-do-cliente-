@@ -1082,6 +1082,35 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .cfg-aba{padding:8px 0; border-top:1px solid var(--rule)}
 .cfg-aba b{font-weight:600}
 @media (max-width:980px){ .cfg-grade{grid-template-columns:1fr} .cfg-lado{position:static} .cfg-campo{grid-template-columns:minmax(0,1fr) auto; } .cfg-un{grid-column:2} .cfg-orig{grid-column:1 / -1; justify-content:flex-start} }
+/* Configurações → Aparência: dois cartões com miniatura (cores fixas, para mostrar o estilo e não o tema em uso) */
+.apar-cards{display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px}
+.apar-card{display:flex; flex-direction:column; gap:10px; text-align:left; padding:10px; border:1px solid var(--rule-strong); border-radius:var(--r); background:var(--surface); cursor:pointer; font:inherit; color:inherit}
+.apar-card:hover{border-color:var(--blue-deep)}
+.apar-card.on{border-color:var(--blue-deep); box-shadow:0 0 0 2px var(--blue-pale)}
+.apar-card:focus-visible{outline:2px solid var(--blue-deep); outline-offset:2px}
+.apar-tx{display:flex; flex-direction:column; gap:3px}
+.apar-tx b{font:600 13.5px "Archivo", sans-serif}
+.apar-tx b em{font:600 10.5px "IBM Plex Sans", sans-serif; font-style:normal; color:var(--blue-deep); margin-left:6px}
+.apar-tx small{color:var(--ink-3); font-size:12px; line-height:1.4}
+.apar-mini{display:flex; height:108px; border-radius:3px; overflow:hidden; border:1px solid #cfd8e2; background:#E6EDF5}
+.apar-mini i{display:block; border-radius:2px}
+.am-trilho{width:14px; background:#0E151B; border-radius:0!important}
+.am-corpo{flex:1; padding:8px; display:flex; flex-direction:column; gap:6px; min-width:0}
+.am-cab{height:8px; width:46%; background:#b4c2d1}
+.am-hero{height:34px; background:#101C26}
+.am-grade{display:grid; grid-template-columns:repeat(4, 1fr); gap:5px; flex:1}
+.apar-atual .am-grade i:nth-child(1){background:#FBE9C6} .apar-atual .am-grade i:nth-child(2){background:#DDEFE6} .apar-atual .am-grade i:nth-child(3){background:#E5E0F8} .apar-atual .am-grade i:nth-child(4){background:#F8DEDA}
+.apar-simples{background:#fff}
+.apar-simples .am-trilho{background:#EEF1F4}
+.apar-simples .am-corpo{background:#fff}
+.apar-simples .am-cab{background:#cfd6de}
+.am-linha{display:grid; grid-template-columns:1fr 1fr; gap:6px}
+.am-linha i{height:14px; background:#fff; border:1px solid #dde3ea}
+.apar-ops{display:inline-flex; border:1px solid var(--rule-strong); border-radius:var(--r); overflow:hidden}
+.apar-op{display:inline-flex; align-items:center; gap:6px; padding:7px 16px; border:0; background:var(--surface); color:var(--ink-2); font:inherit; font-weight:500; cursor:pointer}
+.apar-op + .apar-op{border-left:1px solid var(--rule-strong)}
+.apar-op.on{background:var(--blue-deep); color:#fff}
+@media (max-width:760px){ .apar-cards{grid-template-columns:1fr} }
 
 /* Equipe · avaliação justa: poucos dados, casos fora da conta e notas da pessoa */
 .av-como p + p{margin-top:8px}

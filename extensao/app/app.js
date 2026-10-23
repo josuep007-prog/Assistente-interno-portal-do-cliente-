@@ -55,7 +55,8 @@ function cab(o) {
     esc(a.rot) + (a.n != null ? '<span class="n' + (a.late ? ' late' : '') + '">' + (a.n || '') + '</span>' : '') + (a.href ? '</a>' : '</button>')).join('');
   return { abas: ab, extra: $('#cab-extra') };
 }
-const ctx = { navegar, abrirDetalhe, abrirLembrete, abrirNova, cab, aoRedimensionar: fn => { aoRedim = fn; } };
+const ctx = { navegar, abrirDetalhe, abrirLembrete, abrirNova, cab, aoRedimensionar: fn => { aoRedim = fn; },
+  estilo: () => estiloAtual(), tema: () => temaAtual(), definirEstilo: n => definirEstilo(n), definirTema: n => definirTema(n) };
 
 // Onvio aberto com login de cliente: o app não mostra nada (o service worker já apagou o que foi lido).
 const bloqueado = () => (estado.status || {}).estado === 'visao_cliente';
@@ -244,7 +245,23 @@ function escolher(n) { const o = opcoes[n]; if (!o) return; fecharBusca(); o.ir(
 
 /* ---------- tema ---------- */
 const temaAtual = () => document.documentElement.getAttribute('data-theme') || 'light';     // padrão claro; escuro só por escolha
+const estiloAtual = () => document.documentElement.getAttribute('data-estilo') === 'atual' ? 'atual' : 'simples';   // padrão Simplificado; o Atual é o desenho de antes da 0.42.0
 const iconeTema = () => { const esc_ = temaAtual() === 'dark'; $('#btn-tema use').setAttribute('href', esc_ ? '#i-sun' : '#i-moon'); $('#tema-tx').textContent = esc_ ? 'Tema claro' : 'Tema escuro'; };
+
+// Troca na hora: o claro/escuro vale nos dois estilos, e o botão do trilho e a aba Aparência mostram sempre o mesmo
+function definirTema(n) {
+  document.documentElement.setAttribute('data-theme', n);
+  try { localStorage.setItem('controlonvio-theme', n); } catch (e) {}
+  iconeTema(); if (aoRedim) aoRedim();
+  if (rota.nome === 'config' && (!rota.params.aba || rota.params.aba === 'aparencia')) redesenharMantendo();
+}
+// O estilo muda só o visual e a arrumação: redesenha a tela mantendo a rolagem e avisa os gráficos para refazerem o tamanho
+function definirEstilo(n) {
+  document.documentElement.setAttribute('data-estilo', n === 'atual' ? 'atual' : 'simples');
+  try { localStorage.setItem('controlonvio-estilo', n === 'atual' ? 'atual' : 'simples'); } catch (e) {}
+  redesenharMantendo(); if (aoRedim) aoRedim();
+}
+function redesenharMantendo() { const rolagem = $('#vista').scrollTop; desenhar(); $('#vista').scrollTop = rolagem; }
 
 async function atualizar() {
   const r = await enviar({ cmd: 'atualizar' });
@@ -284,12 +301,7 @@ async function atualizar() {
     if (!$('#sino-painel').hidden && !e.target.closest('#sino-painel')) abrirSino(false);
     $$('#vista details.menu[open]').forEach(d => { if (!d.contains(e.target)) d.open = false; });
   });
-  $('#btn-tema').onclick = () => {
-    const n = temaAtual() === 'dark' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', n);
-    try { localStorage.setItem('controlonvio-theme', n); } catch (e) {}
-    iconeTema(); if (aoRedim) aoRedim();
-  };
+  $('#btn-tema').onclick = () => definirTema(temaAtual() === 'dark' ? 'light' : 'dark');
   $('#btn-busca').onclick = abrirBusca;
   $('#rail-busca').onclick = abrirBusca;
   $('#cmdk').addEventListener('mousedown', e => { if (e.target.id === 'cmdk') fecharBusca(); });

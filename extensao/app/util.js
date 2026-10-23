@@ -6,6 +6,10 @@ export const $ = (s, el) => (el || document).querySelector(s);
 export const $$ = (s, el) => [...(el || document).querySelectorAll(s)];
 export const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 export const plural = (n, um, varios) => n + ' ' + (n === 1 ? um : varios);
+// Estilo escolhido em Configurações → Aparência: "simples" (de fábrica) ou "atual". Só a arrumação em JS que não cabe no CSS pergunta isto.
+export const simples = () => document.documentElement.getAttribute('data-estilo') !== 'atual';
+export function lerPref(k, padrao) { try { return localStorage.getItem('oc.' + k) || padrao; } catch { return padrao; } }
+export function gravarPref(k, v) { try { localStorage.setItem('oc.' + k, v); } catch { /* sem armazenamento: vale só nesta visita */ } }
 export const num = n => Number(n || 0).toLocaleString('pt-BR');
 
 const dt = v => { const d = v instanceof Date ? v : OC.parseDate(v); return d && !isNaN(d) ? d : null; };

@@ -8,7 +8,7 @@
  * Painel de previsão de solicitações por empresa (lida na hora, sob demanda). Os painéis de vencimentos e de uso do
  * portal saíram na 0.29.0 (o prazo legal já sobe na fila). O quadro de avisos sem cálculo saiu em 22/10/2026. Carteira no cabeçalho. */
 import { estado, itens, minhas, primeiroNome, salvarLembretes, enviar, ignorarSugestao, resolvidas } from '../estado.js';
-import { esc, plural, num, ligarItens, fmtDataHora, saudacao, dataExtensa, toast, $, $$ } from '../util.js';
+import { esc, plural, num, ligarItens, fmtDataHora, saudacao, dataExtensa, toast, $, $$, lerPref, gravarPref } from '../util.js';
 import { anel, anelProgresso, animarNumeros, ligarDicas, cor } from '../graficos.js';
 import { estadoLeitura, dicaLeitura } from './painel-equipe.js';
 import { tiposHtml } from './tipos.js';
@@ -30,8 +30,6 @@ const rotMotivo = Object.fromEntries(OC.MOTIVOS.map(m => [m.k, m.rot]));
 const ICONE = { legal: 'alert', sem: 'user', analise: 'clock', respondeu: 'chat', cliente: 'check' };
 const TAG = { legal: 'Prazo legal', sem: 'Sem análise', analise: 'Em análise', respondeu: 'Cliente respondeu', cliente: 'Com o cliente' };
 
-function lerPref(k, padrao) { try { return localStorage.getItem('oc.' + k) || padrao; } catch { return padrao; } }
-function gravarPref(k, v) { try { localStorage.setItem('oc.' + k, v); } catch { /* sem armazenamento: vale só nesta visita */ } }
 const ic = (n, c) => '<svg class="ic' + (c ? ' ' + c : '') + '"><use href="#i-' + n + '"/></svg>';
 const nomeCli = i => i.apelido || i.cliente || '—';
 
