@@ -167,6 +167,63 @@
   mostrarAprender();
   setInterval(mostrarAprender, 30000);
 
+  /* ---------- Control Hub (opcional) ---------- */
+  const HUB_ORIGENS = ['https://claude.ai/*'];
+  const MOTIVOS_HUB = {
+    'sem-codigo': 'Cole o código de pareamento do Hub.', 'sem-permissao': 'Falta permitir o claude.ai: clique em “Conectar ao Control Hub”.',
+    'sem-leitura': 'Ainda não há leitura do Onvio para enviar. Abra o Control Onvio e aguarde a primeira leitura.',
+    'sem-hub': 'O Control Hub não está aberto no claude.ai (abra o Hub e deixe a aba aberta).', 'sem-resposta': 'O Hub não respondeu a tempo.',
+    'token': 'O código de pareamento não confere com o do Hub.', 'tamanho': 'O resumo passou do limite do Hub.',
+    'somente-leitura': 'Sua conta só lê o Hub: peça a quem tem permissão de edição para conectar.', 'sem-config': 'O Hub ainda não criou o código de pareamento (abra “Entrada de dados”).',
+    'sem-mudanca': 'Nada mudou desde o último envio.'
+  };
+  const msgHub = r => r.mensagem || MOTIVOS_HUB[r.motivo] || r.motivo || 'Não foi possível enviar.';
+  async function mostrarHub() {
+    const { hubCfg } = await chrome.storage.local.get('hubCfg');
+    const c = Object.assign({ token: '', auto: true }, hubCfg || {});
+    if (document.activeElement !== $('#hubCodigo')) $('#hubCodigo').value = c.token;
+    $('#hubAuto').checked = !!c.auto;
+    const st = await chrome.runtime.sendMessage({ cmd: 'hubStatus' }).catch(() => null);
+    const q = d => (d ? new Date(d).toLocaleString('pt-BR') : '—');
+    if (!st) { $('#hub-estado').textContent = ''; return; }
+    const u = st.ultimo;
+    $('#hub-estado').textContent = (st.permitido ? 'claude.ai permitido' : 'claude.ai ainda não permitido') + ' · ' + (st.hubAberto ? 'Hub aberto e respondendo' : 'Hub não encontrado numa aba aberta') + ' · ' +
+      (u ? 'último envio ' + (u.ok ? 'aceito' : 'recusado') + ' em ' + q(u.em) + (u.ok ? ' (' + u.linhas + ' de ' + u.total + ' solicitações)' : ': ' + msgHub(u)) : 'nenhum envio ainda');
+  }
+  async function salvarHub() {
+    const token = $('#hubCodigo').value.replace(/\s+/g, '').toUpperCase();
+    const { hubCfg } = await chrome.storage.local.get('hubCfg');
+    await chrome.storage.local.set({ hubCfg: Object.assign({}, hubCfg || {}, { token, auto: $('#hubAuto').checked }) });
+    return token;
+  }
+  $('#hubCodigo').addEventListener('change', salvarHub);
+  $('#hubAuto').addEventListener('change', salvarHub);
+  $('#hub-conectar').addEventListener('click', async () => {
+    const token = await salvarHub();
+    if (!token) { $('#hub-estado').textContent = MOTIVOS_HUB['sem-codigo']; return; }
+    const ok = (await chrome.permissions.contains({ origins: HUB_ORIGENS })) || await chrome.permissions.request({ origins: HUB_ORIGENS });
+    if (!ok) { $('#hub-estado').textContent = 'Permissão do claude.ai recusada: sem ela a ponte não funciona.'; return; }
+    const r = await chrome.runtime.sendMessage({ cmd: 'hubRegistrar' });
+    if (!r || !r.ok) { $('#hub-estado').textContent = 'Não consegui ligar a ponte: ' + ((r && r.motivo) || 'erro'); return; }
+    await mostrarHub();
+  });
+  $('#hub-enviar').addEventListener('click', async () => {
+    await salvarHub();
+    $('#hub-estado').textContent = 'Enviando…';
+    const r = await chrome.runtime.sendMessage({ cmd: 'hubEnviar' }).catch(e => ({ ok: false, motivo: String(e) }));
+    await mostrarHub();
+    if (!r.ok) $('#hub-estado').textContent = msgHub(r) + ' · ' + $('#hub-estado').textContent;
+  });
+  $('#hub-copiar').addEventListener('click', async () => {
+    const r = await chrome.runtime.sendMessage({ cmd: 'hubLote' }).catch(() => null);
+    if (!r || !r.ok) { $('#hub-estado').textContent = MOTIVOS_HUB[(r && r.motivo) || 'sem-leitura']; return; }
+    try { await navigator.clipboard.writeText(JSON.stringify(r.lote)); $('#hub-estado').textContent = 'Resumo copiado (' + r.lote.nLinhas + ' solicitações). Cole em “Entrada de dados” no Hub.'; }
+    catch (e) { $('#hub-estado').textContent = 'Não consegui copiar.'; }
+  });
+  $('#hub-desconectar').addEventListener('click', async () => { await chrome.runtime.sendMessage({ cmd: 'hubDesconectar' }); await mostrarHub(); });
+  mostrarHub();
+  setInterval(mostrarHub, 15000);
+
   $('#copiar-diag').addEventListener('click', async () => {
     try { await navigator.clipboard.writeText($('#diag').textContent); $('#copiado').textContent = 'Copiado'; }
     catch (e) { $('#copiado').textContent = 'Não foi possível copiar; selecione o texto.'; }

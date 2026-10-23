@@ -224,6 +224,7 @@ async function coletar(manual) {
       await chrome.storage.local.set({ serie: OC.atualizarSerie(serie, anterior, snap) });
       await chrome.storage.local.set({ snapshot: snap, assinaturas: assin, ultimaVerificacao: new Date().toISOString(), status: { estado: 'ok', em: snap.fetchedAt, erros: snap.erros } });
       await atualizarBadge(snap);
+      enviarAoHubAuto(snap).catch(() => {});             // ponte opcional com o Control Hub (não atrasa nem derruba a leitura)
       return snap;
     } catch (e) {
       if (e && e.cliente) { await bloquearVisaoCliente(e); if (manual) throw e; return null; }
@@ -666,6 +667,14 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         reply({ ok: true, itens: await OC.search(f, msg.q, s) });
       } else if (msg.cmd === 'abrir') { await abrir(msg.item, sender.tab && sender.tab.id); reply({ ok: true }); }
       else if (msg.cmd === 'reagendar') { await agendar(); reply({ ok: true }); }
+      else if (msg.cmd === 'hubStatus') reply(await hubStatus());
+      else if (msg.cmd === 'hubRegistrar') reply(await hubRegistrar());
+      else if (msg.cmd === 'hubDesconectar') reply(await hubDesconectar());
+      else if (msg.cmd === 'hubEnviar') reply(await enviarAoHub(null, true));
+      else if (msg.cmd === 'hubLote') {                  // caminho de reserva: o resumo para colar no Hub (sem o código de pareamento)
+        const { snapshot } = await chrome.storage.local.get('snapshot');
+        reply(snapshot ? { ok: true, lote: OC.montarLoteHub(snapshot, { versao: chrome.runtime.getManifest().version }) } : { ok: false, motivo: 'sem-leitura' });
+      }
       else if (msg.cmd === 'atualizarRegras') { reply(await atualizarRegras()); }
       else if (msg.cmd === 'tick') { reply(await verificarAoVivo(!!msg.forcar)); }
       else if (msg.cmd === 'previsao') {            // sob demanda: solicitações abertas por empresa nas últimas 4 semanas (nada é guardado)
@@ -727,6 +736,61 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   })();
   return true;
 });
+
+
+/* ---------- ponte com o Control Hub (opcional) ----------
+ * O Hub é uma página do escritório aberta no claude.ai; só ela grava no banco. A extensão entrega a ela um RESUMO das
+ * solicitações (OC.montarLoteHub: sem assunto, sem nome de empregado) pelo script ponte-hub.js. Fica desligada até a
+ * pessoa clicar em "Conectar ao Control Hub" (permissão do claude.ai pedida na hora) e colar o código de pareamento. */
+const HUB_ORIGENS = ['https://claude.ai/*'];
+const HUB_SCRIPT_ID = 'ponte-hub';
+async function hubCfg() { const { hubCfg } = await chrome.storage.local.get('hubCfg'); return Object.assign({ token: '', auto: true }, hubCfg || {}); }
+async function hubGuardar(extra) { const c = await hubCfg(); await chrome.storage.local.set({ hubCfg: Object.assign(c, extra) }); }
+async function hubAbas() { try { return await chrome.tabs.query({ url: HUB_ORIGENS }); } catch (e) { return []; } }
+async function hubPermitido() { try { return await chrome.permissions.contains({ origins: HUB_ORIGENS }); } catch (e) { return false; } }
+async function hubRegistrar() {
+  if (!(await hubPermitido())) return { ok: false, motivo: 'sem-permissao' };
+  const def = { id: HUB_SCRIPT_ID, matches: HUB_ORIGENS, js: ['ponte-hub.js'], runAt: 'document_start', persistAcrossSessions: true };
+  try { await chrome.scripting.registerContentScripts([def]); }
+  catch (e) { try { await chrome.scripting.updateContentScripts([def]); } catch (e2) { return { ok: false, motivo: 'registro: ' + (e2.message || e2) }; } }
+  // abas do claude.ai que já estavam abertas: injeta agora (o registro só vale para páginas novas)
+  for (const t of await hubAbas()) { try { await chrome.scripting.executeScript({ target: { tabId: t.id }, files: ['ponte-hub.js'] }); } catch (e) { /* aba protegida ou fechada */ } }
+  return { ok: true };
+}
+async function hubDesconectar() {
+  try { await chrome.scripting.unregisterContentScripts({ ids: [HUB_SCRIPT_ID] }); } catch (e) { /* já não estava */ }
+  try { await chrome.permissions.remove({ origins: HUB_ORIGENS }); } catch (e) { /* ignora */ }
+  return { ok: true };
+}
+async function hubStatus() {
+  const c = await hubCfg(), permitido = await hubPermitido(), abas = permitido ? await hubAbas() : [];
+  let hubAberto = false;
+  for (const t of abas) { try { const r = await chrome.tabs.sendMessage(t.id, { alvo: 'ponte-hub', cmd: 'status' }); if (r && r.hub) { hubAberto = true; break; } } catch (e) { /* aba sem o script */ } }
+  const { hubUltimo } = await chrome.storage.local.get('hubUltimo');
+  return { ok: true, permitido, abasClaude: abas.length, hubAberto, temCodigo: !!c.token, auto: !!c.auto, ultimo: hubUltimo || null };
+}
+const hashLote = l => { let h = 0; const t = l.tabela + '|' + JSON.stringify(l.porTipo); for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) | 0; return String(h); };
+// manual: envia sempre. Automático: só o que mudou desde o último envio aceito.
+async function enviarAoHub(snap, manual) {
+  const c = await hubCfg();
+  if (!c.token) return { ok: false, motivo: 'sem-codigo' };
+  if (!(await hubPermitido())) return { ok: false, motivo: 'sem-permissao' };
+  const snapshot = snap || (await chrome.storage.local.get('snapshot')).snapshot;
+  if (!snapshot) return { ok: false, motivo: 'sem-leitura' };
+  const lote = OC.montarLoteHub(snapshot, { versao: chrome.runtime.getManifest().version });
+  const hash = hashLote(lote);
+  const { hubUltimo } = await chrome.storage.local.get('hubUltimo');
+  if (!manual && hubUltimo && hubUltimo.ok && hubUltimo.hash === hash) return { ok: true, motivo: 'sem-mudanca' };
+  lote.id = 'onvio-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  lote.token = c.token;
+  let r = { ok: false, motivo: 'sem-hub' };
+  for (const t of await hubAbas()) {
+    try { const x = await chrome.tabs.sendMessage(t.id, { alvo: 'ponte-hub', cmd: 'enviar', lote }); if (x) r = x; if (x && x.ok) break; } catch (e) { /* aba sem o script */ }
+  }
+  await chrome.storage.local.set({ hubUltimo: { ok: !!r.ok, motivo: r.motivo || '', em: new Date().toISOString(), linhas: lote.nLinhas, total: lote.totalNaOrigem, hash: r.ok ? hash : (hubUltimo && hubUltimo.hash) || '', mensagem: r.mensagem || '' } });
+  return Object.assign({ linhas: lote.nLinhas, total: lote.totalNaOrigem }, r);
+}
+async function enviarAoHubAuto(snap) { const c = await hubCfg(); if (c.token && c.auto) return enviarAoHub(snap, false); }
 
 /* ---------- ciclo de vida ---------- */
 async function iniciar() {

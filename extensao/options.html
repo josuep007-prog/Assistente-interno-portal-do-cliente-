@@ -94,6 +94,21 @@
       <span class="save-state" id="aprender-estado"></span>
     </div>
   </section>
+  <section class="sec" id="sec-hub">
+    <h2>Control Hub</h2>
+    <p>Opcional. Envia ao Control Hub um <b>resumo</b> das solicitações pendentes (lista, situação, cliente, responsável, datas e gravidade; <b>sem assunto, sem nome de empregado e sem trâmites</b>) para o escritório ver no Hub. O Hub precisa estar aberto no claude.ai. Nada sai da extensão sem você conectar.</p>
+    <div class="grid2">
+      <label class="field">Código de pareamento (copie na tela “Entrada de dados” do Hub)<input type="text" id="hubCodigo" class="mono" autocomplete="off" spellcheck="false" placeholder="24 letras e números"></label>
+      <label class="check" style="align-self:end"><input type="checkbox" id="hubAuto"> Enviar sozinho a cada leitura (só se mudou)</label>
+    </div>
+    <div class="foot" style="padding:10px 0 0; align-items:center; gap:8px; flex-wrap:wrap">
+      <button class="btn btn-sm btn-primary" id="hub-conectar">Conectar ao Control Hub</button>
+      <button class="btn btn-sm" id="hub-enviar">Enviar agora</button>
+      <button class="btn btn-sm" id="hub-copiar" title="Se a ponte não funcionar: copia o resumo para colar em Entrada de dados no Hub">Copiar resumo</button>
+      <button class="btn btn-sm" id="hub-desconectar">Desconectar</button>
+    </div>
+    <p id="hub-estado" style="margin:10px 0 0"></p>
+  </section>
   <section class="sec">
     <h2>Diagnóstico</h2>
     <p>Para conferir a leitura com o Onvio e informar problemas.</p>
