@@ -1420,3 +1420,39 @@ body.setor-fora .trilho [data-rota="equipe"], body.setor-fora .trilho [data-rota
 .btn-concluir:hover:not(:disabled){background:var(--blue-deep); color:#fff}
 .btn-concluir:disabled{opacity:.5}
 .sc-pe .btn-concluir{margin-left:8px}
+
+/* Hoje · sugestões de ação em barras recolhíveis: categoria > tipo de solicitação, com a ação em lote por tipo */
+.sug-lista{display:flex; flex-direction:column; gap:8px}
+.sug-cat{border:1px solid var(--rule); border-left:4px solid var(--cs, var(--blue-deep)); border-radius:var(--r); background:var(--surface)}
+.sug-cat > summary, .sug-tipo > summary{display:flex; align-items:center; gap:8px; cursor:pointer; list-style:none; min-width:0}
+.sug-cat > summary::-webkit-details-marker, .sug-tipo > summary::-webkit-details-marker{display:none}
+.sug-cat > summary{padding:10px 12px; font-size:13.5px}
+.sug-cat > summary:hover{background:var(--surface-2)}
+.sug-cat > summary i{width:8px; height:8px; border-radius:50%; background:var(--cs, var(--blue-deep)); flex:none}
+.sug-cat > summary b{font:700 13.5px "Archivo",sans-serif; color:var(--ink)}
+.sug-res{margin-left:6px; font-size:12px; color:var(--ink-3); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0}
+.sug-seta{display:inline-grid; place-items:center; flex:none; color:var(--ink-3); transition:transform .15s}
+details[open] > summary > .sug-seta{transform:rotate(0)}
+details:not([open]) > summary > .sug-seta{transform:rotate(-90deg)}
+.sug-corpo{display:flex; flex-direction:column; gap:6px; padding:0 12px 12px}
+.sug-tipo{border:1px solid var(--rule); border-radius:var(--r); background:var(--surface-2)}
+.sug-tipo > summary{padding:7px 10px; font-size:13px}
+.sug-tipo > summary:hover{background:var(--surface-3)}
+.sug-tipo > .cs-lista{padding:0 10px 10px}
+.sug-tipo .cs-l{background:var(--surface)}
+.sug-lote{flex:none}
+.sug-lote-no{flex:none; font-size:11.5px; color:var(--ink-3)}
+/* janela da sugestão em lote */
+.lote-resumo{margin:12px 0; font-size:13px; color:var(--ink-2)}
+.lote-resumo ul{margin:6px 0 0; padding-left:18px}
+.lote-resumo p{margin:0 0 6px}
+.lote-lista{display:flex; flex-direction:column; gap:4px; max-height:300px; overflow-y:auto}
+.lote-it{display:flex; align-items:center; gap:10px; padding:7px 10px; border:1px solid var(--rule); border-radius:var(--r); background:var(--surface-2); cursor:pointer}
+.lote-tx{flex:1; min-width:0; display:flex; flex-direction:column}
+.lote-tx b{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px}
+.lote-tx small{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11.5px; color:var(--ink-3)}
+.lote-st{flex:none; font-size:12px; color:var(--ink-3)}
+.lote-st.ok{color:var(--status-green); font-weight:600}
+.lote-st.erro{color:var(--brand-red); font-weight:600; max-width:46%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.lote-aviso{margin:12px 0 0}
+@media (max-width:900px){ .sug-tipo > .cs-lista{grid-template-columns:1fr} }

@@ -397,16 +397,24 @@ await passo('app · Hoje (analista): destaque com rosca, carrossel e próximos p
   if (process.env.CAP) { await p.$eval('#hj-sug', e => e.scrollIntoView()); await p.screenshot({ path: process.env.CAP + '/sugestoes.png' }); }
   const cs = await p.$$eval('#hj-sug .cs-l', e => e.map(x => x.textContent));
   assert.equal(cs.length, 2);
-  assert.match(cs[0], /^Resolvida fora do portal\?#101 ACME · FulanoSem resposta do escritório há 31 dias: provavelmente resolvida fora do portal · Cálculo de fériasConcluir/);
-  assert.match(cs[1], /^Lista errada#102 BETA · Férias do JoãoAberta na lista Geral, mas tem aba própria: Aviso de férias.*Orientar e concluir/);
-  assert.match(await p.textContent('#hj-sug .cs-resumo'), /Resolvida fora do portal\? 1Lista errada 1/);
+  assert.match(cs[0], /^#101 ACME · FulanoSem resposta do escritório há 31 dias: provavelmente resolvida fora do portalConcluir/);
+  assert.match(cs[1], /^#102 BETA · Férias do JoãoAberta na lista Geral, mas tem aba própria: Aviso de férias.*Orientar e concluir/);
+  // divididas por categoria e, dentro dela, por tipo de solicitação, em barras recolhíveis
+  assert.deepEqual(await p.$$eval('#hj-sug .sug-cat > summary b', e => e.map(x => x.textContent)), ['Resolvida fora do portal?', 'Lista errada']);
+  assert.deepEqual(await p.$$eval('#hj-sug .sug-tipo > summary b', e => e.map(x => x.textContent)), ['Cálculo de férias', 'Geral']);
+  await p.click('#hj-sug .sug-cat.cs-fora > summary');
+  assert.equal(await p.$eval('#hj-sug .sug-cat.cs-fora', d => d.open), false, 'a barra da categoria recolhe');
+  assert.equal(await p.isVisible('#hj-sug [data-cs-acao="calcFerias:a"]'), false);
+  await p.click('#hj-sug .sug-cat.cs-fora > summary');
+  assert.equal(await p.isVisible('#hj-sug [data-cs-acao="calcFerias:a"]'), true, 'e abre de novo');
+  assert.equal(await p.$('#hj-sug [data-cs-lote]') === null, true, 'com uma só de cada tipo não há lote');
   await p.click('#hj-sug [data-cs-acao="calcFerias:a"]');
   await abrirCaixa(p);
   assert.match(await p.$eval('#a-texto', t => t.value), /já foi resolvida fora do portal/);
   assert.equal(await p.$eval('#gaveta .cmp-int.on', x => x.dataset.sit), '5', 'concluir');
   await p.keyboard.press('Escape');
   await p.waitForSelector('#gaveta', { state: 'hidden' });
-  await p.click('#hj-sug .cs-abaErrada summary');
+  await p.click('#hj-sug .cs-l.cs-abaErrada summary');
   await p.click('#hj-sug [data-cs-ignorar="geral:b"]');
   await p.waitForFunction(() => document.querySelectorAll('#hj-sug .cs-l').length === 1);
   assert.equal(await p.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('__mem')).sugestoesIgnoradas || {}).join()), 'geral:b', 'só o k (e a última movimentação) fica');
@@ -518,8 +526,7 @@ await passo('app · Hoje: sem retorno do cliente há mais de duas semanas: concl
   await p.evaluate(() => { window.__respostas = Object.assign(window.__respostas || {}, { casos: { ok: true, analises: {}, lidas: 0 }, acao: { ok: true, acao: 'tramite', anexos: 0 }, detalhe: { ok: true, item: {}, tramites: [] } }); });
   await p.waitForSelector('#hj-sug .cs-l.cs-semRetorno');
   assert.deepEqual(await p.$$eval('#hj-sug .cs-l.cs-semRetorno', e => e.map(x => x.querySelector('[data-cs-acao]').dataset.csAcao)).then(l => l.sort()), ['cadEmpregado:z1', 'geral:z2', 'geral:z4'], 'só passa de 14 dias; as resolvidas entram');
-  assert.match(await p.textContent('#hj-sug .cs-l[class*="cs-semRetorno"]'), /Sem retorno do cliente/);
-  assert.match(await p.textContent('#hj-sug .cs-resumo'), /Sem retorno do cliente 3/);
+  assert.match(await p.textContent('#hj-sug .sug-cat.cs-semRetorno > summary'), /Sem retorno do cliente3/);
   // Cadastro: dois passos; a caixa mostra a conclusão e o resumo conta os dois
   await p.click('#hj-sug [data-cs-acao="cadEmpregado:z1"]');
   await abrirCaixa(p);
@@ -550,6 +557,62 @@ await passo('app · Hoje: sem retorno do cliente há mais de duas semanas: concl
   assert.deepEqual(p.erros, []);
 });
 
+await passo('app · Hoje: sugestões em lote por tipo (Geral em um passo, Cadastro em dois), com lista para desmarcar, uma confirmação e o resultado de cada uma', async () => {
+  const base = { nivel: 0, grav: 0, motivos: [], resp: 'Ana Teste', mine: true, lado: 'cli', parado: 20, created: agoraIso(40), last: agoraIso(20), apelido: 'ZETA', cliente: 'ZETA' };
+  const g = (n, d) => Object.assign({}, base, { k: 'geral:g' + n, type: 'geral', typeLabel: 'Geral', id: 'g' + n, num: 900 + n, code: 4, status: 'Respondido', detalhe: d });
+  const c = (n, d) => Object.assign({}, base, { k: 'cadEmpregado:c' + n, type: 'cadEmpregado', typeLabel: 'Cadastro empregado', id: 'c' + n, num: 950 + n, code: 3, status: 'Aguardando o cliente', detalhe: d });
+  const itens = [g(1, 'Docs A'), g(2, 'Docs B'), g(3, 'Docs C'), c(1, 'Fulano'), c(2, 'Ciclano')];
+  const p = await abrirApp('#/inicio', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens, resolvidas: [] }), settings: { __v: 2, desfazerSeg: 0 } });
+  await p.evaluate(() => { window.__respostas = Object.assign(window.__respostas || {}, { casos: { ok: true, analises: {}, lidas: 0 }, acao: { ok: true, acao: 'tramite', anexos: 0 } }); });
+  await p.waitForSelector('#hj-sug .sug-cat.cs-semRetorno');
+  assert.deepEqual(await p.$$eval('#hj-sug .sug-cat.cs-semRetorno .sug-tipo > summary b', e => e.map(x => x.textContent)), ['Geral', 'Cadastro empregado'], 'o tipo com mais solicitações primeiro');
+  assert.deepEqual(await p.$$eval('#hj-sug [data-cs-lote]', e => e.map(x => x.textContent)), ['Concluir nas 3', 'Concluir nas 2']);
+  // Geral: abre a lista, desmarca uma, confirma uma vez
+  if (process.env.CAP) { await p.$eval('#hj-sug', e => e.scrollIntoView()); await p.screenshot({ path: process.env.CAP + '/sug-barras.png' }); }
+  await p.click('#hj-sug [data-cs-lote="semRetorno|geral"]');
+  await p.waitForSelector('#dlg-lote [data-lt-k]');
+  if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/sug-lote.png' });
+  assert.equal(await p.$$eval('#dlg-lote [data-lt-k]:checked', e => e.length), 3, 'todas marcadas');
+  assert.match(await p.textContent('#dlg-lote .lote-resumo'), /Trâmite, situação Concluído: “Como não tivemos retorno do cliente/);
+  assert.equal(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'acao')), false, 'abrir a lista não envia nada');
+  await p.uncheck('#dlg-lote [data-lt-k="geral:g2"]');
+  assert.equal((await p.textContent('#lt-ir')).trim(), 'Enviar ao Onvio (2)');
+  await p.click('#lt-ir');
+  await p.waitForFunction(() => document.querySelectorAll('#dlg-lote .lote-st.ok').length === 2, null, { timeout: 8000 });
+  assert.deepEqual(await p.evaluate(() => window.__msgs.filter(m => m.cmd === 'acao').map(m => [m.num, m.situacao])), [['901', '5'], ['903', '5']], 'só as marcadas, em Concluído');
+  await p.waitForSelector('#lt-msg .faixa');
+  assert.match(await p.textContent('#lt-msg'), /2 feitas/);
+  await p.click('#lt-cancelar');
+  await p.waitForSelector('#dlg-lote', { state: 'hidden' });
+  // Cadastro: dois passos por solicitação, em ordem; a segunda falha e fica avisada
+  await p.evaluate(() => { window.__msgs.length = 0; });
+  await p.click('#hj-sug [data-cs-lote="semRetorno|cadEmpregado"]');
+  await p.waitForSelector('#dlg-lote [data-lt-k]');
+  assert.match(await p.textContent('#dlg-lote .lote-resumo'), /1º passo, situação Respondido pelo cliente.*2º passo, situação Concluído/s);
+  await p.click('#lt-ir');
+  await p.waitForFunction(() => document.querySelectorAll('#dlg-lote .lote-st.ok').length === 2, null, { timeout: 10000 });
+  assert.deepEqual(await p.evaluate(() => window.__msgs.filter(m => m.cmd === 'acao').map(m => m.num + ':' + m.situacao)), ['951:4', '951:6', '952:4', '952:6'], 'cada uma recebe os dois passos, uma depois da outra');
+  assert.deepEqual(p.erros, []);
+});
+
+await passo('app · Hoje: lote com erro mostra qual falhou e deixa as outras seguirem', async () => {
+  const base = { nivel: 0, grav: 0, motivos: [], resp: 'Ana Teste', mine: true, lado: 'cli', parado: 20, created: agoraIso(40), last: agoraIso(20), apelido: 'ZETA', cliente: 'ZETA' };
+  const g = (n, d) => Object.assign({}, base, { k: 'geral:g' + n, type: 'geral', typeLabel: 'Geral', id: 'g' + n, num: 900 + n, code: 4, status: 'Respondido', detalhe: d });
+  const p = await abrirApp('#/inicio', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: [g(1, 'A'), g(2, 'B')], resolvidas: [] }), settings: { __v: 2, desfazerSeg: 0 } });
+  await p.evaluate(() => { window.__respostas = Object.assign(window.__respostas || {}, { casos: { ok: true, analises: {}, lidas: 0 }, acao: { ok: false, erro: 'o Onvio não aceitou (HTTP 400)' } }); });
+  await p.waitForSelector('#hj-sug [data-cs-lote]');
+  await p.click('#hj-sug [data-cs-lote]');
+  await p.click('#lt-ir');
+  await p.waitForFunction(() => document.querySelectorAll('#dlg-lote .lote-st.erro').length === 2, null, { timeout: 8000 });
+  await p.waitForSelector('#lt-msg .faixa');
+  assert.match(await p.textContent('#lt-msg'), /Nenhuma feita · 2 com erro/);
+  assert.match(await p.textContent('#dlg-lote .lote-st.erro'), /o Onvio não aceitou \(HTTP 400\)/);
+  assert.equal(await p.$$eval('#hj-sug .cs-l.cs-semRetorno', e => e.length), 2, 'as que falharam continuam nas sugestões');
+  await p.keyboard.press('Escape');
+  await p.waitForSelector('#dlg-lote', { state: 'hidden' });
+  assert.deepEqual(p.erros, []);
+});
+
 await passo('app · Hoje: sugestões de férias nova (trâmite já preenchido com as variáveis) e de aviso trabalhado (lembrete, sem escrever no Onvio)', async () => {
   const itens = ITENS_APP.concat([
     { k: 'avisoFerias:v1', type: 'avisoFerias', typeLabel: 'Aviso de férias', id: 'v1', num: 701, code: 1, status: 'Sem análise', lado: 'esc', nivel: 0, grav: 0, parado: 1, motivos: [], resp: 'Ana Teste', mine: true, apelido: 'VEGA', cliente: 'VEGA', detalhe: 'Beltrano', created: agoraIso(1), last: agoraIso(1), pagamentoAte: { alvo: '2026-12-18', ref: 'início das férias em 22/12/2026' } },
@@ -558,8 +621,8 @@ await passo('app · Hoje: sugestões de férias nova (trâmite já preenchido co
   const p = await abrirApp('#/inicio', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens }) });
   await p.evaluate(() => { window.__respostas = Object.assign(window.__respostas || {}, { casos: { ok: true, analises: {}, lidas: 0 }, detalhe: { ok: true, item: {}, datas: { inicio: '2026-12-22' }, tramites: [] } }); });
   await p.waitForSelector('#hj-sug .cs-l.cs-feriasNova');
-  assert.match(await p.textContent('#hj-sug .cs-l.cs-feriasNova'), /Férias nova.*#701 VEGA · Beltrano.*Pôr em análise/s);
-  assert.match(await p.textContent('#hj-sug .cs-l.cs-avisoTrabalhado'), /Aviso trabalhado.*#702 LIRA.*lembrete para 09\/03.*Criar lembrete/s, 'dia útil antes do aviso (10/03/2099)');
+  assert.match(await p.textContent('#hj-sug .cs-l.cs-feriasNova'), /#701 VEGA · Beltrano.*Pôr em análise/s);
+  assert.match(await p.textContent('#hj-sug .cs-l.cs-avisoTrabalhado'), /#702 LIRA.*lembrete para 09\/03.*Criar lembrete/s, 'dia útil antes do aviso (10/03/2099)');
   // férias nova: o trâmite abre preenchido, com a data do pagamento no lugar da variável
   await p.click('#hj-sug [data-cs-acao="avisoFerias:v1"]');
   await abrirCaixa(p);

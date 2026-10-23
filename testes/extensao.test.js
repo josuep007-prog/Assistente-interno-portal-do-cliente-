@@ -1235,6 +1235,29 @@ test('tipos por prioridade (Hoje): par aviso+cálculo num bloco, o mais urgente 
   assert.deepEqual(plano(OC.ordenarTipos([]).map(l => l.keys.join('+')).slice(0, 2)), ['geral', 'cadEmpregado'], 'sem nada: ordem dos tipos');
 });
 
+test('sugestões de ação agrupadas por categoria e tipo; lote só onde o texto está completo e a extensão consegue tratar', () => {
+  const c = (tipo, type, n, extra) => Object.assign({ k: tipo + ':' + type + n, tipo, item: { k: type + ':' + n, type, typeLabel: type === 'geral' ? 'Geral' : 'Cálculo de férias', num: n }, pode: { ok: true }, acao: { situacao: '5', texto: 'Texto pronto.', antes: [] } }, extra || {});
+  const casos = [
+    c('abaErrada', 'geral', 1), c('fora', 'geral', 2), c('fora', 'calcFerias', 3), c('fora', 'geral', 4),
+    c('falta', 'geral', 5, { acao: { situacao: '4', texto: 'Precisamos de mais informações: (descreva o que falta).', antes: [] } }), c('falta', 'geral', 6, { acao: { situacao: '4', texto: 'Precisamos de mais informações: (descreva o que falta).', antes: [] } }),
+    c('semRetorno', 'geral', 7), c('semRetorno', 'geral', 8, { pode: { ok: false, motivo: 'sem como concluir' } }),
+    c('feriasNova', 'calcFerias', 9, { acao: { situacao: '2', texto: '{saudacao}! Recebemos a solicitação de {empregado}.', antes: [] } }), c('feriasNova', 'calcFerias', 10, { acao: { situacao: '2', texto: '{saudacao}! Recebemos a solicitação de {empregado}.', antes: [] } }),
+    c('avisoTrabalhado', 'avisoRescisao', 11, { acao: { lembrete: { texto: 'x' } } }), c('avisoTrabalhado', 'avisoRescisao', 12, { acao: { lembrete: { texto: 'x' } } })
+  ];
+  const g = OC.agruparSugestoes(casos);
+  assert.deepEqual(plano(g.map(x => x.tipo)), ['fora', 'abaErrada', 'falta', 'feriasNova', 'avisoTrabalhado', 'semRetorno'], 'ordem das categorias');
+  const fora = g[0];
+  assert.deepEqual(plano(fora.porTipo.map(t => [t.type, t.casos.length, t.lote.ok, t.lote.n])), [['geral', 2, true, 2], ['calcFerias', 1, false, 1]], 'o tipo com mais vem primeiro; lote só com 2 ou mais');
+  assert.equal(g[1].porTipo[0].lote.ok, false, 'uma só: sem lote');
+  assert.equal(g[2].porTipo[0].lote.ok, false, '"(descreva o que falta)" por preencher: sem lote');
+  assert.match(g[2].porTipo[0].lote.motivo, /uma a uma/);
+  assert.equal(g[3].porTipo[0].lote.ok, false, 'texto com {variáveis} de cada solicitação: sem lote');
+  assert.equal(g[4].porTipo[0].lote.ok, true, 'lembretes em lote');
+  assert.equal(g[4].lembrete, true);
+  assert.deepEqual(plano([g[5].porTipo[0].lote.ok, g[5].porTipo[0].casos.length]), [false, 2], 'só uma pode ser tratada: sem lote (a outra fica fora)');
+  assert.deepEqual(plano(OC.agruparSugestoes([])), []);
+});
+
 test('criar solicitação Geral: corpo do formato mapeado, tipo/meio/departamento das regras ou do Onvio, e achar a nova', () => {
   const ex = { serviceRequestType: 'TIPO_GERAL', requestWay: 'WEB', departmentId: 'depX', subject: 'não usar', clientExpanded: { id: 'outro' } };
   const m = OC.modeloCriacao({}, ex, { departmentId: 'depDP' });

@@ -12,13 +12,18 @@ import { esc, plural, num, ligarItens, fmtDataHora, saudacao, dataExtensa, toast
 import { anel, anelProgresso, animarNumeros, ligarDicas, cor } from '../graficos.js';
 import { estadoLeitura, dicaLeitura } from './painel-equipe.js';
 import { tiposHtml } from './tipos.js';
+import { abrirLote } from './lote-dlg.js';
 const OC = window.OC;
 const SEM = '(sem responsável)';
 const MINHA = '__minha', EQUIPE = '__equipe';
 let previsao = null, previsaoEm = 0, previsaoLendo = false;   // previsão por empresa: na memória por 30 min, nunca gravada
 let carteira = lerPref('hojeCarteira', '');
 // Sugestões de ação: vereditos lidos nos trâmites (cmd 'casos'), na memória por 10 min; o texto nunca chega aqui
-let casosLidos = null, casosEm = 0, casosLendo = false, casosErro = '', sugTodas = false;
+let casosLidos = null, casosEm = 0, casosLendo = false, casosErro = '';
+
+// Barras recolhíveis das sugestões (categoria e tipo): o que a pessoa abriu ou fechou fica lembrado neste navegador
+const sugBarras = (() => { try { return new Map(Object.entries(JSON.parse(localStorage.getItem('oc.hojeSugBarras') || '{}'))); } catch { return new Map(); } })();
+const gravarBarras = () => { try { localStorage.setItem('oc.hojeSugBarras', JSON.stringify(Object.fromEntries(sugBarras))); } catch { /* sem armazenamento: vale só nesta visita */ } };
 
 const corMotivo = Object.fromEntries(OC.MOTIVOS.map(m => [m.k, m.cor]));
 const rotMotivo = Object.fromEntries(OC.MOTIVOS.map(m => [m.k, m.rot]));
@@ -112,16 +117,16 @@ export function render(el, ctx) {
   // Sugestões de ação: solicitações específicas que parecem resolvidas fora do portal, abertas errado ou com falta de
   // informação do cliente. Um botão abre o detalhe já no trâmite preenchido (revisar e confirmar); "⋯" tem "Não é o caso".
   function sugHtml() {
-    const MAX = 6, lista = sugTodas ? casos : casos.slice(0, MAX);
-    const porTipo = Object.keys(OC.CASOS).map(t => [t, casos.filter(c => c.tipo === t).length]).filter(([, n]) => n);
+    const grupos = OC.agruparSugestoes(casos);
     const hora = casosEm ? new Date(casosEm).toTimeString().slice(0, 5) : '';
     const situacao = casosLendo ? 'Conferindo os trâmites…' : casosErro ? 'Não deu para ler os trâmites: ' + casosErro : hora ? 'Trâmites conferidos às ' + hora : '';
+    const aberta = (k, padrao) => sugBarras.has(k) ? sugBarras.get(k) : padrao;
     const linha = c => {
       const i = c.item;
       return '<div class="cs-l cs-' + c.tipo + '">' +
-        '<button type="button" class="cs-abre" data-k="' + esc(i.k) + '" title="' + esc(c.porque) + '"><span class="cs-tag">' + esc(c.rot) + '</span>' +
+        '<button type="button" class="cs-abre" data-k="' + esc(i.k) + '" title="' + esc(c.porque) + '">' +
           '<span class="cs-tx"><b>#' + esc(i.num) + ' ' + esc(nomeCli(i)) + ' · ' + esc(i.detalhe || i.typeLabel) + '</b>' +
-          '<small>' + esc(c.porque) + ' · ' + esc(i.typeLabel) + (cart === MINHA ? '' : ' · ' + esc(i.resp || 'sem analista')) + '</small></span></button>' +
+          '<small>' + esc(c.porque) + (cart === MINHA ? '' : ' · ' + esc(i.resp || 'sem analista')) + '</small></span></button>' +
         '<div class="cs-acoes">' + (c.pode.ok
           ? '<button type="button" class="btn btn-sm btn-primary" data-cs-acao="' + esc(i.k) + '" title="' + (c.acao.lembrete ? 'Cria um lembrete pessoal na Agenda (nada é enviado ao Onvio)' : 'Abre o trâmite já preenchido: você revisa e confirma') + '">' + esc(c.botao) + '</button>'
           : '<button type="button" class="btn btn-sm" data-k="' + esc(i.k) + '" title="' + esc(c.pode.motivo) + '">Abrir</button>') +
@@ -130,11 +135,25 @@ export function render(el, ctx) {
             '<button type="button" class="menu-item" data-cs-ignorar="' + esc(i.k) + '">' + ic('x', 'ic-sm') + ' Não é o caso</button></div></details>' +
         '</div></div>';
     };
+    const tipoBarra = (g, t) => {
+      const k = 'tipo:' + g.tipo + ':' + t.type;
+      const lote = t.lote.ok
+        ? '<button type="button" class="btn btn-sm btn-primary sug-lote" data-cs-lote="' + esc(g.tipo + '|' + t.type) + '" title="' + (g.lembrete ? 'Cria um lembrete para cada uma' : 'Abre a lista para você revisar e confirmar: um trâmite para cada solicitação marcada') + '">' + esc(g.botao) + ' nas ' + t.lote.n + '</button>'
+        : t.casos.length > 1 ? '<span class="sug-lote-no" title="' + esc(t.lote.motivo) + '">em lote indisponível</span>' : '';
+      return '<details class="sug-tipo" data-sug-k="' + esc(k) + '"' + (aberta(k, t.casos.length <= 4) ? ' open' : '') + '><summary>' +
+        '<span class="sug-seta">' + ic('chev-d', 'ic-sm') + '</span><b>' + esc(t.typeLabel) + '</b><span class="sc-n">' + t.casos.length + '</span><span class="spacer"></span>' + lote + '</summary>' +
+        '<div class="cs-lista">' + t.casos.map(linha).join('') + '</div></details>';
+    };
+    const catBarra = g => {
+      const k = 'cat:' + g.tipo;
+      return '<details class="sug-cat cs-' + g.tipo + '" data-sug-k="' + esc(k) + '"' + (aberta(k, true) ? ' open' : '') + '><summary>' +
+        '<span class="sug-seta">' + ic('chev-d', 'ic-sm') + '</span><i></i><b>' + esc(g.rot) + '</b><span class="sc-n">' + g.casos.length + '</span>' +
+        '<span class="sug-res">' + g.porTipo.map(t => esc(t.typeLabel) + ' ' + t.casos.length).join(' · ') + '</span></summary>' +
+        '<div class="sug-corpo">' + g.porTipo.map(t => tipoBarra(g, t)).join('') + '</div></details>';
+    };
     return painel('hj-sug', ic('chat', 'ic-sm') + ' Sugestões de ação' + (casos.length ? ' <span class="sc-n">' + casos.length + '</span>' : ''),
-      'Solicitações que parecem resolvidas fora do portal, paradas com o cliente há mais de duas semanas, abertas errado, férias novas e avisos de rescisão trabalhados. A ação abre o trâmite já preenchido (você revisa e confirma) ou cria um lembrete seu.',
-      (porTipo.length ? '<p class="cs-resumo">' + porTipo.map(([t, n]) => '<span class="cs-' + t + '"><i></i>' + esc(OC.CASOS[t].rot) + ' <b>' + n + '</b></span>').join('') + '</p>' : '') +
-      (casos.length ? '<div class="cs-lista">' + lista.map(linha).join('') + '</div>' +
-        (casos.length > MAX ? '<button type="button" class="hj-painel-mais linkish" id="hj-sug-mais">' + (sugTodas ? 'Mostrar menos' : 'Ver todas as ' + casos.length) + '</button>' : '')
+      'Divididas por categoria e por tipo de solicitação. A ação abre o trâmite já preenchido (você revisa e confirma) ou cria um lembrete seu; nas de mesmo tipo dá para fazer todas de uma vez, revisando a lista antes de confirmar.',
+      (casos.length ? '<div class="sug-lista">' + grupos.map(catBarra).join('') + '</div>'
         : vazio(casosLendo && !casosLidos ? 'Conferindo os trâmites das pendências…' : 'Nenhuma sugestão de ação por enquanto.')) +
       (situacao ? '<p class="hj-painel-nota" id="hj-sug-sit">' + esc(situacao) + '</p>' : ''),
       '<button class="icon-btn" id="hj-sug-ler" title="Conferir os trâmites de novo" aria-label="Conferir os trâmites de novo"' + (casosLendo ? ' disabled' : '') + '>' + ic('refresh', 'ic-sm') + '</button>');
@@ -257,6 +276,42 @@ export function render(el, ctx) {
       trocarSug();
     });
   };
+  // Sugestão em lote: uma só janela, uma confirmação; depois cada solicitação recebe o trâmite (ou o lembrete) uma de cada vez
+  function abrirLoteDe(g, t) {
+    const cs = t.lote.itens, porK = new Map(cs.map(c => [c.k, c]));
+    // rótulo da situação como ela estará no momento do passo (depois do 1º passo a lista oferece outras situações)
+    const rotSit = (c, cod) => { const ant = (c.acao.antes || []).slice(-1)[0], x = OC.situacoesTramite(ant ? Object.assign({}, c.item, { code: Number(ant.situacao) }) : c.item).find(y => String(y.code) === String(cod)); return x ? x.rot : 'situação ' + cod; };
+    const c0 = cs[0];
+    const textos = new Set(cs.map(c => c.acao.texto));
+    let resumo;
+    if (g.lembrete) resumo = '<p>Um lembrete pessoal na Agenda para cada solicitação marcada, no dia útil antes do aviso prévio (ou no próximo dia útil, quando a data do aviso não foi lida).</p>';
+    else {
+      const passos = (c0.acao.antes || []).map(a => '<li>1º passo, situação <b>' + esc(a.rot) + '</b>: “' + esc(a.texto) + '”</li>');
+      passos.push('<li>' + (passos.length ? '2º passo' : 'Trâmite') + ', situação <b>' + esc(rotSit(c0, c0.acao.situacao)) + '</b>: “' + esc(c0.acao.texto) + '”</li>');
+      resumo = '<p><b>O que será enviado a cada uma:</b></p><ul>' + passos.join('') + '</ul>' + (textos.size > 1 ? '<p class="fraco">O texto leva o número ou a aba de cada solicitação (o exemplo é o da primeira).</p>' : '');
+    }
+    const item = c => ({ k: c.k, rotulo: '#' + c.item.num + ' ' + nomeCli(c.item) + ' · ' + (c.item.detalhe || c.item.typeLabel), sub: c.porque });
+    abrirLote({
+      titulo: g.rot + ': ' + g.botao + ' em lote', tipo: t.typeLabel, resumo, itens: cs.map(item), local: g.lembrete,
+      botao: g.lembrete ? 'Criar lembretes' : 'Enviar ao Onvio',
+      executar: async k => {
+        const c = porK.get(k);
+        if (g.lembrete) {
+          const l = c.acao.lembrete;
+          await salvarLembretes((estado.lembretes || []).concat([OC.novoLembrete({ texto: l.texto, quando: l.quando, k: l.k, type: l.type, num: l.num, cliente: l.cliente }, new Date())]));
+          return { ok: true };
+        }
+        const passos = (c.acao.antes || []).concat([{ situacao: c.acao.situacao, rot: 'conclusão', texto: c.acao.texto }]);
+        for (let n = 0; n < passos.length; n++) {            // o service worker confere a situação de verdade antes de cada envio
+          const r = await enviar({ cmd: 'acao', type: c.item.type, num: String(c.item.num), acao: 'tramite', texto: passos[n].texto, situacao: passos[n].situacao, analista: '', data: '', arquivos: [] });
+          if (!r.ok) return { ok: false, erro: (passos.length > 1 ? 'passo ' + (n + 1) + ': ' : '') + (r.erro || 'o Onvio não aceitou'), parar: !!r.auth };
+          if (n < passos.length - 1) await new Promise(ok => setTimeout(ok, 500));
+        }
+        return { ok: true };
+      },
+      aoTerminar: async feitas => { for (const k of feitas) { const c = porK.get(k); if (c && g.lembrete) await ignorarSugestao(c.k, c.item); } }
+    });
+  }
   function ligarSug() {
     const sec = $('#hj-sug', el);
     if (!sec) return;
@@ -283,7 +338,15 @@ export function render(el, ctx) {
       await ignorarSugestao(c.k, c.item);
       toast('Saiu das sugestões. Volta se a solicitação mexer.');
     }));
-    if ($('#hj-sug-mais', sec)) $('#hj-sug-mais', sec).onclick = () => { sugTodas = !sugTodas; trocarSug(); };
+    // barras recolhíveis: lembra o que foi aberto ou fechado
+    $$('details[data-sug-k]', sec).forEach(d => d.addEventListener('toggle', () => { if (sugBarras.get(d.dataset.sugK) !== d.open) { sugBarras.set(d.dataset.sugK, d.open); gravarBarras(); } }));
+    // em lote: as de mesmo tipo e mesma categoria, numa janela para revisar e confirmar
+    $$('[data-cs-lote]', sec).forEach(b => b.addEventListener('click', e => {
+      e.preventDefault(); e.stopPropagation();
+      const [tipoCaso, tipoSol] = b.dataset.csLote.split('|');
+      const g = OC.agruparSugestoes(casos).find(x => x.tipo === tipoCaso), t = g && g.porTipo.find(x => x.type === tipoSol);
+      if (t && t.lote.ok) abrirLoteDe(g, t);
+    }));
     if ($('#hj-sug-ler', sec)) $('#hj-sug-ler', sec).onclick = () => { lerCasos(); trocarSug(); };
   }
   ligarSug();
