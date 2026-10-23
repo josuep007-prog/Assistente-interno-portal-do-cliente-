@@ -849,6 +849,15 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 /* Detalhe · aba Dados em blocos */
 .dados-g{margin-bottom:18px}
 .dados-g:last-child{margin-bottom:0}
+/* aba Dados: cada grupo num cartão, rótulos em letra normal e colunas que não se espalham na tela cheia (pedido do Josué, 23/10/2026) */
+#g-corpo .dados-g{max-width:1100px; margin-bottom:12px; padding:12px 16px 14px; border:1px solid var(--rule); border-radius:var(--r); background:var(--surface)}
+#g-corpo .dados-cab{display:flex; align-items:baseline; flex-wrap:wrap; gap:4px 10px; margin:0 0 10px}
+#g-corpo .dados-cab .dados-tit{margin:0; padding:0; border:0}
+.dados-nome{font-size:14px; font-weight:600; color:var(--ink)}
+#g-corpo .dados-g .campos{grid-template-columns:repeat(auto-fill, minmax(170px, 1fr)); gap:10px 18px; margin-bottom:0}
+#g-corpo .dados-g .campo .k{font-size:12px; font-weight:500; text-transform:none; letter-spacing:0}
+#g-corpo .dados-g .campo .v{font-size:13.5px; color:var(--ink)}
+#g-corpo .dados-g .campo-longo{margin-top:10px}
 .campo-longo{margin:12px 0 0}
 .campo-longo .texto-longo{margin-top:4px}
 

@@ -1206,7 +1206,10 @@ await passo('app · detalhe: aba Dados com a solicitação completa em grupos e 
   assert.match(t, /^Solicitação.*Início das férias27\/10\/2026.*Dias de férias30/, 'sem o bloco "Controle" repetindo o topo');
   assert.ok(!/Controle|Dias parada|1º trâmite/.test(t));
   assert.match(await p.textContent('.dp-last'), /Responsável: .*Aberta em /, 'abertura no topo da janela');
-  assert.match(t, /Empregado.*NomeFulano.*CargoAuxiliar/);
+  assert.match(t, /EmpregadoFulano.*CargoAuxiliar/);
+  assert.equal(await p.textContent('#g-corpo .dados-nome'), 'Fulano', 'o nome vai para o título do cartão do grupo');
+  assert.equal(await p.$$eval('#g-corpo .campo .k', e => e.filter(x => x.textContent === 'Nome').length), 0, 'e não se repete como campo');
+  assert.equal(await p.$eval('#g-corpo .campo .k', e => getComputedStyle(e).textTransform), 'none', 'rótulos em letra normal');
   assert.match(t, /Pedido do cliente/);
   assert.match(t, /Anexos da solicitação.*aviso-assinado\.pdf/);
   assert.match(await p.textContent('#gaveta [data-aba="dados"]'), /1 anexo/);

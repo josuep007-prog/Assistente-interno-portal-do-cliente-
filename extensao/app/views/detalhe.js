@@ -293,9 +293,13 @@ function dados(i, r, carregando) {
   const grade = cs => '<div class="campos">' + cs.map(([k, v, dq]) => '<div class="campo' + (dq ? ' dq-campo' : '') + '"><div class="k">' + esc(k) + '</div><div class="v">' + esc(v) + '</div></div>').join('') + '</div>';
   if (carregando) return '<div class="vazio">Lendo a solicitação completa no Onvio…</div>';
   if (r && r.grupos) {
+    // cada grupo num cartão; o nome (do empregado, por exemplo) vai para o título do cartão em vez de ser mais um campo
     let html = r.grupos.map(gr => {
-      const curtos = gr.campos.filter(c => !c.longo), longos = gr.campos.filter(c => c.longo);
-      return '<section class="dados-g"><h4 class="dados-tit">' + esc(gr.titulo) + '</h4>' + (curtos.length ? grade(curtos.map(c => [c.k, c.v, c.destaque])) : '') +
+      const nome = gr.titulo !== 'Solicitação' && gr.campos.find(c => c.k === 'Nome' && !c.longo);
+      const campos = gr.campos.filter(c => c !== nome);
+      const curtos = campos.filter(c => !c.longo), longos = campos.filter(c => c.longo);
+      return '<section class="dados-g"><header class="dados-cab"><h4 class="dados-tit">' + esc(gr.titulo) + '</h4>' + (nome ? '<span class="dados-nome">' + esc(nome.v) + '</span>' : '') + '</header>' +
+        (curtos.length ? grade(curtos.map(c => [c.k, c.v, c.destaque])) : '') +
         longos.map(c => '<div class="campo campo-longo"><div class="k">' + esc(c.k) + '</div><div class="texto-longo">' + esc(textoPuro(c.v)) + '</div></div>').join('') + '</section>';
     }).join('');
     if (r.anexos && r.anexos.length) html += '<section class="dados-g"><h4 class="dados-tit">Anexos da solicitação</h4><div class="anexos">' + r.anexos.map(a => '<span><svg class="ic ic-sm"><use href="#i-paperclip"/></svg>' + esc(a) + '</span>').join('') + '</div><div style="margin-top:8px"><button type="button" class="btn btn-sm" id="g-anexos2"><svg class="ic ic-sm"><use href="#i-download"/></svg> Escolher e baixar anexos</button></div></section>';
