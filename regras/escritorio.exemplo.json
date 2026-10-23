@@ -21,6 +21,7 @@
   ],
   "pedirConcluirAssunto": "Conclua a solicitação nº {numero} ({tipo})",
   "pedirConcluirTexto": "Olá! A solicitação nº {numero} ({tipo}{empregado}) já foi respondida pelo escritório e está só aguardando a sua conclusão no Portal do Cliente. Por favor, confira a resposta e conclua a solicitação. Se precisar de mais alguma coisa, é só abrir uma nova solicitação.",
+  "distribuicaoAuto": { "minutos": 15, "inicio": 8, "fim": 18 },
   "tramiteCriacao": "Aguardando o retorno do cliente.",
   "modelosTramite": [
     { "rot": "Recebido, em análise", "situacao": 2, "texto": "{saudacao}! Recebemos a sua solicitação e já estamos analisando. Retornamos assim que houver novidades." },

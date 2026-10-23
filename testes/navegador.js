@@ -772,6 +772,47 @@ await passo('app · Fila: abas Minhas, Todas e Respondidas, cartões por padrão
   assert.deepEqual(p.erros, []);
 });
 
+await passo('app · Equipe: Distribuição automática atrás da senha; ligar pede confirmação, mostra a última rodada e as atribuições; o Distribuir avisa que está ligada', async () => {
+  const p = await abrirApp('#/equipe?aba=dist');
+  await p.waitForSelector('#g-trava');
+  assert.equal(await p.$('#da-estado') === null, true, 'sem a senha não aparece nada');
+  await p.fill('#g-senha', 'gestor@987654321');
+  await p.press('#g-senha', 'Enter');
+  await p.waitForSelector('#da-estado');
+  assert.equal((await p.textContent('#da-estado')).trim(), 'Desligada');
+  assert.equal(await p.$('#da-agora') === null, true, 'desligada: sem "Rodar agora"');
+  // ligar pede a confirmação com o que vai acontecer; cancelar não liga
+  await p.click('#da-ligar');
+  await p.waitForSelector('#da-conf');
+  assert.match(await p.textContent('#da-conf'), /em seu nome.*sem responsável.*Nunca troca quem já é responsável/s);
+  await p.click('#da-cancelar');
+  assert.equal(await p.evaluate(() => (window.__msgs || []).some(m => m.cmd === 'distribuicaoAuto')), false, 'cancelar não liga');
+  await p.click('#da-ligar');
+  await p.click('#da-confirmar');
+  await p.waitForFunction(() => (window.__msgs || []).some(m => m.cmd === 'distribuicaoAuto' && m.ligar === true));
+  // o service worker grava o estado e o app o espelha
+  const agora = new Date().toISOString();
+  await p.evaluate(a => chrome.storage.local.set({ distribuicaoAuto: { ligada: true, ligadaEm: a, ultima: { em: a, atribuidas: 2, falhas: 0, puladas: { semHistorico: 3, jaTemResponsavel: 1 }, parou: '' } }, distribuicaoLog: [{ k: 'geral:b', num: 102, type: 'geral', typeLabel: 'Geral', cliente: 'BETA', resp: 'Bia Souza', em: a }] }), agora);
+  await p.waitForFunction(() => document.querySelector('#da-estado') && document.querySelector('#da-estado').textContent.trim() === 'Ligada');
+  assert.match(await p.textContent('.da-num'), /2atribuídas0com erro/);
+  assert.match(await p.textContent('#vista'), /3 sem histórico da empresa \(decisão manual\); 1 já tinham responsável/);
+  assert.match(await p.textContent('.tabela tbody tr'), /#102 Geral.*BETA.*Bia Souza/);
+  if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/dist-auto.png' });
+  await p.click('#da-agora');
+  await p.waitForFunction(() => (window.__msgs || []).some(m => m.cmd === 'distribuicaoAutoAgora'));
+  // o Distribuir avisa, em uma linha, que a automática está ligada
+  await p.evaluate(() => { window.__respostas = Object.assign(window.__respostas || {}, { distribuicao: { ok: true, dias: 30, movimentadas: 0, erros: [], sugestoes: [] } }); });
+  await p.evaluate(() => { location.hash = '#/distribuir'; });
+  await p.waitForSelector('#d-auto');
+  assert.match(await p.textContent('#d-auto'), /ligada.*a cada 15 min.*Última rodada.*2 atribuídas/s);
+  // desligar
+  await p.evaluate(() => { location.hash = '#/equipe?aba=dist'; });
+  await p.waitForSelector('#da-desligar');
+  await p.click('#da-desligar');
+  await p.waitForFunction(() => (window.__msgs || []).some(m => m.cmd === 'distribuicaoAuto' && m.ligar === false));
+  assert.deepEqual(p.erros, []);
+});
+
 await passo('app · Equipe (área do gestor): pede a senha; Desempenho com nota, ranking em tabela, entregas no prazo × fora e detalhe; Carga e Responsáveis', async () => {
   const p = await abrirApp('#/equipe');
   // trava: sem a senha certa não mostra nada da equipe
@@ -802,7 +843,7 @@ await passo('app · Equipe (área do gestor): pede a senha; Desempenho com nota,
   assert.ok(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'desempenho' && m.dias === 30)), 'pediu as entregas de 30 dias');
   assert.equal(await p.$('#av-periodo [data-dias]'), null, 'período fixo em 30 dias, sem 7 e 14');
   assert.match(await p.textContent('#titulo'), /Equipe/);
-  assert.deepEqual(await p.$$eval('#abas .aba', e => e.map(x => x.dataset.aba)), ['desempenho', 'carga', 'resp']);
+  assert.deepEqual(await p.$$eval('#abas .aba', e => e.map(x => x.dataset.aba)), ['desempenho', 'carga', 'resp', 'dist']);
   // números da equipe
   await p.waitForFunction(() => document.querySelector('#av-k-entregas .av-kpi-val').textContent === '8');
   assert.match(await p.textContent('#av-k-prazo'), /100%/, 'só o tempo com o escritório conta: a de 20 dias ficou 2 d.u. com o escritório');

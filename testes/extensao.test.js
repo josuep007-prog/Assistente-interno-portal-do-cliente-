@@ -1667,6 +1667,98 @@ test('background: ação recusada pelo Onvio, sem aba ou com acesso de cliente n
   assert.equal(escritas, 1, 'sem aba do Onvio nada é enviado');
 });
 
+/* ---------- v0.38: distribuição automática de responsáveis ---------- */
+test('distribuição automática: horário comercial, plano pelos critérios da aba Distribuir e filtros de segurança', () => {
+  const seg = h => new Date(2026, 9, 19, h, 0);     // segunda-feira, 19/10/2026
+  const s = {};
+  assert.deepEqual([seg(7), seg(8), seg(17), seg(18)].map(d => OC.dentroDoHorario(d, s)), [false, true, true, false]);
+  assert.equal(OC.dentroDoHorario(new Date(2026, 9, 24, 10, 0), s), false, 'sábado');
+  assert.equal(OC.dentroDoHorario(new Date(2026, 9, 25, 10, 0), s), false, 'domingo');
+  assert.equal(OC.dentroDoHorario(seg(19), { distribuicaoAuto: { inicio: 8, fim: 20 } }), true, 'horário das regras');
+  const it = (k, type, extra) => Object.assign({ k, type, id: k, num: Number(k.replace(/\D/g, '')), lado: 'esc', code: 1, resp: '' }, extra || {});
+  const pend = [it('geral:g1', 'geral', { departmentId: '2CDE919421384918A2BF510E5D5F4FD6' }), it('geral:g2', 'geral', { departmentId: 'OUTRO-SETOR' }), it('avisoFerias:f3', 'avisoFerias'), it('avisoFerias:f4', 'avisoFerias'), it('geral:g5', 'geral'), it('geral:g6', 'geral', { resp: 'Ana' })];
+  const sug = [
+    { item: pend[0], resp: 'Bia', respId: 'u-bia', n: 3, motivo: 'atendeu 3 de 4' },
+    { item: pend[1], resp: 'Bia', respId: 'u-bia', n: 3, motivo: 'x' },
+    { item: pend[2], resp: '', respId: '', n: 0, semHistorico: true, motivo: 'ninguém atendeu' },
+    { item: pend[3], resp: 'Caio', respId: '', n: 2, motivo: 'sem id' },
+    { item: Object.assign({}, pend[4], { lado: 'fim' }), resp: 'Bia', respId: 'u-bia', n: 1, motivo: 'concluída' },
+    { item: pend[5], resp: 'Bia', respId: 'u-bia', n: 1, motivo: 'já tem' }
+  ];
+  const perfil = OC.perfilSetor({}, 'Ana', '2CDE919421384918A2BF510E5D5F4FD6');
+  const r = OC.planoDistribuicaoAuto(pend, sug, perfil);
+  assert.deepEqual(plano(r.atribuir.map(a => [a.item.k, a.resp, a.respId])), [['geral:g1', 'Bia', 'u-bia']], 'só o que tem sugestão com id, está sem responsável e é do DP');
+  assert.deepEqual(plano(r.puladas), { semHistorico: 1, semId: 1, naoPode: 1, outroSetor: 1, jaTemResponsavel: 1 });
+  const r2 = OC.planoDistribuicaoAuto(pend, sug, OC.perfilSetor({}, 'Ana', 'DEPTO-DE-FISCAL'));
+  assert.deepEqual(plano(r2.atribuir), [], 'quem é de outro departamento não distribui a Geral dos outros');
+  // regras: o bloco novo é validado e o ajuste da pessoa não muda
+  assert.deepEqual(plano(OC.normalizarRegras({ distribuicaoAuto: { minutos: 30, inicio: 9, fim: 17, x: 1 } }).distribuicaoAuto), { minutos: 30, inicio: 9, fim: 17 });
+  assert.equal(OC.normalizarRegras({ distribuicaoAuto: { minutos: 1, inicio: 30, fim: 0 } }), null, 'valores fora da faixa são ignorados');
+  assert.equal(OC.combinarSettings(null, { distribuicaoAuto: { minutos: 5, inicio: 0, fim: 24 } }).distribuicaoAuto.minutos, 15, 'o ajuste da pessoa não muda os limites');
+});
+
+test('distribuição automática (service worker): só define responsável em sem responsável, para na recusa e respeita desligada, sem aba e relido com responsável', async () => {
+  const hist = { id: 'h1', identifier: 1, genericStatus: 5, created: new Date(Date.now() - 5 * 864e5).toISOString().slice(0, 19), lastUpdated: new Date(Date.now() - 2 * 864e5).toISOString().slice(0, 19), subject: 'x', clientExpanded: { code: 1, name: 'ACME' }, staffResponsibleExpanded: { id: 'u-bia', name: 'Bia' } };
+  const semResp = (id, num, extra) => pend(id, num, Object.assign({ clientExpanded: { code: 1, name: 'ACME' }, staffResponsibleExpanded: null }, extra || {}));
+  const montar = (itens, opcoesApi) => {
+    const base = apiSimulada({ itens: { geral: itens } });
+    const escritas = [];
+    const api = async (url, init) => {
+      if (init && init.method && init.method !== 'GET') { escritas.push({ metodo: init.method, url: new URL(url).pathname, corpo: JSON.parse(init.body) }); return respHttp((opcoesApi && opcoesApi.status) || 200, 'application/json', '{}'); }
+      return base(url);
+    };
+    const abas = opcoesApi && opcoesApi.semAba ? [] : [aba(5, ONVIO_PORTAL)];
+    const bg = carregarBackground({ abas, fetchPorMundo: { MAIN: api }, fetch: api });
+    bg.ctx.__controlOnvioAutorizacao = () => 'Bearer x';
+    return Object.assign(bg, { escritas });
+  };
+  const snap = (extra) => ({ items: [{ k: 'geral:g1', type: 'geral', id: 'g1', num: 77, lado: 'esc', code: 1, resp: '', codCliente: 1, cliente: 'ACME' }].concat(extra || []), user: { nome: 'Ana', departmentId: '2CDE919421384918A2BF510E5D5F4FD6' } });
+  // desligada: nada acontece
+  let t = montar([hist, semResp('g1', 77)]);
+  t.store.snapshot = snap();
+  assert.deepEqual(plano(await t.ctx.distribuirAutomatico(true)), { pulou: 'desligada' });
+  assert.equal(t.escritas.length, 0);
+  // ligar pelo app: grava, cria o alarme de 15 min; desligar tira o alarme
+  const pedir = (bg, m) => new Promise(res => bg.ouvintes[0](m, { tab: { id: 5 } }, res));
+  let e = await pedir(t, { cmd: 'distribuicaoAuto', ligar: true });
+  assert.equal(e.ligada, true);
+  assert.equal(t.chrome.alarms._a.get('controlOnvio.distribuicao').periodInMinutes, 15);
+  // ligada: define o responsável sugerido pela aba Distribuir (Bia atendeu a ACME) e nada mais
+  const r = await t.ctx.distribuirAutomatico(true);
+  assert.equal(r.ultima.atribuidas, 1, JSON.stringify(r));
+  assert.deepEqual(plano(t.escritas), [{ metodo: 'PUT', url: '/api/service-requesting/v1/tickets/generic/g1/assign-staff', corpo: { departmentId: '', id: 'u-bia' } }]);
+  assert.equal(t.store.distribuicaoLog[0].resp, 'Bia');
+  assert.ok(!/texto|descri|assunto/i.test(Object.keys(t.store.distribuicaoLog[0]).join()), 'o registro só tem identificação e responsável');
+  e = await pedir(t, { cmd: 'distribuicaoAuto', ligar: false });
+  assert.equal(e.ligada, false);
+  assert.equal(t.chrome.alarms._a.has('controlOnvio.distribuicao'), false);
+  // sem aba do Onvio: não escreve e diz por quê
+  t = montar([hist, semResp('g1', 77)], { semAba: true });
+  t.store.snapshot = snap(); t.store.distribuicaoAuto = { ligada: true };
+  assert.equal((await t.ctx.distribuirAutomatico(true)).ultima.parou, 'sem aba do Onvio aberta');
+  assert.equal(t.escritas.length, 0);
+  // o registro relido já tem responsável (alguém atribuiu antes): nunca sobrescreve, nem na Geral
+  t = montar([hist, semResp('g1', 77, { staffResponsibleExpanded: { id: 'u-ana', name: 'Ana' } })]);
+  t.store.snapshot = snap(); t.store.distribuicaoAuto = { ligada: true };
+  const r3 = await t.ctx.distribuirAutomatico(true);
+  assert.equal(t.escritas.length, 0);
+  assert.equal(r3.ultima.puladas.jaTemResponsavel, 1);
+  // recusa do Onvio (403): para na primeira, registra e não insiste nas outras
+  t = montar([hist, semResp('g1', 77), semResp('g2', 78)], { status: 403 });
+  t.store.snapshot = snap([{ k: 'geral:g2', type: 'geral', id: 'g2', num: 78, lado: 'esc', code: 1, resp: '', codCliente: 1, cliente: 'ACME' }]); t.store.distribuicaoAuto = { ligada: true };
+  const r4 = await t.ctx.distribuirAutomatico(true);
+  assert.equal(t.escritas.length, 1, 'parou na primeira recusa');
+  assert.match(r4.ultima.parou, /recusou/);
+  assert.equal(r4.ultima.atribuidas, 0);
+  // outro departamento (Geral): fica de fora, sem escrever
+  t = montar([hist, semResp('g9', 99, { departmentId: 'OUTRO-SETOR' })]);
+  t.store.snapshot = snap([]); t.store.snapshot.items = [{ k: 'geral:g9', type: 'geral', id: 'g9', num: 99, lado: 'esc', code: 1, resp: '', codCliente: 1, cliente: 'ACME', departmentId: 'OUTRO-SETOR' }];
+  t.store.distribuicaoAuto = { ligada: true };
+  const r5 = await t.ctx.distribuirAutomatico(true);
+  assert.equal(t.escritas.length, 0);
+  assert.equal(r5.ultima.puladas.outroSetor, 1);
+});
+
 /* ---------- v0.15: Hoje (admissões, vencimentos, uso do portal, sugestões, previsão) ---------- */
 test('admissão: retroativa, já passada ou perto do início destaca; cadastro efetuado não', () => {
   const now = new Date(2026, 9, 16, 10);   // sexta

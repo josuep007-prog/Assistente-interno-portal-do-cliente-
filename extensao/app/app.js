@@ -258,7 +258,7 @@ async function atualizar() {
   addEventListener('hashchange', () => { fecharAnexos(); fecharLote(); fecharDetalhe(); fecharLembrete(); fecharNova(); desenhar(); });
   aoMudar(quais => {
     const ocupado = detalheAberto() || anexosAbertos() || loteAberto() || lembreteAberto() || novaAberta() || !$('#cmdk').hidden || document.activeElement.matches('input, select, textarea') || document.querySelector('#vista details.menu[open]');
-    const relevante = quais.some(q => ['snap', 'settings', 'regras', 'lembretes', 'serie', 'eventos', 'excecoes', 'sugIgnoradas'].includes(q)) && AO_VIVO.has(rota.nome);
+    const relevante = quais.some(q => ['snap', 'settings', 'regras', 'lembretes', 'serie', 'eventos', 'excecoes', 'sugIgnoradas', 'distAuto', 'distLog'].includes(q)) && AO_VIVO.has(rota.nome);
     if (relevante && ocupado) redesenharDepois = true;
     if (relevante && !ocupado) {
       redesenharDepois = false;
