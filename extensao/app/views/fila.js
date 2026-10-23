@@ -5,7 +5,7 @@
  * sem análise, em análise, cliente respondeu, aguardando o cliente. Prazo interno e gravidade não aparecem aqui. */
 import { estado, itens, minhas, clienteRespondeu, enviar } from '../estado.js';
 import { tiposHtml } from './tipos.js';
-import { esc, pillSituacao, prazoHtml, cartaoItem, ligarItens, csvItens, fmtDataCurta, normal, tipoVisual, tipoIcone, nivelLegal, respHtml, definirSugestoesResp, $, $$ } from '../util.js';
+import { esc, concluirBtn, pillSituacao, prazoHtml, cartaoItem, ligarItens, csvItens, fmtDataCurta, normal, tipoVisual, tipoIcone, nivelLegal, respHtml, definirSugestoesResp, $, $$ } from '../util.js';
 const OC = window.OC;
 
 // Atalhos de outras telas (Equipe, Hoje); hoje/atraso/g3 só chegam da área do gestor
@@ -192,6 +192,15 @@ export function render(el, ctx, params) {
       cols.map(c => '<button data-col="' + c.k + '" class="' + (c.num ? 'num ' : '') + (ord.k === c.k ? 'on' + (ord.desc ? '' : ' asc') : '') + '">' + c.rot + '</button>').join('') + '</div>' +
       (l.length ? comGrupos(comCol, 'emp-cab lr-emp') : vazio) + '</div>';
     ligarItens($('#corpo', el), l, ctx.abrirDetalhe);
+    // Concluir (aguardando o cliente): abre o detalhe no trâmite já preenchido, igual às sugestões do Hoje
+    $$('#corpo [data-concluir]', el).forEach(b => b.addEventListener('click', e => {
+      e.stopPropagation();
+      const it = l.find(x => x.k === b.dataset.concluir);
+      if (!it) return;
+      const a = OC.acaoConcluir(it, estado.settings);
+      if (!a.pode.ok) return;
+      ctx.abrirDetalhe(it, l, { acao: 'tramite', preset: { texto: a.acao.texto, situacao: a.acao.situacao, antes: a.acao.antes } });
+    }));
     // responsável sugerido: abre a atribuição (você revisa e confirma), nunca atribui sozinho
     $$('[data-sug-resp]', el).forEach(b => {
       b.addEventListener('keydown', e => e.stopPropagation());
@@ -261,7 +270,7 @@ function linha(i, cols) {
     status: '<span>' + pillSituacao(i) + '</span>',
     resp: '<span class="c-sub" style="color:var(--ink-2)">' + respHtml(i) + '</span>',
     parado: '<span class="num"><b class="mono">' + (i.parado || 0) + 'd</b><div class="c-sub">' + (i.last ? fmtDataCurta(i.last) : '') + '</div></span>',
-    prazo: '<span>' + prazoHtml(i) + '</span>'
+    prazo: '<span class="c-prazo">' + prazoHtml(i) + concluirBtn(i) + '</span>'
   };
   return '<div class="lr lvl-' + nivelLegal(i) + (i.resolvida ? ' resolvida' : '') + '" tabindex="0" data-k="' + esc(i.k) + '" role="row">' + (cols || COLUNAS).map(c => cel[c.k]).join('') + '</div>';
 }

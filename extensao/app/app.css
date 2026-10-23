@@ -1412,3 +1412,11 @@ body.setor-fora .trilho [data-rota="equipe"], body.setor-fora .trilho [data-rota
 .cmp-obs-l{display:flex; flex-direction:column; gap:6px; max-height:240px; overflow-y:auto}
 .cmp-obs{width:100%; display:flex; align-items:flex-start; gap:8px; text-align:left; line-height:1.4}
 .cmp-obs-mais{flex:none; color:var(--blue-deep); font-weight:700}
+
+/* Solicitações · Concluir (aguardando o cliente) */
+.c-prazo{display:flex; align-items:center; gap:10px; min-width:0}
+.c-prazo > :first-child{flex:1; min-width:0}
+.btn-concluir{flex:none; margin-left:auto; border-color:var(--blue-deep); color:var(--blue-deep); background:var(--surface)}
+.btn-concluir:hover:not(:disabled){background:var(--blue-deep); color:#fff}
+.btn-concluir:disabled{opacity:.5}
+.sc-pe .btn-concluir{margin-left:8px}
