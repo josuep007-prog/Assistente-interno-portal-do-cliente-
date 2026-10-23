@@ -48,7 +48,7 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## Novidades da v0.42.2 (textos em tópicos, lista errada em análise, tipos iguais ao Hoje, solicitação em tela cheia)
 
 - **Solicitação aberta em tela cheia:** o detalhe ocupa a tela toda (nos dois estilos), com mais espaço para a conversa e a caixa de resposta.
-- **Cartões de tipo das Solicitações iguais aos do Hoje:** todos os tipos à vista, inclusive os sem nada, do mais urgente ao menos, com a mesma linha de apoio (o motivo mais urgente e o total). "Todos os tipos" continua no começo para tirar o filtro. A faixa de chips do Simplificado saiu.
+- **Cartões de tipo das Solicitações iguais aos do Hoje:** todos os tipos à vista, inclusive os sem nada, do mais urgente ao menos, com a mesma linha de apoio (o motivo mais urgente e o total). "Todos os tipos" continua no começo para tirar o filtro. A faixa de chips do Simplificado saiu, e no Simplificado os cartões de tipo voltam a ter as cores das famílias (iguais aos do Atual).
 - **Lista errada:** a sugestão passa a ser **Orientar e colocar em análise** (orienta o cliente sobre a aba certa e segue com esta), não mais concluir.
 
 - Os textos sugeridos longos agora vêm **divididos em tópicos**, um por linha, para o cliente ler com calma: **Rescisão em análise** (o que confirmar, em lista; pagamento e documentos, exame demissional e eSocial/FGTS numerados) e **Férias em análise** (empréstimos consignados, pagamento, aviso de férias e, quando há, o abono pecuniário como mais um tópico). Valem na sugestão do Hoje, no "Pôr em análise" (um a um e em lote) e no modelo "Férias em análise" da caixa.

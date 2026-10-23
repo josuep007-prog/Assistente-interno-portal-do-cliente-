@@ -118,18 +118,7 @@
 :root[data-estilo="simples"] .hj-sec h3 > span{ background:none; padding:0; color:var(--ink-3) }
 :root[data-estilo="simples"] .hj-sec h3::after{ background:var(--rule) }
 
-/* tipos de solicitação: cartões neutros, ícone sem pastilha colorida */
-:root[data-estilo="simples"] .tipo-c{ background:var(--surface); border:1px solid var(--rule); border-top:1px solid var(--rule); transition:border-color .12s }
-:root[data-estilo="simples"] .tipo-c:hover{ box-shadow:none; border-color:var(--rule-strong) }
-:root[data-estilo="simples"] .tipo-c.on{ border-color:var(--blue-deep); box-shadow:inset 0 0 0 1px var(--blue-deep); background:var(--blue-pale) }
-:root[data-estilo="simples"] .tipo-par{ background:none; border-color:var(--rule) }
-:root[data-estilo="simples"] .tipo-par-in .tipo-c{ border-top-width:1px }
-:root[data-estilo="simples"] .tipo-par-in .tipo-c.on{ background:var(--blue-pale) }
-:root[data-estilo="simples"] .tipo-par-cab{ font-weight:600; letter-spacing:.02em; color:var(--ink-3) }
-:root[data-estilo="simples"] .tipo-ic{ background:none; box-shadow:none; color:var(--ink-3) }
-:root[data-estilo="simples"] .tipo-c .tipo-ic.pq{ color:var(--ink-3) }
-:root[data-estilo="simples"] .tipo-ic.pq{ background:none; box-shadow:none }
-:root[data-estilo="simples"] .tipo-c b{ font-family:"Archivo", sans-serif }
+/* tipos de solicitação: os cartões ficam iguais aos do estilo Atual (cores das famílias), nos dois estilos (pedido do Josué, 23/10/2026) */
 :root[data-estilo="simples"] .hj-sit{ background:var(--surface) }
 :root[data-estilo="simples"] .hj-sit.on{ background:var(--surface); border-color:var(--blue-deep); box-shadow:inset 0 0 0 1px var(--blue-deep) }
 
