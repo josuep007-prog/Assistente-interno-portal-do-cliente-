@@ -359,7 +359,9 @@ async function abrirApp(rota, extra, antes) {
   return p;
 }
 // a caixa de resposta começa recolhida (a conversa fica com a janela): abre pela barra, se preciso
-const abrirCaixa = async p => { await p.waitForSelector('#cmp'); if (await p.$('#cmp-rec[aria-expanded="false"]')) await p.click('#cmp-rec'); await p.waitForSelector('#a-texto'); };
+// sem trâmites a solicitação abre nos Dados: vai à conversa para chegar na caixa de resposta
+const irTramites = async p => { await p.waitForSelector('#gaveta .dtab'); if (!await p.$('#cmp')) await p.click('#gaveta [data-aba="tramites"]'); };
+const abrirCaixa = async p => { await irTramites(p); await p.waitForSelector('#cmp'); if (await p.$('#cmp-rec[aria-expanded="false"]')) await p.click('#cmp-rec'); await p.waitForSelector('#a-texto'); };
 const linhas = (p, sel) => p.$$eval(sel || '#corpo [data-k]', e => e.map(x => x.dataset.k));
 
 await passo('app · Hoje (analista): destaque com rosca, carrossel e próximos passos; painéis de avisos, sugestões e previsão; sem os painéis de vencimentos e de uso do portal', async () => {
@@ -381,6 +383,11 @@ await passo('app · Hoje (analista): destaque com rosca, carrossel e próximos p
   assert.equal(await p.getAttribute('#hj-tick', 'class'), 'hj-tick ok');
   assert.deepEqual(await p.$$eval('.hj-tk', e => e.map(x => x.querySelector('.hj-tk-tag').textContent)), ['Lembrete atrasado', 'Em análise', 'Cliente respondeu']);
   assert.deepEqual(await p.$$eval('#hj-passos .hj-step b', e => e.map(x => x.textContent)), ['Cobrar o BETA', 'Dar andamento · parada há 31 dias', 'Responder o cliente']);
+  // solicitações por tipo: os cartões das Solicitações, do mais urgente ao menos urgente, aviso e cálculo no mesmo bloco
+  const blocos = await p.$$eval('#hj-tipos-l > *', e => e.map(x => [...x.querySelectorAll('.tipo-c')].reduce((n, c) => n + Number(c.querySelector('b').textContent), 0)));
+  assert.deepEqual(blocos.map(n => n > 0), blocos.map(n => n > 0).sort((a, b) => b - a), 'os tipos sem solicitação ficam por último: ' + blocos.join());
+  assert.equal(await p.$$eval('#hj-tipos-l .tipo-par', e => e.length), 2, 'férias e rescisão em bloco');
+  assert.equal(await p.$$eval('#hj-tipos-l .tipo-rot', e => e.filter(x => x.scrollWidth > x.clientWidth + 1).length), 0, 'nome do tipo sem texto cortado');
   // painéis
   assert.deepEqual(await p.$$eval('.hj-paineis > section', e => e.map(x => x.id)), ['hj-prev']);
   // sugestões de ação: casos específicos, cada um com a ação pronta (trâmite preenchido, revisar e confirmar)
@@ -411,6 +418,7 @@ await passo('app · Hoje (analista): destaque com rosca, carrossel e próximos p
   // clique na rosca leva às Solicitações com o motivo, na mesma carteira
   // a rosca entra animada: o clique só vale depois que os arcos chegam ao lugar
   await p.waitForFunction(() => !document.querySelector('#vista').classList.contains('hj-anim'));
+  await p.$eval('.hj-donut', e => e.scrollIntoView({ block: 'center' }));
   await p.waitForTimeout(250);
   const ponto = await p.evaluate(() => { const r = document.querySelector('.hj-donut .an-svg').getBoundingClientRect(), k = r.width / 150; return [r.left + (75 + 64) * k, r.top + 75 * k]; });
   await p.mouse.click(ponto[0], ponto[1]);
@@ -1005,6 +1013,32 @@ await passo('app · Hoje: o quadro de avisos sem cálculo saiu (nem com avisos d
   assert.deepEqual(p.erros, []);
 });
 
+await passo('app · Hoje: os cartões de tipo abrem as Solicitações naquele tipo', async () => {
+  const p = await abrirApp('#/inicio');
+  await p.waitForSelector('#hj-tipos-l .tipo-c');
+  const primeiro = await p.$eval('#hj-tipos-l .tipo-c:not(.zero)', b => b.dataset.tipo);
+  await p.click('#hj-tipos-l .tipo-c:not(.zero)');
+  await p.waitForFunction(() => /^#\/fila\?.*tipo=/.test(location.hash));
+  assert.equal(await p.evaluate(() => new URLSearchParams(location.hash.split('?')[1]).get('tipo')), primeiro);
+  await p.waitForSelector('#corpo [data-k]');
+  assert.equal(await p.$eval('#f-tipo', s => s.value), primeiro, 'a lista abre filtrada no tipo');
+  assert.deepEqual(p.erros, []);
+});
+
+await passo('app · detalhe: sem trâmites abre nos Dados; com trâmites, na conversa; motivo da rescisão em português', async () => {
+  const p = await abrirApp('#/fila?escopo=equipe');
+  await p.evaluate(() => { window.__respostas = Object.assign(window.__respostas || {}, { detalhe: { ok: true, item: { assunto: 'x' }, tramites: [], grupos: [{ titulo: 'Solicitação', campos: [{ k: 'Motivo da rescisão', v: 'Rescisão por acordo entre as partes' }] }] } }); });
+  await p.click('#corpo [data-k="geral:b"]');
+  await p.waitForSelector('#gaveta .dtab.on[data-aba="dados"]');
+  assert.equal(await p.isVisible('#gaveta .dtab.on[data-aba="dados"]'), true, 'sem trâmites: direto nos dados');
+  await p.keyboard.press('Escape');
+  await p.evaluate(() => { window.__respostas.detalhe = { ok: true, item: { assunto: 'x' }, tramites: [{ id: 't1', n: 1, lado: 'cli', autor: 'Cliente', em: '2026-10-14T10:00:00', texto: 'Olá' }] }; });
+  await p.click('#corpo [data-k="geral:b"]');
+  await p.waitForSelector('#gaveta .dtab.on[data-aba="tramites"]');
+  assert.equal(await p.isVisible('#gaveta .dtab.on[data-aba="tramites"]'), true, 'com trâmites: na conversa');
+  assert.deepEqual(p.erros, []);
+});
+
 await passo('app · Nova solicitação (Geral): do Hoje, das Solicitações e do detalhe; revisa, confirma, cria e abre a nova', async () => {
   const itens = ITENS_APP.concat([
     { k: 'avisoFerias:f1', type: 'avisoFerias', typeLabel: 'Aviso de férias', id: 'f1', num: 201, code: 1, status: 'Sem análise', lado: 'esc', nivel: 0, grav: 0, parado: 1, motivos: [], resp: 'Ana Teste', mine: true, apelido: 'DELTA', cliente: 'DELTA COMERCIO', detalhe: 'Fulano', created: agoraIso(2), last: agoraIso(1), semCalculo: { alvo: '2026-10-30', faltam: 3, ref: 'início das férias em 03/11/2026', calculo: 'Cálculo de férias' } }
@@ -1310,6 +1344,7 @@ await passo('app · Tramitação: caixa de resposta fixa; intenção e efeito; m
   await p.setViewportSize({ width: 1100, height: 860 });       // janela estreita: a caixa de resposta fica embaixo e recolhe
   await p.evaluate(() => { window.__respostas = { acao: { ok: true, acao: 'tramite', anexos: 1 }, detalhe: { ok: true, item: { assunto: 'Férias' }, tramites: [], datas: {} } }; });
   await p.click('#corpo [data-k="geral:b"]');
+  await irTramites(p);
   await p.waitForSelector('#cmp');
   assert.equal(await p.$('#a-texto'), null, 'a caixa de resposta começa recolhida: a conversa fica com a janela');
   assert.equal(await p.getAttribute('#cmp-rec', 'aria-expanded'), 'false');
@@ -1318,7 +1353,9 @@ await passo('app · Tramitação: caixa de resposta fixa; intenção e efeito; m
   assert.deepEqual(await p.$$eval('.cmp-int', e => e.map(x => x.textContent)), ['Respondido · aguarda o cliente', 'Em análise', 'Em análise interna', 'Concluído · encerra']);
   if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/tram-fechada.png' });
   assert.equal(await p.isVisible('.cmp-int[data-sit="4"]'), true, 'Respondido já está à vista, sem precisar clicar na caixa');
-  assert.equal(await p.isVisible('.cmp-modelo'), true, 'e os modelos também');
+  assert.equal(await p.isVisible('#cmp-ab-modelos'), true, 'e os modelos (um botão na barra da caixa) também');
+  assert.equal(await p.$('.cmp-pe kbd') === null, true, 'sem o indicador do atalho Ctrl+Enter');
+  assert.equal(await p.$('.cmp-modelo') === null, true, 'os modelos só aparecem num painel que a pessoa abre');
   // recolher: sobra só a barra, o rascunho fica; o atalho R e o Responder do rodapé abrem de novo
   await p.fill('#a-texto', 'Rascunho que fica.');
   await p.click('#cmp-rec');
@@ -1355,7 +1392,10 @@ await passo('app · Tramitação: caixa de resposta fixa; intenção e efeito; m
   assert.equal(await p.textContent('#cmp-avisos'), '');
   // modelo com variável: a saudação vem pelo horário e o cursor já cai no que falta preencher
   await p.fill('#a-texto', '');
+  await p.click('#cmp-ab-modelos');
+  assert.equal(await p.isVisible('#cmp-painel .cmp-modelo b'), true, 'painel de modelos com nome e prévia');
   await p.click('.cmp-modelo:has-text("Falta informação")');
+  assert.equal(await p.$('#cmp-painel') === null, true, 'escolher um modelo fecha o painel');
   assert.match(await p.inputValue('#a-texto'), /^(Bom dia|Boa tarde|Boa noite)! Para seguirmos com a solicitação, precisamos de mais informações: \(descreva o que falta\)\./);
   assert.equal(await p.evaluate(() => { const t = document.querySelector('#a-texto'); return t.value.slice(t.selectionStart, t.selectionEnd); }), '(descreva o que falta)');
   assert.equal(await p.$eval('.cmp-int.on', b => b.dataset.sit), '4', 'o modelo escolhe o que acontece depois');
@@ -1366,8 +1406,8 @@ await passo('app · Tramitação: caixa de resposta fixa; intenção e efeito; m
   await p.keyboard.type('a guia do FGTS de setembro');       // escreve por cima do trecho marcado
   assert.equal(await p.textContent('#cmp-avisos'), '');
   if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/tram-editar.png' });
-  await p.click('.cmp-obs-d summary');
-  assert.equal(await p.isVisible('.cmp-obs[data-obs-add]'), true, 'as observações abrem em chips');
+  await p.click('#cmp-ab-obs');
+  assert.equal(await p.isVisible('.cmp-obs[data-obs-add]'), true, 'as observações abrem num painel, com o texto inteiro');
   await p.click('#a-obs');
   assert.match(await p.inputValue('#a-texto'), /a guia do FGTS de setembro\. Pode complementar por aqui, por favor\?\n\nObservações importantes:\n• Prazo de conclusão/);
   await p.setInputFiles('#a-arquivos', { name: 'recibo.txt', mimeType: 'text/plain', buffer: Buffer.from('ola') });
@@ -1442,20 +1482,21 @@ await passo('app · detalhe em janela larga: conversa à esquerda e resposta ao 
   const p = await abrirApp('#/fila', { settings: { __v: 2, desfazerSeg: 0 } });                       // 1360 de largura
   await p.evaluate(() => { window.__respostas = { acao: { ok: true, acao: 'tramite', anexos: 0 }, detalhe: { ok: true, item: { assunto: 'Férias' }, tramites: [], datas: {} } }; });
   await p.click('#corpo [data-k="geral:b"]');
+  await irTramites(p);
   await p.waitForSelector('.dlg-cols.lateral #a-texto');
   const m = await p.evaluate(() => { const g = document.querySelector('#gaveta').getBoundingClientRect(), c = document.querySelector('#g-corpo').getBoundingClientRect(), r = document.querySelector('#cmp').getBoundingClientRect(); return { g: g.width, c: [c.left, c.right, c.height], r: [r.left, r.right, r.height], fora: document.querySelector('#cmp-rec') !== null }; });
   assert.ok(m.g >= 1250, 'a janela ficou mais larga: ' + m.g);
   assert.ok(m.c[1] <= m.r[0] + 1, 'a conversa fica à esquerda e a resposta ao lado');
   assert.ok(m.r[2] >= m.c[2] - 2, 'a caixa de resposta tem a altura toda da conversa');
   assert.equal(m.fora, false, 'sem botão de recolher: a caixa fica sempre aberta');
-  assert.equal(await p.textContent('.cmp-grade > .cmp-rot'), 'Trâmite', 'o rótulo agora é Trâmite');
-  assert.equal(await p.$$eval('.cmp-rot', e => e.map(x => x.textContent).join('|')), 'Trâmite|Modelos|Observações');
+  assert.equal(await p.textContent('.cmp-envio > .cmp-rot'), 'Trâmite', 'o rótulo é Trâmite');
+  assert.equal(await p.isVisible('#cmp-ab-modelos'), true);
+  await p.click('#cmp-ab-modelos');
   assert.equal(await p.isVisible('.cmp-modelo'), true);
+  await p.click('#cmp-ab-modelos');
   assert.equal(await p.textContent('#cmp-efeito'), 'Escolha a situação do trâmite.');
   await p.click('.cmp-int[data-sit="5"]');
   assert.match(await p.textContent('#cmp-efeito'), /^Trâmite: /);
-  assert.equal(await p.$eval('.cmp-chips.rola', e => getComputedStyle(e).flexWrap), 'wrap', 'modelos quebram linha, sem rolar de lado');
-  assert.equal(await p.$eval('.cmp-modelo', e => getComputedStyle(e.closest('.cmp-chips')).overflowX), 'visible');
   if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/detalhe-larga.png' });
   // a janela encolhe: a caixa vai para baixo e recolhe; o rascunho continua
   await p.fill('#a-texto', 'Rascunho que fica.');
@@ -1575,13 +1616,16 @@ await passo('app · Tramitação: modelo pessoal sem dado de cliente; passar par
   assert.equal(await p.inputValue('#mg-texto'), 'Olá, {cliente}! Enviamos o documento de hoje.');
   await p.fill('#mg-rot', 'Meu aviso');
   await p.click('#mg-salvar');
+  await p.click('#cmp-ab-modelos');
   await p.waitForSelector('.cmp-modelo:has-text("Meu aviso")');
   const guardado = await p.evaluate(() => JSON.parse(localStorage.getItem('__mem')).modelosPessoais);
   assert.deepEqual([guardado.length, guardado[0].rot, guardado[0].texto], [1, 'Meu aviso', 'Olá, {cliente}! Enviamos o documento de hoje.']);
   assert.equal(JSON.stringify(guardado).includes('BETA'), false, 'o modelo guardado não leva o nome do cliente');
   await p.fill('#a-texto', '');
+  if (!await p.$('#cmp-painel')) await p.click('#cmp-ab-modelos');
   await p.click('.cmp-modelo:has-text("Meu aviso")');
   assert.equal(await p.inputValue('#a-texto'), 'Olá, BETA! Enviamos o documento de hoje.', 'ao usar, a variável vira o cliente da vez');
+  await p.click('#cmp-ab-modelos');
   await p.click('.cmp-m-tira');
   await p.waitForFunction(() => !document.querySelector('.cmp-m-tira'));
   // Mais ações: passar para outro analista (encaminhar com comentário)

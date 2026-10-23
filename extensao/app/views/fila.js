@@ -4,6 +4,7 @@
  * cliente, com as "consideradas resolvidas" num grupo no fim. A ordem é por prioridade (OC.ordemFila): prazo legal,
  * sem análise, em análise, cliente respondeu, aguardando o cliente. Prazo interno e gravidade não aparecem aqui. */
 import { estado, itens, minhas, clienteRespondeu, enviar } from '../estado.js';
+import { tiposHtml } from './tipos.js';
 import { esc, pillSituacao, prazoHtml, cartaoItem, ligarItens, csvItens, fmtDataCurta, normal, tipoVisual, tipoIcone, nivelLegal, respHtml, definirSugestoesResp, $, $$ } from '../util.js';
 const OC = window.OC;
 
@@ -59,6 +60,7 @@ export function render(el, ctx, params) {
   params = params || {};
   const todas = itens();
   const resolvidasMinhas = ((estado.snap && estado.snap.resolvidas) || []).filter(i => i.mine).map(i => Object.assign({}, i, { lado: 'cli', resolvida: true }));
+  if (params.tipo && OC.TYPE_BY_KEY[params.tipo]) filtros.tipo = params.tipo;      // vindo dos cartões do Hoje
   const kpi = KPI[params.kpi];
   const motivo = OC.MOTIVOS.find(x => x.k === params.motivo);          // vindo do anel do Hoje
   const porPessoa = !!(params.analista || params.cliente);
@@ -142,17 +144,7 @@ export function render(el, ctx, params) {
   // Cartões dos tipos: quantas há em cada tipo (com os outros filtros aplicados) e quantas têm prazo legal perto.
   const tipos = () => {
     const l = filtrar({ semTipo: true });
-    const cartao = (k, rot, xs) => {
-      const leg = xs.filter(i => OC.motivoDe(i) === 'legal').length, tot = xs.length;
-      return '<button type="button" class="tipo-c fam-' + tipoVisual(k).fam + (filtros.tipo === k ? ' on' : '') + (!tot ? ' zero' : '') + '" data-tipo="' + esc(k) + '" aria-pressed="' + (filtros.tipo === k) + '">' +
-        '<span class="tipo-topo">' + (k ? tipoIcone(k, 'pq') : '<span class="tipo-ic pq"><svg class="ic"><use href="#i-list"/></svg></span>') + '<span class="tipo-rot">' + esc(rot) + '</span></span>' +
-        '<b>' + tot + '</b><span class="tipo-sub">' + (leg ? '<em>' + leg + ' com prazo legal</em>' : tot ? 'sem prazo legal perto' : 'nenhuma') + '</span></button>';
-    };
-    const c = k => cartao(k, OC.TYPE_BY_KEY[k].label, l.filter(i => i.type === k));
-    // aviso e cálculo andam juntos (férias e rescisão): um bloco só, com os dois cartões lado a lado
-    const par = (a, b, rot) => '<div class="tipo-par fam-' + tipoVisual(a).fam + '" role="group" aria-label="' + esc(rot) + ': aviso e cálculo"><div class="tipo-par-cab"><span>' + esc(rot) + '</span></div><div class="tipo-par-in">' + c(a) + c(b) + '</div></div>';
-    $('#tipos', el).innerHTML = cartao('', 'Todos os tipos', l) + ['geral', 'cadEmpregado', 'cadContribuinte', 'cadEstagiario'].map(c).join('') +
-      par('avisoFerias', 'calcFerias', 'Férias') + par('avisoRescisao', 'calcRescisao', 'Rescisão') + ['afastamento', 'rubricas'].map(c).join('');
+    $('#tipos', el).innerHTML = tiposHtml(l, { todos: true, on: filtros.tipo });
     $$('[data-tipo]', el).forEach(b => b.onclick = () => { filtros.tipo = filtros.tipo === b.dataset.tipo ? '' : b.dataset.tipo; const s = $('#f-tipo', el); if (s) s.value = filtros.tipo; desenhar(); });
   };
   // Cartões de situação (cor própria por grupo): quantas há em cada situação, com os outros filtros aplicados

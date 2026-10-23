@@ -1224,6 +1224,17 @@ test('avisos sem cálculo saíram: sem quadro, sem busca do cálculo e as regras
   assert.equal(OC.DEFAULTS.avisoSemCalculo, undefined);
 });
 
+test('tipos por prioridade (Hoje): par aviso+cálculo num bloco, o mais urgente primeiro, vazios no fim', () => {
+  const x = (type, extra) => Object.assign({ k: type + ':' + Math.random(), type, lado: 'esc', status: 'Sem análise', code: 1, parado: 1, uteisAberto: 1, motivos: [] }, extra || {});
+  const legal = { motivos: [{ n: 2, m: 'Pagamento (prazo legal) vence hoje', legal: true }], prazoLegal: { alvo: '2026-10-22', faltam: 0, ref: 'x' } };
+  const itens = [x('rubricas'), x('rubricas'), x('geral', { lado: 'cli', status: 'Respondido', code: 4 }), x('calcRescisao', legal), x('avisoFerias'), x('calcFerias', { status: 'Em análise', code: 2 })];
+  const b = OC.ordenarTipos(itens);
+  assert.deepEqual(plano(b.map(l => l.keys.join('+'))), ['avisoRescisao+calcRescisao', 'rubricas', 'avisoFerias+calcFerias', 'geral', 'cadEmpregado', 'cadContribuinte', 'cadEstagiario', 'afastamento']);
+  assert.deepEqual(plano(b.slice(0, 4).map(l => [l.rot, l.motivo, l.n, l.itens.length])), [['Rescisão', 'legal', 1, 1], ['', 'sem', 2, 2], ['Férias', 'sem', 1, 2], ['', 'cliente', 1, 1]]);
+  assert.equal(OC.ordenarTipos([x('geral'), x('afastamento'), x('afastamento')])[0].keys[0], 'afastamento', 'empate: mais solicitações no nível mais urgente');
+  assert.deepEqual(plano(OC.ordenarTipos([]).map(l => l.keys.join('+')).slice(0, 2)), ['geral', 'cadEmpregado'], 'sem nada: ordem dos tipos');
+});
+
 test('criar solicitação Geral: corpo do formato mapeado, tipo/meio/departamento das regras ou do Onvio, e achar a nova', () => {
   const ex = { serviceRequestType: 'TIPO_GERAL', requestWay: 'WEB', departmentId: 'depX', subject: 'não usar', clientExpanded: { id: 'outro' } };
   const m = OC.modeloCriacao({}, ex, { departmentId: 'depDP' });
@@ -1961,6 +1972,9 @@ test('detalhe em português: campos e códigos do Onvio traduzidos; o que não t
   assert.equal(OC.traduzirValor('x', 'PRIOR_NOTICE_TERMINATION'), 'Aviso prévio de rescisão');
   assert.equal(OC.traduzirValor('x', 'SICK_LEAVE'), 'Afastamento por doença');
   assert.equal(OC.traduzirValor('x', 'WEB'), 'Portal (web)');
+  // valores em PascalCase (motivo da rescisão): nunca em inglês
+  assert.equal(OC.traduzirValor('terminationReason', 'TerminationByAgreementBetweenTheParties'), 'Rescisão por acordo entre as partes');
+  assert.equal(OC.traduzirValor('terminationReason', 'DismissalWithoutCause'), 'Dispensa sem causa');
   assert.equal(OC.traduzirValor('x', 'XPTO_ABC'), 'XPTO_ABC');
   const d = OC.camposDetalhe(OC.TYPE_BY_KEY.calcRescisao, { terminationType: 'WITHOUT_CAUSE', lastWorkDay: '2026-10-10T00:00:00', noticeType: 'INDEMNIFIED' });
   const txt = JSON.stringify(plano(d.grupos));

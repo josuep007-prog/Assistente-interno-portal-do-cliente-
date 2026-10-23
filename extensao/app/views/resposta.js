@@ -130,7 +130,7 @@ export function respostaHtml(i, obs, ctx) {
     let pe;
     if (r.modo === 'contagem') pe = '<div class="cmp-contagem"><span id="cmp-conta-tx">Enviando em ' + resta + ' s…</span><i class="cmp-barra"><i id="cmp-barra" style="--dur:' + r.segTotal + 's"></i></i><button class="btn btn-sm" id="a-desfazer" type="button">Desfazer</button></div>';
     else if (r.modo === 'enviando') pe = '<div class="cmp-contagem"><span>Enviando ao Onvio…</span></div>';
-    else pe = '<div class="cmp-pe"><span class="fraco">Ctrl+Enter envia</span><button class="btn btn-sm" id="a-voltar" type="button">Voltar e editar</button>' +
+    else pe = '<div class="cmp-pe"><span class="spacer"></span><button class="btn btn-sm" id="a-voltar" type="button">Voltar e editar</button>' +
       (proxDisp ? '<button class="btn btn-sm" id="a-enviar-prox" type="button" title="Envia e abre a próxima solicitação da lista">Enviar e ir para a próxima</button>' : '') +
       '<button class="btn btn-sm btn-primary" id="a-enviar" type="button">Enviar</button></div>';
     return '<div class="cmp aberto revisando" id="cmp" tabindex="-1">' + cab + erro + '<div class="acao-conf cmp-conf" id="a-conf"><b>Confira o rascunho na conversa e envie ao Onvio:</b><ul>' +
@@ -142,42 +142,42 @@ export function respostaHtml(i, obs, ctx) {
   }
 
   const modelos = OC.modelosPara(i, estado.settings, estado.modelosPessoais);
-  const chipsModelos = modelos.map((m, n) => m.pessoal
-    ? '<span class="cmp-modelo-p"><button type="button" class="cmp-modelo" data-m="' + n + '" title="' + esc(m.texto) + '">' + esc(m.rot) + '</button><button type="button" class="cmp-m-tira" data-m-tira="' + esc(m.id) + '" aria-label="Tirar o modelo ' + esc(m.rot) + '" title="Tirar este modelo">×</button></span>'
-    : '<button type="button" class="cmp-modelo" data-m="' + n + '" title="' + esc(m.texto) + '">' + esc(m.rot) + '</button>').join('');
+  const resumo = t => { const x = String(t || '').replace(/\s+/g, ' ').trim(); return x.length > 130 ? x.slice(0, 130) + '…' : x; };
+  const itemModelo = (m, n) => '<button type="button" class="cmp-modelo" data-m="' + n + '" title="' + esc(m.texto) + '"><b>' + esc(m.rot) + (m.pessoal ? ' <small>seu</small>' : '') + '</b><span>' + esc(resumo(m.texto)) + '</span></button>';
+  const cardsModelos = modelos.length ? modelos.map((m, n) => m.pessoal
+    ? '<span class="cmp-modelo-p">' + itemModelo(m, n) + '<button type="button" class="cmp-m-tira" data-m-tira="' + esc(m.id) + '" aria-label="Tirar o modelo ' + esc(m.rot) + '" title="Tirar este modelo">×</button></span>'
+    : itemModelo(m, n)).join('') : '<span class="fraco">Nenhum modelo para este tipo de solicitação.</span>';
   const cliObs = obs.filter(o => !o.interno);
-  const chipsObs = cliObs.map(o => '<button type="button" class="cmp-obs" data-obs-add="' + esc(o.id) + '" title="' + esc(o.texto) + '">+ ' + esc(o.texto.length > 46 ? o.texto.slice(0, 46) + '…' : o.texto) + '</button>').join('');
+  const linhasObs = cliObs.map(o => '<button type="button" class="cmp-obs" data-obs-add="' + esc(o.id) + '" title="Acrescentar ao texto"><span class="cmp-obs-mais">+</span><span>' + esc(o.texto) + '</span></button>').join('');
+  const painel = r.painel === 'modelos'
+    ? '<div class="cmp-painel" id="cmp-painel"><div class="cmp-painel-cab"><b>Modelos de resposta</b><span class="fraco">clique para colocar no texto</span></div><div class="cmp-modelos">' + cardsModelos + '</div></div>'
+    : r.painel === 'obs' && cliObs.length
+      ? '<div class="cmp-painel" id="cmp-painel"><div class="cmp-painel-cab"><b>Observações para o cliente</b><span class="fraco">clique para acrescentar ao texto</span><button class="btn btn-sm" id="a-obs" type="button">Inserir todas</button></div><div class="cmp-obs-l">' + linhasObs + '</div></div>'
+      : '';
   const guardar = r.guardando
     ? '<div class="cmp-guardar"><b>Guardar como modelo</b><label class="field">Nome<input id="mg-rot" maxlength="40" value="' + esc(r.guardRot) + '" placeholder="Ex.: Pedido de atestado"></label>' +
       '<label class="field">Texto do modelo<textarea id="mg-texto" rows="4" maxlength="800">' + esc(r.guardTexto) + '</textarea></label>' +
       '<p class="fraco">O modelo vale para qualquer cliente: nomes e datas desta solicitação viraram {variáveis}. Confira se não ficou nome, CPF ou valor.</p>' +
       '<div class="cmp-pe"><button class="btn btn-sm" id="mg-cancelar" type="button">Cancelar</button><button class="btn btn-sm btn-primary" id="mg-salvar" type="button">Guardar modelo</button></div></div>' : '';
-  const obsPainel = cliObs.length
-    ? '<details class="cmp-obs-d"><summary>' + cliObs.length + (cliObs.length === 1 ? ' observação disponível' : ' observações disponíveis') + ' para o cliente</summary><div class="cmp-obs-p"><div class="cmp-chips quebra">' + chipsObs + '</div><button class="linkish" id="a-obs" type="button">Inserir todas no texto</button></div></details>'
-    : '<span class="fraco">Nenhuma para este tipo de solicitação.</span>';
   return '<div class="cmp' + (aberto ? ' aberto' : '') + '" id="cmp">' + cab + ok + erro +
     '<div class="cmp-caixa">' +
       '<textarea id="a-texto" rows="2" placeholder="Escreva a resposta ao cliente (texto simples; o Onvio não usa formatação)">' + esc(r.texto) + '</textarea>' +
       '<div class="cmp-fer">' +
         '<label class="cmp-fer-b" title="Anexar arquivos ao trâmite (até ' + MAX_ANEXOS + ' de 15 MB; também dá para arrastar ou colar uma imagem)">' + ic('paperclip', 'ic-sm') + ' Anexar<input type="file" id="a-arquivos" multiple hidden></label>' +
-        '<button type="button" class="cmp-fer-b" id="a-guardar" title="Guarda o texto como modelo seu (dados desta solicitação viram variáveis)">' + ic('copy', 'ic-sm') + ' Guardar como modelo</button>' +
+        '<button type="button" class="cmp-fer-b' + (r.painel === 'modelos' ? ' on' : '') + '" id="cmp-ab-modelos" aria-expanded="' + (r.painel === 'modelos') + '" title="Modelos de resposta">' + ic('copy', 'ic-sm') + ' Modelos <span class="menu-n">' + modelos.length + '</span></button>' +
+        '<button type="button" class="cmp-fer-b' + (r.painel === 'obs' ? ' on' : '') + '" id="cmp-ab-obs" aria-expanded="' + (r.painel === 'obs') + '"' + (cliObs.length ? '' : ' disabled title="Nenhuma observação para este tipo de solicitação"') + '>' + ic('chat', 'ic-sm') + ' Observações <span class="menu-n">' + cliObs.length + '</span></button>' +
+        '<button type="button" class="cmp-fer-b" id="a-guardar" title="Guarda o texto como modelo seu (dados desta solicitação viram variáveis)">' + ic('plus', 'ic-sm') + ' Guardar como modelo</button>' +
         '<span class="cmp-fer-dica">arraste arquivos ou cole uma imagem</span>' +
       '</div>' +
     '</div>' +
-    arqs + guardar +
-    '<div class="cmp-grade">' +
-      '<span class="cmp-rot">Trâmite</span>' +
-      '<div class="cmp-col"><div class="cmp-seg" role="radiogroup" aria-label="Situação do trâmite">' +
-        ints.map(x => { const [t1, t2] = x.rot.split(' · '); return '<button type="button" class="cmp-int' + (String(r.sit) === String(x.sit) ? ' on' : '') + '" role="radio" aria-checked="' + (String(r.sit) === String(x.sit)) + '" data-sit="' + x.sit + '" data-tom="' + x.tom + '" data-pede="' + (x.pedeCliente ? '1' : '0') + '" title="' + esc(x.efeito) + '"><i class="cmp-pt"></i><span class="t">' + esc(t1) + '</span>' + (t2 ? '<span class="s"><span class="sep"> · </span>' + esc(t2) + '</span>' : '') + '</button>'; }).join('') +
-      '</div><p class="cmp-efeito" id="cmp-efeito">' + (it ? 'Trâmite: ' + esc(it.efeito) + '.' : 'Escolha a situação do trâmite.') + '</p></div>' +
-      '<span class="cmp-rot">Modelos</span>' +
-      '<div class="cmp-col"><div class="cmp-chips rola">' + chipsModelos + '</div></div>' +
-      '<span class="cmp-rot">Observações</span>' +
-      '<div class="cmp-col">' + obsPainel + '</div>' +
-    '</div>' +
+    painel + arqs + guardar +
     '<div class="cmp-avisos" id="cmp-avisos">' + avisosHtml(r, i) + '</div>' +
     (!i.resp ? '<p class="cmp-nota-p">Sem responsável: no Onvio, o primeiro trâmite define você como responsável.</p>' : '') +
-    '<div class="cmp-pe"><span class="fraco"><kbd>Ctrl</kbd>+<kbd>Enter</kbd> revisa</span><button class="btn btn-sm" id="a-descartar" type="button"' + (r.texto || r.arquivos.length || r.sit ? '' : ' disabled') + '>Descartar</button><button class="btn btn-sm btn-primary" id="a-revisar" type="button">Revisar ' + ic('chev-r', 'ic-sm') + '</button></div>' +
+    '<div class="cmp-envio"><span class="cmp-rot">Trâmite</span><div class="cmp-seg" role="radiogroup" aria-label="Situação do trâmite">' +
+        ints.map(x => { const [t1, t2] = x.rot.split(' · '); return '<button type="button" class="cmp-int' + (String(r.sit) === String(x.sit) ? ' on' : '') + '" role="radio" aria-checked="' + (String(r.sit) === String(x.sit)) + '" data-sit="' + x.sit + '" data-tom="' + x.tom + '" data-pede="' + (x.pedeCliente ? '1' : '0') + '" title="' + esc(x.efeito) + '"><i class="cmp-pt"></i><span class="t">' + esc(t1) + '</span>' + (t2 ? '<span class="s"><span class="sep"> · </span>' + esc(t2) + '</span>' : '') + '</button>'; }).join('') +
+      '</div></div>' +
+    '<p class="cmp-efeito" id="cmp-efeito">' + (it ? 'Trâmite: ' + esc(it.efeito) + '.' : 'Escolha a situação do trâmite.') + '</p>' +
+    '<div class="cmp-pe"><span class="spacer"></span><button class="btn btn-sm" id="a-descartar" type="button"' + (r.texto || r.arquivos.length || r.sit ? '' : ' disabled') + '>Descartar</button><button class="btn btn-sm btn-primary" id="a-revisar" type="button">Revisar ' + ic('chev-r', 'ic-sm') + '</button></div>' +
   '</div>';
 }
 
@@ -251,7 +251,7 @@ export function ligarResposta(g, i, r0, obs, cb) {
     const vazio = !r.texto.trim();
     r.texto = vazio ? txt : r.texto.trimEnd() + '\n\n' + txt;
     if (m.situacao && (vazio || !r.sit)) r.sit = String(m.situacao);
-    r.aberto = true; r.erro = '';
+    r.aberto = true; r.erro = ''; r.painel = null;
     cb.redesenhar();
     const t2 = $('#a-texto');
     if (t2) {
@@ -260,6 +260,10 @@ export function ligarResposta(g, i, r0, obs, cb) {
       if (pos >= 0) t2.setSelectionRange(pos, pos + marca.length); else t2.setSelectionRange(t2.value.length, t2.value.length);
     }
   });
+  // painéis de modelos e de observações: abrem entre a caixa e o rodapé, um de cada vez
+  const painelDe = k => () => { r.painel = r.painel === k ? null : k; r.aberto = true; cb.redesenhar(); };
+  if ($('#cmp-ab-modelos', g)) $('#cmp-ab-modelos', g).onclick = painelDe('modelos');
+  if ($('#cmp-ab-obs', g)) $('#cmp-ab-obs', g).onclick = painelDe('obs');
   $$('[data-m-tira]', g).forEach(b => b.onclick = async e => {
     e.stopPropagation();
     await salvarModelosPessoais((estado.modelosPessoais || []).filter(m => m.id !== b.dataset.mTira));
@@ -287,9 +291,9 @@ export function ligarResposta(g, i, r0, obs, cb) {
     const novas = lista.filter(o => !r.texto.includes(o.texto));
     if (!novas.length) return;
     r.texto = (r.texto.trim() ? r.texto.trimEnd() + '\n\n' : '') + (r.texto.includes('Observações importantes:') ? '' : 'Observações importantes:\n') + novas.map(o => '• ' + o.texto).join('\n');
-    r.aberto = true; r.focar = true; cb.redesenhar();
+    r.aberto = true; r.focar = true; r.painel = null; cb.redesenhar();
   };
-  if ($('#a-obs', g)) $('#a-obs', g).onclick = () => { r.texto = (r.texto.trim() ? r.texto.trimEnd() + '\n\n' : '') + 'Observações importantes:\n' + cliObs.map(o => '• ' + o.texto).join('\n'); r.aberto = true; r.focar = true; cb.redesenhar(); };
+  if ($('#a-obs', g)) $('#a-obs', g).onclick = () => { r.painel = null; r.texto = (r.texto.trim() ? r.texto.trimEnd() + '\n\n' : '') + 'Observações importantes:\n' + cliObs.map(o => '• ' + o.texto).join('\n'); r.aberto = true; r.focar = true; cb.redesenhar(); };
   $$('[data-obs-add]', g).forEach(b => b.onclick = () => { const o = cliObs.find(x => x.id === b.dataset.obsAdd); if (o) poe([o]); });
 
   function adicionar(novos) {
