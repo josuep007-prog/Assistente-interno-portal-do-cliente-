@@ -1109,6 +1109,27 @@
       (a.motivo !== 'legal' ? String(a.item.prazoPrometido || '9').localeCompare(String(b.item.prazoPrometido || '9')) : 0) ||      // o prometido mais perto primeiro
       ((b.item.grav || 0) - (a.item.grav || 0)) || ((b.item.parado || 0) - (a.item.parado || 0)));
   }
+  // Tipos de solicitação na ordem de prioridade, para os cartões do Hoje: férias e rescisão andam em par (aviso + cálculo,
+  // um bloco só). Vem primeiro o bloco com a solicitação mais urgente (prazo legal, sem análise, em análise, cliente
+  // respondeu, com o cliente), depois o que tem mais delas nesse nível e mais no total; os vazios ficam no fim.
+  // Devolve [{ keys: [tipos], rot: título do par ou '', itens, motivo, n }].
+  const PARES_TIPO = [['avisoFerias', 'calcFerias', 'Férias'], ['avisoRescisao', 'calcRescisao', 'Rescisão']];
+  function ordenarTipos(items) {
+    const idx = Object.fromEntries(MOTIVOS.map((m, n) => [m.k, n]));
+    const par = new Map(PARES_TIPO.flatMap(p => [[p[0], p], [p[1], p]]));
+    const feitos = new Set(), blocos = [];
+    TYPES.forEach((t, ordem) => {
+      if (feitos.has(t.key)) return;
+      const p = par.get(t.key);
+      const keys = p ? [p[0], p[1]] : [t.key];
+      keys.forEach(k => feitos.add(k));
+      const xs = (items || []).filter(i => keys.includes(i.type));
+      const ms = xs.map(motivoDe);
+      const melhor = ms.length ? Math.min(...ms.map(m => idx[m])) : MOTIVOS.length;
+      blocos.push({ keys, rot: p ? p[2] : '', itens: xs, motivo: ms.length ? MOTIVOS[melhor].k : '', n: ms.filter(m => idx[m] === melhor).length, ordem, nivel: melhor });
+    });
+    return blocos.sort((a, b) => (a.nivel - b.nivel) || (b.n - a.n) || (b.itens.length - a.itens.length) || (a.ordem - b.ordem)).map(b => { delete b.ordem; delete b.nivel; return b; });
+  }
   // Lista de "o que fazer agora" (Hoje): tudo que espera o escritório ou tem prazo legal; o que está com o cliente não entra
   function prioridades(items) { return ordemFila(items).filter(p => p.motivo !== 'cliente'); }
   function contarMotivos(items) {
@@ -1559,7 +1580,7 @@
     regime: 'regime', model: 'modelo', template: 'modelo', link: 'vínculo', apprentice: 'aprendiz', teacher: 'professor', manager: 'gestor',
     supervisor: 'supervisor', responsible: 'responsável', contact: 'contato', contacts: 'contatos', mobile: 'celular', cell: 'celular', home: 'residencial',
     commercial: 'comercial', street_number: 'número', observation: 'observação', observations: 'observações', situation: 'situação', topic: 'trâmite',
-    topics: 'trâmites', answer: 'resposta', response: 'resposta', question: 'pergunta', forwarded: 'encaminhado', assigned: 'atribuído', assignee: 'responsável'
+    agreement: 'acordo', between: 'entre', parties: 'as partes', party: 'parte', topics: 'trâmites', answer: 'resposta', response: 'resposta', question: 'pergunta', forwarded: 'encaminhado', assigned: 'atribuído', assignee: 'responsável'
   });
   Object.assign(ROTULOS, {
     maritalStatus: 'Estado civil', educationLevel: 'Escolaridade', schooling: 'Escolaridade', raceColor: 'Raça/cor', race: 'Raça/cor', gender: 'Sexo',
@@ -1583,12 +1604,13 @@
     COLLEGE_INCOMPLETE: 'Superior incompleto', COLLEGE_COMPLETE: 'Superior completo', HIGHER_EDUCATION: 'Superior', POSTGRADUATE: 'Pós-graduação',
     MASTER: 'Mestrado', DOCTORATE: 'Doutorado', DETERMINED: 'Prazo determinado', UNDETERMINED: 'Prazo indeterminado', INDETERMINATE: 'Prazo indeterminado',
     FIXED_TERM: 'Prazo determinado', CLT: 'CLT', CHECKING: 'Corrente', SAVINGS: 'Poupança', SALARY: 'Salário', CPF: 'CPF', CNPJ: 'CNPJ', RANDOM: 'Aleatória',
+    TERMINATION_BY_AGREEMENT_BETWEEN_THE_PARTIES: 'Rescisão por acordo entre as partes', TERMINATION_WITHOUT_JUST_CAUSE: 'Rescisão sem justa causa', TERMINATION_WITH_JUST_CAUSE: 'Rescisão com justa causa',
     DAY: 'Dia', NIGHT: 'Noite', PARTIAL: 'Parcial', FULL: 'Integral', OPEN: 'Aberto', CLOSED: 'Fechado', DONE: 'Concluído', CANCELED: 'Cancelado', CANCELLED: 'Cancelado'
   });
   // Em inglês o principal vem por último ("expected return date"); em português, primeiro ("data de retorno prevista").
   const ADJ = new Set(['previsto', 'pago', 'não pago', 'ativo', 'inativo', 'pendente', 'prévio', 'trabalhado', 'indenizado', 'mensal', 'semanal', 'diário', 'pessoal', 'profissional', 'médico', 'criado', 'atualizado', 'alterado', 'enviado', 'lido', 'total']);
   const ANTES = new Set(['primeiro', 'último']);
-  const PREP = new Set(['por', 'em', 'de', 'e', 'ou', 'com', 'sem', 'tem']);
+  const PREP = new Set(['por', 'em', 'de', 'e', 'ou', 'com', 'sem', 'tem', 'entre']);
   // parcial: mantém a palavra que não conhece (em vez de desistir da frase toda)
   function traduzirPalavras(lista, parcial) {
     const out = []; let conhecidas = 0;
@@ -1620,6 +1642,8 @@
       if (/^\d{4}-\d{2}-\d{2}T00:00:00(\.0+)?Z?$/.test(v) || /^\d{4}-\d{2}-\d{2}$/.test(v)) { const d = diaDe(v); return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear(); }
       if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v)) { const d = parseDate(v); if (d) return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
       if (/^[A-Z][A-Z_]{1,}$/.test(v)) return enumPt(v);
+      // enumeração em PascalCase ("TerminationByAgreementBetweenTheParties"): vira a chave em maiúsculas e passa pelo dicionário
+      if (/^[A-Z][a-z0-9]+([A-Z][a-z0-9]+)+$/.test(v)) return enumPt(v.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toUpperCase());
       // enumeração em camelCase ("highSchoolComplete") ou minúsculas com _ ("not_informed"): só se for valor conhecido
       if (/^[a-z]+([A-Z][a-z]+)+$|^[a-z]+(_[a-z]+)+$/.test(v)) { const u = v.replace(/([a-z])([A-Z])/g, '$1_$2').toUpperCase(); if (VALORES[u]) return VALORES[u]; }
       return v;
@@ -2575,5 +2599,5 @@
     return { dias, empresas: lista, total: lista.reduce((s2, r) => s2 + r.total, 0), prox30: lista.reduce((s2, r) => s2 + r.prox30, 0) };
   }
 
-  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, marcadoresPendentes, avisosResposta, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, marcadoresPendentes, avisosResposta, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);
