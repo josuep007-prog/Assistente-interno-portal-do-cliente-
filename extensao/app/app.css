@@ -437,6 +437,9 @@ a{color:var(--blue-deep)}
 .btn-danger{background:var(--brand-red); border-color:var(--brand-red); color:#fff}
 .btn-danger:hover{filter:brightness(1.06); color:#fff; border-color:var(--brand-red)}
 .toast.ok{border-left-color:var(--status-green)}
+.toast{z-index:80}      /* por cima do app (.app tem z-index 1) e das janelas */
+.toast.com-acao{pointer-events:auto}
+.toast-btn{border:0; background:none; padding:0 2px; color:var(--blue-mid); font:700 12.5px "IBM Plex Sans",sans-serif; text-decoration:underline; cursor:pointer}
 
 /* acesso de cliente: o app mostra só o aviso */
 body.bloqueado .trilho .ti:not(#btn-tema), body.bloqueado .trilho .ti-rot, body.bloqueado .trilho .ti-sep,
@@ -1230,10 +1233,6 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 /* ============ Sugestões de ação (Hoje): casos específicos com a ação pronta ============ */
 #hj-sug{margin-top:18px}
 #hj-sug header .sc-n{margin-left:2px}
-.cs-resumo{display:flex; flex-wrap:wrap; gap:6px 14px; margin:0 0 10px; font-size:12px; color:var(--ink-2)}
-.cs-resumo span{display:inline-flex; align-items:center; gap:6px}
-.cs-resumo i{width:8px; height:8px; border-radius:50%; background:var(--cs)}
-.cs-lista{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px 12px}
 .cs-l{--cs:var(--blue-deep); display:flex; align-items:center; gap:8px; min-width:0; padding-right:8px; border:1px solid var(--rule); border-left:3px solid var(--cs); border-radius:var(--r); background:var(--surface-2); transition:border-color .15s}
 .cs-l:hover{border-color:var(--cs)}
 .cs-feriasNova, .cs-rescisaoNova{--cs:var(--sit-analise)} .cs-avisoTrabalhado{--cs:var(--sit-encaminhada)} .cs-fora{--cs:var(--status-green)} .cs-duplicada{--cs:#7a5bc7} .cs-abaErrada{--cs:var(--status-warn)} .cs-anexo, .cs-falta{--cs:var(--blue-deep)} .cs-semRetorno{--cs:var(--sit-cliente)}
@@ -1243,7 +1242,6 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .cs-tx b{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px}
 .cs-tx small{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; color:var(--ink-3)}
 .cs-acoes{flex:none; display:flex; align-items:center; gap:4px}
-@media (max-width:1100px){ .cs-lista{grid-template-columns:minmax(0,1fr)} }
 .cs-acoes .icon-btn{width:28px; height:28px; color:var(--ink-3)}
 /* "Responder" ao lado da última mensagem do cliente, embaixo à direita da bolha */
 .tr-responder{flex:none; align-self:flex-end; white-space:nowrap}
@@ -1459,26 +1457,7 @@ body.setor-fora .trilho [data-rota="equipe"], body.setor-fora .trilho [data-rota
 .btn-analise{white-space:nowrap}
 
 /* Hoje · sugestões de ação em barras recolhíveis: categoria > tipo de solicitação, com a ação em lote por tipo */
-.sug-lista{display:flex; flex-direction:column; gap:8px}
-.sug-cat{border:1px solid var(--rule); border-left:4px solid var(--cs, var(--blue-deep)); border-radius:var(--r); background:var(--surface)}
-.sug-cat > summary, .sug-tipo > summary{display:flex; align-items:center; gap:8px; cursor:pointer; list-style:none; min-width:0}
-.sug-cat > summary::-webkit-details-marker, .sug-tipo > summary::-webkit-details-marker{display:none}
-.sug-cat > summary{padding:10px 12px; font-size:13.5px}
-.sug-cat > summary:hover{background:var(--surface-2)}
-.sug-cat > summary i{width:8px; height:8px; border-radius:50%; background:var(--cs, var(--blue-deep)); flex:none}
-.sug-cat > summary b{font:700 13.5px "Archivo",sans-serif; color:var(--ink)}
-.sug-res{margin-left:6px; font-size:12px; color:var(--ink-3); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0}
-.sug-seta{display:inline-grid; place-items:center; flex:none; color:var(--ink-3); transition:transform .15s}
-details[open] > summary > .sug-seta{transform:rotate(0)}
-details:not([open]) > summary > .sug-seta{transform:rotate(-90deg)}
-.sug-corpo{display:flex; flex-direction:column; gap:6px; padding:0 12px 12px}
-.sug-tipo{border:1px solid var(--rule); border-radius:var(--r); background:var(--surface-2)}
-.sug-tipo > summary{padding:7px 10px; font-size:13px}
-.sug-tipo > summary:hover{background:var(--surface-3)}
-.sug-tipo > .cs-lista{padding:0 10px 10px}
-.sug-tipo .cs-l{background:var(--surface)}
 .sug-lote{flex:none}
-.sug-lote-no{flex:none; font-size:11.5px; color:var(--ink-3)}
 /* janela da sugestão em lote */
 .lote-resumo{margin:12px 0; font-size:13px; color:var(--ink-2)}
 .lote-resumo ul{margin:6px 0 0; padding-left:18px}
@@ -1493,7 +1472,6 @@ details:not([open]) > summary > .sug-seta{transform:rotate(-90deg)}
 .lote-st.ok{color:var(--status-green); font-weight:600}
 .lote-st.erro{color:var(--brand-red); font-weight:600; max-width:46%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
 .lote-aviso{margin:12px 0 0}
-@media (max-width:900px){ .sug-tipo > .cs-lista{grid-template-columns:1fr} }
 
 /* o botão do responsável sugerido nunca é cortado: no cartão ele pode ocupar a linha toda */
 .sc-pe .resp:has(.sug-resp){max-width:none; overflow:visible}
@@ -1525,3 +1503,39 @@ details:not([open]) > summary > .sug-seta{transform:rotate(-90deg)}
 .da-card .card-nota, .da-vazio{margin:0}
 .da-log{border:0; border-top:1px solid var(--rule); border-radius:0 0 var(--r) var(--r); max-height:420px}
 @media (max-width:1000px){ .da-grade{grid-template-columns:minmax(0,1fr)} .da-regras{grid-template-columns:minmax(0,1fr)} .da-regras > div{border-right:0; border-bottom:1px solid var(--rule)} .da-regras > div:last-child{border-bottom:0} .da-estado{flex-wrap:wrap} }
+
+
+/* ============ Hoje · sugestões de ação: lista única com filtro por categoria, lote por categoria e "Revisar uma a uma" ============ */
+.sg-filtros{display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 10px}
+.sg-chip{display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border:1px solid var(--rule); border-radius:var(--r); background:var(--surface); color:var(--ink-2); font:inherit; font-size:12.5px; cursor:pointer}
+.sg-chip i{width:8px; height:8px; border-radius:50%; background:var(--cs, var(--ink-3))}
+.sg-chip b{font:600 12.5px "IBM Plex Mono",monospace; color:var(--ink)}
+.sg-chip:hover{border-color:var(--rule-strong)}
+.sg-chip.on{border-color:var(--blue-deep); background:var(--blue-pale); color:var(--ink)}
+.sg-chip:focus-visible{outline:2px solid var(--blue-deep); outline-offset:2px}
+.sg-lote{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 10px; padding:8px 10px; border:1px dashed var(--rule-strong); border-radius:var(--r); font-size:12.5px; color:var(--ink-2)}
+.sg-dica{margin:0 0 8px; font-size:12px; color:var(--ink-3)}
+#hj-sug .sg-lista{display:flex; flex-direction:column; border:1px solid var(--rule); border-radius:var(--r); overflow:hidden; background:var(--surface)}
+#hj-sug .sg-lista .cs-l{gap:10px; padding:0 8px 0 12px; border:0; border-top:1px solid var(--rule); border-radius:0; background:var(--surface)}
+#hj-sug .sg-lista .cs-l:first-child{border-top:0}
+#hj-sug .sg-lista .cs-l:hover{background:var(--surface-2)}
+#hj-sug .sg-lista .cs-abre{padding:8px 0}
+.sg-pt{flex:none; width:8px; height:8px; border-radius:50%; background:var(--cs)}
+.sg-cat{font-weight:600; color:var(--ink-2)}
+#hj-sug .sg-fazer{border-color:var(--blue-deep); color:var(--blue-deep); background:var(--surface)}
+#hj-sug .sg-fazer:hover{background:var(--blue-pale)}
+#hj-sug .sg-nao{width:28px; height:28px; color:var(--ink-3)}
+#hj-sug .sg-nao:hover{color:var(--late); background:var(--surface-2)}
+.sg-mais{display:block; width:100%; margin-top:4px; padding:7px; border:0; background:none; color:var(--blue-deep); font:600 12.5px "IBM Plex Sans",sans-serif; cursor:pointer}
+.sg-mais:hover{text-decoration:underline}
+/* modo foco: uma sugestão por vez, com o que será enviado */
+.dlg-foco{width:min(760px, calc(100vw - 32px))}
+.fo-cat{display:inline-flex; align-items:center; gap:6px; font-weight:600; color:var(--ink)}
+.fo-cat i{width:8px; height:8px; border-radius:50%; background:var(--cs)}
+.fo-n{margin-left:auto; font-variant-numeric:tabular-nums}
+.fo-porque{margin:0 0 12px; color:var(--ink-2)}
+.fo-prev{padding:12px 14px; border:1px solid var(--rule); border-radius:var(--r); background:var(--surface-2)}
+.fo-prev-cab{margin-bottom:6px; font-size:12px; color:var(--ink-3)}
+.fo-prev-cab b{color:var(--ink)}
+.fo-prev-tx{max-height:44vh; overflow:auto; white-space:pre-wrap; line-height:1.55; color:var(--ink)}
+.fo-prev small{display:block; margin-top:8px; font-size:11.5px; color:var(--ink-3)}

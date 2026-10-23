@@ -108,7 +108,16 @@ let toastT = null;
 export function toast(msg, erro) {
   const t = $('#toast');
   t.textContent = msg; t.classList.toggle('err', !!erro); t.classList.toggle('ok', !erro); t.classList.add('show');
+  t.classList.remove('com-acao');
   clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 3800);
+}
+// Aviso com um botão (por exemplo "Desfazer"); fica um pouco mais na tela e aceita o clique
+export function toastAcao(msg, rotulo, fn) {
+  const t = $('#toast');
+  t.innerHTML = '<span>' + esc(msg) + '</span><button type="button" class="toast-btn">' + esc(rotulo) + '</button>';
+  t.classList.remove('err'); t.classList.add('ok', 'show', 'com-acao');
+  t.querySelector('.toast-btn').onclick = () => { t.classList.remove('show', 'com-acao'); clearTimeout(toastT); fn(); };
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show', 'com-acao'), 6500);
 }
 
 // Liga clique/Enter em [data-k] para abrir o detalhe (com a lista, para "anterior/próxima")

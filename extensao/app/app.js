@@ -9,6 +9,7 @@ import { abrirLembrete, fecharLembrete, lembreteAberto } from './views/lembrete-
 import { abrirNova, fecharNova, novaAberta } from './views/nova-dlg.js';
 import { fecharAnexos, anexosAbertos } from './views/anexos-dlg.js';
 import { fecharLote, loteAberto } from './views/lote-dlg.js';
+import { fecharFoco, focoAberto } from './views/foco-sug.js';
 import * as inicio from './views/inicio.js';
 import * as fila from './views/fila.js';
 import * as equipe from './views/equipe.js';
@@ -92,7 +93,7 @@ function desenhar() {
   aoRedim = null;
   document.body.classList.toggle('bloqueado', bloqueado());
   document.body.classList.toggle('setor-fora', !!estado.setor.fora);
-  if (bloqueado()) { fecharAnexos(); fecharLote(); fecharDetalhe(); fecharLembrete(); fecharNova(); fecharBusca(); abrirSino(false); $$('.trilho [data-rota]').forEach(a => a.classList.remove('on')); telaBloqueio($('#vista')); return; }
+  if (bloqueado()) { fecharFoco(); fecharAnexos(); fecharLote(); fecharDetalhe(); fecharLembrete(); fecharNova(); fecharBusca(); abrirSino(false); $$('.trilho [data-rota]').forEach(a => a.classList.remove('on')); telaBloqueio($('#vista')); return; }
   const p = rota.params;
   const ativo = rota.nome === 'busca' ? '' : rota.nome === 'fila' && p.analista ? 'equipe' : rota.nome;
   $$('.trilho [data-rota]').forEach(a => { a.classList.toggle('on', a.dataset.rota === ativo); if (a.dataset.rota === ativo) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
@@ -289,7 +290,7 @@ async function atualizar() {
 (async function iniciar() {
   await iniciarEstado();
   desenhar(); aoVivo(); contadores(); iconeTema(); avisarNovos();
-  addEventListener('hashchange', () => { fecharAnexos(); fecharLote(); fecharDetalhe(); fecharLembrete(); fecharNova(); desenhar(); });
+  addEventListener('hashchange', () => { fecharFoco(); fecharAnexos(); fecharLote(); fecharDetalhe(); fecharLembrete(); fecharNova(); desenhar(); });
   aoMudar(quais => {
     const ocupado = detalheAberto() || anexosAbertos() || loteAberto() || lembreteAberto() || novaAberta() || !$('#cmdk').hidden || document.activeElement.matches('input, select, textarea') || document.querySelector('#vista details.menu[open]');
     const relevante = quais.some(q => ['snap', 'settings', 'regras', 'lembretes', 'serie', 'eventos', 'excecoes', 'sugIgnoradas', 'distAuto', 'distLog'].includes(q)) && AO_VIVO.has(rota.nome);
@@ -328,11 +329,12 @@ async function atualizar() {
     else if (e.key === 'ArrowUp') { e.preventDefault(); marcar(marcada - 1); }
   });
   $('#busca').onsubmit = e => { e.preventDefault(); escolher(marcada); };
-  $('#fundo').onclick = fecharDetalhe;
+  $('#fundo').onclick = () => { if (focoAberto()) fecharFoco(); else fecharDetalhe(); };
   addEventListener('keydown', e => {
     if (e.key === 'Escape') {
       if (!$('#cmdk').hidden) fecharBusca();
       else if (loteAberto()) fecharLote();
+      else if (focoAberto()) fecharFoco();
       else if (anexosAbertos()) fecharAnexos();
       else if (lembreteAberto()) fecharLembrete();
       else if (novaAberta()) { if (!$('#nv-criar[disabled]')) fecharNova(); }
