@@ -5,7 +5,7 @@
  * formato foi mapeado (OC.podeAcao). Nas outras, abra no Onvio.
  * No topo, a distribuição automática (dist-auto.js): ligar pede a senha do gestor. */
 import { estado, itens, enviar } from '../estado.js';
-import { esc, toast, ligarItens, plural, pillSituacao, $, $$, nivelLegal } from '../util.js';
+import { esc, toast, ligarItens, plural, simples, pillSituacao, $, $$, nivelLegal } from '../util.js';
 import { montarDistAuto } from './dist-auto.js';
 const OC = window.OC;
 
