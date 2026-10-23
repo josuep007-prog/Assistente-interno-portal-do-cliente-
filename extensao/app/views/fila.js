@@ -233,7 +233,9 @@ export function render(el, ctx, params) {
   $('#m-onvio', el).addEventListener('click', () => enviar({ cmd: 'fecharPainel' }));
   refazerFila = desenhar;
   desenhar();
-  if (estado.snap && todas.some(i => !i.resp) && !sugLendo && Date.now() - sugEm > 10 * 60000) {
+  // a sugestão vem do histórico (leitura pesada): no máximo a cada 10 min, ou a cada 2 min quando chegou solicitação sem responsável que ela ainda não viu
+  const semSug = todas.some(i => !i.resp && !sugResp.has(i.k));
+  if (estado.snap && todas.some(i => !i.resp) && !sugLendo && Date.now() - sugEm > (semSug ? 2 : 10) * 60000) {
     sugLendo = true;
     enviar({ cmd: 'distribuicao', dias: 30 }).then(r => {
       sugLendo = false; sugEm = Date.now();

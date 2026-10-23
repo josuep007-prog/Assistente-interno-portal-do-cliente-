@@ -64,11 +64,12 @@ let sugestoesResp = null;
 export const definirSugestoesResp = m => { sugestoesResp = m; };
 export function respHtml(i) {
   if (i.resp) return esc(i.resp);
+  if (!OC.podeAcao('responsavel', i).ok) return '<span class="today">sem responsável</span>';
   const s = sugestoesResp && sugestoesResp.get(i.k);
-  if (!s || !OC.podeAcao('responsavel', i).ok) return '<span class="today">sem responsável</span>';
-  return s.resp && s.respId
+  // sem sugestão (a solicitação chegou depois da última leitura do histórico, ou a leitura falhou): o botão de escolher continua
+  return s && s.resp && s.respId
     ? '<button type="button" class="btn btn-sm sug-resp" data-sug-resp="' + esc(i.k) + '" title="' + esc('Sugerido: ' + s.resp + ', que ' + s.motivo + '. Clique para atribuir: você revisa e confirma.') + '">Sugerido: ' + esc(s.resp.split(' ').slice(0, 2).join(' ')) + '</button>'
-    : '<button type="button" class="btn btn-sm sug-resp" data-sug-resp="' + esc(i.k) + '" title="' + esc(s.motivo || 'Sem histórico: escolha o responsável') + '">Escolher responsável</button>';
+    : '<button type="button" class="btn btn-sm sug-resp" data-sug-resp="' + esc(i.k) + '" title="' + esc((s && s.motivo) || 'Sem sugestão ainda: escolha o responsável') + '">Escolher responsável</button>';
 }
 // Cartão de solicitação (visão "Cartões" das filas): o prazo legal, quando há, ou a idade em cinza
 // "Concluir" nas Solicitações, para o que está aguardando o cliente: abre o trâmite já preenchido (1 ou 2 passos, conforme a lista),
