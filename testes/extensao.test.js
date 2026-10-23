@@ -633,7 +633,11 @@ test('leitura: se a página não serve, tenta a extensão na aba; lembra o que f
   assert.equal(store.metodoLeitura, 'extensao');
   const antes = api.chamadas.urls.length;
   assert.equal((await ctx.escolherFetcher()).via, 'extensao');
-  assert.equal(api.chamadas.urls.length - antes, 1, 'na segunda vez vai direto ao que funcionou');
+  assert.equal(api.chamadas.urls.length - antes, 0, 'dentro de 2 minutos usa o mesmo jeito, sem testar a sessão de novo');
+  const antes2 = api.chamadas.urls.length;
+  const forcado = await ctx.escolherFetcher(true);
+  assert.equal(forcado.via, 'extensao', 'testando de novo, começa pelo que funcionou');
+  assert.ok(api.chamadas.urls.length - antes2 >= 1, 'escrita (forçado) testa a sessão sempre');
 });
 
 test('leitura: sem sessão em todos os jeitos, a mensagem diz o que cada um recebeu', async () => {
@@ -2506,4 +2510,83 @@ test('lote do Hub respeita o limite de tamanho e fica com as mais graves', () =>
   assert.ok(lote.tabela.split('\n')[0].includes('A MAIS GRAVE'), 'a mais grave vem primeiro');
   assert.ok(lote.colunas.join('\t').length + lote.tabela.length <= 3000);
   assert.deepEqual(plano(OC.montarLoteHub({ items: [] }).porTipo), {});
+});
+
+test('aba Dados: nada em inglês e formatos brasileiros (carga horária, CPF, sexo, código de integração, cargo só com código)', () => {
+  const rot = OC.traduzirCampo, val = OC.traduzirValor;
+  assert.equal(rot('employeeWorkload'), 'Carga horária', 'sem "de empregado": o grupo já diz de quem é');
+  assert.equal(rot('integrationCode'), 'Código de integração');
+  assert.equal(rot('employeeSomethingUnknown').includes('empregado'), false);
+  assert.equal(val('employeeWorkload', 7.33), '7h20 (7,33 h)');
+  assert.equal(val('employeeWorkload', '8'), '8h');
+  assert.equal(val('weeklyHours', 44), '44h');
+  assert.equal(val('gender', 'M'), 'Masculino');
+  assert.equal(val('sex', 'f'), 'Feminino');
+  assert.equal(val('nationalIdentity', '87281490763'), '872.814.907-63');
+  assert.equal(val('cnpj', '12345678000199'), '12.345.678/0001-99');
+  assert.equal(val('jobPosition', '1295'), 'código 1295');
+  assert.equal(val('quantidade', 2.5), '2,5', 'número com vírgula');
+  assert.equal(val('wage', 1500.5), 'R$ 1.500,50'.replace(' ', '\u00a0'));
+  const g = OC.camposDetalhe({}, { clientEmployeeExpanded: { name: 'FULANO', hireDate: '2022-04-14', cpf: '87281490763', employeeWorkload: 7.33, gender: 'M', integrationCode: '569952', jobPosition: '1295' } });
+  const emp = g.grupos.find(x => x.titulo === 'Empregado');
+  assert.deepEqual(plano(emp.campos.map(c => c.k + '=' + c.v)), ['Nome=FULANO', 'Admissão=14/04/2022', 'CPF=872.814.907-63', 'Carga horária=7h20 (7,33 h)', 'Sexo=Masculino', 'Código de integração=569952', 'Cargo=código 1295']);
+  // nenhuma palavra em inglês nos rótulos de campos comuns do DP
+  const ingles = /\b(employee|client|integration|workload|code|date|type|name|hours?|days?|notice|leave|vacation|termination|payroll|entry|job|position)\b/i;
+  for (const k of ['employeeWorkload', 'integrationCode', 'hireDate', 'clientEmployeeName', 'vacationDays', 'priorNoticeAdviceDate', 'employeeLeaveTypeExpanded', 'payrollEntryConfigurationHeaderExpanded', 'jobPositionCode', 'employeeCode', 'terminationType', 'esocialCode'])
+    assert.doesNotMatch(rot(k), ingles, k + ' => ' + rot(k));
+});
+
+
+test('mensagem pronta: uma por trâmite, a do escritório mais específica, a da pessoa no lugar quando existe', () => {
+  const ger = { type: 'geral', code: 1, lado: 'esc' };
+  const ms = OC.mensagensProntas(ger, {}, []);
+  assert.deepEqual(plano(ms.map(m => m.sit)), plano(OC.intencoesDe(ger, {}).map(x => x.sit)), 'uma para cada trâmite que o Onvio aceita');
+  const por = sit => ms.find(m => m.sit === sit);
+  assert.match(por(4).texto, /precisamos de mais informações/);
+  assert.match(por(5).texto, /Solicitação concluída/);
+  assert.equal(por(5).completa, true, 'as do cliente levam as observações');
+  assert.equal(por(8).completa, false, 'a interna não leva');
+  // a específica do tipo vence a geral
+  const fer = OC.mensagensProntas({ type: 'calcFerias', code: 1, lado: 'esc' }, {}, []);
+  assert.match(fer.find(m => m.sit === 2).texto, /férias de \{empregado\}/);
+  assert.match(fer.find(m => m.sit === 5).texto, /foi concluído e segue em anexo/);
+  // lista errada (com aba própria): Em análise orienta
+  assert.match(OC.mensagensProntas(Object.assign({ abaProvavel: { label: 'Aviso de férias' } }, ger), {}, []).find(m => m.sit === 2).texto, /aba própria/);
+  // a da pessoa (deste tipo) fica no lugar e não leva observações
+  const meu = [{ id: 'a', rot: 'x', texto: 'Minha', situacao: 4, tipo: 'geral' }, { id: 'b', rot: 'y', texto: 'Outro tipo', situacao: 4, tipo: 'calcFerias' }];
+  const m4 = OC.mensagensProntas(ger, {}, meu).find(m => m.sit === 4);
+  assert.deepEqual([m4.texto, m4.completa, m4.pessoal.id], ['Minha', false, 'a']);
+  assert.match(m4.padrao, /mais informações/, 'o padrão continua à mão para voltar');
+});
+
+test('detalhe mais rápido: com o id já lido, dados e trâmites saem junto com a busca; a abertura passa na frente das leituras em massa; os tempos aparecem no Testar a leitura', async () => {
+  const ordem = [];
+  let soltarBusca = null;
+  const base = apiSimulada({ itens: { geral: [pend('g1', 77, { subject: 'Dúvida' })] } });
+  const api = async url => {
+    const u = new URL(url);
+    if (Number(u.searchParams.get('itemsPerPage')) === 5) { ordem.push('busca'); await new Promise(r => { soltarBusca = r; }); }       // a busca pelo número segura
+    else if (u.pathname.endsWith('/topics')) ordem.push('tramites');
+    else if (/\/g1$/.test(u.pathname)) ordem.push('dados');
+    return base(url);
+  };
+  const { ouvintes, store, ctx } = carregarBackground({ abas: [aba(5, ONVIO_PORTAL)], fetchPorMundo: { MAIN: api }, fetch: api });
+  store.snapshot = { items: [{ k: 'geral:g1', type: 'geral', num: 77, id: 'g1' }], resolvidas: [] };
+  const pedido = new Promise(res => ouvintes[0]({ cmd: 'detalhe', type: 'geral', num: 77 }, { tab: { id: 5 } }, res));
+  for (let n = 0; n < 50 && !soltarBusca; n++) await new Promise(r => setTimeout(r, 5));
+  for (let n = 0; n < 50 && !(ordem.includes('dados') && ordem.includes('tramites')); n++) await new Promise(r => setTimeout(r, 5));
+  assert.ok(ordem.includes('dados') && ordem.includes('tramites'), 'dados e trâmites já saíram enquanto a busca ainda não voltou: ' + ordem.join());
+  // enquanto a abertura está em andamento, a leitura em massa espera a vez
+  let massa = false;
+  const emMassa = ctx.emSegundoPlano(async () => { massa = true; return {}; })('x');
+  await new Promise(r => setTimeout(r, 150));
+  assert.equal(massa, false, 'a leitura em massa espera a abertura terminar');
+  soltarBusca();
+  const r = await pedido;
+  assert.equal(r.ok, true);
+  assert.equal(r.item.assunto, 'Dúvida');
+  await emMassa;
+  assert.equal(massa, true, 'e segue depois');
+  const linhas = await new Promise(res => ouvintes[0]({ cmd: 'testarLeitura' }, { tab: { id: 5 } }, res));
+  assert.match(JSON.stringify(linhas), /Abrir solicitação \(últimas 1\).*em paralelo/);
 });

@@ -131,7 +131,6 @@ function desenhar(i, r, erro, carregando) {
     (aba === 'tramites' && !carregando && r && !erro ? respostaHtml(i, obs, { datas: r.datas, proxima: p >= 0 && p < lista.length - 1 }) : '') +
     '</div>' +
     '<div class="dlg-actions">' +
-      responderRodape(i, carregando) +
       '<button class="btn btn-sm" id="g-onvio"><svg class="ic ic-sm"><use href="#i-link"/></svg> Abrir no Onvio</button>' +
       (nAnexos ? '<button class="btn btn-sm" id="g-anexos" title="Escolha quais anexos baixar"><svg class="ic ic-sm"><use href="#i-download"/></svg> Baixar anexos<span class="n-anexos">' + nAnexos + '</span></button>' : '') +
       '<span class="spacer"></span>' +
@@ -180,10 +179,6 @@ function desenhar(i, r, erro, carregando) {
   if ($('#g-copiar-obs2')) $('#g-copiar-obs2').onclick = copiarObs;
   $$('#g-obs [data-obs]', g).forEach(c => c.onchange = () => { const pv = $('#g-obs-texto', g); if (pv) pv.textContent = textoParaCliente(obs.filter(o => $$('#g-obs [data-obs]', g).some(x => x.dataset.obs === o.id && x.checked))); });
   $$('[data-acao]', g).forEach(b => b.onclick = () => { novaAcao(b.dataset.acao); aba = 'acao'; desenhar(i, r, erro, carregando); });
-  if ($('#g-responder')) $('#g-responder').onclick = () => {
-    if (aba !== 'tramites') { aba = 'tramites'; desenhar(i, r, erro, carregando); }
-    if (!focarResposta()) toast('A caixa de resposta não está disponível aqui', true);
-  };
   $$('[data-abrir-onvio]', g).forEach(b => b.onclick = () => $('#g-onvio').click());
   $$('[data-responder]', g).forEach(b => b.onclick = () => { if (!focarResposta()) toast('A caixa de resposta não está disponível aqui', true); });
   $$('.g-mais .menu-item', g).forEach(b => b.addEventListener('click', () => { const m = b.closest('details'); if (m) m.open = false; }));
@@ -211,10 +206,6 @@ function desenhar(i, r, erro, carregando) {
 }
 
 // "Responder" sempre à vista no rodapé (de qualquer aba): leva à caixa de resposta; desativado com o motivo quando não dá
-function responderRodape(i, carregando) {
-  const p = carregando ? { ok: false, motivo: 'lendo a solicitação…' } : OC.ACOES.tramite(i.type) ? OC.podeAcao('tramite', i) : { ok: false, motivo: 'ainda não mapeada no Onvio para esta lista: use "Abrir no Onvio"' };
-  return '<button class="btn btn-sm btn-acao" id="g-responder" title="' + esc(p.ok ? 'Escrever a resposta ao cliente (atalho: R)' : p.motivo) + '"' + (p.ok ? '' : ' disabled') + '><svg class="ic ic-sm"><use href="#i-chat"/></svg> Responder</button>';
-}
 // "Mais ações": o resto fica num menu, cada item com o motivo na própria linha quando não dá para usar (OC.podeAcao)
 function maisAcoes(i, obs, carregando) {
   const item = (rot, ic, attrs, pode) => '<button type="button" class="menu-item"' + attrs + (pode.ok ? '' : ' disabled') + '><svg class="ic ic-sm"><use href="#i-' + ic + '"/></svg><span class="mi-tx">' + rot + (pode.ok ? '' : '<small class="mi-motivo">' + esc(pode.motivo) + '</small>') + '</span></button>';
@@ -293,9 +284,13 @@ function dados(i, r, carregando) {
   const grade = cs => '<div class="campos">' + cs.map(([k, v, dq]) => '<div class="campo' + (dq ? ' dq-campo' : '') + '"><div class="k">' + esc(k) + '</div><div class="v">' + esc(v) + '</div></div>').join('') + '</div>';
   if (carregando) return '<div class="vazio">Lendo a solicitação completa no Onvio…</div>';
   if (r && r.grupos) {
+    // cada grupo num cartão; o nome (do empregado, por exemplo) vai para o título do cartão em vez de ser mais um campo
     let html = r.grupos.map(gr => {
-      const curtos = gr.campos.filter(c => !c.longo), longos = gr.campos.filter(c => c.longo);
-      return '<section class="dados-g"><h4 class="dados-tit">' + esc(gr.titulo) + '</h4>' + (curtos.length ? grade(curtos.map(c => [c.k, c.v, c.destaque])) : '') +
+      const nome = gr.titulo !== 'Solicitação' && gr.campos.find(c => c.k === 'Nome' && !c.longo);
+      const campos = gr.campos.filter(c => c !== nome);
+      const curtos = campos.filter(c => !c.longo), longos = campos.filter(c => c.longo);
+      return '<section class="dados-g"><header class="dados-cab"><h4 class="dados-tit">' + esc(gr.titulo) + '</h4>' + (nome ? '<span class="dados-nome">' + esc(nome.v) + '</span>' : '') + '</header>' +
+        (curtos.length ? grade(curtos.map(c => [c.k, c.v, c.destaque])) : '') +
         longos.map(c => '<div class="campo campo-longo"><div class="k">' + esc(c.k) + '</div><div class="texto-longo">' + esc(textoPuro(c.v)) + '</div></div>').join('') + '</section>';
     }).join('');
     if (r.anexos && r.anexos.length) html += '<section class="dados-g"><h4 class="dados-tit">Anexos da solicitação</h4><div class="anexos">' + r.anexos.map(a => '<span><svg class="ic ic-sm"><use href="#i-paperclip"/></svg>' + esc(a) + '</span>').join('') + '</div><div style="margin-top:8px"><button type="button" class="btn btn-sm" id="g-anexos2"><svg class="ic ic-sm"><use href="#i-download"/></svg> Escolher e baixar anexos</button></div></section>';

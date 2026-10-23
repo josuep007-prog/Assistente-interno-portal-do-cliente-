@@ -849,6 +849,15 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 /* Detalhe · aba Dados em blocos */
 .dados-g{margin-bottom:18px}
 .dados-g:last-child{margin-bottom:0}
+/* aba Dados: cada grupo num cartão, rótulos em letra normal e colunas que não se espalham na tela cheia (pedido do Josué, 23/10/2026) */
+#g-corpo .dados-g{max-width:1100px; margin-bottom:12px; padding:12px 16px 14px; border:1px solid var(--rule); border-radius:var(--r); background:var(--surface)}
+#g-corpo .dados-cab{display:flex; align-items:baseline; flex-wrap:wrap; gap:4px 10px; margin:0 0 10px}
+#g-corpo .dados-cab .dados-tit{margin:0; padding:0; border:0}
+.dados-nome{font-size:14px; font-weight:600; color:var(--ink)}
+#g-corpo .dados-g .campos{grid-template-columns:repeat(auto-fill, minmax(170px, 1fr)); gap:10px 18px; margin-bottom:0}
+#g-corpo .dados-g .campo .k{font-size:12px; font-weight:500; text-transform:none; letter-spacing:0}
+#g-corpo .dados-g .campo .v{font-size:13.5px; color:var(--ink)}
+#g-corpo .dados-g .campo-longo{margin-top:10px}
 .campo-longo{margin:12px 0 0}
 .campo-longo .texto-longo{margin-top:4px}
 
@@ -1539,3 +1548,21 @@ body.setor-fora .trilho [data-rota="equipe"], body.setor-fora .trilho [data-rota
 .fo-prev-cab b{color:var(--ink)}
 .fo-prev-tx{max-height:44vh; overflow:auto; white-space:pre-wrap; line-height:1.55; color:var(--ink)}
 .fo-prev small{display:block; margin-top:8px; font-size:11.5px; color:var(--ink-3)}
+
+/* ============ caixa de resposta · Mensagem pronta (balão por cima, uma mensagem por trâmite, editável) ============ */
+.mp-balao{position:fixed; z-index:60; display:flex; flex-direction:column; gap:8px; padding:12px; border:1px solid var(--rule-strong); border-radius:var(--r); background:var(--surface); box-shadow:0 12px 36px rgba(16,24,32,.22); outline:none}
+.mp-cab{display:flex; align-items:baseline; gap:8px}
+.mp-cab b{font-size:13.5px}
+.mp-cab .icon-btn{margin-left:auto; width:26px; height:26px; color:var(--ink-3)}
+.mp-tabs{display:flex; flex-wrap:wrap; gap:4px}
+.mp-tab{display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border:1px solid var(--rule); border-radius:var(--r); background:var(--surface); color:var(--ink-2); font:500 12.5px "IBM Plex Sans",sans-serif; cursor:pointer}
+.mp-tab[data-tom="cli"]{--c:var(--blue-deep)} .mp-tab[data-tom="esc"]{--c:var(--status-warn)} .mp-tab[data-tom="int"]{--c:var(--ink-3)} .mp-tab[data-tom="fim"]{--c:var(--status-green)}
+.mp-tab:hover{border-color:var(--rule-strong)}
+.mp-tab.on{border-color:var(--c); background:color-mix(in srgb, var(--c) 12%, var(--surface)); color:var(--ink); font-weight:600}
+.mp-tab small{font-size:10.5px; font-weight:600; color:var(--blue-deep)}
+.mp-tab:focus-visible{outline:2px solid var(--blue-deep); outline-offset:1px}
+#mp-texto{width:100%; min-height:170px; max-height:42vh; resize:vertical; font:inherit; font-size:13px; line-height:1.5; color:var(--ink)}
+.mp-pe{display:flex; align-items:center; gap:6px; flex-wrap:wrap}
+.mp-pe .spacer{flex:1}
+.mp-outros{display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding-top:6px; border-top:1px solid var(--rule); font-size:12px}
+.mp-outros .linkish{padding:0; border:0; background:none; color:var(--blue-deep); font:inherit; font-weight:600; cursor:pointer}
