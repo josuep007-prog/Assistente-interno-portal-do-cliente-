@@ -2604,12 +2604,12 @@
       if (atual && ORDEM_CASOS.indexOf(atual.tipo) <= ORDEM_CASOS.indexOf(tipo)) return;
       casos.set(i.k, Object.assign({ k: i.k, item: i, tipo }, extra));
     };
-    if (s.foraDoPortalDias > 0) for (const i of pend) if (i.lado === 'esc' && (i.parado || 0) > s.foraDoPortalDias) add(i, 'fora', { porque: 'Sem resposta do escritório há ' + i.parado + ' dias: provavelmente resolvida fora do portal' });
+    if (s.foraDoPortalDias > 0) for (const i of pend) if (i.lado === 'esc' && (i.parado || 0) > s.foraDoPortalDias) add(i, 'fora', { porque: 'Sem resposta do escritório há ' + i.parado + ' dias: provavelmente resolvida fora do portal', curto: i.parado + ' dias sem movimentação' });
     for (const i of pend) {
       const a = analises && analises[i.k];
       if (!a || !a.tipo || a.l !== i.last || !CASOS[a.tipo]) continue;
       if (a.tipo === 'fora' && i.lado !== 'esc') continue;
-      add(i, a.tipo, a.tipo === 'avisoTrabalhado' ? {} : { porque: a.tipo === 'fora' ? 'Um trâmite recente indica que foi resolvida fora do portal' : a.tipo === 'anexo' ? 'O cliente fala em anexo, mas nenhum arquivo chegou' : 'Pedido curto demais e sem anexo: falta informação para atender', trecho: a.trecho || '' });
+      add(i, a.tipo, a.tipo === 'avisoTrabalhado' ? {} : { porque: a.tipo === 'fora' ? 'Um trâmite recente indica que foi resolvida fora do portal' : a.tipo === 'anexo' ? 'O cliente fala em anexo, mas nenhum arquivo chegou' : 'Pedido curto demais e sem anexo: falta informação para atender', curto: a.tipo === 'fora' ? 'trâmite diz que foi resolvida' : a.tipo === 'anexo' ? 'fala em anexo, nenhum chegou' : 'pedido curto e sem anexo', trecho: a.trecho || '' });
     }
     const chave = i => (i.codCliente !== '' && i.codCliente != null ? 'c' + i.codCliente : 'n' + semAcento(i.cliente || i.apelido || '')) + '|' + i.type + '|' + semAcento(i.detalhe || '').trim();
     const grupos = new Map();
@@ -2617,24 +2617,24 @@
     for (const g of grupos.values()) {
       if (g.length < 2) continue;
       g.sort((a, b) => Number(a.num) - Number(b.num));
-      for (const i of g.slice(1)) add(i, 'duplicada', { outra: g[0].num, porque: 'Repete a nº ' + g[0].num + ' (mesmo cliente, lista e ' + (i.type === 'geral' ? 'assunto' : 'empregado') + '), ainda em aberto' });
+      for (const i of g.slice(1)) add(i, 'duplicada', { outra: g[0].num, porque: 'Repete a nº ' + g[0].num + ' (mesmo cliente, lista e ' + (i.type === 'geral' ? 'assunto' : 'empregado') + '), ainda em aberto', curto: 'repete a nº ' + g[0].num });
     }
     // férias novas (Sem análise): pôr em análise e avisar dos consignados e do prazo de pagamento
-    for (const i of pend) if ((i.type === 'avisoFerias' || i.type === 'calcFerias') && i.lado === 'esc' && grupoSituacao(i).k === 'sem') add(i, 'feriasNova', { porque: 'Solicitação de férias nova, ainda sem análise: pôr em análise e avisar o cliente do prazo de pagamento' });
+    for (const i of pend) if ((i.type === 'avisoFerias' || i.type === 'calcFerias') && i.lado === 'esc' && grupoSituacao(i).k === 'sem') add(i, 'feriasNova', { porque: 'Solicitação de férias nova, ainda sem análise: pôr em análise e avisar o cliente do prazo de pagamento', curto: 'nova, sem análise' });
     // avisos de rescisão novos (Sem análise), de qualquer tipo de rescisão (o cálculo de rescisão não leva esse texto): pôr em análise e avisar do prazo de pagamento, dos documentos, do exame demissional e do eSocial/FGTS
-    for (const i of pend) if (i.type === 'avisoRescisao' && i.lado === 'esc' && grupoSituacao(i).k === 'sem') add(i, 'rescisaoNova', { porque: 'Solicitação de rescisão nova, ainda sem análise: pôr em análise e avisar o cliente do prazo de pagamento, dos documentos e do exame demissional' });
+    for (const i of pend) if (i.type === 'avisoRescisao' && i.lado === 'esc' && grupoSituacao(i).k === 'sem') add(i, 'rescisaoNova', { porque: 'Solicitação de rescisão nova, ainda sem análise: pôr em análise e avisar o cliente do prazo de pagamento, dos documentos e do exame demissional', curto: 'nova, sem análise' });
     // aviso de rescisão com aviso prévio trabalhado: lembrete de emitir o aviso (assunto/empregado aqui; abertura pelos trâmites)
     for (const i of pend) if (i.type === 'avisoRescisao' && acharTrecho(textoPlano(i.detalhe), s.avisoTrabalhadoPalavras)) add(i, 'avisoTrabalhado', {});
     // cálculo de rescisão com aviso trabalhado (terminationType WORKED, que já vem na lista): lembrar de emitir o aviso, sem calcular agora
     for (const i of pend) if (i.type === 'calcRescisao' && i.tipoAviso === 'WORKED' && i.lado === 'esc') add(i, 'avisoTrabalhado', {});
     // aguardando o cliente há mais de duas semanas: sugestão de concluir por falta de retorno (o plano de passos sai do item)
-    if (s.concluirClienteDias > 0) for (const i of pend) if (i.lado === 'cli' && (i.parado || 0) > s.concluirClienteDias) add(i, 'semRetorno', { porque: 'Aguardando o cliente há ' + i.parado + ' dias, sem retorno: pode ser concluída' });
-    for (const i of pend) if (i.abaProvavel) add(i, 'abaErrada', { aba: i.abaProvavel.label, porque: 'Aberta na lista Geral, mas tem aba própria: ' + i.abaProvavel.label });
+    if (s.concluirClienteDias > 0) for (const i of pend) if (i.lado === 'cli' && (i.parado || 0) > s.concluirClienteDias) add(i, 'semRetorno', { porque: 'Aguardando o cliente há ' + i.parado + ' dias, sem retorno: pode ser concluída', curto: i.parado + ' dias aguardando o cliente' });
+    for (const i of pend) if (i.abaProvavel) add(i, 'abaErrada', { aba: i.abaProvavel.label, porque: 'Aberta na lista Geral, mas tem aba própria: ' + i.abaProvavel.label, curto: 'aba própria: ' + i.abaProvavel.label });
     return [...casos.values()].map(c => {
       const def = CASOS[c.tipo];
       if (def.lembrete) {                                          // aviso trabalhado: não é trâmite, é um lembrete pessoal
         const lem = lembreteAvisoTrabalhado(c.item, s, new Date());
-        return Object.assign(c, { rot: def.rot, botao: def.botao, pode: { ok: true }, porque: 'Aviso prévio trabalhado: lembrar de emitir o aviso (sem cálculo)' + (lem.semData ? ' · a data do aviso não foi lida: lembrete para o próximo dia útil' : ' · lembrete para ' + lem.dia), acao: { lembrete: lem } });
+        return Object.assign(c, { rot: def.rot, botao: def.botao, pode: { ok: true }, curto: lem.semData ? 'lembrete no próximo dia útil' : 'lembrete para ' + lem.dia, porque: 'Aviso prévio trabalhado: lembrar de emitir o aviso (sem cálculo)' + (lem.semData ? ' · a data do aviso não foi lida: lembrete para o próximo dia útil' : ' · lembrete para ' + lem.dia), acao: { lembrete: lem } });
       }
       if (def.conclusao) {                                         // concluir por falta de retorno: 1 ou 2 passos, conforme a lista
         const ac = acaoConcluir(c.item, s);
