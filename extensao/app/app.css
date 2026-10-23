@@ -1462,11 +1462,26 @@ details:not([open]) > summary > .sug-seta{transform:rotate(-90deg)}
 .c-sub:has(> .sug-resp){overflow:visible}
 
 /* Equipe · distribuição automática */
-.da-estado{display:flex; align-items:center; gap:10px; padding:4px 0 8px}
-.da-pt{width:10px; height:10px; border-radius:50%; background:var(--ink-3)}
-.da-pt.on{background:var(--status-green); box-shadow:0 0 0 4px color-mix(in srgb, var(--status-green) 25%, transparent)}
-.da-num{display:flex; gap:28px; padding:6px 0}
-.da-num b{display:block; font:700 26px "Archivo",sans-serif}
+.da-estado{display:flex; align-items:center; gap:14px; padding:6px 0 16px}
+.da-pt{flex:none; width:12px; height:12px; border-radius:50%; background:var(--ink-3)}
+.da-pt.on{background:var(--status-green); box-shadow:0 0 0 5px color-mix(in srgb, var(--status-green) 25%, transparent)}
+.da-estado-tx{flex:1; min-width:0; display:flex; flex-direction:column; gap:2px}
+.da-estado-tx b{font:700 16px "Archivo",sans-serif}
+.da-estado-tx small{font-size:12.5px; color:var(--ink-3)}
+.da-acoes{display:flex; gap:8px; flex:none}
+.da-conf{max-width:none; margin:0 0 16px}
+.da-regras{display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:0; border-top:1px solid var(--rule); margin:0 -16px -14px; background:var(--surface-2); border-radius:0 0 var(--r) var(--r)}
+.da-regras > div{padding:14px 16px 16px; border-right:1px solid var(--rule)}
+.da-regras > div:last-child{border-right:0}
+.da-regras h4{margin:0 0 6px; font:700 10.5px "IBM Plex Sans",sans-serif; text-transform:uppercase; letter-spacing:.07em; color:var(--ink-3)}
+.da-regras p{margin:0; font-size:12.5px; line-height:1.55; color:var(--ink-2)}
+.da-regras a{color:var(--blue-deep); font-weight:600}
+.da-grade{display:grid; grid-template-columns:minmax(260px, 340px) minmax(0,1fr); gap:14px; align-items:start; margin-top:14px}
+.da-num{display:flex; gap:32px; padding:4px 0 6px}
+.da-num b{display:block; font:700 30px/1.1 "Archivo",sans-serif}
 .da-num b.late{color:var(--brand-red)}
 .da-num small{font-size:12px; color:var(--ink-3)}
-.da-parou{margin:6px 0 0; font-size:13px; color:var(--ink-2)}
+.da-parou{margin:8px 0 0; font-size:13px; color:var(--ink-2)}
+.da-card .card-nota, .da-vazio{margin:0}
+.da-log{border:0; border-top:1px solid var(--rule); border-radius:0 0 var(--r) var(--r); max-height:420px}
+@media (max-width:1000px){ .da-grade{grid-template-columns:minmax(0,1fr)} .da-regras{grid-template-columns:minmax(0,1fr)} .da-regras > div{border-right:0; border-bottom:1px solid var(--rule)} .da-regras > div:last-child{border-bottom:0} .da-estado{flex-wrap:wrap} }

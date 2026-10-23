@@ -397,25 +397,32 @@ function distribuicaoAuto(el, ctx) {
   const cfg = Object.assign({ minutos: 15, inicio: 8, fim: 18 }, estado.settings.distribuicaoAuto || {});
   const hora = iso => { const x = new Date(iso); return isNaN(x) ? '' : x.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }); };
   const pul = u && u.puladas ? [['semHistorico', 'sem histórico da empresa (decisão manual)'], ['semId', 'sem o identificador do responsável'], ['naoPode', 'lista em que a extensão não define responsável'], ['outroSetor', 'Geral de outro departamento'], ['jaTemResponsavel', 'já tinham responsável']].filter(([k]) => u.puladas[k]).map(([k, t]) => u.puladas[k] + ' ' + t) : [];
+  const botoes = d.ligada
+    ? '<button class="btn btn-sm" id="da-agora"' + (rodandoAgora ? ' disabled' : '') + '>' + (rodandoAgora ? 'Rodando…' : 'Rodar agora') + '</button><button class="btn btn-sm" id="da-desligar">Desligar</button>'
+    : confirmarLigar ? '' : '<button class="btn btn-sm btn-primary" id="da-ligar">Ligar</button>';
   el.innerHTML =
-    '<section class="card da-card"><div class="card-h"><h3>Distribuição automática de responsáveis</h3><span class="sub">a cada ' + cfg.minutos + ' min · seg a sex, ' + cfg.inicio + 'h às ' + cfg.fim + 'h · neste Chrome</span></div>' +
-      '<div class="da-estado"><span class="da-pt ' + (d.ligada ? 'on' : '') + '"></span><b id="da-estado">' + (d.ligada ? 'Ligada' : 'Desligada') + '</b>' + (d.ligada && d.ligadaEm ? '<span class="fraco"> desde ' + esc(hora(d.ligadaEm)) + '</span>' : '') +
-        '<span class="spacer" style="flex:1"></span>' +
-        (d.ligada ? '<button class="btn btn-sm" id="da-agora"' + (rodandoAgora ? ' disabled' : '') + '>' + (rodandoAgora ? 'Rodando…' : 'Rodar agora') + '</button><button class="btn btn-sm" id="da-desligar">Desligar</button>'
-          : confirmarLigar ? '' : '<button class="btn btn-sm btn-primary" id="da-ligar">Ligar</button>') + '</div>' +
-      (!d.ligada && confirmarLigar ? '<div class="acao-conf" id="da-conf"><b>Ligar a distribuição automática?</b><ul><li>A cada ' + cfg.minutos + ' minutos, em horário comercial, a extensão define no Onvio, <b>em seu nome</b>, o responsável das solicitações que estão <b>sem responsável</b>.</li><li>Critério igual ao da aba Distribuir: quem mais atendeu a empresa nos últimos 30 dias (Cadastros: quem mais fez admissões). Sem histórico, fica para decisão manual.</li><li>Nunca troca quem já é responsável e não escreve mais nada no Onvio. Para sozinha se o Onvio recusar.</li><li>Precisa de uma aba do Onvio aberta neste Chrome.</li></ul>' +
+    '<section class="card da-card"><div class="card-h"><h3>Distribuição automática de responsáveis</h3></div><div class="card-b">' +
+      '<div class="da-estado"><span class="da-pt ' + (d.ligada ? 'on' : '') + '"></span><div class="da-estado-tx"><b id="da-estado">' + (d.ligada ? 'Ligada' : 'Desligada') + '</b>' +
+        '<small>' + (d.ligada && d.ligadaEm ? 'desde ' + esc(hora(d.ligadaEm)) + ' · ' : '') + 'Define o responsável das solicitações sem responsável, no seu nome.</small></div>' +
+        '<div class="da-acoes">' + botoes + '</div></div>' +
+      (!d.ligada && confirmarLigar ? '<div class="acao-conf da-conf" id="da-conf"><b>Ligar a distribuição automática?</b><ul><li>A cada ' + cfg.minutos + ' minutos, em horário comercial, a extensão define no Onvio, <b>em seu nome</b>, o responsável das solicitações que estão <b>sem responsável</b>.</li><li>Critério igual ao da aba Distribuir: quem mais atendeu a empresa nos últimos 30 dias (Cadastros: quem mais fez admissões). Sem histórico, fica para decisão manual.</li><li>Nunca troca quem já é responsável e não escreve mais nada no Onvio. Para sozinha se o Onvio recusar.</li><li>Precisa de uma aba do Onvio aberta neste Chrome.</li></ul>' +
         '<div class="acao-pe"><button class="btn btn-sm" id="da-cancelar">Cancelar</button><button class="btn btn-sm btn-primary" id="da-confirmar">Confirmar e ligar</button></div></div>' : '') +
-      '<p class="card-nota">Só o gestor liga, e só este Chrome distribui (assim duas pessoas não atribuem a mesma solicitação). O que a aba <a href="#/distribuir">Distribuir</a> sugeria para você confirmar linha a linha, aqui é feito sozinho.</p>' +
-    '</section>' +
-    '<section class="card" style="margin-top:14px"><div class="card-h"><h3>Última rodada</h3><span class="sub">' + (u ? esc(hora(u.em)) : 'ainda não rodou') + '</span></div>' +
+      '<div class="da-regras">' +
+        '<div><h4>Quando</h4><p>A cada ' + cfg.minutos + ' min, de seg a sex, das ' + cfg.inicio + 'h às ' + cfg.fim + 'h. Precisa de uma aba do Onvio aberta neste Chrome.</p></div>' +
+        '<div><h4>Critério</h4><p>O mesmo da aba <a href="#/distribuir">Distribuir</a>: quem mais atendeu a empresa nos últimos 30 dias (Cadastros: quem mais fez admissões). Sem histórico, fica para decisão manual.</p></div>' +
+        '<div><h4>Segurança</h4><p>Só em solicitações sem responsável; nunca troca quem já tem. Para sozinha se o Onvio recusar. Só o gestor liga, e só este Chrome distribui.</p></div>' +
+      '</div>' +
+    '</div></section>' +
+    '<div class="da-grade">' +
+    '<section class="card"><div class="card-h"><h3>Última rodada</h3><span class="sub">' + (u ? esc(hora(u.em)) : 'ainda não rodou') + '</span></div><div class="card-b">' +
       (u ? '<div class="da-num"><div><b>' + (u.atribuidas || 0) + '</b><small>atribuídas</small></div><div><b' + (u.falhas ? ' class="late"' : '') + '>' + (u.falhas || 0) + '</b><small>com erro</small></div></div>' +
         (u.parou ? '<p class="da-parou">' + esc(u.parou === 'nada sem responsável' ? 'Nenhuma solicitação sem responsável.' : u.parou === 'sem aba do Onvio aberta' ? 'Não rodou: abra o Onvio numa aba deste Chrome.' : 'Parou: ' + u.parou) + '</p>' : '') +
-        (pul.length ? '<p class="card-nota">Ficaram de fora: ' + esc(pul.join('; ')) + '.</p>' : '') : '<p class="card-nota">Quando a primeira rodada acontecer, o resultado aparece aqui.</p>') +
-    '</section>' +
-    '<section class="card" style="margin-top:14px"><div class="card-h"><h3>Últimas atribuições</h3><span class="sub">' + log.length + (log.length === 1 ? ' registro' : ' registros') + ' · só identificação e responsável</span></div>' +
-      (log.length ? '<div class="tabela-wrap"><table class="tabela"><thead><tr><th>Quando</th><th>Solicitação</th><th>Cliente</th><th>Responsável</th></tr></thead><tbody>' +
-        log.slice(0, 30).map(l => '<tr data-k="' + esc(l.k) + '" tabindex="0"><td>' + esc(hora(l.em)) + '</td><td><b>#' + esc(l.num) + '</b> ' + esc(l.typeLabel || '') + '</td><td>' + esc(l.cliente) + '</td><td>' + esc(l.resp) + '</td></tr>').join('') + '</tbody></table></div>' : '<p class="card-nota">Nenhuma atribuição automática ainda.</p>') +
-    '</section>';
+        (pul.length ? '<p class="card-nota">Ficaram de fora: ' + esc(pul.join('; ')) + '.</p>' : '') : '<p class="card-nota da-vazio">Quando a primeira rodada acontecer, o resultado aparece aqui.</p>') +
+    '</div></section>' +
+    '<section class="card"><div class="card-h"><h3>Últimas atribuições</h3><span class="sub">' + log.length + (log.length === 1 ? ' registro' : ' registros') + ' · só identificação e responsável</span></div>' +
+      (log.length ? '<div class="card-b flush"><div class="tabela-wrap da-log"><table class="tabela"><thead><tr><th>Quando</th><th>Solicitação</th><th>Cliente</th><th>Responsável</th></tr></thead><tbody>' +
+        log.slice(0, 30).map(l => '<tr data-k="' + esc(l.k) + '" tabindex="0"><td>' + esc(hora(l.em)) + '</td><td><b>#' + esc(l.num) + '</b> ' + esc(l.typeLabel || '') + '</td><td>' + esc(l.cliente) + '</td><td>' + esc(l.resp) + '</td></tr>').join('') + '</tbody></table></div></div>' : '<div class="card-b"><p class="card-nota da-vazio">Nenhuma atribuição automática ainda.</p></div>') +
+    '</section></div>';
   const mandar = async m => { const r = await enviar(m); if (r && r.ok === false) toast(r.erro || 'Não foi possível', true); return r; };
   if ($('#da-ligar', el)) $('#da-ligar', el).onclick = () => { confirmarLigar = true; distribuicaoAuto(el, ctx); };
   if ($('#da-cancelar', el)) $('#da-cancelar', el).onclick = () => { confirmarLigar = false; distribuicaoAuto(el, ctx); };
