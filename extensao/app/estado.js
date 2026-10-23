@@ -79,7 +79,7 @@ export async function marcarExcecao(k, fora) {
 }
 // Modelos de resposta pessoais (texto padrão, sem dado de cliente): até 20, no Chrome da pessoa
 export async function salvarModelosPessoais(lista) {
-  const l = (lista || []).filter(m => m && m.rot && m.texto).slice(0, 20).map(m => ({ id: m.id, rot: String(m.rot).slice(0, 40), texto: String(m.texto).slice(0, 800), situacao: m.situacao || null }));
+  const l = (lista || []).filter(m => m && m.rot && m.texto).slice(0, 20).map(m => ({ id: m.id, rot: String(m.rot).slice(0, 60), texto: String(m.texto).slice(0, 2000), situacao: m.situacao || null, tipo: m.tipo || null }));
   estado.modelosPessoais = l;
   await chrome.storage.local.set({ modelosPessoais: l });
 }

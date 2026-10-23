@@ -2505,6 +2505,26 @@
       .filter(m => (!m.tipos || m.tipos.includes(item.type)) && (!m.precisaAba || (item.abaProvavel && item.abaProvavel.label)))
       .map(m => { const c = m.situacao ? situacaoEquivalente(m.situacao, item) : null; return Object.assign({}, m, { situacao: c && ok.includes(c) ? c : null }); });
   }
+  // Mensagem pronta (caixa de resposta): UMA mensagem completa por trâmite (intenção) desta solicitação, que a pessoa edita na hora.
+  // Ordem de escolha: o modelo da pessoa para esse trâmite neste tipo (ou em qualquer tipo); senão o do escritório mais específico
+  // (deste tipo de solicitação; depois o de "lista errada" quando cabe; depois o geral); senão um texto base pelo lado do trâmite.
+  // completa: as observações para o cliente entram no fim (a tela acrescenta, sem repetir o que o texto já diz).
+  const TEXTO_BASE = {
+    esc: '{saudacao}! Recebemos a sua solicitação e já estamos analisando. Retornamos assim que houver novidades.',
+    cli: '{saudacao}! Para seguirmos com a solicitação, precisamos de mais informações: (descreva o que falta). Pode complementar por aqui, por favor?',
+    fim: '{saudacao}! Solicitação concluída. Qualquer dúvida, estamos à disposição.',
+    int: 'Registro interno: (descreva o andamento).'
+  };
+  function mensagensProntas(item, settings, pessoais) {
+    const mods = modelosPara(item, settings, []);
+    return intencoesDe(item, settings).map(x => {
+      const meu = (Array.isArray(pessoais) ? pessoais : []).filter(m => m && Number(m.situacao) === x.sit && (!m.tipo || m.tipo === item.type)).sort((a, b) => (b.tipo ? 1 : 0) - (a.tipo ? 1 : 0))[0] || null;
+      const deles = mods.filter(m => m.situacao === x.sit);
+      const pad = deles.find(m => m.tipos && m.tipos.includes(item.type)) || deles.find(m => m.precisaAba) || deles[0];
+      const padrao = pad ? pad.texto : TEXTO_BASE[x.tom] || TEXTO_BASE.esc;
+      return { sit: x.sit, rot: x.rot, onvio: x.onvio, tom: x.tom, efeito: x.efeito, texto: meu ? meu.texto : padrao, padrao, pessoal: meu, completa: !meu && x.tom !== 'int' };
+    });
+  }
   // Marcadores que a pessoa precisa preencher antes de enviar: "(descreva ...)", "{variável}" sem valor, "[preencher]"
   const RE_MARCADOR = /\(\s*descreva[^)\n]*\)|\{[^}\n]{1,40}\}|\[\s*(?:preencher|completar|xx)[^\]\n]*\]/gi;
   const marcadoresPendentes = texto => [...new Set(String(texto || '').match(RE_MARCADOR) || [])];
@@ -2787,5 +2807,5 @@
     };
   }
 
-  g.OC = { montarLoteHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, dentroDoHorario, planoDistribuicaoAuto, acaoConcluir, agruparSugestoes, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, acaoAnalise, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, marcadoresPendentes, avisosResposta, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { montarLoteHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, dentroDoHorario, planoDistribuicaoAuto, acaoConcluir, agruparSugestoes, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, acaoAnalise, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, mensagensProntas, marcadoresPendentes, avisosResposta, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);
