@@ -1642,6 +1642,26 @@
     commercial: 'comercial', street_number: 'número', observation: 'observação', observations: 'observações', situation: 'situação', topic: 'trâmite',
     agreement: 'acordo', between: 'entre', parties: 'as partes', party: 'parte', topics: 'trâmites', answer: 'resposta', response: 'resposta', question: 'pergunta', forwarded: 'encaminhado', assigned: 'atribuído', assignee: 'responsável'
   });
+  // Ainda mais termos (pedido do Josué em 23/10/2026: nada em inglês na aba Dados)
+  Object.assign(PALAVRAS, {
+    integration: 'integração', external: 'externo', internal: 'interno', identifier: 'identificador', national: 'nacional', full: 'completo', short: 'curto',
+    long: 'longo', registry: 'registro', record: 'registro', sequence: 'sequência', order: 'ordem', index: 'índice', enabled: 'ativado', disabled: 'desativado',
+    visible: 'visível', required: 'obrigatório', optional: 'opcional', default: 'padrão', main: 'principal', additional: 'adicional', extra: 'extra',
+    custom: 'personalizado', field: 'campo', fields: 'campos', label: 'rótulo', text: 'texto', message: 'mensagem', comment: 'comentário', url: 'endereço',
+    path: 'caminho', version: 'versão', owner: 'responsável', author: 'autor', items: 'itens', item: 'item', page: 'página', pages: 'páginas', search: 'busca',
+    sort: 'ordenação', view: 'visualização', firm: 'escritório', generic: 'geral', static: 'estático', deleted: 'excluído', newest: 'mais recente',
+    oldest: 'mais antigo', translation: 'tradução', esocial: 'eSocial', fgts: 'FGTS', inss: 'INSS', irrf: 'IRRF', pis: 'PIS', cpf: 'CPF', cnpj: 'CNPJ',
+    rg: 'RG', ctps: 'CTPS', nis: 'NIS', cep: 'CEP', uf: 'UF', cbo: 'CBO', seconds: 'segundos', compensation: 'compensação', probation: 'experiência',
+    trial: 'experiência', renewal: 'renovação', renewed: 'renovado', employment: 'emprego', occupation: 'ocupação', profession: 'profissão',
+    contractual: 'contratual', rural: 'rural', urban: 'urbano', foreign: 'estrangeiro', foreigner: 'estrangeiro', arrival: 'chegada', visa: 'visto',
+    passport: 'passaporte', expiry: 'validade', validity: 'validade', valid: 'válido', until: 'até', from: 'de', to: 'para', per: 'por', line: 'linha',
+    blood: 'sanguíneo', donor: 'doador', height: 'altura', weight: 'peso', reason_code: 'motivo', link_type: 'vínculo', step: 'passo', business: 'empresa',
+    trading: 'comercial', corporate: 'razão social', fantasy_name: 'nome fantasia', sex: 'sexo', male: 'masculino', female: 'feminino', ssn: 'NIS',
+    insured: 'segurado', beneficiary: 'beneficiário', holiday: 'feriado', holidays: 'feriados', weekend: 'fim de semana', sunday: 'domingo',
+    saturday: 'sábado', overtime_hours: 'horas extras', bank: 'banco', balance: 'saldo', credit: 'crédito', debit: 'débito', installment: 'parcela',
+    installments: 'parcelas', loan: 'empréstimo', loans: 'empréstimos', payroll_loan: 'consignado', consigned: 'consignado', earlier: 'antecipado',
+    early: 'antecipado', late: 'atrasado', delay: 'atraso', delayed: 'atrasado', complete: 'completo', incomplete: 'incompleto', partial: 'parcial'
+  });
   Object.assign(ROTULOS, {
     maritalStatus: 'Estado civil', educationLevel: 'Escolaridade', schooling: 'Escolaridade', raceColor: 'Raça/cor', race: 'Raça/cor', gender: 'Sexo',
     nationality: 'Nacionalidade', birthPlace: 'Naturalidade', placeOfBirth: 'Naturalidade', motherName: 'Nome da mãe', fatherName: 'Nome do pai',
@@ -1655,7 +1675,10 @@
     expectedReturnDate: 'Retorno previsto', cid: 'CID', doctorName: 'Nome do médico', crm: 'CRM', competence: 'Competência', unionName: 'Sindicato',
     unionContribution: 'Contribuição sindical', costCenter: 'Centro de custo', jobPosition: 'Cargo', department: 'Departamento', hireDate: 'Admissão',
     clientEmployeeRelationship: 'Vínculo', employeeName: 'Empregado', clientEmployeeName: 'Empregado', rubricCode: 'Código da rubrica', rubricName: 'Rubrica',
-    hoursQuantity: 'Quantidade de horas', daysQuantity: 'Quantidade de dias', basis: 'Competência'
+    hoursQuantity: 'Quantidade de horas', daysQuantity: 'Quantidade de dias', basis: 'Competência',
+    employeeWorkload: 'Carga horária', integrationCode: 'Código de integração', esocialCode: 'Código no eSocial', esocialRegistration: 'Matrícula no eSocial',
+    jobPositionCode: 'Código do cargo', jobCode: 'Código do cargo', employeeCode: 'Código do empregado', clientEmployeeCode: 'Código do empregado',
+    sex: 'Sexo', socialSecurityNumber: 'NIS/PIS', nis: 'NIS', cnpj: 'CNPJ', tradeName: 'Nome fantasia', companyName: 'Razão social', legalName: 'Razão social'
   });
   Object.assign(VALORES, {
     WHITE: 'Branca', BLACK: 'Preta', BROWN: 'Parda', YELLOW: 'Amarela', INDIGENOUS: 'Indígena', NOT_INFORMED: 'Não informado', UNINFORMED: 'Não informado',
@@ -1687,16 +1710,33 @@
   const FORA_DADOS = /^(serviceRequestType|requestWay|changed|created|lastUpdated|genericLastUpdated|lastStatusChanged|dueDate|status|sortOrder|clientExpanded|staffResponsibleExpanded|requesterExpanded|createdByContactExpanded|departmentExpanded)$/;
   const OCULTO = /^(type|apiVersion|id|companyId|identifier|genericStatus|clientStatus|firmStatus|attachmentsExpanded|delete|deleted|staticFilePath|translationKey)$|Id$|Ids$/;
   const humano = k => {
-    const partes = String(k).replace(/Expanded$/, '').replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase().split(/[\s_]+/).filter(Boolean);
+    let partes = String(k).replace(/Expanded$/, '').replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase().split(/[\s_]+/).filter(Boolean);
+    // "employeeWorkload", "clientEmployeeName": o "empregado" do começo sobra (o grupo já diz de quem é)
+    while (partes.length > 1 && (partes[0] === 'employee' || (partes[0] === 'client' && partes[1] === 'employee'))) partes = partes.slice(partes[0] === 'client' ? 2 : 1);
     // como último recurso, traduz o que conhece e mantém só a palavra desconhecida (antes, a frase inteira ficava em inglês)
     const t = traduzirPalavras(partes) || traduzirPalavras(partes, true) || partes.join(' ');
     return t.charAt(0).toUpperCase() + t.slice(1);
   };
   const enumPt = v => { if (VALORES[v]) return VALORES[v]; const t = traduzirPalavras(v.toLowerCase().split('_'), true); return t ? t.charAt(0).toUpperCase() + t.slice(1) : v; };
   const rotulo = k => ROTULOS[k] || humano(k);
+  // Formatos brasileiros: horas decimais (7.33 = 7h20), CPF e CNPJ com pontuação, sexo por extenso, número com vírgula
+  const fmtHoras = x => { let h = Math.floor(x), m = Math.round((x - h) * 60); if (m === 60) { h++; m = 0; } return h + 'h' + (m ? String(m).padStart(2, '0') : ''); };
+  const ehHoras = k => /workload|hours|hour$|carga|jornada/i.test(k) && !/quantity|days/i.test(k);
+  function formatoBr(k, v) {
+    const s = String(v).trim();
+    if (/^(gender|sex)$/i.test(k) && /^[MF]$/i.test(s)) return s.toUpperCase() === 'M' ? 'Masculino' : 'Feminino';
+    if (/cpf|nationalIdentity/i.test(k) && /^\d{11}$/.test(s)) return s.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4');
+    if (/cnpj/i.test(k) && /^\d{14}$/.test(s)) return s.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
+    if (/zip|cep|postal/i.test(k) && /^\d{8}$/.test(s)) return s.replace(/^(\d{5})(\d{3})$/, '$1-$2');
+    if (ehHoras(k) && /^\d+([.,]\d+)?$/.test(s)) { const x = Number(s.replace(',', '.')); return Number.isInteger(x) ? x + 'h' : fmtHoras(x) + ' (' + x.toLocaleString('pt-BR') + ' h)'; }
+    if (/^(jobPosition|job|position|role|department|costCenter)/i.test(k) && /^\d+$/.test(s)) return 'código ' + s;
+    return null;
+  }
   function valorDe(k, v) {
     if (v == null || v === '') return '';
     if (typeof v === 'boolean') return v ? 'Sim' : 'Não';
+    if (typeof v === 'number' || typeof v === 'string') { const b = formatoBr(k, v); if (b != null) return b; }
+    if (typeof v === 'number' && !Number.isInteger(v) && !/wage|salary|valor|amount/i.test(k)) return v.toLocaleString('pt-BR');
     if (typeof v === 'number') return /wage|salary|valor|amount/i.test(k) ? v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : String(v);
     if (typeof v === 'string') {
       if (/^\d{4}-\d{2}-\d{2}T00:00:00(\.0+)?Z?$/.test(v) || /^\d{4}-\d{2}-\d{2}$/.test(v)) { const d = diaDe(v); return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear(); }

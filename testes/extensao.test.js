@@ -2507,3 +2507,28 @@ test('lote do Hub respeita o limite de tamanho e fica com as mais graves', () =>
   assert.ok(lote.colunas.join('\t').length + lote.tabela.length <= 3000);
   assert.deepEqual(plano(OC.montarLoteHub({ items: [] }).porTipo), {});
 });
+
+test('aba Dados: nada em inglês e formatos brasileiros (carga horária, CPF, sexo, código de integração, cargo só com código)', () => {
+  const rot = OC.traduzirCampo, val = OC.traduzirValor;
+  assert.equal(rot('employeeWorkload'), 'Carga horária', 'sem "de empregado": o grupo já diz de quem é');
+  assert.equal(rot('integrationCode'), 'Código de integração');
+  assert.equal(rot('employeeSomethingUnknown').includes('empregado'), false);
+  assert.equal(val('employeeWorkload', 7.33), '7h20 (7,33 h)');
+  assert.equal(val('employeeWorkload', '8'), '8h');
+  assert.equal(val('weeklyHours', 44), '44h');
+  assert.equal(val('gender', 'M'), 'Masculino');
+  assert.equal(val('sex', 'f'), 'Feminino');
+  assert.equal(val('nationalIdentity', '87281490763'), '872.814.907-63');
+  assert.equal(val('cnpj', '12345678000199'), '12.345.678/0001-99');
+  assert.equal(val('jobPosition', '1295'), 'código 1295');
+  assert.equal(val('quantidade', 2.5), '2,5', 'número com vírgula');
+  assert.equal(val('wage', 1500.5), 'R$ 1.500,50'.replace(' ', '\u00a0'));
+  const g = OC.camposDetalhe({}, { clientEmployeeExpanded: { name: 'FULANO', hireDate: '2022-04-14', cpf: '87281490763', employeeWorkload: 7.33, gender: 'M', integrationCode: '569952', jobPosition: '1295' } });
+  const emp = g.grupos.find(x => x.titulo === 'Empregado');
+  assert.deepEqual(plano(emp.campos.map(c => c.k + '=' + c.v)), ['Nome=FULANO', 'Admissão=14/04/2022', 'CPF=872.814.907-63', 'Carga horária=7h20 (7,33 h)', 'Sexo=Masculino', 'Código de integração=569952', 'Cargo=código 1295']);
+  // nenhuma palavra em inglês nos rótulos de campos comuns do DP
+  const ingles = /\b(employee|client|integration|workload|code|date|type|name|hours?|days?|notice|leave|vacation|termination|payroll|entry|job|position)\b/i;
+  for (const k of ['employeeWorkload', 'integrationCode', 'hireDate', 'clientEmployeeName', 'vacationDays', 'priorNoticeAdviceDate', 'employeeLeaveTypeExpanded', 'payrollEntryConfigurationHeaderExpanded', 'jobPositionCode', 'employeeCode', 'terminationType', 'esocialCode'])
+    assert.doesNotMatch(rot(k), ingles, k + ' => ' + rot(k));
+});
+
