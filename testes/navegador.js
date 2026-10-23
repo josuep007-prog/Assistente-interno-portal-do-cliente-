@@ -632,19 +632,19 @@ await passo('app · Hoje: Próximos passos só rola e esmaece quando a fila é m
   assert.deepEqual(p.erros, []);
 });
 
-await passo('app · Hoje: rescisão nova (qualquer tipo): põe em análise com o aviso do prazo de pagamento, documentos, exame demissional e eSocial/FGTS, com a data preenchida', async () => {
+await passo('app · Hoje: rescisão nova (aviso): põe em análise com o aviso do prazo de pagamento, documentos, exame demissional e eSocial/FGTS, com a data preenchida; o cálculo de rescisão fica de fora', async () => {
   const base = { nivel: 0, grav: 0, parado: 1, motivos: [], resp: 'Ana Teste', mine: true, lado: 'esc', code: 1, status: 'Sem análise', created: agoraIso(1), last: agoraIso(1) };
   const itens = ITENS_APP.concat([
     Object.assign({}, base, { k: 'calcRescisao:r1', type: 'calcRescisao', typeLabel: 'Cálculo de rescisão', id: 'r1', num: 801, apelido: 'ORION', cliente: 'ORION', detalhe: 'Maria Souza' }),
-    Object.assign({}, base, { k: 'avisoRescisao:r2', type: 'avisoRescisao', typeLabel: 'Aviso de rescisão', id: 'r2', num: 802, apelido: 'ORION', cliente: 'ORION', detalhe: 'João Lima' })
+    Object.assign({}, base, { k: 'avisoRescisao:r2', type: 'avisoRescisao', typeLabel: 'Aviso de rescisão', id: 'r2', num: 802, apelido: 'ORION', cliente: 'ORION', detalhe: 'Maria Souza' })
   ]);
   const p = await abrirApp('#/inicio', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens }), settings: { __v: 2, desfazerSeg: 0 } });
   await p.evaluate(() => { window.__respostas = Object.assign(window.__respostas || {}, { casos: { ok: true, analises: {}, lidas: 0 }, detalhe: { ok: true, item: {}, datas: { desligamento: '2026-10-20' }, tramites: [] }, acao: { ok: true, acao: 'tramite', anexos: 0 } }); });
   await p.waitForSelector('#hj-sug .cs-l.cs-rescisaoNova');
-  assert.equal(await p.$$eval('#hj-sug .cs-l.cs-rescisaoNova', e => e.length), 2, 'aviso e cálculo de rescisão');
-  assert.match(await p.textContent('#hj-sug .cs-l.cs-rescisaoNova'), /#802 ORION · João Lima.*rescisão nova, ainda sem análise.*Pôr em análise/s);
+  assert.equal(await p.$$eval('#hj-sug .cs-l.cs-rescisaoNova', e => e.length), 1, 'só o aviso de rescisão');
+  assert.match(await p.textContent('#hj-sug .cs-l.cs-rescisaoNova'), /#802 ORION · Maria Souza.*rescisão nova, ainda sem análise.*Pôr em análise/s);
   assert.match(await p.textContent('#hj-sug'), /Rescisão nova/, 'a categoria aparece na barra');
-  await p.click('#hj-sug [data-cs-acao="calcRescisao:r1"]');
+  await p.click('#hj-sug [data-cs-acao="avisoRescisao:r2"]');
   await abrirCaixa(p);
   const tx = await p.$eval('#a-texto', t => t.value);
   assert.match(tx, /rescisão de Maria Souza/);
@@ -1225,6 +1225,47 @@ await passo('app · detalhe: sem trâmite do escritório (nenhum ou só a abertu
   await p.evaluate(() => { window.__respostas.detalhe = { ok: true, item: { assunto: 'x' }, tramites: null, erroTramites: 'o Onvio não respondeu' }; });
   await p.click('#corpo [data-k="geral:b"]');
   await p.waitForSelector('#gaveta .dtab.on[data-aba="tramites"]');
+  assert.deepEqual(p.erros, []);
+});
+
+await passo('app · Solicitações: Pôr em análise em cada uma (cálculo de rescisão com o texto curto) e em lote, uma confirmação e um trâmite por vez', async () => {
+  const base = { nivel: 0, grav: 0, parado: 1, motivos: [], resp: 'Ana Teste', mine: true, lado: 'esc', code: 1, status: 'Sem análise', created: agoraIso(2), last: agoraIso(1) };
+  const itens = [
+    Object.assign({}, base, { k: 'calcRescisao:e1', type: 'calcRescisao', typeLabel: 'Cálculo de rescisão', id: 'e1', num: 901, apelido: 'ORION', cliente: 'ORION', detalhe: 'Maria Souza' }),
+    Object.assign({}, base, { k: 'geral:e2', type: 'geral', typeLabel: 'Geral', id: 'e2', num: 902, apelido: 'ORION', cliente: 'ORION', detalhe: 'Documentos' }),
+    Object.assign({}, base, { k: 'avisoFerias:e3', type: 'avisoFerias', typeLabel: 'Aviso de férias', id: 'e3', num: 903, apelido: 'VEGA', cliente: 'VEGA', detalhe: 'Beltrano' }),
+    Object.assign({}, base, { k: 'geral:e4', type: 'geral', typeLabel: 'Geral', id: 'e4', num: 904, code: 2, status: 'Em análise', apelido: 'VEGA', cliente: 'VEGA', detalhe: 'Já em análise' }),
+    Object.assign({}, base, { k: 'geral:e5', type: 'geral', typeLabel: 'Geral', id: 'e5', num: 905, code: 4, status: 'Respondido', lado: 'cli', apelido: 'VEGA', cliente: 'VEGA', detalhe: 'Com o cliente' })
+  ];
+  const p = await abrirApp('#/fila?escopo=todas', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens }), settings: { __v: 2, desfazerSeg: 0 } });
+  await p.evaluate(() => { window.__respostas = Object.assign(window.__respostas || {}, { acao: { ok: true, acao: 'tramite', anexos: 0 }, detalhe: { ok: true, item: {}, datas: { inicio: '2026-12-22' }, tramites: [] } }); });
+  await p.waitForSelector('#corpo [data-analise]');
+  assert.deepEqual((await p.$$eval('#corpo [data-analise]', e => e.map(x => x.dataset.analise))).sort(), ['avisoFerias:e3', 'calcRescisao:e1', 'geral:e2'], 'só na vez do escritório e ainda fora de Em análise');
+  if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/analise-cartoes.png' });
+  // cálculo de rescisão: só o aviso de que estamos cientes, sem as informações de pagamento e documentos
+  await p.click('[data-analise="calcRescisao:e1"]');
+  await p.waitForSelector('#gaveta #a-texto');
+  assert.equal(await p.$eval('#a-texto', t => t.value), 'Olá! Estamos cientes da solicitação e daremos continuidade a ela.');
+  assert.equal(await p.$eval('#gaveta .cmp-int.on', x => x.dataset.sit), '2', 'Em análise');
+  assert.equal(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'acao')), false, 'abrir não envia: a pessoa revisa e confirma');
+  await p.keyboard.press('Escape');
+  // em lote: lista as 3, uma confirmação, um trâmite Em análise por vez; férias leva as datas lidas na hora
+  assert.match(await p.textContent('#f-analise-lote'), /Pôr em análise \(3\)/);
+  await p.click('#f-analise-lote');
+  await p.waitForSelector('#dlg-lote [data-lt-k]');
+  assert.equal(await p.$$eval('#dlg-lote [data-lt-k]', e => e.length), 3);
+  assert.match(await p.textContent('#dlg-lote'), /Estamos cientes da solicitação/);
+  if (process.env.CAP) { await p.waitForTimeout(300); await p.screenshot({ path: process.env.CAP + '/analise-lote.png' }); }
+  assert.equal(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'acao')), false, 'abrir o lote não envia');
+  await p.click('#lt-ir');
+  await p.waitForFunction(() => window.__msgs.filter(m => m.cmd === 'acao').length === 3, null, { timeout: 8000 });
+  const env = await p.evaluate(() => window.__msgs.filter(m => m.cmd === 'acao').map(m => ({ num: m.num, situacao: m.situacao, texto: m.texto })));
+  assert.deepEqual(env.map(m => m.situacao), ['2', '2', '2']);
+  assert.deepEqual(env.map(m => m.num).sort(), ['901', '902', '903']);
+  const ferias = env.find(m => m.num === '903').texto;
+  assert.match(ferias, /Beltrano/);
+  assert.doesNotMatch(ferias, /\{[a-zA-Z]+\}/, 'variáveis preenchidas: ' + ferias);
+  assert.equal(env.find(m => m.num === '901').texto, 'Olá! Estamos cientes da solicitação e daremos continuidade a ela.');
   assert.deepEqual(p.erros, []);
 });
 

@@ -1,4 +1,4 @@
-/* Janela "Em lote": a mesma sugestão para várias solicitações do mesmo tipo (Hoje > Sugestões de ação). Mostra o que será feito e a
+/* Janela "Em lote": a mesma sugestão para várias solicitações do mesmo tipo (Hoje > Sugestões de ação) e o Pôr em análise das Solicitações. Mostra o que será feito e a
  * lista (marcadas por padrão, dá para desmarcar), e só depois do botão de confirmação executa uma por vez, mostrando o resultado de
  * cada uma. Nada é guardado: o que não foi feito continua nas sugestões. */
 import { $, $$, esc, toast } from '../util.js';
@@ -13,7 +13,7 @@ export function fecharLote() {
 }
 
 // o: { titulo, tipo, resumo (HTML já escapado), passos: [texto], itens: [{ k, rotulo, sub }], botao, local (true: não escreve no Onvio),
-//      executar(k) → Promise<{ ok, erro }>, aoTerminar(feitas: [k]) }
+//      executar(k) → Promise<{ ok, erro }>, aoTerminar(feitas: [k]), restam (texto sobre as que falharam) }
 export function abrirLote(o) {
   ctx = { o, rodando: false, feitas: [] };
   const d = $('#dlg-lote');
@@ -70,7 +70,7 @@ async function rodar(ks) {
   $('#lt-ir').remove();
   $('#lt-cancelar').textContent = 'Fechar';
   const feitas = ctx.feitas.slice(), o = ctx.o;
-  $('#lt-msg').innerHTML = '<div class="faixa' + (falhas ? ' warn' : '') + '"><svg class="ic"><use href="#i-' + (falhas ? 'alert' : 'check') + '"/></svg><div>' + (ok ? ok + (ok === 1 ? ' feita' : ' feitas') : 'Nenhuma feita') + (falhas ? ' · ' + falhas + (falhas === 1 ? ' com erro (as que falharam continuam nas sugestões)' : ' com erro (as que falharam continuam nas sugestões)') : '') + '.</div></div>';
+  $('#lt-msg').innerHTML = '<div class="faixa' + (falhas ? ' warn' : '') + '"><svg class="ic"><use href="#i-' + (falhas ? 'alert' : 'check') + '"/></svg><div>' + (ok ? ok + (ok === 1 ? ' feita' : ' feitas') : 'Nenhuma feita') + (falhas ? ' · ' + falhas + ' com erro (' + (o.restam || 'as que falharam continuam nas sugestões') + ')' : '') + '.</div></div>';
   if (ok) toast((o.local ? ok + ' lembrete(s) criado(s)' : ok + ' trâmite(s) enviado(s) ao Onvio'), false);
   try { if (o.aoTerminar) await o.aoTerminar(feitas); } catch (e) { console.error(e); }
 }

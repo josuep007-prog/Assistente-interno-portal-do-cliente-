@@ -3,9 +3,10 @@
  * Minhas: as suas e as sem responsável, na vez do escritório. Todas: a equipe toda. Respondidas: as suas na vez do
  * cliente, com as "consideradas resolvidas" num grupo no fim. A ordem é por prioridade (OC.ordemFila): prazo legal,
  * sem análise, em análise, cliente respondeu, aguardando o cliente. Prazo interno e gravidade não aparecem aqui. */
-import { estado, itens, minhas, clienteRespondeu, enviar } from '../estado.js';
+import { estado, itens, minhas, clienteRespondeu, enviar, primeiroNome } from '../estado.js';
+import { abrirLote } from './lote-dlg.js';
 import { tiposHtml } from './tipos.js';
-import { esc, concluirBtn, pillSituacao, prazoHtml, cartaoItem, ligarItens, csvItens, fmtDataCurta, normal, tipoVisual, tipoIcone, nivelLegal, respHtml, definirSugestoesResp, $, $$ } from '../util.js';
+import { esc, concluirBtn, analiseBtn, pillSituacao, prazoHtml, cartaoItem, ligarItens, csvItens, fmtDataCurta, normal, tipoVisual, tipoIcone, nivelLegal, respHtml, definirSugestoesResp, $, $$ } from '../util.js';
 const OC = window.OC;
 
 // Atalhos de outras telas (Equipe, Hoje); hoje/atraso/g3 só chegam da área do gestor
@@ -115,7 +116,8 @@ export function render(el, ctx, params) {
       '<div class="seg seg-ic" role="group" aria-label="Visualização"><button data-vis="lista"' + (vis === 'lista' ? ' class="on"' : '') + ' title="Lista" aria-label="Lista"><svg class="ic"><use href="#i-list"/></svg></button><button data-vis="cartoes"' + (vis === 'cartoes' ? ' class="on"' : '') + ' title="Cartões" aria-label="Cartões"><svg class="ic"><use href="#i-grid"/></svg></button></div>' +
       '<details class="menu"><summary class="btn btn-sm" aria-label="Mais" title="Mais"><svg class="ic ic-sm"><use href="#i-more"/></svg></summary><div class="menu-list"><button class="menu-item" id="csv"><svg class="ic"><use href="#i-download"/></svg> Exportar CSV (o que está na tela)</button><button class="menu-item" id="m-onvio"><svg class="ic"><use href="#i-eye"/></svg> Ver a lista no Onvio</button></div></details>' +
     '</div>' +
-    '<div class="fila-cab"><h3 id="vez-tit">' + esc(tituloLista) + '</h3><span class="count" id="cont"></span></div>' +
+    '<div class="fila-cab"><h3 id="vez-tit">' + esc(tituloLista) + '</h3><span class="count" id="cont"></span><span class="spacer" style="flex:1"></span>' +
+      '<button type="button" class="btn btn-sm btn-primary" id="f-analise-lote" hidden title="Pôr em análise, de uma vez, as solicitações desta lista em que isso cabe: você confere a lista e confirma"><svg class="ic ic-sm"><use href="#i-clock"/></svg> <span>Pôr em análise</span></button></div>' +
     '<div class="tipos" id="tipos" role="group" aria-label="Tipo de solicitação"></div>' +
     '<div class="sits" id="sits" role="group" aria-label="Situação"></div>' +
     '<div class="ativos" id="ativos"></div>' +
@@ -177,6 +179,34 @@ export function render(el, ctx, params) {
   };
   // Grupos: por prioridade na ordem de prioridade e por empresa na ordem por empresa
   const grupoDe = i => ord.k === 'prio' ? (i.resolvida ? 'Consideradas resolvidas' : ROT_GRUPO[OC.motivoDe(i)]) : ord.k === 'cliente' ? (i.apelido || i.cliente || '—') : null;
+  // Pôr em análise em lote: uma janela com a lista (dá para desmarcar), uma confirmação e um trâmite por vez. Os textos de férias e
+  // de aviso de rescisão levam datas de cada solicitação: são preenchidos na hora, com o detalhe lido no Onvio (nada é guardado)
+  function analisarEmLote(lista) {
+    const porK = new Map(lista.map(i => [i.k, i]));
+    const grupos = new Map();
+    lista.forEach(i => { const t = OC.acaoAnalise(i, estado.settings).acao.texto; if (!grupos.has(t)) grupos.set(t, new Set()); grupos.get(t).add(i.typeLabel); });
+    const resumo = '<p><b>O que será enviado a cada uma</b> (situação <b>Em análise</b>):</p><ul>' +
+      [...grupos.entries()].map(([t, tipos]) => '<li><b>' + esc([...tipos].join(', ')) + ':</b> “' + esc(t.length > 220 ? t.slice(0, 220) + '…' : t) + '”' +
+        (OC.marcadoresPendentes(t).length ? ' <span class="fraco">(com o nome e as datas de cada uma, lidos na hora)</span>' : '') + '</li>').join('') + '</ul>';
+    abrirLote({
+      titulo: 'Pôr em análise em lote', tipo: 'Solicitações', resumo, botao: 'Enviar ao Onvio', restam: 'as que falharam continuam como estavam',
+      itens: lista.map(i => ({ k: i.k, rotulo: '#' + i.num + ' ' + (i.apelido || i.cliente || '—') + ' · ' + (i.detalhe || i.typeLabel), sub: i.typeLabel + ' · ' + (i.status || '') })),
+      executar: async k => {
+        const i = porK.get(k), a = OC.acaoAnalise(i, estado.settings);
+        if (!a.cabe) return { ok: false, erro: a.pode.motivo || 'não cabe mais pôr em análise' };
+        let texto = a.acao.texto;
+        if (OC.marcadoresPendentes(texto).length) {                  // férias e aviso de rescisão: preenche com o detalhe lido agora
+          const d = await enviar({ cmd: 'detalhe', type: i.type, num: String(i.num) });
+          if (!d.ok) return { ok: false, erro: 'não deu para ler a solicitação: ' + (d.erro || '') };
+          texto = OC.preencherModelo(texto, OC.variaveisTramite(i, d.datas, estado.settings, new Date(), primeiroNome()));
+          const falta = OC.marcadoresPendentes(texto);
+          if (falta.length) return { ok: false, erro: 'faltou ' + falta.join(', ') + ': faça esta pelo detalhe' };
+        }
+        const r = await enviar({ cmd: 'acao', type: i.type, num: String(i.num), acao: 'tramite', texto, situacao: a.acao.situacao, analista: '', data: '', arquivos: [] });
+        return r.ok ? { ok: true } : { ok: false, erro: r.erro || 'o Onvio não aceitou', parar: !!r.auth };
+      }
+    });
+  }
   const desenhar = () => {
     const l = filtrar();
     tipos();
@@ -201,6 +231,19 @@ export function render(el, ctx, params) {
       if (!a.pode.ok) return;
       ctx.abrirDetalhe(it, l, { acao: 'tramite', preset: { texto: a.acao.texto, situacao: a.acao.situacao, antes: a.acao.antes } });
     }));
+    // Pôr em análise (vez do escritório): abre o detalhe no trâmite já preenchido; você revisa e confirma
+    $$('#corpo [data-analise]', el).forEach(b => b.addEventListener('click', e => {
+      e.stopPropagation();
+      const it = l.find(x => x.k === b.dataset.analise);
+      const a = it && OC.acaoAnalise(it, estado.settings);
+      if (a && a.cabe) ctx.abrirDetalhe(it, l, { acao: 'tramite', preset: { texto: a.acao.texto, situacao: a.acao.situacao } });
+    }));
+    // em lote: as da lista na tela em que cabe pôr em análise
+    const emLote = l.filter(i => OC.acaoAnalise(i, estado.settings).cabe);
+    const bl = $('#f-analise-lote', el);
+    bl.hidden = emLote.length < 2;
+    $('span', bl).textContent = 'Pôr em análise (' + emLote.length + ')';
+    bl.onclick = () => analisarEmLote(emLote);
     // responsável sugerido: abre a atribuição (você revisa e confirma), nunca atribui sozinho
     $$('[data-sug-resp]', el).forEach(b => {
       b.addEventListener('keydown', e => e.stopPropagation());
@@ -272,7 +315,7 @@ function linha(i, cols) {
     status: '<span>' + pillSituacao(i) + '</span>',
     resp: '<span class="c-sub" style="color:var(--ink-2)">' + respHtml(i) + '</span>',
     parado: '<span class="num"><b class="mono">' + (i.parado || 0) + 'd</b><div class="c-sub">' + (i.last ? fmtDataCurta(i.last) : '') + '</div></span>',
-    prazo: '<span class="c-prazo">' + prazoHtml(i) + concluirBtn(i) + '</span>'
+    prazo: '<span class="c-prazo">' + prazoHtml(i) + concluirBtn(i) + analiseBtn(i) + '</span>'
   };
   return '<div class="lr lvl-' + nivelLegal(i) + (i.resolvida ? ' resolvida' : '') + '" tabindex="0" data-k="' + esc(i.k) + '" role="row">' + (cols || COLUNAS).map(c => cel[c.k]).join('') + '</div>';
 }
