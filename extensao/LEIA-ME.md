@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.35.0)
+# Control Onvio · ControlTax (v0.36.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,15 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.36.0 (ponte com o Control Hub, demonstração)
+
+- **Configurações → Control Hub:** manda um resumo das solicitações (lista, nº, situação, vez, cliente, responsável, datas, dias parado, gravidade) para o Control Hub, que aparece na tela **Entrada de dados**. Nunca vão assunto, nome de empregado, e-mail, trâmites nem anexos.
+- **Como usar:** abra o Control Hub no claude.ai → Entrada de dados → copie o código de pareamento → aqui, cole o código e clique em **Conectar** (o Chrome pede a permissão do claude.ai). Depois, **Enviar agora** ou deixe "enviar sozinho quando mudar" marcado. O Hub precisa estar aberto numa aba.
+- **Se a ponte não achar o Hub:** **Copiar resumo** aqui e **Colar dados da extensão** na tela Entrada de dados do Hub.
+- **Desconectar** tira o script e a permissão do claude.ai.
+- **A confirmar:** a ponte foi testada só contra uma cópia simulada do claude.ai, não contra o visualizador real.
+- Teste: `node testes/ponte-hub.js`.
 
 ## Novidades da v0.35.0 (Hoje por tipo, detalhe que abre onde importa, caixa de resposta mais arrumada)
 

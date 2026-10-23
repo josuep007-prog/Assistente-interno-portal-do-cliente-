@@ -41,6 +41,7 @@ Para atualizar: baixe de novo, substitua a pasta e clique em **Recarregar** no c
 * [`mapeamento/portal-do-cliente.md`](mapeamento/portal-do-cliente.md): rotas, telas, APIs, códigos de situação, pendências de 13/10/2026 e riscos do Portal do Cliente Onvio e dos Documentos (Onvio Gestão).
 * [`mapeamento/visao-do-cliente.md`](mapeamento/visao-do-cliente.md): o que a extensão do cliente (`assistente-portal-controltax`) ensina a esta: prazos prometidos, APIs e ideias.
 * [`regras/escritorio.exemplo.json`](regras/escritorio.exemplo.json): formato do arquivo de regras do escritório (prazos, feriados, palavras de "aba errada").
+* Ponte com o Control Hub (opcional, v0.36.0): `extensao/ponte-hub.js` e a seção Control Hub das Configurações. Detalhes e limites em `extensao/LEIA-ME.md`.
 * [`CLAUDE.md`](CLAUDE.md): como trabalhar neste repositório e as regras de segurança (somente leitura).
 * [`mapeamento/capturar-mapa-onvio.js`](mapeamento/capturar-mapa-onvio.js): script de console que captura a estrutura das telas (seletores, colunas, botões) sem gravar dados de clientes. Útil para a coluna extra na grade nativa e para as telas de Documentos.
 
@@ -50,6 +51,7 @@ Para atualizar: baixe de novo, substitua a pasta e clique em **Recarregar** no c
 node --test testes/extensao.test.js      # regras, prazos, dashboards, alertas, lembretes, consultas (sem dependências)
 node testes/navegador.js                 # grade, camada em tela cheia e telas do app em páginas simuladas
 node testes/extensao-real.js             # carrega a extensão no Chromium, com API simulada
+node testes/ponte-hub.js                 # ponte com o Control Hub, com um Hub simulado
 ```
 
 Os dois últimos precisam do Playwright (`npm i -D playwright`, ou `NODE_PATH` para uma instalação global). Nenhum teste fala com o Onvio real.
