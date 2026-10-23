@@ -332,7 +332,8 @@ async function atualizar() {
   $('#fundo').onclick = () => { if (focoAberto()) fecharFoco(); else fecharDetalhe(); };
   addEventListener('keydown', e => {
     if (e.key === 'Escape') {
-      if (!$('#cmdk').hidden) fecharBusca();
+      if ($('#mp-fechar')) $('#mp-fechar').click();          // o balão da Mensagem pronta fecha antes da janela
+      else if (!$('#cmdk').hidden) fecharBusca();
       else if (loteAberto()) fecharLote();
       else if (focoAberto()) fecharFoco();
       else if (anexosAbertos()) fecharAnexos();

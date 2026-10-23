@@ -20,7 +20,12 @@ let lateral = false;              // janela larga: a caixa de resposta fica ao l
 let aoAbrir = null;              // { r, redesenhar } da caixa na tela, para o atalho R e o botão Responder abrirem a recolhida
 
 const chaveDe = i => i.type + ':' + i.num;
-const novoRascunho = () => ({ texto: '', sit: '', arquivos: [], modo: 'editar', erro: '', aoEnviar: null, antes: [], guardando: false, guardTexto: '', guardRot: '', aberto: false, focar: false, selMarca: '', proxima: false, fimEm: 0, segTotal: 0 });
+// clique fora do balão da Mensagem pronta fecha o balão (o texto editado nele não vai para a resposta)
+document.addEventListener('mousedown', e => {
+  if (!aoAbrir || !aoAbrir.r.mp || !e.target.closest || e.target.closest('#mp-balao, #cmp-mp')) return;
+  aoAbrir.r.mp = null; aoAbrir.redesenhar();
+});
+const novoRascunho = () => ({ mp: null, guardSit: '', guardDeTexto: false, texto: '', sit: '', arquivos: [], modo: 'editar', erro: '', aoEnviar: null, antes: [], guardando: false, guardTexto: '', guardRot: '', aberto: false, focar: false, selMarca: '', proxima: false, fimEm: 0, segTotal: 0 });
 const rascunho = i => { const k = chaveDe(i); if (!rascunhos.has(k)) rascunhos.set(k, novoRascunho()); return rascunhos.get(k); };
 const ic = (n, c) => '<svg class="ic' + (c ? ' ' + c : '') + '"><use href="#i-' + n + '"/></svg>';
 const tamanho = n => n < 1024 ? n + ' B' : n < 1048576 ? Math.round(n / 1024) + ' KB' : (n / 1048576).toFixed(1).replace('.', ',') + ' MB';
@@ -96,6 +101,34 @@ export function bolhaRascunho(i) {
     '</div></div>';
 }
 
+// A mensagem completa de um trâmite: {variáveis} preenchidas e, quando cabe, as observações para o cliente que o texto ainda não diz
+function mensagemCompleta(m, i, cliObs, ctx) {
+  const t = OC.preencherModelo(m.texto, vars(i, ctx));
+  if (!m.completa) return t;
+  const datas = o => o.texto.match(/\d{2}\/\d{2}\/\d{4}/g) || [];
+  const extras = cliObs.filter(o => !t.includes(o.texto) && !datas(o).some(d => t.includes(d)));
+  return extras.length ? t.trimEnd() + '\n\nObservações importantes:\n' + extras.map(o => '- ' + o.texto).join('\n') : t;
+}
+function balaoHtml(i, r, cliObs, ctx) {
+  const ms = OC.mensagensProntas(i, estado.settings, estado.modelosPessoais);
+  if (!ms.length) return '<div class="mp-balao" id="mp-balao" role="dialog" aria-label="Mensagem pronta"><p class="fraco">Esta lista não aceita trâmite agora.</p></div>';
+  const m = ms.find(x => String(x.sit) === String(r.mp.sit)) || ms.find(x => String(x.sit) === String(r.sit)) || ms[0];
+  r.mp.sit = String(m.sit);
+  const txt = r.mp.txt[m.sit] != null ? r.mp.txt[m.sit] : mensagemCompleta(m, i, cliObs, ctx);
+  const tem = !!r.texto.trim();
+  const outros = (estado.modelosPessoais || []).filter(x => !x.situacao);       // modelos antigos, sem trâmite: continuam à mão
+  return '<div class="mp-balao" id="mp-balao" role="dialog" aria-label="Mensagem pronta" tabindex="-1">' +
+    '<div class="mp-cab"><b>Mensagem pronta</b><span class="fraco">uma para cada trâmite; edite antes de usar</span><button type="button" class="icon-btn" id="mp-fechar" aria-label="Fechar" title="Fechar (Esc)">' + ic('x', 'ic-sm') + '</button></div>' +
+    '<div class="mp-tabs" role="tablist">' + ms.map(x => '<button type="button" role="tab" class="mp-tab' + (x === m ? ' on' : '') + '" data-tom="' + x.tom + '" data-mp-sit="' + x.sit + '" aria-selected="' + (x === m) + '" title="' + esc(x.efeito) + '"><i class="cmp-pt"></i>' + esc(x.rot.split(' · ')[0]) + (x.pessoal ? ' <small>sua</small>' : '') + '</button>').join('') + '</div>' +
+    '<textarea id="mp-texto" rows="9" aria-label="Texto da mensagem pronta">' + esc(txt) + '</textarea>' +
+    '<div class="mp-pe"><span class="fraco">Trâmite <b>' + esc(m.onvio) + '</b>' + (m.pessoal ? ' · mensagem sua' : '') + '</span><span class="spacer"></span>' +
+      (m.pessoal ? '<button type="button" class="btn btn-sm" id="mp-padrao" title="Apaga a sua e volta à mensagem do escritório">Voltar à do escritório</button>' : '') +
+      (tem ? '<button type="button" class="btn btn-sm" id="mp-acrescentar">Acrescentar ao texto</button>' : '') +
+      '<button type="button" class="btn btn-sm btn-primary" id="mp-usar">' + (tem ? 'Substituir o texto' : 'Usar mensagem') + '</button></div>' +
+    (outros.length ? '<div class="mp-outros"><span class="fraco">Outros modelos seus:</span>' + outros.map(x => '<button type="button" class="linkish" data-mp-outro="' + esc(x.id) + '">' + esc(x.rot) + '</button>').join('') + '</div>' : '') +
+  '</div>';
+}
+
 export function respostaHtml(i, obs, ctx) {
   const nota = (t, onvio) => '<div class="cmp cmp-nota"><span>' + ic('alert', 'ic-sm') + ' ' + esc(t) + '</span>' + (onvio ? '<button type="button" class="btn btn-sm" data-abrir-onvio>' + ic('link', 'ic-sm') + ' Abrir no Onvio</button>' : '') + '</div>';
   if (!OC.ACOES.tramite(i.type)) return nota('Responder ainda não está disponível na extensão para ' + i.typeLabel + ': responda pelo Onvio.', true);
@@ -141,39 +174,29 @@ export function respostaHtml(i, obs, ctx) {
       '</ul><p class="fraco">Fica registrado no Onvio em seu nome e o cliente pode ver o trâmite. Depois de enviado, não dá para desfazer pela extensão.</p>' + avisosHtml(r, i) + '</div>' + pe + '</div>';
   }
 
-  const modelos = OC.modelosPara(i, estado.settings, estado.modelosPessoais);
-  const resumo = t => { const x = String(t || '').replace(/\s+/g, ' ').trim(); return x.length > 130 ? x.slice(0, 130) + '…' : x; };
-  const itemModelo = (m, n) => '<button type="button" class="cmp-modelo" data-m="' + n + '" title="' + esc(m.texto) + '"><b>' + esc(m.rot) + (m.pessoal ? ' <small>seu</small>' : '') + '</b><span>' + esc(resumo(m.texto)) + '</span></button>';
-  const cardsModelos = modelos.length ? modelos.map((m, n) => m.pessoal
-    ? '<span class="cmp-modelo-p">' + itemModelo(m, n) + '<button type="button" class="cmp-m-tira" data-m-tira="' + esc(m.id) + '" aria-label="Tirar o modelo ' + esc(m.rot) + '" title="Tirar este modelo">×</button></span>'
-    : itemModelo(m, n)).join('') : '<span class="fraco">Nenhum modelo para este tipo de solicitação.</span>';
+  // Mensagem pronta: uma por trâmite (o balão abre por cima; o texto é editável antes de usar). Criar/Salvar como modelo.
   const cliObs = obs.filter(o => !o.interno);
-  const linhasObs = cliObs.map(o => '<button type="button" class="cmp-obs" data-obs-add="' + esc(o.id) + '" title="Acrescentar ao texto"><span class="cmp-obs-mais">+</span><span>' + esc(o.texto) + '</span></button>').join('');
-  const painel = r.painel === 'modelos'
-    ? '<div class="cmp-painel" id="cmp-painel"><div class="cmp-painel-cab"><b>Modelos de resposta</b><span class="fraco">clique para colocar no texto</span></div><div class="cmp-modelos">' + cardsModelos + '</div></div>'
-    : r.painel === 'obs' && cliObs.length
-      ? '<div class="cmp-painel" id="cmp-painel"><div class="cmp-painel-cab"><b>Observações para o cliente</b><span class="fraco">clique para acrescentar ao texto</span><button class="btn btn-sm" id="a-obs" type="button">Inserir todas</button></div><div class="cmp-obs-l">' + linhasObs + '</div></div>'
-      : '';
+  const ints0 = intsDe(i, r);
+  const balao = r.mp ? balaoHtml(i, r, cliObs, ctx) : '';
+  const tem = !!r.texto.trim();
   const guardar = r.guardando
-    ? '<div class="cmp-guardar"><b>Guardar como modelo</b><label class="field">Nome<input id="mg-rot" maxlength="40" value="' + esc(r.guardRot) + '" placeholder="Ex.: Pedido de atestado"></label>' +
-      '<label class="field">Texto do modelo<textarea id="mg-texto" rows="4" maxlength="800">' + esc(r.guardTexto) + '</textarea></label>' +
-      '<p class="fraco">O modelo vale para qualquer cliente: nomes e datas desta solicitação viraram {variáveis}. Confira se não ficou nome, CPF ou valor.</p>' +
-      '<div class="cmp-pe"><button class="btn btn-sm" id="mg-cancelar" type="button">Cancelar</button><button class="btn btn-sm btn-primary" id="mg-salvar" type="button">Guardar modelo</button></div></div>' : '';
+    ? '<div class="cmp-guardar"><b>' + (r.guardDeTexto ? 'Salvar como modelo' : 'Criar modelo') + '</b>' +
+      '<label class="field">Trâmite<select id="mg-sit">' + ints0.map(x => '<option value="' + x.sit + '"' + (String(x.sit) === String(r.guardSit) ? ' selected' : '') + '>' + esc(x.rot.split(' · ')[0]) + ' (' + esc(x.onvio) + ')</option>').join('') + '</select></label>' +
+      '<label class="field">Texto da mensagem<textarea id="mg-texto" rows="6" maxlength="2000" placeholder="Escreva a mensagem. Use {saudacao}, {cliente}, {empregado}, {pagamento} para os dados de cada solicitação.">' + esc(r.guardTexto) + '</textarea></label>' +
+      '<p class="fraco">Vira a sua mensagem pronta para esse trâmite em ' + esc(i.typeLabel) + ' (no lugar da do escritório). Nomes e datas desta solicitação viraram {variáveis}: confira se não ficou nome, CPF ou valor.</p>' +
+      '<div class="cmp-pe"><button class="btn btn-sm" id="mg-cancelar" type="button">Cancelar</button><button class="btn btn-sm btn-primary" id="mg-salvar" type="button">Salvar modelo</button></div></div>' : '';
   return '<div class="cmp' + (aberto ? ' aberto' : '') + '" id="cmp">' + cab + ok + erro +
     '<div class="cmp-caixa">' +
       '<textarea id="a-texto" rows="2" placeholder="Escreva a resposta ao cliente (texto simples; o Onvio não usa formatação)">' + esc(r.texto) + '</textarea>' +
       '<div class="cmp-fer">' +
         '<label class="cmp-fer-b" title="Anexar arquivos ao trâmite (até ' + MAX_ANEXOS + ' de 15 MB; também dá para arrastar ou colar uma imagem)">' + ic('paperclip', 'ic-sm') + ' Anexar<input type="file" id="a-arquivos" multiple hidden></label>' +
-        '<button type="button" class="cmp-fer-b' + (r.painel === 'modelos' ? ' on' : '') + '" id="cmp-ab-modelos" aria-expanded="' + (r.painel === 'modelos') + '" title="Modelos de resposta">' + ic('copy', 'ic-sm') + ' Modelos <span class="menu-n">' + modelos.length + '</span></button>' +
-        '<button type="button" class="cmp-fer-b' + (r.painel === 'obs' ? ' on' : '') + '" id="cmp-ab-obs" aria-expanded="' + (r.painel === 'obs') + '"' + (cliObs.length ? '' : ' disabled title="Nenhuma observação para este tipo de solicitação"') + '>' + ic('chat', 'ic-sm') + ' Observações <span class="menu-n">' + cliObs.length + '</span></button>' +
-        (simples()
-          // Simplificado: "Guardar como modelo" fica num menu ⋯ (o botão e a ação são os mesmos)
-          ? '<details class="menu cmp-mais"><summary class="cmp-fer-b" title="Mais" aria-label="Mais">' + ic('more', 'ic-sm') + '</summary><div class="menu-list"><button type="button" class="menu-item" id="a-guardar" title="Guarda o texto como modelo seu (dados desta solicitação viram variáveis)">' + ic('plus', 'ic-sm') + ' Guardar como modelo</button></div></details>'
-          : '<button type="button" class="cmp-fer-b" id="a-guardar" title="Guarda o texto como modelo seu (dados desta solicitação viram variáveis)">' + ic('plus', 'ic-sm') + ' Guardar como modelo</button>') +
+        '<button type="button" class="cmp-fer-b' + (r.mp ? ' on' : '') + '" id="cmp-mp" aria-expanded="' + !!r.mp + '" title="Uma mensagem completa para cada trâmite (com as observações para o cliente); você edita antes de usar">' + ic('chat', 'ic-sm') + ' Mensagem pronta</button>' +
+        '<button type="button" class="cmp-fer-b" id="a-guardar" title="' + (tem ? 'Salva o texto escrito como a sua mensagem pronta para um trâmite (dados desta solicitação viram variáveis)' : 'Cria uma mensagem pronta sua para um trâmite') + '">' + ic('plus', 'ic-sm') + ' <span id="a-guardar-tx">' + (tem ? 'Salvar como modelo' : 'Criar modelo') + '</span></button>' +
         '<span class="cmp-fer-dica">arraste arquivos ou cole uma imagem</span>' +
       '</div>' +
+      balao +
     '</div>' +
-    painel + arqs + guardar +
+    arqs + guardar +
     '<div class="cmp-avisos" id="cmp-avisos">' + avisosHtml(r, i) + '</div>' +
     (!i.resp ? '<p class="cmp-nota-p">Sem responsável: no Onvio, o primeiro trâmite define você como responsável.</p>' : '') +
     '<div class="cmp-envio"><span class="cmp-rot">Trâmite</span><div class="cmp-seg" role="radiogroup" aria-label="Situação do trâmite">' +
@@ -217,6 +240,7 @@ export function ligarResposta(g, i, r0, obs, cb) {
     $$('.cmp-int', g).forEach(b => b.classList.toggle('sug', !r.sit && pede && b.dataset.pede === '1'));
     $('#cmp-avisos', g).innerHTML = avisosHtml(r, i);
     $('#a-descartar', g).disabled = !(r.texto || r.arquivos.length || r.sit);
+    const gt = $('#a-guardar-tx', g); if (gt) gt.textContent = r.texto.trim() ? 'Salvar como modelo' : 'Criar modelo';
     if (r.texto || r.sit || r.arquivos.length) cmp.classList.add('aberto');
   };
   const cresce = t => { t.style.height = 'auto'; t.style.height = Math.min(220, Math.max(52, t.scrollHeight + 2)) + 'px'; };
@@ -245,60 +269,61 @@ export function ligarResposta(g, i, r0, obs, cb) {
 
   $$('.cmp-int', g).forEach(b => b.onclick = () => { if (String(r.sit) !== b.dataset.sit) r.antes = []; r.sit = b.dataset.sit; limparErro(); atualizar(); });
 
-  // modelos: preenche as {variáveis}; o que não tiver valor fica marcado e o cursor já cai nele
-  const modelos = OC.modelosPara(i, estado.settings, estado.modelosPessoais);
-  $$('.cmp-modelo', g).forEach(b => b.onclick = () => {
-    const m = modelos[Number(b.dataset.m)];
-    if (!m) return;
-    const txt = OC.preencherModelo(m.texto, vars(i, ctx));
-    const vazio = !r.texto.trim();
-    r.texto = vazio ? txt : r.texto.trimEnd() + '\n\n' + txt;
-    if (m.situacao && (vazio || !r.sit)) r.sit = String(m.situacao);
-    r.aberto = true; r.erro = ''; r.painel = null;
+  // Mensagem pronta: o balão abre por cima; cada trâmite tem a sua mensagem (editável aqui, só para este uso)
+  const cliObs = obs.filter(o => !o.interno);
+  const poeTexto = (txt, sit, acrescentar) => {
+    r.texto = acrescentar && r.texto.trim() ? r.texto.trimEnd() + '\n\n' + txt : txt;
+    if (sit) { if (String(r.sit) !== String(sit)) r.antes = []; r.sit = String(sit); }
+    r.aberto = true; r.erro = ''; r.mp = null;
+    r.focar = true; r.selMarca = OC.marcadoresPendentes(txt)[0] || '';     // o que falta preencher já vem marcado
     cb.redesenhar();
-    const t2 = $('#a-texto');
-    if (t2) {
-      t2.focus();
-      const marca = OC.marcadoresPendentes(txt)[0], pos = marca ? t2.value.lastIndexOf(marca) : -1;
-      if (pos >= 0) t2.setSelectionRange(pos, pos + marca.length); else t2.setSelectionRange(t2.value.length, t2.value.length);
-    }
-  });
-  // painéis de modelos e de observações: abrem entre a caixa e o rodapé, um de cada vez
-  const painelDe = k => () => { r.painel = r.painel === k ? null : k; r.aberto = true; cb.redesenhar(); };
-  if ($('#cmp-ab-modelos', g)) $('#cmp-ab-modelos', g).onclick = painelDe('modelos');
-  if ($('#cmp-ab-obs', g)) $('#cmp-ab-obs', g).onclick = painelDe('obs');
-  $$('[data-m-tira]', g).forEach(b => b.onclick = async e => {
-    e.stopPropagation();
-    await salvarModelosPessoais((estado.modelosPessoais || []).filter(m => m.id !== b.dataset.mTira));
-    toast('Modelo tirado');
-    cb.redesenhar();
-  });
-  $$('.cmp-mais', g).forEach(d => d.addEventListener('mouseleave', () => { d.open = false; }));
+  };
+  if ($('#cmp-mp', g)) $('#cmp-mp', g).onclick = e => { e.stopPropagation(); r.mp = r.mp ? null : { sit: r.sit || '', txt: {} }; r.aberto = true; cb.redesenhar(); };
+  const bal = $('#mp-balao', g);
+  if (bal) {
+    // fica por cima de tudo, junto do botão (posição fixa, para não ser cortado pela rolagem da caixa)
+    const b = $('#cmp-mp', g).getBoundingClientRect(), w = Math.min(560, innerWidth - 24), h = bal.offsetHeight;
+    bal.style.width = w + 'px';
+    bal.style.left = Math.max(12, Math.min(b.left, innerWidth - w - 12)) + 'px';
+    bal.style.top = (b.bottom + 6 + h > innerHeight - 8 && b.top - 6 - h > 8 ? b.top - 6 - h : Math.min(b.bottom + 6, innerHeight - h - 8)) + 'px';
+    bal.onkeydown = e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); r.mp = null; cb.redesenhar(); } };
+    $('#mp-fechar', bal).onclick = () => { r.mp = null; cb.redesenhar(); };
+    const tx = $('#mp-texto', bal);
+    tx.oninput = () => { r.mp.txt[r.mp.sit] = tx.value; };
+    $$('[data-mp-sit]', bal).forEach(t2 => t2.onclick = () => { r.mp.sit = t2.dataset.mpSit; cb.redesenhar(); });
+    $('#mp-usar', bal).onclick = () => poeTexto(tx.value, r.mp.sit, false);
+    if ($('#mp-acrescentar', bal)) $('#mp-acrescentar', bal).onclick = () => poeTexto(tx.value, r.sit ? '' : r.mp.sit, true);
+    if ($('#mp-padrao', bal)) $('#mp-padrao', bal).onclick = async () => {
+      const m = OC.mensagensProntas(i, estado.settings, estado.modelosPessoais).find(x => String(x.sit) === String(r.mp.sit));
+      if (!m || !m.pessoal) return;
+      await salvarModelosPessoais((estado.modelosPessoais || []).filter(x => x.id !== m.pessoal.id));
+      delete r.mp.txt[r.mp.sit];
+      toast('Voltou à mensagem do escritório');
+      cb.redesenhar();
+    };
+    $$('[data-mp-outro]', bal).forEach(b2 => b2.onclick = () => { const m = (estado.modelosPessoais || []).find(x => x.id === b2.dataset.mpOutro); if (m) poeTexto(OC.preencherModelo(m.texto, vars(i, ctx)), '', !!r.texto.trim()); });
+    if (r.mp.foco !== false) { tx.focus(); r.mp.foco = false; }
+  }
+  // Criar modelo (sem texto) ou Salvar como modelo (com texto): vira a sua mensagem pronta para um trâmite neste tipo de solicitação
   if ($('#a-guardar', g)) $('#a-guardar', g).onclick = () => {
-    if (!r.texto.trim()) { r.erro = 'Escreva o texto antes de guardar como modelo.'; cb.redesenhar(); return; }
-    r.guardando = true; r.guardRot = ''; r.guardTexto = OC.despersonalizar(r.texto, vars(i, ctx));
+    r.guardando = true; r.mp = null;
+    r.guardDeTexto = !!r.texto.trim();
+    r.guardTexto = r.guardDeTexto ? OC.despersonalizar(r.texto, vars(i, ctx)) : '';
+    r.guardSit = r.sit || (ints[0] && ints[0].sit) || '';
     cb.redesenhar();
   };
   if ($('#mg-cancelar', g)) $('#mg-cancelar', g).onclick = () => { r.guardando = false; cb.redesenhar(); };
   if ($('#mg-salvar', g)) $('#mg-salvar', g).onclick = async () => {
-    const rot = $('#mg-rot', g).value.trim(), texto = $('#mg-texto', g).value.trim();
-    if (!rot || !texto) { r.guardRot = rot; r.guardTexto = texto; r.erro = 'Dê um nome e confira o texto do modelo.'; cb.redesenhar(); return; }
-    if ((estado.modelosPessoais || []).length >= 20) { r.erro = 'Você já tem 20 modelos pessoais: tire algum antes.'; cb.redesenhar(); return; }
-    await salvarModelosPessoais((estado.modelosPessoais || []).concat([{ id: 'm' + Date.now().toString(36), rot, texto, situacao: r.sit ? Number(r.sit) : null }]));
+    const sit = $('#mg-sit', g).value, texto = $('#mg-texto', g).value.trim();
+    if (!texto) { r.guardSit = sit; r.guardTexto = ''; r.erro = 'Escreva o texto da mensagem.'; cb.redesenhar(); return; }
+    const it = ints.find(x => String(x.sit) === String(sit));
+    const outros = (estado.modelosPessoais || []).filter(m => !(Number(m.situacao) === Number(sit) && m.tipo === i.type));     // um por trâmite e tipo: substitui o anterior
+    if (outros.length >= 20) { r.erro = 'Você já tem 20 modelos seus: volte algum à mensagem do escritório antes.'; cb.redesenhar(); return; }
+    await salvarModelosPessoais(outros.concat([{ id: 'm' + Date.now().toString(36), rot: (it ? it.rot.split(' · ')[0] : 'Trâmite') + ' · ' + i.typeLabel, texto, situacao: Number(sit), tipo: i.type }]));
     r.guardando = false;
-    toast('Modelo guardado: ' + rot);
+    toast('Modelo salvo: é a sua mensagem pronta para "' + (it ? it.onvio : 'esse trâmite') + '" em ' + i.typeLabel);
     cb.redesenhar();
   };
-  // observações para o cliente (as mesmas da aba "Para o cliente")
-  const cliObs = obs.filter(o => !o.interno);
-  const poe = lista => {
-    const novas = lista.filter(o => !r.texto.includes(o.texto));
-    if (!novas.length) return;
-    r.texto = (r.texto.trim() ? r.texto.trimEnd() + '\n\n' : '') + (r.texto.includes('Observações importantes:') ? '' : 'Observações importantes:\n') + novas.map(o => '• ' + o.texto).join('\n');
-    r.aberto = true; r.focar = true; r.painel = null; cb.redesenhar();
-  };
-  if ($('#a-obs', g)) $('#a-obs', g).onclick = () => { r.painel = null; r.texto = (r.texto.trim() ? r.texto.trimEnd() + '\n\n' : '') + 'Observações importantes:\n' + cliObs.map(o => '• ' + o.texto).join('\n'); r.aberto = true; r.focar = true; cb.redesenhar(); };
-  $$('[data-obs-add]', g).forEach(b => b.onclick = () => { const o = cliObs.find(x => x.id === b.dataset.obsAdd); if (o) poe([o]); });
 
   function adicionar(novos) {
     const grandes = novos.filter(a => a.size > MAX_BYTES);
