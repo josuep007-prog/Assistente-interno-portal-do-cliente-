@@ -2532,3 +2532,25 @@ test('aba Dados: nada em inglês e formatos brasileiros (carga horária, CPF, se
     assert.doesNotMatch(rot(k), ingles, k + ' => ' + rot(k));
 });
 
+
+test('mensagem pronta: uma por trâmite, a do escritório mais específica, a da pessoa no lugar quando existe', () => {
+  const ger = { type: 'geral', code: 1, lado: 'esc' };
+  const ms = OC.mensagensProntas(ger, {}, []);
+  assert.deepEqual(plano(ms.map(m => m.sit)), plano(OC.intencoesDe(ger, {}).map(x => x.sit)), 'uma para cada trâmite que o Onvio aceita');
+  const por = sit => ms.find(m => m.sit === sit);
+  assert.match(por(4).texto, /precisamos de mais informações/);
+  assert.match(por(5).texto, /Solicitação concluída/);
+  assert.equal(por(5).completa, true, 'as do cliente levam as observações');
+  assert.equal(por(8).completa, false, 'a interna não leva');
+  // a específica do tipo vence a geral
+  const fer = OC.mensagensProntas({ type: 'calcFerias', code: 1, lado: 'esc' }, {}, []);
+  assert.match(fer.find(m => m.sit === 2).texto, /férias de \{empregado\}/);
+  assert.match(fer.find(m => m.sit === 5).texto, /foi concluído e segue em anexo/);
+  // lista errada (com aba própria): Em análise orienta
+  assert.match(OC.mensagensProntas(Object.assign({ abaProvavel: { label: 'Aviso de férias' } }, ger), {}, []).find(m => m.sit === 2).texto, /aba própria/);
+  // a da pessoa (deste tipo) fica no lugar e não leva observações
+  const meu = [{ id: 'a', rot: 'x', texto: 'Minha', situacao: 4, tipo: 'geral' }, { id: 'b', rot: 'y', texto: 'Outro tipo', situacao: 4, tipo: 'calcFerias' }];
+  const m4 = OC.mensagensProntas(ger, {}, meu).find(m => m.sit === 4);
+  assert.deepEqual([m4.texto, m4.completa, m4.pessoal.id], ['Minha', false, 'a']);
+  assert.match(m4.padrao, /mais informações/, 'o padrão continua à mão para voltar');
+});

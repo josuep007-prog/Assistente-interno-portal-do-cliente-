@@ -1686,16 +1686,18 @@ await passo('app · Tramitação: caixa de resposta fixa; intenção e efeito; m
   assert.deepEqual(await p.$$eval('.cmp-int', e => e.map(x => x.textContent)), ['Respondido · aguarda o cliente', 'Em análise', 'Em análise interna', 'Concluído · encerra']);
   if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/tram-fechada.png' });
   assert.equal(await p.isVisible('.cmp-int[data-sit="4"]'), true, 'Respondido já está à vista, sem precisar clicar na caixa');
-  assert.equal(await p.isVisible('#cmp-ab-modelos'), true, 'e os modelos (um botão na barra da caixa) também');
+  assert.equal(await p.isVisible('#cmp-mp'), true, 'e a Mensagem pronta (um botão na barra da caixa) também');
+  assert.equal(await p.$('#cmp-ab-modelos, #cmp-ab-obs'), null, 'Modelos e Observações viraram um botão só');
   assert.equal(await p.$('.cmp-pe kbd') === null, true, 'sem o indicador do atalho Ctrl+Enter');
-  assert.equal(await p.$('.cmp-modelo') === null, true, 'os modelos só aparecem num painel que a pessoa abre');
-  // recolher: sobra só a barra, o rascunho fica; o atalho R e o Responder do rodapé abrem de novo
+  assert.equal(await p.$('#mp-balao') === null, true, 'a mensagem pronta só aparece num balão que a pessoa abre');
+  // recolher: sobra só a barra, o rascunho fica; a barra abre de novo (o Responder do rodapé saiu: a caixa já está ali)
+  assert.equal(await p.$('#g-responder'), null, 'sem o Responder do rodapé');
   await p.fill('#a-texto', 'Rascunho que fica.');
   await p.click('#cmp-rec');
   assert.equal(await p.$('#a-texto'), null, 'recolhida: sem a caixa de texto');
   assert.match(await p.textContent('.cmp-min-rasc'), /Rascunho guardado \(18 caracteres\)/);
   assert.equal(await p.getAttribute('#cmp-rec', 'aria-expanded'), 'false');
-  await p.click('#g-responder');
+  await p.click('.cmp-min');
   await abrirCaixa(p);
   assert.equal(await p.inputValue('#a-texto'), 'Rascunho que fica.');
   assert.equal(await p.evaluate(() => document.activeElement.id), 'a-texto');
@@ -1703,13 +1705,11 @@ await passo('app · Tramitação: caixa de resposta fixa; intenção e efeito; m
   await p.click('#cmp-rec');
   await abrirCaixa(p);
   await p.click('#a-descartar');
-  // de outra aba, o Responder do rodapé leva à caixa
+  // de outra aba, a caixa some; volta com a aba Trâmites
   await p.click('#gaveta [data-aba="dados"]');
   assert.equal(await p.$('#cmp'), null, 'a caixa é da aba Trâmites');
-  assert.equal(await p.$eval('#g-responder', b => b.disabled), false);
-  await p.click('#g-responder');
+  await p.click('#gaveta [data-aba="tramites"]');
   await abrirCaixa(p);
-  assert.equal(await p.evaluate(() => document.activeElement.id), 'a-texto');
   // revisar sem texto: o aviso diz o que falta, sem sair da tela (a caixa abre ao clicar nela)
   await p.click('#a-texto');
   await p.click('#a-revisar');
@@ -1724,11 +1724,21 @@ await passo('app · Tramitação: caixa de resposta fixa; intenção e efeito; m
   assert.match(await p.textContent('#cmp-efeito'), /A vez passa ao cliente; sem retorno, prescreve em 30 dias/);
   assert.equal(await p.textContent('#cmp-avisos'), '');
   // modelo com variável: a saudação vem pelo horário e o cursor já cai no que falta preencher
+  // Mensagem pronta: um balão por cima, com uma mensagem completa para cada trâmite, editável antes de usar
   await p.fill('#a-texto', '');
-  await p.click('#cmp-ab-modelos');
-  assert.equal(await p.isVisible('#cmp-painel .cmp-modelo b'), true, 'painel de modelos com nome e prévia');
-  await p.click('.cmp-modelo:has-text("Falta informação")');
-  assert.equal(await p.$('#cmp-painel') === null, true, 'escolher um modelo fecha o painel');
+  await p.click('#cmp-mp');
+  await p.waitForSelector('#mp-balao');
+  assert.deepEqual(await p.$$eval('#mp-balao .mp-tab', e => e.map(x => x.textContent)), ['Respondido', 'Em análise', 'Em análise interna', 'Concluído'], 'um trâmite por aba');
+  await p.click('#mp-balao [data-mp-sit="4"]');
+  assert.match(await p.inputValue('#mp-texto'), /^(Bom dia|Boa tarde|Boa noite)! Para seguirmos com a solicitação, precisamos de mais informações: \(descreva o que falta\)\..*\n\nObservações importantes:\n- Prazo de conclusão/s, 'completa: já vem com as observações para o cliente');
+  await p.click('#mp-balao [data-mp-sit="5"]');
+  assert.match(await p.inputValue('#mp-texto'), /Solicitação concluída/);
+  await p.click('#mp-balao [data-mp-sit="4"]');
+  await p.fill('#mp-texto', (await p.inputValue('#mp-texto')).replace('Pode complementar', 'Pode nos mandar'));     // editada na hora
+  if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/mensagem-pronta.png' });
+  await p.click('#mp-usar');
+  assert.equal(await p.$('#mp-balao') === null, true, 'usar fecha o balão');
+  assert.match(await p.inputValue('#a-texto'), /Pode nos mandar/, 'a edição feita no balão vai para a resposta');
   assert.match(await p.inputValue('#a-texto'), /^(Bom dia|Boa tarde|Boa noite)! Para seguirmos com a solicitação, precisamos de mais informações: \(descreva o que falta\)\./);
   assert.equal(await p.evaluate(() => { const t = document.querySelector('#a-texto'); return t.value.slice(t.selectionStart, t.selectionEnd); }), '(descreva o que falta)');
   assert.equal(await p.$eval('.cmp-int.on', b => b.dataset.sit), '4', 'o modelo escolhe o que acontece depois');
@@ -1739,10 +1749,7 @@ await passo('app · Tramitação: caixa de resposta fixa; intenção e efeito; m
   await p.keyboard.type('a guia do FGTS de setembro');       // escreve por cima do trecho marcado
   assert.equal(await p.textContent('#cmp-avisos'), '');
   if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/tram-editar.png' });
-  await p.click('#cmp-ab-obs');
-  assert.equal(await p.isVisible('.cmp-obs[data-obs-add]'), true, 'as observações abrem num painel, com o texto inteiro');
-  await p.click('#a-obs');
-  assert.match(await p.inputValue('#a-texto'), /a guia do FGTS de setembro\. Pode complementar por aqui, por favor\?\n\nObservações importantes:\n• Prazo de conclusão/);
+  assert.match(await p.inputValue('#a-texto'), /a guia do FGTS de setembro\. Pode nos mandar por aqui, por favor\?\n\nObservações importantes:\n- Prazo de conclusão/);
   await p.setInputFiles('#a-arquivos', { name: 'recibo.txt', mimeType: 'text/plain', buffer: Buffer.from('ola') });
   assert.match(await p.textContent('.cmp-arqs'), /recibo\.txt · 3 B/);
   // revisar: o rascunho aparece na conversa, tracejado, e nada é enviado
@@ -1785,7 +1792,7 @@ await passo('app · Tramitação: caixa de resposta fixa; intenção e efeito; m
   await p.fill('#a-texto', 'Por favor, corrija a rubrica.');
   await p.click('#a-revisar');
   assert.match(await p.textContent('#a-conf'), /Aguardando correção/);
-  assert.equal(await p.$eval('#g-responder', b => b.disabled), false, 'Responder do rodapé ativo');
+  assert.equal(await p.$('#g-responder'), null, 'sem o Responder do rodapé (a caixa já fica ao lado)');
   await p.click('#a-voltar'); await p.click('#a-descartar');
   assert.deepEqual(p.erros, []);
 });
@@ -1823,10 +1830,13 @@ await passo('app · detalhe em janela larga: conversa à esquerda e resposta ao 
   assert.ok(m.r[2] >= m.c[2] - 2, 'a caixa de resposta tem a altura toda da conversa');
   assert.equal(m.fora, false, 'sem botão de recolher: a caixa fica sempre aberta');
   assert.equal(await p.textContent('.cmp-envio > .cmp-rot'), 'Trâmite', 'o rótulo é Trâmite');
-  assert.equal(await p.isVisible('#cmp-ab-modelos'), true);
-  await p.click('#cmp-ab-modelos');
-  assert.equal(await p.isVisible('.cmp-modelo'), true);
-  await p.click('#cmp-ab-modelos');
+  assert.equal(await p.isVisible('#cmp-mp'), true);
+  await p.click('#cmp-mp');
+  assert.equal(await p.isVisible('#mp-balao'), true);
+  const bal = await p.$eval('#mp-balao', e => { const r = e.getBoundingClientRect(); return [r.top >= 0, r.bottom <= innerHeight, r.left >= 0, r.right <= innerWidth]; });
+  assert.deepEqual(bal, [true, true, true, true], 'o balão fica inteiro na tela');
+  await p.click('#cmp-mp');
+  assert.equal(await p.$('#mp-balao'), null, 'o mesmo botão fecha');
   assert.equal(await p.textContent('#cmp-efeito'), 'Escolha a situação do trâmite.');
   await p.click('.cmp-int[data-sit="5"]');
   assert.match(await p.textContent('#cmp-efeito'), /^Trâmite: /);
@@ -1943,25 +1953,39 @@ await passo('app · Tramitação: modelo pessoal sem dado de cliente; passar par
   await p.evaluate(() => { window.__respostas = { acao: { ok: true, acao: 'tramite', anexos: 0 }, detalhe: { ok: true, item: { assunto: 'Férias' }, datas: {}, tramites: [] } }; });
   await p.click('#corpo [data-k="geral:b"]');
   await abrirCaixa(p);
-  // guardar como modelo: os dados desta solicitação voltam a ser {variáveis}
+  // sem texto o botão cria um modelo; com texto, salva o que foi escrito (os dados desta solicitação voltam a ser {variáveis})
+  assert.equal((await p.textContent('#a-guardar')).trim(), 'Criar modelo');
   await p.fill('#a-texto', 'Olá, BETA! Enviamos o documento de hoje.');
-  if (await p.$('.cmp-mais')) await p.click('.cmp-mais summary');          // Simplificado: Guardar como modelo fica no menu ⋯
+  assert.equal((await p.textContent('#a-guardar')).trim(), 'Salvar como modelo', 'o texto do botão muda enquanto escreve');
   await p.click('#a-guardar');
   assert.equal(await p.inputValue('#mg-texto'), 'Olá, {cliente}! Enviamos o documento de hoje.');
-  await p.fill('#mg-rot', 'Meu aviso');
+  await p.selectOption('#mg-sit', '4');
   await p.click('#mg-salvar');
-  await p.click('#cmp-ab-modelos');
-  await p.waitForSelector('.cmp-modelo:has-text("Meu aviso")');
   const guardado = await p.evaluate(() => JSON.parse(localStorage.getItem('__mem')).modelosPessoais);
-  assert.deepEqual([guardado.length, guardado[0].rot, guardado[0].texto], [1, 'Meu aviso', 'Olá, {cliente}! Enviamos o documento de hoje.']);
+  assert.deepEqual([guardado.length, guardado[0].situacao, guardado[0].tipo, guardado[0].texto], [1, 4, 'geral', 'Olá, {cliente}! Enviamos o documento de hoje.']);
   assert.equal(JSON.stringify(guardado).includes('BETA'), false, 'o modelo guardado não leva o nome do cliente');
+  // vira a mensagem pronta daquele trâmite (marcada "sua"), com o cliente da vez
   await p.fill('#a-texto', '');
-  if (!await p.$('#cmp-painel')) await p.click('#cmp-ab-modelos');
-  await p.click('.cmp-modelo:has-text("Meu aviso")');
-  assert.equal(await p.inputValue('#a-texto'), 'Olá, BETA! Enviamos o documento de hoje.', 'ao usar, a variável vira o cliente da vez');
-  await p.click('#cmp-ab-modelos');
-  await p.click('.cmp-m-tira');
-  await p.waitForFunction(() => !document.querySelector('.cmp-m-tira'));
+  await p.click('#cmp-mp');
+  await p.click('#mp-balao [data-mp-sit="4"]');
+  assert.match(await p.textContent('#mp-balao [data-mp-sit="4"]'), /sua/);
+  assert.equal(await p.inputValue('#mp-texto'), 'Olá, BETA! Enviamos o documento de hoje.', 'a sua mensagem, sem nada acrescentado');
+  await p.click('#mp-usar');
+  assert.equal(await p.inputValue('#a-texto'), 'Olá, BETA! Enviamos o documento de hoje.');
+  // voltar à do escritório apaga a sua
+  await p.click('#cmp-mp');
+  await p.click('#mp-balao [data-mp-sit="4"]');
+  await p.click('#mp-padrao');
+  await p.waitForFunction(() => !/sua/.test(document.querySelector('#mp-balao [data-mp-sit="4"]').textContent));
+  assert.equal(await p.evaluate(() => JSON.parse(localStorage.getItem('__mem')).modelosPessoais.length), 0);
+  await p.keyboard.press('Escape');
+  assert.equal(await p.$('#mp-balao'), null, 'Esc fecha só o balão');
+  assert.equal(await p.isHidden('#gaveta'), false);
+  // sem texto: cria do zero
+  await p.fill('#a-texto', '');
+  await p.click('#a-guardar');
+  assert.equal(await p.inputValue('#mg-texto'), '');
+  await p.click('#mg-cancelar');
   // Mais ações: passar para outro analista (encaminhar com comentário)
   await p.click('#g-mais summary');
   assert.equal(await p.$eval('[data-acao="passar"]', b => b.disabled), false);
