@@ -633,7 +633,11 @@ test('leitura: se a página não serve, tenta a extensão na aba; lembra o que f
   assert.equal(store.metodoLeitura, 'extensao');
   const antes = api.chamadas.urls.length;
   assert.equal((await ctx.escolherFetcher()).via, 'extensao');
-  assert.equal(api.chamadas.urls.length - antes, 1, 'na segunda vez vai direto ao que funcionou');
+  assert.equal(api.chamadas.urls.length - antes, 0, 'dentro de 2 minutos usa o mesmo jeito, sem testar a sessão de novo');
+  const antes2 = api.chamadas.urls.length;
+  const forcado = await ctx.escolherFetcher(true);
+  assert.equal(forcado.via, 'extensao', 'testando de novo, começa pelo que funcionou');
+  assert.ok(api.chamadas.urls.length - antes2 >= 1, 'escrita (forçado) testa a sessão sempre');
 });
 
 test('leitura: sem sessão em todos os jeitos, a mensagem diz o que cada um recebeu', async () => {
@@ -2553,4 +2557,36 @@ test('mensagem pronta: uma por trâmite, a do escritório mais específica, a da
   const m4 = OC.mensagensProntas(ger, {}, meu).find(m => m.sit === 4);
   assert.deepEqual([m4.texto, m4.completa, m4.pessoal.id], ['Minha', false, 'a']);
   assert.match(m4.padrao, /mais informações/, 'o padrão continua à mão para voltar');
+});
+
+test('detalhe mais rápido: com o id já lido, dados e trâmites saem junto com a busca; a abertura passa na frente das leituras em massa; os tempos aparecem no Testar a leitura', async () => {
+  const ordem = [];
+  let soltarBusca = null;
+  const base = apiSimulada({ itens: { geral: [pend('g1', 77, { subject: 'Dúvida' })] } });
+  const api = async url => {
+    const u = new URL(url);
+    if (Number(u.searchParams.get('itemsPerPage')) === 5) { ordem.push('busca'); await new Promise(r => { soltarBusca = r; }); }       // a busca pelo número segura
+    else if (u.pathname.endsWith('/topics')) ordem.push('tramites');
+    else if (/\/g1$/.test(u.pathname)) ordem.push('dados');
+    return base(url);
+  };
+  const { ouvintes, store, ctx } = carregarBackground({ abas: [aba(5, ONVIO_PORTAL)], fetchPorMundo: { MAIN: api }, fetch: api });
+  store.snapshot = { items: [{ k: 'geral:g1', type: 'geral', num: 77, id: 'g1' }], resolvidas: [] };
+  const pedido = new Promise(res => ouvintes[0]({ cmd: 'detalhe', type: 'geral', num: 77 }, { tab: { id: 5 } }, res));
+  for (let n = 0; n < 50 && !soltarBusca; n++) await new Promise(r => setTimeout(r, 5));
+  for (let n = 0; n < 50 && !(ordem.includes('dados') && ordem.includes('tramites')); n++) await new Promise(r => setTimeout(r, 5));
+  assert.ok(ordem.includes('dados') && ordem.includes('tramites'), 'dados e trâmites já saíram enquanto a busca ainda não voltou: ' + ordem.join());
+  // enquanto a abertura está em andamento, a leitura em massa espera a vez
+  let massa = false;
+  const emMassa = ctx.emSegundoPlano(async () => { massa = true; return {}; })('x');
+  await new Promise(r => setTimeout(r, 150));
+  assert.equal(massa, false, 'a leitura em massa espera a abertura terminar');
+  soltarBusca();
+  const r = await pedido;
+  assert.equal(r.ok, true);
+  assert.equal(r.item.assunto, 'Dúvida');
+  await emMassa;
+  assert.equal(massa, true, 'e segue depois');
+  const linhas = await new Promise(res => ouvintes[0]({ cmd: 'testarLeitura' }, { tab: { id: 5 } }, res));
+  assert.match(JSON.stringify(linhas), /Abrir solicitação \(últimas 1\).*em paralelo/);
 });

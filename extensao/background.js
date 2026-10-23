@@ -124,6 +124,12 @@ const comoFetcher = bruto => async url => {
   return lerResposta(v.status, v.ct, v.body);
 };
 
+// Prioridade: abrir uma solicitação (a pessoa esperando na tela) passa na frente das leituras em massa (sugestões do Hoje,
+// previsão, distribuição, avaliação, leitura periódica). Enquanto houver uma abertura em andamento, a leitura em massa
+// espera antes de cada chamada nova; as que já saíram terminam normalmente.
+let interativas = 0;
+function emSegundoPlano(f) { return async u => { let n = 0; while (interativas > 0 && n++ < 150) await new Promise(r => setTimeout(r, 100)); return f(u); }; }
+
 // Prefere a aba que o usuário está olhando; senão qualquer aba do Onvio já carregada.
 async function abaOnvio() {
   const ativas = await chrome.tabs.query({ url: 'https://onvio.com.br/*', active: true, lastFocusedWindow: true });
@@ -145,7 +151,19 @@ async function candidatosDeLeitura() {
 }
 
 // Valida a sessão com uma chamada de verdade (a lista Geral, 1 item), sem depender de endereço de sessão.
+// O jeito que funcionou fica valendo por 2 minutos (na mesma aba), para cada solicitação aberta não pagar mais uma ida ao Onvio
+// só para testar a sessão; qualquer falha de sessão ou de rede com ele apaga o atalho. Escrita (forcarPerfil) testa sempre.
+let leitorCache = null;          // { f, via, tabId, em }
+const LEITOR_VALIDADE = 120000;
 async function escolherFetcher(forcarPerfil) {
+  if (!forcarPerfil && leitorCache && Date.now() - leitorCache.em < LEITOR_VALIDADE) {
+    const aba = leitorCache.tabId == null ? null : await chrome.tabs.get(leitorCache.tabId).catch(() => null);
+    if (leitorCache.tabId == null || (aba && !aba.discarded)) {
+      await garantirEscritorio(leitorCache.f, false);
+      return { f: leitorCache.f, via: leitorCache.via };
+    }
+    leitorCache = null;
+  }
   const sonda = OC.urlSonda();
   const { tab, lista } = await candidatosDeLeitura();
   const falhas = [];
@@ -161,7 +179,10 @@ async function escolherFetcher(forcarPerfil) {
     }
     await chrome.storage.local.set({ metodoLeitura: c.via });
     await garantirEscritorio(f, forcarPerfil);
-    return { f, via: c.via };
+    // falha de sessão ou de rede com o atalho: a próxima leitura testa de novo
+    const fc = async u => { try { return await f(u); } catch (e) { if (e && (e.auth || /falha de rede/.test(e.message || ''))) leitorCache = null; throw e; } };
+    leitorCache = { f: fc, via: c.via, tabId: c.via === 'direto' ? null : (tab && tab.id), em: Date.now() };
+    return { f: fc, via: c.via };
   }
   const msg = (tab ? '' : 'Não há aba do Onvio aberta. ') + 'Tentativas: ' + falhas.join(' · ');
   throw semSessao || !tab ? new AuthError(msg) : new Error(msg);
@@ -204,6 +225,12 @@ async function testarLeitura() {
     if (/json/i.test(v.ct || '')) { try { const j = JSON.parse(v.body); extra = ' · campos: ' + Object.keys(j).slice(0, 8).join(', ') + (j.totalItems != null ? ' · total ' + j.totalItems : ''); } catch (e) { extra = ' · JSON inválido'; } }
     linhas.push(ROTULOS[c.via] + ': ' + (v.status ? 'HTTP ' + v.status + ' · ' + (String(v.ct || '').split(';')[0] || 'sem tipo') + extra : 'falha de rede'));
   }
+  const seg = ms => (ms == null ? '–' : (ms / 1000).toFixed(1).replace('.', ',') + ' s');
+  if (temposDetalhe.length) {
+    const ts = temposDetalhe.map(x => x.total).sort((a, b) => a - b);
+    linhas.push('Abrir solicitação (últimas ' + ts.length + '): metade em até ' + seg(ts[Math.floor(ts.length / 2)]) + ', a mais lenta ' + seg(ts[ts.length - 1]));
+    temposDetalhe.slice(0, 5).forEach(x => linhas.push('  ' + x.em.slice(11, 19) + ' · total ' + seg(x.total) + ' (sessão ' + seg(x.sessao) + ', busca ' + seg(x.consulta) + ', dados ' + seg(x.dados) + ', trâmites ' + seg(x.tramites) + (x.adiantado ? ', em paralelo' : '') + ')'));
+  } else linhas.push('Abrir solicitação: ainda sem medição (abra algumas e teste de novo)');
   return linhas;
 }
 
@@ -217,7 +244,7 @@ async function coletar(manual) {
     try {
       const { f, via } = await escolherFetcher(manual);
       const assin = await OC.assinaturas(f).catch(() => null);     // antes da leitura: o que mudar depois será notado
-      const snap = await OC.collect(f, s, (i, n, rot) => chrome.storage.local.set({ status: { estado: 'lendo', etapa: i + '/' + n + ' · ' + rot } }), { tramites: cacheTramites || {}, avisos: cacheAvisos || {} });
+      const snap = await OC.collect(emSegundoPlano(f), s, (i, n, rot) => chrome.storage.local.set({ status: { estado: 'lendo', etapa: i + '/' + n + ' · ' + rot } }), { tramites: cacheTramites || {}, avisos: cacheAvisos || {} });
       snap.via = via;
       OC.tendencias(anterior, snap);                                  // setas ▲▼ da barra viva
       snap.versao = chrome.runtime.getManifest().version;
@@ -467,7 +494,7 @@ async function estadoDistAuto() {
 // A leitura da aba Distribuir: movimentadas dos últimos 30 dias + sugestões por empresa (nada é guardado)
 async function calcularDistribuicao(f, pend) {
   const dias = 30;                                 // período fixo (7 e 14 dias saíram)
-  const mov = await OC.lerMovimentadas(f, dias, new Date());
+  const mov = await OC.lerMovimentadas(emSegundoPlano(f), dias, new Date());
   // concluídas valem para quem as concluiu, quando a avaliação da equipe já leu os trâmites (sem chamadas novas aqui)
   const { desempenhoCache } = await chrome.storage.local.get('desempenhoCache');
   return { dias, movimentadas: mov.itens.length, erros: mov.erros, sugestoes: OC.distribuirPorCliente(pend, OC.creditarQuemConcluiu(mov.itens, desempenhoCache || {}), dias) };
@@ -599,26 +626,44 @@ async function criarSolicitacao(msg) {
 async function detalhe(msg) {
   const t = OC.TYPE_BY_KEY[msg.type];
   if (!t) throw new Error('tipo desconhecido');
-  const s = await getSettings();
-  const { f } = await escolherFetcher();
-  const d = await f(OC.urlConsulta(t, { numero: msg.num, per: 5 }));
-  const r = ((d && d.items) || []).find(x => String(x.identifier) === String(msg.num));
-  if (!r) throw new Error('solicitação #' + msg.num + ' não encontrada em ' + t.label);
-  const x = OC.detalheDe(t, r);
-  Object.assign(x, OC.evaluate(x, s, new Date()));
-  // Solicitação completa (aba Dados) e trâmites, lidos na hora e em paralelo. Nada disso é guardado.
-  const [comp, tr] = await Promise.all([
-    f(OC.urlDetalhe(t, r.id)).then(d => ({ d }), e => { if (e && e.auth) throw e; return { erro: e.message || String(e) }; }),
-    f(OC.urlTramites(t, r)).then(d => ({ d }), e => { if (e && e.auth) throw e; return { erro: e.message || String(e) }; })
-  ]);
-  const completo = comp.d ? OC.camposDetalhe(t, comp.d) : null;
-  const datas = OC.datasDe(comp.d || r);
-  if (comp.d && typeof comp.d.description === 'string' && !x.descricao) x.descricao = comp.d.description;
-  return {
-    item: x, lista: t.label, datas,
-    grupos: completo ? completo.grupos : null, anexos: completo ? completo.anexos : [], arquivos: completo ? completo.arquivos : [], erroDados: comp.erro || null,
-    tramites: tr.d ? OC.tramitesDe(t, tr.d) : null, erroTramites: tr.erro || null
-  };
+  interativas++;
+  const t0 = Date.now(), tempos = {};
+  const marca = (k, p) => p.then(v => { tempos[k] = Date.now() - t0; return v; });
+  try {
+    const s = await getSettings();
+    const { f, via } = await marca('sessao', escolherFetcher());
+    // Com o id já conhecido (da última leitura), dados e trâmites saem junto com a busca pelo número, em vez de depois dela
+    const { snapshot } = await chrome.storage.local.get('snapshot');
+    const conhecido = snapshot && (snapshot.items || []).concat(snapshot.resolvidas || []).find(i => i.type === msg.type && String(i.num) === String(msg.num) && i.id);
+    const ler = id => Promise.all([
+      marca('dados', f(OC.urlDetalhe(t, id)).then(d => ({ d }), e => { if (e && e.auth) throw e; return { erro: e.message || String(e) }; })),
+      marca('tramites', f(OC.urlTramites(t, id)).then(d => ({ d }), e => { if (e && e.auth) throw e; return { erro: e.message || String(e) }; }))
+    ]);
+    const antes = conhecido ? ler(conhecido.id) : null;
+    if (antes) antes.catch(() => {});            // se a busca falhar antes, o erro dela é o que vale
+    const d = await marca('consulta', f(OC.urlConsulta(t, { numero: msg.num, per: 5 })));
+    const r = ((d && d.items) || []).find(x => String(x.identifier) === String(msg.num));
+    if (!r) throw new Error('solicitação #' + msg.num + ' não encontrada em ' + t.label);
+    const x = OC.detalheDe(t, r);
+    Object.assign(x, OC.evaluate(x, s, new Date()));
+    // Solicitação completa (aba Dados) e trâmites, lidos na hora e em paralelo. Nada disso é guardado.
+    const [comp, tr] = await (antes && conhecido.id === r.id ? antes : ler(r.id));
+    const completo = comp.d ? OC.camposDetalhe(t, comp.d) : null;
+    const datas = OC.datasDe(comp.d || r);
+    if (comp.d && typeof comp.d.description === 'string' && !x.descricao) x.descricao = comp.d.description;
+    registrarTempo(Object.assign({ via, adiantado: !!antes, total: Date.now() - t0 }, tempos));
+    return {
+      item: x, lista: t.label, datas,
+      grupos: completo ? completo.grupos : null, anexos: completo ? completo.anexos : [], arquivos: completo ? completo.arquivos : [], erroDados: comp.erro || null,
+      tramites: tr.d ? OC.tramitesDe(t, tr.d) : null, erroTramites: tr.erro || null
+    };
+  } finally { interativas--; }
+}
+// Quanto demorou cada abertura de solicitação (só os tempos, nada da solicitação): o "Testar a leitura" mostra as últimas
+const temposDetalhe = [];
+function registrarTempo(x) {
+  temposDetalhe.unshift(Object.assign({ em: new Date().toISOString() }, x));
+  temposDetalhe.length = Math.min(temposDetalhe.length, 20);
 }
 
 /* ---------- badge ---------- */
@@ -762,14 +807,14 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'tick') { reply(await verificarAoVivo(!!msg.forcar)); }
       else if (msg.cmd === 'previsao') {            // sob demanda: solicitações abertas por empresa nas últimas 4 semanas (nada é guardado)
         const { f } = await escolherFetcher();
-        const mov = await OC.lerMovimentadas(f, 28, new Date());
+        const mov = await OC.lerMovimentadas(emSegundoPlano(f), 28, new Date());
         reply(Object.assign({ ok: true, erros: mov.erros }, OC.previsaoPorEmpresa(mov.itens, new Date(), 28)));
       }
       else if (msg.cmd === 'casos') {               // Sugestões de ação do Hoje: lê os trâmites das pendências na vez do escritório
         const { f } = await escolherFetcher();        // e devolve só o veredito (tipo e qual trecho da lista casou), nunca o texto
         const s = await getSettings();
         const { snapshot } = await chrome.storage.local.get('snapshot');
-        const r = await OC.analisarCasos(f, (snapshot && snapshot.items) || [], casosCache, s, 80);
+        const r = await OC.analisarCasos(emSegundoPlano(f), (snapshot && snapshot.items) || [], casosCache, s, 80);
         casosCache = r.analises;                       // só na memória do service worker (não é gravado)
         reply(Object.assign({ ok: true, em: new Date().toISOString() }, r));
       }
@@ -779,7 +824,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         const s = await getSettings();
         const { snapshot } = await chrome.storage.local.get('snapshot');
         const agora = new Date();
-        const mov = await OC.lerMovimentadas(f, dias * 2 + 1, agora, 10);
+        const mov = await OC.lerMovimentadas(emSegundoPlano(f), dias * 2 + 1, agora, 10);
         // vez do cliente sem retorno e sem pedido do analista conta como entregue na data da última resposta
         const resolvidas = ((snapshot && snapshot.resolvidas) || []).map(r => Object.assign({}, r, { lado: 'fim', status: 'Resolvida (cliente sem retorno)' }));
         // as mais recentes primeiro: o período avaliado é lido antes do anterior (que só serve de comparação)
@@ -787,7 +832,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         // trâmites de cada entrega: tempo com o escritório e quem concluiu. O cache leva só números, o nome de quem
         // concluiu e a data da última movimentação; o que saiu do período sai do cache.
         const { desempenhoCache } = await chrome.storage.local.get('desempenhoCache');
-        const an = await OC.analisarEntregas(f, entregas, desempenhoCache || {}, s, 400);
+        const an = await OC.analisarEntregas(emSegundoPlano(f), entregas, desempenhoCache || {}, s, 400);
         await chrome.storage.local.set({ desempenhoCache: an.analises });
         // a conta é feita no app (com as exceções do gestor); aqui só a leitura
         reply({ ok: true, erros: mov.erros, dias, agora: agora.toISOString(), movimentadas: mov.itens.length, resolvidas: resolvidas.length, entregas, analises: an.analises, lidas: an.lidas, falhasTramites: an.falhas, semLeitura: an.semLeitura });
