@@ -2299,3 +2299,37 @@ test('rodada 3: prazo prometido pela descrição do analista (só a data), venci
   const a = { k: 'g:a', type: 'geral', code: 2, status: 'Em análise', lado: 'esc', grav: 3, parado: 9 }, b = { k: 'g:b', type: 'geral', code: 2, status: 'Em análise', lado: 'esc', grav: 1, parado: 1, prazoPrometido: '2026-10-20' }, c = { k: 'g:c', type: 'geral', code: 2, status: 'Em análise', lado: 'esc', grav: 1, parado: 1, prazoPrometido: '2026-10-12' };
   assert.deepEqual(plano(OC.ordemFila([a, b, c]).map(x => x.item.k)), ['g:c', 'g:b', 'g:a']);
 });
+
+/* ---------- ponte com o Control Hub: lote só com resumo ---------- */
+test('lote do Hub leva só o resumo: sem assunto, sem nome de empregado e sem texto livre', () => {
+  const t = OC.TYPE_BY_KEY.cadEmpregado;
+  const it = OC.normalize(t, { id: 'a', identifier: 10, genericStatus: 1, created: '2026-10-10T12:00:00', lastUpdated: '2026-10-11T12:00:00', name: 'Fulano de Tal', clientExpanded: { name: 'ACME\tLTDA\n', nickname: 'ACME' }, staffResponsibleExpanded: { name: 'Ana' } }, null);
+  Object.assign(it, OC.evaluate(it, {}, AGORA));
+  const lote = OC.montarLoteHub({ items: [it], fetchedAt: '2026-10-14T15:00:00.000Z', user: { nome: 'Ana Teste', email: 'a@b.c' } }, { versao: '0.36.0' });
+  assert.equal(lote.fonte, 'onvio');
+  assert.equal(lote.tipoDado, 'solicitacoes');
+  assert.equal(lote.nLinhas, 1);
+  assert.equal(lote.usuario, 'Ana Teste');
+  const txt = JSON.stringify(lote);
+  assert.ok(!txt.includes('Fulano de Tal'), 'nome de empregado não vai');
+  assert.ok(!txt.includes('a@b.c'), 'e-mail não vai');
+  const cols = lote.tabela.split('\n')[0].split('\t');
+  assert.equal(cols.length, lote.colunas.length, 'uma célula por coluna, sem tab ou quebra dentro de campo');
+  assert.equal(cols[4], 'ACME');
+  assert.equal(cols[5], 'Ana');
+});
+test('lote do Hub respeita o limite de tamanho e fica com as mais graves', () => {
+  const t = OC.TYPE_BY_KEY.cadEmpregado;
+  const itens = Array.from({ length: 400 }, (_, i) => {
+    const it = OC.normalize(t, { id: 'i' + i, identifier: i, genericStatus: 1, created: '2026-10-01T12:00:00', lastUpdated: '2026-10-01T12:00:00', clientExpanded: { name: 'Cliente ' + i } }, null);
+    Object.assign(it, OC.evaluate(it, {}, AGORA)); return it;
+  });
+  itens.forEach(x => { x.grav = 1; x.nivel = 1; x.parado = 1; });
+  itens[399].grav = 3; itens[399].nivel = 2; itens[399].apelido = 'A MAIS GRAVE';
+  const lote = OC.montarLoteHub({ items: itens }, { limiteBytes: 3000 });
+  assert.ok(lote.nLinhas < 400 && lote.cortado === true);
+  assert.equal(lote.totalNaOrigem, 400);
+  assert.ok(lote.tabela.split('\n')[0].includes('A MAIS GRAVE'), 'a mais grave vem primeiro');
+  assert.ok(lote.colunas.join('\t').length + lote.tabela.length <= 3000);
+  assert.deepEqual(plano(OC.montarLoteHub({ items: [] }).porTipo), {});
+});

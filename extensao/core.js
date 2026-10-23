@@ -2599,5 +2599,39 @@
     return { dias, empresas: lista, total: lista.reduce((s2, r) => s2 + r.total, 0), prox30: lista.reduce((s2, r) => s2 + r.prox30, 0) };
   }
 
-  g.OC = { ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, marcadoresPendentes, avisosResposta, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  /* ---------- ponte com o Control Hub ----------
+   * Monta o lote que a extensão entrega ao Control Hub (página do escritório, aberta no claude.ai). É só um RESUMO do
+   * que já está na extensão: id, lista, situação, vez de quem, cliente, responsável, datas, dias parado e gravidade.
+   * Nunca leva texto livre (assunto, nome de empregado, trâmites). Tabela em texto (tab entre colunas, \n entre linhas)
+   * para caber no limite de um documento do Hub; se passar do limite, ficam as mais graves e o lote diz que cortou. */
+  const HUB_COLUNAS = ['Lista', 'Nº', 'Situação', 'Vez', 'Cliente', 'Responsável', 'Aberta em', 'Última movimentação', 'Dias parado', 'Gravidade'];
+  const HUB_LIMITE_BYTES = 150000;
+  function montarLoteHub(snap, opcoes) {
+    opcoes = opcoes || {};
+    const limpa = v => String(v == null ? '' : v).replace(/[\t\r\n]+/g, ' ').trim().slice(0, 80);
+    const dia = v => { const d = parseDate(v); return d ? ymd(d) : ''; };
+    const LADO = { esc: 'escritório', cli: 'cliente', fim: 'concluída', desc: 'desconhecida' };
+    const itens = ((snap && snap.items) || []).slice();
+    itens.sort((a, b) => (b.grav || 0) - (a.grav || 0) || (b.nivel || 0) - (a.nivel || 0) || (b.parado || 0) - (a.parado || 0));
+    const linha = i => [i.typeLabel || i.type, i.num, i.status, LADO[i.lado] || i.lado, i.apelido || i.cliente, i.resp || 'sem responsável', dia(i.created), dia(i.last), i.parado == null ? '' : i.parado, i.grav ? 'G' + i.grav : ''].map(limpa).join('\t');
+    const linhas = [];
+    let bytes = HUB_COLUNAS.join('\t').length;
+    for (const it of itens) {
+      const l = linha(it);
+      if (bytes + l.length + 1 > (opcoes.limiteBytes || HUB_LIMITE_BYTES)) break;
+      linhas.push(l); bytes += l.length + 1;
+    }
+    const porTipo = {};
+    itens.forEach(i => { const k = i.typeLabel || i.type; porTipo[k] = (porTipo[k] || 0) + 1; });
+    return {
+      fonte: 'onvio', tipoDado: 'solicitacoes', titulo: 'Solicitações pendentes no Onvio',
+      extraidoEm: (snap && snap.fetchedAt) || new Date().toISOString(),
+      usuario: limpa(snap && snap.user && snap.user.nome || ''),
+      colunas: HUB_COLUNAS.slice(), tabela: linhas.join('\n'), nLinhas: linhas.length,
+      totalNaOrigem: itens.length, cortado: linhas.length < itens.length,
+      porTipo, versaoExt: opcoes.versao || ''
+    };
+  }
+
+  g.OC = { montarLoteHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, marcadoresPendentes, avisosResposta, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);
