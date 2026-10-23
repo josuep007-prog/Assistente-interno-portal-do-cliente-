@@ -3,7 +3,7 @@
  * trilho lateral, cabeçalho do módulo (título, abas, ao vivo, sino, Ver Onvio), busca em janela central
  * (/ ou Ctrl+K) e as janelas de detalhe e de lembrete. */
 import { estado, iniciarEstado, aoMudar, enviar, itens, minhas, marcarAlertasVistos } from './estado.js';
-import { $, $$, esc, relativo, fmtHoraS, toast, normal, iniciais, pillSituacao } from './util.js';
+import { $, $$, esc, relativo, fmtHoraS, toast, normal, iniciais, pillSituacao, simples } from './util.js';
 import { abrirDetalhe, fecharDetalhe, detalheAberto } from './views/detalhe.js';
 import { abrirLembrete, fecharLembrete, lembreteAberto } from './views/lembrete-dlg.js';
 import { abrirNova, fecharNova, novaAberta } from './views/nova-dlg.js';
@@ -46,6 +46,8 @@ function navegar(nome, params) {
 function cab(o) {
   $('#titulo').textContent = o.titulo || 'Control Onvio';
   $('#subtitulo').innerHTML = o.sub || '';
+  // Simplificado: o subtítulo sai da vista e fica na dica do título (nada se perde)
+  const t = $('#titulo'); if (simples() && o.sub) t.title = $('#subtitulo').textContent.replace(/\s+/g, ' ').trim(); else t.removeAttribute('title');
   $('#cab-extra').innerHTML = o.extra || '';
   const ab = $('#abas');
   ab.hidden = !(o.abas && o.abas.length);
@@ -133,7 +135,10 @@ function aoVivo() {
   if (!ver) { tx.textContent = 'Aguardando a primeira leitura'; return; }
   const velha = Date.now() - new Date(ver) > Math.max(120, (seg || 60) * 4) * 1000;
   el.classList.add(velha || !(seg > 0) ? 'parado' : 'ok');
-  tx.textContent = (seg > 0 && !velha ? 'Ao vivo · ' : 'Atualizado ') + fmtHoraS(ver);
+  const ao = seg > 0 && !velha;
+  // Simplificado: só a hora (hh:mm); o texto inteiro fica na dica
+  tx.textContent = simples() ? fmtHoraS(ver).slice(0, 5) : (ao ? 'Ao vivo · ' : 'Atualizado ') + fmtHoraS(ver);
+  el.title = (ao ? 'Ao vivo · ' : 'Atualizado às ') + fmtHoraS(ver);
 }
 // Bolinhas vermelhas do trilho e o resumo que aparece ao passar o mouse (o resumo explica o número)
 function bolinha(id, n, partes) {
@@ -259,7 +264,7 @@ function definirTema(n) {
 function definirEstilo(n) {
   document.documentElement.setAttribute('data-estilo', n === 'atual' ? 'atual' : 'simples');
   try { localStorage.setItem('controlonvio-estilo', n === 'atual' ? 'atual' : 'simples'); } catch (e) {}
-  redesenharMantendo(); if (aoRedim) aoRedim();
+  redesenharMantendo(); aoVivo(); if (aoRedim) aoRedim();
 }
 function redesenharMantendo() { const rolagem = $('#vista').scrollTop; desenhar(); $('#vista').scrollTop = rolagem; }
 

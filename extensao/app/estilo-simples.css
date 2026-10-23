@@ -2,3 +2,180 @@
  * Carregado depois de app.css. TUDO aqui fica sob :root[data-estilo="simples"]: com data-estilo="atual" nada deste arquivo se aplica
  * e o app é idêntico ao de antes. Claro/escuro é escolha à parte (data-theme). */
 @import url("../estilo-simples-tokens.css");
+
+/* ---------- espaços (tokens): menores em telas pequenas ---------- */
+:root[data-estilo="simples"]{ --pad-x:24px; --pad-y:16px; --gap:14px; --trilho:56px; --alt:34px; --app-fundo:var(--page) }
+@media (max-width:1440px), (max-height:820px){
+  :root[data-estilo="simples"]{ --pad-x:16px; --pad-y:10px; --gap:10px; --alt:32px }
+}
+
+/* ---------- tipografia: IBM Plex Sans nos títulos (600); Archivo só nos números grandes ---------- */
+:root[data-estilo="simples"] :is(h1, h2, h3, h4, .sec-tit, .card-h h3, .hj-sec h3, .cfg-card h3, .dlg-head h2, .dlg-section-title, .dados-tit, .acao-cab h3, .sc-cli, .hj-card-id h4, .bloqueio h2, .apar-tx b, .cmp-cab b, .cal-mes b, .sino-painel h3, .hj-adm-d b){ font-family:"IBM Plex Sans", system-ui, sans-serif; font-weight:600; letter-spacing:0 }
+:root[data-estilo="simples"] .mod-tit h1{ font-size:17px }
+:root[data-estilo="simples"] .sec-tit{ font-size:14px }
+
+/* ---------- fundo liso, sem brilhos nem marca-d'água ---------- */
+:root[data-estilo="simples"] .app-body{ background:var(--page) }
+:root[data-estilo="simples"] .app-body::before{ display:none }
+
+/* ---------- trilho claro, sem gradiente, brilho nem sombra (as etiquetas ao passar o mouse continuam) ---------- */
+:root[data-estilo="simples"] .trilho{ --r-ink:var(--ink); --r-ink-2:var(--ink-2); --r-ink-3:var(--ink-3); background:var(--surface); border-right:1px solid var(--rule); color:var(--ink); padding:10px 0; gap:2px }
+:root[data-estilo="simples"] .trilho::after{ display:none }
+:root[data-estilo="simples"] .trilho-marca{ width:40px; padding-bottom:10px; border-bottom:1px solid var(--rule) }
+:root[data-estilo="simples"] .trilho-marca img{ width:28px; height:27px; filter:none }
+:root[data-estilo="simples"] .ti{ width:44px; height:42px }
+:root[data-estilo="simples"] .ti::before{ left:-6px; background:var(--blue-deep); box-shadow:none }
+:root[data-estilo="simples"] .ti:hover{ background:var(--surface-3) }
+:root[data-estilo="simples"] .ti.on{ background:var(--blue-pale) }
+:root[data-estilo="simples"] .ti-ic{ width:34px; height:34px; background:none; box-shadow:none }
+:root[data-estilo="simples"] .ti-ic .ic{ width:18px; height:18px; color:var(--ink-2) }
+:root[data-estilo="simples"] .ti:hover .ti-ic{ transform:none; background:none; box-shadow:none }
+:root[data-estilo="simples"] .ti.on .ti-ic{ background:none; box-shadow:none }
+:root[data-estilo="simples"] .ti.on .ti-ic .ic{ color:var(--blue-deep) }
+:root[data-estilo="simples"] .ti-ic .n{ background:var(--blue-deep); color:var(--surface); box-shadow:0 0 0 2px var(--surface); font-family:"IBM Plex Sans", sans-serif }
+:root[data-estilo="simples"] .ti-rot, :root[data-estilo="simples"] .ti-sep{ background:var(--rule) }
+:root[data-estilo="simples"] .trilho-pe{ border-top:1px solid var(--rule) }
+:root[data-estilo="simples"] .trilho-pe .av{ background:var(--surface-3); color:var(--ink); font-family:"IBM Plex Sans", sans-serif }
+:root[data-estilo="simples"] .ti-tx{ box-shadow:0 4px 14px rgba(0,0,0,.25) }
+
+/* ---------- cabeçalho liso, numa linha só; abas sublinhadas ---------- */
+:root[data-estilo="simples"] .mod-cab{ padding:var(--pad-y) var(--pad-x) 0; background:var(--page); backdrop-filter:none; -webkit-backdrop-filter:none; border-bottom:1px solid var(--rule) }
+:root[data-estilo="simples"] .mod-cab:has(.mod-abas[hidden]){ padding-bottom:var(--pad-y) }
+:root[data-estilo="simples"] .mod-linha{ flex-wrap:nowrap; gap:8px; min-height:var(--alt) }
+:root[data-estilo="simples"] .mod-tit{ flex:1 1 auto; min-width:0; flex-wrap:nowrap }
+:root[data-estilo="simples"] .mod-sub, :root[data-estilo="simples"] .mod-div{ display:none }
+:root[data-estilo="simples"] .mod-extra{ flex:none }
+:root[data-estilo="simples"] .busca-falsa{ width:auto; gap:0; padding:0 9px; justify-content:center; background:var(--surface) }
+:root[data-estilo="simples"] .busca-falsa span, :root[data-estilo="simples"] .busca-falsa kbd{ display:none }
+@media (min-width:1441px){
+  :root[data-estilo="simples"] .busca-falsa{ width:230px; gap:9px; justify-content:flex-start }
+  :root[data-estilo="simples"] .busca-falsa span{ display:block }
+  :root[data-estilo="simples"] .busca-falsa kbd{ display:inline }
+}
+:root[data-estilo="simples"] .vivo-grupo{ border:0; background:none; overflow:visible; gap:2px }
+:root[data-estilo="simples"] .vivo-grupo:has(.aovivo.erro){ border:0 }
+:root[data-estilo="simples"] .vivo-grupo .icon-btn{ border:1px solid var(--rule-strong); border-radius:var(--r); height:var(--alt) }
+:root[data-estilo="simples"] .aovivo{ padding:0 8px 0 4px; font-weight:500 }
+:root[data-estilo="simples"] .aovivo.ok .ponto{ animation:none }
+:root[data-estilo="simples"] .mod-cab .icon-btn{ border-color:var(--rule-strong) }
+:root[data-estilo="simples"] .mod-abas{ margin-top:4px }
+:root[data-estilo="simples"] .aba{ padding:8px 12px; font-weight:500; color:var(--ink-3) }
+:root[data-estilo="simples"] .aba.on{ color:var(--ink); border-bottom-color:var(--blue-deep); font-weight:600 }
+:root[data-estilo="simples"] .aba .n{ background:none; padding:0 2px; color:var(--ink-3); font-weight:500 }
+:root[data-estilo="simples"] .aba .n.late{ background:none; color:var(--late); font-weight:600 }
+@media (max-width:1100px){ :root[data-estilo="simples"] .btn-ver{ font-size:0; gap:0; padding:0 9px } :root[data-estilo="simples"] .btn-ver .ic{ margin:0 } }
+
+/* ---------- conteúdo ---------- */
+:root[data-estilo="simples"] .vista{ padding:var(--pad-y) var(--pad-x) 36px }
+:root[data-estilo="simples"] .lh{ top:calc(-1 * var(--pad-y)) }
+:root[data-estilo="simples"] .grade{ gap:var(--gap) }
+:root[data-estilo="simples"] .sino-painel{ top:52px }
+:root[data-estilo="simples"] .cfg-frame{ height:calc(100vh - 150px) }
+:root[data-estilo="simples"] .faixa{ background:var(--surface); border-color:var(--rule); border-left:3px solid var(--brand-red); margin-bottom:var(--gap) }
+:root[data-estilo="simples"] .faixa.warn{ background:var(--surface); border-left-color:var(--status-warn); border-color:var(--rule) }
+:root[data-estilo="simples"] .aviso-linha{ border-left-width:3px }
+
+/* ---------- cartões: borda fina de 1px, sem sombra, sem faixa colorida no topo ---------- */
+:root[data-estilo="simples"] :is(.card, .kpi, .list-card, .cfg-card, .tabela-wrap, .hj-card, .hj-hero, .av-hero, .dlg, .bloqueio, .sc, .dist-i, .hj-step, .sino-painel, .menu-list){ box-shadow:none }
+:root[data-estilo="simples"] .dlg{ box-shadow:0 12px 40px rgba(0,0,0,.28) }
+:root[data-estilo="simples"] .menu-list, :root[data-estilo="simples"] .sino-painel{ box-shadow:0 8px 24px rgba(16,24,32,.14) }
+:root[data-estilo="simples"] .fundo{ backdrop-filter:none; -webkit-backdrop-filter:none; background:rgba(10,15,20,.45) }
+:root[data-estilo="simples"] .cmdk{ backdrop-filter:none; background:rgba(10,15,20,.45) }
+:root[data-estilo="simples"] .cmdk-box{ box-shadow:0 16px 48px rgba(0,0,0,.3) }
+:root[data-estilo="simples"] .cmdk-campo{ background:var(--surface); border-bottom:1px solid var(--rule) }
+:root[data-estilo="simples"] .cmdk-campo > .ic{ color:var(--ink-3) }
+:root[data-estilo="simples"] .cmdk-campo input{ color:var(--ink) }
+:root[data-estilo="simples"] .cmdk-campo input::placeholder{ color:var(--ink-3) }
+:root[data-estilo="simples"] .cmdk-campo kbd{ color:var(--ink-3); border-color:var(--rule-strong) }
+:root[data-estilo="simples"] .bloqueio{ border-top-width:1px; border-left:3px solid var(--brand-red) }
+:root[data-estilo="simples"] .bl-ic{ background:none; border:1px solid var(--rule) }
+:root[data-estilo="simples"] .kpi{ border-left-width:1px }
+:root[data-estilo="simples"] .kpi .val{ font-family:"Archivo", sans-serif }
+:root[data-estilo="simples"] .kpi.late{ border-left:3px solid var(--late) }
+:root[data-estilo="simples"] .kpi.today, :root[data-estilo="simples"] .kpi.ok{ border-left-width:1px }
+:root[data-estilo="simples"] .kpi.today .val{ color:var(--ink) }
+:root[data-estilo="simples"] .kpi .rot{ text-transform:none; letter-spacing:0; font-weight:500; font-size:12px }
+:root[data-estilo="simples"] .kpi:hover, :root[data-estilo="simples"] .sc:hover, :root[data-estilo="simples"] .hj-card:hover, :root[data-estilo="simples"] .hj-step:hover{ transform:none; box-shadow:none; border-color:var(--rule-strong) }
+
+/* cartão de solicitação: só o prazo legal ganha a borda esquerda de 3px */
+:root[data-estilo="simples"] .sc{ border-top:1px solid var(--rule); padding:12px 14px 10px; gap:6px }
+:root[data-estilo="simples"] .sc.lvl-2{ border-left:3px solid var(--late) }
+:root[data-estilo="simples"] .sc.lvl-1{ border-left:3px solid var(--today) }
+:root[data-estilo="simples"] .sc.lvl-0{ border-top-color:var(--rule) }
+:root[data-estilo="simples"] .cards{ gap:var(--gap) }
+:root[data-estilo="simples"] .sc-sub{ margin-top:-2px }
+:root[data-estilo="simples"] .sc-pe{ border-top:0; padding-top:2px }
+:root[data-estilo="simples"] .lr{ min-height:44px }
+
+/* ---------- situação e prazo: pontinho e texto, sem fundo tingido ---------- */
+:root[data-estilo="simples"] .pill-sit{ background:none; box-shadow:none; padding:0 0 0 13px; color:var(--ink-2); font-weight:500; line-height:1.5 }
+:root[data-estilo="simples"] .pill-sit::before{ left:0 }
+:root[data-estilo="simples"] :is(.pill-late, .pill-today, .pill-ok, .pill-soon){ background:none; padding-left:0; padding-right:0 }
+:root[data-estilo="simples"] .pill-late{ color:var(--late) }
+:root[data-estilo="simples"] .pill-today{ color:var(--today) }
+:root[data-estilo="simples"] .pr-tag{ background:none; box-shadow:none; padding:0; color:var(--ink-2); font-weight:500 }
+:root[data-estilo="simples"] .hj-chip{ background:none; padding:0; font-weight:600 }
+:root[data-estilo="simples"] .hj-sec h3 > span{ background:none; padding:0; color:var(--ink-3) }
+:root[data-estilo="simples"] .hj-sec h3::after{ background:var(--rule) }
+
+/* tipos de solicitação: cartões neutros, ícone sem pastilha colorida */
+:root[data-estilo="simples"] .tipo-c{ background:var(--surface); border:1px solid var(--rule); border-top:1px solid var(--rule); transition:border-color .12s }
+:root[data-estilo="simples"] .tipo-c:hover{ box-shadow:none; border-color:var(--rule-strong) }
+:root[data-estilo="simples"] .tipo-c.on{ border-color:var(--blue-deep); box-shadow:inset 0 0 0 1px var(--blue-deep); background:var(--blue-pale) }
+:root[data-estilo="simples"] .tipo-par{ background:none; border-color:var(--rule) }
+:root[data-estilo="simples"] .tipo-par-in .tipo-c{ border-top-width:1px }
+:root[data-estilo="simples"] .tipo-par-in .tipo-c.on{ background:var(--blue-pale) }
+:root[data-estilo="simples"] .tipo-par-cab{ font-weight:600; letter-spacing:.02em; color:var(--ink-3) }
+:root[data-estilo="simples"] .tipo-ic{ background:none; box-shadow:none; color:var(--ink-3) }
+:root[data-estilo="simples"] .tipo-c .tipo-ic.pq{ color:var(--ink-3) }
+:root[data-estilo="simples"] .tipo-ic.pq{ background:none; box-shadow:none }
+:root[data-estilo="simples"] .tipo-c b{ font-family:"Archivo", sans-serif }
+:root[data-estilo="simples"] .hj-sit{ background:var(--surface) }
+:root[data-estilo="simples"] .hj-sit.on{ background:var(--surface); border-color:var(--blue-deep); box-shadow:inset 0 0 0 1px var(--blue-deep) }
+
+/* ---------- destaque do Hoje: deixa de ser escuro e vira cartão comum ---------- */
+:root[data-estilo="simples"] .hj-hero{
+  --surface:inherit; --surface-2:inherit; --surface-3:inherit; --ink:inherit; --ink-2:inherit; --ink-3:inherit; --rule:inherit; --rule-strong:inherit;
+  --brand-red:inherit; --late:inherit; --blue-deep:inherit; --blue-mid:inherit; --blue-pale:inherit; --status-green:inherit; --ok:inherit; --status-warn:inherit; --today:inherit;
+  --viz-grid:inherit; --viz-axis:inherit; --viz-muted:inherit; --shadow-1:inherit; color-scheme:inherit;
+  background:var(--surface); border-color:var(--rule); isolation:auto }
+:root[data-estilo="simples"] .hj-hero::before{ display:none }
+:root[data-estilo="simples"] .hj-hero :is(.hj-tick, .hj-step){ background:var(--surface); border:1px solid var(--rule) }
+:root[data-estilo="simples"] .hj-hero .hj-passos{ background:var(--surface-2); border-left-color:var(--rule) }
+:root[data-estilo="simples"] .hj-hero .hj-step:hover{ border-color:var(--rule-strong); box-shadow:none }
+:root[data-estilo="simples"] .hj-hero .btn{ background:var(--surface); border-color:var(--rule-strong); color:var(--ink-2) }
+:root[data-estilo="simples"] .hj-hero .btn:hover{ border-color:var(--blue-deep); color:var(--blue-deep) }
+:root[data-estilo="simples"] .hj-hero-tx h2{ font-size:22px }
+:root[data-estilo="simples"] .hj-step > i{ animation:none }
+:root[data-estilo="simples"] .hj-bola{ animation:none }
+:root[data-estilo="simples"] .hj-passos{ background:var(--surface-2) }
+
+/* faixa de admissões: alerta sem halo nem tinta vermelha */
+:root[data-estilo="simples"] .hj-admissao{ border:1px solid var(--rule); border-left:3px solid var(--brand-red); background:var(--surface); box-shadow:none }
+:root[data-estilo="simples"] .hj-adm-cab{ background:var(--surface-2); border-bottom-color:var(--rule) }
+:root[data-estilo="simples"] .hj-adm-cab:hover{ background:var(--surface-3) }
+:root[data-estilo="simples"] .hj-admissao h3{ font-size:13.5px }
+
+/* ---------- botões, janelas e caixa de resposta ---------- */
+:root[data-estilo="simples"] .btn{ font-weight:500; padding:6px 12px }
+:root[data-estilo="simples"] .btn-sm{ padding:4px 9px }
+:root[data-estilo="simples"] .btn-primary{ font-weight:600 }
+:root[data-estilo="simples"] .btn-primary:hover{ box-shadow:none }
+:root[data-estilo="simples"] .btn-ver{ height:var(--alt); padding:0 12px }
+:root[data-estilo="simples"] .btn-concluir{ font-weight:500 }
+:root[data-estilo="simples"] .dlg-head{ padding:16px 20px 0 }
+:root[data-estilo="simples"] .dlg-head h2{ font-size:17px }
+:root[data-estilo="simples"] .dtabs{ padding:8px 20px 0 }
+:root[data-estilo="simples"] .dtab{ font-weight:500 }
+:root[data-estilo="simples"] .dtab.on{ color:var(--ink); font-weight:600 }
+:root[data-estilo="simples"] .dlg-body{ padding:14px 20px 16px }
+:root[data-estilo="simples"] .dlg-actions{ padding:10px 20px }
+:root[data-estilo="simples"] .dp-last{ padding:8px 20px 0 }
+:root[data-estilo="simples"] .cmp{ box-shadow:none; padding:10px 20px 12px }
+:root[data-estilo="simples"] .grav-porque{ background:none; border-left-width:2px }
+:root[data-estilo="simples"] .tl-item::before{ border-width:1.5px }
+:root[data-estilo="simples"] .dlg-lg{ height:min(860px, calc(100vh - 32px)) }
+
+/* ---------- movimento: nada decorativo (os pulsos saem) ---------- */
+:root[data-estilo="simples"] .aovivo.ok .ponto, :root[data-estilo="simples"] .hj-bola, :root[data-estilo="simples"] .hj-step > i{ animation:none }
+:root[data-estilo="simples"] .hj-anim :is(.hj-hero, .hj-sit, .hj-card, .hj-passos li){ animation:none }
