@@ -1202,7 +1202,7 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .cs-lista{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px 12px}
 .cs-l{--cs:var(--blue-deep); display:flex; align-items:center; gap:8px; min-width:0; padding-right:8px; border:1px solid var(--rule); border-left:3px solid var(--cs); border-radius:var(--r); background:var(--surface-2); transition:border-color .15s}
 .cs-l:hover{border-color:var(--cs)}
-.cs-feriasNova{--cs:var(--sit-analise)} .cs-avisoTrabalhado{--cs:var(--sit-encaminhada)} .cs-fora{--cs:var(--status-green)} .cs-duplicada{--cs:#7a5bc7} .cs-abaErrada{--cs:var(--status-warn)} .cs-anexo, .cs-falta{--cs:var(--blue-deep)} .cs-semRetorno{--cs:var(--sit-cliente)}
+.cs-feriasNova, .cs-rescisaoNova{--cs:var(--sit-analise)} .cs-avisoTrabalhado{--cs:var(--sit-encaminhada)} .cs-fora{--cs:var(--status-green)} .cs-duplicada{--cs:#7a5bc7} .cs-abaErrada{--cs:var(--status-warn)} .cs-anexo, .cs-falta{--cs:var(--blue-deep)} .cs-semRetorno{--cs:var(--sit-cliente)}
 .cs-abre{flex:1; min-width:0; display:flex; flex-direction:column; align-items:flex-start; gap:2px; padding:8px 10px; border:0; background:none; color:inherit; font:inherit; text-align:left; cursor:pointer}
 .cs-tag{font:700 10.5px "IBM Plex Sans",sans-serif; letter-spacing:.05em; text-transform:uppercase; color:var(--cs)}
 .cs-tx{display:flex; flex-direction:column; min-width:0; max-width:100%}
