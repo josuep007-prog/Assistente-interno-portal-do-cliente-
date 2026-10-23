@@ -45,7 +45,11 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
 
-## Novidades da v0.42.2 (textos padrão longos em tópicos)
+## Novidades da v0.42.2 (textos em tópicos, lista errada em análise, tipos iguais ao Hoje, solicitação em tela cheia)
+
+- **Solicitação aberta em tela cheia:** o detalhe ocupa a tela toda (nos dois estilos), com mais espaço para a conversa e a caixa de resposta.
+- **Cartões de tipo das Solicitações iguais aos do Hoje:** todos os tipos à vista, inclusive os sem nada, do mais urgente ao menos, com a mesma linha de apoio (o motivo mais urgente e o total). "Todos os tipos" continua no começo para tirar o filtro. A faixa de chips do Simplificado saiu.
+- **Lista errada:** a sugestão passa a ser **Orientar e colocar em análise** (orienta o cliente sobre a aba certa e segue com esta), não mais concluir.
 
 - Os textos sugeridos longos agora vêm **divididos em tópicos**, um por linha, para o cliente ler com calma: **Rescisão em análise** (o que confirmar, em lista; pagamento e documentos, exame demissional e eSocial/FGTS numerados) e **Férias em análise** (empréstimos consignados, pagamento, aviso de férias e, quando há, o abono pecuniário como mais um tópico). Valem na sugestão do Hoje, no "Pôr em análise" (um a um e em lote) e no modelo "Férias em análise" da caixa.
 - **A confirmar no Onvio real:** o trâmite é texto puro (HTML aparece literal); conferir se as quebras de linha aparecem como linhas separadas para o cliente. Se o Onvio juntar tudo, os tópicos continuam legíveis pelos marcadores ("-" e "1.").
