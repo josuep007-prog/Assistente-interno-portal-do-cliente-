@@ -1456,6 +1456,11 @@ await passo('app · detalhe: destaques sutis; trâmites como conversa (filtro, o
   // aba Dados: o campo em destaque tem marca própria
   await p.click('#gaveta [data-aba="dados"]');
   assert.equal(await p.$$eval('#g-corpo .campo.dq-campo', e => e.length), 2);
+  // o campo em destaque dos Dados tem o mesmo desenho do destaque do topo: fundo azul-claro, borda fina, sem a barra grossa do lado
+  const est = await p.evaluate(() => { const f = n => { const c = getComputedStyle(n); return [c.backgroundColor, c.borderTopWidth, c.borderLeftWidth, c.boxShadow, c.borderTopLeftRadius].join('|'); }; return { topo: f(document.querySelector('#gaveta .dlg-destaques .dq')), dados: f(document.querySelector('#g-corpo .campo.dq-campo')) }; });
+  assert.equal(est.dados, est.topo, 'mesmo estilo no topo e na aba Dados');
+  assert.match(est.dados, /\|1px\|1px\|none\|/, 'borda fina e sem sombra lateral');
+  if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/dq-dados.png' });
   assert.deepEqual(p.erros, []);
 });
 
