@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.41.0)
+# Control Onvio · ControlTax (v0.42.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,18 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.42.0 (tema Simplificado)
+
+A visão estava poluída, principalmente em telas pequenas (1366×768 e parecidas). Agora há **dois estilos**, e o **Simplificado** é o de fábrica para quem nunca escolheu:
+
+- **Como trocar:** Configurações → **Aparência** (primeira aba). A troca vale na hora, sem Salvar, e fica só neste Chrome (`localStorage`: `controlonvio-estilo`; não vai para as regras nem para o armazenamento da extensão). **Para voltar ao desenho de antes, escolha "Atual"** (idêntico ao da 0.41.0). Claro/escuro vale nos dois estilos e é a mesma escolha do botão do menu à esquerda.
+- **O que muda no Simplificado:** fundo liso, cartões de borda fina, trilho claro, situação e prazo em pontinho e texto (sem fundo tingido), IBM Plex Sans nos títulos, espaços menores em telas pequenas e cabeçalho numa linha só (o subtítulo vai para a dica do título; "Ao vivo" mostra só a hora). Nada some de vez: o que é secundário fica recolhido ou numa dica.
+- **Hoje:** destaque compacto (rosca de 96 px, linha de contagens e Próximos passos mais baixo, sem o carrossel nem a legenda); "Solicitações por tipo", "Sugestões de ação" e "Previsão por empresa" viram barras recolhíveis (a escolha fica no navegador; a Previsão começa recolhida).
+- **Solicitações:** os tipos viram uma faixa de uma linha, só com os que têm pendência ("Ver cartões" abre a grade e lembra a escolha); some o título da lista; o cartão não repete o responsável nas suas e não mostra traço sem assunto.
+- **Detalhe e caixa de resposta:** a vez e a idade ficam só no topo; a linha de dados mostra Responsável, Pagamento até e Último trâmite (o resto em "mais"); a conversa mostra o tempo relativo (a data completa fica na dica); a caixa perde o rótulo "Trâmite", a linha do efeito e o "atalho R" à vista; "Guardar como modelo" fica num menu ⋯.
+- **Equipe, Distribuir, Agenda e Configurações:** textos de ajuda viram dica (ⓘ); o destaque da Equipe é menor; o cartão da distribuição automática vira uma linha de estado; a Agenda tem o menu "Adiar" (+1 h e Amanhã); o selo "padrão" das Configurações só aparece quando o valor difere.
+- **A confirmar numa sessão com o Chrome do Josué:** o aspecto nas telas reais de 1366×768 e 1920×1080 (nos testes é conferido em 1366×650, 1280×720 e 1600×900 com o Onvio simulado).
 
 ## Novidades da v0.41.0 (Pôr em análise em cada solicitação e em lote)
 
