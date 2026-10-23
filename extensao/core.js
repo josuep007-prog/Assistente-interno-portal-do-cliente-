@@ -182,7 +182,7 @@
     // Textos sugeridos para cada caso (o analista revisa e confirma antes de enviar). {aba} e {outra} vêm do caso.
     textosSugestao: {
       fora: 'Pelo que consta, esta solicitação já foi resolvida fora do portal. Estamos concluindo por aqui. Se ainda precisar de algo, é só abrir uma nova solicitação.',
-      abaErrada: 'Olá! Este pedido tem uma aba própria no Portal do Cliente: {aba}. Por favor, abra a solicitação por lá, com os campos preenchidos, para conseguirmos atender dentro do prazo. Estamos concluindo esta da lista Geral.',
+      abaErrada: 'Olá! Este pedido tem uma aba própria no Portal do Cliente: {aba}. Nas próximas vezes, por favor, abra a solicitação por lá, com os campos preenchidos, para conseguirmos atender dentro do prazo. Esta já está em análise e seguimos com ela por aqui.',
       semRetorno: 'Como não tivemos retorno do cliente nas últimas semanas, estamos concluindo esta solicitação. Se ainda precisar de algo, é só abrir uma nova solicitação.',
       semRetornoEtapa: 'Registro para o encerramento: solicitação sem retorno do cliente há mais de duas semanas.',
       duplicada: 'Esta solicitação repete a nº {outra}, que já está em atendimento. Seguimos por lá e estamos concluindo esta.',
@@ -217,7 +217,7 @@
       { rot: 'Concluído', situacao: 5, texto: '{saudacao}! Solicitação concluída. Qualquer dúvida, estamos à disposição.' },
       { rot: 'Cálculo concluído', situacao: 5, tipos: ['calcFerias', 'calcRescisao'], texto: '{saudacao}! O {tipo} de {empregado} foi concluído e segue em anexo. O pagamento deve ser feito até {pagamento}.' },
       { rot: 'Resolvida fora do portal', situacao: 5, texto: 'Pelo que consta, esta solicitação já foi resolvida fora do portal. Estamos concluindo por aqui. Se ainda precisar de algo, é só abrir uma nova solicitação.' },
-      { rot: 'Lista errada', situacao: 5, precisaAba: true, texto: '{saudacao}! Este pedido tem uma aba própria no Portal do Cliente: {aba}. Por favor, abra a solicitação por lá, com os campos preenchidos, para conseguirmos atender dentro do prazo. Estamos concluindo esta da lista Geral.' },
+      { rot: 'Lista errada', situacao: 2, precisaAba: true, texto: '{saudacao}! Este pedido tem uma aba própria no Portal do Cliente: {aba}. Nas próximas vezes, por favor, abra a solicitação por lá, com os campos preenchidos, para conseguirmos atender dentro do prazo. Esta já está em análise e seguimos com ela por aqui.' },
       { rot: 'Repete outra solicitação', situacao: 5, texto: 'Esta solicitação repete a nº {numero}, que já está em atendimento. Seguimos por lá e estamos concluindo esta.' },
       { rot: 'Férias em análise', situacao: 2, tipos: ['avisoFerias', 'calcFerias'], texto: TEXTO_FERIAS_ANALISE },
       { rot: 'Envio da rescisão', situacao: 4, tipos: ['calcRescisao'], texto: '{saudacao}! Segue o cálculo da rescisão de {empregado}. Lembramos que o pagamento das verbas rescisórias e a entrega dos documentos ao empregado devem ser feitos em até 10 dias corridos do término do contrato (CLT, art. 477, §6º), ou seja, até {pagamentoRescisao}. Qualquer dúvida, estamos à disposição.' }
@@ -2504,7 +2504,7 @@
   const CASOS = {
     fora: { rot: 'Resolvida fora do portal?', botao: 'Concluir', situacao: 5 },     // códigos da lista padrão; situacaoEquivalente troca na lista do item
     duplicada: { rot: 'Duplicada', botao: 'Encerrar duplicada', situacao: 5 },
-    abaErrada: { rot: 'Lista errada', botao: 'Orientar e concluir', situacao: 5 },
+    abaErrada: { rot: 'Lista errada', botao: 'Orientar e colocar em análise', situacao: 2 },     // orienta e segue com esta (pedido do Josué, 23/10/2026)
     anexo: { rot: 'Anexo não chegou', botao: 'Pedir o anexo', situacao: 4 },
     falta: { rot: 'Falta informação', botao: 'Pedir informações', situacao: 4 },
     feriasNova: { rot: 'Férias nova', botao: 'Pôr em análise', situacao: 2 },

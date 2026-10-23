@@ -1839,7 +1839,10 @@ test('sugestões de ação: casos específicos (fora do portal, duplicada, lista
   assert.match(velha.acao.texto, /resolvida fora do portal/);
   const dup = casos.find(c => c.k === 'd2');
   assert.match(dup.acao.texto, /repete a nº 110/);
-  assert.match(casos.find(c => c.k === 'aba').acao.texto, /aba própria no Portal do Cliente: Aviso de férias/);
+  const aba = casos.find(c => c.k === 'aba');
+  assert.match(aba.acao.texto, /aba própria no Portal do Cliente: Aviso de férias.*já está em análise/);
+  assert.doesNotMatch(aba.acao.texto, /concluindo/, 'lista errada não conclui mais');
+  assert.deepEqual([aba.botao, aba.acao.situacao], ['Orientar e colocar em análise', '2'], 'orienta e põe em análise');
   const cad = casos.find(c => c.k === 'cad');
   assert.equal(cad.pode.ok, true, 'Cadastro tem trâmite mapeado desde 0.27.0');
   assert.equal(cad.acao.situacao, '6', 'concluir em Cadastro é Concluído (6)');

@@ -400,7 +400,7 @@ await passo('app · Hoje (analista): destaque com rosca, carrossel e próximos p
   const cs = await p.$$eval('#hj-sug .cs-l', e => e.map(x => x.textContent));
   assert.equal(cs.length, 2);
   assert.match(cs[0], /^#101 ACME · FulanoSem resposta do escritório há 31 dias: provavelmente resolvida fora do portalConcluir/);
-  assert.match(cs[1], /^#102 BETA · Férias do JoãoAberta na lista Geral, mas tem aba própria: Aviso de férias.*Orientar e concluir/);
+  assert.match(cs[1], /^#102 BETA · Férias do JoãoAberta na lista Geral, mas tem aba própria: Aviso de férias.*Orientar e colocar em análise/);
   // divididas por categoria e, dentro dela, por tipo de solicitação, em barras recolhíveis
   assert.deepEqual(await p.$$eval('#hj-sug .sug-cat > summary b', e => e.map(x => x.textContent)), ['Resolvida fora do portal?', 'Lista errada']);
   assert.deepEqual(await p.$$eval('#hj-sug .sug-tipo > summary b', e => e.map(x => x.textContent)), ['Cálculo de férias', 'Geral']);

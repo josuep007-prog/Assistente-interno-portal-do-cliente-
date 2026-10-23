@@ -33,7 +33,7 @@
     "semRetorno": "Como não tivemos retorno do cliente nas últimas semanas, estamos concluindo esta solicitação. Se ainda precisar de algo, é só abrir uma nova solicitação.",
     "semRetornoEtapa": "Registro para o encerramento: solicitação sem retorno do cliente há mais de duas semanas.",
     "fora": "Pelo que consta, esta solicitação já foi resolvida fora do portal. Estamos concluindo por aqui. Se ainda precisar de algo, é só abrir uma nova solicitação.",
-    "abaErrada": "Olá! Este pedido tem uma aba própria no Portal do Cliente: {aba}. Por favor, abra a solicitação por lá, com os campos preenchidos. Estamos concluindo esta da lista Geral."
+    "abaErrada": "Olá! Este pedido tem uma aba própria no Portal do Cliente: {aba}. Nas próximas vezes, por favor, abra a solicitação por lá, com os campos preenchidos. Esta já está em análise e seguimos com ela por aqui."
   },
   "criacao": {
     "serviceRequestType": "GENERIC",
