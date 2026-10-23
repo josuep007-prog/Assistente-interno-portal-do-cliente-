@@ -77,7 +77,7 @@
 
 /* ---------- cartões: borda fina de 1px, sem sombra, sem faixa colorida no topo ---------- */
 :root[data-estilo="simples"] :is(.card, .kpi, .list-card, .cfg-card, .tabela-wrap, .hj-card, .hj-hero, .av-hero, .dlg, .bloqueio, .sc, .dist-i, .hj-step, .sino-painel, .menu-list){ box-shadow:none }
-:root[data-estilo="simples"] .dlg{ box-shadow:0 12px 40px rgba(0,0,0,.28) }
+:root[data-estilo="simples"] .dlg:not(#gaveta){ box-shadow:0 12px 40px rgba(0,0,0,.28) }
 :root[data-estilo="simples"] .menu-list, :root[data-estilo="simples"] .sino-painel{ box-shadow:0 8px 24px rgba(16,24,32,.14) }
 :root[data-estilo="simples"] .fundo{ backdrop-filter:none; -webkit-backdrop-filter:none; background:rgba(10,15,20,.45) }
 :root[data-estilo="simples"] .cmdk{ backdrop-filter:none; background:rgba(10,15,20,.45) }
@@ -118,18 +118,7 @@
 :root[data-estilo="simples"] .hj-sec h3 > span{ background:none; padding:0; color:var(--ink-3) }
 :root[data-estilo="simples"] .hj-sec h3::after{ background:var(--rule) }
 
-/* tipos de solicitação: cartões neutros, ícone sem pastilha colorida */
-:root[data-estilo="simples"] .tipo-c{ background:var(--surface); border:1px solid var(--rule); border-top:1px solid var(--rule); transition:border-color .12s }
-:root[data-estilo="simples"] .tipo-c:hover{ box-shadow:none; border-color:var(--rule-strong) }
-:root[data-estilo="simples"] .tipo-c.on{ border-color:var(--blue-deep); box-shadow:inset 0 0 0 1px var(--blue-deep); background:var(--blue-pale) }
-:root[data-estilo="simples"] .tipo-par{ background:none; border-color:var(--rule) }
-:root[data-estilo="simples"] .tipo-par-in .tipo-c{ border-top-width:1px }
-:root[data-estilo="simples"] .tipo-par-in .tipo-c.on{ background:var(--blue-pale) }
-:root[data-estilo="simples"] .tipo-par-cab{ font-weight:600; letter-spacing:.02em; color:var(--ink-3) }
-:root[data-estilo="simples"] .tipo-ic{ background:none; box-shadow:none; color:var(--ink-3) }
-:root[data-estilo="simples"] .tipo-c .tipo-ic.pq{ color:var(--ink-3) }
-:root[data-estilo="simples"] .tipo-ic.pq{ background:none; box-shadow:none }
-:root[data-estilo="simples"] .tipo-c b{ font-family:"Archivo", sans-serif }
+/* tipos de solicitação: os cartões ficam iguais aos do estilo Atual (cores das famílias), nos dois estilos (pedido do Josué, 23/10/2026) */
 :root[data-estilo="simples"] .hj-sit{ background:var(--surface) }
 :root[data-estilo="simples"] .hj-sit.on{ background:var(--surface); border-color:var(--blue-deep); box-shadow:inset 0 0 0 1px var(--blue-deep) }
 
@@ -174,7 +163,6 @@
 :root[data-estilo="simples"] .cmp{ box-shadow:none; padding:10px 20px 12px }
 :root[data-estilo="simples"] .grav-porque{ background:none; border-left-width:2px }
 :root[data-estilo="simples"] .tl-item::before{ border-width:1.5px }
-:root[data-estilo="simples"] .dlg-lg{ height:min(860px, calc(100vh - 32px)) }
 
 /* ---------- movimento: nada decorativo (os pulsos saem) ---------- */
 :root[data-estilo="simples"] .aovivo.ok .ponto, :root[data-estilo="simples"] .hj-bola, :root[data-estilo="simples"] .hj-step > i{ animation:none }
@@ -236,19 +224,6 @@
 :root[data-estilo="simples"] .barra{ margin-bottom:8px; gap:8px }
 :root[data-estilo="simples"] .barra input[type=search]{ flex:1 1 200px }
 :root[data-estilo="simples"] .ord-sel select{ height:30px }
-/* faixa dos tipos: uma linha, só o que tem pendência; "Ver cartões" abre a grade */
-:root[data-estilo="simples"] .tipos-faixa{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin:0 0 8px }
-:root[data-estilo="simples"] .tipo-chip{ display:inline-flex; align-items:center; gap:6px; max-width:100%; padding:3px 10px 3px 7px; border:1px solid var(--rule); border-radius:var(--r); background:var(--surface); color:var(--ink-2); font:inherit; font-size:12.5px; cursor:pointer }
-:root[data-estilo="simples"] .tipo-chip:hover{ border-color:var(--rule-strong) }
-:root[data-estilo="simples"] .tipo-chip.on{ border-color:var(--blue-deep); background:var(--blue-pale); color:var(--ink) }
-:root[data-estilo="simples"] .tipo-chip:focus-visible{ outline:2px solid var(--blue-deep); outline-offset:2px }
-:root[data-estilo="simples"] .tipo-chip span{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
-:root[data-estilo="simples"] .tipo-chip b{ font:600 12.5px "IBM Plex Mono", monospace; color:var(--ink) }
-:root[data-estilo="simples"] .tipo-chip .tipo-ic.pq{ margin:0; width:16px; height:16px }
-:root[data-estilo="simples"] .tipos-ver{ margin-left:auto; border:0; background:none; padding:3px 4px; font:600 12px "IBM Plex Sans", sans-serif; color:var(--blue-deep); cursor:pointer }
-:root[data-estilo="simples"] .tipos-ver:hover{ text-decoration:underline }
-:root[data-estilo="simples"] .tipos-grade .tipos-ver{ grid-column:1 / -1; justify-self:end }
-:root[data-estilo="simples"] .tipos-grade{ margin:0 0 8px }
 /* situações: chips discretos */
 :root[data-estilo="simples"] .sits{ margin:0 0 8px; gap:6px }
 :root[data-estilo="simples"] .sit-c{ padding:3px 10px 3px 8px; font-weight:500 }

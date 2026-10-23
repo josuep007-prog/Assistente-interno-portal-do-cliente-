@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.42.1)
+# Control Onvio · ControlTax (v0.42.2)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,15 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.42.2 (textos em tópicos, lista errada em análise, tipos iguais ao Hoje, solicitação em tela cheia)
+
+- **Solicitação aberta em tela cheia:** o detalhe ocupa a tela toda (nos dois estilos), com mais espaço para a conversa e a caixa de resposta.
+- **Cartões de tipo das Solicitações iguais aos do Hoje:** todos os tipos à vista, inclusive os sem nada, do mais urgente ao menos, com a mesma linha de apoio (o motivo mais urgente e o total). "Todos os tipos" continua no começo para tirar o filtro. A faixa de chips do Simplificado saiu, e no Simplificado os cartões de tipo voltam a ter as cores das famílias (iguais aos do Atual).
+- **Lista errada:** a sugestão passa a ser **Orientar e colocar em análise** (orienta o cliente sobre a aba certa e segue com esta), não mais concluir.
+
+- Os textos sugeridos longos agora vêm **divididos em tópicos**, um por linha, para o cliente ler com calma: **Rescisão em análise** (o que confirmar, em lista; pagamento e documentos, exame demissional e eSocial/FGTS numerados) e **Férias em análise** (empréstimos consignados, pagamento, aviso de férias e, quando há, o abono pecuniário como mais um tópico). Valem na sugestão do Hoje, no "Pôr em análise" (um a um e em lote) e no modelo "Férias em análise" da caixa.
+- **A confirmar no Onvio real:** o trâmite é texto puro (HTML aparece literal); conferir se as quebras de linha aparecem como linhas separadas para o cliente. Se o Onvio juntar tudo, os tópicos continuam legíveis pelos marcadores ("-" e "1.").
 
 ## Novidades da v0.42.1 (abono pecuniário no texto de férias em análise)
 
@@ -296,7 +305,7 @@ Você rodou o roteiro no Onvio real e o relatório está em `mapeamento/pendenci
 - **Sugestões de ação viraram casos específicos.** Em vez de contagens com link, o painel do Hoje (agora em largura cheia, logo abaixo do destaque) lista cada solicitação que:
   - **parece resolvida fora do portal**: na vez do escritório e **sem nenhuma movimentação há mais de 30 dias** (`foraDoPortalDias`, em Configurações > Prazos; 0 desliga), ou com um trâmite recente que diz isso ("já resolvido", "enviei por e-mail", "pelo WhatsApp", "pode desconsiderar"…); botão **Concluir**;
   - **repete** outra em aberto (mesmo cliente, lista e assunto/empregado): **Encerrar duplicada**, citando a nº da original;
-  - foi aberta na **lista Geral mas tem aba própria**: **Orientar e concluir**, com o nome da aba certa;
+  - foi aberta na **lista Geral mas tem aba própria**: **Orientar e colocar em análise** (desde a 0.42.2: orienta o cliente sobre a aba certa e segue com esta em análise, em vez de concluir);
   - o cliente **diz que anexou e nenhum arquivo chegou**: **Pedir o anexo**;
   - na Geral, o pedido é **curto demais e sem anexo**, sem resposta do escritório ainda: **Pedir informações**.
 - **Poucos cliques:** o botão abre o detalhe já no trâmite preenchido (texto e situação: Concluído ou Respondido). Você revisa, edita se quiser e confirma; nada é enviado sozinho. Listas sem trâmite mapeado mostram só "Abrir" (desde a 0.27.0 todas têm). No menu "⋯": ver a solicitação ou **Não é o caso** (some até a solicitação mexer; fica só o id e a data da última movimentação).

@@ -11,7 +11,7 @@ import { estado, itens, minhas, primeiroNome, salvarLembretes, enviar, ignorarSu
 import { esc, plural, num, ligarItens, fmtDataHora, saudacao, dataExtensa, toast, $, $$, lerPref, gravarPref, simples } from '../util.js';
 import { anel, anelProgresso, animarNumeros, ligarDicas, cor } from '../graficos.js';
 import { estadoLeitura, dicaLeitura } from './painel-equipe.js';
-import { tiposHtml } from './tipos.js';
+import { tiposHtml, subPorMotivo } from './tipos.js';
 import { abrirLote } from './lote-dlg.js';
 const OC = window.OC;
 const SEM = '(sem responsável)';
@@ -221,13 +221,8 @@ export function render(el, ctx) {
   // daquele tipo (na aba onde estão: Minhas, ou Respondidas quando só há solicitações na vez do cliente).
   function tiposPainel() {
     if (!base.length) return '';
-    const sub = xs => {
-      if (!xs.length) return 'nenhuma';
-      const mo = OC.MOTIVOS.map(m => [m, xs.filter(i => OC.motivoDe(i) === m.k).length]).find(([, n]) => n);
-      return '<em class="m-' + mo[0].k + '">' + mo[1] + ' ' + esc(mo[0].rot.toLowerCase()) + '</em>' + (xs.length > mo[1] ? ' · ' + xs.length + ' no total' : '');
-    };
     return painel('hj-tipos', ic('layers', 'ic-sm') + ' Solicitações por tipo', 'Da mais urgente para a menos urgente. Clique para abrir as Solicitações daquele tipo.',
-      '<div class="tipos" id="hj-tipos-l" role="group" aria-label="Solicitações por tipo">' + tiposHtml(base, { prioridade: true, sub }) + '</div>', '',
+      '<div class="tipos" id="hj-tipos-l" role="group" aria-label="Solicitações por tipo">' + tiposHtml(base, { prioridade: true, sub: subPorMotivo }) + '</div>', '',
       plural(new Set(base.map(i => i.type)).size, 'tipo com pendência', 'tipos com pendência'));
   }
 

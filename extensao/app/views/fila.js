@@ -5,8 +5,8 @@
  * sem análise, em análise, cliente respondeu, aguardando o cliente. Prazo interno e gravidade não aparecem aqui. */
 import { estado, itens, minhas, clienteRespondeu, enviar, primeiroNome } from '../estado.js';
 import { abrirLote } from './lote-dlg.js';
-import { tiposHtml } from './tipos.js';
-import { esc, concluirBtn, analiseBtn, pillSituacao, prazoHtml, cartaoItem, ligarItens, csvItens, fmtDataCurta, normal, tipoVisual, tipoIcone, nivelLegal, respHtml, definirSugestoesResp, simples, lerPref, gravarPref, $, $$ } from '../util.js';
+import { tiposHtml, subPorMotivo } from './tipos.js';
+import { esc, concluirBtn, analiseBtn, pillSituacao, prazoHtml, cartaoItem, ligarItens, csvItens, fmtDataCurta, normal, tipoVisual, tipoIcone, nivelLegal, respHtml, definirSugestoesResp, simples, $, $$ } from '../util.js';
 const OC = window.OC;
 
 // Atalhos de outras telas (Equipe, Hoje); hoje/atraso/g3 só chegam da área do gestor
@@ -151,22 +151,11 @@ export function render(el, ctx, params) {
     return resto.concat(resolv);
   };
   // Cartões dos tipos: quantas há em cada tipo (com os outros filtros aplicados) e quantas têm prazo legal perto.
+  // Cartões dos tipos: os mesmos do Hoje (do tipo mais urgente ao menos, com o motivo mais urgente de cada um), todos à vista,
+  // inclusive os sem nada (pedido do Josué, 23/10/2026); "Todos os tipos" no começo tira o filtro. Contam com os outros filtros aplicados.
   const tipos = () => {
     const l = filtrar({ semTipo: true });
-    const box = $('#tipos', el);
-    // Simplificado: uma faixa de uma linha com os tipos que têm pendência; "Ver cartões" abre a grade (a escolha fica neste navegador)
-    if (simples()) {
-      const grade = lerPref('filaTiposGrade', '') === '1';
-      box.className = grade ? 'tipos tipos-grade' : 'tipos-faixa';
-      const ver = '<button type="button" class="linkish tipos-ver" id="tipos-ver" aria-expanded="' + grade + '">' + (grade ? 'Recolher' : 'Ver cartões') + '</button>';
-      box.innerHTML = grade ? tiposHtml(l, { todos: true, on: filtros.tipo }) + ver
-        : OC.TYPES.map(t => [t, l.filter(i => i.type === t.key).length]).filter(([t, n]) => n || filtros.tipo === t.key)
-          .map(([t, n]) => '<button type="button" class="tipo-chip fam-' + tipoVisual(t.key).fam + (filtros.tipo === t.key ? ' on' : '') + '" data-tipo="' + esc(t.key) + '" aria-pressed="' + (filtros.tipo === t.key) + '" title="' + esc(t.label) + '">' + tipoIcone(t.key, 'pq') + '<span>' + esc(t.label) + '</span><b>' + n + '</b></button>').join('') + ver;
-      $('#tipos-ver', el).onclick = () => { gravarPref('filaTiposGrade', grade ? '' : '1'); tipos(); };
-    } else {
-      box.className = 'tipos';
-      box.innerHTML = tiposHtml(l, { todos: true, on: filtros.tipo });
-    }
+    $('#tipos', el).innerHTML = tiposHtml(l, { todos: true, on: filtros.tipo, prioridade: true, sub: subPorMotivo });
     $$('[data-tipo]', el).forEach(b => b.onclick = () => { filtros.tipo = filtros.tipo === b.dataset.tipo ? '' : b.dataset.tipo; const s = $('#f-tipo', el); if (s) s.value = filtros.tipo; desenhar(); });
   };
   // Cartões de situação (cor própria por grupo): quantas há em cada situação, com os outros filtros aplicados

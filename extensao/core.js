@@ -77,6 +77,12 @@
   // os 3 Cadastros usam employees-registrations; Férias, Rescisão e Afastamento usam br-payroll-sr tickets.
   const TYPE_BY_KEY = Object.fromEntries(TYPES.map(t => [t.key, t]));
 
+  // Férias em análise (sugestão, "Pôr em análise" e modelo da caixa): em tópicos; {abono} vira o tópico do abono ou some
+  const TEXTO_FERIAS_ANALISE = '{saudacao}! Recebemos a solicitação de férias de {empregado} e já estamos analisando.\n\n' +
+    'Pontos importantes:\n' +
+    '- Empréstimos consignados: antes de calcular, precisamos aguardar a atualização dos empréstimos consignados, para o cálculo sair correto.\n' +
+    '- Pagamento: as férias devem ser pagas até {pagamentoFerias} (prazo legal: 2 dias antes do início).\n' +
+    '- Aviso de férias: o empregado precisa ser comunicado das férias com 30 dias de antecedência.{abono}';
   const DEFAULTS = {
     // Distribuição automática de responsáveis (liga o gestor, na Equipe): de quantos em quantos minutos e em que horas (seg a sex, hora local do Chrome)
     distribuicaoAuto: { minutos: 15, inicio: 8, fim: 18 },
@@ -176,7 +182,7 @@
     // Textos sugeridos para cada caso (o analista revisa e confirma antes de enviar). {aba} e {outra} vêm do caso.
     textosSugestao: {
       fora: 'Pelo que consta, esta solicitação já foi resolvida fora do portal. Estamos concluindo por aqui. Se ainda precisar de algo, é só abrir uma nova solicitação.',
-      abaErrada: 'Olá! Este pedido tem uma aba própria no Portal do Cliente: {aba}. Por favor, abra a solicitação por lá, com os campos preenchidos, para conseguirmos atender dentro do prazo. Estamos concluindo esta da lista Geral.',
+      abaErrada: 'Olá! Este pedido tem uma aba própria no Portal do Cliente: {aba}. Nas próximas vezes, por favor, abra a solicitação por lá, com os campos preenchidos, para conseguirmos atender dentro do prazo. Esta já está em análise e seguimos com ela por aqui.',
       semRetorno: 'Como não tivemos retorno do cliente nas últimas semanas, estamos concluindo esta solicitação. Se ainda precisar de algo, é só abrir uma nova solicitação.',
       semRetornoEtapa: 'Registro para o encerramento: solicitação sem retorno do cliente há mais de duas semanas.',
       duplicada: 'Esta solicitação repete a nº {outra}, que já está em atendimento. Seguimos por lá e estamos concluindo esta.',
@@ -184,11 +190,21 @@
       anexo: 'Olá! A mensagem fala em anexo, mas nenhum arquivo chegou. Pode anexar de novo por aqui, por favor?',
       // "Pôr em análise" das outras listas (e do cálculo de rescisão): curto e sem {variáveis}, para dar para mandar em lote
       emAnalise: 'Olá! Estamos cientes da solicitação e daremos continuidade a ela.',
-      rescisaoAnalise: '{saudacao}! Recebemos a solicitação de rescisão de {empregado} e já estamos analisando. Para o cálculo sair correto, confirme o último dia trabalhado, o tipo de rescisão e se o aviso prévio é trabalhado ou indenizado, e nos informe descontos como empréstimo consignado e adiantamentos. ' +
-        'Pontos importantes, para qualquer tipo de rescisão: (1) o pagamento das verbas rescisórias e a entrega dos documentos ao empregado devem ser feitos em até 10 dias corridos do término do contrato (CLT, art. 477, §6º), ou seja, até {pagamentoRescisao}; ' +
-        '(2) o exame demissional (ASO) precisa ser feito quando exigido, e o ideal é agendá-lo já, para não atrasar a rescisão; (3) o envio do desligamento ao eSocial e o FGTS da rescisão também têm prazo de 10 dias. Qualquer dúvida, estamos à disposição.',
-      feriasAnalise: '{saudacao}! Recebemos a solicitação de férias de {empregado} e já estamos analisando. Antes de calcular, precisamos aguardar a atualização dos empréstimos consignados, para o cálculo sair correto. O pagamento das férias deve ser feito até {pagamentoFerias} (prazo legal: 2 dias antes do início). Lembramos que o empregado precisa ser comunicado das férias com 30 dias de antecedência (aviso de férias).{abono}',
-      feriasAbono: ' Como há pagamento de abono pecuniário (venda de 1/3 das férias), o abono deve ser solicitado pelo próprio empregado, em carta de próprio punho, até 15 dias antes do término do período aquisitivo (art. 143 e §1º da CLT). Precisamos receber essa carta para incluir o abono no cálculo.'
+      // Textos longos vão em tópicos (\n entre as linhas), para o cliente ler com calma; o Onvio guarda texto puro
+      rescisaoAnalise: '{saudacao}! Recebemos a solicitação de rescisão de {empregado} e já estamos analisando.\n\n' +
+        'Para o cálculo sair correto, por favor confirme:\n' +
+        '- o último dia trabalhado;\n' +
+        '- o tipo de rescisão;\n' +
+        '- se o aviso prévio é trabalhado ou indenizado;\n' +
+        '- os descontos, como empréstimo consignado e adiantamentos.\n\n' +
+        'Pontos importantes, para qualquer tipo de rescisão:\n' +
+        '1. Pagamento e documentos: as verbas rescisórias devem ser pagas e os documentos entregues ao empregado em até 10 dias corridos do término do contrato (CLT, art. 477, §6º), ou seja, até {pagamentoRescisao}.\n' +
+        '2. Exame demissional (ASO): precisa ser feito quando exigido; o ideal é agendá-lo já, para não atrasar a rescisão.\n' +
+        '3. eSocial e FGTS: o envio do desligamento ao eSocial e o FGTS da rescisão também têm prazo de 10 dias.\n\n' +
+        'Qualquer dúvida, estamos à disposição.',
+      feriasAnalise: TEXTO_FERIAS_ANALISE,
+      // entra no lugar de {abono} (texto de férias em análise) quando há pagamento de abono; sem abono, {abono} some
+      feriasAbono: '\n- Abono pecuniário (venda de 1/3 das férias): deve ser solicitado pelo próprio empregado, em carta de próprio punho, até 15 dias antes do término do período aquisitivo (CLT, art. 143, §1º). Precisamos receber essa carta para incluir o abono no cálculo.'
     },
     // Modelos de resposta (caixa de resposta do detalhe). Texto padrão, nunca de cliente. {variáveis}: saudacao, cliente,
     // empregado, tipo, inicio, pagamento, aba, analista, numero. O que não tiver valor fica como está e o envio é barrado
@@ -201,9 +217,9 @@
       { rot: 'Concluído', situacao: 5, texto: '{saudacao}! Solicitação concluída. Qualquer dúvida, estamos à disposição.' },
       { rot: 'Cálculo concluído', situacao: 5, tipos: ['calcFerias', 'calcRescisao'], texto: '{saudacao}! O {tipo} de {empregado} foi concluído e segue em anexo. O pagamento deve ser feito até {pagamento}.' },
       { rot: 'Resolvida fora do portal', situacao: 5, texto: 'Pelo que consta, esta solicitação já foi resolvida fora do portal. Estamos concluindo por aqui. Se ainda precisar de algo, é só abrir uma nova solicitação.' },
-      { rot: 'Lista errada', situacao: 5, precisaAba: true, texto: '{saudacao}! Este pedido tem uma aba própria no Portal do Cliente: {aba}. Por favor, abra a solicitação por lá, com os campos preenchidos, para conseguirmos atender dentro do prazo. Estamos concluindo esta da lista Geral.' },
+      { rot: 'Lista errada', situacao: 2, precisaAba: true, texto: '{saudacao}! Este pedido tem uma aba própria no Portal do Cliente: {aba}. Nas próximas vezes, por favor, abra a solicitação por lá, com os campos preenchidos, para conseguirmos atender dentro do prazo. Esta já está em análise e seguimos com ela por aqui.' },
       { rot: 'Repete outra solicitação', situacao: 5, texto: 'Esta solicitação repete a nº {numero}, que já está em atendimento. Seguimos por lá e estamos concluindo esta.' },
-      { rot: 'Férias em análise', situacao: 2, tipos: ['avisoFerias', 'calcFerias'], texto: '{saudacao}! Recebemos a solicitação de férias de {empregado} e já estamos analisando. Antes de calcular, precisamos aguardar a atualização dos empréstimos consignados, para o cálculo sair correto. O pagamento das férias deve ser feito até {pagamentoFerias} (prazo legal: 2 dias antes do início). Lembramos que o empregado precisa ser comunicado das férias com 30 dias de antecedência (aviso de férias).{abono}' },
+      { rot: 'Férias em análise', situacao: 2, tipos: ['avisoFerias', 'calcFerias'], texto: TEXTO_FERIAS_ANALISE },
       { rot: 'Envio da rescisão', situacao: 4, tipos: ['calcRescisao'], texto: '{saudacao}! Segue o cálculo da rescisão de {empregado}. Lembramos que o pagamento das verbas rescisórias e a entrega dos documentos ao empregado devem ser feitos em até 10 dias corridos do término do contrato (CLT, art. 477, §6º), ou seja, até {pagamentoRescisao}. Qualquer dúvida, estamos à disposição.' }
     ],
     // Segundos entre "Enviar" e a chamada ao Onvio, para a pessoa desistir (trâmite não pode ser excluído). 0 desliga.
@@ -2488,7 +2504,7 @@
   const CASOS = {
     fora: { rot: 'Resolvida fora do portal?', botao: 'Concluir', situacao: 5 },     // códigos da lista padrão; situacaoEquivalente troca na lista do item
     duplicada: { rot: 'Duplicada', botao: 'Encerrar duplicada', situacao: 5 },
-    abaErrada: { rot: 'Lista errada', botao: 'Orientar e concluir', situacao: 5 },
+    abaErrada: { rot: 'Lista errada', botao: 'Orientar e colocar em análise', situacao: 2 },     // orienta e segue com esta (pedido do Josué, 23/10/2026)
     anexo: { rot: 'Anexo não chegou', botao: 'Pedir o anexo', situacao: 4 },
     falta: { rot: 'Falta informação', botao: 'Pedir informações', situacao: 4 },
     feriasNova: { rot: 'Férias nova', botao: 'Pôr em análise', situacao: 2 },

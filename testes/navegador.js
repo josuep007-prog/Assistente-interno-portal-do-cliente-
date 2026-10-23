@@ -400,7 +400,7 @@ await passo('app · Hoje (analista): destaque com rosca, carrossel e próximos p
   const cs = await p.$$eval('#hj-sug .cs-l', e => e.map(x => x.textContent));
   assert.equal(cs.length, 2);
   assert.match(cs[0], /^#101 ACME · FulanoSem resposta do escritório há 31 dias: provavelmente resolvida fora do portalConcluir/);
-  assert.match(cs[1], /^#102 BETA · Férias do JoãoAberta na lista Geral, mas tem aba própria: Aviso de férias.*Orientar e concluir/);
+  assert.match(cs[1], /^#102 BETA · Férias do JoãoAberta na lista Geral, mas tem aba própria: Aviso de férias.*Orientar e colocar em análise/);
   // divididas por categoria e, dentro dela, por tipo de solicitação, em barras recolhíveis
   assert.deepEqual(await p.$$eval('#hj-sug .sug-cat > summary b', e => e.map(x => x.textContent)), ['Resolvida fora do portal?', 'Lista errada']);
   assert.deepEqual(await p.$$eval('#hj-sug .sug-tipo > summary b', e => e.map(x => x.textContent)), ['Cálculo de férias', 'Geral']);
@@ -651,7 +651,7 @@ await passo('app · Hoje: rescisão nova (aviso): põe em análise com o aviso d
   const tx = await p.$eval('#a-texto', t => t.value);
   assert.match(tx, /rescisão de Maria Souza/);
   assert.match(tx, /até 30\/10\/2026/, 'a data do pagamento foi preenchida');
-  assert.match(tx, /exame demissional/);
+  assert.match(tx, /exame demissional/i);
   assert.match(tx, /documentos/);
   assert.match(tx, /eSocial/);
   assert.doesNotMatch(tx, /\{[a-zA-Z]+\}/, 'nenhuma variável sobrando: ' + tx);
@@ -768,7 +768,6 @@ await passo('app · Fila: abas Minhas, Todas e Respondidas, cartões por padrão
     m.forEach(x => { assert.equal(x.nowrap, 'nowrap', vis + ': sem quebra de linha'); assert.ok(x.h < x.lh * 1.8, vis + ': uma linha só (altura ' + x.h + ')'); assert.ok(x.t.length > 0, vis + ': title com a situação'); });
   }
   await p.click('[data-vis="cartoes"]');
-  if (await p.$('#tipos-ver[aria-expanded="false"]')) await p.click('#tipos-ver');          // Simplificado: a grade dos tipos abre por "Ver cartões"
   // cartões de tipo: nome inteiro (sem reticências) e aviso + cálculo ligados num bloco só
   assert.deepEqual(await p.$$eval('#tipos .tipo-par', e => e.map(x => x.querySelectorAll('.tipo-c').length + ':' + x.querySelector('.tipo-par-cab span').textContent)), ['2:Férias', '2:Rescisão']);
   assert.deepEqual(await p.$$eval('#tipos .tipo-par', e => e.map(x => [...x.querySelectorAll('.tipo-c')].map(c => c.dataset.tipo).join('+'))), ['avisoFerias+calcFerias', 'avisoRescisao+calcRescisao']);
@@ -1568,11 +1567,13 @@ await passo('app · detalhe: abas inteiras (não achatadas) mesmo com muito cont
 });
 
 await passo('app · Fila: cartões por tipo (todos, enxutos; de novo tira); ordem por prioridade, empresa (agrupada) e mais recente', async () => {
-  const p = await abrirApp('#/fila?escopo=todas', undefined, undefined, { estilo: 'atual' });      // a grade de tipos à vista é do estilo Atual (no Simplificado: faixa de chips e "Ver cartões")
+  const p = await abrirApp('#/fila?escopo=todas');
   const tipos = await p.$$eval('#tipos .tipo-c', e => e.map(x => x.dataset.tipo + '=' + x.querySelector('b').textContent));
   assert.equal(tipos.length, 11, 'todos os tipos, como antes');
   assert.ok(tipos.includes('=4') && tipos.includes('geral=1') && tipos.includes('calcFerias=1') && tipos.includes('afastamento=0'), tipos.join());
-  assert.match(await p.textContent('#tipos [data-tipo="calcFerias"]'), /sem prazo legal perto/);
+  // a mesma linha de apoio do Hoje: o motivo mais urgente do tipo (e o total, quando há mais)
+  assert.match(await p.textContent('#tipos [data-tipo="calcFerias"]'), /1 (prazo legal|sem análise|em análise|cliente respondeu|com o cliente)/i);
+  assert.doesNotMatch(await p.textContent('#tipos'), /sem prazo legal perto/);
   assert.equal(await p.$eval('#tipos [data-tipo="afastamento"]', b => b.classList.contains('zero')), true);
   const alt = await p.$$eval('#tipos .tipo-c', e => Math.min(...e.map(b => b.getBoundingClientRect().height)));
   assert.ok(alt >= 50 && alt <= 100, 'tamanho de cartão: ' + alt);
@@ -2087,23 +2088,21 @@ await passo('app · Simplificado em tela pequena (1366×650 e 1280×720): cabeç
     await p.reload(); await p.waitForSelector('#hj-tipos');
     assert.deepEqual(await p.$$eval('#hj-tipos, #hj-prev', e => e.map(x => x.classList.contains('recolhida'))), [true, false], onde + ': as barras lembram o estado');
     if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/simples-hoje-' + w + '.png' });
-    // Solicitações: o primeiro cartão começa acima de 400 px; os tipos são uma faixa de uma linha
+    // Solicitações: os cartões de tipo são os do Hoje, todos à vista (inclusive os sem nada); o primeiro cartão de solicitação ainda aparece na tela
     await p.evaluate(() => { location.hash = '#/fila'; });
     await p.waitForSelector('#corpo .sc');
-    assert.ok(await p.$eval('#corpo .sc', e => e.getBoundingClientRect().top) < 400, onde + ': o primeiro cartão começa acima de 400 px');
-    assert.equal(await p.$eval('#tipos', e => e.className), 'tipos-faixa');
+    assert.ok(await p.$eval('#corpo .sc', e => e.getBoundingClientRect().top) < h, onde + ': o primeiro cartão aparece sem rolar');
+    assert.ok(await p.$$eval('#tipos .tipo-c', e => e.length) >= 11, onde + ': todos os tipos à vista');
+    assert.ok(await p.$$eval('#tipos .tipo-c.zero', e => e.length) >= 1, onde + ': os sem nada também aparecem');
     assert.equal(await p.$eval('.fila-cab h3', e => getComputedStyle(e).display), 'none', 'sem o título da lista');
     await sem_rolagem(p, onde + ' Solicitações');
-    await p.click('#tipos-ver');
-    assert.ok(await p.$$eval('#tipos .tipo-c', e => e.length) >= 9, '"Ver cartões" abre a grade');
-    await p.reload(); await p.waitForSelector('#tipos');
-    assert.ok(await p.$$eval('#tipos .tipo-c', e => e.length) >= 9, onde + ': a escolha dos tipos fica lembrada');
     if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/simples-fila-' + w + '.png' });
     // detalhe (abre nos Dados ou na conversa) e as outras telas
     await p.evaluate(() => { location.hash = '#/fila?escopo=todas'; });
     await p.waitForSelector('#corpo [data-k]');
     await p.click('#corpo [data-k="geral:b"]'); await p.waitForSelector('#gaveta .dtab');
-    assert.ok(await p.$eval('#gaveta', e => e.getBoundingClientRect().bottom) <= h, onde + ': a janela cabe na tela');
+    // a solicitação aberta ocupa a tela toda
+    assert.deepEqual(await p.$eval('#gaveta', e => { const r = e.getBoundingClientRect(); return [r.left, r.top, Math.round(r.width), Math.round(r.height)]; }), [0, 0, w, h], onde + ': a solicitação ocupa a tela toda');
     await sem_rolagem(p, onde + ' detalhe');
     if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/simples-detalhe-' + w + '.png' });
     await p.keyboard.press('Escape');

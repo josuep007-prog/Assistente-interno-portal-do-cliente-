@@ -3,6 +3,13 @@
 import { esc, tipoVisual, tipoIcone } from '../util.js';
 const OC = window.OC;
 
+// Linha de apoio dos cartões (Hoje e Solicitações, iguais): o motivo mais urgente do tipo e quantas há no total.
+export function subPorMotivo(xs) {
+  if (!xs.length) return 'nenhuma';
+  const mo = OC.MOTIVOS.map(m => [m, xs.filter(i => OC.motivoDe(i) === m.k).length]).find(([, n]) => n);
+  return '<em class="m-' + mo[0].k + '">' + mo[1] + ' ' + esc(mo[0].rot.toLowerCase()) + '</em>' + (xs.length > mo[1] ? ' · ' + xs.length + ' no total' : '');
+}
+
 // Cartão de um tipo (k vazio = "Todos os tipos"). o.sub(xs): texto de apoio (HTML já escapado); sem ele, os prazos legais.
 export function cartaoTipo(k, rot, xs, o) {
   o = o || {};
