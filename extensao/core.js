@@ -78,6 +78,8 @@
   const TYPE_BY_KEY = Object.fromEntries(TYPES.map(t => [t.key, t]));
 
   const DEFAULTS = {
+    // Distribuição automática de responsáveis (liga o gestor, na Equipe): de quantos em quantos minutos e em que horas (seg a sex, hora local do Chrome)
+    distribuicaoAuto: { minutos: 15, inicio: 8, fim: 18 },
     intervalo: 5,             // minutos entre leituras completas (a verificação ao vivo lê tudo antes se algo mudar)
     tempoRealSeg: 30,         // segundos entre verificações leves enquanto o Onvio está na tela (0 desliga)
     primeiroTramite: 1,       // dias úteis para o primeiro trâmite
@@ -922,6 +924,13 @@
       for (const k of Object.keys(CASOS)) if (typeof raw.sugestoes[k] === 'boolean') sg[k] = raw.sugestoes[k];
       if (Object.keys(sg).length) out.sugestoes = sg;
     }
+    if (raw.distribuicaoAuto && typeof raw.distribuicaoAuto === 'object' && !Array.isArray(raw.distribuicaoAuto)) {
+      const da = {}, m = inteiro(raw.distribuicaoAuto.minutos, [5, 120]), i0 = inteiro(raw.distribuicaoAuto.inicio, [0, 23]), f0 = inteiro(raw.distribuicaoAuto.fim, [1, 24]);
+      if (m !== undefined) da.minutos = m;
+      if (i0 !== undefined) da.inicio = i0;
+      if (f0 !== undefined) da.fim = f0;
+      if (Object.keys(da).length) out.distribuicaoAuto = da;
+    }
     for (const k of ['pedidoAoCliente', 'cortesiaCliente', 'foraDoPortal', 'anexoCitado']) {
       if (Array.isArray(raw[k])) out[k] = [...new Set(raw[k].filter(p => typeof p === 'string' && p.trim() && p.length <= 60).map(p => semAcento(p).trim()))].slice(0, 80);
     }
@@ -961,7 +970,7 @@
         if (t && t.key !== 'geral' && palavras.length) out.abaErrada.push({ tipo: t.key, palavras });
       }
     }
-    const util = Object.keys(out.config).length || out.feriados.length || out.abaErrada.length || (out.observacoes && Object.keys(out.observacoes).length) || out.pedirConcluirAssunto || out.pedirConcluirTexto || out.tramiteCriacao || out.criacao || out.sugestoes || out.modelosCriacao || out.equipeDP || out.departamentoDP || out.departamentosDP || out.acidenteTipoIds || out.acidenteCatIds || out.prazoAnalistaPalavras || out.avisoTrabalhadoPalavras || out.acidentePalavras || out.senhaGestorSha256 || out.avaliacao || out.pedidoAoCliente || out.cortesiaCliente || out.foraDoPortal || out.anexoCitado || out.textosSugestao || out.modelosTramite;
+    const util = Object.keys(out.config).length || out.feriados.length || out.abaErrada.length || (out.observacoes && Object.keys(out.observacoes).length) || out.pedirConcluirAssunto || out.pedirConcluirTexto || out.tramiteCriacao || out.criacao || out.sugestoes || out.modelosCriacao || out.equipeDP || out.departamentoDP || out.departamentosDP || out.acidenteTipoIds || out.acidenteCatIds || out.prazoAnalistaPalavras || out.avisoTrabalhadoPalavras || out.acidentePalavras || out.senhaGestorSha256 || out.avaliacao || out.pedidoAoCliente || out.cortesiaCliente || out.foraDoPortal || out.anexoCitado || out.textosSugestao || out.modelosTramite || out.distribuicaoAuto;
     return util ? out : null;
   }
 
@@ -997,9 +1006,10 @@
       if (r.modelosTramite) base.modelosTramite = r.modelosTramite;
       if (r.textosSugestao) base.textosSugestao = Object.assign({}, DEFAULTS.textosSugestao, r.textosSugestao);
       if (r.sugestoes) base.sugestoes = Object.assign({}, DEFAULTS.sugestoes, r.sugestoes);
+      if (r.distribuicaoAuto) base.distribuicaoAuto = Object.assign({}, DEFAULTS.distribuicaoAuto, r.distribuicaoAuto);
     }
     // a senha da área do gestor vem só do código ou das regras do escritório, nunca dos ajustes da pessoa
-    return Object.assign(base, usuario || {}, { senhaGestorSha256: base.senhaGestorSha256, pesosNota: base.pesosNota, avaliacaoMinEntregas: base.avaliacaoMinEntregas, equipeDP: base.equipeDP, departamentoDP: base.departamentoDP, departamentosDP: base.departamentosDP, acidenteTipoIds: base.acidenteTipoIds, acidenteCatIds: base.acidenteCatIds });
+    return Object.assign(base, usuario || {}, { distribuicaoAuto: base.distribuicaoAuto, senhaGestorSha256: base.senhaGestorSha256, pesosNota: base.pesosNota, avaliacaoMinEntregas: base.avaliacaoMinEntregas, equipeDP: base.equipeDP, departamentoDP: base.departamentoDP, departamentosDP: base.departamentosDP, acidenteTipoIds: base.acidenteTipoIds, acidenteCatIds: base.acidenteCatIds });
   }
 
   /* ---------- setores (DP × outros departamentos) ----------
@@ -1021,6 +1031,34 @@
     if (!perfil || !perfil.ativo) return items || [];
     const deps = perfil.deps || (perfil.dep ? [perfil.dep] : []);
     return (items || []).filter(i => perfil.fora ? !!i.mine : i.mine || !(deps.length && i.type === 'geral' && i.departmentId && !deps.includes(String(i.departmentId).toUpperCase())));
+  }
+
+  /* ---------- distribuição automática de responsáveis (liga o gestor; roda no service worker a cada N minutos) ----------
+   * Os mesmos critérios da aba Distribuir (OC.distribuirPorCliente: quem mais atendeu a empresa em 30 dias; Cadastros pelo líder de
+   * admissões). Só atribui onde há sugestão com id e a solicitação está SEM responsável; sem histórico fica para decisão manual. */
+  function dentroDoHorario(agora, settings) {
+    const c = Object.assign({}, DEFAULTS.distribuicaoAuto, (settings && settings.distribuicaoAuto) || {});
+    const d = agora || new Date(), dia = d.getDay();
+    if (dia === 0 || dia === 6) return false;
+    const h = d.getHours() + d.getMinutes() / 60;
+    return h >= c.inicio && h < c.fim;
+  }
+  // pendencias: o que está no snapshot; sugestoes: OC.distribuirPorCliente; perfil: OC.perfilSetor (Geral só do DP). { atribuir, puladas }
+  function planoDistribuicaoAuto(pendencias, sugestoes, perfil) {
+    const visiveis = new Set(filtrarPorSetor(pendencias, perfil).map(i => i.k));
+    const puladas = { semHistorico: 0, semId: 0, naoPode: 0, outroSetor: 0, jaTemResponsavel: 0 };
+    const atribuir = [];
+    for (const x of sugestoes || []) {
+      const it = x.item;
+      if (!it) continue;
+      if (it.resp) { puladas.jaTemResponsavel++; continue; }
+      if (!visiveis.has(it.k)) { puladas.outroSetor++; continue; }
+      if (x.semHistorico || !x.resp) { puladas.semHistorico++; continue; }
+      if (!x.respId) { puladas.semId++; continue; }
+      if (!podeAcao('responsavel', it).ok) { puladas.naoPode++; continue; }
+      atribuir.push({ item: it, resp: x.resp, respId: x.respId, motivo: x.motivo });
+    }
+    return { atribuir, puladas };
   }
 
   /* ---------- painel por cliente (dashboard Clientes) ---------- */
@@ -2659,5 +2697,5 @@
     };
   }
 
-  g.OC = { montarLoteHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, acaoConcluir, agruparSugestoes, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, marcadoresPendentes, avisosResposta, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { montarLoteHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, dentroDoHorario, planoDistribuicaoAuto, acaoConcluir, agruparSugestoes, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, marcadoresPendentes, avisosResposta, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);
