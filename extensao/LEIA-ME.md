@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.42.0)
+# Control Onvio · ControlTax (v0.42.1)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,11 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.42.1 (abono pecuniário no texto de férias em análise)
+
+- Quando a solicitação de férias tem **pagamento de abono** (cálculo: "Pagar abono" = sim ou dias de abono; lido no detalhe, na hora), o texto sugerido de **Em análise** (sugestão do Hoje, Pôr em análise e o modelo "Férias em análise") acrescenta que o abono deve ser solicitado pelo próprio empregado, **em carta de próprio punho, até 15 dias antes do término do período aquisitivo (art. 143 e §1º da CLT)**, e que a carta é necessária para incluir o abono no cálculo. Sem abono o texto não muda. A frase é `textosSugestao.feriasAbono` (as regras do escritório podem trocar) e entra pela variável `{abono}`; sem o detalhe lido, o marcador fica e barra o envio, como o prazo de pagamento.
+- **A confirmar:** no Aviso de férias o Onvio pode não trazer o campo do abono; nesse caso o texto sai sem a frase (a pessoa acrescenta se souber). Conferir a redação com o jurídico.
 
 ## Novidades da v0.42.0 (tema Simplificado)
 
