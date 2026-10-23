@@ -651,7 +651,7 @@ await passo('app · Hoje: rescisão nova (aviso): põe em análise com o aviso d
   const tx = await p.$eval('#a-texto', t => t.value);
   assert.match(tx, /rescisão de Maria Souza/);
   assert.match(tx, /até 30\/10\/2026/, 'a data do pagamento foi preenchida');
-  assert.match(tx, /exame demissional/);
+  assert.match(tx, /exame demissional/i);
   assert.match(tx, /documentos/);
   assert.match(tx, /eSocial/);
   assert.doesNotMatch(tx, /\{[a-zA-Z]+\}/, 'nenhuma variável sobrando: ' + tx);

@@ -2219,7 +2219,7 @@ test('Pôr em análise: só na vez do escritório, onde o Onvio oferece Em anál
   // texto: férias e aviso de rescisão com prazos; cálculo de rescisão e as outras listas, o curto (estamos cientes e daremos continuidade)
   assert.match(a('avisoFerias').acao.texto, /empréstimos consignados/);
   assert.match(a('calcFerias').acao.texto, /empréstimos consignados/);
-  assert.match(a('avisoRescisao').acao.texto, /exame demissional/);
+  assert.match(a('avisoRescisao').acao.texto, /exame demissional/i);
   assert.equal(a('calcRescisao').acao.texto, 'Olá! Estamos cientes da solicitação e daremos continuidade a ela.', 'cálculo de rescisão: só o aviso de que estamos cientes');
   assert.equal(a('geral').acao.texto, OC.DEFAULTS.textosSugestao.emAnalise);
   assert.equal(OC.marcadoresPendentes(a('calcRescisao').acao.texto).length, 0, 'sem variáveis: dá para mandar em lote');
@@ -2244,7 +2244,7 @@ test('rodada 2: férias nova em análise, aviso trabalhado com lembrete, acident
   // rescisão nova (qualquer tipo): põe em análise e avisa do pagamento, dos documentos, do exame demissional e do eSocial/FGTS
   const re = casos.find(c => c.k === 'avisoRescisao:4');
   assert.deepEqual(plano([re.rot, re.botao, re.acao.situacao]), ['Rescisão nova', 'Pôr em análise', '2']);
-  assert.match(re.acao.texto, /rescisão de \{empregado\}.*último dia trabalhado.*trabalhado ou indenizado.*consignado.*qualquer tipo de rescisão.*documentos.*10 dias corridos.*art\. 477.*\{pagamentoRescisao\}.*exame demissional.*eSocial.*FGTS/s);
+  assert.match(re.acao.texto, /rescisão de \{empregado\}.*último dia trabalhado.*trabalhado ou indenizado.*consignado.*qualquer tipo de rescisão.*documentos.*10 dias corridos.*art\. 477.*\{pagamentoRescisao\}.*exame demissional.*eSocial.*FGTS/si);
   assert.doesNotMatch(re.acao.texto, /pagamentoFerias|férias/i, 'texto de rescisão, sem nada de férias');
   assert.equal(OC.casosSugeridos([it('avisoRescisao:4', { type: 'avisoRescisao' })], {}, Object.assign({}, OC.DEFAULTS, { sugestoes: { rescisaoNova: false } })).length, 0, 'as regras desligam o caso');
   const rg = OC.combinarSettings({ regras: OC.normalizarRegras({ textosSugestao: { rescisaoAnalise: 'Olá {empregado}, até {pagamentoRescisao}.' } }) }, {});
@@ -2294,10 +2294,11 @@ test('férias em análise: com abono pecuniário o texto manda o empregado pedir
   const modelo = OC.modelosPara(item, {}, []).find(m => m.rot === 'Férias em análise').texto;
   for (const txt of [modelo, OC.acaoAnalise(item, {}).acao.texto]) {
     const com = monta(txt, { inicio: '2026-11-10', abono: true }), sem = monta(txt, { inicio: '2026-11-10', abono: false });
-    assert.match(com, /abono pecuniário.*carta de próprio punho.*15 dias antes do término do período aquisitivo.*art\. 143/s);
+    assert.match(com, /abono pecuniário.*carta de próprio punho.*15 dias antes do término do período aquisitivo.*art\. 143/si);
     assert.doesNotMatch(sem, /abono|carta/i, 'sem abono, nada do abono');
     assert.ok(!/\{\w+\}/.test(com) && !/\{\w+\}/.test(sem), 'nenhuma variável sobra');
-    assert.ok(sem.endsWith('(aviso de férias).'), 'sem espaço sobrando no fim');
+    assert.ok(sem.endsWith('30 dias de antecedência.'), 'sem espaço sobrando no fim');
+    assert.match(com, /\n- Abono pecuniário/, 'o abono vira um tópico');
   }
   // sem o detalhe lido ainda, o abono é desconhecido: o marcador fica e barra o envio (como o prazo de pagamento)
   assert.deepEqual(OC.marcadoresPendentes(monta(modelo, null)).includes('{abono}'), true);

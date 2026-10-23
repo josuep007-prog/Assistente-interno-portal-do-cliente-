@@ -1477,6 +1477,7 @@ details:not([open]) > summary > .sug-seta{transform:rotate(-90deg)}
 /* janela da sugestão em lote */
 .lote-resumo{margin:12px 0; font-size:13px; color:var(--ink-2)}
 .lote-resumo ul{margin:6px 0 0; padding-left:18px}
+.lote-resumo li{white-space:pre-line}     /* textos em tópicos: as quebras de linha aparecem no resumo do lote */
 .lote-resumo p{margin:0 0 6px}
 .lote-lista{display:flex; flex-direction:column; gap:4px; max-height:300px; overflow-y:auto}
 .lote-it{display:flex; align-items:center; gap:10px; padding:7px 10px; border:1px solid var(--rule); border-radius:var(--r); background:var(--surface-2); cursor:pointer}
