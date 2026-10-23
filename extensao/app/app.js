@@ -74,6 +74,18 @@ function telaBloqueio(v) {
   $('#bl-onvio', v).onclick = () => enviar({ cmd: 'fecharPainel' });
 }
 
+// Textos de ajuda (classe "ajuda"): o texto fica no HTML nos dois estilos; o título do bloco ganha o mesmo texto como dica
+// e o estilo Simplificado esconde o parágrafo. Vale também para o que a tela redesenha depois.
+function marcarAjudas() {
+  $$('#vista .ajuda:not([data-aj])').forEach(a => {
+    a.dataset.aj = '1';
+    const t = a.textContent.replace(/\s+/g, ' ').trim(), ant = a.previousElementSibling;
+    const alvo = ant && /^H[1-4]$/.test(ant.tagName) ? ant : a.parentElement;
+    if (alvo && t && !alvo.title) alvo.title = t;
+  });
+}
+new MutationObserver(marcarAjudas).observe(document.getElementById('vista'), { childList: true, subtree: true });
+
 let telaAnterior = '', tEntra = 0;
 function desenhar() {
   rota = lerRota();

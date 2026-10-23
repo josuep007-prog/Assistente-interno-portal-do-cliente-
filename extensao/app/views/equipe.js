@@ -130,18 +130,18 @@ function desempenho(el, ctx, params) {
       '<div class="av-kpis">' +
         kpi('av-k-entregas', 'Entregas', '<span data-conta="' + e.concluidas + '" data-de="0">' + num(e.concluidas) + '</span>', delta(e.variacao.concluidas, '', true), miniBarras(e.porDia.map(d => ({ rot: per(d.dia), n: d.n })), { largura: 150, titulo: 'Entregas por dia' })) +
         kpi('av-k-prazo', 'No prazo', pctTxt(e.pctNoPrazo), delta(e.variacao.pctNoPrazo, ' p.p.', true), '<i class="av-barra"><i style="width:' + (e.pctNoPrazo || 0) + '%"></i></i>') +
-        kpi('av-k-tempo', 'Tempo com o escritório', fmt1(e.tempoMedio) + '<small> d.u.</small>', '<span class="av-d">média por entrega, sem a espera pelo cliente</span>') +
+        kpi('av-k-tempo', 'Tempo com o escritório', fmt1(e.tempoMedio) + '<small> d.u.</small>', '<span class="av-d ajuda">média por entrega, sem a espera pelo cliente</span>') +
         kpi('av-k-emdia', 'Carteira em dia', pctTxt(e.pctEmDia), '<span class="av-d">' + plural(e.esc, 'pendência', 'pendências') + ' com o escritório agora</span>', '<i class="av-barra"><i style="width:' + (e.pctEmDia || 0) + '%"></i></i>') +
-        kpi('av-k-pt', '1º trâmite', fmt1(e.primeiroTramite) + '<small> d.u.</small>', '<span class="av-d">média · inclui as ainda sem resposta</span>') +
-        kpi('av-k-qual', 'Alertas evitáveis', '<span class="' + (e.g3Esc ? 'late' : '') + '">' + num(e.g3Esc) + '</span>', '<span class="av-d">críticas (G3) na vez do escritório</span>') +
+        kpi('av-k-pt', '1º trâmite', fmt1(e.primeiroTramite) + '<small> d.u.</small>', '<span class="av-d ajuda">média · inclui as ainda sem resposta</span>') +
+        kpi('av-k-qual', 'Alertas evitáveis', '<span class="' + (e.g3Esc ? 'late' : '') + '">' + num(e.g3Esc) + '</span>', '<span class="av-d ajuda">críticas (G3) na vez do escritório</span>') +
       '</div>' +
     '</section>' +
     '<div class="av-como" id="av-como-txt" hidden><b>Como a nota é calculada (0 a 100)</b><ul>' + COMP.map(([k, rot, d]) => '<li><b>' + rot + ' · peso ' + r.pesos[k] + '</b> ' + esc(d) + '</li>').join('') + '</ul>' +
       '<p><b>Para ser justa:</b> o tempo que conta é só o tempo em que a vez era do escritório (lido nos trâmites de cada entrega); a entrega conta para quem a concluiu, não para o responsável atual; atrasos de origem do cliente não pesam; com poucas entregas, os percentuais são puxados para a média da equipe, e abaixo de ' + r.minEntregas + ' entregas no período a pessoa aparece sem posição ("poucos dados"); item sem dado recebe o valor da equipe. O gestor pode tirar um caso da conta ("Não contar", no detalhe de cada pessoa). Pesos e mínimo podem vir do arquivo de regras (avaliacao).</p>' +
       '<p>Faixas: 85+ Excelente · 70+ Bom · 50+ Atenção · abaixo, Precisa de apoio. É um retrato para conversar com a equipe, não um julgamento automático.</p></div>' +
     '<div class="av-grade">' +
-      '<section class="card av-rank-card"><div class="card-h"><h3>Classificação de desempenho</h3><span class="sub">clique numa linha para ver o detalhe · no cabeçalho para ordenar</span></div><div class="card-b"><div class="av-rank" id="av-rank"></div></div></section>' +
-      '<section class="card"><div class="card-h"><h3>Entregas no período</h3><span class="sub">no prazo × fora do prazo, por analista</span></div><div class="card-b"><div id="av-barras"></div></div></section>' +
+      '<section class="card av-rank-card"><div class="card-h"><h3>Classificação de desempenho</h3><span class="sub ajuda">clique numa linha para ver o detalhe · no cabeçalho para ordenar</span></div><div class="card-b"><div class="av-rank" id="av-rank"></div></div></section>' +
+      '<section class="card"><div class="card-h"><h3>Entregas no período</h3><span class="sub ajuda">no prazo × fora do prazo, por analista</span></div><div class="card-b"><div id="av-barras"></div></div></section>' +
     '</div>' +
     '';
 
@@ -397,7 +397,7 @@ function responsaveis(el, ctx) {
         '<td class="num"><b>' + r.total + '</b></td><td class="num">' + r.esc + '</td><td class="num">' + r.cli + '</td><td class="num ' + (r.g1 ? 'today' : '') + '">' + r.g1 + '</td><td class="num ' + (r.g2 ? 'late' : '') + '">' + r.g2 + '</td><td class="num ' + (r.g3 ? 'late' : '') + '">' + r.g3 + '</td><td class="num">' + r.semPrimeiro + '</td><td class="num">' + (r.ptMedia == null ? '–' : String(r.ptMedia).replace('.', ',')) + '</td></tr>').join('') : '<tr><td colspan="10" class="vazio">Sem dados.</td></tr>') +
     '</tbody></table></div>' +
     '<div class="legenda-viz" style="margin-top:10px"><span><i style="background:var(--viz-ok)"></i>Em dia</span><span><i style="background:var(--viz-warn)"></i>G1 atenção</span><span><i style="background:var(--viz-serious)"></i>G2 fora do prazo</span><span><i style="background:var(--viz-crit)"></i>G3 crítica</span></div>' +
-    '<p class="card-nota">Clique numa pessoa para ver a fila dela. "1º trâmite" é a média de dias úteis até a primeira resposta do escritório (estimativa).</p>';
+    '<p class="card-nota ajuda">Clique numa pessoa para ver a fila dela. "1º trâmite" é a média de dias úteis até a primeira resposta do escritório (estimativa).</p>';
   ligarEquipe(el, ctx);
   $$('[data-resp]', el).forEach(tr => {
     const go = () => ctx.navegar('fila', { analista: tr.dataset.resp });

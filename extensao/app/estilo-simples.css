@@ -289,3 +289,45 @@
 }
 /* conversa: balões sem sombra e linha do tempo mais leve */
 :root[data-estilo="simples"] .tr-bolha{ box-shadow:none }
+
+/* ======================= Equipe, Distribuir, Agenda e Configurações ======================= */
+/* textos de ajuda: escondidos (o texto está na dica do bloco) */
+:root[data-estilo="simples"] .ajuda{ display:none }
+:root[data-estilo="simples"] .cfg-tx:has(.ajuda) > label::after, :root[data-estilo="simples"] .cfg-sw .cfg-tx:has(.ajuda) > b::after{ content:" ⓘ"; color:var(--ink-3); font-weight:400; cursor:help }
+:root[data-estilo="simples"] .av-kpi[title] .av-kpi-rot::after{ content:" ⓘ"; color:var(--ink-3); text-transform:none; letter-spacing:0 }
+:root[data-estilo="simples"] .card-h[title] h3::after, :root[data-estilo="simples"] .cfg-card h3[title]::after{ content:" ⓘ"; color:var(--ink-3); font-weight:400; cursor:help }
+/* Equipe: destaque menor; ranking e gráfico lado a lado até 1200px */
+:root[data-estilo="simples"] .av-hero{ margin-bottom:var(--gap) }
+:root[data-estilo="simples"] .av-nota{ gap:16px; padding:14px 18px; background:none }
+:root[data-estilo="simples"] .av-nota .ap{ --sz:96px !important }
+:root[data-estilo="simples"] .av-nota .ap-c b{ font-size:30px }
+:root[data-estilo="simples"] .av-nota h2{ font-size:20px; font-weight:600; margin:2px 0 }
+:root[data-estilo="simples"] .av-kpi{ padding:10px 14px; gap:2px }
+:root[data-estilo="simples"] .av-kpi-val{ font-size:22px }
+:root[data-estilo="simples"] .av-kpi-rot{ font-weight:500; text-transform:none; letter-spacing:0; font-size:12px }
+:root[data-estilo="simples"] .av-grade{ gap:var(--gap) }
+@media (max-width:1280px) and (min-width:1000px){ :root[data-estilo="simples"] .av-grade{ grid-template-columns:minmax(0,1.5fr) minmax(0,1fr) } }
+:root[data-estilo="simples"] .av-nota-tag{ background:none; box-shadow:none; padding:0; font-weight:600 }
+/* Distribuir: cartão do automático como uma linha de estado */
+:root[data-estilo="simples"] .da-card{ padding:0 }
+:root[data-estilo="simples"] .da-estado{ padding:8px 14px; gap:10px }
+:root[data-estilo="simples"] .da-estado-tx b{ font-size:13.5px; font-weight:600 }
+:root[data-estilo="simples"] .da-linha{ margin-left:6px }
+:root[data-estilo="simples"] .da-estado-tx{ display:flex; align-items:baseline; gap:6px; flex-wrap:wrap }
+:root[data-estilo="simples"] .dist-resumo span{ border:0; background:none; padding:0 8px 0 0 }
+/* Agenda: calendário mais baixo; "+ Lembrete neste dia" sai (o botão do cabeçalho cria) */
+:root[data-estilo="simples"] .card-h #ag-novo{ display:none }
+:root[data-estilo="simples"] .cal-d{ height:36px; gap:2px }
+:root[data-estilo="simples"] .cal{ margin-top:8px }
+:root[data-estilo="simples"] .cal-d.n1, :root[data-estilo="simples"] .cal-d.n2, :root[data-estilo="simples"] .cal-d.n3{ background:none }
+:root[data-estilo="simples"] .cal-d.n1 .cal-pts i, :root[data-estilo="simples"] .cal-d.n2 .cal-pts i, :root[data-estilo="simples"] .cal-d.n3 .cal-pts i{ background:var(--blue-deep) }
+:root[data-estilo="simples"] .adiar{ display:inline-block }
+:root[data-estilo="simples"] .adiar .menu-list{ min-width:110px; left:auto; right:0 }
+:root[data-estilo="simples"] .adiar > summary{ list-style:none }
+:root[data-estilo="simples"] .adiar > summary::-webkit-details-marker{ display:none }
+/* Configurações: o selo "padrão" só aparece quando o valor difere */
+:root[data-estilo="simples"] .orig-padrao{ display:none }
+:root[data-estilo="simples"] .cfg-campo{ padding-block:7px }
+:root[data-estilo="simples"] .cfg-card{ padding:12px 14px }
+:root[data-estilo="simples"] .cfg-grade{ gap:var(--gap) }
+:root[data-estilo="simples"] .cfg-col{ gap:var(--gap) }

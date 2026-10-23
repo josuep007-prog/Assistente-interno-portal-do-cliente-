@@ -108,7 +108,7 @@ function corpo(sem) {
         '<span class="mono">#' + esc(i.num) + '</span>' +
         '<span><div class="c-main">' + esc(i.apelido || i.cliente || '—') + '</div><div class="c-sub">' + esc([i.typeLabel, i.detalhe].filter(Boolean).join(' · ')) + '</div></span>' +
         '<span>' + pillSituacao(i) + '<div class="c-sub">parada há ' + (i.parado || 0) + 'd</div></span>' +
-        '<span class="dist-sug"><label>Sugestão<select data-esc="' + esc(i.k) + '" aria-label="Responsável"' + (st === 'ok' ? ' disabled' : '') + '>' +
+        '<span class="dist-sug"><label>' + (simples() ? '' : 'Sugestão') + '<select data-esc="' + esc(i.k) + '" aria-label="Responsável"' + (st === 'ok' ? ' disabled' : '') + '>' +
           (atual ? '' : '<option value="" selected>Escolha o responsável…</option>') +
           opcoes.map(p => '<option value="' + esc(p.id) + '"' + (p.id === atual ? ' selected' : '') + '>' + esc(p.nome) + '</option>').join('') +
         '</select></label><small' + (x.semHistorico ? ' class="today"' : '') + '>' + esc(x.motivo) + (x.alternativas.length ? ' · depois: ' + esc(x.alternativas.map(a => a.resp + ' (' + a.n + ')').join(', ')) : '') + '</small>' +

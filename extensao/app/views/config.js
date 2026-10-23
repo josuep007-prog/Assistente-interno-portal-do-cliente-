@@ -118,7 +118,7 @@ function prazos(el) {
     '<div class="cfg-grade">' +
       '<div class="cfg-col">' + GRUPOS.map(g => '<section class="cfg-card"><h3><svg class="ic"><use href="#' + g.ic + '"/></svg>' + esc(g.titulo) + '</h3>' +
         g.campos.map(c => { const [cls, rot] = origem(c.k), [mn, mx] = lim(c.k); return '<div class="cfg-campo" data-campo="' + c.k + '">' +
-          '<div class="cfg-tx"><label for="cf-' + c.k + '">' + esc(c.rot) + '</label><small>' + esc(c.ajuda) + '</small></div>' +
+          '<div class="cfg-tx"><label for="cf-' + c.k + '">' + esc(c.rot) + '</label><small class="ajuda">' + esc(c.ajuda) + '</small></div>' +
           '<div class="cfg-num"><button type="button" class="icon-btn" data-menos="' + c.k + '" aria-label="Menos">−</button><input type="number" id="cf-' + c.k + '" data-k="' + c.k + '" min="' + mn + '" max="' + mx + '" value="' + esc(valor(c.k)) + '"><button type="button" class="icon-btn" data-mais="' + c.k + '" aria-label="Mais">+</button></div>' +
           '<div class="cfg-un">' + esc(c.un) + '</div>' +
           '<div class="cfg-orig"><span class="orig orig-' + cls + '" title="De onde vem o valor em vigor">' + rot + '</span>' + (cls === 'seu' ? '<button type="button" class="cfg-volta" data-volta="' + c.k + '" title="Voltar ao valor do escritório (' + esc(base()[c.k]) + ')">↺ ' + esc(base()[c.k]) + '</button>' : '') + '</div>' +
@@ -165,12 +165,12 @@ function prazos(el) {
 /* ---------- Leitura e avisos ---------- */
 function leitura(el) {
   const s = estado.settings;
-  const sw = (k, rot, ajuda) => '<label class="cfg-sw"><input type="checkbox" data-b="' + k + '"' + (s[k] ? ' checked' : '') + '><span class="cfg-tx"><b>' + esc(rot) + '</b><small>' + esc(ajuda) + '</small></span></label>';
+  const sw = (k, rot, ajuda) => '<label class="cfg-sw"><input type="checkbox" data-b="' + k + '"' + (s[k] ? ' checked' : '') + '><span class="cfg-tx"><b>' + esc(rot) + '</b><small class="ajuda">' + esc(ajuda) + '</small></span></label>';
   el.innerHTML =
     '<div class="cfg-grade"><div class="cfg-col">' +
       '<section class="cfg-card"><h3><svg class="ic"><use href="#i-pulso"/></svg>Leitura do Onvio</h3>' +
-        '<div class="cfg-campo"><div class="cfg-tx"><label for="cf-tempoRealSeg">Verificação ao vivo a cada</label><small>Só com o Onvio visível. 0 desliga; o mínimo é 15 s.</small></div><div class="cfg-num"><input type="number" id="cf-tempoRealSeg" min="0" max="600" value="' + esc(s.tempoRealSeg) + '"></div><div class="cfg-un">segundos</div><div></div></div>' +
-        '<div class="cfg-campo"><div class="cfg-tx"><label for="cf-intervalo">Leitura completa a cada</label><small>Mesmo sem mudança detectada.</small></div><div class="cfg-num"><input type="number" id="cf-intervalo" min="1" max="120" value="' + esc(s.intervalo) + '"></div><div class="cfg-un">minutos</div><div></div></div>' +
+        '<div class="cfg-campo"><div class="cfg-tx"><label for="cf-tempoRealSeg">Verificação ao vivo a cada</label><small class="ajuda">Só com o Onvio visível. 0 desliga; o mínimo é 15 s.</small></div><div class="cfg-num"><input type="number" id="cf-tempoRealSeg" min="0" max="600" value="' + esc(s.tempoRealSeg) + '"></div><div class="cfg-un">segundos</div><div></div></div>' +
+        '<div class="cfg-campo"><div class="cfg-tx"><label for="cf-intervalo">Leitura completa a cada</label><small class="ajuda">Mesmo sem mudança detectada.</small></div><div class="cfg-num"><input type="number" id="cf-intervalo" min="1" max="120" value="' + esc(s.intervalo) + '"></div><div class="cfg-un">minutos</div><div></div></div>' +
         '<p class="cfg-carga" id="cf-carga"></p>' +
       '</section>' +
       '<section class="cfg-card"><h3><svg class="ic"><use href="#i-bell"/></svg>Avisos</h3>' +
@@ -235,7 +235,7 @@ function feriados(el) {
     '<div class="cfg-grade"><div class="cfg-col">' +
       '<section class="cfg-card"><div class="fa-cab"><h3><svg class="ic"><use href="#i-calendar"/></svg>Feriados de ' + anoFer + ' <span class="fraco">' + doAno.length + '</span></h3>' +
         '<div class="fa-nav"><button type="button" class="icon-btn" id="fa-ant" aria-label="Ano anterior" title="Ano anterior"><svg class="ic"><use href="#i-chev-l"/></svg></button><button type="button" class="btn btn-sm" id="fa-hoje">Este ano</button><button type="button" class="icon-btn" id="fa-prox" aria-label="Próximo ano" title="Próximo ano"><svg class="ic"><use href="#i-chev-r"/></svg></button></div></div>' +
-        '<p class="fraco">Não contam como dia útil em nenhum prazo.</p>' +
+        '<p class="fraco ajuda">Não contam como dia útil em nenhum prazo.</p>' +
         '<div class="fa-leg"><span><i class="fer-padrao"></i>nacional</span><span><i class="fer-esc"></i>do escritório</span><span><i class="fer-seu"></i>local (só seu)</span><span><i class="fds"></i>fim de semana</span></div>' +
         '<div class="fa-ano">' + Array.from({ length: 12 }, (_, m) => mes(m)).join('') + '</div>' +
       '</section></div>' +
@@ -257,11 +257,11 @@ function palavras(el) {
   const chips = l => '<div class="cfg-chips">' + (l || []).map(p => '<span>' + esc(p) + '</span>').join('') + '</div>';
   el.innerHTML =
     '<div class="cfg-grade"><div class="cfg-col">' +
-      '<section class="cfg-card"><h3><svg class="ic"><use href="#i-chat"/></svg>A resposta do analista ainda pede algo ao cliente</h3><p class="fraco">Com qualquer uma destas palavras (ou uma pergunta) na última resposta, a solicitação na vez do cliente continua pendente e não conta como resolvida.</p>' + chips(s.pedidoAoCliente) + '</section>' +
-      '<section class="cfg-card"><h3><svg class="ic"><use href="#i-check"/></svg>Frases de cortesia (não são pedido)</h3><p class="fraco">Tiradas do texto antes de procurar as palavras acima.</p>' + chips(s.cortesiaCliente) + '</section>' +
-      '<section class="cfg-card"><h3><svg class="ic"><use href="#i-layers"/></svg>Possível aba errada (Geral)</h3><p class="fraco">Assunto da Geral com estas palavras sugere a lista específica.</p>' +
+      '<section class="cfg-card"><h3><svg class="ic"><use href="#i-chat"/></svg>A resposta do analista ainda pede algo ao cliente</h3><p class="fraco ajuda">Com qualquer uma destas palavras (ou uma pergunta) na última resposta, a solicitação na vez do cliente continua pendente e não conta como resolvida.</p>' + chips(s.pedidoAoCliente) + '</section>' +
+      '<section class="cfg-card"><h3><svg class="ic"><use href="#i-check"/></svg>Frases de cortesia (não são pedido)</h3><p class="fraco ajuda">Tiradas do texto antes de procurar as palavras acima.</p>' + chips(s.cortesiaCliente) + '</section>' +
+      '<section class="cfg-card"><h3><svg class="ic"><use href="#i-layers"/></svg>Possível aba errada (Geral)</h3><p class="fraco ajuda">Assunto da Geral com estas palavras sugere a lista específica.</p>' +
         (s.abaErrada || []).map(a => '<div class="cfg-aba"><b>' + esc((OC.TYPE_BY_KEY[a.tipo] || {}).label || a.tipo) + '</b>' + chips(a.palavras) + '</div>').join('') + '</section>' +
-      '<p class="fraco">Essas listas vêm do arquivo de regras do escritório (aba Avançado), para valerem igual para todos.</p>' +
+      '<p class="fraco ajuda">Essas listas vêm do arquivo de regras do escritório (aba Avançado), para valerem igual para todos.</p>' +
     '</div></div>';
 }
 
