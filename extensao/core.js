@@ -2496,6 +2496,14 @@
   }
   // Lista de casos para o painel, do mais forte ao mais fraco. ignorados: { k: { l } } (a pessoa disse "não é o caso";
   // volta se a solicitação mexer). Cada caso: { k, item, tipo, rot, porque, botao, acao: { situacao, texto }, pode }
+  // Concluir por falta de retorno do cliente (Hoje e Solicitações): se pode, e o trâmite já preenchido (1 ou 2 passos, conforme a lista)
+  function acaoConcluir(item, settings) {
+    const s = Object.assign({}, DEFAULTS, settings || {});
+    const tx = Object.assign({}, DEFAULTS.textosSugestao, s.textosSugestao || {});
+    const plano = planoConclusao(item), p0 = podeAcao('tramite', item);
+    const pode = !p0.ok ? p0 : plano ? p0 : { ok: false, motivo: 'a extensão não consegue concluir esta lista a partir da situação atual: conclua pelo Onvio' };
+    return { pode, acao: plano ? { situacao: String(plano.situacao), texto: String(tx.semRetorno || ''), antes: plano.antes.map(a => ({ situacao: String(a.situacao), rot: a.rot, texto: String(tx.semRetornoEtapa || '') })) } : { situacao: '', texto: String(tx.semRetorno || ''), antes: [] } };
+  }
   function casosSugeridos(items, analises, settings, ignorados) {
     const s = Object.assign({}, DEFAULTS, settings || {});
     const tx = Object.assign({}, DEFAULTS.textosSugestao, s.textosSugestao || {});
@@ -2541,9 +2549,8 @@
         return Object.assign(c, { rot: def.rot, botao: def.botao, pode: { ok: true }, porque: 'Aviso prévio trabalhado: lembrar de emitir o aviso (sem cálculo)' + (lem.semData ? ' · a data do aviso não foi lida: lembrete para o próximo dia útil' : ' · lembrete para ' + lem.dia), acao: { lembrete: lem } });
       }
       if (def.conclusao) {                                         // concluir por falta de retorno: 1 ou 2 passos, conforme a lista
-        const plano = planoConclusao(c.item), p0 = podeAcao('tramite', c.item);
-        const pode = !p0.ok ? p0 : plano ? p0 : { ok: false, motivo: 'a extensão não consegue concluir esta lista a partir da situação atual: conclua pelo Onvio' };
-        return Object.assign(c, { rot: def.rot, botao: def.botao, pode, acao: plano ? { situacao: String(plano.situacao), texto: String(tx.semRetorno || ''), antes: plano.antes.map(a => ({ situacao: String(a.situacao), rot: a.rot, texto: String(tx.semRetornoEtapa || '') })) } : { situacao: '', texto: String(tx.semRetorno || ''), antes: [] } });
+        const ac = acaoConcluir(c.item, s);
+        return Object.assign(c, { rot: def.rot, botao: def.botao, pode: ac.pode, acao: ac.acao });
       }
       const pode = podeAcao('tramite', c.item);
       const sits = pode.ok ? situacoesTramite(c.item).map(x => x.code) : [];
@@ -2633,5 +2640,5 @@
     };
   }
 
-  g.OC = { montarLoteHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, marcadoresPendentes, avisosResposta, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { montarLoteHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, acaoConcluir, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, marcadoresPendentes, avisosResposta, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);

@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.36.0)
+# Control Onvio · ControlTax (v0.36.1)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,12 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.36.1 (Concluir também nas Solicitações)
+
+- **Concluir sem retorno do cliente nas Solicitações**, e não só nas sugestões do Hoje: toda solicitação na vez do cliente (aba **Respondidas**, e também no grupo "Aguardando o cliente" da aba **Todas**) ganha o botão **Concluir**, nos cartões e na lista. Ele abre o detalhe já no trâmite preenchido, igual ao Hoje: no Cadastro e nas Rubricas em **dois passos** (Respondido pelo cliente e depois Concluído) com **uma confirmação só**; nas demais listas, direto em Concluído. Nada é enviado sem você revisar e confirmar. Onde a extensão não consegue concluir pela situação atual, o botão fica desativado e diz o motivo.
+- O texto vem de `textosSugestao.semRetorno` (e `semRetornoEtapa` no passo extra), os mesmos das sugestões, e as regras podem trocar.
+- No teclado, Enter num botão dentro da linha ou do cartão aciona só o botão (antes também abria a solicitação).
 
 ## Novidades da v0.36.0 (ponte com o Control Hub, demonstração)
 

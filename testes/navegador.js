@@ -1039,6 +1039,48 @@ await passo('app · detalhe: sem trâmites abre nos Dados; com trâmites, na con
   assert.deepEqual(p.erros, []);
 });
 
+await passo('app · Solicitações: Concluir na vez do cliente (aba Respondidas e Todas), em dois passos no Cadastro e em um na Geral; sem o botão na vez do escritório', async () => {
+  const base = { nivel: 0, grav: 0, motivos: [], resp: 'Ana Teste', mine: true, lado: 'cli', parado: 5, created: agoraIso(9), last: agoraIso(5) };
+  const itens = ITENS_APP.concat([
+    Object.assign({}, base, { k: 'cadEmpregado:z1', type: 'cadEmpregado', typeLabel: 'Cadastro empregado', id: 'z1', num: 801, code: 3, status: 'Aguardando o cliente', apelido: 'ZETA', cliente: 'ZETA', detalhe: 'Beltrano' }),
+    Object.assign({}, base, { k: 'geral:z2', type: 'geral', typeLabel: 'Geral', id: 'z2', num: 802, code: 4, status: 'Respondido', apelido: 'ZETA', cliente: 'ZETA', detalhe: 'Documentos' })
+  ]);
+  const p = await abrirApp('#/fila?escopo=respondidas', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens }), settings: { __v: 2, desfazerSeg: 0 } });
+  await p.evaluate(() => { window.__respostas = Object.assign(window.__respostas || {}, { acao: { ok: true, acao: 'tramite', anexos: 0 }, detalhe: { ok: true, item: {}, tramites: [{ id: 't1', n: 1, lado: 'esc', autor: 'Ana', em: '2026-10-14T10:00:00', texto: 'Segue.' }] } }); });
+  await p.waitForSelector('#corpo [data-concluir]');
+  assert.deepEqual((await p.$$eval('#corpo [data-concluir]', e => e.map(x => x.dataset.concluir))).sort(), ['cadEmpregado:z1', 'geral:z2'], 'um botão por solicitação na vez do cliente');
+  assert.equal(await p.$eval('[data-concluir="cadEmpregado:z1"]', b => b.title.includes('dois passos')), true, 'Cadastro: avisa que são dois passos');
+  if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/concluir-cartoes.png' });
+  // Cadastro: dois passos, uma confirmação só
+  await p.click('[data-concluir="cadEmpregado:z1"]');
+  await p.waitForSelector('#gaveta #a-texto');
+  assert.match(await p.$eval('#a-texto', t => t.value), /estamos concluindo esta solicitação/);
+  assert.equal(await p.$eval('#gaveta .cmp-int.on', x => x.dataset.sit), '6', 'Concluído (6)');
+  assert.equal(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'acao')), false, 'abrir não envia: a pessoa revisa e confirma');
+  await p.click('#a-revisar');
+  await p.waitForSelector('#a-enviar');
+  assert.match(await p.textContent('#a-conf'), /Em 2 passos, um depois do outro: 1\) Respondido pelo cliente.*2\) Concluído/);
+  await p.click('#a-enviar');
+  await p.waitForFunction(() => window.__msgs.filter(m => m.cmd === 'acao').length === 2, null, { timeout: 6000 });
+  assert.deepEqual(await p.evaluate(() => window.__msgs.filter(m => m.cmd === 'acao').map(m => m.situacao)), ['4', '6']);
+  // Geral: um passo; o clique no botão não abre a solicitação por baixo duas vezes
+  await p.keyboard.press('Escape');
+  await p.click('[data-concluir="geral:z2"]');
+  await p.waitForSelector('#gaveta #a-texto');
+  assert.equal(await p.$eval('#gaveta .cmp-int.on', x => x.dataset.sit), '5', 'Concluído (5) direto');
+  await p.keyboard.press('Escape');
+  // vista em lista e aba Todas: o botão também está lá; na vez do escritório não há botão
+  await p.click('[data-vis="lista"]');
+  await p.waitForSelector('#corpo .lr [data-concluir]');
+  await p.evaluate(() => { location.hash = '#/fila?escopo=todas'; });
+  await p.waitForSelector('#corpo .lr');
+  assert.ok(await p.$$eval('#corpo .lr [data-concluir]', e => e.length) >= 2);
+  if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/concluir-lista.png' });
+  assert.equal(await p.$$eval('#corpo .lr[data-k="calcFerias:a"] [data-concluir]', e => e.length), 0, 'na vez do escritório não há Concluir');
+  await p.click('[data-vis="cartoes"]');
+  assert.deepEqual(p.erros, []);
+});
+
 await passo('app · Nova solicitação (Geral): do Hoje, das Solicitações e do detalhe; revisa, confirma, cria e abre a nova', async () => {
   const itens = ITENS_APP.concat([
     { k: 'avisoFerias:f1', type: 'avisoFerias', typeLabel: 'Aviso de férias', id: 'f1', num: 201, code: 1, status: 'Sem análise', lado: 'esc', nivel: 0, grav: 0, parado: 1, motivos: [], resp: 'Ana Teste', mine: true, apelido: 'DELTA', cliente: 'DELTA COMERCIO', detalhe: 'Fulano', created: agoraIso(2), last: agoraIso(1), semCalculo: { alvo: '2026-10-30', faltam: 3, ref: 'início das férias em 03/11/2026', calculo: 'Cálculo de férias' } }

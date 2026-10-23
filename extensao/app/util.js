@@ -71,6 +71,14 @@ export function respHtml(i) {
     : '<button type="button" class="btn btn-sm sug-resp" data-sug-resp="' + esc(i.k) + '" title="' + esc(s.motivo || 'Sem histórico: escolha o responsável') + '">Escolher responsável</button>';
 }
 // Cartão de solicitação (visão "Cartões" das filas): o prazo legal, quando há, ou a idade em cinza
+// "Concluir" nas Solicitações, para o que está aguardando o cliente: abre o trâmite já preenchido (1 ou 2 passos, conforme a lista),
+// você revisa e confirma. Só aparece na vez do cliente; sem como concluir por aqui, fica desativado com o motivo.
+export function concluirBtn(i) {
+  if (!i || i.lado !== 'cli') return '';
+  const a = OC.acaoConcluir(i, estado.settings);
+  const dois = a.acao.antes && a.acao.antes.length;
+  return '<button type="button" class="btn btn-sm btn-concluir" data-concluir="' + esc(i.k) + '"' + (a.pode.ok ? ' title="Concluir sem retorno do cliente' + (dois ? ' (em dois passos: ' + esc(a.acao.antes[0].rot) + ' e depois Concluído, com uma confirmação só)' : '') + '. Abre o trâmite já preenchido: você revisa e confirma."' : ' disabled title="' + esc(a.pode.motivo) + '"') + '>' + '<svg class="ic ic-sm"><use href="#i-check"/></svg> Concluir</button>';
+}
 export function cartaoItem(i) {
   const ms = legais(i).sort((a, b) => b.n - a.n);
   const m = ms[0];
@@ -80,7 +88,7 @@ export function cartaoItem(i) {
     '<div class="sc-cli" title="' + esc(i.cliente) + '">' + esc(nomeCli(i)) + '</div>' +
     '<div class="sc-sub">' + esc(i.detalhe || '—') + '</div>' +
     mot +
-    '<div class="sc-pe"><span><b>' + (i.parado || 0) + 'd</b> parada</span><span class="resp">' + respHtml(i) + '</span></div></div>';
+    '<div class="sc-pe"><span><b>' + (i.parado || 0) + 'd</b> parada</span><span class="resp">' + respHtml(i) + '</span>' + concluirBtn(i) + '</div></div>';
 }
 
 let toastT = null;
@@ -98,7 +106,7 @@ export function ligarItens(el, fonte, abrir) {
     const go = () => { const it = fonte.find(x => x.k === r.dataset.k); if (it) abrir(it, fonte); };
     r.addEventListener('click', go);
     r.addEventListener('keydown', e => {
-      if (e.key === 'Enter') go();
+      if (e.key === 'Enter' && e.target === r) go();
       else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); const p = linhas[n + (e.key === 'ArrowDown' ? 1 : -1)]; if (p) p.focus(); }
     });
   });
