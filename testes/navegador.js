@@ -1064,7 +1064,7 @@ await passo('app · o analista não vê prazo interno nem gravidade (só o prazo
 
 await passo('app · detalhe: janela com dados e trâmites lidos na hora; lembrete ligado à solicitação aparece na aba Lembretes', async () => {
   const p = await abrirApp('#/fila', {});
-  await p.evaluate(() => { window.__respostas = { detalhe: { ok: true, item: { assunto: 'Férias do João', descricao: '<p>Segue <b>pedido</b></p>', meio: 'WEB' }, tramites: [{ n: 1, em: '2026-10-10T10:00:00', situacao: 'Sem análise', autor: 'Cliente BETA', texto: 'Abertura', anexos: ['aviso.pdf'] }, { n: 2, em: '2026-10-12T10:00:00', situacao: 'Aguardando resposta', autor: 'Cliente BETA', texto: 'Alguma novidade?', anexos: [] }] } }; });
+  await p.evaluate(() => { window.__respostas = { detalhe: { ok: true, item: { assunto: 'Férias do João', descricao: '<p>Segue <b>pedido</b></p>', meio: 'WEB' }, tramites: [{ n: 1, em: '2026-10-10T10:00:00', situacao: 'Sem análise', autor: 'Cliente BETA', texto: 'Abertura', anexos: ['aviso.pdf'] }, { n: 2, lado: 'esc', em: '2026-10-12T10:00:00', situacao: 'Aguardando resposta', autor: 'Cliente BETA', texto: 'Alguma novidade?', anexos: [] }] } }; });
   await p.click('#corpo [data-k="geral:b"]');
   await p.waitForSelector('#gaveta .tr-item');
   assert.equal(await p.$$eval('#gaveta .tr-item', e => e.length), 2);
@@ -1156,17 +1156,30 @@ await passo('app · Hoje: os cartões de tipo abrem as Solicitações naquele ti
   assert.deepEqual(p.erros, []);
 });
 
-await passo('app · detalhe: sem trâmites abre nos Dados; com trâmites, na conversa; motivo da rescisão em português', async () => {
+await passo('app · detalhe: sem trâmite do escritório (nenhum ou só a abertura do cliente) abre nos Dados; com trâmite do escritório, na conversa; motivo da rescisão em português', async () => {
   const p = await abrirApp('#/fila?escopo=equipe');
   await p.evaluate(() => { window.__respostas = Object.assign(window.__respostas || {}, { detalhe: { ok: true, item: { assunto: 'x' }, tramites: [], grupos: [{ titulo: 'Solicitação', campos: [{ k: 'Motivo da rescisão', v: 'Rescisão por acordo entre as partes' }] }] } }); });
   await p.click('#corpo [data-k="geral:b"]');
   await p.waitForSelector('#gaveta .dtab.on[data-aba="dados"]');
   assert.equal(await p.isVisible('#gaveta .dtab.on[data-aba="dados"]'), true, 'sem trâmites: direto nos dados');
   await p.keyboard.press('Escape');
-  await p.evaluate(() => { window.__respostas.detalhe = { ok: true, item: { assunto: 'x' }, tramites: [{ id: 't1', n: 1, lado: 'cli', autor: 'Cliente', em: '2026-10-14T10:00:00', texto: 'Olá' }] }; });
+  // só a abertura do cliente (e uma resposta dele): ainda não é conversa com o escritório, abre nos Dados
+  await p.evaluate(() => { window.__respostas.detalhe = { ok: true, item: { assunto: 'x' }, tramites: [{ id: 't1', n: 1, lado: 'cli', autor: 'Cliente', em: '2026-10-14T10:00:00', texto: 'Olá' }, { id: 't2', n: 2, lado: 'cli', autor: 'Cliente', em: '2026-10-15T10:00:00', texto: 'Alguém?' }] }; });
+  await p.click('#corpo [data-k="geral:b"]');
+  await p.waitForSelector('#gaveta .dtab.on[data-aba="dados"]');
+  await p.waitForFunction(() => (document.querySelector('#gaveta .dtab[data-aba="tramites"] .n') || {}).textContent === '2');       // já leu os trâmites
+  assert.equal(await p.isVisible('#gaveta .dtab.on[data-aba="dados"]'), true, 'continua nos Dados, com os trâmites na aba ao lado');
+  await p.keyboard.press('Escape');
+  // com um trâmite do escritório: na conversa
+  await p.evaluate(() => { window.__respostas.detalhe = { ok: true, item: { assunto: 'x' }, tramites: [{ id: 't1', n: 1, lado: 'cli', autor: 'Cliente', em: '2026-10-14T10:00:00', texto: 'Olá' }, { id: 't2', n: 2, lado: 'esc', autor: 'Ana', em: '2026-10-15T10:00:00', texto: 'Oi' }] }; });
   await p.click('#corpo [data-k="geral:b"]');
   await p.waitForSelector('#gaveta .dtab.on[data-aba="tramites"]');
-  assert.equal(await p.isVisible('#gaveta .dtab.on[data-aba="tramites"]'), true, 'com trâmites: na conversa');
+  assert.equal(await p.isVisible('#gaveta .dtab.on[data-aba="tramites"]'), true, 'com trâmite do escritório: na conversa');
+  await p.keyboard.press('Escape');
+  // a leitura dos trâmites falhou: na conversa, onde o erro aparece
+  await p.evaluate(() => { window.__respostas.detalhe = { ok: true, item: { assunto: 'x' }, tramites: null, erroTramites: 'o Onvio não respondeu' }; });
+  await p.click('#corpo [data-k="geral:b"]');
+  await p.waitForSelector('#gaveta .dtab.on[data-aba="tramites"]');
   assert.deepEqual(p.erros, []);
 });
 
@@ -1449,7 +1462,7 @@ await passo('app · detalhe: destaques sutis; trâmites como conversa (filtro, o
 await passo('app · detalhe: abas inteiras (não achatadas) mesmo com muito conteúdo e janela baixa', async () => {
   const p = await abrirApp('#/fila', {});
   await p.setViewportSize({ width: 1100, height: 560 });
-  await p.evaluate(() => { window.__respostas = { detalhe: { ok: true, item: { assunto: 'Férias' }, tramites: Array.from({ length: 30 }, (x, n) => ({ n: n + 1, em: '2026-10-10T10:00:00', situacao: 'Em análise', autor: 'Ana', texto: 'Texto '.repeat(40), anexos: [] })), datas: {}, grupos: [], anexos: [] } }; });
+  await p.evaluate(() => { window.__respostas = { detalhe: { ok: true, item: { assunto: 'Férias' }, tramites: Array.from({ length: 30 }, (x, n) => ({ n: n + 1, lado: n ? 'esc' : 'cli', em: '2026-10-10T10:00:00', situacao: 'Em análise', autor: 'Ana', texto: 'Texto '.repeat(40), anexos: [] })), datas: {}, grupos: [], anexos: [] } }; });
   await p.click('#corpo [data-k="geral:b"]');
   await p.waitForFunction(() => document.querySelectorAll('#g-corpo .tr-item').length === 30);
   const m = await p.$eval('#gaveta .dtabs', e => ({ h: e.clientHeight, s: e.scrollHeight, tab: e.querySelector('.dtab').getBoundingClientRect().height }));

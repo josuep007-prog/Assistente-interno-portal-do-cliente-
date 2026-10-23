@@ -52,8 +52,9 @@ export async function abrirDetalhe(ref, fonte, opcoes) {
   const r = await enviar({ cmd: 'detalhe', type: ref.type, num: String(ref.num) });
   if (atual !== meu) return;                                        // a pessoa já abriu outra
   if (!r.ok) { desenhar(base, null, 'Não foi possível ler a solicitação no Onvio: ' + (r.erro || ''), false); return; }
-  // solicitação aberta agora (não a mesma de antes, nem por uma ação): sem trâmites abre nos Dados; com trâmites, na conversa
-  if (!mesma && !(opcoes && opcoes.acao)) aba = r.erroTramites || !r.tramites || r.tramites.length ? 'tramites' : 'dados';
+  // solicitação aberta agora (não a mesma de antes, nem por uma ação): com trâmite do escritório, na conversa; sem nenhum
+  // (só a abertura do cliente, ou nada), nos Dados. Se a leitura dos trâmites falhou, na conversa, que mostra o erro.
+  if (!mesma && !(opcoes && opcoes.acao)) aba = r.erroTramites || (Array.isArray(r.tramites) && r.tramites.some(x => x.lado === 'esc')) ? 'tramites' : 'dados';
   desenhar(Object.assign({}, base, r.item), r, null, false);
 }
 
