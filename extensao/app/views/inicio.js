@@ -11,6 +11,7 @@ import { estado, itens, minhas, primeiroNome, salvarLembretes, enviar, ignorarSu
 import { esc, plural, num, ligarItens, fmtDataHora, saudacao, dataExtensa, toast, $, $$ } from '../util.js';
 import { anel, anelProgresso, animarNumeros, ligarDicas, cor } from '../graficos.js';
 import { estadoLeitura, dicaLeitura } from './painel-equipe.js';
+import { tiposHtml } from './tipos.js';
 const OC = window.OC;
 const SEM = '(sem responsável)';
 const MINHA = '__minha', EQUIPE = '__equipe';
@@ -74,7 +75,7 @@ export function render(el, ctx) {
   const casos = OC.casosSugeridos(base.concat(resolvidasBase), casosLidos, estado.settings, estado.sugIgnoradas);
   const linkFila = p => '#/fila?' + new URLSearchParams(Object.assign(cart === EQUIPE ? { escopo: 'equipe' } : cart === SEM ? { escopo: 'semresp' } : cart !== MINHA ? { analista: cart } : {}, p));
 
-  el.innerHTML = aviso + heroHtml() + admissoesHtml() +
+  el.innerHTML = aviso + heroHtml() + admissoesHtml() + tiposPainel() +
     sugHtml() + '<div class="hj-paineis">' + prevHtml() + '</div>';
 
   // Admissões: faixa destacada logo abaixo do destaque, só as que o escritório ainda não tocou; recolhível (lembra a escolha)
@@ -180,6 +181,19 @@ export function render(el, ctx) {
     '</section>';
   }
 
+  // Solicitações por tipo: os cartões das Solicitações, do tipo mais urgente para o menos urgente. O clique abre a lista
+  // daquele tipo (na aba onde estão: Minhas, ou Respondidas quando só há solicitações na vez do cliente).
+  function tiposPainel() {
+    if (!base.length) return '';
+    const sub = xs => {
+      if (!xs.length) return 'nenhuma';
+      const mo = OC.MOTIVOS.map(m => [m, xs.filter(i => OC.motivoDe(i) === m.k).length]).find(([, n]) => n);
+      return '<em class="m-' + mo[0].k + '">' + mo[1] + ' ' + esc(mo[0].rot.toLowerCase()) + '</em>' + (xs.length > mo[1] ? ' · ' + xs.length + ' no total' : '');
+    };
+    return painel('hj-tipos', ic('layers', 'ic-sm') + ' Solicitações por tipo', 'Da mais urgente para a menos urgente. Clique para abrir as Solicitações daquele tipo.',
+      '<div class="tipos" id="hj-tipos-l" role="group" aria-label="Solicitações por tipo">' + tiposHtml(base, { prioridade: true, sub }) + '</div>');
+  }
+
   function slidesDoCarrossel() {
     const out = [];
     lems.filter(l => OC.situacaoLembrete(l) === 'atrasado').forEach(l => out.push({ n: 'lem', tag: 'Lembrete atrasado', txt: l.texto, sub: fmtDataHora(l.quando) + (l.num ? ' · #' + l.num + ' ' + (l.cliente || '') : ''), lem: l.id, c: 'var(--late)' }));
@@ -209,6 +223,11 @@ export function render(el, ctx) {
   const redesenhar = () => render(el, ctx);
   ligarItens($('#hj-passos', el) || document.createElement('div'), prio.map(p => p.item), ctx.abrirDetalhe);
   ligarItens($('#hj-tick', el), base, ctx.abrirDetalhe);
+  $$('#hj-tipos-l [data-tipo]', el).forEach(b => b.onclick = () => {
+    const xs = base.filter(i => i.type === b.dataset.tipo);
+    const soCliente = xs.length && xs.every(i => i.lado === 'cli');
+    location.hash = linkFila(Object.assign({ tipo: b.dataset.tipo }, soCliente && cart === MINHA ? { escopo: 'respondidas' } : {}));
+  });
   if ($('#hj-admissao', el)) ligarItens($('#hj-adm-l', el), admissoes, ctx.abrirDetalhe);
   if ($('#hj-adm-toggle', el)) $('#hj-adm-toggle', el).onclick = () => {
     const sec = $('#hj-admissao', el), rec = !sec.classList.contains('recolhida');
