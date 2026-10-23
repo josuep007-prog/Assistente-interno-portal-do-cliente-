@@ -4,7 +4,7 @@
 import { estado, itens, enviar, salvarLembretes, aoMudar } from '../estado.js';
 import { formAcao, ligarAcao, novaAcao, acaoAberta, fecharAcao, opcoesPassar } from './acao-form.js';
 import { respostaHtml, ligarResposta, definirLateral, prepararResposta, bolhaRascunho, recemEnviado, respostaEmAndamento, cancelarPendente, focarResposta, reiniciarCaixa, recolherSeFora } from './resposta.js';
-import { esc, pillSituacao, motivosHtml, fmtDataHora, fmtData, textoPuro, toast, ladoTexto, relativo, iniciais, $, $$ } from '../util.js';
+import { esc, pillSituacao, motivosHtml, fmtDataHora, fmtData, textoPuro, toast, ladoTexto, relativo, iniciais, simples, $, $$ } from '../util.js';
 import { abrirLembrete, lembreteAberto } from './lembrete-dlg.js';
 import { abrirNova, novaAberta } from './nova-dlg.js';
 import { abrirAnexos, anexosAbertos, contarAnexos, tipoArquivo } from './anexos-dlg.js';
@@ -90,25 +90,33 @@ function desenhar(i, r, erro, carregando) {
   const pagto = pl && pl.alvo ? { dt: pl.alvo.slice(8, 10) + '/' + pl.alvo.slice(5, 7) + '/' + pl.alvo.slice(0, 4), faltam: OC.uteisAte(new Date(), OC.diaDe(pl.alvo), estado.settings.feriados) } : null;
   const obs = carregando ? [] : OC.observacoesCliente(i, (r && r.datas) || {}, estado.settings, new Date());
   const nAnexos = carregando ? 0 : contarAnexos(r);
+  // linha de dados: no Simplificado ficam Responsável, Pagamento até e Último trâmite; o resto vai para "mais" (a vez e a idade já estão no topo)
+  const dpLast = () => {
+    const resp = '<span>Responsável: <b>' + esc(i.resp || 'sem responsável') + '</b></span>';
+    const aberta = i.created ? '<span>Aberta em <b>' + esc(fmtDataHora(i.created)) + '</b>' + (i.solicitante ? ' por ' + esc(i.solicitante) : '') + '</span>' : '';
+    const ult = i.last ? '<span>Último trâmite: <b>' + esc(fmtDataHora(i.last)) + '</b>' + (ultimoTr && ultimoTr.autor ? ' por ' + esc(ultimoTr.autor) : '') + '</span>' : '';
+    const par = i.parado != null ? '<span>Parada há <b>' + i.parado + ' dia(s)</b></span>' : '';
+    const presc = i.lado === 'cli' && i.prescreveEm != null ? '<span title="Regra do Onvio: sem retorno do cliente, a solicitação prescreve sozinha">Prescreve no Onvio em <b>' + i.prescreveEm + ' dia(s)</b></span>' : '';
+    const pg = pagto ? '<span class="' + (pagto.faltam != null && pagto.faltam <= 1 && i.lado !== 'cli' ? 'late' : '') + '">Pagamento até <b>' + esc(pagto.dt) + '</b> (prazo legal)</span>' : '';
+    const exp = i.due ? '<span title="Data informada pelo cliente; não conta como vencimento">Expectativa do cliente: ' + esc(fmtData(i.due)) + '</span>' : '';
+    if (!simples()) return resp + aberta + ult + par + presc + pg + exp;
+    const mais = aberta + presc + exp;
+    return resp + pg + ult + (mais ? '<details class="dp-mais"><summary title="Aberta em, prescrição e expectativa do cliente">mais</summary>' + mais + '</details>' : '');
+  };
   g.innerHTML =
     '<div class="dlg-head"><div class="tt">' +
-      '<div class="dlg-l1"><span class="mono">#' + esc(i.num) + '</span><span>' + esc(i.typeLabel) + '</span>' + pillSituacao(i) + (i.lado === 'esc' || i.lado === 'cli' ? '<span>vez: <b>' + ladoTexto(i) + '</b></span>' : '') + '</div>' +
+      '<div class="dlg-l1"><span class="mono">#' + esc(i.num) + '</span><span>' + esc(i.typeLabel) + '</span>' + pillSituacao(i) + (i.lado === 'esc' || i.lado === 'cli' ? '<span>vez: <b>' + ladoTexto(i) + '</b></span>' : '') +
+        (simples() && i.parado != null ? '<span>parada há <b>' + i.parado + (i.parado === 1 ? ' dia' : ' dias') + '</b></span>' : '') +
+        (simples() && i.pedidoAoCliente && !i.resolvida ? '<span class="dlg-pede-ic" title="' + esc(porquePendente(i.pedidoAoCliente).replace(/<[^>]+>/g, '')) + '"><svg class="ic ic-sm"><use href="#i-clock"/></svg></span>' : '') + '</div>' +
       '<h2>' + esc(i.apelido || i.cliente || 'Solicitação') + '</h2>' +
       '<div class="dlg-l3">' + esc(i.detalhe || i.assunto || '') + '</div>' +
       (((i.motivos || []).some(m => m.legal) || i.abaProvavel) ? '<div class="motivos">' + motivosHtml(i) + '</div>' : '') +
       (i.resolvida ? '<div class="dlg-resolvida"><svg class="ic ic-sm"><use href="#i-check"/></svg><span><b>Considerada resolvida:</b> o cliente não respondeu' + (i.semRetorno != null ? ' em ' + i.semRetorno + ' dias úteis' : '') + ' e a última resposta não pedia nada. No Onvio ela continua aberta.</span></div>'
-        : i.pedidoAoCliente ? '<div class="dlg-resolvida pede"><svg class="ic ic-sm"><use href="#i-clock"/></svg><span>' + porquePendente(i.pedidoAoCliente) + '</span></div>' : '') +
+        : i.pedidoAoCliente && !simples() ? '<div class="dlg-resolvida pede"><svg class="ic ic-sm"><use href="#i-clock"/></svg><span>' + porquePendente(i.pedidoAoCliente) + '</span></div>' : '') +
     '</div>' +
     (p >= 0 ? '<div class="dlg-nav"><button class="icon-btn" id="g-ant" title="Anterior (←)" aria-label="Anterior"' + (p <= 0 ? ' disabled' : '') + '><svg class="ic"><use href="#i-chev-l"/></svg></button><span>' + (p + 1) + ' de ' + lista.length + '</span><button class="icon-btn" id="g-prox" title="Próxima (→)" aria-label="Próxima"' + (p >= lista.length - 1 ? ' disabled' : '') + '><svg class="ic"><use href="#i-chev-r"/></svg></button></div>' : '') +
     '<button class="icon-btn" id="g-fechar" aria-label="Fechar" title="Fechar (Esc)"><svg class="ic"><use href="#i-x"/></svg></button></div>' +
-    '<div class="dp-last">' +
-      '<span>Responsável: <b>' + esc(i.resp || 'sem responsável') + '</b></span>' +
-      (i.created ? '<span>Aberta em <b>' + esc(fmtDataHora(i.created)) + '</b>' + (i.solicitante ? ' por ' + esc(i.solicitante) : '') + '</span>' : '') +
-      (i.last ? '<span>Último trâmite: <b>' + esc(fmtDataHora(i.last)) + '</b>' + (ultimoTr && ultimoTr.autor ? ' por ' + esc(ultimoTr.autor) : '') + '</span>' : '') +
-      (i.parado != null ? '<span>Parada há <b>' + i.parado + ' dia(s)</b></span>' : '') +
-      (i.lado === 'cli' && i.prescreveEm != null ? '<span title="Regra do Onvio: sem retorno do cliente, a solicitação prescreve sozinha">Prescreve no Onvio em <b>' + i.prescreveEm + ' dia(s)</b></span>' : '') +
-      (pagto ? '<span class="' + (pagto.faltam != null && pagto.faltam <= 1 && i.lado !== 'cli' ? 'late' : '') + '">Pagamento até <b>' + esc(pagto.dt) + '</b> (prazo legal)</span>' : '') +
-      (i.due ? '<span title="Data informada pelo cliente; não conta como vencimento">Expectativa do cliente: ' + esc(fmtData(i.due)) + '</span>' : '') +
+    '<div class="dp-last">' + dpLast() +
     '</div>' +
     destaquesHtml(r) +
     '<div class="dtabs" role="tablist">' +
@@ -264,7 +272,7 @@ function tramitesHtml(r, carregando, i) {
       '<span class="tr-av" title="' + esc(quem) + '">' + esc(iniciais(quem) || (lado === 'esc' ? 'E' : 'C')) + '</span>' +
       '<div class="tr-bolha">' +
         '<div class="tr-meta"><b>' + esc(quem) + '</b><span class="tr-lado">' + (x.n === 1 ? 'abertura' : lado === 'esc' ? 'escritório' : 'cliente') + '</span>' +
-          '<span class="tr-quando" title="' + esc(fmtDataHora(x.em)) + '">#' + String(x.n).padStart(2, '0') + ' · ' + esc(relativo(x.em) !== fmtDataHora(x.em) ? relativo(x.em) + ' · ' + fmtDataHora(x.em) : fmtDataHora(x.em)) + '</span></div>' +
+          '<span class="tr-quando" title="' + esc(fmtDataHora(x.em)) + '">#' + String(x.n).padStart(2, '0') + ' · ' + esc(simples() ? relativo(x.em) : relativo(x.em) !== fmtDataHora(x.em) ? relativo(x.em) + ' · ' + fmtDataHora(x.em) : fmtDataHora(x.em)) + '</span></div>' +
         (x.texto ? '<div class="tr-texto">' + esc(textoPuro(x.texto)) + '</div><button type="button" class="tr-mais">Ver tudo</button>' : '<div class="tr-texto fraco">Sem texto' + (anexos.length ? ' (só anexo)' : '') + '</div>') +
         (anexos.length ? '<div class="tr-anexos">' + anexos.map((a, ai) => { const tp = tipoArquivo(a.nome); return '<button type="button" class="tr-arq"' + (a.id || a.direto ? ' data-ax-abrir="' + gi + ':' + ai + '"' : ' disabled') + ' title="Baixar ' + esc(a.nome) + '"><span class="ax-ic ' + tp.cls + '">' + tp.rot + '</span><span class="ax-nome">' + esc(a.nome) + '</span></button>'; }).join('') + '</div>' : '') +
       '</div>' + (x === ultCli && x.n !== 1 ? responder : '') + '</div>' + sit;
