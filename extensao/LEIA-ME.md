@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.42.2)
+# Control Onvio · ControlTax (v0.43.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,14 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.43.0 (Sugestões de ação: lista com filtros e "Revisar uma a uma")
+
+- **Uma lista só**, em linhas de largura inteira, no lugar das barras de categoria e tipo. Cada linha mostra a solicitação, a categoria, o tipo e um porquê curto (o porquê inteiro fica na dica). A ordem começa pelo que depende do escritório (lista errada, férias e rescisão novas, pedir informação ou anexo, duplicada) e termina na limpeza (aviso trabalhado, resolvida fora do portal, sem retorno do cliente). Mostra as 8 primeiras, com "Ver todas".
+- **Filtro por categoria** em chips com a contagem ("Todas 26", "Lista errada 4"…), lembrado no navegador. Com uma categoria escolhida aparece a barra **Fazer de uma vez**, com uma ação em lote por tipo de solicitação (você revisa a lista e confirma, como antes).
+- **O botão diz o que vai acontecer** antes do clique (dica com a situação e o começo do texto) e tem peso menor; o azul cheio fica para o lote. **"Não é o caso"** virou um X na linha, e o aviso traz **Desfazer**.
+- **Revisar uma a uma:** uma janela mostra uma sugestão por vez, com o porquê e o texto que será enviado, e os botões Anterior, Ver a solicitação, Não é o caso, Pular e a ação. **Fazer** abre o detalhe com o trâmite preenchido (você revisa e confirma) e, ao fechar o detalhe, a revisão continua na próxima. ← e → andam; Esc fecha. Nada é enviado sem a confirmação no detalhe.
+- **Correção:** os avisos que aparecem embaixo da tela (por exemplo "Lembrete criado") ficavam escondidos atrás do app; agora aparecem por cima.
 
 ## Novidades da v0.42.2 (textos em tópicos, lista errada em análise, tipos iguais ao Hoje, solicitação em tela cheia)
 
