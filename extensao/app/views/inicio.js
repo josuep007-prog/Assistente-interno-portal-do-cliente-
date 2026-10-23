@@ -8,7 +8,7 @@
  * Painel de previsão de solicitações por empresa (lida na hora, sob demanda). Os painéis de vencimentos e de uso do
  * portal saíram na 0.29.0 (o prazo legal já sobe na fila). O quadro de avisos sem cálculo saiu em 22/10/2026. Carteira no cabeçalho. */
 import { estado, itens, minhas, primeiroNome, salvarLembretes, enviar, ignorarSugestao, resolvidas } from '../estado.js';
-import { esc, plural, num, ligarItens, fmtDataHora, saudacao, dataExtensa, toast, $, $$ } from '../util.js';
+import { esc, plural, num, ligarItens, fmtDataHora, saudacao, dataExtensa, toast, $, $$, lerPref, gravarPref, simples } from '../util.js';
 import { anel, anelProgresso, animarNumeros, ligarDicas, cor } from '../graficos.js';
 import { estadoLeitura, dicaLeitura } from './painel-equipe.js';
 import { tiposHtml } from './tipos.js';
@@ -21,6 +21,11 @@ let carteira = lerPref('hojeCarteira', '');
 // Sugestões de ação: vereditos lidos nos trâmites (cmd 'casos'), na memória por 10 min; o texto nunca chega aqui
 let casosLidos = null, casosEm = 0, casosLendo = false, casosErro = '';
 
+// Painéis do Hoje que se recolhem (Simplificado): a escolha fica neste navegador; a Previsão por empresa começa recolhida
+const recolhidosLidos = () => { try { return JSON.parse(lerPref('hojeRecolhidos', '{}')); } catch { return {}; } };
+const recolhido = id => { const r = recolhidosLidos(); return id in r ? !!r[id] : id === 'hj-prev'; };
+const gravarRecolhido = (id, rec) => gravarPref('hojeRecolhidos', JSON.stringify(Object.assign(recolhidosLidos(), { [id]: rec })));
+
 // Barras recolhíveis das sugestões (categoria e tipo): o que a pessoa abriu ou fechou fica lembrado neste navegador
 const sugBarras = (() => { try { return new Map(Object.entries(JSON.parse(localStorage.getItem('oc.hojeSugBarras') || '{}'))); } catch { return new Map(); } })();
 const gravarBarras = () => { try { localStorage.setItem('oc.hojeSugBarras', JSON.stringify(Object.fromEntries(sugBarras))); } catch { /* sem armazenamento: vale só nesta visita */ } };
@@ -30,8 +35,6 @@ const rotMotivo = Object.fromEntries(OC.MOTIVOS.map(m => [m.k, m.rot]));
 const ICONE = { legal: 'alert', sem: 'user', analise: 'clock', respondeu: 'chat', cliente: 'check' };
 const TAG = { legal: 'Prazo legal', sem: 'Sem análise', analise: 'Em análise', respondeu: 'Cliente respondeu', cliente: 'Com o cliente' };
 
-function lerPref(k, padrao) { try { return localStorage.getItem('oc.' + k) || padrao; } catch { return padrao; } }
-function gravarPref(k, v) { try { localStorage.setItem('oc.' + k, v); } catch { /* sem armazenamento: vale só nesta visita */ } }
 const ic = (n, c) => '<svg class="ic' + (c ? ' ' + c : '') + '"><use href="#i-' + n + '"/></svg>';
 const nomeCli = i => i.apelido || i.cliente || '—';
 
@@ -108,8 +111,22 @@ export function render(el, ctx) {
         '<span class="hj-adm-tx"><b>#' + esc(i.num) + ' ' + esc(nomeCli(i)) + ' · ' + esc(i.detalhe || i.typeLabel) + '</b><small>' + esc(i.typeLabel) + (a.estagio ? ' · início em ' + dt(a.data) : '') + ' · ' + esc(i.status) + ' · ' + esc(i.resp || 'sem analista') + '</small></span>' + ic('chev-r', 'ic-sm') + '</button>'; }).join('') + '</div></div></section>';
   }
 
-  function painel(id, titulo, sub, corpo, extra) {
+  // Simplificado: o painel vira uma barra recolhível (como a das admissões), com a explicação na dica e a escolha lembrada neste navegador
+  function painel(id, titulo, sub, corpo, extra, resumo) {
+    if (simples()) {
+      const rec = recolhido(id);
+      return '<section class="hj-painel hj-rec' + (rec ? ' recolhida' : '') + '" id="' + id + '"><header class="hj-rec-cab">' +
+        '<button type="button" class="hj-rec-tg" data-rec="' + id + '" aria-expanded="' + !rec + '" aria-controls="' + id + '-c" title="' + esc(sub || '') + '"><span class="hj-adm-seta">' + ic('chev-d', 'ic-sm') + '</span><h3>' + titulo + '</h3>' + (resumo ? '<span class="hj-adm-resumo">' + esc(resumo) + '</span>' : '') + '</button>' + (extra || '') + '</header>' +
+        '<div class="hj-rec-corpo" id="' + id + '-c"' + (rec ? ' hidden' : '') + '>' + corpo + '</div></section>';
+    }
     return '<section class="hj-painel" id="' + id + '"><header><h3>' + titulo + '</h3>' + (extra || '') + '</header>' + (sub ? '<p class="hj-painel-sub">' + sub + '</p>' : '') + corpo + '</section>';
+  }
+  function ligarRec(raiz) {
+    $$('[data-rec]', raiz).forEach(b => b.onclick = () => {
+      const sec = b.closest('.hj-rec'), rec = !sec.classList.contains('recolhida');
+      gravarRecolhido(b.dataset.rec, rec);
+      sec.classList.toggle('recolhida', rec); $('.hj-rec-corpo', sec).hidden = rec; b.setAttribute('aria-expanded', String(!rec));
+    });
   }
   function vazio(t) { return '<div class="hj-painel-vazio">' + ic('check', 'ic-sm') + ' ' + esc(t) + '</div>'; }
   function dtc(ymd) { return ymd.slice(8, 10) + '/' + ymd.slice(5, 7); }
@@ -155,8 +172,8 @@ export function render(el, ctx) {
       'Divididas por categoria e por tipo de solicitação. A ação abre o trâmite já preenchido (você revisa e confirma) ou cria um lembrete seu; nas de mesmo tipo dá para fazer todas de uma vez, revisando a lista antes de confirmar.',
       (casos.length ? '<div class="sug-lista">' + grupos.map(catBarra).join('') + '</div>'
         : vazio(casosLendo && !casosLidos ? 'Conferindo os trâmites das pendências…' : 'Nenhuma sugestão de ação por enquanto.')) +
-      (situacao ? '<p class="hj-painel-nota" id="hj-sug-sit">' + esc(situacao) + '</p>' : ''),
-      '<button class="icon-btn" id="hj-sug-ler" title="Conferir os trâmites de novo" aria-label="Conferir os trâmites de novo"' + (casosLendo ? ' disabled' : '') + '>' + ic('refresh', 'ic-sm') + '</button>');
+      (situacao && (!simples() || casosErro) ? '<p class="hj-painel-nota" id="hj-sug-sit">' + esc(situacao) + '</p>' : ''),
+      '<button class="icon-btn" id="hj-sug-ler" title="' + esc('Conferir os trâmites de novo' + (simples() && situacao ? ' · ' + situacao : '')) + '" aria-label="Conferir os trâmites de novo"' + (casosLendo ? ' disabled' : '') + '>' + ic('refresh', 'ic-sm') + '</button>');
   }
 
   function prevHtml() {
@@ -210,7 +227,8 @@ export function render(el, ctx) {
       return '<em class="m-' + mo[0].k + '">' + mo[1] + ' ' + esc(mo[0].rot.toLowerCase()) + '</em>' + (xs.length > mo[1] ? ' · ' + xs.length + ' no total' : '');
     };
     return painel('hj-tipos', ic('layers', 'ic-sm') + ' Solicitações por tipo', 'Da mais urgente para a menos urgente. Clique para abrir as Solicitações daquele tipo.',
-      '<div class="tipos" id="hj-tipos-l" role="group" aria-label="Solicitações por tipo">' + tiposHtml(base, { prioridade: true, sub }) + '</div>');
+      '<div class="tipos" id="hj-tipos-l" role="group" aria-label="Solicitações por tipo">' + tiposHtml(base, { prioridade: true, sub }) + '</div>', '',
+      plural(new Set(base.map(i => i.type)).size, 'tipo com pendência', 'tipos com pendência'));
   }
 
   function slidesDoCarrossel() {
@@ -263,7 +281,7 @@ export function render(el, ctx) {
     previsaoLendo = true; previsao = null; previsaoEm = 0;
     enviar({ cmd: 'previsao' }).then(r => { previsaoLendo = false; previsao = r.ok && Array.isArray(r.empresas) ? r : { erro: r.erro || 'resposta inesperada do Control Onvio' }; previsaoEm = Date.now(); trocarPrevisao(); });
   };
-  function ligarPrevisao() { if ($('#hj-prev-ler', el)) $('#hj-prev-ler', el).onclick = () => { lerPrevisao(); trocarPrevisao(); }; }
+  function ligarPrevisao() { ligarRec($('#hj-prev', el) || document.createElement('div')); if ($('#hj-prev-ler', el)) $('#hj-prev-ler', el).onclick = () => { lerPrevisao(); trocarPrevisao(); }; }
   ligarPrevisao();
   if (estado.snap && !previsaoLendo && (!previsao || Date.now() - previsaoEm > 30 * 60000)) { lerPrevisao(); const pv = $('#hj-prev .hj-painel-vazio', el); if (pv) pv.textContent = 'Lendo as últimas 4 semanas no Onvio…'; }
   // sugestões de ação: confere os trâmites sozinha ao abrir (no máximo a cada 10 min); só o painel é trocado na volta
@@ -315,6 +333,7 @@ export function render(el, ctx) {
   function ligarSug() {
     const sec = $('#hj-sug', el);
     if (!sec) return;
+    ligarRec(sec);
     ligarItens(sec, casos.map(c => c.item), ctx.abrirDetalhe);
     $$('.sc-mais', sec).forEach(d => d.addEventListener('click', e => e.stopPropagation()));
     $$('[data-cs-acao]', sec).forEach(b => b.addEventListener('click', async e => {
@@ -351,6 +370,7 @@ export function render(el, ctx) {
   }
   ligarSug();
   if (estado.snap && !casosLendo && (!casosLidos || Date.now() - casosEm > 10 * 60000)) { lerCasos(); trocarSug(); }
+  ligarRec($('#hj-tipos', el) || document.createElement('div'));
   ligarDicas(el);
   if (animar) { el.classList.remove('hj-anim'); void el.offsetWidth; el.classList.add('hj-anim'); setTimeout(() => el.classList.remove('hj-anim'), 1600); animarNumeros(el); }
   iniciarCarrossel($('#hj-tick', el));

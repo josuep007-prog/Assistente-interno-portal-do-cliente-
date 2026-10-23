@@ -6,6 +6,10 @@ export const $ = (s, el) => (el || document).querySelector(s);
 export const $$ = (s, el) => [...(el || document).querySelectorAll(s)];
 export const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 export const plural = (n, um, varios) => n + ' ' + (n === 1 ? um : varios);
+// Estilo escolhido em Configurações → Aparência: "simples" (de fábrica) ou "atual". Só a arrumação em JS que não cabe no CSS pergunta isto.
+export const simples = () => document.documentElement.getAttribute('data-estilo') !== 'atual';
+export function lerPref(k, padrao) { try { return localStorage.getItem('oc.' + k) || padrao; } catch { return padrao; } }
+export function gravarPref(k, v) { try { localStorage.setItem('oc.' + k, v); } catch { /* sem armazenamento: vale só nesta visita */ } }
 export const num = n => Number(n || 0).toLocaleString('pt-BR');
 
 const dt = v => { const d = v instanceof Date ? v : OC.parseDate(v); return d && !isNaN(d) ? d : null; };
@@ -88,16 +92,16 @@ export function concluirBtn(i) {
   const dois = a.acao.antes && a.acao.antes.length;
   return '<button type="button" class="btn btn-sm btn-concluir" data-concluir="' + esc(i.k) + '"' + (a.pode.ok ? ' title="Concluir sem retorno do cliente' + (dois ? ' (em dois passos: ' + esc(a.acao.antes[0].rot) + ' e depois Concluído, com uma confirmação só)' : '') + '. Abre o trâmite já preenchido: você revisa e confirma."' : ' disabled title="' + esc(a.pode.motivo) + '"') + '>' + '<svg class="ic ic-sm"><use href="#i-check"/></svg> Concluir</button>';
 }
-export function cartaoItem(i) {
+export function cartaoItem(i, o) {
   const ms = legais(i).sort((a, b) => b.n - a.n);
   const m = ms[0];
   const mot = m ? '<div class="sc-mot ' + (m.n === 2 ? 'late' : 'today') + (m.acidente ? ' acidente' : '') + '" title="' + esc(ms.map(x => x.t || x.m).join(' · ')) + '"><span class="sc-mot-tx">' + esc(m.m) + (ms.length > 1 ? ' <small>+' + (ms.length - 1) + '</small>' : '') + '</span></div>' : '';
   return '<div class="sc lvl-' + nivelLegal(i) + '" tabindex="0" data-k="' + esc(i.k) + '">' +
     '<div class="sc-top"><span class="mono">#' + esc(i.num) + '</span><span class="c-tipo">' + tipoIcone(i.type, 'pq') + '<span class="c-tipo-tx">' + esc(i.typeLabel) + '</span></span>' + pillSituacao(i) + '</div>' +
     '<div class="sc-cli" title="' + esc(i.cliente) + '">' + esc(nomeCli(i)) + '</div>' +
-    '<div class="sc-sub">' + esc(i.detalhe || '—') + '</div>' +
+    (simples() && !i.detalhe ? '' : '<div class="sc-sub">' + esc(i.detalhe || '—') + '</div>') +
     mot +
-    '<div class="sc-pe"><span><b>' + (i.parado || 0) + 'd</b> parada</span><span class="resp">' + respHtml(i) + '</span>' + concluirBtn(i) + analiseBtn(i) + '</div></div>';
+    '<div class="sc-pe"><span><b>' + (i.parado || 0) + 'd</b> parada</span><span class="resp">' + (o && o.semResp ? '' : respHtml(i)) + '</span>' + concluirBtn(i) + analiseBtn(i) + '</div></div>';
 }
 
 let toastT = null;

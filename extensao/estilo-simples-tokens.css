@@ -1,0 +1,16 @@
+/* Control Onvio · estilo Simplificado, só os tokens (cores base). Vale para o app e para a página de opções (aba Avançado, em quadro).
+ * Tudo sob :root[data-estilo="simples"]: com data-estilo="atual" nada daqui se aplica. */
+:root[data-estilo="simples"]{
+  --page:#F5F6F8; --surface:#FFFFFF; --surface-2:#F8F9FB; --surface-3:#EEF0F3;
+  --ink:#17202A; --ink-2:#4A5560; --ink-3:#6B7681;
+  --rule:#E4E7EB; --rule-strong:#CDD3DA;
+  --blue-deep:#3C659B; --blue-pale:#E4ECF5;
+  --shadow-2:0 8px 28px rgba(16,24,32,.14);
+}
+:root[data-estilo="simples"][data-theme="dark"]{
+  --page:#0F1419; --surface:#161C23; --surface-2:#1A2129; --surface-3:#212A33;
+  --ink:#E8EDF2; --ink-2:#AAB7C2; --ink-3:#7F8C97;
+  --rule:#252E37; --rule-strong:#36424D;
+  --blue-deep:#8CC6EC; --blue-pale:#1B2B38;
+  --shadow-2:0 10px 32px rgba(0,0,0,.5);
+}

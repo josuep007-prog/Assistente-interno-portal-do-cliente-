@@ -7,7 +7,7 @@
  * - o rascunho fica só na memória desta visita (nunca gravado); texto e anexos enviados também não são guardados.
  * Sempre com confirmação da pessoa: nada sai sem "Enviar". */
 import { estado, enviar, primeiroNome, salvarModelosPessoais } from '../estado.js';
-import { esc, toast, $, $$ } from '../util.js';
+import { esc, toast, simples, $, $$ } from '../util.js';
 const OC = window.OC;
 
 const MAX_ANEXOS = 10, MAX_BYTES = 15 * 1024 * 1024;
@@ -112,7 +112,7 @@ export function respostaHtml(i, obs, ctx) {
   const it = ints.find(x => String(x.sit) === String(r.sit));
   const vez = i.lado === 'esc' ? 'Vez do escritório' : i.lado === 'cli' ? 'Vez do cliente' : '';
   const aberto = r.aberto || r.texto || r.sit || r.arquivos.length || r.guardando || r.erro;
-  const cab = '<div class="cmp-cab"><b>Responder ao cliente</b>' + (vez ? '<span class="cmp-vez ' + esc(i.lado) + '">' + vez + (i.parado != null ? ' · parada há ' + i.parado + ' dia(s)' : '') + '</span>' : '') + '<span class="cmp-atalho">atalho <kbd>R</kbd></span>' + (r.modo !== 'editar' || lateral ? '' : '<button type="button" class="cmp-rec" id="cmp-rec" aria-expanded="' + (recolhida && r.modo === 'editar' ? 'false' : 'true') + '" title="' + (recolhida && r.modo === 'editar' ? 'Abrir a caixa de resposta' : 'Recolher a caixa de resposta (o rascunho fica guardado)') + '">' + ic(recolhida && r.modo === 'editar' ? 'chev-r' : 'chev-d', 'ic-sm') + (recolhida && r.modo === 'editar' ? ' Abrir' : '') + '</button>') + '</div>';
+  const cab = '<div class="cmp-cab"><b' + (simples() ? ' title="Atalho: R"' : '') + '>Responder ao cliente</b>' + (vez ? '<span class="cmp-vez ' + esc(i.lado) + '">' + vez + (i.parado != null ? ' · parada há ' + i.parado + ' dia(s)' : '') + '</span>' : '') + '<span class="cmp-atalho">atalho <kbd>R</kbd></span>' + (r.modo !== 'editar' || lateral ? '' : '<button type="button" class="cmp-rec" id="cmp-rec" aria-expanded="' + (recolhida && r.modo === 'editar' ? 'false' : 'true') + '" title="' + (recolhida && r.modo === 'editar' ? 'Abrir a caixa de resposta' : 'Recolher a caixa de resposta (o rascunho fica guardado)') + '">' + ic(recolhida && r.modo === 'editar' ? 'chev-r' : 'chev-d', 'ic-sm') + (recolhida && r.modo === 'editar' ? ' Abrir' : '') + '</button>') + '</div>';
   const ok = recemEnviado(i) ? '<div class="cmp-ok">' + ic('check', 'ic-sm') + ' Trâmite enviado às ' + horaDe(enviado.em) + '. Ele aparece no fim da conversa.</div>' : '';
   const erro = r.erro ? '<div class="cmp-erro">' + ic('alert', 'ic-sm') + '<span>' + esc(r.erro) + '</span></div>' : '';
   const arqs = r.arquivos.length ? '<div class="cmp-arqs">' + r.arquivos.map((a, n) => '<span class="cmp-arq">' + ic('paperclip', 'ic-sm') + esc(a.name) + ' · ' + tamanho(a.size) + (r.modo === 'editar' ? ' <button type="button" class="linkish" data-tira-arq="' + n + '" aria-label="Tirar ' + esc(a.name) + '">×</button>' : '') + '</span>').join('') + '</div>' : '';
@@ -166,7 +166,10 @@ export function respostaHtml(i, obs, ctx) {
         '<label class="cmp-fer-b" title="Anexar arquivos ao trâmite (até ' + MAX_ANEXOS + ' de 15 MB; também dá para arrastar ou colar uma imagem)">' + ic('paperclip', 'ic-sm') + ' Anexar<input type="file" id="a-arquivos" multiple hidden></label>' +
         '<button type="button" class="cmp-fer-b' + (r.painel === 'modelos' ? ' on' : '') + '" id="cmp-ab-modelos" aria-expanded="' + (r.painel === 'modelos') + '" title="Modelos de resposta">' + ic('copy', 'ic-sm') + ' Modelos <span class="menu-n">' + modelos.length + '</span></button>' +
         '<button type="button" class="cmp-fer-b' + (r.painel === 'obs' ? ' on' : '') + '" id="cmp-ab-obs" aria-expanded="' + (r.painel === 'obs') + '"' + (cliObs.length ? '' : ' disabled title="Nenhuma observação para este tipo de solicitação"') + '>' + ic('chat', 'ic-sm') + ' Observações <span class="menu-n">' + cliObs.length + '</span></button>' +
-        '<button type="button" class="cmp-fer-b" id="a-guardar" title="Guarda o texto como modelo seu (dados desta solicitação viram variáveis)">' + ic('plus', 'ic-sm') + ' Guardar como modelo</button>' +
+        (simples()
+          // Simplificado: "Guardar como modelo" fica num menu ⋯ (o botão e a ação são os mesmos)
+          ? '<details class="menu cmp-mais"><summary class="cmp-fer-b" title="Mais" aria-label="Mais">' + ic('more', 'ic-sm') + '</summary><div class="menu-list"><button type="button" class="menu-item" id="a-guardar" title="Guarda o texto como modelo seu (dados desta solicitação viram variáveis)">' + ic('plus', 'ic-sm') + ' Guardar como modelo</button></div></details>'
+          : '<button type="button" class="cmp-fer-b" id="a-guardar" title="Guarda o texto como modelo seu (dados desta solicitação viram variáveis)">' + ic('plus', 'ic-sm') + ' Guardar como modelo</button>') +
         '<span class="cmp-fer-dica">arraste arquivos ou cole uma imagem</span>' +
       '</div>' +
     '</div>' +
@@ -270,6 +273,7 @@ export function ligarResposta(g, i, r0, obs, cb) {
     toast('Modelo tirado');
     cb.redesenhar();
   });
+  $$('.cmp-mais', g).forEach(d => d.addEventListener('mouseleave', () => { d.open = false; }));
   if ($('#a-guardar', g)) $('#a-guardar', g).onclick = () => {
     if (!r.texto.trim()) { r.erro = 'Escreva o texto antes de guardar como modelo.'; cb.redesenhar(); return; }
     r.guardando = true; r.guardRot = ''; r.guardTexto = OC.despersonalizar(r.texto, vars(i, ctx));

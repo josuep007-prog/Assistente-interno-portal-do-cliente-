@@ -2,7 +2,7 @@
  * Aba Agenda: calendário do mês (como o do Departamento Pessoal) com lembretes e expectativas de conclusão
  * das suas solicitações; aba Lista: atrasados, hoje, próximos e concluídos. */
 import { estado, minhas, salvarLembretes } from '../estado.js';
-import { esc, fmtDataHora, plural, $, $$, nivelLegal } from '../util.js';
+import { esc, fmtDataHora, plural, simples, $, $$, nivelLegal } from '../util.js';
 const OC = window.OC;
 const SEMANA = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
 const nomeMes = d => { const m = d.toLocaleDateString('pt-BR', { month: 'long' }); return m[0].toUpperCase() + m.slice(1) + ' de ' + d.getFullYear(); };
@@ -89,7 +89,9 @@ function item(x) {
     '<div class="tx"><b' + (x.feito ? ' class="feito-tx"' : '') + '>' + esc(x.texto) + '</b><small>' + esc(fmtDataHora(x.quando)) + (x.rep && x.rep !== 'nao' ? ' · <span class="rep"><svg class="ic"><use href="#i-repeat"/></svg>' + esc(OC.REPETICOES[x.rep]) + '</span>' : '') + (x.num ? ' · #' + esc(x.num) + (x.cliente ? ' ' + esc(x.cliente) : '') : '') + '</small></div>' +
     '<div class="acts">' + (x.feito
       ? '<button class="btn btn-sm" data-a="reabrir">Reabrir</button><button class="btn btn-sm" data-a="excluir" title="Excluir">Excluir</button>'
-      : '<button class="btn btn-sm" data-a="feito" title="Marcar como feito"><svg class="ic ic-sm"><use href="#i-check"/></svg> Feito</button><button class="btn btn-sm" data-a="1h">+1 h</button><button class="btn btn-sm" data-a="amanha">Amanhã</button>' + (x.num ? '<button class="btn btn-sm" data-a="abrir" title="Abrir a solicitação">#' + esc(x.num) + '</button>' : '')) +
+      : '<button class="btn btn-sm" data-a="feito" title="Marcar como feito"><svg class="ic ic-sm"><use href="#i-check"/></svg> Feito</button>' + (simples()
+        ? '<details class="menu adiar"><summary class="btn btn-sm">Adiar</summary><div class="menu-list"><button type="button" class="menu-item" data-a="1h">+1 h</button><button type="button" class="menu-item" data-a="amanha">Amanhã</button></div></details>'
+        : '<button class="btn btn-sm" data-a="1h">+1 h</button><button class="btn btn-sm" data-a="amanha">Amanhã</button>') + (x.num ? '<button class="btn btn-sm" data-a="abrir" title="Abrir a solicitação">#' + esc(x.num) + '</button>' : '')) +
     '</div></div>';
 }
 
@@ -99,7 +101,7 @@ function ligarAcoes(el, ctx) {
     const b = e.target.closest('[data-a]');
     const x = l.find(y => y.id === d.dataset.l);
     if (!x) return;
-    if (!b) { ctx.abrirLembrete({ l: x }); return; }
+    if (!b) { if (!e.target.closest('.adiar')) ctx.abrirLembrete({ l: x }); return; }
     const a = b.dataset.a;
     if (a === 'abrir') { ctx.abrirDetalhe(x); return; }
     let nova = l;

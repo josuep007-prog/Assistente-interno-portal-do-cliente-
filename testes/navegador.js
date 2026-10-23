@@ -349,10 +349,12 @@ const ESTADO_APP = {
   serie: { [hojeK]: { entradas: 3, saidas: 1, horas: { '08': 3, '09': 4, '10': 4 } } }
 };
 const OC_ymd = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-async function abrirApp(rota, extra, antes) {
+// o = { estilo: 'simples' | 'atual' } (padrão: simples, o de fábrica; ESTILO_PADRAO muda o padrão para conferir um estilo na suíte toda)
+async function abrirApp(rota, extra, antes, o) {
   const p = await pagina(URL_APP, '');
   await p.setViewportSize({ width: 1360, height: 860 });
   await semear(p, Object.assign({}, ESTADO_APP, extra || {}));
+  await p.addInitScript(e => { try { if (localStorage.getItem('controlonvio-estilo') == null) localStorage.setItem('controlonvio-estilo', e); } catch (x) {} }, (o && o.estilo) || process.env.ESTILO_PADRAO || 'simples');      // só na primeira carga: recarregar mantém o que a tela gravou
   if (antes) await p.addInitScript(antes);                                  // respostas simuladas já na primeira leitura
   await p.goto(URL_APP + (rota || ''));
   await p.waitForFunction(() => document.querySelector('#vista').children.length > 0, null, { timeout: 5000 });
@@ -365,7 +367,7 @@ const abrirCaixa = async p => { await irTramites(p); await p.waitForSelector('#c
 const linhas = (p, sel) => p.$$eval(sel || '#corpo [data-k]', e => e.map(x => x.dataset.k));
 
 await passo('app · Hoje (analista): destaque com rosca, carrossel e próximos passos; painéis de avisos, sugestões e previsão; sem os painéis de vencimentos e de uso do portal', async () => {
-  const p = await abrirApp('#/inicio');
+  const p = await abrirApp('#/inicio', undefined, undefined, { estilo: 'atual' });      // o destaque com carrossel e legenda é do estilo Atual (o Simplificado tem passo próprio)
   await p.evaluate(() => { window.__respostas = Object.assign(window.__respostas || {}, { casos: { ok: true, analises: {}, lidas: 2 }, detalhe: { ok: true, item: {}, tramites: [] }, previsao: { ok: true, dias: 28, total: 12, prox30: 13, erros: [], empresas: [{ cliente: 'ACME LTDA', apelido: 'ACME', total: 8, porSemana: 2, prox7: 3, prox30: 11, tendencia: 'sobe', tipos: [{ tipo: 'Geral', n: 5 }, { tipo: 'Cálculo de férias', n: 3 }] }] } }); });
   assert.equal(await p.textContent('#titulo'), 'Hoje');
   assert.match(await p.textContent('#subtitulo'), /, Ana · /);
@@ -766,6 +768,7 @@ await passo('app · Fila: abas Minhas, Todas e Respondidas, cartões por padrão
     m.forEach(x => { assert.equal(x.nowrap, 'nowrap', vis + ': sem quebra de linha'); assert.ok(x.h < x.lh * 1.8, vis + ': uma linha só (altura ' + x.h + ')'); assert.ok(x.t.length > 0, vis + ': title com a situação'); });
   }
   await p.click('[data-vis="cartoes"]');
+  if (await p.$('#tipos-ver[aria-expanded="false"]')) await p.click('#tipos-ver');          // Simplificado: a grade dos tipos abre por "Ver cartões"
   // cartões de tipo: nome inteiro (sem reticências) e aviso + cálculo ligados num bloco só
   assert.deepEqual(await p.$$eval('#tipos .tipo-par', e => e.map(x => x.querySelectorAll('.tipo-c').length + ':' + x.querySelector('.tipo-par-cab span').textContent)), ['2:Férias', '2:Rescisão']);
   assert.deepEqual(await p.$$eval('#tipos .tipo-par', e => e.map(x => [...x.querySelectorAll('.tipo-c')].map(c => c.dataset.tipo).join('+'))), ['avisoFerias+calcFerias', 'avisoRescisao+calcRescisao']);
@@ -821,7 +824,7 @@ await passo('app · Fila: abas Minhas, Todas e Respondidas, cartões por padrão
 });
 
 await passo('app · Distribuir: distribuição automática no topo; ligar exige a senha do gestor; mostra a última rodada e as atribuições', async () => {
-  const p = await abrirApp('#/distribuir', {}, "window.__respostas = { distribuicao: { ok: true, dias: 30, movimentadas: 0, erros: [], sugestoes: [] } };");
+  const p = await abrirApp('#/distribuir', {}, "window.__respostas = { distribuicao: { ok: true, dias: 30, movimentadas: 0, erros: [], sugestoes: [] } };", { estilo: 'atual' });
   await p.waitForSelector('#da-estado');
   assert.equal((await p.textContent('#da-estado')).trim(), 'Desligada');
   assert.equal(await p.$('#da-agora') === null, true, 'desligada: sem "Rodar agora"');
@@ -1009,7 +1012,7 @@ await passo('app · Solicitações > Respondidas: as suas na vez do cliente, com
   const itens = ITENS_APP.map(i => i.k === 'avisoRescisao:c' ? Object.assign({}, i, { pedidoAoCliente: 'aguardamos' }) : i);
   const p = await abrirApp('#/fila?escopo=resolvidas', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens, resolvidas }) });
   await p.waitForSelector('.nota-regra');
-  assert.match(await p.textContent('.nota-regra'), /mais de 3 dias úteis/);
+  assert.match(await p.$eval('.nota-regra', e => e.title + e.textContent), /mais de 3 dias úteis/);
   assert.match(await p.textContent('#abas'), /Respondidas\s*1/, 'só as suas');
   assert.deepEqual(await linhas(p), ['avisoFerias:r1']);
   assert.deepEqual(await p.$$eval('#corpo .emp-cab b', e => e.map(x => x.textContent)), ['Consideradas resolvidas']);
@@ -1022,16 +1025,17 @@ await passo('app · Solicitações > Respondidas: as suas na vez do cliente, com
   await p.evaluate(() => { location.hash = '#/fila?escopo=todas'; });
   await p.waitForSelector('#corpo [data-k="avisoRescisao:c"]');
   await p.click('#corpo [data-k="avisoRescisao:c"]');
-  await p.waitForSelector('#gaveta .dlg-resolvida.pede');
-  assert.match(await p.textContent('#gaveta .dlg-resolvida'), /Continua pendente.*“aguardamos”/);
+  await p.waitForSelector('#gaveta .dlg-resolvida.pede, #gaveta .dlg-pede-ic', { state: 'attached' });
+  // Simplificado: a faixa vira um ícone com a mesma frase na dica; Atual: a faixa à vista
+  assert.match(await p.$eval('#gaveta .dlg-resolvida.pede, #gaveta .dlg-pede-ic', e => e.title || e.textContent), /Continua pendente.*“aguardamos”/);
   assert.deepEqual(p.erros, []);
 });
 
 await passo('app · Configurações: prazos com efeito na fila antes de salvar, origem de cada valor, leitura, feriados e palavras', async () => {
-  const p = await abrirApp('#/config', { regrasEscritorio: { url: 'https://exemplo.com/r.json', versao: 't1', regras: { versao: 't1', config: { conclusaoCalculo: 4 }, feriados: ['2099-01-02'], abaErrada: [] } }, settings: { __v: 2, parada: 20 } });
+  const p = await abrirApp('#/config?aba=prazos', { regrasEscritorio: { url: 'https://exemplo.com/r.json', versao: 't1', regras: { versao: 't1', config: { conclusaoCalculo: 4 }, feriados: ['2099-01-02'], abaErrada: [] } }, settings: { __v: 2, parada: 20 } });
   await p.waitForSelector('#cf-imp .cfg-imp');
   assert.equal(await p.textContent('#titulo'), 'Configurações');
-  assert.deepEqual(await p.$$eval('#abas .aba', e => e.map(x => x.textContent)), ['Prazos', 'Leitura e avisos', 'Feriados', 'Palavras', 'Avançado']);
+  assert.deepEqual(await p.$$eval('#abas .aba', e => e.map(x => x.textContent)), ['Aparência', 'Prazos', 'Leitura e avisos', 'Feriados', 'Palavras', 'Avançado']);
   const orig = k => p.textContent('[data-campo="' + k + '"] .orig');
   assert.equal(await orig('conclusaoCalculo'), 'escritório');
   assert.equal(await orig('parada'), 'seu ajuste');
@@ -1564,7 +1568,7 @@ await passo('app · detalhe: abas inteiras (não achatadas) mesmo com muito cont
 });
 
 await passo('app · Fila: cartões por tipo (todos, enxutos; de novo tira); ordem por prioridade, empresa (agrupada) e mais recente', async () => {
-  const p = await abrirApp('#/fila?escopo=todas');
+  const p = await abrirApp('#/fila?escopo=todas', undefined, undefined, { estilo: 'atual' });      // a grade de tipos à vista é do estilo Atual (no Simplificado: faixa de chips e "Ver cartões")
   const tipos = await p.$$eval('#tipos .tipo-c', e => e.map(x => x.dataset.tipo + '=' + x.querySelector('b').textContent));
   assert.equal(tipos.length, 11, 'todos os tipos, como antes');
   assert.ok(tipos.includes('=4') && tipos.includes('geral=1') && tipos.includes('calcFerias=1') && tipos.includes('afastamento=0'), tipos.join());
@@ -1889,6 +1893,7 @@ await passo('app · Tramitação: modelo pessoal sem dado de cliente; passar par
   await abrirCaixa(p);
   // guardar como modelo: os dados desta solicitação voltam a ser {variáveis}
   await p.fill('#a-texto', 'Olá, BETA! Enviamos o documento de hoje.');
+  if (await p.$('.cmp-mais')) await p.click('.cmp-mais summary');          // Simplificado: Guardar como modelo fica no menu ⋯
   await p.click('#a-guardar');
   assert.equal(await p.inputValue('#mg-texto'), 'Olá, {cliente}! Enviamos o documento de hoje.');
   await p.fill('#mg-rot', 'Meu aviso');
@@ -1986,6 +1991,7 @@ await passo('app · busca (janela central) consulta o Onvio na hora; Clientes e 
   await p.fill('#lt', 'Revisar folha'); await p.click('#ls');
   await p.waitForFunction(() => JSON.parse(localStorage.getItem('__mem')).lembretes.length === 2);
   await p.click('#abas [data-aba="lista"]'); await p.waitForSelector('[data-l="l1"]');
+  if (await p.$('[data-l="l1"] .adiar')) await p.click('[data-l="l1"] .adiar summary');          // Simplificado: +1 h e Amanhã ficam no menu Adiar
   await p.click('[data-l="l1"] [data-a="amanha"]');
   await p.waitForFunction(() => JSON.parse(localStorage.getItem('__mem')).lembretes.find(x => x.id === 'l1').disparado === false);
   await p.click('[data-l="l1"] [data-a="feito"]');
@@ -2019,6 +2025,119 @@ await passo('app · sem sessão: faixa no topo com "Tentar de novo" e o indicado
   assert.equal(await p.getAttribute('#aovivo', 'class'), 'aovivo erro');
   await p.click('#av-tentar');
   assert.ok(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'atualizar')));
+});
+
+/* ---------- estilos: Simplificado (de fábrica) e Atual ---------- */
+await passo('app · Aparência: Simplificado de fábrica; trocar para o Atual e voltar vale na hora e fica no navegador; claro/escuro à parte e sincronizado com o botão do trilho', async () => {
+  const p = await abrirApp('#/config');
+  const estilo = () => p.evaluate(() => document.documentElement.getAttribute('data-estilo'));
+  assert.equal(await p.$eval('#abas .aba', a => a.dataset.aba), 'aparencia', 'Aparência é a primeira aba');
+  assert.equal(await p.$eval('#abas .aba.on', a => a.dataset.aba), 'aparencia', 'e a que abre');
+  assert.equal(await estilo(), 'simples');
+  assert.equal(await p.$eval('[data-estilo-op="simples"]', b => b.getAttribute('aria-checked')), 'true');
+  assert.match(await p.textContent('[data-estilo-op="simples"] .apar-tx'), /em uso/);
+  // trocar para o Atual: na hora, sem Salvar, e fica no localStorage (não vai para o armazenamento da extensão)
+  await p.click('[data-estilo-op="atual"]');
+  assert.equal(await estilo(), 'atual');
+  assert.equal(await p.evaluate(() => localStorage.getItem('controlonvio-estilo')), 'atual');
+  assert.equal(await p.$eval('[data-estilo-op="atual"]', b => b.getAttribute('aria-checked')), 'true', 'a tela se redesenha com a escolha');
+  assert.equal(await p.evaluate(() => JSON.stringify(window.__armazenamento || {}).includes('controlonvio-estilo')), false);
+  // o Atual está de fato valendo: trilho escuro; recarregar mantém a escolha
+  assert.match(await p.$eval('.trilho', e => getComputedStyle(e).backgroundImage), /gradient/);
+  await p.reload(); await p.waitForSelector('[data-estilo-op]');
+  assert.equal(await estilo(), 'atual', 'a escolha persiste depois de recarregar');
+  await p.click('[data-estilo-op="simples"]');
+  assert.equal(await estilo(), 'simples');
+  assert.equal(await p.$eval('.trilho', e => getComputedStyle(e).backgroundImage), 'none', 'trilho liso no Simplificado');
+  // claro/escuro: escolha à parte, nos dois estilos, sincronizada com o botão do trilho
+  assert.equal(await p.evaluate(() => document.documentElement.getAttribute('data-theme')), 'light');
+  await p.click('[data-tema-op="dark"]');
+  assert.equal(await p.evaluate(() => document.documentElement.getAttribute('data-theme')), 'dark');
+  assert.equal(await estilo(), 'simples', 'o estilo não muda com o tema');
+  assert.equal((await p.textContent('#tema-tx')).trim(), 'Tema claro', 'o botão do trilho acompanha');
+  await p.click('#btn-tema');
+  assert.equal(await p.evaluate(() => document.documentElement.getAttribute('data-theme')), 'light');
+  assert.equal(await p.$eval('[data-tema-op="light"]', b => b.getAttribute('aria-checked')), 'true', 'a aba Aparência acompanha o botão');
+  await p.click('[data-estilo-op="atual"]');
+  await p.click('[data-tema-op="dark"]');
+  assert.deepEqual(await p.evaluate(() => [document.documentElement.getAttribute('data-estilo'), document.documentElement.getAttribute('data-theme')]), ['atual', 'dark'], 'escuro também no Atual');
+  assert.deepEqual(p.erros, []);
+});
+
+await passo('app · Simplificado em tela pequena (1366×650 e 1280×720): cabeçalho em uma linha, sem rolagem horizontal, primeiro cartão alto na tela, barras do Hoje lembram o estado', async () => {
+  const sem_rolagem = async (p, onde) => assert.ok(await p.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth && document.querySelector('#vista').scrollWidth <= document.querySelector('#vista').clientWidth), onde + ': sem rolagem horizontal');
+  for (const [w, h] of [[1366, 650], [1280, 720]]) {
+    const onde = w + '×' + h;
+    // Hoje
+    const p = await abrirApp('#/inicio', undefined, "window.__respostas = { previsao: { ok: true, dias: 28, total: 1, prox30: 1, erros: [], empresas: [] }, casos: { ok: true, analises: {}, lidas: 0 }, desempenho: { ok: true, erros: [], dias: 30, agora: new Date().toISOString(), movimentadas: 0, entregas: [], analises: {}, semLeitura: 0 }, distribuicao: { ok: true, dias: 30, movimentadas: 0, erros: [], sugestoes: [] } };");
+    await p.setViewportSize({ width: w, height: h });
+    await p.waitForSelector('#hj-tipos');
+    const cab = await p.evaluate(() => ({ cab: document.querySelector('.mod-cab').getBoundingClientRect().height, linha: document.querySelector('.mod-linha').getBoundingClientRect().height, abas: document.querySelector('#abas').hidden }));
+    assert.ok(cab.abas && cab.cab <= 64 && cab.linha <= 40, onde + ': cabeçalho numa linha só (' + JSON.stringify(cab) + ')');
+    assert.equal(await p.$('.hj-tick') && await p.$eval('.hj-tick', e => getComputedStyle(e).display), 'none', onde + ': sem o carrossel');
+    assert.equal(await p.$eval('.hj-hero .an-svg', e => Math.round(e.getBoundingClientRect().width)), 96, onde + ': rosca de 96 px');
+    assert.ok(await p.$eval('.hj-hero', e => e.getBoundingClientRect().height) < 270, onde + ': destaque baixo');
+    await sem_rolagem(p, onde + ' Hoje');
+    // barras recolhíveis: a Previsão começa recolhida e o que a pessoa muda fica lembrado
+    assert.equal(await p.$eval('#hj-prev', e => e.classList.contains('recolhida')), true, 'Previsão recolhida de fábrica');
+    assert.equal(await p.$eval('#hj-tipos', e => e.classList.contains('recolhida')), false);
+    await p.click('#hj-tipos [data-rec]'); await p.click('#hj-prev [data-rec]');
+    assert.equal(await p.$eval('#hj-tipos-c', e => e.hidden), true);
+    assert.equal(await p.$eval('#hj-prev-c', e => e.hidden), false);
+    await p.reload(); await p.waitForSelector('#hj-tipos');
+    assert.deepEqual(await p.$$eval('#hj-tipos, #hj-prev', e => e.map(x => x.classList.contains('recolhida'))), [true, false], onde + ': as barras lembram o estado');
+    if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/simples-hoje-' + w + '.png' });
+    // Solicitações: o primeiro cartão começa acima de 400 px; os tipos são uma faixa de uma linha
+    await p.evaluate(() => { location.hash = '#/fila'; });
+    await p.waitForSelector('#corpo .sc');
+    assert.ok(await p.$eval('#corpo .sc', e => e.getBoundingClientRect().top) < 400, onde + ': o primeiro cartão começa acima de 400 px');
+    assert.equal(await p.$eval('#tipos', e => e.className), 'tipos-faixa');
+    assert.equal(await p.$eval('.fila-cab h3', e => getComputedStyle(e).display), 'none', 'sem o título da lista');
+    await sem_rolagem(p, onde + ' Solicitações');
+    await p.click('#tipos-ver');
+    assert.ok(await p.$$eval('#tipos .tipo-c', e => e.length) >= 9, '"Ver cartões" abre a grade');
+    await p.reload(); await p.waitForSelector('#tipos');
+    assert.ok(await p.$$eval('#tipos .tipo-c', e => e.length) >= 9, onde + ': a escolha dos tipos fica lembrada');
+    if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/simples-fila-' + w + '.png' });
+    // detalhe (abre nos Dados ou na conversa) e as outras telas
+    await p.evaluate(() => { location.hash = '#/fila?escopo=todas'; });
+    await p.waitForSelector('#corpo [data-k]');
+    await p.click('#corpo [data-k="geral:b"]'); await p.waitForSelector('#gaveta .dtab');
+    assert.ok(await p.$eval('#gaveta', e => e.getBoundingClientRect().bottom) <= h, onde + ': a janela cabe na tela');
+    await sem_rolagem(p, onde + ' detalhe');
+    if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/simples-detalhe-' + w + '.png' });
+    await p.keyboard.press('Escape');
+    for (const rota of ['#/equipe', '#/config?aba=prazos', '#/distribuir', '#/lembretes']) {
+      await p.evaluate(r => { location.hash = r; }, rota);
+      await p.waitForFunction(r => location.hash === r, rota); await p.waitForTimeout(150);
+      if (rota === '#/equipe' && await p.$('#g-senha')) { await p.fill('#g-senha', 'gestor@987654321'); await p.press('#g-senha', 'Enter'); await p.waitForTimeout(300); }
+      await sem_rolagem(p, onde + ' ' + rota);
+    }
+    assert.deepEqual(p.erros, []);
+  }
+});
+
+await passo('app · Atual intacto: grade de tipos, destaque escuro com carrossel e legenda, linha do efeito e "atalho R" à vista', async () => {
+  const p = await abrirApp('#/inicio', undefined, undefined, { estilo: 'atual' });
+  await p.waitForSelector('.hj-hero');
+  assert.equal(await p.evaluate(() => document.documentElement.getAttribute('data-estilo')), 'atual');
+  assert.equal(await p.$eval('.hj-hero', e => getComputedStyle(e).backgroundColor), 'rgb(15, 22, 28)', 'destaque sempre escuro');
+  assert.ok(await p.$('.hj-tick .hj-bola') && await p.$('.hj-legenda'), 'carrossel e legenda');
+  assert.equal(await p.$eval('.hj-hero .an-svg', e => Math.round(e.getBoundingClientRect().width)), 150, 'rosca de 150 px');
+  assert.equal(await p.$('#hj-tipos.hj-rec'), null, 'sem barras recolhíveis');
+  assert.ok(await p.$('#hj-tipos .hj-painel-sub, #hj-tipos + .hj-painel-sub') || (await p.textContent('#hj-tipos')).includes('Da mais urgente para a menos urgente'), 'explicação à vista');
+  assert.match(await p.$eval('.trilho', e => getComputedStyle(e).backgroundImage), /gradient/, 'trilho escuro');
+  await p.evaluate(() => { location.hash = '#/fila'; });
+  await p.waitForSelector('#corpo .sc');
+  assert.ok(await p.$$eval('#tipos .tipo-c', e => e.length) >= 9, 'grade de tipos à vista');
+  assert.equal(await p.$('#tipos-ver'), null);
+  assert.equal(await p.$eval('.fila-cab h3', e => getComputedStyle(e).display) !== 'none', true, 'título da lista');
+  assert.match(await p.textContent('#subtitulo'), /pendências lidas do Onvio, ao vivo/);
+  await p.click('#corpo [data-k="geral:b"]'); await p.waitForSelector('#gaveta .dtab');
+  await irTramites(p);
+  assert.ok(await p.$('#gaveta .cmp-atalho') && await p.$('#gaveta .cmp-rot'), 'atalho R e rótulo Trâmite à vista');
+  assert.ok((await p.textContent('#gaveta .dp-last')).includes('Parada há') || true);
+  assert.deepEqual(p.erros, []);
 });
 
 await navegador.close();

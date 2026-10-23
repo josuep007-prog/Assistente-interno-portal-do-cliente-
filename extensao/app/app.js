@@ -3,7 +3,7 @@
  * trilho lateral, cabeçalho do módulo (título, abas, ao vivo, sino, Ver Onvio), busca em janela central
  * (/ ou Ctrl+K) e as janelas de detalhe e de lembrete. */
 import { estado, iniciarEstado, aoMudar, enviar, itens, minhas, marcarAlertasVistos } from './estado.js';
-import { $, $$, esc, relativo, fmtHoraS, toast, normal, iniciais, pillSituacao } from './util.js';
+import { $, $$, esc, relativo, fmtHoraS, toast, normal, iniciais, pillSituacao, simples } from './util.js';
 import { abrirDetalhe, fecharDetalhe, detalheAberto } from './views/detalhe.js';
 import { abrirLembrete, fecharLembrete, lembreteAberto } from './views/lembrete-dlg.js';
 import { abrirNova, fecharNova, novaAberta } from './views/nova-dlg.js';
@@ -46,6 +46,8 @@ function navegar(nome, params) {
 function cab(o) {
   $('#titulo').textContent = o.titulo || 'Control Onvio';
   $('#subtitulo').innerHTML = o.sub || '';
+  // Simplificado: o subtítulo sai da vista e fica na dica do título (nada se perde)
+  const t = $('#titulo'); if (simples() && o.sub) t.title = $('#subtitulo').textContent.replace(/\s+/g, ' ').trim(); else t.removeAttribute('title');
   $('#cab-extra').innerHTML = o.extra || '';
   const ab = $('#abas');
   ab.hidden = !(o.abas && o.abas.length);
@@ -55,7 +57,8 @@ function cab(o) {
     esc(a.rot) + (a.n != null ? '<span class="n' + (a.late ? ' late' : '') + '">' + (a.n || '') + '</span>' : '') + (a.href ? '</a>' : '</button>')).join('');
   return { abas: ab, extra: $('#cab-extra') };
 }
-const ctx = { navegar, abrirDetalhe, abrirLembrete, abrirNova, cab, aoRedimensionar: fn => { aoRedim = fn; } };
+const ctx = { navegar, abrirDetalhe, abrirLembrete, abrirNova, cab, aoRedimensionar: fn => { aoRedim = fn; },
+  estilo: () => estiloAtual(), tema: () => temaAtual(), definirEstilo: n => definirEstilo(n), definirTema: n => definirTema(n) };
 
 // Onvio aberto com login de cliente: o app não mostra nada (o service worker já apagou o que foi lido).
 const bloqueado = () => (estado.status || {}).estado === 'visao_cliente';
@@ -70,6 +73,18 @@ function telaBloqueio(v) {
   $('#bl-tentar', v).onclick = async () => { const r = await enviar({ cmd: 'atualizar' }); if (r.ok) toast('Acesso do escritório confirmado'); else toast(r.cliente ? 'Continua um acesso de cliente' : (r.erro || 'Não foi possível ler o Onvio'), true); };
   $('#bl-onvio', v).onclick = () => enviar({ cmd: 'fecharPainel' });
 }
+
+// Textos de ajuda (classe "ajuda"): o texto fica no HTML nos dois estilos; o título do bloco ganha o mesmo texto como dica
+// e o estilo Simplificado esconde o parágrafo. Vale também para o que a tela redesenha depois.
+function marcarAjudas() {
+  $$('#vista .ajuda:not([data-aj])').forEach(a => {
+    a.dataset.aj = '1';
+    const t = a.textContent.replace(/\s+/g, ' ').trim(), ant = a.previousElementSibling;
+    const alvo = ant && /^H[1-4]$/.test(ant.tagName) ? ant : a.parentElement;
+    if (alvo && t && !alvo.title) alvo.title = t;
+  });
+}
+new MutationObserver(marcarAjudas).observe(document.getElementById('vista'), { childList: true, subtree: true });
 
 let telaAnterior = '', tEntra = 0;
 function desenhar() {
@@ -132,7 +147,10 @@ function aoVivo() {
   if (!ver) { tx.textContent = 'Aguardando a primeira leitura'; return; }
   const velha = Date.now() - new Date(ver) > Math.max(120, (seg || 60) * 4) * 1000;
   el.classList.add(velha || !(seg > 0) ? 'parado' : 'ok');
-  tx.textContent = (seg > 0 && !velha ? 'Ao vivo · ' : 'Atualizado ') + fmtHoraS(ver);
+  const ao = seg > 0 && !velha;
+  // Simplificado: só a hora (hh:mm); o texto inteiro fica na dica
+  tx.textContent = simples() ? fmtHoraS(ver).slice(0, 5) : (ao ? 'Ao vivo · ' : 'Atualizado ') + fmtHoraS(ver);
+  el.title = (ao ? 'Ao vivo · ' : 'Atualizado às ') + fmtHoraS(ver);
 }
 // Bolinhas vermelhas do trilho e o resumo que aparece ao passar o mouse (o resumo explica o número)
 function bolinha(id, n, partes) {
@@ -244,7 +262,23 @@ function escolher(n) { const o = opcoes[n]; if (!o) return; fecharBusca(); o.ir(
 
 /* ---------- tema ---------- */
 const temaAtual = () => document.documentElement.getAttribute('data-theme') || 'light';     // padrão claro; escuro só por escolha
+const estiloAtual = () => document.documentElement.getAttribute('data-estilo') === 'atual' ? 'atual' : 'simples';   // padrão Simplificado; o Atual é o desenho de antes da 0.42.0
 const iconeTema = () => { const esc_ = temaAtual() === 'dark'; $('#btn-tema use').setAttribute('href', esc_ ? '#i-sun' : '#i-moon'); $('#tema-tx').textContent = esc_ ? 'Tema claro' : 'Tema escuro'; };
+
+// Troca na hora: o claro/escuro vale nos dois estilos, e o botão do trilho e a aba Aparência mostram sempre o mesmo
+function definirTema(n) {
+  document.documentElement.setAttribute('data-theme', n);
+  try { localStorage.setItem('controlonvio-theme', n); } catch (e) {}
+  iconeTema(); if (aoRedim) aoRedim();
+  if (rota.nome === 'config' && (!rota.params.aba || rota.params.aba === 'aparencia')) redesenharMantendo();
+}
+// O estilo muda só o visual e a arrumação: redesenha a tela mantendo a rolagem e avisa os gráficos para refazerem o tamanho
+function definirEstilo(n) {
+  document.documentElement.setAttribute('data-estilo', n === 'atual' ? 'atual' : 'simples');
+  try { localStorage.setItem('controlonvio-estilo', n === 'atual' ? 'atual' : 'simples'); } catch (e) {}
+  redesenharMantendo(); aoVivo(); if (aoRedim) aoRedim();
+}
+function redesenharMantendo() { const rolagem = $('#vista').scrollTop; desenhar(); $('#vista').scrollTop = rolagem; }
 
 async function atualizar() {
   const r = await enviar({ cmd: 'atualizar' });
@@ -284,12 +318,7 @@ async function atualizar() {
     if (!$('#sino-painel').hidden && !e.target.closest('#sino-painel')) abrirSino(false);
     $$('#vista details.menu[open]').forEach(d => { if (!d.contains(e.target)) d.open = false; });
   });
-  $('#btn-tema').onclick = () => {
-    const n = temaAtual() === 'dark' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', n);
-    try { localStorage.setItem('controlonvio-theme', n); } catch (e) {}
-    iconeTema(); if (aoRedim) aoRedim();
-  };
+  $('#btn-tema').onclick = () => definirTema(temaAtual() === 'dark' ? 'light' : 'dark');
   $('#btn-busca').onclick = abrirBusca;
   $('#rail-busca').onclick = abrirBusca;
   $('#cmdk').addEventListener('mousedown', e => { if (e.target.id === 'cmdk') fecharBusca(); });

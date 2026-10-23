@@ -30,7 +30,7 @@ export function dicaLeitura(e) {
 export function mapaIdadeHtml() {
   const m = OC.mapaIdade(itens());
   const colunas = OC.FAIXAS_IDADE.map(f => ({ id: f.de + '-' + (f.ate == null ? '' : f.ate), rotulo: f.rot }));
-  return '<section class="card"><div class="card-h"><h3>Idade da fila por analista</h3><span class="sub">dias parada · clique numa célula para ver as solicitações</span></div><div class="card-b" id="mapa-idade">' +
+  return '<section class="card"><div class="card-h"><h3>Idade da fila por analista</h3><span class="sub ajuda">dias parada · clique numa célula para ver as solicitações</span></div><div class="card-b" id="mapa-idade">' +
     mapaDeCalor(m.linhas.map(l => ({ id: l.resp, rotulo: nomeResp(l.resp), valores: l.por })), colunas, { titulo: 'Solicitações por analista e dias parada', destaque: [eu()], fixo: SEM }) + '</div></section>';
 }
 

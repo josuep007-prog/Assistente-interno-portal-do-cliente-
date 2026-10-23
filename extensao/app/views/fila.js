@@ -6,7 +6,7 @@
 import { estado, itens, minhas, clienteRespondeu, enviar, primeiroNome } from '../estado.js';
 import { abrirLote } from './lote-dlg.js';
 import { tiposHtml } from './tipos.js';
-import { esc, concluirBtn, analiseBtn, pillSituacao, prazoHtml, cartaoItem, ligarItens, csvItens, fmtDataCurta, normal, tipoVisual, tipoIcone, nivelLegal, respHtml, definirSugestoesResp, $, $$ } from '../util.js';
+import { esc, concluirBtn, analiseBtn, pillSituacao, prazoHtml, cartaoItem, ligarItens, csvItens, fmtDataCurta, normal, tipoVisual, tipoIcone, nivelLegal, respHtml, definirSugestoesResp, simples, lerPref, gravarPref, $, $$ } from '../util.js';
 const OC = window.OC;
 
 // Atalhos de outras telas (Equipe, Hoje); hoje/atraso/g3 só chegam da área do gestor
@@ -72,8 +72,9 @@ export function render(el, ctx, params) {
   const n = { minhas: todas.filter(doMinhas).length, todas: todas.length, respondidas: doRespondidas().length };
   let base = aba === 'minhas' ? todas.filter(doMinhas) : aba === 'respondidas' ? doRespondidas() : todas;
   let titulo = 'Solicitações';
-  let sub = (aba === 'minhas' ? 'As suas e as sem responsável' : aba === 'respondidas' ? 'As suas, esperando o cliente' : 'Da equipe toda') + ' · pendências lidas do Onvio, ao vivo';
-  if (params.escopo === 'semresp') { base = base.filter(i => !i.resp); sub = 'Sem responsável · pendências lidas do Onvio, ao vivo'; }
+  const lidas = simples() ? '' : ' · pendências lidas do Onvio, ao vivo';       // Simplificado: a leitura ao vivo já está no cabeçalho
+  let sub = (aba === 'minhas' ? 'As suas e as sem responsável' : aba === 'respondidas' ? 'As suas, esperando o cliente' : 'Da equipe toda') + lidas;
+  if (params.escopo === 'semresp') { base = base.filter(i => !i.resp); sub = 'Sem responsável' + lidas; }
   if (params.analista) { base = todas.filter(i => (i.resp || '(sem responsável)') === params.analista); titulo = params.analista; sub = 'Fila do responsável · <a href="#/equipe">voltar à Equipe</a>'; }
   if (params.cliente) { base = todas.filter(i => (i.cliente || i.apelido || '(cliente não informado)') === params.cliente); titulo = params.cliente; sub = 'Pendências do cliente · <a href="#/inicio">voltar ao Hoje</a>'; }
   if (kpi) base = base.filter(kpi.f);
@@ -103,7 +104,7 @@ export function render(el, ctx, params) {
 
   el.innerHTML =
     '<div class="barra barra-fila">' +
-      '<input type="search" id="f-texto" placeholder="Filtrar por ID, cliente, empregado, assunto ou responsável…" value="' + esc(filtros.texto) + '" aria-label="Filtrar">' +
+      '<input type="search" id="f-texto" placeholder="' + (simples() ? 'Filtrar por ID, cliente ou assunto' : 'Filtrar por ID, cliente, empregado, assunto ou responsável…') + '" title="Filtrar por ID, cliente, empregado, assunto ou responsável" value="' + esc(filtros.texto) + '" aria-label="Filtrar">' +
       '<details class="menu" id="m-filtros"><summary class="btn btn-sm" id="b-filtros"><svg class="ic ic-sm"><use href="#i-filter"/></svg> Filtros <span class="menu-n" id="n-filtros"></span></summary>' +
         '<div class="menu-list form">' +
           sel('f-tipo', 'Tipo de solicitação', [['', 'Todos os tipos']].concat(OC.TYPES.map(t => [t.key, t.label])), filtros.tipo) +
@@ -111,7 +112,7 @@ export function render(el, ctx, params) {
           (umaPessoa ? '' : sel('f-resp', 'Responsável', [['', 'Todos']].concat(resps.map(r => [r, r])), filtros.resp)) +
           '<div class="menu-pe"><button class="btn btn-sm" id="f-limpar">Limpar filtros</button><button class="btn btn-sm btn-primary" id="f-ok">Pronto</button></div>' +
         '</div></details>' +
-      '<label class="ord-sel">Ordenar <select id="f-ord" aria-label="Ordenar">' + ORDENS.map(([k, r, d]) => '<option value="' + k + '" title="' + esc(d) + '"' + (ord.k === k ? ' selected' : '') + '>' + r + '</option>').join('') + (ORDENS.some(o => o[0] === ord.k) ? '' : '<option value="' + esc(ord.k) + '" selected>Coluna</option>') + '</select></label>' +
+      '<label class="ord-sel" title="Ordenar">' + (simples() ? '' : 'Ordenar ') + '<select id="f-ord" aria-label="Ordenar">' + ORDENS.map(([k, r, d]) => '<option value="' + k + '" title="' + esc(d) + '"' + (ord.k === k ? ' selected' : '') + '>' + r + '</option>').join('') + (ORDENS.some(o => o[0] === ord.k) ? '' : '<option value="' + esc(ord.k) + '" selected>Coluna</option>') + '</select></label>' +
       '<span class="spacer"></span>' +
       '<div class="seg seg-ic" role="group" aria-label="Visualização"><button data-vis="lista"' + (vis === 'lista' ? ' class="on"' : '') + ' title="Lista" aria-label="Lista"><svg class="ic"><use href="#i-list"/></svg></button><button data-vis="cartoes"' + (vis === 'cartoes' ? ' class="on"' : '') + ' title="Cartões" aria-label="Cartões"><svg class="ic"><use href="#i-grid"/></svg></button></div>' +
       '<details class="menu"><summary class="btn btn-sm" aria-label="Mais" title="Mais"><svg class="ic ic-sm"><use href="#i-more"/></svg></summary><div class="menu-list"><button class="menu-item" id="csv"><svg class="ic"><use href="#i-download"/></svg> Exportar CSV (o que está na tela)</button><button class="menu-item" id="m-onvio"><svg class="ic"><use href="#i-eye"/></svg> Ver a lista no Onvio</button></div></details>' +
@@ -121,7 +122,13 @@ export function render(el, ctx, params) {
     '<div class="tipos" id="tipos" role="group" aria-label="Tipo de solicitação"></div>' +
     '<div class="sits" id="sits" role="group" aria-label="Situação"></div>' +
     '<div class="ativos" id="ativos"></div>' +
-    (aba === 'respondidas' ? '<div class="nota-regra nota-res" id="nota-res"><svg class="ic"><use href="#i-check"/></svg><div><b>Consideradas resolvidas</b>No fim da lista, o grupo das que o cliente deixou sem retorno depois de uma resposta que não pedia nada (mais de ' + (estado.settings ? estado.settings.resolvidaClienteDias : OC.DEFAULTS.resolvidaClienteDias) + ' dias úteis). Nada muda no Onvio: para encerrar lá, conclua a solicitação.</div></div>' : '') +
+    (aba === 'respondidas' ? (() => {
+      const dias = estado.settings ? estado.settings.resolvidaClienteDias : OC.DEFAULTS.resolvidaClienteDias;
+      const txt = 'No fim da lista, o grupo das que o cliente deixou sem retorno depois de uma resposta que não pedia nada (mais de ' + dias + ' dias úteis). Nada muda no Onvio: para encerrar lá, conclua a solicitação.';
+      // Simplificado: uma linha curta; a explicação inteira fica na dica do ⓘ
+      return simples() ? '<div class="nota-regra nota-res nota-curta" id="nota-res" title="' + esc(txt) + '"><svg class="ic"><use href="#i-check"/></svg><span>Consideradas resolvidas ficam no fim da lista <i class="info" aria-hidden="true">ⓘ</i></span></div>'
+        : '<div class="nota-regra nota-res" id="nota-res"><svg class="ic"><use href="#i-check"/></svg><div><b>Consideradas resolvidas</b>' + txt + '</div></div>';
+    })() : '') +
     '<div id="corpo"></div>';
 
   const passa = (i, o) => (o.semTipo || !filtros.tipo || i.type === filtros.tipo) &&
@@ -146,7 +153,20 @@ export function render(el, ctx, params) {
   // Cartões dos tipos: quantas há em cada tipo (com os outros filtros aplicados) e quantas têm prazo legal perto.
   const tipos = () => {
     const l = filtrar({ semTipo: true });
-    $('#tipos', el).innerHTML = tiposHtml(l, { todos: true, on: filtros.tipo });
+    const box = $('#tipos', el);
+    // Simplificado: uma faixa de uma linha com os tipos que têm pendência; "Ver cartões" abre a grade (a escolha fica neste navegador)
+    if (simples()) {
+      const grade = lerPref('filaTiposGrade', '') === '1';
+      box.className = grade ? 'tipos tipos-grade' : 'tipos-faixa';
+      const ver = '<button type="button" class="linkish tipos-ver" id="tipos-ver" aria-expanded="' + grade + '">' + (grade ? 'Recolher' : 'Ver cartões') + '</button>';
+      box.innerHTML = grade ? tiposHtml(l, { todos: true, on: filtros.tipo }) + ver
+        : OC.TYPES.map(t => [t, l.filter(i => i.type === t.key).length]).filter(([t, n]) => n || filtros.tipo === t.key)
+          .map(([t, n]) => '<button type="button" class="tipo-chip fam-' + tipoVisual(t.key).fam + (filtros.tipo === t.key ? ' on' : '') + '" data-tipo="' + esc(t.key) + '" aria-pressed="' + (filtros.tipo === t.key) + '" title="' + esc(t.label) + '">' + tipoIcone(t.key, 'pq') + '<span>' + esc(t.label) + '</span><b>' + n + '</b></button>').join('') + ver;
+      $('#tipos-ver', el).onclick = () => { gravarPref('filaTiposGrade', grade ? '' : '1'); tipos(); };
+    } else {
+      box.className = 'tipos';
+      box.innerHTML = tiposHtml(l, { todos: true, on: filtros.tipo });
+    }
     $$('[data-tipo]', el).forEach(b => b.onclick = () => { filtros.tipo = filtros.tipo === b.dataset.tipo ? '' : b.dataset.tipo; const s = $('#f-tipo', el); if (s) s.value = filtros.tipo; desenhar(); });
   };
   // Cartões de situação (cor própria por grupo): quantas há em cada situação, com os outros filtros aplicados
@@ -217,7 +237,7 @@ export function render(el, ctx, params) {
     const nGrupo = l.reduce((m, i) => { const g = grupoDe(i); if (g) m[g] = (m[g] || 0) + 1; return m; }, {});
     const comGrupos = (fn, cls) => { let ant = null; return l.map(i => { const g = grupoDe(i); const h = g && g !== ant ? '<div class="' + cls + (ord.k === 'prio' ? ' grp-' + (i.resolvida ? 'resolvida' : OC.motivoDe(i)) : '') + '"><b>' + esc(g) + '</b><span>' + nGrupo[g] + '</span></div>' : ''; ant = g; return h + fn(i); }).join(''); };
     const comCol = i => linha(i, cols);
-    if (vis === 'cartoes') $('#corpo', el).innerHTML = l.length ? '<div class="cards-emp">' + comGrupos(cartaoItem, 'emp-cab') + '</div>' : '<div class="list-card">' + vazio + '</div>';
+    if (vis === 'cartoes') $('#corpo', el).innerHTML = l.length ? '<div class="cards-emp">' + comGrupos(i => cartaoItem(i, { semResp: simples() && aba === 'minhas' && !!i.mine && !!i.resp }), 'emp-cab') + '</div>' : '<div class="list-card">' + vazio + '</div>';
     else $('#corpo', el).innerHTML = '<div class="list-card" style="--cols:' + cols.map(c => c.w).join(' ') + '"><div class="lh" role="row">' +
       cols.map(c => '<button data-col="' + c.k + '" class="' + (c.num ? 'num ' : '') + (ord.k === c.k ? 'on' + (ord.desc ? '' : ' asc') : '') + '">' + c.rot + '</button>').join('') + '</div>' +
       (l.length ? comGrupos(comCol, 'emp-cab lr-emp') : vazio) + '</div>';

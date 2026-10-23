@@ -3,7 +3,7 @@
  * critérios da tela. Para LIGAR é preciso a senha do gestor (trava leve, gestor.js); desligar e "Rodar agora" ficam livres
  * neste Chrome. Mostra o estado, as regras, a última rodada e as últimas atribuições (só identificação e responsável). */
 import { estado, enviar, aoMudar } from '../estado.js';
-import { esc, toast, ligarItens, $ } from '../util.js';
+import { esc, toast, ligarItens, simples, $ } from '../util.js';
 import { gestorLiberado, senhaCerta } from './gestor.js';
 
 let confirmarLigar = false, rodandoAgora = false;
@@ -30,8 +30,8 @@ export function montarDistAuto(host, ctx) {
     ? '<button class="btn btn-sm" id="da-agora"' + (rodandoAgora ? ' disabled' : '') + '>' + (rodandoAgora ? 'Rodando…' : 'Rodar agora') + '</button><button class="btn btn-sm" id="da-desligar">Desligar</button>'
     : confirmarLigar ? '' : '<button class="btn btn-sm btn-primary" id="da-ligar"><svg class="ic ic-sm"><use href="#i-lock"/></svg> Ligar</button>';
   host.innerHTML =
-    '<section class="card da-card" id="d-auto"><div class="da-estado"><span class="da-pt ' + (d.ligada ? 'on' : '') + '"></span><div class="da-estado-tx"><b>Distribuição automática: <span id="da-estado">' + (d.ligada ? 'Ligada' : 'Desligada') + '</span></b>' +
-      '<small>' + (d.ligada && d.ligadaEm ? 'desde ' + esc(hora(d.ligadaEm)) + ' · ' : '') + 'Define sozinha o responsável das solicitações sem responsável, em seu nome.' + (d.ligada ? '' : ' Para ligar, é preciso a senha do gestor.') + '</small></div>' +
+    '<section class="card da-card" id="d-auto"><div class="da-estado"><span class="da-pt ' + (d.ligada ? 'on' : '') + '"></span><div class="da-estado-tx"' + (simples() ? ' title="Define sozinha o responsável das solicitações sem responsável, em seu nome.' + (d.ligada ? '' : ' Para ligar, é preciso a senha do gestor.') + '"' : '') + '><b>Distribuição automática: <span id="da-estado">' + (d.ligada ? 'Ligada' : 'Desligada') + '</span></b>' +
+      '<small' + (simples() ? ' class="da-linha"' : '') + '>' + (d.ligada && d.ligadaEm ? 'desde ' + esc(hora(d.ligadaEm)) + ' · ' : '') + (simples() ? (d.ligada ? 'a cada ' + cfg.minutos + ' min, em horário comercial' : 'para ligar, senha do gestor') : 'Define sozinha o responsável das solicitações sem responsável, em seu nome.' + (d.ligada ? '' : ' Para ligar, é preciso a senha do gestor.')) + '</small></div>' +
       '<div class="da-acoes">' + botoes + '<button class="btn btn-sm btn-ghost" id="da-detalhes" aria-expanded="' + aberto + '">' + (aberto ? 'Ocultar detalhes' : 'Ver detalhes') + '</button></div></div>' +
       (!d.ligada && confirmarLigar ? '<div class="acao-conf da-conf" id="da-conf"><b>Ligar a distribuição automática?</b><ul><li>A cada ' + cfg.minutos + ' minutos, em horário comercial, a extensão define no Onvio, <b>em seu nome</b>, o responsável das solicitações que estão <b>sem responsável</b>.</li><li>Critério igual ao desta tela: quem mais atendeu a empresa nos últimos 30 dias (Cadastros: quem mais fez admissões). Sem histórico, fica para decisão manual.</li><li>Nunca troca quem já é responsável e não escreve mais nada no Onvio. Para sozinha se o Onvio recusar.</li><li>Precisa de uma aba do Onvio aberta neste Chrome.</li></ul>' +
         (gestorLiberado() ? '' : '<label class="field da-senha">Senha do gestor<input type="password" id="da-senha" autocomplete="off" spellcheck="false"></label><p class="gt-erro" id="da-erro" role="alert" hidden>Senha incorreta. Tente de novo.</p>') +
