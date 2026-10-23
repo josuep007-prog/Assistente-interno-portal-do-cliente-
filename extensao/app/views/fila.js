@@ -27,7 +27,7 @@ const COLUNAS = [
   { k: 'tipo', rot: 'Tipo', v: i => i.typeLabel, w: '150px' },
   { k: 'cliente', rot: 'Cliente · assunto', v: i => normal(i.apelido || i.cliente), w: 'minmax(0,2fr)' },
   { k: 'status', rot: 'Situação', v: i => i.status, w: '170px' },
-  { k: 'resp', rot: 'Responsável', v: i => normal(i.resp), w: '130px', equipe: true },
+  { k: 'resp', rot: 'Responsável', v: i => normal(i.resp), w: 'minmax(150px, 230px)', equipe: true },
   { k: 'parado', rot: 'Parada', v: i => i.parado || 0, num: true, w: '64px' },
   { k: 'prazo', rot: 'Prazo legal', v: i => nivelLegal(i) * 1000 + (i.parado || 0), w: 'minmax(0,1.4fr)' }
 ];

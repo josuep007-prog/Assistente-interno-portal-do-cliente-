@@ -652,11 +652,19 @@ await passo('app · Solicitações: responsável sugerido nas sem responsável a
     { k: 'geral:s2', type: 'geral', typeLabel: 'Geral', id: 's2', num: 712, code: 1, status: 'Sem análise', lado: 'esc', nivel: 0, grav: 0, parado: 0, motivos: [], resp: '', mine: false, apelido: 'LUA', cliente: 'LUA', detalhe: 'Outra', created: agoraIso(0), last: agoraIso(0) }
   ]);
   const p = await abrirApp('#/fila?escopo=todas', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens }) }, `window.__respostas = { distribuicao: { ok: true, dias: 30, movimentadas: 4, erros: [], sugestoes: [
-    { item: { k: 'geral:s1', type: 'geral', num: 711 }, resp: 'Bia', respId: 'id-bia', n: 3, motivo: 'atendeu 3 de 4 solicitações desta empresa nos últimos 30 dias', alternativas: [] },
+    { item: { k: 'geral:s1', type: 'geral', num: 711 }, resp: 'Lizzianne Souza Alves', respId: 'id-bia', n: 3, motivo: 'atendeu 3 de 4 solicitações desta empresa nos últimos 30 dias', alternativas: [] },
     { item: { k: 'geral:s2', type: 'geral', num: 712 }, resp: '', respId: '', n: 0, motivo: 'ninguém atendeu esta empresa nos últimos 30 dias: escolha o responsável', alternativas: [], semHistorico: true }] } };`);
   await p.waitForFunction(() => window.__msgs.some(m => m.cmd === 'distribuicao'));
   await p.waitForSelector('[data-sug-resp="geral:s1"]');
-  assert.equal(await p.textContent('[data-sug-resp="geral:s1"]'), 'Sugerido: Bia');
+  assert.equal(await p.textContent('[data-sug-resp="geral:s1"]'), 'Sugerido: Lizzianne Souza', 'nome e sobrenome; o nome inteiro fica no title');
+  assert.match(await p.getAttribute('[data-sug-resp="geral:s1"]', 'title'), /Lizzianne Souza Alves/);
+  // o botão nunca é cortado: nos cartões e na lista
+  assert.equal(await p.$$eval('[data-sug-resp]', e => e.filter(x => x.scrollWidth > x.clientWidth + 1).length), 0, 'botão do responsável sugerido sem texto cortado (cartões)');
+  await p.click('[data-vis="lista"]');
+  await p.waitForSelector('.lr [data-sug-resp]');
+  if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/sug-resp-lista.png' });
+  assert.equal(await p.$$eval('.lr [data-sug-resp]', e => e.filter(x => x.scrollWidth > x.clientWidth + 1).length), 0, 'botão do responsável sugerido sem texto cortado (lista)');
+  await p.click('[data-vis="cartoes"]');
   assert.match(await p.getAttribute('[data-sug-resp="geral:s1"]', 'title'), /atendeu 3 de 4 solicitações desta empresa/);
   assert.equal(await p.textContent('[data-sug-resp="geral:s2"]'), 'Escolher responsável', 'sem histórico');
   assert.equal(await p.$eval('[data-sug-resp="geral:s1"]', b => getComputedStyle(b).borderTopStyle), 'solid', 'botão padrão, sem borda tracejada');
