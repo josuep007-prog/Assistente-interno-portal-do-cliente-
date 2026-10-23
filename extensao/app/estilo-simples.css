@@ -228,3 +228,37 @@
 :root[data-estilo="simples"] .sug-tipo .cs-l, :root[data-estilo="simples"] .cs-l{ background:var(--surface); border-left:1px solid var(--rule) }
 :root[data-estilo="simples"] .sc-n{ background:none; border:0; padding:0 2px; color:var(--ink-3); font-weight:500 }
 :root[data-estilo="simples"] .cs-tx b{ font-weight:600 }
+
+/* ======================= Solicitações ======================= */
+/* sai o título da lista (ficam "N solicitações" e "Pôr em análise (N)") */
+:root[data-estilo="simples"] .fila-cab h3{ display:none }
+:root[data-estilo="simples"] .fila-cab{ margin:0 0 8px }
+:root[data-estilo="simples"] .barra{ margin-bottom:8px; gap:8px }
+:root[data-estilo="simples"] .barra input[type=search]{ flex:1 1 200px }
+:root[data-estilo="simples"] .ord-sel select{ height:30px }
+/* faixa dos tipos: uma linha, só o que tem pendência; "Ver cartões" abre a grade */
+:root[data-estilo="simples"] .tipos-faixa{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin:0 0 8px }
+:root[data-estilo="simples"] .tipo-chip{ display:inline-flex; align-items:center; gap:6px; max-width:100%; padding:3px 10px 3px 7px; border:1px solid var(--rule); border-radius:var(--r); background:var(--surface); color:var(--ink-2); font:inherit; font-size:12.5px; cursor:pointer }
+:root[data-estilo="simples"] .tipo-chip:hover{ border-color:var(--rule-strong) }
+:root[data-estilo="simples"] .tipo-chip.on{ border-color:var(--blue-deep); background:var(--blue-pale); color:var(--ink) }
+:root[data-estilo="simples"] .tipo-chip:focus-visible{ outline:2px solid var(--blue-deep); outline-offset:2px }
+:root[data-estilo="simples"] .tipo-chip span{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+:root[data-estilo="simples"] .tipo-chip b{ font:600 12.5px "IBM Plex Mono", monospace; color:var(--ink) }
+:root[data-estilo="simples"] .tipo-chip .tipo-ic.pq{ margin:0; width:16px; height:16px }
+:root[data-estilo="simples"] .tipos-ver{ margin-left:auto; border:0; background:none; padding:3px 4px; font:600 12px "IBM Plex Sans", sans-serif; color:var(--blue-deep); cursor:pointer }
+:root[data-estilo="simples"] .tipos-ver:hover{ text-decoration:underline }
+:root[data-estilo="simples"] .tipos-grade .tipos-ver{ grid-column:1 / -1; justify-self:end }
+:root[data-estilo="simples"] .tipos-grade{ margin:0 0 8px }
+/* situações: chips discretos */
+:root[data-estilo="simples"] .sits{ margin:0 0 8px; gap:6px }
+:root[data-estilo="simples"] .sit-c{ padding:3px 10px 3px 8px; font-weight:500 }
+:root[data-estilo="simples"] .sit-c.on{ background:var(--surface); border-color:var(--blue-deep); box-shadow:inset 0 0 0 1px var(--blue-deep) }
+:root[data-estilo="simples"] .sit-c b{ font-family:"IBM Plex Mono", monospace; font-weight:600; font-size:12.5px }
+/* "consideradas resolvidas": uma linha curta, com o ⓘ */
+:root[data-estilo="simples"] .nota-curta{ align-items:center; gap:8px; margin:0 0 8px; padding:6px 12px; border-left-width:1px; font-size:12.5px; color:var(--ink-2); cursor:help }
+:root[data-estilo="simples"] .nota-curta .ic{ margin-top:0; color:var(--ink-3) }
+:root[data-estilo="simples"] .nota-curta .info{ font-style:normal; color:var(--ink-3) }
+:root[data-estilo="simples"] .emp-cab{ padding:8px 2px 4px }
+:root[data-estilo="simples"] .emp-cab span{ background:none; padding:0; color:var(--ink-3) }
+:root[data-estilo="simples"] .cards-emp{ gap:var(--gap) }
+:root[data-estilo="simples"] .lr-emp{ background:var(--surface-2) }
