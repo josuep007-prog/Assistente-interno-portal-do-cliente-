@@ -2101,7 +2101,8 @@ await passo('app · Simplificado em tela pequena (1366×650 e 1280×720): cabeç
     await p.evaluate(() => { location.hash = '#/fila?escopo=todas'; });
     await p.waitForSelector('#corpo [data-k]');
     await p.click('#corpo [data-k="geral:b"]'); await p.waitForSelector('#gaveta .dtab');
-    assert.ok(await p.$eval('#gaveta', e => e.getBoundingClientRect().bottom) <= h, onde + ': a janela cabe na tela');
+    // a solicitação aberta ocupa a tela toda
+    assert.deepEqual(await p.$eval('#gaveta', e => { const r = e.getBoundingClientRect(); return [r.left, r.top, Math.round(r.width), Math.round(r.height)]; }), [0, 0, w, h], onde + ': a solicitação ocupa a tela toda');
     await sem_rolagem(p, onde + ' detalhe');
     if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/simples-detalhe-' + w + '.png' });
     await p.keyboard.press('Escape');

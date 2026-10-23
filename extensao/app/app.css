@@ -325,6 +325,11 @@ a{color:var(--blue-deep)}
 .dlg{position:fixed; z-index:51; left:50%; top:50%; transform:translate(-50%,-50%); width:min(560px, calc(100vw - 32px)); max-height:calc(100vh - 32px); display:flex; flex-direction:column; background:var(--surface); border:1px solid var(--rule); border-radius:var(--r); box-shadow:0 24px 60px rgba(0,0,0,.35); outline:none; animation:dlgEntra .18s ease}
 @keyframes dlgEntra{from{opacity:0; transform:translate(-50%,calc(-50% + 12px)) scale(.98)}}
 .dlg-lg{width:min(1320px, calc(100vw - 48px)); height:min(860px, calc(100vh - 48px))}
+/* a solicitação aberta ocupa a tela toda (pedido do Josué, 23/10/2026), nos dois estilos; entra só com um esmaecer */
+#gaveta.dlg-lg{left:0; top:0; transform:none; width:100vw; height:100vh; max-height:100vh; border:0; border-radius:0; box-shadow:none; animation:gavetaEntra .15s ease}
+#gaveta.dlg-lg .dlg-actions{border-radius:0}
+@keyframes gavetaEntra{from{opacity:0}}
+@media (prefers-reduced-motion: reduce){ #gaveta.dlg-lg{animation:none} }
 .dlg-head{display:flex; align-items:flex-start; gap:12px; padding:18px 22px 0}
 .dlg-head .tt{flex:1; min-width:0}
 .dlg-head h2{font:700 19px/1.25 "Archivo",sans-serif; margin:4px 0 2px; overflow-wrap:anywhere}

@@ -77,7 +77,7 @@
 
 /* ---------- cartões: borda fina de 1px, sem sombra, sem faixa colorida no topo ---------- */
 :root[data-estilo="simples"] :is(.card, .kpi, .list-card, .cfg-card, .tabela-wrap, .hj-card, .hj-hero, .av-hero, .dlg, .bloqueio, .sc, .dist-i, .hj-step, .sino-painel, .menu-list){ box-shadow:none }
-:root[data-estilo="simples"] .dlg{ box-shadow:0 12px 40px rgba(0,0,0,.28) }
+:root[data-estilo="simples"] .dlg:not(#gaveta){ box-shadow:0 12px 40px rgba(0,0,0,.28) }
 :root[data-estilo="simples"] .menu-list, :root[data-estilo="simples"] .sino-painel{ box-shadow:0 8px 24px rgba(16,24,32,.14) }
 :root[data-estilo="simples"] .fundo{ backdrop-filter:none; -webkit-backdrop-filter:none; background:rgba(10,15,20,.45) }
 :root[data-estilo="simples"] .cmdk{ backdrop-filter:none; background:rgba(10,15,20,.45) }
@@ -174,7 +174,6 @@
 :root[data-estilo="simples"] .cmp{ box-shadow:none; padding:10px 20px 12px }
 :root[data-estilo="simples"] .grav-porque{ background:none; border-left-width:2px }
 :root[data-estilo="simples"] .tl-item::before{ border-width:1.5px }
-:root[data-estilo="simples"] .dlg-lg{ height:min(860px, calc(100vh - 32px)) }
 
 /* ---------- movimento: nada decorativo (os pulsos saem) ---------- */
 :root[data-estilo="simples"] .aovivo.ok .ponto, :root[data-estilo="simples"] .hj-bola, :root[data-estilo="simples"] .hj-step > i{ animation:none }
