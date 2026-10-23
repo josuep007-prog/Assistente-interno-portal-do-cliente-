@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.34.0)
+# Control Onvio · ControlTax (v0.35.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,13 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.35.0 (Hoje por tipo, detalhe que abre onde importa, caixa de resposta mais arrumada)
+
+- **Hoje: "Solicitações por tipo"** no lugar do antigo quadro de avisos sem cálculo: os mesmos cartões das Solicitações (aviso e cálculo de férias, e de rescisão, no mesmo bloco), do tipo com a solicitação **mais urgente** para o menos urgente (prazo legal, sem análise, em análise, cliente respondeu, com o cliente; empate: mais solicitações nesse nível), com os vazios no fim. O clique abre as Solicitações naquele tipo (`#/fila?tipo=...`; na aba Respondidas quando só há solicitações na vez do cliente).
+- **Detalhe da solicitação:** sem trâmites abre direto nos **Dados**; com trâmites, na **conversa**. Se a leitura dos trâmites falhou, fica na conversa para mostrar o aviso. Abrir pelo botão de responder ou por uma ação continua indo à caixa de resposta.
+- **Caixa de resposta mais arrumada:** sai o indicador "Ctrl+Enter revisa" (o atalho continua funcionando). Embaixo do texto há uma barra com **Anexar**, **Modelos**, **Observações** e **Guardar como modelo**; Modelos e Observações abrem num painel entre o texto e o rodapé (modelos com nome e prévia; observações com o texto inteiro e "Inserir todas"), um de cada vez; escolher um modelo fecha o painel. O **Trâmite** (situação) fica logo abaixo, sempre à vista.
+- **Nada em inglês nos Dados:** valores como `TerminationByAgreementBetweenTheParties` aparecem como "Rescisão por acordo entre as partes" (valores em PascalCase passam pelo dicionário, palavra por palavra).
 
 ## Novidades da v0.34.0 (detalhe em janela larga, conversa e resposta lado a lado)
 

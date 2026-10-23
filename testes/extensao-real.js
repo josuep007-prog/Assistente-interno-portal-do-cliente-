@@ -198,7 +198,8 @@ await app.waitForSelector('#dlg-lembrete', { state: 'hidden' });
 // detalhe: lê dados e trâmites na hora (API simulada)
 await app.evaluate(() => { location.hash = '#/fila?escopo=equipe'; });
 await app.waitForSelector('#corpo [data-k]');
-await app.click('#corpo [data-k="calcFerias:v1"]');
+// o cartão fica na borda de baixo da tela: o clique do mouse às vezes não chega, o do elemento sempre
+await app.$eval('#corpo [data-k="calcFerias:v1"]', e => e.click());
 await app.waitForSelector('#gaveta .tr-item', { timeout: 8000 });
 assert.equal(await app.$$eval('#gaveta .tr-item', e => e.length), 2);
 await foto(portal, '4-detalhe.png');
