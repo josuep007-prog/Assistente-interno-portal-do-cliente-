@@ -613,6 +613,25 @@ await passo('app · Hoje: lote com erro mostra qual falhou e deixa as outras seg
   assert.deepEqual(p.erros, []);
 });
 
+await passo('app · Hoje: Próximos passos só rola e esmaece quando a fila é maior que a caixa (uma solicitação só não é cortada)', async () => {
+  const base = { nivel: 1, grav: 1, motivos: [{ n: 1, m: 'x' }], resp: 'Ana Teste', mine: true, lado: 'esc', code: 2, status: 'Em análise', created: agoraIso(20), last: agoraIso(9), parado: 9 };
+  const um = [Object.assign({}, base, { k: 'cadEstagiario:u1', type: 'cadEstagiario', typeLabel: 'Cadastro estagiário', id: 'u1', num: 1628, apelido: 'MULTILONAS', cliente: 'MULTILONAS', detalhe: 'Lavinia Capucho' })];
+  const muitos = Array.from({ length: 14 }, (x, n) => Object.assign({}, base, { k: 'geral:m' + n, type: 'geral', typeLabel: 'Geral', id: 'm' + n, num: 2000 + n, apelido: 'EMP' + n, cliente: 'EMP' + n, detalhe: 'Assunto ' + n, parado: 9 + n }));
+  const p = await abrirApp('#/inicio', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: um }), lembretes: [] });
+  await p.waitForSelector('#hj-passos .hj-step');
+  await p.waitForTimeout(1900);                                                                    // passa a animação de entrada (a marca é refeita no fim dela)
+  assert.equal(await p.$$eval('#hj-passos li', e => e.length), 1);
+  assert.equal(await p.$eval('#hj-passos', e => e.classList.contains('rola')), false, 'uma só: cabe na caixa');
+  assert.equal(await p.$eval('#hj-passos', e => getComputedStyle(e).maskImage), 'none', 'sem esmaecer o fim');
+  const q = await abrirApp('#/inicio', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: muitos }), lembretes: [] });
+  await q.waitForSelector('#hj-passos .hj-step');
+  await q.waitForTimeout(1900);
+  assert.equal(await q.$eval('#hj-passos', e => e.scrollHeight > e.clientHeight + 2), true, 'a fila passa da caixa');
+  assert.equal(await q.$eval('#hj-passos', e => e.classList.contains('rola')), true, 'então rola');
+  assert.notEqual(await q.$eval('#hj-passos', e => getComputedStyle(e).maskImage), 'none', 'e esmaece o fim');
+  assert.deepEqual(p.erros, []);
+});
+
 await passo('app · Hoje: rescisão nova (qualquer tipo): põe em análise com o aviso do prazo de pagamento, documentos, exame demissional e eSocial/FGTS, com a data preenchida', async () => {
   const base = { nivel: 0, grav: 0, parado: 1, motivos: [], resp: 'Ana Teste', mine: true, lado: 'esc', code: 1, status: 'Sem análise', created: agoraIso(1), last: agoraIso(1) };
   const itens = ITENS_APP.concat([

@@ -392,7 +392,9 @@ function iniciarCarrossel(raiz) {
 function marcarRolagem(lst) {
   if (!lst) return;
   const marca = () => {
-    const ult = lst.lastElementChild, conteudo = ult ? ult.offsetTop + ult.offsetHeight : 0, cab = lst.clientHeight;
+    // só rola (e só então esmaece o fim) quando a fila é maior que a caixa; o scrollHeight é o do próprio quadro da lista
+    // (o offsetTop do último item conta o título de cima e dava falso positivo com uma solicitação só)
+    const conteudo = lst.scrollHeight, cab = lst.clientHeight;
     const passa = conteudo - cab > 2;
     lst.classList.toggle('rola', passa);
     lst.classList.toggle('fim', !passa || lst.scrollTop + cab >= conteudo - 2);
