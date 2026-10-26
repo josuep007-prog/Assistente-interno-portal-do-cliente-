@@ -30,8 +30,8 @@ const GUID2 = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
       }
     });
     if (/\/topics$/.test(u.pathname)) return json({ items: [{ id: GUID, text: 'Assunto Reservado', createdByContactExpanded: { id: GUID2, name: 'Fulana de Tal' }, attachmentsExpanded: [{ id: GUID, name: 'Assunto Reservado.pdf', downloadUrl: 'https://x/TOKEN-SEGREDO-123' }] }], totalItems: 1 });
-    if (u.pathname.includes('/contacts/')) return json({ id: GUID2, name: 'Fulana de Tal', email: 'fulana@exemplo.com', cpf: '123.456.789-09' });
-    if (u.pathname.includes('/profiles/v1/users/')) return json({ id: GUID2, displayName: 'Fulana de Tal', emailAddress: 'fulana@exemplo.com' });
+    if (u.pathname.includes('/contacts/')) return json({ id: GUID2, userId: GUID, name: 'Fulana de Tal', email: 'fulana@exemplo.com', cpf: '123.456.789-09' });
+    if (u.pathname.includes('/profiles/v1/users/')) { if (!u.pathname.endsWith('/' + GUID)) return r.fulfill({ status: 403, contentType: 'application/json', body: '{}' }); return json({ id: GUID2, displayName: 'Fulana de Tal', emailAddress: 'fulana@exemplo.com' }); }
     if (u.pathname.includes('/clients/') && u.pathname.endsWith('/employees')) return json({ items: [{ id: GUID, name: 'Fulana de Tal', cpf: '98765432100', wage: 3500.5 }], totalItems: 1 });
     // detalhe: tem o que a lista não tem
     if (/\/api\/[^?]+\/[0-9a-f-]{36}$/.test(u.pathname) && u.searchParams.get('expand') === 'all') return json({ id: GUID, identifier: 77, subject: 'Assunto Reservado', cpf: '123.456.789-09', salary: 4200, deletedTopic: false, catDate: '2026-10-01', clientExpanded: { id: GUID, name: 'EMPRESA SIGILO LTDA' }, attachmentsExpanded: [{ id: GUID, name: 'doc.pdf', staticFilePath: '/api/storage/x' }] });
@@ -71,6 +71,7 @@ const GUID2 = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
   assert.ok(g.soNaLista.includes('genericStatus'), 'só na lista: ' + g.soNaLista);
   assert.ok(g.anexo.campos.staticFilePath === 'texto' || g.anexo.campos.name === 'texto');
   assert.equal(inv.extras.contato.objeto.cpf, 'texto');
+  assert.equal(inv.extras.usuario.status, 200, 'usuário lido pelo userId do contato');
   assert.equal(inv.extras.empregadosDoCliente.item.wage, 'numero');
 
   // sessão: nomes e tipos, sem tokens; permissões e hosts ficam
@@ -83,6 +84,16 @@ const GUID2 = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
   // navegador e tela
   assert.ok(inv.navegador.localStorage.some(x => x.chave === 'chave-teste') && !texto.includes('"valor"'));
   assert.ok(inv.tela.rotulos.includes('Nome do empregado') && inv.tela.botoes.includes('Salvar'));
+
+  // segunda rodada: só GET, sem os endereços que mudam algo, sem vazar valores
+  const antesExtras = metodos.length;
+  await page.evaluate(() => window.__inventarioOnvio.rodarExtras());
+  const inv2 = await page.evaluate(() => window.__inventarioOnvio.estado());
+  assert.ok(metodos.length > antesExtras + 8, 'fez as leituras extras');
+  assert.ok(metodos.every(m => m === 'GET'));
+  assert.ok(!caminhos.some(c => /initial-data-load|handle-client-access/.test(c)), 'não toca nos endereços que podem mudar algo');
+  assert.ok(caminhos.some(c => c.includes('/statistics/company/' + GUID + '/tasks')), 'usa o CompanyId da sessão');
+  for (const sg of SEGREDOS) assert.ok(!JSON.stringify(inv2).includes(sg), 'vazou nas extras: ' + sg);
 
   // fora de /api/ ou de outro site: recusa sem pedir nada
   const antes = metodos.length;

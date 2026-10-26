@@ -14,6 +14,8 @@
  *      Para ver um resumo no console:  __inventarioOnvio.resumo()
  *   5. Opcional: navegue por telas que não foram tocadas (Documentos, CND, Relatórios, Configurações...) e rode
  *      __inventarioOnvio.rodar() de novo: ele junta o que cada tela chamou (performance do navegador) ao inventário.
+ *   5b. Segunda rodada (outras telas do Onvio: notícias, CND, manifesto, avisos, licenças, Gestta):
+ *      await __inventarioOnvio.rodarExtras()   e depois exportar() de novo.
  *   6. Para olhar mais uma leitura que você achou numa tela:  await __inventarioOnvio.sondar('/api/caminho?param=1')
  *
  * Segurança e privacidade (garantidas pelo código, confira abaixo):
@@ -183,8 +185,11 @@
       const topico = st._primeiro && typeof st._primeiro === 'object' ? st._primeiro : null;
       const autor = topico && topico.createdByContactExpanded && topico.createdByContactExpanded.id;
       if (autor && estado._companyId && !estado.extras.contato) {
-        estado.extras.contato = semInterno(resumoResposta(await ler('/api/core/v7/companies/' + encodeURIComponent(estado._companyId) + '/contacts/' + encodeURIComponent(autor))));
-        estado.extras.usuario = semInterno(resumoResposta(await ler('/api/profiles/v1/users/' + encodeURIComponent(autor))));
+        const sc = resumoResposta(await ler('/api/core/v7/companies/' + encodeURIComponent(estado._companyId) + '/contacts/' + encodeURIComponent(autor)));
+        estado.extras.contato = semInterno(sc);
+        // o usuário tem outro id: o userId do contato (com o id do contato o Onvio responde 403)
+        const uid = sc._primeiro && sc._primeiro.userId;
+        if (uid) estado.extras.usuario = semInterno(resumoResposta(await ler('/api/profiles/v1/users/' + encodeURIComponent(uid))));
       }
       // cliente da solicitação: empregados dele (nomes dos campos)
       const cli = item.clientExpanded && item.clientExpanded.id;
@@ -199,6 +204,38 @@
       o.soNoDetalhe = [...b].filter(k => !a.has(k)); o.soNaLista = [...a].filter(k => !b.has(k));
     }
     return o;
+  }
+
+  // Segunda rodada (descoberta em 26/10/2026 pelo que as telas chamam): só GET, só leitura. Fora de propósito:
+  // initial-data-load e handle-client-access (o nome sugere que mudam algo; nenhum GET é feito neles).
+  const EXTRAS = [
+    'notification-async/v1/counters',
+    'br-news/v1/categories',
+    'br-news/v1/articles/shared?expand=all&itemsPerPage=1&pageIndex=1',
+    'cnd/v1/clients?expand=all&itemsPerPage=1&pageIndex=1&startIndex=0',
+    'manifesto/v1/clients?expand=all&itemsPerPage=1&pageIndex=1',
+    'br-platform-preference/v1/department-alert',
+    'provisioning/v1/licenses',
+    'profiles/v1/accounts?active=true&hideNonOnvio=true',
+    'profiles/v2/company-preferences/applications/BR_ATENDIMENTO/categories/HIDE_INACTIVE_CLIENTS',
+    'storage/v1/folders?includeTaxAccounting=true',
+    'core/v3/companies/{empresa}/main',
+    'br-gestta-dashboard/v1/statistics/company/{empresa}/tasks?start={ini}&end={fim}',
+    'br-gestta-dashboard/v1/statistics/company/{empresa}/liable-tasks?start={ini}&end={fim}'
+  ];
+  async function rodarExtras() {
+    const log = (...a) => console.log('[inventario-onvio]', ...a);
+    if (!estado._companyId) { const s = await sessao(); estado._companyId = s._companyId; if (!estado.sessao) { delete s._companyId; estado.sessao = s; } }
+    const fim = new Date(), ini = new Date(fim.getTime() - 30 * 864e5), dia = d => d.toISOString().slice(0, 10);
+    for (const modelo of EXTRAS) {
+      const p = modelo.replace('{empresa}', encodeURIComponent(estado._companyId || '')).replace('{ini}', dia(ini)).replace('{fim}', dia(fim));
+      if (!estado._companyId && modelo.includes('{empresa}')) { estado.erros.push('sem CompanyId para ' + modelo); continue; }
+      log('extra', modelo.split('?')[0]);
+      try { estado.extras[normalizarCaminho('/api/' + p)] = semInterno(resumoResposta(await ler('/api/' + p))); } catch (e) { estado.erros.push(modelo + ': ' + (e && e.message)); }
+    }
+    estado.rede = redeVista();
+    log('extras prontos: ' + estado.leituras + ' leituras no total. Rode __inventarioOnvio.exportar().');
+    return resumo();
   }
 
   async function rodar() {
@@ -298,6 +335,6 @@
     return estado.extras[k];
   }
 
-  window.__inventarioOnvio = { rodar, exportar, resumo, sondar, estado: exportavel, _teste: { formato, caminhoSeguro, ler } };
+  window.__inventarioOnvio = { rodar, rodarExtras, exportar, resumo, sondar, estado: exportavel, _teste: { formato, caminhoSeguro, ler } };
   console.log('[inventario-onvio] pronto. Rode:  await __inventarioOnvio.rodar()   e depois   __inventarioOnvio.exportar()');
 })();
