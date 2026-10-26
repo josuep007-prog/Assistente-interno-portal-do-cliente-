@@ -140,6 +140,8 @@ CPF, salário, nomes de empregados, assunto e descrição de todas as solicitaç
   Colunas (13): Id · Nº · Assunto · Descrição · Solicitante · Empregado · CPF do empregado · Admissão do empregado · Situação do empregado · Sexo · Cargo (código) · Carga horária · Código do empregado
 - **`pessoais-rubricas`** · Dados pessoais · Lançamento de rubricas
   Colunas (5): Id · Nº · Assunto · Descrição · Solicitante
+- **`pessoais-empregados`** · Dados pessoais · empregados de cada empresa (0.53.0)
+  Colunas (13): Id do cliente · Código do cliente · Cliente · Id · Nome · CPF · Admissão · Situação · Sexo · Cargo (código) · Carga horária · Código do empregado · Vínculo
 - **`pessoais-comunicacoes`** · Dados pessoais · comunicações
   Colunas (11): Id · Assunto · Cliente · Tipo · Situação · Situação da comunicação · Enviada em · Expira em · Visualizada · Destinatários · Criada por
 - **`pessoais-pendentes-dados`** · Dados pessoais · dados completos das pendentes
@@ -152,5 +154,5 @@ CPF, salário, nomes de empregados, assunto e descrição de todas as solicitaç
 - Detalhes completos e trâmites: só das pendentes (até 300, as mais graves primeiro), uma leitura por item. As listas inteiras vêm de uma leitura por página de 200.
 - Descrições, observações e textos de trâmites: até 1.500 caracteres, quebras de linha viram espaço.
 - Comunicações do Drive (`pessoais-comunicacoes`) e a validade do certificado em `clientes-nfe`: formato **a confirmar** com dados reais (o inventário só viu os nomes dos campos e o certificado vazio).
-- Empregados de cada cliente (`br-payroll-sr/v1/clients/{id}/employees`) **não** foram incluídos: seria uma leitura por cliente (mais de mil). Pode virar uma opção à parte.
+- Empregados de cada cliente (`br-payroll-sr/v1/clients/{id}/employees`): incluídos na **0.53.0** como `pessoais-empregados` (uma leitura por cliente, com pausa; até 3.000 clientes).
 - Gestta fora, por decisão do Josué (ainda sem formato).
