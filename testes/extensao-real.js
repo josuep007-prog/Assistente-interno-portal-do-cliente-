@@ -257,19 +257,15 @@ await portal.waitForLoadState('load');
 await new Promise(r => setTimeout(r, 800));
 assert.equal(await cheia(portal), false, 'chegou na tela nativa do Onvio, com o app escondido');
 
-// fora do Portal do Cliente o ícone não faz nada: nem leva ao Onvio, nem abre aba, nem mostra o app em outro site ou em outra tela do Onvio
+// fora do Portal do Cliente o ícone leva ao portal (Solicitações) e o app abre lá; em outro site ou em outra tela do Onvio (/staff/) o painel nunca aparece
 const fora = await ctx.newPage();
 await fora.route('https://exemplo.com/**', r => r.fulfill({ contentType: 'text/html; charset=utf-8', body: '<!doctype html><body>outro site</body>' }));
 await fora.goto('https://exemplo.com/');
 const idFora = await idDaAba('https://exemplo.com/*');
-const abasAntes = ctx.pages().length;
-const cheiaAntes = await cheia(portal);                                                      // a aba do portal está com o app escondido ("Ver Onvio")
 await sw.evaluate(i => aoClicarNoIcone({ id: i, url: 'https://exemplo.com/' }), idFora);
-await new Promise(r => setTimeout(r, 1200));
-assert.equal(ctx.pages().length, abasAntes, 'o ícone fora do portal não cria aba');
-assert.equal(await cheia(portal), cheiaAntes, 'nem mexe no painel da aba do portal');
+await esperar(async () => (await Promise.all(ctx.pages().map(async pg => (/onvio\.com\.br\/br-portal-do-cliente/.test(pg.url()) && (await cheia(pg)))))).some(Boolean));
 assert.equal(appDe(fora), undefined, 'em outro site nunca aparece o app');
-// outra tela do Onvio (/staff/): o painel não é injetado nem abre sozinho, mesmo com o resumo já guardado
+// outra tela do Onvio (/staff/): sem painel, nem sozinho nem pelo ícone (o ícone leva ao portal)
 const staff = await ctx.newPage();
 await staff.route('https://onvio.com.br/staff/**', r => r.fulfill({ contentType: 'text/html; charset=utf-8', body: '<!doctype html><body>Onvio · home</body>' }));
 await staff.goto('https://onvio.com.br/staff/#/home');
@@ -277,18 +273,26 @@ await new Promise(r => setTimeout(r, 2500));
 assert.equal(await staff.evaluate(() => !!document.getElementById('controlonvio-host') || document.documentElement.classList.contains('controlonvio-cheia')), false, 'sem painel nas outras telas do Onvio');
 assert.equal(appDe(staff), undefined);
 const idStaff = await idDaAba('https://onvio.com.br/staff/*');
+const abasAntes = ctx.pages().length;
 await sw.evaluate(i => aoClicarNoIcone({ id: i, url: 'https://onvio.com.br/staff/#/home' }), idStaff);
-await new Promise(r => setTimeout(r, 800));
-assert.equal(appDe(staff), undefined, 'o ícone numa tela /staff/ não abre nada');
-assert.equal(ctx.pages().length, abasAntes + 1, 'e não cria aba');
+await new Promise(r => setTimeout(r, 1200));
+assert.equal(appDe(staff), undefined, 'a tela /staff/ continua sem painel');
+assert.equal(ctx.pages().length, abasAntes, 'e reaproveita a aba do portal que já está aberta');
 await staff.close();
-console.log('fora do Portal do Cliente: ícone sem efeito, painel só no portal');
+console.log('ícone fora do portal -> leva ao portal e abre o app lá; /staff/ nunca tem painel');
 
-// nova aba do portal: o app abre sozinho ao entrar (já com leitura); é nela que seguem os testes de acesso de cliente
+// sem nenhuma aba do portal: o ícone cria uma nas Solicitações e o app abre sozinho assim que a primeira leitura termina
 for (const pg of ctx.pages()) if (/onvio\.com\.br/.test(pg.url())) await pg.close();
-const nova = await ctx.newPage();
-await nova.goto(PORTAL_TESTE);
-await esperar(() => appDe(nova));
+await pagina.evaluate(() => chrome.storage.local.remove(['snapshot', 'status', 'assinaturas', 'ultimaVerificacao']));      // como na 1ª vez: ainda não há leitura
+const antes = ctx.pages().length;
+await sw.evaluate(i => aoClicarNoIcone({ id: i, url: 'https://exemplo.com/' }), idFora);
+await esperar(() => ctx.pages().length > antes);
+const nova = ctx.pages().find(pg => /onvio\.com\.br\/br-portal-do-cliente\/service-requesting\/general/.test(pg.url()));
+assert.ok(nova, 'abriu o portal nas Solicitações');
+await esperar(() => appDe(nova), 20000);                                  // abre sozinho depois da leitura
+assert.equal(await cheia(nova), true);
+assert.ok((await pagina.evaluate(() => chrome.storage.local.get('snapshot'))).snapshot, 'e já com a primeira leitura feita');
+console.log('primeira vez: o portal abre nas Solicitações e o app aparece sozinho depois da leitura');
 
 // login de cliente: a extensão para, apaga o que leu e o app mostra só o aviso
 modoCliente = true;

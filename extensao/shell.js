@@ -140,15 +140,30 @@
   }
 
   /* ---------- mensagens do service worker (ícone da extensão, atalho) ---------- */
+  // Pedido de abrir (ícone fora do portal, "Abrir no Onvio"): espera a primeira leitura terminar para a camada já aparecer
+  // com dados. Abre na hora se já há leitura (ou se ela respondeu com erro, para mostrar o aviso) e, no máximo, em 45 s.
+  let esperando = false, limiteEspera = null;
+  const lido = (snap, st) => !!(snap && snap.items && !(st && ['erro', 'sem_sessao', 'visao_cliente'].includes(st.estado)));
+  const respondeu = st => !!(st && ['ok', 'erro', 'sem_sessao', 'visao_cliente'].includes(st.estado));
+  function abrirQuandoPronto(snap, st) {
+    if (lido(snap, st) || respondeu(st)) { esperando = false; clearTimeout(limiteEspera); definirPainel(true); return; }
+    esperando = true;
+    clearTimeout(limiteEspera);
+    limiteEspera = setTimeout(() => { if (esperando) { esperando = false; definirPainel(true); } }, 45000);
+  }
+  function conferirEspera() {
+    if (esperando && viva()) chrome.storage.local.get(['snapshot', 'status'], d => { if (esperando) abrirQuandoPronto(d.snapshot, d.status); });
+  }
   chrome.runtime.onMessage.addListener(m => {
     if (!m || typeof m.type !== 'string' || !noPortal()) return;
-    if (m.type === 'alternar') definirPainel(!aberto);
-    else if (m.type === 'abrir') definirPainel(true);
+    if (m.type === 'alternar') { esperando = false; definirPainel(!aberto); }
+    else if (m.type === 'abrir') chrome.storage.local.get(['snapshot', 'status'], d => abrirQuandoPronto(d.snapshot, d.status));
     else if (m.type === 'fechar') definirPainel(false);
   });
   chrome.storage.onChanged.addListener((ch, area) => {
     if (area !== 'local') return;
     if (ch.snapshot) atualizarContador(ch.snapshot.newValue);
+    if (ch.snapshot || ch.status) setTimeout(conferirEspera, 0);       // a primeira leitura terminou? então abre o painel pedido
     if (ch.status) { statusAtual = ch.status.newValue || null; visaoCliente = !!(statusAtual && statusAtual.estado === 'visao_cliente'); launcher.classList.toggle('hidden', aberto || visaoCliente); chrome.storage.local.get('snapshot', d => atualizarContador(d.snapshot)); }
     if (ch.posBotao) aplicarPos(ch.posBotao.newValue);
   });
@@ -232,7 +247,8 @@
     // com acesso de cliente só abre a pedido (ícone), para mostrar o aviso; nunca sozinho. Sozinha, a camada também só abre
     // quando já há leitura (resumo guardado e estado sem erro): sem dados fica só o botão, com o aviso, e o clique abre igual.
     const comDados = !!(d.snapshot && d.snapshot.items && !(d.status && ['erro', 'sem_sessao', 'visao_cliente'].includes(d.status.estado)));
-    const abrir = pedido || (!visaoCliente && !verOnvio && comDados && (naAba === '1' || (naAba === null && abrirAoEntrar)));
-    definirPainel(abrir);
+    const abrir = !visaoCliente && !verOnvio && comDados && (naAba === '1' || (naAba === null && abrirAoEntrar));
+    if (pedido) abrirQuandoPronto(d.snapshot, d.status);          // pedido pelo ícone: abre assim que a leitura estiver pronta
+    else definirPainel(abrir);
   });
 })();
