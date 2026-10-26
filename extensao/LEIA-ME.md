@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.45.0)
+# Control Onvio · ControlTax (v0.45.1)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -45,6 +45,9 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
 
+## Novidades da v0.45.1
+- Na aba Dados, o campo que o Onvio chama de "Código de integração" (o código do empregado dentro do Domínio) agora aparece como **Código do empregado**.
+
 ## Novidades da v0.45.0 (listas rolam, sem "Ver todas")
 - **Listas inteiras com barra de rolagem.** As Sugestões de ação do Hoje não cortam mais em 8 com o botão "Ver todas": mostram todas e rolam por dentro da caixa (cerca de 8 linhas à vista). O mesmo vale para "Sem analista: sugestão de distribuição" (Equipe, sem o link "Ver todas"), a Previsão por empresa (antes só 10 empresas, com o cabeçalho fixo) e o registro da distribuição automática (antes 30, agora todos os guardados).
 - Ao tirar uma sugestão com "Não é o caso" (ou quando a leitura ao vivo redesenha a tela), a lista fica onde estava, sem voltar ao topo.
@@ -55,7 +58,7 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 - **Mensagem pronta:** Modelos e Observações viraram um botão só na caixa de resposta. Ele abre um balão por cima com **uma mensagem completa para cada trâmite** (Respondido, Em análise, Em análise interna, Concluído…), já com as observações para o cliente que o texto ainda não diz. Dá para editar no balão antes de usar; "Usar mensagem" põe o texto e escolhe o trâmite (com texto já escrito: "Substituir o texto" ou "Acrescentar ao texto"). Esc ou clicar fora fecha.
 - **Criar modelo / Salvar como modelo:** no lugar de "Guardar como modelo". Sem texto escrito o botão diz **Criar modelo**; com texto, **Salvar como modelo** (os dados da solicitação viram {variáveis}). O modelo vira a **sua** mensagem pronta para o trâmite escolhido naquele tipo de solicitação (marcada "sua" no balão), no lugar da do escritório; "Voltar à do escritório" desfaz.
 - **Sem o botão Responder no rodapé** da solicitação: a caixa de resposta já fica ao lado da conversa.
-- **Aba Dados:** cada grupo num cartão, com o nome (do empregado, por exemplo) no título; rótulos em letra normal; nada em inglês (por exemplo "Código de integração", "Carga horária"); formatos brasileiros (carga horária em horas e minutos, como 7h20; CPF, CNPJ e CEP com pontuação; sexo por extenso; cargo que vem só com número aparece como "código 1295").
+- **Aba Dados:** cada grupo num cartão, com o nome (do empregado, por exemplo) no título; rótulos em letra normal; nada em inglês (por exemplo "Código do empregado", "Carga horária"); formatos brasileiros (carga horária em horas e minutos, como 7h20; CPF, CNPJ e CEP com pontuação; sexo por extenso; cargo que vem só com número aparece como "código 1295").
 - **Leitura dos trâmites mais rápida.** O que deixava lento, às vezes:
   1. cada solicitação aberta fazia **três idas ao Onvio, uma depois da outra**: testar a sessão, achar a solicitação pelo número e só então ler os dados e os trâmites;
   2. ao abrir o Hoje e as Solicitações, a extensão dispara **leituras em massa** (sugestões de ação, previsão por empresa, sugestão de responsável, leitura periódica) que disputavam a mesma aba do Onvio com a solicitação que você queria ver.
