@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.45.1)
+# Control Onvio · ControlTax (v0.46.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,12 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.46.0 (aba Dados sem inglês, em todas as listas)
+- **Cadastro de admissão em português:** os campos dos dados pessoais e profissionais ganharam rótulos certos (por exemplo "Tem filhos brasileiros", "Zona eleitoral", "Certificado de reservista", "E-mail principal", "Imóvel comprado com o FGTS", "Emissão da carteira de trabalho", "Cesta básica", "Gerar na RAIS"), em vez da tradução palavra por palavra que misturava inglês ("Filhos com brazilian", "Electoral ward").
+- **Valores traduzidos:** raça/cor ("CAUCASOID" = Branca), escolaridade em qualquer ordem ("Superior completo", "Médio incompleto"), tipo de logradouro ("Rua", "Avenida"), tipo sanguíneo, país em sigla ("BR" = Brasil), órgão emissor em maiúsculas ("SSP"). Cidade em código do IBGE aparece como "código IBGE 3550308" (a extensão não tem a tabela de municípios).
+- **Campos que o Onvio venha a mandar:** a tradução automática junta expressões ("vale-transporte", "plano de saúde", "contrato de experiência", "período aquisitivo"), põe "Tem …" no começo dos campos "has…" e os adjetivos depois do substantivo. Vale para todas as listas (férias, rescisão, afastamento, rubricas, Geral).
+- A confirmar no Onvio real: os nomes técnicos exatos dos campos dos dados profissionais (a tela do print cortava a lista); se ainda aparecer algum termo em inglês, mande o print que entra na tabela.
 
 ## Novidades da v0.45.1
 - Na aba Dados, o campo que o Onvio chama de "Código de integração" (o código do empregado dentro do Domínio) agora aparece como **Código do empregado**.

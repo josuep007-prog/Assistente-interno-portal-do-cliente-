@@ -1690,20 +1690,185 @@
     TERMINATION_BY_AGREEMENT_BETWEEN_THE_PARTIES: 'Rescisão por acordo entre as partes', TERMINATION_WITHOUT_JUST_CAUSE: 'Rescisão sem justa causa', TERMINATION_WITH_JUST_CAUSE: 'Rescisão com justa causa',
     DAY: 'Dia', NIGHT: 'Noite', PARTIAL: 'Parcial', FULL: 'Integral', OPEN: 'Aberto', CLOSED: 'Fechado', DONE: 'Concluído', CANCELED: 'Cancelado', CANCELLED: 'Cancelado'
   });
+  // Cadastro de admissão (dados pessoais e profissionais) e o resto das listas: rótulos certos para o que o Onvio manda
+  // (pedido do Josué em 26/10/2026: nada em inglês na aba Dados de nenhuma solicitação). A chave é a frase do campo em
+  // minúsculas, sem o "employee" do começo: vale para "addressCity", "address_city" ou "AddressCity".
+  const FRASES = {
+    'birthdate': 'Data de nascimento', 'birth date': 'Data de nascimento', 'date of birth': 'Data de nascimento', 'birthday': 'Data de nascimento',
+    'birth city': 'Cidade de nascimento', 'birth city code': 'Cidade de nascimento', 'birth country': 'País de nascimento', 'birth state': 'UF de nascimento', 'birth uf': 'UF de nascimento',
+    'city of birth': 'Cidade de nascimento', 'country of birth': 'País de nascimento', 'state of birth': 'UF de nascimento', 'birth place': 'Naturalidade',
+    'address city': 'Cidade', 'address city code': 'Cidade', 'address number': 'Número', 'address state': 'UF', 'address uf': 'UF', 'address type': 'Tipo de logradouro',
+    'address street': 'Logradouro', 'address street name': 'Logradouro', 'address neighborhood': 'Bairro', 'address district': 'Bairro', 'address complement': 'Complemento',
+    'address zip code': 'CEP', 'address postal code': 'CEP', 'address cep': 'CEP', 'address zip': 'CEP', 'address country': 'País', 'street type': 'Tipo de logradouro',
+    'public place': 'Logradouro', 'public place type': 'Tipo de logradouro', 'street name': 'Logradouro', 'city code': 'Cidade', 'state code': 'UF',
+    'identity card': 'RG', 'identity card number': 'RG', 'identity number': 'RG', 'identity': 'RG', 'general registry': 'RG', 'rg number': 'RG',
+    'identity card issuer date': 'Data de emissão do RG', 'identity card issue date': 'Data de emissão do RG', 'identity issue date': 'Data de emissão do RG',
+    'identity issuer date': 'Data de emissão do RG', 'identity card issuing date': 'Data de emissão do RG', 'identity card expedition date': 'Data de emissão do RG',
+    'identity state': 'UF do RG', 'identity card state': 'UF do RG', 'identity uf': 'UF do RG', 'identity issuer state': 'UF do RG',
+    'issuer agency': 'Órgão emissor do RG', 'identity issuer agency': 'Órgão emissor do RG', 'identity card issuer agency': 'Órgão emissor do RG',
+    'issuing agency': 'Órgão emissor do RG', 'issuer body': 'Órgão emissor do RG', 'identity issuer': 'Órgão emissor do RG', 'issuing body': 'Órgão emissor do RG',
+    'blood group': 'Tipo sanguíneo', 'blood type': 'Tipo sanguíneo', 'rh factor': 'Fator RH', 'blood rh factor': 'Fator RH', 'rh': 'Fator RH',
+    'children with brazilian': 'Tem filhos brasileiros', 'has brazilian children': 'Tem filhos brasileiros', 'brazilian children': 'Tem filhos brasileiros',
+    'married with brazilian': 'Casado(a) com brasileiro(a)', 'married to brazilian': 'Casado(a) com brasileiro(a)', 'brazilian spouse': 'Casado(a) com brasileiro(a)',
+    'country origin': 'País de origem', 'origin country': 'País de origem', 'country of origin': 'País de origem',
+    'domiciled outside': 'Domiciliado(a) no exterior', 'domiciled abroad': 'Domiciliado(a) no exterior', 'resident abroad': 'Domiciliado(a) no exterior', 'lives abroad': 'Domiciliado(a) no exterior',
+    'naturalized': 'Naturalizado(a)', 'naturalization date': 'Data da naturalização', 'arrival date': 'Data de chegada ao Brasil', 'foreigner arrival date': 'Data de chegada ao Brasil',
+    'electoral card': 'Título de eleitor', 'electoral title': 'Título de eleitor', 'voter title': 'Título de eleitor', 'voter card': 'Título de eleitor', 'voter registration': 'Título de eleitor',
+    'electoral section': 'Seção eleitoral', 'voter section': 'Seção eleitoral', 'electoral ward': 'Zona eleitoral', 'electoral zone': 'Zona eleitoral', 'voter zone': 'Zona eleitoral',
+    'military discharge': 'Certificado de reservista', 'military discharge certificate': 'Certificado de reservista', 'military discharge number': 'Certificado de reservista',
+    'military discharge category': 'Categoria do certificado de reservista', 'military discharge series': 'Série do certificado de reservista', 'military certificate': 'Certificado de reservista',
+    'reservist certificate': 'Certificado de reservista', 'reservist': 'Certificado de reservista',
+    'own residence': 'Tem residência própria', 'owns residence': 'Tem residência própria', 'has own residence': 'Tem residência própria', 'own house': 'Tem residência própria',
+    'property bought using severance fund': 'Imóvel comprado com o FGTS', 'property bought with severance fund': 'Imóvel comprado com o FGTS',
+    'property purchased using severance fund': 'Imóvel comprado com o FGTS', 'property bought using fgts': 'Imóvel comprado com o FGTS', 'residence bought using severance fund': 'Imóvel comprado com o FGTS',
+    'primary email address': 'E-mail principal', 'primary email': 'E-mail principal', 'secondary email address': 'E-mail secundário', 'secondary email': 'E-mail secundário', 'email address': 'E-mail',
+    'primary phone number': 'Telefone principal', 'primary phone': 'Telefone principal', 'secondary phone number': 'Telefone secundário', 'secondary phone': 'Telefone secundário',
+    'phone number': 'Telefone', 'cell phone number': 'Celular', 'cell phone': 'Celular', 'mobile phone': 'Celular', 'mobile phone number': 'Celular', 'cellphone': 'Celular',
+    'schooling level': 'Escolaridade', 'schooling': 'Escolaridade', 'education level': 'Escolaridade', 'education degree': 'Escolaridade', 'instruction level': 'Escolaridade',
+    'race color': 'Raça/cor', 'ethnicity': 'Raça/cor', 'skin color': 'Raça/cor',
+    'work expedition': 'Emissão da carteira de trabalho', 'work card expedition': 'Emissão da carteira de trabalho', 'work card expedition date': 'Emissão da carteira de trabalho',
+    'work card issue date': 'Emissão da carteira de trabalho', 'work card issuer date': 'Emissão da carteira de trabalho', 'work expedition date': 'Emissão da carteira de trabalho',
+    'work card': 'Carteira de trabalho', 'work card number': 'Número da carteira de trabalho', 'work card series': 'Série da carteira de trabalho', 'work card serie': 'Série da carteira de trabalho',
+    'work card state': 'UF da carteira de trabalho', 'work card uf': 'UF da carteira de trabalho', 'work number': 'Número da carteira de trabalho', 'work series': 'Série da carteira de trabalho',
+    'work state': 'UF da carteira de trabalho', 'ctps number': 'Número da carteira de trabalho', 'ctps series': 'Série da carteira de trabalho', 'ctps state': 'UF da carteira de trabalho',
+    'food agreement': 'Convênio de alimentação', 'meal agreement': 'Convênio de refeição', 'food basket': 'Cesta básica', 'basic basket': 'Cesta básica',
+    'generate in rais': 'Gerar na RAIS', 'generate rais': 'Gerar na RAIS', 'generate in caged': 'Gerar no CAGED', 'generate caged': 'Gerar no CAGED', 'generate in esocial': 'Enviar ao eSocial',
+    'has labor union': 'Sindicalizado(a)', 'labor union': 'Sindicato', 'unionized': 'Sindicalizado(a)', 'is unionized': 'Sindicalizado(a)', 'union member': 'Sindicalizado(a)',
+    'labor union contribution': 'Contribuição sindical', 'union contribution paid': 'Contribuição sindical paga', 'pays union contribution': 'Paga contribuição sindical',
+    'pis registration date': 'Data de cadastro do PIS', 'pis date': 'Data de cadastro do PIS', 'pis pasep': 'PIS/PASEP', 'pis number': 'PIS',
+    'fgts option date': 'Data de opção pelo FGTS', 'fgts option': 'Opção pelo FGTS', 'fgts opting date': 'Data de opção pelo FGTS',
+    'has deficiency': 'Pessoa com deficiência', 'has disability': 'Pessoa com deficiência', 'deficiency': 'Deficiência', 'deficiency type': 'Tipo de deficiência',
+    'disability quota': 'Vaga de cota (PcD)', 'rehabilitated': 'Reabilitado(a)', 'is rehabilitated': 'Reabilitado(a)',
+    'retired': 'Aposentado(a)', 'is retired': 'Aposentado(a)', 'retirement date': 'Data da aposentadoria',
+    'cnh number': 'CNH', 'driver license': 'CNH', 'driver license number': 'CNH', 'driving license': 'CNH', 'cnh category': 'Categoria da CNH', 'driver license category': 'Categoria da CNH',
+    'cnh expiration date': 'Validade da CNH', 'driver license expiration date': 'Validade da CNH', 'cnh issue date': 'Emissão da CNH', 'cnh state': 'UF da CNH', 'first license date': 'Data da primeira habilitação',
+    'professional council': 'Conselho profissional', 'class council': 'Conselho de classe', 'council number': 'Número no conselho', 'council state': 'UF do conselho', 'council registration': 'Registro no conselho',
+    'first job': 'Primeiro emprego', 'previous employment': 'Emprego anterior', 'admission indicator': 'Indicador de admissão', 'admission type': 'Tipo de admissão',
+    'contract term': 'Prazo do contrato', 'contract term type': 'Prazo do contrato', 'contract end date': 'Fim do contrato', 'experience end date': 'Fim da experiência',
+    'journey type': 'Tipo de jornada', 'workday type': 'Tipo de jornada', 'work regime': 'Regime de trabalho', 'working hours': 'Horário de trabalho', 'work shift': 'Turno',
+    'hours bank': 'Banco de horas', 'bank of hours': 'Banco de horas', 'time bank': 'Banco de horas', 'overtime compensation': 'Compensação de horas',
+    'unhealthy degree': 'Grau de insalubridade', 'unhealthiness degree': 'Grau de insalubridade', 'unhealthy': 'Insalubridade', 'hazard pay': 'Periculosidade', 'dangerousness': 'Periculosidade',
+    'salary advance': 'Adiantamento salarial', 'advance percentage': 'Percentual do adiantamento', 'payment method': 'Forma de pagamento', 'payment form': 'Forma de pagamento',
+    'account type': 'Tipo de conta', 'bank account type': 'Tipo de conta', 'bank account digit': 'Dígito da conta', 'agency digit': 'Dígito da agência', 'bank agency digit': 'Dígito da agência',
+    'transport voucher': 'Vale-transporte', 'transportation voucher': 'Vale-transporte', 'meal voucher': 'Vale-refeição', 'food voucher': 'Vale-alimentação',
+    'health insurance': 'Plano de saúde', 'dental insurance': 'Plano odontológico', 'life insurance': 'Seguro de vida',
+    'esocial category': 'Categoria no eSocial', 'esocial registration': 'Matrícula no eSocial', 'esocial code': 'Código no eSocial',
+    'tax dependents': 'Dependentes para o IR', 'income tax dependents': 'Dependentes para o IR', 'family allowance dependents': 'Dependentes para o salário-família',
+    'social name': 'Nome social', 'mother name': 'Nome da mãe', 'father name': 'Nome do pai', 'marital status': 'Estado civil', 'civil status': 'Estado civil',
+    'leave type': 'Tipo de afastamento', 'leave reason': 'Motivo do afastamento', 'leave days': 'Dias de afastamento', 'expected return': 'Retorno previsto',
+    'cat number': 'Número da CAT', 'cat issue date': 'Emissão da CAT', 'accident date': 'Data do acidente', 'accident type': 'Tipo de acidente',
+    'vacation end date': 'Fim das férias', 'acquisition period start': 'Início do período aquisitivo', 'acquisition period end': 'Fim do período aquisitivo',
+    'acquisitive period start': 'Início do período aquisitivo', 'acquisitive period end': 'Fim do período aquisitivo', 'vesting period start': 'Início do período aquisitivo',
+    'vesting period end': 'Fim do período aquisitivo', 'collective vacation': 'Férias coletivas', 'pay thirteenth': 'Adiantar 1ª parcela do 13º',
+    'notice type': 'Tipo do aviso', 'prior notice type': 'Tipo do aviso prévio', 'prior notice days': 'Dias de aviso prévio', 'notice days': 'Dias de aviso',
+    'termination reason': 'Motivo da rescisão', 'dismissal reason': 'Motivo da rescisão', 'resignation date': 'Data do desligamento', 'dismissal date': 'Data do desligamento',
+    'dismissal exam': 'Exame demissional', 'admission exam': 'Exame admissional', 'medical exam date': 'Data do exame médico', 'aso date': 'Data do ASO'
+  };
+  // Valores (enumerações) do cadastro: raça, logradouro, sangue, escolaridade
+  Object.assign(VALORES, {
+    CAUCASOID: 'Branca', CAUCASIAN: 'Branca', NEGROID: 'Preta', MULATTO: 'Parda', MIXED: 'Parda', MONGOLOID: 'Amarela', ASIAN: 'Amarela', INDIAN: 'Indígena', NATIVE: 'Indígena',
+    STREET: 'Rua', AVENUE: 'Avenida', ROAD: 'Estrada', HIGHWAY: 'Rodovia', ALLEY: 'Viela', LANE: 'Travessa', CROSSING: 'Travessa', SQUARE: 'Praça', PLAZA: 'Praça',
+    BOULEVARD: 'Alameda', GROVE: 'Alameda', COURT: 'Largo', RESIDENTIAL: 'Residencial', CONDOMINIUM: 'Condomínio', BLOCK: 'Quadra', FARM: 'Fazenda', SITE: 'Sítio',
+    VILLAGE: 'Vila', PARK: 'Parque', PUBLIC_PLACE: 'Logradouro', OTHER_TYPE: 'Outro',
+    A_POSITIVE: 'A+', A_NEGATIVE: 'A−', B_POSITIVE: 'B+', B_NEGATIVE: 'B−', AB_POSITIVE: 'AB+', AB_NEGATIVE: 'AB−', O_POSITIVE: 'O+', O_NEGATIVE: 'O−', POSITIVE: 'Positivo', NEGATIVE: 'Negativo',
+    SINGLE_PERSON: 'Solteiro(a)', LEGALLY_SEPARATED: 'Separado(a) judicialmente', COMMON_LAW: 'União estável',
+    DAILY_WORKER: 'Diarista', REGULAR: 'Regular', SPECIAL: 'Especial', HOURLY_WORKER: 'Horista', MONTHLY_WORKER: 'Mensalista',
+    CURRENT_ACCOUNT: 'Corrente', SAVINGS_ACCOUNT: 'Poupança', SALARY_ACCOUNT: 'Conta-salário', CASH: 'Dinheiro', CHECK: 'Cheque', BANK_DEPOSIT: 'Depósito em conta', BANK_TRANSFER: 'Transferência',
+    NOT_APPLICABLE: 'Não se aplica', UNKNOWN: 'Não informado', NONE_INFORMED: 'Não informado', MINIMUM: 'Mínimo', MEDIUM: 'Médio', MAXIMUM: 'Máximo', LOW: 'Baixo', HIGH: 'Alto'
+  });
+  // Escolaridade em qualquer ordem ("COMPLETE_HIGHER_EDUCATION", "HIGHER_EDUCATION_COMPLETE", "INCOMPLETE_HIGH_SCHOOL")
+  function escolaridadePt(u) {
+    const p = u.split('_');
+    const tem = (...w) => w.every(x => p.includes(x));
+    const nivel = tem('POST', 'GRADUATE') || tem('POSTGRADUATE') || tem('POSTGRADUATION') || tem('SPECIALIZATION') ? 'Pós-graduação'
+      : tem('MASTER') || tem('MASTERS') || tem('MASTERS', 'DEGREE') ? 'Mestrado' : tem('DOCTORATE') || tem('DOCTORAL') || tem('PHD') ? 'Doutorado'
+      : tem('HIGHER') || tem('COLLEGE') || tem('UNIVERSITY') || tem('SUPERIOR') || tem('GRADUATION') ? 'Superior'
+      : (tem('HIGH', 'SCHOOL') || tem('SECONDARY') || tem('MIDDLE', 'SCHOOL')) && !tem('ELEMENTARY') ? 'Médio'
+      : tem('ELEMENTARY') || tem('FUNDAMENTAL') || tem('PRIMARY') ? 'Fundamental' : tem('ILLITERATE') ? 'Analfabeto' : null;
+    if (!nivel) return null;
+    const ano = p.find(x => /^\d+(TH|ST|ND|RD)?$/.test(x));
+    const comp = tem('INCOMPLETE') || tem('UNFINISHED') ? ' incompleto' : tem('COMPLETE') || tem('COMPLETED') || tem('FINISHED') ? ' completo' : '';
+    return nivel === 'Fundamental' && ano ? 'Fundamental até o ' + parseInt(ano, 10) + 'º ano' + comp : nivel + (/Pós|Mestrado|Doutorado|Analfabeto/.test(nivel) ? '' : comp);
+  }
+  // País em código ISO (BR, PT…): os mais comuns por extenso; o resto como veio
+  const PAISES = { BR: 'Brasil', PT: 'Portugal', US: 'Estados Unidos', AR: 'Argentina', PY: 'Paraguai', UY: 'Uruguai', BO: 'Bolívia', CL: 'Chile', PE: 'Peru', CO: 'Colômbia',
+    VE: 'Venezuela', HT: 'Haiti', CU: 'Cuba', AO: 'Angola', MZ: 'Moçambique', CN: 'China', JP: 'Japão', KR: 'Coreia do Sul', IT: 'Itália', ES: 'Espanha', DE: 'Alemanha', FR: 'França',
+    GB: 'Reino Unido', MX: 'México', EC: 'Equador', SN: 'Senegal', NG: 'Nigéria', BRA: 'Brasil', PRT: 'Portugal', USA: 'Estados Unidos' };
+  // Ainda mais palavras soltas, para o que o Onvio venha a mandar além das frases acima
+  Object.assign(PALAVRAS, {
+    brazilian: 'brasileiro', brazil: 'Brasil', domiciled: 'domiciliado', outside: 'no exterior', abroad: 'no exterior', electoral: 'eleitoral', elector: 'eleitor',
+    section: 'seção', ward: 'zona', zone: 'zona', married: 'casado', discharge: 'reservista', naturalized: 'naturalizado', naturalization: 'naturalização',
+    own: 'próprio', residence: 'residência', primary: 'principal', secondary: 'secundário', property: 'imóvel', bought: 'comprado', purchased: 'comprado',
+    using: 'com', severance: 'FGTS', fund: 'fundo', schooling: 'escolaridade', higher: 'superior', high: 'alto', school: 'escola', elementary: 'fundamental',
+    expedition: 'emissão', basket: 'cesta', generate: 'gerar', rais: 'RAIS', caged: 'CAGED', labor: 'trabalhista', rh: 'RH', birthdate: 'data de nascimento',
+    permit: 'autorização', council: 'conselho', class: 'classe', driver: 'motorista', driving: 'habilitação', license: 'habilitação', cnh: 'CNH', reservist: 'reservista',
+    ethnicity: 'raça/cor', deficiency: 'deficiência', handicap: 'deficiência', physical: 'física', hearing: 'auditiva', visual: 'visual', intellectual: 'intelectual',
+    mental: 'mental', quota: 'cota', retiree: 'aposentado', retirement: 'aposentadoria', unionized: 'sindicalizado', syndicate: 'sindicato', journey: 'jornada',
+    workday: 'jornada', degree: 'grau', opting: 'opção', indicator: 'indicador', nature: 'natureza', regular: 'regular', simple: 'simples', intermittent: 'intermitente',
+    apprenticeship: 'aprendizagem', fiscal: 'fiscal', tax: 'imposto', income: 'renda', deduction: 'dedução', declaration: 'declaração', exempt: 'isento',
+    exemption: 'isenção', municipality: 'município', county: 'município', neighbourhood: 'bairro', lot: 'lote', block: 'quadra', apartment: 'apartamento',
+    building: 'edifício', floor: 'andar', landline: 'telefone fixo', cellphone: 'celular', whatsapp: 'WhatsApp', alternative: 'alternativo', emergency: 'emergência',
+    death: 'óbito', nickname: 'apelido', photo: 'foto', picture: 'foto', ibge: 'IBGE', meal: 'refeição', snack: 'lanche', uniform: 'uniforme', equipment: 'equipamento',
+    daycare: 'creche', nursery: 'creche', ctps: 'carteira de trabalho', pasep: 'PASEP', aso: 'ASO', cat: 'CAT', cid: 'CID', crm: 'CRM', rg: 'RG', title: 'título',
+    acquisition: 'aquisitivo', acquisitive: 'aquisitivo', vesting: 'aquisitivo', concessive: 'concessivo', thirteenth: '13º', collective: 'coletivas', sold: 'vendido',
+    bonus_days: 'dias de abono', dismissed: 'dispensado', resignation: 'pedido de demissão', resigned: 'demitido', warning: 'advertência', suspension: 'suspensão',
+    medical: 'médico', hospital: 'hospital', inss: 'INSS', benefit_number: 'número do benefício', proportional: 'proporcional', indemnity: 'indenização',
+    rehabilitated: 'reabilitado', cause: 'causa', email: 'e-mail', mail: 'e-mail', zipcode: 'CEP', postcode: 'CEP', cpf: 'CPF', should: 'deve', must: 'deve', can: 'pode', allow: 'permitir',
+    allowed: 'permitido', need: 'precisa', needs: 'precisa', include: 'incluir', included: 'incluído', exclude: 'excluir', excluded: 'excluído', show: 'mostrar',
+    display: 'exibição', hide: 'ocultar', hidden: 'oculto', read: 'lido', unread: 'não lido', open: 'aberto', closed: 'fechado', done: 'concluído', finished: 'concluído'
+  });
+  Object.assign(PALAVRAS, {
+    transport_voucher: 'vale-transporte', transportation_voucher: 'vale-transporte', meal_voucher: 'vale-refeição', food_voucher: 'vale-alimentação',
+    health_plan: 'plano de saúde', health_insurance: 'plano de saúde', dental_plan: 'plano odontológico', dental_insurance: 'plano odontológico', life_insurance: 'seguro de vida',
+    work_schedule: 'horário de trabalho', night_shift: 'turno noturno', night_shift_allowance: 'adicional noturno', night_allowance: 'adicional noturno',
+    hazard_allowance: 'adicional de periculosidade', unhealthy_allowance: 'adicional de insalubridade', pix_key: 'chave Pix', bank_account: 'conta bancária',
+    bank_agency: 'agência bancária', bank_name: 'banco', income_tax: 'imposto de renda', family_allowance: 'salário-família', professional_council: 'conselho profissional',
+    acquisition_period: 'período aquisitivo', acquisitive_period: 'período aquisitivo', vesting_period: 'período aquisitivo', concessive_period: 'período concessivo',
+    part_time: 'tempo parcial', partial_time: 'tempo parcial', full_time: 'tempo integral', military_certificate: 'certificado de reservista', military_discharge: 'certificado de reservista',
+    electoral_card: 'título de eleitor', voter_title: 'título de eleitor', birth_date: 'data de nascimento', prior_notice: 'aviso prévio', experience_contract: 'contrato de experiência',
+    union_contribution: 'contribuição sindical', labor_union: 'sindicato', first_license: 'primeira habilitação', dismissal_exam: 'exame demissional', admission_exam: 'exame admissional',
+    blood_donor: 'doador de sangue', blood_type: 'tipo sanguíneo', blood_group: 'tipo sanguíneo', fgts_fine: 'multa do FGTS', medical_certificate: 'atestado médico', work_card: 'carteira de trabalho',
+    identity_card: 'RG', zip_code: 'CEP', postal_code: 'CEP', phone_number: 'telefone', email_address: 'e-mail', residence_permit: 'autorização de residência',
+    sold_vacation: 'férias vendidas', income_tax_dependent: 'dependente para o IR', family_allowance_dependent: 'dependente para o salário-família', esocial_category: 'categoria no eSocial',
+    cbo_code: 'CBO', daily_workload: 'carga horária diária', weekly_workload: 'carga horária semanal', monthly_workload: 'carga horária mensal', weekly_rest: 'descanso semanal',
+    rest_day: 'dia de descanso', weekly_rest_day: 'descanso semanal remunerado', salary_advance: 'adiantamento salarial', advance_salary: 'adiantamento salarial',
+    experience_extension: 'prorrogação da experiência', doctor_crm: 'CRM do médico', previous_employer: 'empregador anterior', origin_company: 'empresa de origem',
+    under14: 'menores de 14 anos', children_under14: 'filhos menores de 14 anos', cause_code: 'código da causa', social_name: 'nome social',
+    mother_name: 'nome da mãe', father_name: 'nome do pai', marital_status: 'estado civil', last_name: 'sobrenome', first_name: 'primeiro nome', full_name: 'nome completo',
+    job_position: 'cargo', cost_center: 'centro de custo', hire_date: 'data de admissão', admission_date: 'data de admissão', start_date: 'data de início', end_date: 'data de fim',
+    payment_date: 'data de pagamento', due_date: 'vencimento', notice_date: 'data do aviso', leave_date: 'data do afastamento', return_date: 'data de retorno',
+    frequency: 'frequência', time: 'tempo', transferred: 'transferido', transfer: 'transferência', types: 'tipos', filling: 'preenchimento', worker: 'trabalhador', workers: 'trabalhadores',
+    rne: 'RNE', crnm: 'CRNM', fine: 'multa', homologation: 'homologação', family: 'família', reason_description: 'descrição do motivo', counts: 'quantidades'
+  });
   // Em inglês o principal vem por último ("expected return date"); em português, primeiro ("data de retorno prevista").
-  const ADJ = new Set(['previsto', 'pago', 'não pago', 'ativo', 'inativo', 'pendente', 'prévio', 'trabalhado', 'indenizado', 'mensal', 'semanal', 'diário', 'pessoal', 'profissional', 'médico', 'criado', 'atualizado', 'alterado', 'enviado', 'lido', 'total']);
+  const ADJ = new Set(['previsto', 'pago', 'não pago', 'ativo', 'inativo', 'pendente', 'prévio', 'trabalhado', 'indenizado', 'mensal', 'semanal', 'diário', 'pessoal', 'profissional', 'médico', 'criado', 'atualizado', 'alterado', 'enviado', 'lido', 'total', 'permitido', 'sindical', 'eleitoral', 'militar', 'coletivas', 'noturno', 'anterior', 'principal', 'secundário', 'aquisitivo', 'concessivo', 'parcial', 'salarial', 'vendido', 'proporcional', 'transferido', 'reabilitado', 'completo', 'incompleto', 'obrigatório', 'opcional', 'adicional', 'brasileiro', 'estrangeiro', 'atual', 'antigo', 'novo', 'interno', 'externo', 'nacional', 'próprio', 'residencial', 'comercial', 'fixo', 'variável', 'bruto', 'líquido', 'inicial', 'final', 'máximo', 'mínimo', 'padrão', 'personalizado', 'emitido', 'aprovado', 'recusado', 'assinado', 'excluído', 'incluído', 'concluído', 'aberto', 'fechado']);
   const ANTES = new Set(['primeiro', 'último']);
   const PREP = new Set(['por', 'em', 'de', 'e', 'ou', 'com', 'sem', 'tem', 'entre']);
   // parcial: mantém a palavra que não conhece (em vez de desistir da frase toda)
+  // expressões de 2 ou 3 palavras que em português são uma coisa só ("transport voucher" = vale-transporte)
+  function juntarUnidades(lista) {
+    const out = [];
+    for (let i = 0; i < lista.length;) {
+      const n = [3, 2].find(t => i + t <= lista.length && PALAVRAS[lista.slice(i, i + t).join('_')] !== undefined);
+      if (n) { out.push(lista.slice(i, i + n).join('_')); i += n; } else out.push(lista[i++]);
+    }
+    return out;
+  }
   function traduzirPalavras(lista, parcial) {
+    lista = juntarUnidades(lista.map(w => String(w).toLowerCase()));
+    // "has…" = "Tem …" ("hasExperienceContract" = tem contrato de experiência)
+    if (lista.length > 1 && /^(has|have)$/.test(lista[0])) { const r = traduzirPalavras(lista.slice(1), parcial); return r ? 'tem ' + r : null; }
     const out = []; let conhecidas = 0;
-    for (const w of lista) { const t = PALAVRAS[w.toLowerCase()]; if (t === undefined) { if (!parcial) return null; out.push(w.toLowerCase()); } else { conhecidas++; if (t) out.push(t); } }
+    for (const w of lista) { const t = PALAVRAS[w]; if (t === undefined) { if (!parcial) return null; out.push(w); } else { conhecidas++; if (t) out.push(t); } }
     if (!out.length || !conhecidas) return null;
     if (out.length === 1 || out.some(w => PREP.has(w))) return out.join(' ');
-    const nucleo = out[out.length - 1], resto = out.slice(0, -1).reverse();
+    // o núcleo é o último substantivo; adjetivos depois dele ("overtime allowed" = hora extra permitida) vão para o fim
+    let i = out.length - 1;
+    while (i > 0 && ADJ.has(out[i])) i--;
+    const nucleo = out[i], resto = out.slice(0, i).reverse(), depois = out.slice(i + 1);
     let frase = nucleo, antes = '';
     for (const w of resto) { if (ANTES.has(w)) antes = w + ' '; else if (ADJ.has(w)) frase += ' ' + w; else frase += ' de ' + w; }
-    return antes + frase;
+    return antes + frase + (depois.length ? ' ' + depois.join(' ') : '');
   }
   // Fora da aba Dados: o que já está no topo da janela (cliente, responsável, datas, solicitante) e o que só serve ao
   // sistema (tipo técnico, meio, quem cadastrou, quando foi alterada). A aba fica com o que é preciso para atender.
@@ -1713,12 +1878,16 @@
     let partes = String(k).replace(/Expanded$/, '').replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase().split(/[\s_]+/).filter(Boolean);
     // "employeeWorkload", "clientEmployeeName": o "empregado" do começo sobra (o grupo já diz de quem é)
     while (partes.length > 1 && (partes[0] === 'employee' || (partes[0] === 'client' && partes[1] === 'employee'))) partes = partes.slice(partes[0] === 'client' ? 2 : 1);
+    // frase conhecida (cadastro de admissão e demais listas): o rótulo certo, sem tradução palavra por palavra
+    const frase = FRASES[partes.join(' ')] || FRASES[partes.filter(w => !/^(is|has|the)$/.test(w)).join(' ')];
+    if (frase) return frase;
     // como último recurso, traduz o que conhece e mantém só a palavra desconhecida (antes, a frase inteira ficava em inglês)
     const t = traduzirPalavras(partes) || traduzirPalavras(partes, true) || partes.join(' ');
     return t.charAt(0).toUpperCase() + t.slice(1);
   };
-  const enumPt = v => { if (VALORES[v]) return VALORES[v]; const t = traduzirPalavras(v.toLowerCase().split('_'), true); return t ? t.charAt(0).toUpperCase() + t.slice(1) : v; };
-  const rotulo = k => ROTULOS[k] || humano(k);
+  const enumPt = v => { if (VALORES[v]) return VALORES[v]; const esc = escolaridadePt(v); if (esc) return esc; const t = traduzirPalavras(v.toLowerCase().split('_'), true); return t ? t.charAt(0).toUpperCase() + t.slice(1) : v; };
+  const ROTULOS_MIN = {};
+  const rotulo = k => { if (ROTULOS[k]) return ROTULOS[k]; if (!Object.keys(ROTULOS_MIN).length) for (const [a, b] of Object.entries(ROTULOS)) ROTULOS_MIN[a.toLowerCase()] = b; return ROTULOS_MIN[String(k).toLowerCase()] || humano(k); };
   // Formatos brasileiros: horas decimais (7.33 = 7h20), CPF e CNPJ com pontuação, sexo por extenso, número com vírgula
   const fmtHoras = x => { let h = Math.floor(x), m = Math.round((x - h) * 60); if (m === 60) { h++; m = 0; } return h + 'h' + (m ? String(m).padStart(2, '0') : ''); };
   const ehHoras = k => /workload|hours|hour$|carga|jornada/i.test(k) && !/quantity|days/i.test(k);
@@ -1730,6 +1899,11 @@
     if (/zip|cep|postal/i.test(k) && /^\d{8}$/.test(s)) return s.replace(/^(\d{5})(\d{3})$/, '$1-$2');
     if (ehHoras(k) && /^\d+([.,]\d+)?$/.test(s)) { const x = Number(s.replace(',', '.')); return Number.isInteger(x) ? x + 'h' : fmtHoras(x) + ' (' + x.toLocaleString('pt-BR') + ' h)'; }
     if (/^(jobPosition|job|position|role|department|costCenter)/i.test(k) && /^\d+$/.test(s)) return 'código ' + s;
+    // cidade em código do IBGE (7 dígitos): sem a tabela de municípios, diz o que é o número
+    if (/city|municipality|county|cidade/i.test(k) && /^\d{7}$/.test(s)) return 'código IBGE ' + s;
+    if (/country|nationality|pais|país/i.test(k) && /^[A-Za-z]{2,3}$/.test(s) && PAISES[s.toUpperCase()]) return PAISES[s.toUpperCase()];
+    // órgão emissor em sigla (ssp, detran): em maiúsculas
+    if (/issuer|issuing|emissor/i.test(k) && /^[a-z]{2,8}(\/?[a-z]{2})?$/i.test(s)) return s.toUpperCase();
     return null;
   }
   function valorDe(k, v) {
