@@ -2998,5 +2998,276 @@
     };
   }
 
-  g.OC = { montarLoteHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, dentroDoHorario, planoDistribuicaoAuto, acaoConcluir, agruparSugestoes, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, acaoAnalise, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, mensagensProntas, marcadoresPendentes, observacoesFaltantes, avisosResposta, situacaoEquivalente, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  /* ---------- ponte com o Control Hub: conjuntos completos (0.52.0, pedido do Josué em 26/10/2026) ----------
+   * Além do resumo acima, a pessoa pode mandar ao Hub as listas inteiras, clientes, dados do escritório, permissões,
+   * documentos e notícias, em partes (o Hub aceita até 150 mil caracteres por documento). Tudo é lido na hora, vai
+   * direto para o Hub e NADA fica na extensão. As categorias são escolhidas em Configurações → Control Hub; a dos
+   * dados pessoais (CPF, salário, nomes, descrições, trâmites, comunicações) vem desligada e pede confirmação.
+   * Nunca vão: tokens e dados da sessão (UdsSession), cookies, armazenamento do navegador. */
+  const HUB_CATEGORIAS = [
+    { id: 'listas', nome: 'Solicitações completas', ajuda: 'As 10 listas inteiras (não só as pendentes): situação, datas, cliente, responsável, departamento e campos de cada tipo. Sem dados pessoais.', pessoal: false, padrao: true },
+    { id: 'clientes', nome: 'Clientes', ajuda: 'Clientes de CND e de NF-e: nome, código, CNPJ/CPF, inscrições, UF e município, certificado.', pessoal: false, padrao: true },
+    { id: 'escritorio', nome: 'Escritório e acesso', ajuda: 'Departamentos, seu acesso, tabelas de apoio, prescrição, conta, licenças, permissões, funcionalidades e serviços do Onvio. Sem tokens.', pessoal: false, padrao: true },
+    { id: 'documentos', nome: 'Documentos', ajuda: 'Árvore de pastas do Onvio Drive (nomes, contagens, datas, quem leu).', pessoal: false, padrao: true },
+    { id: 'noticias', nome: 'Notícias', ajuda: 'Artigos compartilhados com os clientes.', pessoal: false, padrao: true },
+    { id: 'pessoais', nome: 'Dados pessoais', ajuda: 'CPF, salário, nomes de empregados, assunto e descrição de todas as solicitações, dados completos e trâmites das pendentes, comunicações. Fica no banco do Hub, visível a quem acessa o Hub.', pessoal: true, padrao: false }
+  ];
+  const HUB_PARTE_CHARS = 140000;        // o Hub aceita até 150 mil por parte
+  const HUB_PARTES_MAX = 80;
+  const HUB_PENDENTES_MAX = 300;         // detalhes e trâmites: no máximo N pendentes por envio (1 leitura cada)
+  const celulaHub = (v, max) => String(v == null ? '' : v).replace(/[\t\r\n\u2028\u2029]+/g, ' ').replace(/ {2,}/g, ' ').trim().slice(0, max || 300);
+  const simNao = v => v === true ? 'sim' : v === false ? 'não' : '';
+  const dataIso = v => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : '';
+  const dataHora = v => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(v) ? v.slice(0, 16).replace('T', ' ') : dataIso(v);
+  const nomeDe = x => x && typeof x === 'object' ? (x.name || x.displayName || x.fullName || '') : (typeof x === 'string' ? x : '');
+  const slugHub = key => String(key).replace(/([A-Z])/g, '-$1').toLowerCase();
+  const LADO_HUB = { esc: 'escritório', cli: 'cliente', fim: 'concluída', desc: 'desconhecida' };
+
+  // Tabela em texto (tab entre colunas, \n entre linhas) partida em pedaços de até `limite` caracteres, sempre entre linhas.
+  function partirTabela(linhas, limite) {
+    limite = limite || HUB_PARTE_CHARS;
+    const partes = []; let atual = [], n = 0;
+    for (const l of linhas) {
+      const t = l.length > limite ? l.slice(0, limite) : l;
+      if (n + t.length + 1 > limite && atual.length) { partes.push(atual.join('\n')); atual = []; n = 0; }
+      atual.push(t); n += t.length + 1;
+    }
+    if (atual.length || !partes.length) partes.push(atual.join('\n'));
+    return partes;
+  }
+  const linhaTexto = (cels, max) => cels.map(c => celulaHub(c, max)).join('\t');
+
+  // ----- listas das solicitações -----
+  const EXTRAS_LISTA = {
+    cadastro: [['Admissão ou início', r => dataIso(r.admissionDate || r.startDate)], ['Fim', r => dataIso(r.endDate)], ['Fim da prorrogação', r => dataIso(r.extensionEnd)], ['Categoria eSocial', r => r.eSocialCategory || r.category], ['Tipo de cadastro', r => r.employeeRegistrationType], ['Situação do cliente (código)', r => r.clientStatus], ['Vínculo', r => r.employmentRelationship], ['Jornada diária', r => r.dailyHours], ['Jornada semanal', r => r.weeklyHours], ['Jornada mensal', r => r.monthlyHours], ['Dias de experiência', r => r.daysExperience], ['Dias de prorrogação', r => r.extensionDays], ['Primeiro emprego', r => simNao(r.firstJob)], ['Professor', r => simNao(r.teacher)]],
+    avisoFerias: [['Início das férias', r => dataIso(r.vacationStartDate)], ['Data do aviso', r => dataIso(r.noticeDate)], ['Data do pagamento', r => dataIso(r.paymentDate)], ['Dias de abono', r => r.bonusDays], ['Dias de férias', r => r.vacationDays]],
+    calcFerias: [['Início das férias', r => dataIso(r.vacationStartDate)], ['Paga abono', r => simNao(r.payBonusDays)], ['Paga a 1ª parcela do 13º antes', r => simNao(r.payFirstInstallmentEarlier)], ['Dias de férias', r => r.vacationDays]],
+    avisoRescisao: [['Data do aviso', r => dataIso(r.adviceDate)], ['Concedido por', r => r.grantedBy], ['Motivo (código)', r => r.terminationReasonId]],
+    calcRescisao: [['Data da rescisão', r => dataIso(r.resignationDate)], ['Data do aviso prévio', r => dataIso(r.priorNoticeAdviceDate)], ['Motivo (código)', r => r.terminationReasonId], ['Tipo de aviso', r => r.terminationType]],
+    afastamento: [['Data do afastamento', r => dataIso(r.leaveDate)], ['Tipo de afastamento (código)', r => r.employeeLeaveTypeId], ['Data da CAT', r => dataIso(r.catDate)]],
+    rubricas: [['Competência', r => dataIso(r.effectiveDate)], ['Tipo de lançamento', r => r.entryType], ['Detalha ausência', r => simNao(r.detailAbsentDay)], ['Detalha serviço', r => simNao(r.detailServiceEntry)]]
+  };
+  const extrasDoTipo = t => t.familia === 'cadastro' ? EXTRAS_LISTA.cadastro : (EXTRAS_LISTA[t.key] || []);
+  const COMUNS_LISTA = [
+    ['Id', (r, n) => r.id], ['Nº', (r, n) => r.identifier], ['Tipo', (r, n) => n.typeLabel], ['Situação', (r, n) => n.status], ['Código da situação', (r, n) => r.genericStatus],
+    ['Vez', (r, n) => LADO_HUB[n.lado] || n.lado], ['Aberta em', (r, n) => dataHora(r.created || r.lastStatusChanged)], ['Alterada em', (r, n) => dataHora(r.changed)],
+    ['Último trâmite', (r, n) => dataHora(r.lastUpdated || r.genericLastUpdated)], ['Expectativa do cliente', (r, n) => dataIso(r.dueDate)], ['Meio', (r, n) => r.requestWay],
+    ['Cliente', (r, n) => (r.clientExpanded || {}).name], ['Apelido', (r, n) => (r.clientExpanded || {}).nickname], ['Código do cliente', (r, n) => (r.clientExpanded || {}).code], ['Id do cliente', (r, n) => (r.clientExpanded || {}).id],
+    ['Cliente usa o Onvio', (r, n) => simNao((r.clientExpanded || {}).isOnvio)], ['Cliente envia eSocial', (r, n) => simNao((r.clientExpanded || {}).sendingEsocial)], ['Cliente cadastra empregado', (r, n) => simNao((r.clientExpanded || {}).allowEmployeeRegistration)],
+    ['Responsável', (r, n) => (r.staffResponsibleExpanded || {}).name], ['Id do responsável', (r, n) => (r.staffResponsibleExpanded || {}).id], ['Departamento (id)', (r, n) => typeof r.departmentId === 'string' ? r.departmentId : '']
+  ];
+  function tabelaLista(t, itens) {
+    const cols = COMUNS_LISTA.concat(extrasDoTipo(t).map(([c, f]) => [c, (r) => f(r)]));
+    const linhas = itens.map(r => { const n = normalize(t, r, null); return linhaTexto(cols.map(([, f]) => f(r, n)), 120); });
+    return { colunas: cols.map(c => c[0]), linhas };
+  }
+  // ----- dados pessoais das listas (CPF, salário, nomes, textos) -----
+  function tabelaPessoais(t, itens) {
+    const emp = /clientEmployeeExpanded/.test(t.expand), cad = t.familia === 'cadastro';
+    const cols = [['Id', r => r.id], ['Nº', r => r.identifier], ['Assunto', r => r.subject], ['Descrição', r => r.description], ['Solicitante', r => (r.requesterExpanded || {}).name]];
+    if (emp) cols.push(['Empregado', r => (r.clientEmployeeExpanded || {}).name], ['CPF do empregado', r => (r.clientEmployeeExpanded || {}).cpf], ['Admissão do empregado', r => dataIso((r.clientEmployeeExpanded || {}).hireDate)], ['Situação do empregado', r => (r.clientEmployeeExpanded || {}).status], ['Sexo', r => (r.clientEmployeeExpanded || {}).gender], ['Cargo (código)', r => (r.clientEmployeeExpanded || {}).jobPosition], ['Carga horária', r => (r.clientEmployeeExpanded || {}).employeeWorkload], ['Código do empregado', r => (r.clientEmployeeExpanded || {}).integrationCode]);
+    if (cad) cols.push(['Nome', r => r.name], ['Nome social', r => r.socialName], ['CPF', r => r.nationalIdentity], ['Salário', r => r.wage], ['Observações', r => r.comments], ['Matrícula', r => r.registration], ['Cartão de ponto', r => r.frequencyCard]);
+    return { colunas: cols.map(c => c[0]), linhas: itens.map(r => linhaTexto(cols.map(([, f]) => f(r)), 1500)) };
+  }
+  // Lê a lista inteira de um tipo (todas as situações), página por página.
+  async function lerListaInteira(fetcher, t, pausa) {
+    const por = 200, itens = []; let total = 0;
+    for (let pagina = 1; pagina <= 30; pagina++) {
+      const d = await fetcher(listUrl(t, { per: por, page: pagina }));
+      const lote = (d && d.items) || [];
+      itens.push(...lote);
+      total = Number(d && d.totalItems) || itens.length;
+      if (lote.length < por || itens.length >= total || pagina >= ((d && d.totalPages) || 1)) break;
+      if (pausa) await pausa(300);
+    }
+    return { itens, total };
+  }
+
+  // ----- clientes (CND e NF-e) -----
+  async function lerClientes(fetcher, caminho, pausa) {
+    const itens = []; let total = 0;
+    for (let pagina = 1; pagina <= 30; pagina++) {
+      const d = await fetcher(API + caminho + (caminho.includes('?') ? '&' : '?') + 'expand=all&itemsPerPage=100&pageIndex=' + pagina + '&startIndex=' + ((pagina - 1) * 100));
+      const lote = (d && (d.items || (d.data && d.data.items))) || [];
+      itens.push(...lote);
+      total = Number(d && (d.totalItems || d.totalElements)) || itens.length;
+      if (lote.length < 100 || itens.length >= total || pagina >= ((d && d.totalPages) || 1)) break;
+      if (pausa) await pausa(300);
+    }
+    return { itens, total };
+  }
+  const validadeCertificado = c => {
+    if (!c || typeof c !== 'object') return '';
+    for (const k of ['expirationDate', 'validTo', 'validUntil', 'notAfter', 'dueDate', 'expiresAt', 'endDate']) if (c[k]) return dataIso(String(c[k]));
+    return '';
+  };
+  const tabelaCnd = itens => ({ colunas: ['Id', 'Código', 'Cliente', 'Situação', 'CNPJ ou CPF', 'Inscrição municipal', 'Inscrição estadual', 'UF', 'Município (IBGE)', 'Tipo de documento', 'Usa o Onvio'],
+    linhas: itens.map(c => linhaTexto([c.id, c.code, c.clientName, c.clientStatus, c.nationalIdentity, c.municipalInscription, c.stateInscription, c.stateInitials, c.cityIbgeIdentifier, c.documentType, simNao(c.isOnvio)], 120)) });
+  const tabelaNfe = itens => ({ colunas: ['Id', 'Código', 'Cliente', 'Apelido', 'Ativo', 'Situação', 'CNPJ ou CPF', 'UF', 'Usa o Onvio', 'Tem certificado', 'Validade do certificado'],
+    linhas: itens.map(c => linhaTexto([c.id, c.code, c.name, c.nickname, simNao(c.active), c.clientStatus, c.nationalIdentity, c.uf, simNao(c.isOnvio), c.certificateExpanded && Object.keys(c.certificateExpanded).length ? 'sim' : 'não', validadeCertificado(c.certificateExpanded)], 120)) });
+
+  // ----- escritório, acesso e configuração (cada leitura que falha vira "indisponível" sem derrubar as outras) -----
+  async function tenta(fetcher, caminho) { try { return await fetcher(API + caminho); } catch (e) { if (e && e.auth) throw e; return null; } }
+  const listaDe = d => Array.isArray(d) ? d : (d && (d.items || d.content || (d.data && (d.data.items || d.data)))) || [];
+  async function lerEscritorio(fetcher, id) {
+    if (id === 'departamentos') {
+      const d = await tenta(fetcher, 'br-default-department/v1/department?itemsPerPage=100&pageIndex=1');
+      return { colunas: ['Id', 'Código', 'Nome', 'Padrão', 'Criado em', 'Alterado em'], linhas: listaDe(d).map(x => linhaTexto([x.departmentId || x.id, x.code, x.name, simNao(x.departmentDefault), dataHora(x.created), dataHora(x.changed)])) };
+    }
+    if (id === 'acesso') {
+      const [a, u] = await Promise.all([tenta(fetcher, 'br-payroll-sr/v1/company-department-access'), usuario(fetcher)]);
+      return { colunas: ['Usuário', 'Departamento do acesso (id)', 'Empresa (id)'], linhas: [linhaTexto([u && u.nome, a && a.departmentId, a && a.companyId])] };
+    }
+    if (id === 'tabelas') {
+      const linhas = [];
+      const add = (tabela, d, f) => listaDe(d).forEach(x => linhas.push(linhaTexto([tabela].concat(f(x)))));
+      add('Tipos de afastamento', await tenta(fetcher, 'br-payroll-sr/v1/employee-leave-types'), x => [x.id, x.description, 'gera CAT: ' + simNao(x.enableCat) + ' · visível: ' + simNao(x.visible)]);
+      add('Motivos de rescisão', await tenta(fetcher, 'br-payroll-sr/v1/termination-reasons'), x => [x.id, x.reason, 'cálculo: ' + simNao(x.calculation) + ' · aviso prévio: ' + simNao(x.priorNotice) + ' · estágio: ' + simNao(x.internshipOption)]);
+      add('Motivos eSocial', await tenta(fetcher, 'br-payroll-sr/v1/esocial-reasons'), x => [x.value, x.translationKey, '']);
+      add('Categorias eSocial', await tenta(fetcher, 'br-payroll-sr/v1/esocial-categories'), x => [x.value, x.translationKey, '']);
+      add('Vínculos empregatícios', await tenta(fetcher, 'br-payroll-sr/v1/employment-relationships'), x => [x.value, x.translationKey, '']);
+      add('Categorias', await tenta(fetcher, 'br-payroll-sr/v1/categories'), x => [x.value, x.translationKey, x.teacher ? 'professor' : '']);
+      return { colunas: ['Tabela', 'Código', 'Descrição', 'Detalhes'], linhas };
+    }
+    if (id === 'prescricao') {
+      const linhas = [];
+      for (const [orig, cam] of [['Geral', 'service-requesting/v1/ticket-prescriptions'], ['Folha', 'br-payroll-sr/v1/ticket-prescriptions']]) { const d = await tenta(fetcher, cam); if (d) linhas.push(linhaTexto([orig, simNao(d.prescribePendingTickets), d.prescribePendingTicketsDays])); }
+      return { colunas: ['Origem', 'Prescreve pendentes com o cliente', 'Dias'], linhas };
+    }
+    if (id === 'conta') {
+      const contas = await tenta(fetcher, 'profiles/v1/accounts?active=true&hideNonOnvio=true'), ses = await tenta(fetcher, 'security/v1/session-and-bindings');
+      const empresa = ses && ses.UdsSessionBindings && ses.UdsSessionBindings.ApplicationConfiguration && ses.UdsSessionBindings.ApplicationConfiguration.CompanyId;
+      const main = empresa ? await tenta(fetcher, 'core/v3/companies/' + encodeURIComponent(empresa) + '/main') : null;
+      const pref = await tenta(fetcher, 'profiles/v2/company-preferences/applications/BR_ATENDIMENTO/categories/HIDE_INACTIVE_CLIENTS');
+      const linhas = [];
+      listaDe(contas).forEach(c => linhas.push(linhaTexto(['Conta', c.accountName || c.companyName, 'área do escritório: ' + simNao(c.staffCenterEnabled) + ' · área do cliente: ' + simNao(c.clientCenterEnabled) + ' · bloqueio de crédito: ' + simNao(c.creditHold) + ' · bloqueio da firma: ' + simNao(c.firmLock) + ' · produto: ' + (c.primaryProduct || '') + ' · criada em ' + dataIso(c.createDate)])));
+      if (main) { linhas.push(linhaTexto(['Moeda', main.currencySymbol, 'casas decimais: ' + (main.currencyDecimalDigits == null ? '' : main.currencyDecimalDigits)])); linhas.push(linhaTexto(['Proprietário', nomeDe(main.ownerContact), ''])); linhas.push(linhaTexto(['Cliente-empresa', nomeDe(main.companyClient), 'código ' + ((main.companyClient || {}).code || '')])); }
+      listaDe(pref).forEach(p => linhas.push(linhaTexto(['Ocultar empresas inativas das listagens', p.preferences, ''])));
+      return { colunas: ['Item', 'Valor', 'Detalhes'], linhas };
+    }
+    if (id === 'licencas') {
+      const d = await tenta(fetcher, 'provisioning/v1/licenses');
+      return { colunas: ['Funcionalidade', 'Recurso'], linhas: ((d && d.featureResources) || []).map(x => linhaTexto([x.feature, x.resource])) };
+    }
+    // da sessão só saem permissões, nomes de funcionalidades e endereços de serviços (host): nunca UdsSession, tokens nem cookies
+    const ses = await tenta(fetcher, 'security/v1/session-and-bindings'), b = (ses && ses.UdsSessionBindings) || {};
+    if (id === 'permissoes') {
+      const linhas = [];
+      const map = (b.FeatureResourcePermissions && b.FeatureResourcePermissions.FeatureResourcePermissionsMap) || {};
+      for (const [grupo, m] of Object.entries(map)) for (const [perm, v] of Object.entries(m && typeof m === 'object' ? m : {})) linhas.push(linhaTexto([grupo, perm, typeof v === 'string' ? v.slice(0, 40) : String(v)]));
+      return { colunas: ['Grupo', 'Permissão', 'Valor'], linhas };
+    }
+    if (id === 'funcionalidades') return { colunas: ['Funcionalidade'], linhas: (Array.isArray(b.InfrastructureAccessControls) ? b.InfrastructureAccessControls : []).map(x => linhaTexto([String(x).slice(0, 120)])) };
+    if (id === 'servicos') {
+      const rt = b.RoutingTable && typeof b.RoutingTable === 'object' ? b.RoutingTable : {};
+      return { colunas: ['Serviço', 'Endereço (host)'], linhas: Object.entries(rt).map(([k, v]) => { let h = ''; try { h = new URL(String(v)).host; } catch (e) { h = ''; } return linhaTexto([k, h]); }) };
+    }
+    return { colunas: [], linhas: [] };
+  }
+
+  // ----- documentos, comunicações e notícias -----
+  async function lerDocumentos(fetcher, id) {
+    if (id === 'pastas') {
+      const d = await tenta(fetcher, 'storage/v1/folders?includeTaxAccounting=true');
+      return { colunas: ['Id', 'Nome', 'Tipo', 'Documentos', 'Usuários que leram', 'Compartilhada', 'Tem arquivos', 'Tem pastas', 'Criada em', 'Alterada em', 'Criada por', 'Alterada por'],
+        linhas: listaDe(d && d.data ? d.data : d).map(x => linhaTexto([x.id, x.name, x.rootType || x.type || x.itemType, x.documentCount, x.readUserCount, simNao(x.isShared), simNao(x.hasFiles), simNao(x.hasFolders), dataHora(x.createdDate), dataHora(x.modifiedDate), nomeDe(x.createdBy), nomeDe(x.modifiedBy)])) };
+    }
+    const d = await tenta(fetcher, 'storage/v2/requests?requestTypes=Approval&requestTypes=Informational&requestTypes=Send&requestTypes=Outlook&sort=createdDate:desc');
+    return { colunas: ['Id', 'Assunto', 'Cliente', 'Tipo', 'Situação', 'Situação da comunicação', 'Enviada em', 'Expira em', 'Visualizada', 'Destinatários', 'Criada por'],
+      linhas: listaDe(d).map(x => linhaTexto([x.id, x.subject, x.clientName, x.requestType, x.status, x.communicationStatus, dataHora(x.sendDate), dataHora(x.expirationDate), simNao(x.isViewed), Array.isArray(x.recipients) ? x.recipients.length : '', nomeDe(x.createdBy)], 400)) };
+  }
+  async function lerNoticias(fetcher) {
+    const d = await tenta(fetcher, 'br-news/v1/articles/shared?expand=all&itemsPerPage=100&pageIndex=1');
+    return { colunas: ['Id', 'Título', 'Chamada', 'Publicada em', 'Publicada', 'Visível', 'Destinatário', 'Situação', 'Conteúdo'],
+      linhas: listaDe(d).map(x => linhaTexto([x.id, x.title, x.tagline, dataHora(x.publishDate), simNao(x.published), simNao(x.visible), x.sharedWith, x.status, x.content], 1500)) };
+  }
+
+  // ----- pendentes: dados completos (traduzidos) e trâmites -----
+  async function lerPendentesCompletos(fetcher, snapshot, quais, pausa, onItem) {
+    const itens = ((snapshot && snapshot.items) || []).slice().sort((a, b) => (b.grav || 0) - (a.grav || 0) || (b.nivel || 0) - (a.nivel || 0)).slice(0, HUB_PENDENTES_MAX);
+    const detalhes = [], tramites = [];
+    let feitos = 0;
+    for (const it of itens) {
+      const t = TYPE_BY_KEY[it.type]; if (!t) continue;
+      try {
+        if (quais.detalhes) {
+          const d = await fetcher(urlDetalhe(t, it.id)), cd = camposDetalhe(t, d);
+          for (const g of cd.grupos) for (const c of g.campos) detalhes.push(linhaTexto([it.k, it.num, it.typeLabel, g.titulo, c.k, c.v], 1500));
+          if (cd.anexos.length) detalhes.push(linhaTexto([it.k, it.num, it.typeLabel, 'Anexos', 'Arquivos', cd.anexos.join(' | ')], 1500));
+        }
+        if (quais.tramites) {
+          const tr = tramitesDe(t, await fetcher(urlTramites(t, it)));
+          for (const x of tr) tramites.push(linhaTexto([it.k, it.num, it.typeLabel, x.n, dataHora(x.em), x.situacao, x.lado === 'cli' ? 'cliente' : 'escritório', x.autor, x.texto, x.anexos.join(' | ')], 1500));
+        }
+      } catch (e) { if (e && e.auth) throw e; }
+      feitos++; if (onItem) onItem(feitos, itens.length);
+      if (pausa) await pausa(250);
+    }
+    return { detalhes, tramites, lidas: feitos, total: ((snapshot && snapshot.items) || []).length };
+  }
+
+  // Plano do envio: lista de tarefas { id, rotulo, categorias, executar(fetcher, ctx) -> [conjunto] }.
+  // Conjunto: { tipoDado, categoria, titulo, colunas, linhas (textos), totalNaOrigem, cortado, porTipo }.
+  function hubPlano(escolhidas) {
+    const quer = c => escolhidas.indexOf(c) !== -1;
+    const tarefas = [];
+    const L = quer('listas'), P = quer('pessoais');
+    if (L || P) for (const t of TYPES) tarefas.push({
+      id: 'lista:' + t.key, rotulo: t.label,
+      async executar(fetcher, ctx) {
+        const { itens, total } = await lerListaInteira(fetcher, t, ctx.pausa), out = [];
+        if (L) { const x = tabelaLista(t, itens); out.push({ tipoDado: 'lista-' + slugHub(t.key), categoria: 'listas', titulo: 'Solicitações · ' + t.label + ' (todas)', colunas: x.colunas, linhas: x.linhas, totalNaOrigem: total, cortado: itens.length < total, porTipo: {} }); }
+        if (P) { const x = tabelaPessoais(t, itens); out.push({ tipoDado: 'pessoais-' + slugHub(t.key), categoria: 'pessoais', titulo: 'Dados pessoais · ' + t.label, colunas: x.colunas, linhas: x.linhas, totalNaOrigem: total, cortado: itens.length < total, porTipo: {} }); }
+        return out;
+      }
+    });
+    if (quer('clientes')) {
+      tarefas.push({ id: 'clientes:cnd', rotulo: 'Clientes de CND', async executar(f, ctx) { const { itens, total } = await lerClientes(f, 'cnd/v1/clients', ctx.pausa), x = tabelaCnd(itens); return [{ tipoDado: 'clientes-cnd', categoria: 'clientes', titulo: 'Clientes de CND', colunas: x.colunas, linhas: x.linhas, totalNaOrigem: total, cortado: itens.length < total, porTipo: {} }]; } });
+      tarefas.push({ id: 'clientes:nfe', rotulo: 'Clientes de NF-e', async executar(f, ctx) { const { itens, total } = await lerClientes(f, 'manifesto/v1/clients', ctx.pausa), x = tabelaNfe(itens); return [{ tipoDado: 'clientes-nfe', categoria: 'clientes', titulo: 'Clientes de NF-e', colunas: x.colunas, linhas: x.linhas, totalNaOrigem: total, cortado: itens.length < total, porTipo: {} }]; } });
+    }
+    if (quer('escritorio')) for (const [id, titulo] of [['departamentos', 'Departamentos'], ['acesso', 'Acesso do usuário'], ['tabelas', 'Tabelas de apoio'], ['prescricao', 'Prescrição'], ['conta', 'Conta e configuração do escritório'], ['licencas', 'Licenças'], ['permissoes', 'Permissões do usuário'], ['funcionalidades', 'Funcionalidades do Onvio'], ['servicos', 'Serviços do Onvio']])
+      tarefas.push({ id: 'escritorio:' + id, rotulo: titulo, async executar(f) { const x = await lerEscritorio(f, id); return [{ tipoDado: 'escritorio-' + id, categoria: 'escritorio', titulo: 'Escritório · ' + titulo, colunas: x.colunas, linhas: x.linhas, totalNaOrigem: x.linhas.length, cortado: false, porTipo: {} }]; } });
+    if (quer('documentos')) tarefas.push({ id: 'documentos:pastas', rotulo: 'Pastas do Onvio Drive', async executar(f) { const x = await lerDocumentos(f, 'pastas'); return [{ tipoDado: 'documentos-pastas', categoria: 'documentos', titulo: 'Documentos · pastas', colunas: x.colunas, linhas: x.linhas, totalNaOrigem: x.linhas.length, cortado: false, porTipo: {} }]; } });
+    if (quer('noticias')) tarefas.push({ id: 'noticias:artigos', rotulo: 'Notícias', async executar(f) { const x = await lerNoticias(f); return [{ tipoDado: 'noticias-artigos', categoria: 'noticias', titulo: 'Notícias compartilhadas', colunas: x.colunas, linhas: x.linhas, totalNaOrigem: x.linhas.length, cortado: false, porTipo: {} }]; } });
+    if (P) {
+      tarefas.push({ id: 'pessoais:comunicacoes', rotulo: 'Comunicações', async executar(f) { const x = await lerDocumentos(f, 'comunicacoes'); return [{ tipoDado: 'pessoais-comunicacoes', categoria: 'pessoais', titulo: 'Dados pessoais · comunicações', colunas: x.colunas, linhas: x.linhas, totalNaOrigem: x.linhas.length, cortado: false, porTipo: {} }]; } });
+      tarefas.push({ id: 'pessoais:pendentes', rotulo: 'Detalhes e trâmites das pendentes',
+        async executar(f, ctx) {
+          const r = await lerPendentesCompletos(f, ctx.snapshot, { detalhes: true, tramites: true }, ctx.pausa, ctx.onItem);
+          const corte = r.total > r.lidas;
+          return [
+            { tipoDado: 'pessoais-pendentes-dados', categoria: 'pessoais', titulo: 'Dados pessoais · dados completos das pendentes', colunas: ['Chave', 'Nº', 'Lista', 'Grupo', 'Campo', 'Valor'], linhas: r.detalhes, totalNaOrigem: r.total, cortado: corte, porTipo: {} },
+            { tipoDado: 'pessoais-pendentes-tramites', categoria: 'pessoais', titulo: 'Dados pessoais · trâmites das pendentes', colunas: ['Chave', 'Nº', 'Lista', 'Trâmite', 'Em', 'Situação', 'Vez', 'Autor', 'Texto', 'Anexos'], linhas: r.tramites, totalNaOrigem: r.total, cortado: corte, porTipo: {} }
+          ];
+        } });
+    }
+    return tarefas;
+  }
+  // Monta o lote (em partes) de um conjunto, pronto para a ponte enviar uma parte por vez.
+  function hubPartesDe(c) {
+    const partes = partirTabela(c.linhas, HUB_PARTE_CHARS);
+    const cortadoPorTamanho = partes.length > HUB_PARTES_MAX;
+    return { partes: partes.slice(0, HUB_PARTES_MAX), cortado: !!c.cortado || cortadoPorTamanho, nLinhasTotal: c.linhas.length };
+  }
+  // Executa o plano: lê cada tarefa, partilha cada conjunto e entrega pelo callback enviar(conjunto, partes).
+  async function hubExecutar(fetcher, escolhidas, ctx, enviar, aoProgredir) {
+    const tarefas = hubPlano(escolhidas), resultados = [];
+    let i = 0;
+    for (const tarefa of tarefas) {
+      i++;
+      if (aoProgredir) aoProgredir({ etapa: tarefa.rotulo, feito: i - 1, total: tarefas.length });
+      let conjuntos;
+      try { conjuntos = await tarefa.executar(fetcher, ctx); }
+      catch (e) { if (e && e.auth) throw e; resultados.push({ id: tarefa.id, rotulo: tarefa.rotulo, ok: false, motivo: 'leitura: ' + celulaHub(e && e.message || e, 120) }); continue; }
+      for (const c of conjuntos) {
+        const p = hubPartesDe(c);
+        try { const r = await enviar(c, p); resultados.push(Object.assign({ id: c.tipoDado, rotulo: c.titulo, categoria: c.categoria, linhas: p.nLinhasTotal, partes: p.partes.length }, r)); }
+        catch (e) { resultados.push({ id: c.tipoDado, rotulo: c.titulo, categoria: c.categoria, ok: false, motivo: celulaHub(e && e.message || e, 120) }); }
+      }
+    }
+    if (aoProgredir) aoProgredir({ etapa: 'concluído', feito: tarefas.length, total: tarefas.length });
+    return resultados;
+  }
+
+  g.OC = { montarLoteHub, HUB_CATEGORIAS, hubPlano, hubExecutar, hubPartesDe, partirTabela, tabelaLista, tabelaPessoais, tabelaCnd, tabelaNfe, lerEscritorio, lerDocumentos, lerNoticias, slugHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, dentroDoHorario, planoDistribuicaoAuto, acaoConcluir, agruparSugestoes, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, acaoAnalise, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, mensagensProntas, marcadoresPendentes, observacoesFaltantes, avisosResposta, situacaoEquivalente, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);
