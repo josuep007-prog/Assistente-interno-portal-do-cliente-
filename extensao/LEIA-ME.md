@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.48.0)
+# Control Onvio · ControlTax (v0.48.1)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,10 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.48.1 (Mensagem pronta sem repetir)
+- A mensagem pronta do cálculo de rescisão repetia a mesma regra duas vezes (o texto do trâmite e, logo abaixo, "Observações importantes"). Agora uma observação só entra se o texto ainda não diz aquilo: mesmo trecho, mesma data **ou a mesma regra legal** ("CLT, art. 477"), mesmo com outras palavras (`OC.observacoesFaltantes`).
+- O texto de "Concluído" do cálculo de rescisão ficou igual ao de "Respondido": pagamento e entrega dos documentos de rescisão ao empregado em até 10 dias corridos do término do contrato (CLT, art. 477, §6º), com a data.
 
 ## Novidades da v0.48.0 (textos de rescisão e férias)
 - **Rescisão:** o prazo de 10 dias corridos (CLT, art. 477, §6º) vale também para a **entrega dos documentos de rescisão ao empregado**. Os textos que falam do pagamento (observações do aviso e do cálculo de rescisão e a mensagem pronta "Concluído" do cálculo) agora dizem as duas coisas: "as verbas rescisórias devem ser pagas e os documentos de rescisão entregues ao empregado em até 10 dias corridos…".

@@ -2614,6 +2614,22 @@ test('textos de férias e rescisão: o prazo de 10 dias vale também para entreg
   assert.doesNotMatch(m.texto, /assinad|comprovante/i);
 });
 
+test('mensagem pronta de rescisão: as observações não repetem o que o texto já diz (mesma regra legal, mesma data ou o mesmo texto)', () => {
+  const item = { type: 'calcRescisao', typeLabel: 'Cálculo de rescisão', code: 1, lado: 'esc' };
+  const obs = OC.DEFAULTS.observacoes.calcRescisao.map(t => ({ texto: t.replace('{pagamentoRescisaoDias}', '10') }));
+  for (const sit of [4, 5]) {
+    const m = OC.mensagensProntas(item, {}, []).find(x => x.sit === sit);
+    const t = OC.preencherModelo(m.texto, { saudacao: 'Bom dia', empregado: 'FULANO', tipo: 'cálculo de rescisão', pagamento: '23/11/2026', pagamentoRescisao: '23/11/2026' });
+    assert.match(t, /pagamento das verbas rescisórias e a entrega dos documentos (de rescisão )?ao empregado/, 'sit ' + sit);
+    assert.match(t, /CLT, art\. 477, §6º/);
+    assert.deepEqual(plano(OC.observacoesFaltantes(t, obs)), [], 'sit ' + sit + ': nada a acrescentar, a regra já está no texto');
+  }
+  // o que o texto não diz continua entrando
+  const outra = [{ texto: 'Lembre de agendar o exame demissional, quando exigido.' }, { texto: 'As verbas devem ser pagas até o art. 477 da CLT.' }, { texto: 'Prazo de conclusão: até 30/10/2026.' }];
+  assert.deepEqual(plano(OC.observacoesFaltantes('Segue o cálculo. Pagamento (CLT, art. 477, §6º) até 23/11/2026.', outra).map(o => o.texto)), ['Lembre de agendar o exame demissional, quando exigido.', 'Prazo de conclusão: até 30/10/2026.'], 'sai só a que cita o mesmo artigo (art. 477); a de outra data fica');
+  assert.equal(OC.observacoesFaltantes('Texto sem lei.', outra).length, 3);
+});
+
 test('mensagem pronta: uma por trâmite, a do escritório mais específica, a da pessoa no lugar quando existe', () => {
   const ger = { type: 'geral', code: 1, lado: 'esc' };
   const ms = OC.mensagensProntas(ger, {}, []);

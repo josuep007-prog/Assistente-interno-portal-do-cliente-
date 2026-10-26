@@ -105,8 +105,7 @@ export function bolhaRascunho(i) {
 function mensagemCompleta(m, i, cliObs, ctx) {
   const t = OC.preencherModelo(m.texto, vars(i, ctx));
   if (!m.completa) return t;
-  const datas = o => o.texto.match(/\d{2}\/\d{2}\/\d{4}/g) || [];
-  const extras = cliObs.filter(o => !t.includes(o.texto) && !datas(o).some(d => t.includes(d)));
+  const extras = OC.observacoesFaltantes(t, cliObs);
   return extras.length ? t.trimEnd() + '\n\nObservações importantes:\n' + extras.map(o => '- ' + o.texto).join('\n') : t;
 }
 function balaoHtml(i, r, cliObs, ctx) {
