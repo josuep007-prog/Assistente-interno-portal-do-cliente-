@@ -105,7 +105,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
   });
 
   await passo('Painel do DP: cartão Onvio com pendentes, vez do escritório e prazos legais em 7 dias; alertas de pessoal ganham os prazos do Onvio', async () => {
-    await page.waitForFunction(() => [...document.querySelectorAll('#dp-painel-grid .pn-card')].some(c => /^\s*Onvio/.test(c.textContent) && /6\s*Pendentes/.test(c.textContent)), null, { timeout: 8000 });
+    await page.waitForFunction(() => [...document.querySelectorAll('#dp-painel-grid .pn-card')].some(c => /^\s*Onvio/.test(c.textContent) && /6\s*Pendentes/.test(c.textContent) && /5\s*Vez do escritório/.test(c.textContent)), null, { timeout: 8000 });
     const t = await page.$eval('#dp-painel-grid', e => [...e.querySelectorAll('.pn-card')].map(c => c.textContent.replace(/\s+/g, ' ')).find(x => /^\s*Onvio/.test(x)));
     assert.match(t, /6\s*Pendentes/); assert.match(t, /5\s*Vez do escritório/); assert.match(t, /2\s*Prazos legais em 7 dias/);
     assert.match(await page.textContent('#dp-painel-kpis'), /Alertas de pessoal.*|2/s);
@@ -336,6 +336,97 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
       await page.waitForTimeout(400); await page.screenshot({ path: path.join(CAP, 'entrada-dados-depois-escuro.png') });
       await page.evaluate(() => { document.documentElement.setAttribute('data-theme', 'light'); });
     }
+  });
+
+  // chegada de um conjunto novo (como o envio da extensão: partes e depois o manifesto, num ciclo novo)
+  const semearConjunto = async (tipo, c, ciclo) => {
+    const partes = D.OC.partirTabela(c.linhas, 900);
+    for (let i = 0; i < partes.length; i++) await page.evaluate(([p, d]) => window.__db.semear(p, d), [`ing_partes/onvio~${tipo}~b${i}`, { ciclo, parte: i, tabela: partes[i] }]);
+    await page.evaluate(([p, d]) => window.__db.semear(p, d), [`ing_dados/onvio~${tipo}`, { fonte: 'onvio', tipoDado: tipo, categoria: c.categoria, titulo: tipo, colunas: c.colunas, nLinhas: c.linhas.length, totalNaOrigem: c.linhas.length, cortado: false, partes: partes.length, slot: 'b', ciclo, recebidoEm: Date.now(), extraidoEm: new Date().toISOString(), usuario: 'Ana Teste', por: 'u-teste', versaoExt: '0.53.0' }]);
+  };
+  const difsOnvio = () => page.evaluate(() => window.__hubApi.api('onvio').difs().map(d => ({ emp: d.empNome, nome: d.nome, acao: d.acao, tipo: d.tipo, txt: d.txt })));
+
+  await passo('Folha inteira de cada empresa: quem nunca teve solicitação vira cadastro novo; desligado sem solicitação não; cliente só da folha aparece para cadastrar', async () => {
+    await page.evaluate(() => { const d = window.__db.ler('dp_empresas/e-vega'); d.funcionarios.push({ id: 'f-antiga', nome: 'Antiga Colega', cargo: '', codigo: '', admissao: '2020-02-02', status: 'Ativo', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '', salario: '', obs: '' }); window.__db.semear('dp_empresas/e-vega', d); });
+    await semearConjunto('pessoais-empregados', await D.empregados(), 'c2');
+    await page.waitForFunction(() => window.__hubApi.api('onvio').difs().some(d => d.nome === 'Carlos Sem Pedido'), null, { timeout: 8000 });
+    const d = await difsOnvio();
+    const de = (n) => d.filter(x => x.nome === n);
+    assert.equal(de('Carlos Sem Pedido').length, 1); assert.equal(de('Carlos Sem Pedido')[0].acao, 'novo'); assert.match(de('Carlos Sem Pedido')[0].txt, /folha do cliente/);
+    assert.equal(de('Lira Funcionaria')[0].acao, 'novo'); assert.equal(de('Lira Funcionaria')[0].emp, 'LIRA PADARIA');
+    assert.equal(de('Dona Antiga').length, 0, 'desligado que nunca teve solicitação não entra');
+    assert.equal(de('Antiga Colega')[0].acao, 'corrigir'); assert.match(de('Antiga Colega')[0].txt, /Desligado na folha/);
+    const sem = await page.evaluate(() => window.__hubApi.api('onvio').semVinculo().map(g => ({ cli: g.cli, n: g.n, nEmp: g.nEmp })));
+    const nova = sem.find(g => /NOVA CLIENTE/.test(g.cli));
+    assert.ok(nova, 'cliente que só existe na folha'); assert.equal(nova.n, 0); assert.equal(nova.nEmp, 2);
+    await fr.locator('#vincro tr[data-k]:has-text("NOVA CLIENTE SA")').waitFor({ timeout: 8000 });
+    assert.match(await fr.locator('#vincro').textContent(), /NOVA CLIENTE SA/); assert.match(await fr.locator('#vincro').textContent(), /2 empregados ativos/);
+    assert.equal(await fr.locator('#autoBox .auto-bloco').count(), 1);
+    assert.equal(await fr.locator('#autoLigar').isChecked(), false, 'vem desligado');
+    if (CAP) { await fr.locator('#secCadastro h2').evaluate(e => e.scrollIntoView({ block: 'start' })); await page.waitForTimeout(400); await page.screenshot({ path: path.join(CAP, 'entrada-dados-auto-desligado-claro.png') }); }
+  });
+
+  await passo('Aplicação automática: liga com confirmação, aplica sozinho sem perguntar, registra "automaticamente" no histórico e só cadastra empresas se for escolhido', async () => {
+    const antes = await page.evaluate(() => window.__db.listar('dp_empresas').length);
+    await fr.locator('#autoLigar').check();
+    await fr.locator('#dlgConf[open]').waitFor();
+    assert.match(await fr.locator('#confTxt').textContent(), /sem pedir confirmação/); assert.match(await fr.locator('#confTxt').textContent(), /Pendente agora: \d+ complemento/);
+    await fr.locator('#confSim').click();
+    await page.waitForFunction(() => { const o = window.__db.ler('dp_empresas/e-orion'), l = window.__db.ler('dp_empresas/e-lira'); return o.funcionarios.some(f => f.nome === 'Carlos Sem Pedido') && l.funcionarios.some(f => f.nome === 'Lira Funcionaria'); }, null, { timeout: 15000 });
+    const orion = await page.evaluate(() => window.__db.ler('dp_empresas/e-orion'));
+    assert.ok(orion.historico.some(h => /automaticamente a partir do Onvio/.test(h.alteracao) && /Carlos Sem Pedido/.test(h.alteracao)));
+    const carlos = orion.funcionarios.find(f => f.nome === 'Carlos Sem Pedido'); assert.equal(carlos.admissao, '2021-06-01'); assert.equal(carlos.codigo, '105'); assert.equal(carlos.status, 'Ativo');
+    assert.ok(!orion.funcionarios.some(f => f.nome === 'Dona Antiga'));
+    await page.waitForFunction(() => window.__db.ler('dp_empresas/e-vega').funcionarios.find(f => f.nome === 'Antiga Colega').status === 'Desligado', null, { timeout: 8000 });
+    assert.equal(await page.evaluate(() => window.__db.listar('dp_empresas').length), antes, 'sem a opção de empresas novas, nenhuma empresa é cadastrada');
+    const c = await page.evaluate(() => window.__db.ler('dp_config/onvio')); assert.equal(c.auto.ligada, true); assert.ok(c.auto.ultima && c.auto.ultima.n >= 3, 'última aplicação guardada');
+    await page.waitForFunction(() => window.__hubApi.api('onvio').difs().length === 0 || window.__hubApi.api('onvio').difs().every(d => d.acao === 'x'), null, { timeout: 8000 }).catch(() => {});
+    const resto = await difsOnvio(); assert.deepEqual(resto.filter(d => d.acao === 'novo' || d.acao === 'complementar'), [], 'nada de novo ou complemento pendente: ' + JSON.stringify(resto));
+    assert.match(await fr.locator('#autoBox').textContent(), /Última aplicação automática/);
+    if (CAP) { await fr.locator('#secCadastro h2').evaluate(e => e.scrollIntoView({ block: 'start' })); await page.waitForTimeout(500); await page.screenshot({ path: path.join(CAP, 'entrada-dados-auto-ligado-claro.png') }); }
+    // empresas novas: só depois de escolher a opção (com confirmação)
+    await fr.locator('[data-auto-tipo="empresa"]').check();
+    await fr.locator('#dlgConf[open]').waitFor();
+    assert.match(await fr.locator('#confTxt').textContent(), /Cadastrar empresas novas automaticamente/);
+    await fr.locator('#confSim').click();
+    await page.waitForFunction(() => window.__db.listar('dp_empresas').some(e => /NOVA CLIENTE/.test(e.nome)), null, { timeout: 15000 });
+    const nova = await page.evaluate(() => window.__db.listar('dp_empresas').find(e => /NOVA CLIENTE/.test(e.nome)));
+    await page.waitForFunction((id) => (window.__db.ler('dp_empresas/' + id).funcionarios || []).length === 2, nova.id, { timeout: 15000 });
+    assert.deepEqual((await page.evaluate((id) => window.__db.ler('dp_empresas/' + id).funcionarios.map(f => f.nome).sort(), nova.id)), ['Nova Dois', 'Nova Um']);
+    assert.equal(await page.evaluate(() => window.__db.listar('dp_empresas').filter(e => /NOVA CLIENTE/.test(e.nome)).length), 1, 'só uma empresa, sem duplicar');
+  });
+
+  await passo('Aplicação automática: desligar para; o que foi ignorado continua ignorado; "Aplicar agora" sem nada pendente não muda nada', async () => {
+    await fr.locator('#autoLigar').uncheck();
+    await page.waitForFunction(() => window.__db.ler('dp_config/onvio').auto.ligada === false, null, { timeout: 5000 });
+    // chega uma admissão nova na folha: desligado, nada acontece
+    const t = await D.empregados(); t.linhas.push(['c-orion', '900', 'ORION COMERCIO LTDA', 'o9', 'Recem Chegado', '0', '2026-10-01', 'ACTIVE', 'M', 'A1', '220', '777', 'EMPLOYEE'].join('\t'));
+    await semearConjunto('pessoais-empregados', t, 'c3');
+    await page.waitForFunction(() => window.__hubApi.api('onvio').difs().some(d => d.nome === 'Recem Chegado'), null, { timeout: 8000 });
+    await page.waitForTimeout(3500);
+    assert.ok(!(await page.evaluate(() => window.__db.ler('dp_empresas/e-orion').funcionarios.some(f => f.nome === 'Recem Chegado'))), 'desligado: nada aplicado sozinho');
+    // ligar de novo: aplica
+    await fr.locator('#autoLigar').check(); await fr.locator('#dlgConf[open]').waitFor(); await fr.locator('#confSim').click();
+    await page.waitForFunction(() => window.__db.ler('dp_empresas/e-orion').funcionarios.some(f => f.nome === 'Recem Chegado'), null, { timeout: 15000 });
+    await fr.locator('#autoLigar').uncheck();
+    await page.waitForFunction(() => window.__db.ler('dp_config/onvio').auto.ligada === false, null, { timeout: 5000 });
+  });
+
+  await passo('Aplicação automática: o analista com o Hub aberto só aplica onde pode (carteira dele) e não cadastra empresas', async () => {
+    const t = await D.empregados();
+    t.linhas.push(['c-orion', '900', 'ORION COMERCIO LTDA', 'o10', 'Chegou Na Ana', '0', '2026-10-02', 'ACTIVE', 'M', 'A1', '220', '801', 'EMPLOYEE'].join('\t'), ['c-orion', '900', 'ORION COMERCIO LTDA', 'o9', 'Recem Chegado', '0', '2026-10-01', 'ACTIVE', 'M', 'A1', '220', '777', 'EMPLOYEE'].join('\t'), ['c-vega', '901', 'VEGA SERVICOS ME', 'v9', 'Chegou No Bruno', '0', '2026-10-03', 'ACTIVE', 'M', 'A1', '220', '802', 'EMPLOYEE'].join('\t'));
+    await page.evaluate(() => { window.__auth = { nivel: () => 'analista', analista: () => 'Bruno Teste', podeVer: () => true, ehAdmin: () => false, usuario: () => ({ nome: 'Bruno', id: 'u-bruno', prefs: {} }) }; });
+    await page.evaluate(() => { const c = window.__db.ler('dp_config/onvio'); c.auto.ligada = true; c.auto.tipos.empresa = true; window.__db.semear('dp_config/onvio', c); });
+    await semearConjunto('pessoais-empregados', t, 'c4');
+    await page.waitForFunction(() => window.__db.ler('dp_empresas/e-vega').funcionarios.some(f => f.nome === 'Chegou No Bruno'), null, { timeout: 15000 });
+    await page.waitForTimeout(3500);
+    assert.ok(!(await page.evaluate(() => window.__db.ler('dp_empresas/e-orion').funcionarios.some(f => f.nome === 'Chegou Na Ana'))), 'ORION é da Ana: o analista não aplica');
+    assert.ok((await page.evaluate(() => window.__db.ler('dp_empresas/e-vega').historico[0].alteracao)).includes('automaticamente'));
+    await page.evaluate(() => { delete window.__auth; });
+    // de volta como coordenação, com o automático ligado: a pendência da Ana é aplicada
+    await page.evaluate(() => window.__hubApi.api('onvio').autoAgora());
+    await page.waitForFunction(() => window.__db.ler('dp_empresas/e-orion').funcionarios.some(f => f.nome === 'Chegou Na Ana'), null, { timeout: 15000 });
+    await page.evaluate(() => { const c = window.__db.ler('dp_config/onvio'); c.auto.ligada = false; window.__db.semear('dp_config/onvio', c); });
   });
 
   await passo('Cartela → Onvio (resumo antigo) continua igual e ganha o CNPJ completo dos clientes de CND/NF-e', async () => {
