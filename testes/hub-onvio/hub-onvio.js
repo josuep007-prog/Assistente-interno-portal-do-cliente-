@@ -1,7 +1,7 @@
 /* Teste de navegador do Control Hub com os dados do Onvio (fase 1, DP): ficha da empresa (aba Onvio), agenda e alertas, painel,
- * conferência de funcionários (Aplicar e Ignorar) e vínculo manual. Dados FICTÍCIOS (dados.js), banco do artefato simulado em memória.
+ * e a Entrada de dados, onde fica toda a decisão (Aplicar, Ignorar, Ligar), com a permissão por carteira. Dados FICTÍCIOS (dados.js), banco do artefato simulado em memória.
  *
- *   HUB_DIR=<pasta com hub.js, hub.css, tema.js e index.fonte.html> NODE_PATH=$(npm root -g) node testes/hub-onvio/hub-onvio.js
+ *   HUB_DIR=<pasta com hub.js, hub.css, tema.js, fontes.html e index.fonte.html> NODE_PATH=$(npm root -g) node testes/hub-onvio/hub-onvio.js
  *   CAP=<pasta> grava capturas de tela (claro e escuro).
  *
  * O Hub é um artefato do claude.ai: baixe os arquivos com a ferramenta Artifact (read, paths) para HUB_DIR. Sem HUB_DIR o teste não roda. */
@@ -14,7 +14,7 @@ const { chromium } = require('playwright');
 const D = require('./dados.js');
 
 const HUB = process.env.HUB_DIR;
-if (!HUB || !fs.existsSync(path.join(HUB, 'hub.js'))) { console.log('HUB_DIR não definido (pasta com hub.js, hub.css, tema.js e index.fonte.html): teste do Hub pulado.'); process.exit(0); }
+if (!HUB || !fs.existsSync(path.join(HUB, 'hub.js'))) { console.log('HUB_DIR não definido (pasta com hub.js, hub.css, tema.js, fontes.html e index.fonte.html): teste do Hub pulado.'); process.exit(0); }
 const CAP = process.env.CAP || '';
 const TIPOS_MIME = { '.js': 'text/javascript', '.css': 'text/css', '.html': 'text/html; charset=utf-8', '.png': 'image/png' };
 
@@ -147,76 +147,115 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     if (CAP) await page.screenshot({ path: path.join(CAP, 'ficha-onvio-claro.png') });
   });
 
-  await passo('Ficha: diferenças com o Onvio aparecem na aba Funcionários e Aplicar grava no cadastro e no histórico (com confirmação)', async () => {
+  await passo('DP: as diferenças só aparecem como aviso (ficha e tela Funcionários), sem nenhum botão de decisão, e o link abre a Entrada de dados', async () => {
     await page.click('#dp-dtabs [data-dtab="funcionarios"]');
-    await page.waitForSelector('#dp-ov-dif:not([hidden]) .ov-dif');
-    const antes = await page.$$eval('#dp-ov-dif .ov-dif', e => e.map(x => x.textContent.replace(/\s+/g, ' ').trim()));
-    assert.equal(antes.length, 4, antes.join(' | '));
-    assert.ok(antes.some(t => /Beltrano Silva.*Código Domínio vazio.*202/.test(t)));
-    assert.ok(antes.some(t => /Maria Souza.*Férias no Onvio/.test(t)));
-    assert.ok(antes.some(t => /Beltrano Silva.*Rescisão no Onvio/.test(t)));
-    assert.ok(antes.some(t => /Maria Souza.*Afastamento no Onvio.*Ativo.*Afastado/.test(t)));
-    if (CAP) await page.screenshot({ path: path.join(CAP, 'ficha-funcionarios-diferencas-claro.png') });
-    const gravacoes0 = (await page.evaluate(() => window.__gravacoes.length));
-    await page.click('#dp-ov-dif .ov-dif:has-text("Código Domínio vazio") [data-ov-aplicar]');
-    await page.waitForSelector('#ask-actions button');
-    assert.equal(await page.evaluate(() => window.__gravacoes.length), gravacoes0, 'nada é gravado antes de confirmar');
-    await page.click('#ask-actions button:has-text("Aplicar")');
-    await page.waitForFunction(() => (window.__db.ler('dp_empresas/e-orion').funcionarios.find(f => f.nome === 'Beltrano Silva') || {}).codigo === '202', null, { timeout: 5000 });
-    const e = await page.evaluate(() => window.__db.ler('dp_empresas/e-orion'));
-    assert.match(e.historico[0].alteracao, /^Atualizado a partir do Onvio: Beltrano Silva · Código Domínio vazio/);
-    await page.waitForFunction(() => document.querySelectorAll('#dp-ov-dif .ov-dif').length === 3);
+    await page.waitForSelector('#dp-ov-dif:not([hidden]) .ov-aviso');
+    assert.match(await page.textContent('#dp-ov-dif'), /4 diferenças com o Onvio desta empresa aguardam decisão na Entrada de dados/);
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => window.__hubApi.api('dp').irPara('funcionarios'));
+    await page.waitForSelector('#dp-func-ovdif:not([hidden]) .ov-aviso');
+    assert.match(await page.textContent('#dp-func-ovdif'), /6 diferenças com o Onvio nos funcionários aguardam decisão na Entrada de dados/);
+    if (CAP) { await page.waitForTimeout(700); await page.screenshot({ path: path.join(CAP, 'funcionarios-aviso-claro.png') }); }
+    // a ficha da empresa sem ligação também só informa
+    await page.evaluate(() => window.__hubApi.api('dp').abrirEmpresa('e-zeta', 'onvio'));
+    await page.waitForSelector('#dp-section-onvio .dp-empty');
+    assert.match(await page.textContent('#dp-section-onvio'), /não está ligada a nenhum cliente do Onvio/);
+    assert.match(await page.textContent('#dp-section-onvio'), /Entrada de dados/);
+    await page.keyboard.press('Escape');
+    const botoes = await page.evaluate(() => document.querySelectorAll('[data-ov-aplicar],[data-ov-ignorar],[data-ov-vinc-btn],[data-ov-vinc-sel]').length);
+    assert.equal(botoes, 0, 'nenhum botão de decisão no DP');
+    await page.evaluate(() => window.__hubApi.api('dp').irPara('funcionarios'));
+    await page.click('#dp-func-ovdif [data-ov-fontes]');
+    await page.waitForSelector('#fontes-frame', { state: 'visible' });
   });
 
-  await passo('Ao aplicar as férias, a agenda não repete o pagamento (já está no cadastro do funcionário)', async () => {
-    await page.click('#dp-ov-dif .ov-dif:has-text("Férias no Onvio") [data-ov-aplicar]');
-    await page.click('#ask-actions button:has-text("Aplicar")');
+  const fr = page.frameLocator('#fontes-frame');
+  const aplicarNoQuadro = async (linha, botao) => { await fr.locator(`#cadro tr[data-emp]:has-text("${linha}") ${botao}`).click(); await fr.locator('#dlgConf[open]').waitFor(); };
+
+  await passo('Entrada de dados: lista as diferenças e os clientes sem empresa; nada é gravado antes de confirmar', async () => {
+    await fr.locator('#cadro tr[data-emp]').first().waitFor({ timeout: 10000 });
+    assert.equal(await fr.locator('#cadro tr[data-emp]').count(), 6, 'ORION 4 + VEGA 2');
+    assert.match(await fr.locator('#cadSub').textContent(), /6 diferenças · 1 cliente sem empresa/);
+    assert.match(await fr.locator('#cadro').textContent(), /ZETA TRANSPORTES LTDA/);
+    if (CAP) { await fr.locator('#secCadastro').scrollIntoViewIfNeeded(); await fr.locator('#secCadastro h2').evaluate(e => e.scrollIntoView({ block: 'start' })); await page.waitForTimeout(500); await page.screenshot({ path: path.join(CAP, 'entrada-dados-claro.png'), fullPage: false }); }
+    const g0 = await page.evaluate(() => window.__gravacoes.length);
+    await aplicarNoQuadro('Código Domínio vazio', '[data-cad-aplicar]');
+    assert.match(await fr.locator('#confTxt').textContent(), /Beltrano Silva: Código Domínio vazio\.[\s\S]*Aplicar no cadastro do DP\? Fica registrado no histórico/);
+    assert.equal(await page.evaluate(() => window.__gravacoes.length), g0, 'nada é gravado antes de confirmar');
+    await fr.locator('#confNao').click();
+    assert.equal(await page.evaluate(() => window.__gravacoes.length), g0, 'cancelar não grava');
+    assert.equal(await fr.locator('#cadro tr[data-emp]').count(), 6);
+  });
+
+  await passo('Entrada de dados: Aplicar grava no cadastro e no histórico; as férias aplicadas não repetem o pagamento na agenda', async () => {
+    await aplicarNoQuadro('Código Domínio vazio', '[data-cad-aplicar]');
+    await fr.locator('#confSim').click();
+    await page.waitForFunction(() => (window.__db.ler('dp_empresas/e-orion').funcionarios.find(f => f.nome === 'Beltrano Silva') || {}).codigo === '202', null, { timeout: 5000 });
+    const e = await page.evaluate(() => window.__db.ler('dp_empresas/e-orion'));
+    assert.match(e.historico[0].alteracao, /^Atualizado a partir do Onvio \(Entrada de dados\): Beltrano Silva · Código Domínio vazio/);
+    await page.waitForFunction(() => true);
+    await fr.locator('#cadro tr[data-emp]').nth(4).waitFor();
+    assert.equal(await fr.locator('#cadro tr[data-emp]').count(), 5);
+    await aplicarNoQuadro('Férias no Onvio', '[data-cad-aplicar]');
+    await fr.locator('#confSim').click();
     await page.waitForFunction(() => (window.__db.ler('dp_empresas/e-orion').funcionarios.find(f => f.nome === 'Maria Souza') || {}).feriasInicio, null, { timeout: 5000 });
     const f = await page.evaluate(() => window.__db.ler('dp_empresas/e-orion').funcionarios.find(f => f.nome === 'Maria Souza'));
     assert.equal(f.feriasInicio, D.dia(10)); assert.equal(f.feriasFim, D.dia(29), '20 dias de férias a partir do início');
     const r = await page.evaluate(([a, b]) => window.__hubApi.api('dp').consultar('vencimentos', { de: a, ate: b }), [hoje, D.dia(40)]);
     const pagar = r.linhas.filter(l => /Maria Souza · Pagar férias/.test(l.t));
     assert.equal(pagar.length, 1, 'um só pagamento de férias: ' + pagar.map(l => l.t).join(' | '));
-    await page.keyboard.press('Escape');
   });
 
-  await passo('Funcionários (tela geral): diferenças da carteira toda; Ignorar guarda e some; Aplicar só com a empresa da carteira', async () => {
-    await page.evaluate(() => window.__hubApi.api('dp').irPara('funcionarios'));
-    await page.waitForSelector('#dp-func-ovdif:not([hidden]) summary');
-    await page.click('#dp-func-ovdif summary');
-    const n0 = await page.$$eval('#dp-func-ovdif .ov-dif', e => e.length);
-    assert.equal(n0, 4, 'ORION 2 que sobraram (rescisão e afastamento) + VEGA 2 (Novo Funcionario e Joao Lima)');
-    if (CAP) await page.screenshot({ path: path.join(CAP, 'funcionarios-diferencas-claro.png') });
-    await page.click('#dp-func-ovdif .ov-dif:has-text("Joao Lima") [data-ov-ignorar]');
-    await page.waitForFunction(() => document.querySelectorAll('#dp-func-ovdif .ov-dif').length === 3);
+  await passo('Entrada de dados: Ignorar guarda a decisão e a diferença some', async () => {
+    await aplicarNoQuadro('Joao Lima', '[data-cad-ignorar]');
+    await fr.locator('#confSim').click();
+    await page.waitForFunction(() => !!window.__db.existe('dp_ov_ignorar/e-vega'), null, { timeout: 5000 });
     const ign = await page.evaluate(() => window.__db.ler('dp_ov_ignorar/e-vega'));
     assert.equal(ign.chaves.length, 1); assert.match(ign.chaves[0], /^novo\|joao lima\|/);
-    // criar o funcionário que só existe no Onvio
-    await page.click('#dp-func-ovdif .ov-dif:has-text("Novo Funcionario") [data-ov-aplicar]');
-    await page.click('#ask-actions button:has-text("Aplicar")');
+    await page.waitForFunction(() => document.querySelector('#fontes-frame').contentDocument.querySelectorAll('#cadro tr[data-emp]').length === 3);
+  });
+
+  await passo('Permissão: o analista só aplica nas empresas da carteira dele; a coordenação aplica em qualquer uma', async () => {
+    await page.evaluate(() => { window.__auth = { nivel: () => 'analista', analista: () => 'Bruno Teste', podeVer: () => true, ehAdmin: () => false, usuario: () => ({ nome: 'Bruno', id: 'u-bruno', prefs: {} }) }; });
+    const dif = await page.evaluate(() => window.__hubApi.api('onvio').difs().map(d => [d.empId, d.tipo, d.pode]));
+    assert.deepEqual(dif.filter(d => d[0] === 'e-orion').map(d => d[2]), [false, false], 'ORION é da Ana');
+    assert.deepEqual(dif.filter(d => d[0] === 'e-vega').map(d => d[2]), [true], 'VEGA é do Bruno');
+    const recusa = await page.evaluate(async () => { const a = window.__hubApi.api('onvio'), d = a.difs().find(x => x.empId === 'e-orion'); return [await a.aplicar(d.empId, d.chave), await a.ignorar(d.empId, d.chave), await a.ligar('qualquer', 'e-orion')]; });
+    assert.deepEqual(recusa.map(r => r.ok), [false, false, false]);
+    assert.match(recusa[0].erro, /carteira/); assert.match(recusa[2].erro, /coordenação/);
+    assert.equal(await page.evaluate(() => window.__db.ler('dp_empresas/e-orion').funcionarios.find(f => f.nome === 'Beltrano Silva').rescisao), '', 'a rescisão do ORION não foi aplicada');
+    await page.evaluate(() => { delete window.__auth; });
+  });
+
+  await passo('Entrada de dados: criar o funcionário que só existe no Onvio e ligar o cliente sem empresa', async () => {
+    await aplicarNoQuadro('Novo Funcionario', '[data-cad-aplicar]');
+    await fr.locator('#confSim').click();
     await page.waitForFunction(() => ((window.__db.ler('dp_empresas/e-vega') || {}).funcionarios || []).length === 1, null, { timeout: 5000 });
     const novo = await page.evaluate(() => window.__db.ler('dp_empresas/e-vega').funcionarios[0]);
     assert.equal(novo.nome, 'Novo Funcionario'); assert.equal(novo.admissao, D.dia(3)); assert.equal(novo.status, 'Ativo'); assert.match(novo.obs, /Onvio/);
     assert.ok(novo.id && novo.id.length > 5);
-  });
-
-  await passo('Vínculo manual: empresa sem ligação mostra o cliente do Onvio para escolher; ligar traz as solicitações dela', async () => {
-    await page.evaluate(() => window.__hubApi.api('dp').abrirEmpresa('e-zeta', 'onvio'));
-    await page.waitForSelector('#dp-section-onvio [data-ov-vinc-sel]');
-    assert.match(await page.textContent('#dp-section-onvio'), /não está ligada a nenhum cliente do Onvio/);
-    await page.selectOption('#dp-section-onvio [data-ov-vinc-sel]', { label: 'ZETA TRANSPORTES LTDA · 1 solicitação(ões)' });
-    await page.click('#dp-section-onvio [data-ov-vinc-btn]');
-    await page.waitForSelector('#dp-section-onvio tr.ov-r');
-    assert.match(await page.textContent('#dp-section-onvio tr.ov-r'), /706/);
-    const cfg = await page.evaluate(() => window.__db.ler('dp_config/onvio'));
-    assert.equal(Object.values(cfg.vinc).filter(v => v === 'e-zeta').length, 1);
-    await page.keyboard.press('Escape');
+    // vínculo: escolhe a empresa e confirma
+    await fr.locator('tr[data-k] [data-cad-emp]').selectOption('e-zeta');
+    await fr.locator('tr[data-k] [data-cad-ligar]').click();
+    await fr.locator('#dlgConf[open]').waitFor();
+    assert.match(await fr.locator('#confTxt').textContent(), /ZETA TRANSPORTES LTDA[\s\S]*TRANSPORTES ZETA/);
+    await fr.locator('#confSim').click();
+    await page.waitForFunction(() => { const c = window.__db.ler('dp_config/onvio'); return c && Object.values(c.vinc || {}).includes('e-zeta'); }, null, { timeout: 5000 });
+    assert.equal(await page.evaluate(() => (window.__hubApi.api('onvio').solicitacoes().porEmp.get('e-zeta') || []).length), 1, 'a solicitação 706 agora é da empresa');
+    assert.match(await fr.locator('#cadro').textContent(), /Todos os clientes do Onvio estão ligados/);
+    if (CAP) { await fr.locator('#secCadastro h2').evaluate(e => e.scrollIntoView({ block: 'start' })); await page.waitForTimeout(500); await page.screenshot({ path: path.join(CAP, 'entrada-dados-depois-claro.png') }); }
+    if (CAP) {
+      await page.evaluate(() => { document.documentElement.setAttribute('data-theme', 'dark'); document.querySelector('#fontes-frame').contentDocument.documentElement.setAttribute('data-theme', 'dark'); });
+      await page.waitForTimeout(400); await page.screenshot({ path: path.join(CAP, 'entrada-dados-depois-escuro.png') });
+      await page.evaluate(() => { document.documentElement.setAttribute('data-theme', 'light'); });
+    }
   });
 
   await passo('Cartela → Onvio (resumo antigo) continua igual e ganha o CNPJ completo dos clientes de CND/NF-e', async () => {
     const cols = ['Lista', 'Nº', 'Situação', 'Vez', 'Cliente', 'Responsável', 'Aberta em', 'Última movimentação', 'Dias parado', 'Gravidade'];
     // o cliente do resumo tem outro nome que o do DP, mas o final do CNPJ (0001-81) e o nome do cadastro de CND batem
     await page.evaluate(([c]) => window.__db.semear('ing_lotes/onvio~solicitacoes', { fonte: 'onvio', tipoDado: 'solicitacoes', colunas: c, tabela: ['Geral\t901\tSem análise\tescritório\tORION COMERCIO LTDA | 0001-81\tAna Teste\t2026-10-20\t2026-10-20\t5\t1'].join('\n'), nLinhas: 1, totalNaOrigem: 1, cortado: false, recebidoEm: Date.now(), usuario: 'Ana Teste' }), [cols]);
+    await page.evaluate(() => window.__hubApi.abrirModulo('dp'));
     await page.evaluate(() => window.__hubApi.api('dp').irPara('cartela'));
     await page.click('#ct-modo [data-ct-modo="onvio"]');
     await page.waitForSelector('#ct-pane-onvio .ct-ov-tab tbody tr');
@@ -225,9 +264,9 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
   });
 
   await passo('Tema escuro e tela estreita: ficha e diferenças legíveis, sem rolagem horizontal', async () => {
+    await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
     await page.evaluate(() => window.__hubApi.api('dp').abrirEmpresa('e-orion', 'onvio'));
     await page.waitForSelector('#dp-section-onvio .ov-tab');
-    await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
     if (CAP) await page.screenshot({ path: path.join(CAP, 'ficha-onvio-escuro.png') });
     await page.setViewportSize({ width: 820, height: 760 });
     const sw = await page.$eval('#dlg-dp-detail', e => e.scrollWidth > e.clientWidth + 2);
