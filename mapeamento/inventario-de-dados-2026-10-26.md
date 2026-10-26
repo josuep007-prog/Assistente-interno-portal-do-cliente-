@@ -192,7 +192,7 @@ Fontes: três execuções do `inventario-onvio.js` (Portal do Cliente com 45 e c
 | `cnd/v1/clients` | clientes habilitados em CND (ID, Cliente, Inscrição, Situação, Habilitado em) | a ler; histórico de CND ainda sem chamada vista |
 | `manifesto/v1/clients` | clientes na Manifestação de NF-e; a consulta de notas (chave, emissão, número, emitente, CNPJ/CPF, valor) precisa de cliente + datas | a ler |
 | `br-gestta-dashboard/v1/statistics/company/{id}/tasks` e `/liable-tasks` (parâmetros `start`, `end`) | estatísticas de tarefas do Gestta no Onvio Gestão (por responsável) | a ler; **candidato a trazer os atrasos do Processos** |
-| `br-platform-preference/v1/department-alert` | alerta/preferência por departamento | a ler |
+| `br-platform-preference/v1/department-alert` | alerta/preferência por departamento | 404: descartar |
 | `br-platform-preference/v1/companies/{id}/employees/handle-client-access`, `br-default-department/v1/companies/{id}/initial-data-load(/status)` | nomes sugerem **mudança de estado**; o script não faz GET neles | deixar de fora |
 | `profiles/v1/accounts?active&hideNonOnvio`, `provisioning/v1/licenses`, `profiles/v1/themes` | contas, licenças e tema do escritório | a ler |
 | `profiles/v2/company-preferences/applications/BR_ATENDIMENTO/categories/HIDE_INACTIVE_CLIENTS` | parâmetro "ocultar empresas inativas" | a ler |
@@ -218,6 +218,28 @@ Todas as "a ler" estão em `__inventarioOnvio.rodarExtras()` (mesmas travas: só
 - **Relatórios → Clientes**: filtros Ordem/ID/Razão social/Cidade/Situação (todos, ativo, inativo), botão Gerar relatório (gera arquivo; provavelmente POST).
 - **Onvio Gestão → Documentos do cliente**: colunas `view.storageType`, `view.onvioApp`, `name`, `isShared`, `view.year`, `view.date`; abas Todos, do Cliente, do Escritório, Meus, Atividades Recentes, Lixeira, Comunicações. **Onvio Gestão → Processos**: painel com cartões de Cadastro de usuários, Onvio Processos, Grupos de permissões, CNDs, Documentos, Solicitações de serviços.
 - A página inicial do Gestão sozinha chama as **10 listas 7 vezes** (contadores): a carga da extensão (10 chamadas por verificação) é pequena perto do que o próprio Onvio faz.
+
+### 9.6 Segunda rodada (`rodarExtras`, Portal e Gestão, 58 leituras cada, zero erros)
+
+O Portal e o Gestão devolveram **exatamente o mesmo** em todas as chamadas: a API não depende da tela.
+
+| Chamada | Resultado | O que traz (só formato) |
+|---|---|---|
+| `profiles/v1/users/{userId}` | 200 (corrigido) | `id`, `bluemoonUserId`, `email`, `firstName`, `lastName`, `middleName`, `prefix`, `suffix`, `language`, **`licensee`** |
+| `cnd/v1/clients` | 200, **1.053 clientes** | `clientName`, `code`, `clientStatus`, `isOnvio`, `nationalIdentity` (CNPJ/CPF), **`municipalInscription`, `stateInscription`, `stateInitials`, `cityIbgeIdentifier`**, `documentType` |
+| `manifesto/v1/clients` | 200, **1.054 clientes** | `name`, `nickname`, `code`, `active`, `clientStatus`, `nationalIdentity`, `uf`, `isOnvio` e **`certificateExpanded`** (o certificado digital do cliente; vazio na amostra, conteúdo a conferir) |
+| `br-news/v1/articles/shared` | 200, 2 artigos | `title`, `tagline`, `content`, `publishDate`, `published`, `visible`, `sharedWith`, `sharedList`, `sources`, `seenByContact`, `createdBy`, `publishedBy` |
+| `br-news/v1/categories` | 200, vazio | nenhuma categoria cadastrada |
+| `profiles/v1/accounts?active&hideNonOnvio` | 200 | `accountName`, `companyName`, `companyId`, `contactId`, **`staffCenterEnabled`, `clientCenterEnabled`, `creditHold`, `firmLock`**, `primaryProduct`, `home`, `linkedAccountId`, `bluid`, `createDate` (a conta/escritório) |
+| `provisioning/v1/licenses` | 200 | lista de `{ feature, resource }` (o que a licença do escritório inclui; os nomes não foram guardados) |
+| `profiles/v2/company-preferences/.../HIDE_INACTIVE_CLIENTS` | 200 | `preferences` (texto; é o parâmetro "ocultar empresas inativas") |
+| `core/v3/companies/{id}/main` | 200 | configuração do escritório: formatos de nome, moeda, `ownerContact`, `companyClient`, exigência de aprovação em horas/lançamentos |
+| `storage/v1/folders?includeTaxAccounting` | 200 | árvore de pastas: `documentCount`, `readUserCount`, `isShared`, `hasFiles`, `staffCenterViewPath`, `clientCenterViewPath`, `createdBy`, `modifiedBy` |
+| `notification-async/v1/counters` | 200, **corpo vazio ou não JSON** | sem estrutura para registrar (sino provavelmente vem por outro canal) |
+| `br-platform-preference/v1/department-alert` | **404** | não existe com esse caminho; descartar |
+| `br-gestta-dashboard/v1/statistics/company/{id}/tasks` e `/liable-tasks` | **500** | erro do servidor com os parâmetros `start`/`end` em `AAAA-MM-DD`; a mensagem de erro não foi guardada (o script agora guarda código e mensagem curta) |
+
+Conclusões: (1) os **cadastros de CND (1.053) e NF-e (1.054) são a lista de clientes do escritório** com CNPJ, inscrições, UF e município: dão um índice de clientes completo e exato sem depender das solicitações; (2) a conta mostra que o escritório tem Staff Center e Client Center ativos e sem bloqueio (`creditHold`, `firmLock`) — um bloqueio de crédito seria a causa de o Onvio recusar tudo; (3) Gestta continua sem formato: precisa descobrir os parâmetros certos (o script agora grava a mensagem do erro, então uma nova rodada de `rodarExtras()` diz o que ele espera).
 
 ## 10. O que muda para a extensão (propostas, nada implementado)
 

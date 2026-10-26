@@ -23,6 +23,7 @@
  *   - NÃO grava valores: textos, nomes, CPF, e-mails, datas e números viram só o TIPO. Contagens (totalItems) ficam.
  *   - Não lê nem guarda tokens: dos campos de sessão registra só o nome e o tipo (nunca SeamlessAuthenticationToken nem
  *     LongToken). Dos cookies, só os nomes; do armazenamento do navegador, só os nomes das chaves e o tamanho.
+ *   - Quando o Onvio responde erro (4xx/5xx), guarda o código e a mensagem curta do erro (até 160 caracteres).
  *   - Exceção intencional (configuração, não dado pessoal): os valores curtos de FeatureResourcePermissionsMap (as
  *     permissões do seu usuário), os nomes de InfrastructureAccessControls e os endereços (host) do RoutingTable, para
  *     saber quais serviços o Onvio expõe.
@@ -102,6 +103,8 @@
     if (r.motivo) out.motivo = r.motivo;
     if (r.tipo && r.tipo !== 'json') out.tipo = r.tipo;
     const j = r.corpo;
+    // erro do Onvio (4xx/5xx): guarda o código e a mensagem curta para diagnosticar (ex.: parâmetro no formato errado)
+    if (r.status >= 400 && j && j.error && typeof j.error === 'object') out.erro = { code: String(j.error.code || '').slice(0, 60), message: String(j.error.message || '').slice(0, 160) };
     if (j && typeof j === 'object') {
       // invólucro de lista: guarda as contagens e o formato do 1º item; senão, o formato do objeto
       const lista = Array.isArray(j.items) ? j.items : Array.isArray(j.content) ? j.content : Array.isArray(j.data && j.data.items) ? j.data.items : Array.isArray(j) ? j : null;

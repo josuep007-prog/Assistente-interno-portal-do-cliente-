@@ -30,6 +30,7 @@ const GUID2 = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
       }
     });
     if (/\/topics$/.test(u.pathname)) return json({ items: [{ id: GUID, text: 'Assunto Reservado', createdByContactExpanded: { id: GUID2, name: 'Fulana de Tal' }, attachmentsExpanded: [{ id: GUID, name: 'Assunto Reservado.pdf', downloadUrl: 'https://x/TOKEN-SEGREDO-123' }] }], totalItems: 1 });
+    if (u.pathname.includes('/statistics/company/')) return r.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: { code: 'INVALID_DATE', message: 'formato de data inválido', callId: GUID } }) });
     if (u.pathname.includes('/contacts/')) return json({ id: GUID2, userId: GUID, name: 'Fulana de Tal', email: 'fulana@exemplo.com', cpf: '123.456.789-09' });
     if (u.pathname.includes('/profiles/v1/users/')) { if (!u.pathname.endsWith('/' + GUID)) return r.fulfill({ status: 403, contentType: 'application/json', body: '{}' }); return json({ id: GUID2, displayName: 'Fulana de Tal', emailAddress: 'fulana@exemplo.com' }); }
     if (u.pathname.includes('/clients/') && u.pathname.endsWith('/employees')) return json({ items: [{ id: GUID, name: 'Fulana de Tal', cpf: '98765432100', wage: 3500.5 }], totalItems: 1 });
@@ -94,6 +95,10 @@ const GUID2 = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
   assert.ok(!caminhos.some(c => /initial-data-load|handle-client-access/.test(c)), 'não toca nos endereços que podem mudar algo');
   assert.ok(caminhos.some(c => c.includes('/statistics/company/' + GUID + '/tasks')), 'usa o CompanyId da sessão');
   for (const sg of SEGREDOS) assert.ok(!JSON.stringify(inv2).includes(sg), 'vazou nas extras: ' + sg);
+
+  const gestta = Object.entries(inv2.extras).find(([k]) => k.includes('statistics/company'));
+  assert.equal(gestta[1].status, 500);
+  assert.equal(gestta[1].erro.message, 'formato de data inválido', 'guarda a mensagem curta do erro');
 
   // fora de /api/ ou de outro site: recusa sem pedir nada
   const antes = metodos.length;
