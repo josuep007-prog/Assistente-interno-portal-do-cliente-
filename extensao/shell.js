@@ -2,10 +2,13 @@
  * O Control Onvio é uma página em TELA CHEIA por cima do Onvio (app/app.html, iframe da extensão). O Onvio
  * continua carregado por trás e mantém a sessão: é por ele que a extensão lê e, nas próximas versões, grava.
  * "Ver Onvio" esconde a camada e deixa um botão flutuante para voltar.
- * Só existe no Onvio. O ícone da extensão e o atalho Alt+Shift+O falam com este script pelo service worker.
+ * Só existe no Portal do Cliente. O ícone da extensão e o atalho Alt+Shift+O falam com este script pelo service worker.
  */
 (function () {
   'use strict';
+  // Só no Portal do Cliente (onvio.com.br/br-portal-do-cliente/): em outras telas do Onvio (como /staff/) não faz nada
+  const noPortal = () => /^\/br-portal-do-cliente(\/|$)/i.test(location.pathname);
+  if (!noPortal()) return;
   if (window.__controlOnvioShell) return;
   window.__controlOnvioShell = true;
 
@@ -138,7 +141,7 @@
 
   /* ---------- mensagens do service worker (ícone da extensão, atalho) ---------- */
   chrome.runtime.onMessage.addListener(m => {
-    if (!m || typeof m.type !== 'string') return;
+    if (!m || typeof m.type !== 'string' || !noPortal()) return;
     if (m.type === 'alternar') definirPainel(!aberto);
     else if (m.type === 'abrir') definirPainel(true);
     else if (m.type === 'fechar') definirPainel(false);

@@ -309,6 +309,7 @@ function carregarBackground(opcoes = {}) {
   const ouvintes = [];            // chrome.runtime.onMessage
   const instalado = [];           // chrome.runtime.onInstalled
   let injetado = false;
+  const ouvAtualizada = [];       // chrome.tabs.onUpdated
   const chrome = {
     storage: {
       local: {
@@ -322,9 +323,11 @@ function carregarBackground(opcoes = {}) {
     runtime: { onMessage: { addListener(f) { ouvintes.push(f); } }, onInstalled: { addListener(f) { instalado.push(f); } }, onStartup: { addListener() {} }, getManifest: () => ({ version: 'teste' }) },
     notifications: { onClicked: { addListener() {} }, onClosed: { addListener() {} }, create: async (id, o) => { chamadas.push(['notificacao', id, o.title]); }, clear() {} },
     permissions: { contains: async () => opcoes.permitido !== false },
-    action: { onClicked: { addListener() {} }, setBadgeText: async () => {}, setBadgeBackgroundColor: async () => {}, setBadgeTextColor: async () => {}, setTitle: async () => {} },
+    action: Object.assign({ onClicked: { addListener() {} }, setBadgeText: async () => {}, setBadgeBackgroundColor: async () => {}, setBadgeTextColor: async () => {}, setTitle: async () => {} }, opcoes.action || {}),
     commands: { onCommand: { addListener() {} } },
     tabs: {
+      _atualizada(id, mud, t) { ouvAtualizada.forEach(f => f(id, mud, t)); },
+      onUpdated: { addListener(f) { ouvAtualizada.push(f); } }, onActivated: { addListener() {} },
       query: async () => opcoes.abas || [],
       get: async id => (opcoes.abas || []).find(t => t.id === id),
       update: async (id, p) => { chamadas.push(['atualizar', id, p]); },
@@ -512,37 +515,46 @@ test('o arquivo de regras de exemplo é válido e cobre prazos, feriados e palav
 });
 
 
-/* ================= v0.4.0: a extensão só existe no Onvio ================= */
+/* ================= v0.47.0: a extensão só existe no Portal do Cliente ================= */
 const ONVIO_PORTAL = 'https://onvio.com.br/br-portal-do-cliente/service-requesting/general';
 const aba = (id, url) => ({ id, url, windowId: 7 });
 
-test('ícone dentro do Onvio abre/fecha o painel daquela aba e não cria nada', async () => {
+test('ícone dentro do Portal do Cliente abre/fecha o painel daquela aba e não cria nada', async () => {
   const { ctx, chamadas } = carregarBackground({ abas: [aba(5, ONVIO_PORTAL)] });
-  await ctx.aoClicarNoIcone(aba(5, 'https://onvio.com.br/staff/#/documents/all'));
+  await ctx.aoClicarNoIcone(aba(5, ONVIO_PORTAL));
   assert.deepEqual(plano(chamadas), [['mensagem', 5, 'alternar']]);
-});
-
-test('ícone fora do Onvio leva a uma aba do Onvio que já está aberta (portal primeiro) e abre o painel', async () => {
-  const { ctx, chamadas } = carregarBackground({ abas: [aba(3, 'https://onvio.com.br/staff/#/home'), aba(4, ONVIO_PORTAL)] });
-  await ctx.aoClicarNoIcone(aba(9, 'https://exemplo.com/'));
-  assert.deepEqual(plano(chamadas), [['atualizar', 4, { active: true }], ['janela', 7, { focused: true }], ['mensagem', 4, 'abrir']]);
-});
-
-test('ícone fora do Onvio sem nenhuma aba do Onvio cria uma e pede para abrir o painel ao carregar', async () => {
-  const { ctx, chamadas, store } = carregarBackground({ abas: [] });
-  await ctx.aoClicarNoIcone(aba(9, 'https://exemplo.com/'));
-  assert.equal(chamadas.length, 1);
-  assert.equal(chamadas[0][0], 'criar');
-  assert.equal(chamadas[0][1].url, ONVIO_PORTAL);
-  assert.ok(Date.now() - store.abrirPainelAoCarregar < 5000);
-});
-
-test('ícone numa aba sem destino (nova aba em branco, chrome://) também leva ao Onvio', async () => {
-  for (const url of [undefined, '', 'chrome://newtab/', 'about:blank', 'https://onvio.com.br.falso.com/', 'https://exemplo.com/onvio.com.br']) {
-    const { ctx, chamadas } = carregarBackground({ abas: [] });
-    await ctx.aoClicarNoIcone({ id: 1, url });
-    assert.equal(chamadas[0][0], 'criar', 'não é Onvio: ' + url);
+  // também na raiz do portal, com ou sem barra final
+  for (const u of ['https://onvio.com.br/br-portal-do-cliente/', 'https://onvio.com.br/br-portal-do-cliente', 'https://onvio.com.br/br-portal-do-cliente/#/home']) {
+    const b = carregarBackground({ abas: [] });
+    await b.ctx.aoClicarNoIcone(aba(6, u));
+    assert.deepEqual(plano(b.chamadas), [['mensagem', 6, 'alternar']], u);
   }
+});
+
+test('ícone fora do Portal do Cliente não faz nada: nem abre painel, nem leva ao Onvio, nem cria aba (outros sites, /staff/, abas em branco)', async () => {
+  const fora = [undefined, '', 'chrome://newtab/', 'about:blank', 'https://exemplo.com/', 'https://exemplo.com/onvio.com.br', 'https://onvio.com.br.falso.com/br-portal-do-cliente/',
+    'https://onvio.com.br/staff/#/documents/all', 'https://onvio.com.br/staff/#/home', 'https://onvio.com.br/', 'https://onvio.com.br/clientcenter/', 'https://onvio.com.br/br-portal-do-clientex/',
+    'http://onvio.com.br/br-portal-do-cliente/'];
+  for (const url of fora) {
+    // com ou sem abas do portal abertas: o clique numa aba de fora nunca mexe nelas
+    const { ctx, chamadas } = carregarBackground({ abas: [aba(4, ONVIO_PORTAL)] });
+    await ctx.aoClicarNoIcone({ id: 9, url });
+    assert.deepEqual(plano(chamadas), [], 'fora do portal: ' + url);
+  }
+});
+
+test('o ícone fica ativo só nas abas do Portal do Cliente (e apagado, com a dica, em todo o resto)', async () => {
+  const eventos = [];
+  const { chrome } = carregarBackground({ abas: [aba(1, ONVIO_PORTAL), aba(2, 'https://onvio.com.br/staff/#/home'), aba(3, 'https://exemplo.com/')],
+    action: { enable: id => eventos.push(['liga', id]), disable: id => eventos.push(['desliga', id]), setTitle: o => { eventos.push(['titulo', o.tabId, /Portal do Cliente/.test(o.title)]); } } });
+  await new Promise(r => setTimeout(r, 20));
+  assert.deepEqual(plano(eventos.filter(e => e[0] !== 'titulo')).sort(), [['desliga', 2], ['desliga', 3], ['liga', 1]]);
+  assert.deepEqual(plano(eventos.filter(e => e[0] === 'titulo')).sort(), [['titulo', 2, true], ['titulo', 3, true]], 'dica nas abas apagadas');
+  // navegar de uma tela para outra reaplica (o Chrome zera o estado por aba a cada navegação)
+  eventos.length = 0;
+  chrome.tabs._atualizada(7, { status: 'loading', url: 'https://onvio.com.br/staff/#/x' }, { id: 7, url: 'https://onvio.com.br/staff/#/x' });
+  chrome.tabs._atualizada(8, { status: 'complete' }, { id: 8, url: ONVIO_PORTAL });
+  assert.deepEqual(plano(eventos.filter(e => e[0] !== 'titulo')), [['desliga', 7], ['liga', 8]]);
 });
 
 test('aba do Onvio aberta antes da instalação: injeta o script do painel e tenta de novo', async () => {
@@ -551,13 +563,17 @@ test('aba do Onvio aberta antes da instalação: injeta o script do painel e ten
   assert.deepEqual(plano(chamadas), [['mensagem', 5, 'alternar'], ['injetar', 5, 'shell.js'], ['mensagem', 5, 'alternar']]);
 });
 
-test('abrir uma solicitação a partir do painel navega a MESMA aba (o painel continua aberto)', async () => {
-  const { ctx, chamadas, store } = carregarBackground({ abas: [aba(3, ONVIO_PORTAL), aba(8, 'https://onvio.com.br/staff/#/home')] });
+test('abrir uma solicitação a partir do painel navega a MESMA aba do portal (o painel continua aberto); aba de outra tela do Onvio não serve', async () => {
+  const { ctx, chamadas, store } = carregarBackground({ abas: [aba(3, ONVIO_PORTAL), aba(8, 'https://onvio.com.br/br-portal-do-cliente/service-requesting/rubrics'), aba(9, 'https://onvio.com.br/staff/#/home')] });
   await ctx.abrir({ type: 'calcFerias', num: 101 }, 8);
   assert.equal(chamadas[0][0], 'atualizar');
   assert.equal(chamadas[0][1], 8);
   assert.match(chamadas[0][2].url, /service-requesting\/vacation\/calculation$/);
   assert.equal(store.abrir.num, '101');
+  // a aba preferida que não é do portal (/staff/) é ignorada: usa uma aba do portal
+  const c = carregarBackground({ abas: [aba(3, ONVIO_PORTAL), aba(9, 'https://onvio.com.br/staff/#/home')] });
+  await c.ctx.abrir({ type: 'calcFerias', num: 101 }, 9);
+  assert.equal(c.chamadas[0][1], 3);
   // sem aba preferida, usa uma aba do portal; sem nenhuma, cria uma e pede o painel aberto
   const b = carregarBackground({ abas: [] });
   await b.ctx.abrir({ type: 'geral', num: 5 });
@@ -574,14 +590,14 @@ test('o botão de fechar do painel (iframe) manda a aba fechar o painel', async 
   assert.deepEqual(plano(resp), [{ ok: true }]);
 });
 
-test('manifesto: painel só no Onvio, sem painel lateral do Chrome, ícone sem popup e atalho definido', () => {
+test('manifesto: painel só no Portal do Cliente, sem painel lateral do Chrome, ícone sem popup e atalho definido', () => {
   const m = JSON.parse(src('manifest.json'));
   assert.ok(!m.permissions.includes('sidePanel') && !m.side_panel);
   assert.equal(m.action.default_popup, undefined, 'sem popup: o clique no ícone chega ao service worker');
   assert.equal(m.commands['alternar-painel'].suggested_key.default, 'Alt+Shift+O');
   const painelPages = m.content_scripts.filter(c => c.js.includes('shell.js'));
   assert.equal(painelPages.length, 1);
-  assert.deepEqual(painelPages[0].matches.sort(), ['https://onvio.com.br/br-portal-do-cliente/*', 'https://onvio.com.br/staff/*']);
+  assert.deepEqual(painelPages[0].matches, ['https://onvio.com.br/br-portal-do-cliente/*'], 'painel só no Portal do Cliente (nada de /staff/)');
   for (const c of m.content_scripts) for (const u of c.matches) assert.ok(u.startsWith('https://onvio.com.br/'), 'nenhum script fora do Onvio: ' + u);
   const war = m.web_accessible_resources.flatMap(w => w.resources);
   for (const f of ['app/app.html', 'logo.svg']) assert.ok(war.includes(f), f + ' precisa ser acessível pela página');

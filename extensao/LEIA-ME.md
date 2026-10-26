@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.46.0)
+# Control Onvio · ControlTax (v0.47.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -15,7 +15,7 @@ Para atualizar a versão: substitua os arquivos da pasta, clique em **Recarregar
 ## Como usar
 
 - **Trilho lateral** (à esquerda, escuro, como no Control Hub): Hoje, Solicitações, Agenda e lembretes, Equipe (área do gestor, com senha) e Distribuir. A busca (/ ou Ctrl+K) procura nas 10 listas do Onvio, inclusive concluídas. Passe o mouse num ícone para ver o nome; os números vermelhos/azuis são o que pede atenção.
-- **Ver Onvio** (canto superior direito) mostra a tela nativa do Onvio; a **bolinha** com a logo, no canto inferior direito, traz o app de volta. O ícone da extensão e o atalho **Alt+Shift+O** fazem o mesmo, e em qualquer outro site levam ao Onvio.
+- **Ver Onvio** (canto superior direito) mostra a tela nativa do Onvio; a **bolinha** com a logo, no canto inferior direito, traz o app de volta. O ícone da extensão e o atalho **Alt+Shift+O** fazem o mesmo, mas só dentro do Portal do Cliente (`onvio.com.br/br-portal-do-cliente/`): em qualquer outra página o ícone fica apagado e não faz nada.
 - **Busca** em janela central: tecla **/** ou **Ctrl+K**. Já mostra, enquanto você digita, as pendências lidas e os clientes; **Enter** busca em todas as listas do Onvio, inclusive concluídas (ou abre direto a solicitação, se você digitou o ID exato).
 - Clique numa solicitação para abrir o **detalhe** (dados e trâmites lidos na hora). Setas **← →** passam para a anterior/próxima da mesma lista sem fechar. "Abrir no Onvio" leva à lista certa do Onvio já filtrada pelo ID.
 - Nas listas: **↑ ↓** andam entre as linhas e **Enter** abre.
@@ -44,6 +44,12 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.47.0 (só abre no Portal do Cliente)
+- **A extensão só abre dentro de `onvio.com.br/br-portal-do-cliente/`.** Saiu das telas `/staff/` do Onvio (a camada em tela cheia e o botão flutuante não aparecem mais nelas).
+- **Ícone e atalho Alt+Shift+O fora do portal não fazem nada:** o ícone fica apagado, com a dica "abra o Portal do Cliente (onvio.com.br/br-portal-do-cliente) para usar". Antes levavam ao Onvio, reaproveitando ou criando uma aba.
+- "Abrir o Control Onvio ao entrar" agora diz "ao entrar no Portal do Cliente".
+- Continua valendo: clicar numa notificação do Chrome abre a solicitação no Portal do Cliente (é uma ação sua, e abre direto a tela da solicitação). A leitura em segundo plano segue usando a sessão de qualquer aba do Onvio, sem abrir nada.
 
 ## Novidades da v0.46.0 (aba Dados sem inglês, em todas as listas)
 - **Cadastro de admissão em português:** os campos dos dados pessoais e profissionais ganharam rótulos certos (por exemplo "Tem filhos brasileiros", "Zona eleitoral", "Certificado de reservista", "E-mail principal", "Imóvel comprado com o FGTS", "Emissão da carteira de trabalho", "Cesta básica", "Gerar na RAIS"), em vez da tradução palavra por palavra que misturava inglês ("Filhos com brazilian", "Electoral ward").
@@ -629,8 +635,8 @@ Primeiro passo para a extensão virar a tela de trabalho e fazer as ações (res
 
 ## Novidades da v0.4.0 (a extensão passa a viver dentro do Onvio)
 
-**Só no Onvio.** O painel deixou de ser o painel lateral do Chrome e passou a ser uma coluna dentro das páginas do Onvio, como no Assistente do Portal do Cliente. Em outros sites a extensão não aparece.
-**O ícone leva ao Onvio.** Dentro do Onvio, o ícone abre e fecha o painel. Em qualquer outro site, ele leva direto ao Onvio: reaproveita uma aba do Onvio que já esteja aberta ou cria uma, e abre o painel nela. O atalho **Alt+Shift+O** faz o mesmo.
+**Só no Portal do Cliente.** O painel deixou de ser o painel lateral do Chrome e passou a ser uma coluna dentro das páginas do Portal do Cliente (`onvio.com.br/br-portal-do-cliente/`), como no Assistente do Portal do Cliente. Em outros sites e em outras telas do Onvio (como `/staff/`) a extensão não aparece.
+**O ícone só age no portal (desde a 0.47.0).** Dentro do Portal do Cliente, o ícone abre e fecha o painel. Em qualquer outra página ele fica apagado, com a dica "abra o Portal do Cliente para usar", e não leva a lugar nenhum nem abre aba (antes levava ao Onvio). O atalho **Alt+Shift+O** também só age no portal.
 **Botão flutuante.** No canto inferior direito do Onvio, a pílula "Control Onvio" mostra quantas solicitações suas aguardam ação do escritório (vermelha se alguma está fora do prazo, laranja se há atenção). Clique para abrir.
 **Disposição na tela.** O painel é uma coluna fixa de 420 px à direita e, em telas de 1000 px ou mais, a página do Onvio encolhe para nada ficar escondido atrás dele (em telas menores ele cobre). Cabeçalho escuro com atualizar, tema, configurações e fechar (também fecha com Esc); abas escuras com ícone; só o conteúdo rola; rodapé com "Somente leitura" e o horário da última leitura.
 **Continuidade.** O painel lembra se estava aberto na aba: ao clicar numa solicitação, a lista do Onvio abre na mesma aba e o painel continua aberto. Com o painel fechado, a página não carrega nada a mais.

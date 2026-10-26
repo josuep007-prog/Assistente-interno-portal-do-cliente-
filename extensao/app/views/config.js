@@ -174,7 +174,7 @@ function leitura(el) {
         '<p class="cfg-carga" id="cf-carga"></p>' +
       '</section>' +
       '<section class="cfg-card"><h3><svg class="ic"><use href="#i-bell"/></svg>Avisos</h3>' +
-        sw('abrirAoEntrar', 'Abrir o Control Onvio ao entrar no Onvio', 'Desligado, o Onvio abre normal e o Control Onvio fica no botão.') +
+        sw('abrirAoEntrar', 'Abrir o Control Onvio ao entrar no Portal do Cliente', 'Desligado, o Portal do Cliente abre normal e o Control Onvio fica no botão.') +
         sw('notificar', 'Notificações do Chrome', 'Nova solicitação para você, cliente respondeu, prazo legal perto e solicitação urgente.') +
         sw('modoGestor', 'Modo gestor', 'Avisa também as novas solicitações sem responsável.') +
       '</section>' +
