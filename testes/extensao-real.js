@@ -257,22 +257,37 @@ await portal.waitForLoadState('load');
 await new Promise(r => setTimeout(r, 800));
 assert.equal(await cheia(portal), false, 'chegou na tela nativa do Onvio, com o app escondido');
 
-// fora do Onvio: leva ao Onvio que já está aberto e abre o app lá
+// fora do Portal do Cliente o ícone não faz nada: nem leva ao Onvio, nem abre aba, nem mostra o app em outro site ou em outra tela do Onvio
 const fora = await ctx.newPage();
 await fora.route('https://exemplo.com/**', r => r.fulfill({ contentType: 'text/html; charset=utf-8', body: '<!doctype html><body>outro site</body>' }));
 await fora.goto('https://exemplo.com/');
 const idFora = await idDaAba('https://exemplo.com/*');
+const abasAntes = ctx.pages().length;
+const cheiaAntes = await cheia(portal);                                                      // a aba do portal está com o app escondido ("Ver Onvio")
 await sw.evaluate(i => aoClicarNoIcone({ id: i, url: 'https://exemplo.com/' }), idFora);
-await esperar(async () => (await Promise.all(ctx.pages().map(async pg => (/onvio\.com\.br/.test(pg.url()) && (await cheia(pg)))))).some(Boolean));
+await new Promise(r => setTimeout(r, 1200));
+assert.equal(ctx.pages().length, abasAntes, 'o ícone fora do portal não cria aba');
+assert.equal(await cheia(portal), cheiaAntes, 'nem mexe no painel da aba do portal');
 assert.equal(appDe(fora), undefined, 'em outro site nunca aparece o app');
+// outra tela do Onvio (/staff/): o painel não é injetado nem abre sozinho, mesmo com o resumo já guardado
+const staff = await ctx.newPage();
+await staff.route('https://onvio.com.br/staff/**', r => r.fulfill({ contentType: 'text/html; charset=utf-8', body: '<!doctype html><body>Onvio · home</body>' }));
+await staff.goto('https://onvio.com.br/staff/#/home');
+await new Promise(r => setTimeout(r, 2500));
+assert.equal(await staff.evaluate(() => !!document.getElementById('controlonvio-host') || document.documentElement.classList.contains('controlonvio-cheia')), false, 'sem painel nas outras telas do Onvio');
+assert.equal(appDe(staff), undefined);
+const idStaff = await idDaAba('https://onvio.com.br/staff/*');
+await sw.evaluate(i => aoClicarNoIcone({ id: i, url: 'https://onvio.com.br/staff/#/home' }), idStaff);
+await new Promise(r => setTimeout(r, 800));
+assert.equal(appDe(staff), undefined, 'o ícone numa tela /staff/ não abre nada');
+assert.equal(ctx.pages().length, abasAntes + 1, 'e não cria aba');
+await staff.close();
+console.log('fora do Portal do Cliente: ícone sem efeito, painel só no portal');
 
-// sem nenhuma aba do Onvio: o ícone cria uma aba do Onvio e o app abre quando ela carregar
+// nova aba do portal: o app abre sozinho ao entrar (já com leitura); é nela que seguem os testes de acesso de cliente
 for (const pg of ctx.pages()) if (/onvio\.com\.br/.test(pg.url())) await pg.close();
-const antes = ctx.pages().length;
-await sw.evaluate(i => aoClicarNoIcone({ id: i, url: 'https://exemplo.com/' }), idFora);
-await esperar(() => ctx.pages().length > antes);
-const nova = ctx.pages().find(pg => /onvio\.com\.br\/br-portal-do-cliente/.test(pg.url()));
-assert.ok(nova, 'abriu uma aba do Onvio');
+const nova = await ctx.newPage();
+await nova.goto(PORTAL_TESTE);
 await esperar(() => appDe(nova));
 
 // login de cliente: a extensão para, apaga o que leu e o app mostra só o aviso
@@ -292,7 +307,7 @@ console.log('acesso de cliente -> bloqueado; escritório -> volta a ler');
 // atalho Alt+Shift+O tem o mesmo efeito do ícone
 const man = require(path.join(EXT, 'manifest.json'));
 assert.equal(man.commands['alternar-painel'].suggested_key.default, 'Alt+Shift+O');
-assert.ok(!man.permissions.includes('sidePanel') && !man.side_panel, 'sem painel lateral do Chrome: o painel só existe no Onvio');
+assert.ok(!man.permissions.includes('sidePanel') && !man.side_panel, 'sem painel lateral do Chrome: o painel só existe no Portal do Cliente');
 assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br/*']);
 
 console.log('\ntudo certo com a extensão carregada de verdade');

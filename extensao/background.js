@@ -728,9 +728,25 @@ chrome.notifications.onClicked.addListener(async id => {
 });
 chrome.notifications.onClosed.addListener(id => { guardarNotifMap(null, id); });
 
-/* ---------- o painel só existe no Onvio ---------- */
-// Ícone da extensão e atalho: dentro do Onvio abrem/fecham o painel; fora dele levam ao Onvio.
-const ehOnvio = u => { try { return new URL(u).hostname === 'onvio.com.br'; } catch (e) { return false; } };
+/* ---------- o painel só existe no Portal do Cliente ---------- */
+// Ícone da extensão e atalho: dentro do Portal do Cliente (onvio.com.br/br-portal-do-cliente/) abrem/fecham o painel; em
+// qualquer outra página (outros sites, outras telas do Onvio como /staff/) não fazem nada: o ícone fica apagado.
+const ehPortal = u => { try { const x = new URL(u); return x.origin === 'https://onvio.com.br' && /^\/br-portal-do-cliente(\/|$)/i.test(x.pathname); } catch (e) { return false; } };
+const TITULO_FORA = 'Control Onvio · abra o Portal do Cliente (onvio.com.br/br-portal-do-cliente) para usar';
+
+// Ícone ativo só nas abas do Portal do Cliente (o estado por aba volta ao padrão a cada navegação: reaplica ao carregar)
+function marcarAba(tabId, u) {
+  if (tabId == null || !chrome.action) return;
+  const dentro = ehPortal(u);
+  try {
+    if (dentro) { chrome.action.enable && chrome.action.enable(tabId); }
+    else { chrome.action.disable && chrome.action.disable(tabId); chrome.action.setTitle && chrome.action.setTitle({ tabId, title: TITULO_FORA }); }
+  } catch (e) { /* aba fechada no meio */ }
+}
+if (chrome.tabs.onUpdated) chrome.tabs.onUpdated.addListener((id, mud, t) => { if (mud.url || mud.status) marcarAba(id, (t && t.url) || mud.url); });
+if (chrome.tabs.onActivated) chrome.tabs.onActivated.addListener(async i => { try { const t = await chrome.tabs.get(i.tabId); if (t) marcarAba(t.id, t.url); } catch (e) {} });
+async function marcarTodasAsAbas() { try { for (const t of await chrome.tabs.query({})) marcarAba(t.id, t.url); } catch (e) {} }
+marcarTodasAsAbas();
 
 // Fala com o script do painel (shell.js). Se a aba é anterior à instalação/atualização, injeta o script antes.
 async function mensagemParaPainel(tabId, type) {
@@ -741,24 +757,9 @@ async function mensagemParaPainel(tabId, type) {
   }
 }
 
-// Leva a pessoa ao Onvio com o painel aberto: usa uma aba do Onvio que já esteja aberta, ou cria uma.
-async function irParaOnvio() {
-  const tabs = await chrome.tabs.query({ url: 'https://onvio.com.br/*' });
-  const alvo = tabs.find(t => /\/br-portal-do-cliente\//.test(t.url)) || tabs.find(t => /\/staff\//.test(t.url)) || tabs[0];
-  if (alvo) {
-    await chrome.tabs.update(alvo.id, { active: true });
-    await chrome.windows.update(alvo.windowId, { focused: true });
-    await mensagemParaPainel(alvo.id, 'abrir').catch(() => {});
-    return alvo.id;
-  }
-  await chrome.storage.local.set({ abrirPainelAoCarregar: Date.now() });
-  const t = await chrome.tabs.create({ url: OC.PORTAL + 'service-requesting/general' });
-  return t.id;
-}
-
+// Só alterna o painel de uma aba do Portal do Cliente; fora dele não abre nada nem leva a lugar nenhum
 async function aoClicarNoIcone(tab) {
-  if (tab && tab.id != null && ehOnvio(tab.url)) await mensagemParaPainel(tab.id, 'alternar').catch(() => {});
-  else await irParaOnvio();
+  if (tab && tab.id != null && ehPortal(tab.url)) await mensagemParaPainel(tab.id, 'alternar').catch(() => {});
 }
 chrome.action.onClicked.addListener(aoClicarNoIcone);
 chrome.commands.onCommand.addListener(async (cmd, tab) => { if (cmd === 'alternar-painel') await aoClicarNoIcone(tab); });
@@ -771,7 +772,7 @@ async function abrir(it, tabPreferida) {
   await chrome.storage.local.set({ abrir: { route: t.route, num: String(it.num), ts: Date.now() }, verOnvioAoCarregar: Date.now() });
   const pref = tabPreferida != null ? await chrome.tabs.get(tabPreferida).catch(() => null) : null;
   const tabs = await chrome.tabs.query({ url: 'https://onvio.com.br/br-portal-do-cliente/*' });
-  const alvo = pref && ehOnvio(pref.url) ? pref : tabs[0];
+  const alvo = pref && ehPortal(pref.url) ? pref : tabs[0];
   if (alvo) {
     await chrome.tabs.update(alvo.id, { url, active: true });
     await chrome.windows.update(alvo.windowId, { focused: true });
@@ -858,7 +859,6 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'baixarAnexos') { reply(Object.assign({ ok: true }, await baixarAnexos(msg))); }
       else if (msg.cmd === 'rotaAnexo') { reply({ ok: await guardarRotaAnexo(msg) }); }
       else if (msg.cmd === 'testarLeitura') { reply({ ok: true, linhas: await testarLeitura() }); }
-      else if (msg.cmd === 'abrirOnvio') { await irParaOnvio(); reply({ ok: true }); }
       else if (msg.cmd === 'fecharPainel') { if (sender.tab && sender.tab.id != null) await mensagemParaPainel(sender.tab.id, 'fechar').catch(() => {}); reply({ ok: true }); }
       else reply({ ok: false, erro: 'comando desconhecido' });
     } catch (e) {
