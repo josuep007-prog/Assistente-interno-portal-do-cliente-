@@ -2711,6 +2711,12 @@ function apiHub() {
     if (p === 'br-payroll-sr/v1/employees-registrations') return pagina(emp, u);
     if (p === 'br-payroll-sr/v1/termination-calculations') return pagina(calc, u);
     if (/^br-payroll-sr\/v1\/(taxpayers-registrations|interns-registrations|prior-notice-vacations|vacation-calculations|prior-notice-terminations|employee-leave)$/.test(p) || p === 'br-payroll-sr/v1/payroll-entries') return pagina([], u);
+    if (p === 'br-payroll-sr/v1/clients') return pagina([{ id: 'c1', code: 7, name: 'ACME' }, { id: 'c2', code: 8, name: 'BETA' }], u);
+    if (p === 'br-payroll-sr/v1/clients/c1/employees') return [
+      { id: 'x1', name: NOME_T, cpf: CPF_T, hireDate: '2020-01-01T00:00:00', status: 'ACTIVE', gender: 'F', jobPosition: 12, employeeWorkload: 220, integrationCode: 55, clientEmployeeRelationshipExpanded: { eprType: 'EMPLOYEE', name: 'Empregado' } },
+      { id: 'x2', name: 'Sem Solicitacao Nenhuma', cpf: '987.654.321-00', hireDate: '2023-05-02', status: 'ACTIVE', integrationCode: 77, clientEmployeeRelationshipExpanded: { eprType: 'INTERN' } },
+      { id: 'x3', name: 'Quem Saiu', hireDate: '2019-03-01', status: 'INACTIVE' }];
+    if (p === 'br-payroll-sr/v1/clients/c2/employees') return { items: [{ id: 'y1', name: 'Beltrano da Beta', hireDate: '2024-02-01', status: 'ACTIVE', integrationCode: 9 }] };
     if (p === 'cnd/v1/clients') return pagina([{ id: 'n1', clientName: 'ACME', code: 7, clientStatus: 'ACTIVE', nationalIdentity: '11222333000144', municipalInscription: 123, stateInscription: 456, stateInitials: 'SP', cityIbgeIdentifier: 3550308, documentType: 'CNPJ', isOnvio: true }], u);
     if (p === 'manifesto/v1/clients') return pagina([{ id: 'm1', name: 'ACME', nickname: 'AC', code: 7, active: true, clientStatus: 'ACTIVE', nationalIdentity: '11222333000144', uf: 'SP', certificateExpanded: { validTo: '2027-03-01T00:00:00' } }], u);
     if (p === 'security/v1/session-and-bindings') return { UdsSession: { SeamlessAuthenticationToken: TOKEN_T, LongToken: 'LONG-SEGREDO', EmailAddress: 'a@b.c', FirstName: 'Ana', LastName: 'Teste' }, UdsSessionBindings: { RoutingTable: { 'br-payroll-sr': 'https://payroll.onvio.com.br/x?token=SEGREDO' }, FeatureResourcePermissions: { FeatureResourcePermissionsMap: { BRAtendimento: { ServiceRequestGeneric: 'Granted' } } }, ApplicationConfiguration: { CompanyId: 'emp1' }, InfrastructureAccessControls: ['BR_ShowOnvioMessenger'] } };
@@ -2789,6 +2795,53 @@ test('Hub: com a categoria pessoal, vão CPF, salário, nomes e textos (sem tab 
   assert.ok(por['pessoais-calc-rescisao'].texto.includes(CPF_T) && por['pessoais-calc-rescisao'].texto.includes('\t55'), 'código do empregado no Domínio');
   for (const x of Object.values(por).filter(y => y.texto)) assert.ok(x.texto.split('\n').every(l => l.split('\t').length === x.c.colunas.length), x.c.tipoDado + ': colunas por linha');
   assert.ok(Object.values(por).every(x => x.c.categoria === 'pessoais'));
+});
+
+test('Hub: a folha inteira de cada empresa vem pela lista de clientes, com quem nunca teve solicitação, e só com a categoria pessoal', async () => {
+  const lidas = [];
+  const base = apiHub(), f = async url => { lidas.push(url); return base(url); };
+  const por = {};
+  await OC.hubExecutar(f, ['pessoais'], { pausa: null, snapshot: { items: [] } }, async (c, p) => { por[c.tipoDado] = { c, texto: p.partes.join('\n'), p }; return { ok: true }; });
+  const e = por['pessoais-empregados'];
+  assert.ok(e, 'conjunto novo');
+  assert.equal(e.c.categoria, 'pessoais');
+  assert.equal(e.p.nLinhasTotal, 4, '3 de ACME + 1 de BETA');
+  assert.equal(e.c.totalNaOrigem, 2, 'dois clientes lidos');
+  assert.equal(e.c.cortado, false);
+  assert.deepEqual(plano(e.c.colunas.slice(0, 5)), ['Id do cliente', 'Código do cliente', 'Cliente', 'Id', 'Nome']);
+  const lin = e.texto.split('\n').map(l => l.split('\t'));
+  assert.ok(lin.every(l => l.length === e.c.colunas.length));
+  const col = n => e.c.colunas.indexOf(n), de = nome => lin.find(l => l[col('Nome')] === nome);
+  assert.equal(de(NOME_T)[col('CPF')], CPF_T);
+  assert.equal(de(NOME_T)[col('Admissão')], '2020-01-01');
+  assert.equal(de(NOME_T)[col('Código do empregado')], '55');
+  assert.equal(de(NOME_T)[col('Cliente')], 'ACME');
+  assert.equal(de(NOME_T)[col('Vínculo')], 'EMPLOYEE');
+  assert.equal(de('Sem Solicitacao Nenhuma')[col('Vínculo')], 'INTERN', 'quem nunca teve solicitação também vem');
+  assert.equal(de('Quem Saiu')[col('Situação')], 'INACTIVE');
+  assert.equal(de('Beltrano da Beta')[col('Cliente')], 'BETA', 'resposta em { items }');
+  assert.ok(lidas.filter(u => /\/clients\/c\d\/employees\?eprType=EMPLOYEE&eprType=INTERN/.test(u)).length === 2, 'uma leitura por cliente');
+  const sem = {};
+  await OC.hubExecutar(f, todasCategorias().filter(c => c !== 'pessoais'), { pausa: null, snapshot: { items: [] } }, async c => { sem[c.tipoDado] = 1; return { ok: true }; });
+  assert.ok(!sem['pessoais-empregados'] && !Object.keys(sem).some(k => /^pessoais/.test(k)), 'sem a categoria pessoal nada disso é lido');
+});
+
+test('Hub: se a lista de clientes da folha falhar, vale o que as solicitações mostraram e o conjunto avisa que está incompleto', async () => {
+  const base = apiHub(), f = async url => { if (/br-payroll-sr\/v1\/clients\?/.test(url)) { const e = new Error('Erro 404'); e.status = 404; throw e; } return base(url); };
+  const por = {};
+  await OC.hubExecutar(f, ['pessoais'], { pausa: null, snapshot: { items: [] } }, async (c, p) => { por[c.tipoDado] = { c, p }; return { ok: true }; });
+  assert.equal(por['pessoais-empregados'].p.nLinhasTotal, 3, 'só o cliente que apareceu nas solicitações (c1)');
+  assert.equal(por['pessoais-empregados'].c.cortado, true);
+});
+
+test('Hub: falha em um cliente não derruba os outros (e marca incompleto); acesso de cliente interrompe', async () => {
+  const base = apiHub(), f = async url => { if (/clients\/c2\/employees/.test(url)) { const e = new Error('Erro 500'); e.status = 500; throw e; } return base(url); };
+  const por = {};
+  await OC.hubExecutar(f, ['pessoais'], { pausa: null, snapshot: { items: [] } }, async (c, p) => { por[c.tipoDado] = { c, p }; return { ok: true }; });
+  assert.equal(por['pessoais-empregados'].p.nLinhasTotal, 3);
+  assert.equal(por['pessoais-empregados'].c.cortado, true);
+  const auth = async url => { if (/\/employees\?/.test(url)) { const e = new Error('Sem acesso'); e.auth = true; throw e; } return base(url); };
+  await assert.rejects(OC.hubExecutar(auth, ['pessoais'], { pausa: null, snapshot: { items: [] } }, async () => ({ ok: true })));
 });
 
 test('Hub: clientes de CND e NF-e trazem CNPJ, inscrições e a validade do certificado', async () => {

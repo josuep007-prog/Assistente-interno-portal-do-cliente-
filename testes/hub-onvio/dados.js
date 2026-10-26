@@ -98,4 +98,26 @@ function empresas() {
   ];
 }
 
-module.exports = { tabelas, empresas, dia, OC };
+// A folha inteira de cada cliente (pessoais-empregados), gerada pela tarefa real da extensão (OC.hubPlano) com uma API simulada:
+// quem nunca teve solicitação também vem. NOVA CLIENTE não está no DP nem nos clientes de CND (só aparece aqui).
+async function empregados() {
+  const dto = (id, name, cod, adm, status, extra) => Object.assign({ id, name, cpf: '00000000000', hireDate: adm, status: status || 'ACTIVE', gender: 'F', jobPosition: 'A1', employeeWorkload: '220', integrationCode: cod, clientEmployeeRelationshipExpanded: { eprType: 'EMPLOYEE' } }, extra);
+  const porCliente = {
+    'c-orion': [dto('o1', 'Maria Souza', '101', '2024-03-01'), dto('o2', 'Beltrano Silva', '202', '2022-02-01'), dto('o3', 'Carlos Sem Pedido', '105', '2021-06-01'), dto('o4', 'Dona Antiga', '99', '2018-01-10', 'INACTIVE')],
+    'c-vega': [dto('v1', 'Joao Lima', '301', '2023-05-02'), dto('v2', 'Antiga Colega', '302', '2020-02-02', 'INACTIVE')],
+    'c-lira': [dto('l1', 'Lira Funcionaria', '401', '2022-09-05')],
+    'c-nova': [dto('n1', 'Nova Um', '501', '2024-01-02'), dto('n2', 'Nova Dois', '502', '2024-02-03', 'ACTIVE', { clientEmployeeRelationshipExpanded: { eprType: 'INTERN' } })]
+  };
+  const clientes = [{ id: 'c-orion', code: 900, name: 'ORION COMERCIO LTDA' }, { id: 'c-vega', code: 901, name: 'VEGA SERVICOS ME' }, { id: 'c-lira', code: 903, name: 'LIRA PADARIA LTDA' }, { id: 'c-nova', code: 950, name: 'NOVA CLIENTE SA' }];
+  const f = async url => {
+    const u = new URL(url), m = /clients\/([^/]+)\/employees$/.exec(u.pathname);
+    if (m) return porCliente[m[1]] || [];
+    if (/br-payroll-sr\/v1\/clients$/.test(u.pathname)) return { items: clientes, totalItems: clientes.length, totalPages: 1 };
+    throw new Error('sem rota ' + u.pathname);
+  };
+  const t = OC.hubPlano(['pessoais']).find(x => x.id === 'pessoais:empregados');
+  const [c] = await t.executar(f, { pausa: null });
+  return { categoria: 'pessoais', colunas: c.colunas, linhas: c.linhas };
+}
+
+module.exports = { tabelas, empregados, empresas, dia, OC };
