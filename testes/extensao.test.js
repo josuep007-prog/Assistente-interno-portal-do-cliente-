@@ -2537,6 +2537,52 @@ test('aba Dados: nada em inglês e formatos brasileiros (carga horária, CPF, se
 });
 
 
+test('aba Dados: cadastro de admissão (dados pessoais e profissionais) sem nenhuma palavra em inglês, em rótulos e valores', () => {
+  const rot = OC.traduzirCampo, val = OC.traduzirValor;
+  // campos do cadastro como o Onvio manda (nomes técnicos); valores inventados
+  const pessoais = { birthdate: '2000-01-02', identityCardIssuerDate: '2014-03-04', addressCity: 3550308, addressNumber: '10', addressState: 'SP', addressType: 'STREET',
+    birthCity: 3550308, birthCountry: 'BR', birthState: 'SP', bloodGroup: 'NOT_INFORMED', childrenWithBrazilian: false, countryOrigin: 'BR', domiciledOutside: false,
+    electoralCard: '000000000000', electoralSection: '1', electoralWard: '2', fatherName: 'PAI TESTE', gender: 'M', rg: '00.000.000-0', identityState: 'SP', issuerAgency: 'ssp',
+    maritalStatus: 'SINGLE', marriedWithBrazilian: false, militaryDischargeCategory: 'D', militaryDischargeCertificate: '00.000', motherName: 'MAE TESTE', naturalized: false,
+    neighborhood: 'Centro', ownResidence: false, primaryEmailAddress: 'teste@exemplo.com', primaryPhoneNumber: '11900000000', propertyBoughtUsingSeveranceFund: false,
+    raceColor: 'CAUCASOID', rhFactor: 'NOT_INFORMED', schoolingLevel: 'COMPLETE_HIGHER_EDUCATION', addressStreet: 'Rua Teste', zipCode: '01000000' };
+  const profissionais = { workExpedition: '2019-02-16', foodAgreement: false, foodBasket: false, generateInRais: true, hasLaborUnion: false, hasExperienceContract: true,
+    paymentFrequency: 'MONTHLY', overtimeAllowed: true, nightShiftAllowance: false, transportVoucherQuantity: 2, healthPlanHolder: true, partialTimeContract: false,
+    transferredEmployee: false, disabilityTypes: [], rehabilitatedWorker: false, cnhFirstLicenseDate: '2018-01-01', bankAccountNumber: '123', pixKeyType: 'CPF',
+    isFamilyAllowanceDependent: false, vacationAcquisitionPeriodStart: '2026-01-01', soldVacationDays: 10, fgtsFine: 0, dismissalExamDate: '2026-01-01', hasNightShift: false,
+    bloodDonor: false, hasChildrenUnder14: false, numberOfChildren: 0, electoralCardNumber: '1', militaryCertificateNumber: '1', unionContributionMonth: 3, workCardNumber: '1',
+    workCardSeries: '1', workCardState: 'SP', pisRegistrationDate: '2019-01-01', fgtsOptionDate: '2019-01-01', retired: false, cnhCategory: 'B', journeyType: 'REGULAR' };
+  // palavras que são iguais nas duas línguas
+  const iguais = new Set(['rural', 'regime', 'total', 'visual', 'mental', 'social', 'final', 'normal', 'regular', 'cnh', 'rg', 'pis', 'fgts', 'cbo', 'rais', 'caged', 'crm', 'cat', 'aso', 'rne', 'pix', 'cpf', 'cnpj']);
+  const palavrasDe = k => k.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase().split(/[\s_]+/).filter(w => w.length > 2 && !iguais.has(w));
+  for (const [k, v] of Object.entries(Object.assign({}, pessoais, profissionais))) {
+    const r = rot(k);
+    for (const w of palavrasDe(k)) assert.doesNotMatch(r.toLowerCase(), new RegExp('\\b' + w + '\\b'), k + ' => ' + r);
+    const x = val(k, v);
+    if (typeof v === 'string' && /^[A-Z_]{3,}$/.test(v)) for (const w of palavrasDe(v.toLowerCase())) assert.doesNotMatch(x.toLowerCase(), new RegExp('\\b' + w + '\\b'), k + '=' + v + ' => ' + x);
+  }
+  // os do print do Josué, com o rótulo certo
+  assert.equal(rot('childrenWithBrazilian'), 'Tem filhos brasileiros');
+  assert.equal(rot('electoralWard'), 'Zona eleitoral');
+  assert.equal(rot('propertyBoughtUsingSeveranceFund'), 'Imóvel comprado com o FGTS');
+  assert.equal(rot('militaryDischargeCategory'), 'Categoria do certificado de reservista');
+  assert.equal(rot('primaryEmailAddress'), 'E-mail principal');
+  assert.equal(rot('hasExperienceContract'), 'Tem contrato de experiência');
+  assert.equal(rot('numberOfChildren'), 'Número de filhos');
+  assert.equal(val('raceColor', 'CAUCASOID'), 'Branca');
+  assert.equal(val('schoolingLevel', 'COMPLETE_HIGHER_EDUCATION'), 'Superior completo');
+  assert.equal(val('schoolingLevel', 'INCOMPLETE_HIGH_SCHOOL'), 'Médio incompleto');
+  assert.equal(val('addressType', 'STREET'), 'Rua');
+  assert.equal(val('addressCity', 3550308), 'código IBGE 3550308', 'cidade em código do IBGE diz o que é');
+  assert.equal(val('birthCountry', 'BR'), 'Brasil');
+  assert.equal(val('issuerAgency', 'ssp'), 'SSP');
+  // e no detalhe: os grupos de dados pessoais e profissionais saem em português
+  const g = OC.camposDetalhe({}, { employeeRegistrationPersonalExpanded: pessoais, employeeRegistrationProfessionalExpanded: profissionais });
+  assert.deepEqual(plano(g.grupos.map(x => x.titulo)), ['Dados pessoais', 'Dados profissionais']);
+  const ingles = /\b(birthdate|brazilian|domiciled|outside|electoral|ward|married|discharge|naturalized|own residence|primary|property|bought|severance|schooling|higher|expedition|basket|generate|labor|caucasoid|street)\b/i;
+  for (const c of g.grupos.flatMap(x => x.campos)) assert.doesNotMatch(c.k + ' ' + c.v, ingles, c.k + ' = ' + c.v);
+});
+
 test('mensagem pronta: uma por trâmite, a do escritório mais específica, a da pessoa no lugar quando existe', () => {
   const ger = { type: 'geral', code: 1, lado: 'esc' };
   const ms = OC.mensagensProntas(ger, {}, []);
