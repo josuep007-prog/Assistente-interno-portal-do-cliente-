@@ -17,7 +17,9 @@ const iso = (n, hm) => dia(n) + 'T' + (hm || '10:00:00');
 const CLIENTES = {
   orion: { id: 'c-orion', code: '900', name: 'ORION COMERCIO LTDA', nickname: 'ORION', isOnvio: true, sendingEsocial: false, allowEmployeeRegistration: true },
   vega: { id: 'c-vega', code: '901', name: 'VEGA SERVICOS ME', nickname: 'VEGA', isOnvio: true, sendingEsocial: true, allowEmployeeRegistration: false },
-  zeta: { id: 'c-zeta', code: '902', name: 'ZETA TRANSPORTES LTDA', nickname: 'ZETA', isOnvio: true, sendingEsocial: false, allowEmployeeRegistration: false }
+  zeta: { id: 'c-zeta', code: '902', name: 'ZETA TRANSPORTES LTDA', nickname: 'ZETA', isOnvio: true, sendingEsocial: false, allowEmployeeRegistration: false },
+  lira: { id: 'c-lira', code: '903', name: 'LIRA PADARIA LTDA', nickname: 'LIRA', isOnvio: true, sendingEsocial: false, allowEmployeeRegistration: false },
+  omega: { id: 'c-omega', code: '904', name: 'OMEGA SERVICOS LTDA', nickname: 'OMEGA', isOnvio: true, sendingEsocial: false, allowEmployeeRegistration: false }
 };
 const ANA = { id: 'u-ana', name: 'Ana Teste' };
 const emp = (nome, cod, adm) => ({ name: nome, cpf: '00000000000', hireDate: adm, status: 'ATIVO', gender: 'F', jobPosition: 'A1', employeeWorkload: '220', integrationCode: cod });
@@ -27,7 +29,9 @@ const base = (id, n, st, cli, extra) => Object.assign({ id, identifier: n, gener
 const ITENS = {
   geral: [
     base('g1', 704, 5, CLIENTES.orion, { changed: iso(-20), subject: 'Documentos do mês', description: 'Segue em anexo.', requesterExpanded: { name: 'Contato da ORION' } }),
-    base('g2', 706, 1, CLIENTES.zeta, { subject: 'Dúvida de folha', description: 'Olá', requesterExpanded: { name: 'Contato da ZETA' } })
+    base('g2', 706, 1, CLIENTES.zeta, { subject: 'Dúvida de folha', description: 'Olá', requesterExpanded: { name: 'Contato da ZETA' } }),
+    base('g4', 708, 1, CLIENTES.lira, { subject: 'Pergunta', description: 'Olá', requesterExpanded: { name: 'Contato da LIRA' } }),
+    base('g5', 709, 1, CLIENTES.omega, { subject: 'Primeiro contato', description: 'Olá', requesterExpanded: { name: 'Contato da OMEGA' } })
   ],
   cadEmpregado: [
     base('cad1', 703, 1, CLIENTES.vega, { admissionDate: dia(3), name: 'Novo Funcionario', clientEmployeeExpanded: null, subject: 'Admissão', description: '' })
@@ -60,7 +64,9 @@ function tabelas() {
   out['clientes-cnd'] = { categoria: 'clientes', ...OC.tabelaCnd([
     { id: 'c-orion', code: '900', clientName: 'ORION COMERCIO LTDA', clientStatus: 'ACTIVE', nationalIdentity: '11222333000181', municipalInscription: '12345', stateInscription: '987654', stateInitials: 'SP', cityIbgeIdentifier: '3550308', documentType: 'CNPJ', isOnvio: true },
     { id: 'c-vega', code: '901', clientName: 'VEGA SERVICOS ME', clientStatus: 'ACTIVE', nationalIdentity: '22333444000192', municipalInscription: '', stateInscription: '', stateInitials: 'SP', cityIbgeIdentifier: '3550308', documentType: 'CNPJ', isOnvio: true },
-    { id: 'c-zeta', code: '902', clientName: 'ZETA TRANSPORTES LTDA', clientStatus: 'ACTIVE', nationalIdentity: '33444555000103', municipalInscription: '', stateInscription: '55555', stateInitials: 'MG', cityIbgeIdentifier: '3106200', documentType: 'CNPJ', isOnvio: true }
+    { id: 'c-zeta', code: '902', clientName: 'ZETA TRANSPORTES LTDA', clientStatus: 'ACTIVE', nationalIdentity: '33444555000103', municipalInscription: '', stateInscription: '55555', stateInitials: 'MG', cityIbgeIdentifier: '3106200', documentType: 'CNPJ', isOnvio: true },
+    { id: 'c-lira', code: '903', clientName: 'LIRA PADARIA LTDA', clientStatus: 'ACTIVE', nationalIdentity: '44555666000104', municipalInscription: '777', stateInscription: '', stateInitials: 'SP', cityIbgeIdentifier: '3509502', documentType: 'CNPJ', isOnvio: true },
+    { id: 'c-omega', code: '904', clientName: 'OMEGA SERVICOS LTDA', clientStatus: 'ACTIVE', nationalIdentity: '55666777000105', municipalInscription: '888', stateInscription: '999', stateInitials: 'RJ', cityIbgeIdentifier: '3304557', documentType: 'CNPJ', isOnvio: true }
   ]) };
   out['clientes-nfe'] = { categoria: 'clientes', ...OC.tabelaNfe([
     { id: 'c-orion', code: '900', name: 'ORION COMERCIO LTDA', nickname: 'ORION', active: true, clientStatus: 'ACTIVE', nationalIdentity: '11222333000181', uf: 'SP', isOnvio: true, certificateExpanded: { expirationDate: dia(20) + 'T00:00:00' } }
@@ -86,8 +92,9 @@ function empresas() {
   const f = (id, nome, codigo, adm, extra) => Object.assign({ id, nome, cargo: 'Auxiliar', codigo, admissao: adm, status: 'Ativo', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '', salario: '', obs: '' }, extra);
   return [
     { id: 'e-orion', cod: '55', nome: 'ORION COMERCIO LTDA', cnpj: '11.222.333/0001-81', codigoDominio: '55', tributacao: 'Simples Nacional', responsavel: 'Ana Teste', situacao: 'Ativa', uf: 'São Paulo/SP',
-      funcionarios: [f('f-maria', 'Maria Souza', '101', '2024-03-01'), f('f-beltrano', 'Beltrano Silva', '', '2022-02-01')], historico: [], lembretes: [], prazos: [] },
-    { id: 'e-vega', cod: '56', nome: 'VEGA SERVICOS ME', cnpj: '22.333.444/0001-92', codigoDominio: '56', tributacao: 'Simples Nacional', responsavel: 'Bruno Teste', situacao: 'Ativa', uf: 'São Paulo/SP', funcionarios: [], historico: [], lembretes: [], prazos: [] }
+      funcionarios: [f('f-maria', 'Maria Souza', '101', '2024-03-01'), f('f-beltrano', 'Beltrano Silva', '', '2022-02-02')], historico: [], lembretes: [], prazos: [] },
+    { id: 'e-vega', cod: '56', nome: 'VEGA SERVICOS ME', cnpj: '22.333.444/0001-92', codigoDominio: '56', tributacao: 'Simples Nacional', responsavel: 'Bruno Teste', situacao: 'Ativa', uf: 'São Paulo/SP', funcionarios: [], historico: [], lembretes: [], prazos: [] },
+    { id: 'e-lira', cod: '58', nome: 'LIRA PADARIA', cnpj: '', codigoDominio: '58', tributacao: 'Simples Nacional', responsavel: 'Ana Teste', situacao: 'Ativa', uf: 'Campinas/RJ', funcionarios: [], historico: [], lembretes: [], prazos: [] }
   ];
 }
 
