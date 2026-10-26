@@ -44,6 +44,7 @@ Para atualizar: baixe de novo, substitua a pasta e clique em **Recarregar** no c
 * Ponte com o Control Hub (opcional, v0.36.0): `extensao/ponte-hub.js` e a seção Control Hub das Configurações. Detalhes e limites em `extensao/LEIA-ME.md`.
 * [`CLAUDE.md`](CLAUDE.md): como trabalhar neste repositório e as regras de segurança (somente leitura).
 * [`mapeamento/capturar-mapa-onvio.js`](mapeamento/capturar-mapa-onvio.js): script de console que captura a estrutura das telas (seletores, colunas, botões) sem gravar dados de clientes. Útil para a coluna extra na grade nativa e para as telas de Documentos.
+* [`mapeamento/inventario-onvio.js`](mapeamento/inventario-onvio.js): script de console, só leitura e sem valores, que registra o formato de tudo o que o Onvio entrega (sessão e permissões, listas, detalhes, trâmites, tabelas de apoio, o que a página guarda). O catálogo do que uma extensão consegue extrair está em [`mapeamento/inventario-de-dados-2026-10-26.md`](mapeamento/inventario-de-dados-2026-10-26.md).
 
 ### Testes
 
@@ -52,6 +53,7 @@ node --test testes/extensao.test.js      # regras, prazos, dashboards, alertas, 
 node testes/navegador.js                 # grade, camada em tela cheia e telas do app em páginas simuladas
 node testes/extensao-real.js             # carrega a extensão no Chromium, com API simulada
 node testes/ponte-hub.js                 # ponte com o Control Hub, com um Hub simulado
+node testes/inventario-onvio.js         # script de inventário contra um Onvio simulado
 ```
 
 Os dois últimos precisam do Playwright (`npm i -D playwright`, ou `NODE_PATH` para uma instalação global). Nenhum teste fala com o Onvio real.
