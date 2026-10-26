@@ -176,7 +176,8 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await fr.locator('#cadro tr[data-emp]').first().waitFor({ timeout: 10000 });
     assert.equal(await fr.locator('#cadro tr[data-emp]').count(), 6, 'ORION 4 + VEGA 2');
     assert.match(await fr.locator('#cadSub').textContent(), /6 diferenças · 1 cliente sem empresa/);
-    assert.match(await fr.locator('#cadro').textContent(), /ZETA TRANSPORTES LTDA/);
+    assert.match(await fr.locator('#vincro').textContent(), /ZETA TRANSPORTES LTDA/);
+    assert.match(await fr.locator('#resumoTopo').textContent(), /7\s*para decidir/);
     if (CAP) { await fr.locator('#secCadastro').scrollIntoViewIfNeeded(); await fr.locator('#secCadastro h2').evaluate(e => e.scrollIntoView({ block: 'start' })); await page.waitForTimeout(500); await page.screenshot({ path: path.join(CAP, 'entrada-dados-claro.png'), fullPage: false }); }
     const g0 = await page.evaluate(() => window.__gravacoes.length);
     await aplicarNoQuadro('Código Domínio vazio', '[data-cad-aplicar]');
@@ -227,6 +228,51 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await page.evaluate(() => { delete window.__auth; });
   });
 
+  await passo('Entrada de dados em lote: filtra por tipo, marca a empresa inteira, uma confirmação (cancelar não grava) e o resultado de cada uma', async () => {
+    // filtro por tipo
+    await fr.locator('[data-cad-tipo="rescisao"]').click();
+    assert.equal(await fr.locator('#cadro tr[data-emp]').count(), 1, 'só a rescisão');
+    await fr.locator('[data-cad-tipo=""]').click();
+    assert.equal(await fr.locator('#cadro tr[data-emp]').count(), 3);
+    // marca as duas do ORION pelo cabeçalho da empresa
+    await fr.locator('[data-sel-emp="e-orion"]').check();
+    assert.match(await fr.locator('#cSelBar').textContent(), /2 selecionadas/);
+    assert.equal(await fr.locator('#cAplicarSel').textContent(), 'Aplicar 2');
+    const g0 = await page.evaluate(() => window.__gravacoes.length);
+    await fr.locator('#cAplicarSel').click();
+    await fr.locator('#dlgLote[open]').waitFor();
+    assert.match(await fr.locator('#loteTit').textContent(), /Aplicar 2 diferenças/);
+    assert.equal(await fr.locator('#loteLista li').count(), 2);
+    if (CAP) { await page.waitForTimeout(300); await page.screenshot({ path: path.join(CAP, 'entrada-dados-lote-claro.png') }); }
+    await fr.locator('#loteNao').click();
+    assert.equal(await page.evaluate(() => window.__gravacoes.length), g0, 'cancelar o lote não grava nada');
+    await fr.locator('#cAplicarSel').click();
+    await fr.locator('#dlgLote[open]').waitFor();
+    await fr.locator('#loteSim').click();
+    await page.waitForFunction(() => /2 feitas/.test(document.querySelector('#fontes-frame').contentDocument.querySelector('#loteCont').textContent), null, { timeout: 8000 });
+    const e = await page.evaluate(() => window.__db.ler('dp_empresas/e-orion'));
+    assert.equal(e.funcionarios.find(f => f.nome === 'Beltrano Silva').rescisao, D.dia(-3));
+    assert.equal(e.funcionarios.find(f => f.nome === 'Maria Souza').status, 'Afastado');
+    assert.equal(e.historico.filter(h => /Entrada de dados/.test(h.alteracao)).length, 4, 'código, férias e as duas do lote no histórico');
+    assert.equal(await fr.locator('#loteLista li.ok').count(), 2);
+    if (CAP) { await page.waitForTimeout(300); await page.screenshot({ path: path.join(CAP, 'entrada-dados-lote-feito-claro.png') }); }
+    await fr.locator('#loteNao').click();
+    await page.waitForFunction(() => document.querySelector('#fontes-frame').contentDocument.querySelectorAll('#cadro tr[data-emp]').length === 1);
+  });
+
+  await passo('Entrada de dados: abas O que chegou (conjuntos por categoria) e Conexão (pareamento), lembrando a escolha', async () => {
+    await fr.locator('[data-aba-btn="recebido"]').click();
+    await fr.locator('#dados details.grupo-d').first().waitFor();
+    assert.ok(await fr.locator('#dados details.grupo-d').count() >= 4, 'listas, pessoais, clientes e escritório');
+    assert.equal(await fr.locator('#cadro').isVisible(), false);
+    if (CAP) { await page.waitForTimeout(300); await page.screenshot({ path: path.join(CAP, 'entrada-dados-recebido-claro.png') }); }
+    await fr.locator('[data-aba-btn="conexao"]').click();
+    assert.equal(await fr.locator('#codigo').isVisible(), true);
+    assert.equal(await fr.locator('[data-aba="conexao"]').evaluate(() => localStorage.getItem('controlhub-fontes-aba')), 'conexao');
+    await fr.locator('[data-aba-btn="decidir"]').click();
+    assert.equal(await fr.locator('#cadro').isVisible(), true);
+  });
+
   await passo('Entrada de dados: criar o funcionário que só existe no Onvio e ligar o cliente sem empresa', async () => {
     await aplicarNoQuadro('Novo Funcionario', '[data-cad-aplicar]');
     await fr.locator('#confSim').click();
@@ -242,7 +288,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await fr.locator('#confSim').click();
     await page.waitForFunction(() => { const c = window.__db.ler('dp_config/onvio'); return c && Object.values(c.vinc || {}).includes('e-zeta'); }, null, { timeout: 5000 });
     assert.equal(await page.evaluate(() => (window.__hubApi.api('onvio').solicitacoes().porEmp.get('e-zeta') || []).length), 1, 'a solicitação 706 agora é da empresa');
-    assert.match(await fr.locator('#cadro').textContent(), /Todos os clientes do Onvio estão ligados/);
+    assert.match(await fr.locator('#vincro').textContent(), /Todos os clientes do Onvio estão ligados/);
     if (CAP) { await fr.locator('#secCadastro h2').evaluate(e => e.scrollIntoView({ block: 'start' })); await page.waitForTimeout(500); await page.screenshot({ path: path.join(CAP, 'entrada-dados-depois-claro.png') }); }
     if (CAP) {
       await page.evaluate(() => { document.documentElement.setAttribute('data-theme', 'dark'); document.querySelector('#fontes-frame').contentDocument.documentElement.setAttribute('data-theme', 'dark'); });
