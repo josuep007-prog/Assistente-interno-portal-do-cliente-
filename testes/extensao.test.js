@@ -1555,7 +1555,7 @@ test('tramitação: Cadastro e Rubricas oferecem só as situações do Onvio e d
   assert.match(OC.intencoesDe({ type: 'rubricas', code: 2 }, {})[0].efeito, /prescreve em 30 dias/);
   // avisos de coerência com as situações da lista
   assert.match(OC.avisosResposta('Pode nos enviar o RG do empregado?', 6, {}, { type: 'cadEmpregado', code: 2 })[0].msg, /encerra a solicitação.*Aguardando o cliente/);
-  assert.match(OC.avisosResposta('Cadastro do empregado concluído.', 3, {}, { type: 'cadEmpregado', code: 2 })[0].msg, /Concluído/);
+  assert.deepEqual(plano(OC.avisosResposta('Cadastro do empregado concluído.', 3, {}, { type: 'cadEmpregado', code: 2 })), [], 'entregar e deixar com o cliente (ele pede mais ou conclui) é o caminho certo: sem aviso');
   // modelos e casos usam a situação equivalente da lista
   const concl = OC.modelosPara({ type: 'cadEmpregado', code: 2, cliente: 'X' }, {}, []).find(m => m.situacao);
   assert.ok(concl && [3, 6].includes(concl.situacao));
@@ -2171,8 +2171,7 @@ test('tramitação: variáveis dos modelos, saudação por horário, e o que fal
   const av = OC.avisosResposta(t, 4, {});
   assert.equal(av[0].bloqueia, true);
   assert.match(av[0].msg, /Falta preencher: \{numero\}/);
-  assert.deepEqual(plano(OC.avisosResposta('Tudo certo.', 4, {}).map(x => !!x.bloqueia)), [false], 'sem pedido e aguardando o cliente: só uma dica');
-  assert.match(OC.avisosResposta('Tudo certo.', 4, {})[0].msg, /prefira "Concluído"/);
+  assert.deepEqual(plano(OC.avisosResposta('Tudo certo.', 4, {})), [], 'Respondido sem pedido é a entrega (o cliente pede mais ou conclui): sem aviso');
   assert.match(OC.avisosResposta('Pode enviar o RG do empregado?', 5, {})[0].msg, /pede algo ao cliente/);
   assert.deepEqual(plano(OC.avisosResposta('Concluído. Qualquer dúvida, estamos à disposição.', 5, {})), [], 'cortesia não conta como pedido');
   assert.deepEqual(plano(OC.avisosResposta('', 5, {})), []);
@@ -2184,12 +2183,12 @@ test('tramitação: modelos valem por tipo e aba própria; pessoais entram junto
   const rots = l.map(m => m.rot);
   assert.ok(rots.includes('Concluído') && rots.includes('Meu texto'));
   assert.ok(!rots.includes('Lista errada'), 'sem aba própria, o modelo da lista errada não aparece');
-  assert.ok(!rots.includes('Cálculo concluído'), 'só nos cálculos');
+  assert.ok(!rots.includes('Cálculo pronto'), 'só nos cálculos');
   assert.equal(l.find(m => m.rot === 'Recebido, em análise').situacao, null, 'de Respondido o Onvio só aceita Respondido ou Concluído');
   assert.equal(l.find(m => m.rot === 'Concluído').situacao, 5);
   assert.equal(l.find(m => m.rot === 'Meu texto').pessoal, true);
   const c = OC.modelosPara({ type: 'calcFerias', code: 1, abaProvavel: null }, {}, []).map(m => m.rot);
-  assert.ok(c.includes('Cálculo concluído'));
+  assert.ok(c.includes('Cálculo pronto'));
   const e = OC.modelosPara({ type: 'geral', code: 1, abaProvavel: { label: 'Aviso de férias' } }, {}, []).map(m => m.rot);
   assert.ok(e.includes('Lista errada'));
   // os modelos padrão passam nos avisos (marcadores só onde a pessoa precisa preencher)
@@ -2298,8 +2297,8 @@ test('rodada 2: férias nova em análise, aviso trabalhado com lembrete, acident
   // modelos de texto e variáveis de pagamento
   const mFer = OC.modelosPara({ type: 'calcFerias', code: 1, apelido: 'X', detalhe: 'Beltrano' }, {}, []).find(m => m.rot === 'Férias em análise');
   assert.equal(mFer.situacao, 2);
-  assert.ok(OC.modelosPara({ type: 'calcRescisao', code: 2 }, {}, []).some(m => m.rot === 'Envio da rescisão' && m.situacao === 4));
-  assert.ok(!OC.modelosPara({ type: 'geral', code: 2 }, {}, []).some(m => /Envio da rescisão|Férias em análise/.test(m.rot)), 'só nos tipos certos');
+  assert.ok(OC.modelosPara({ type: 'calcRescisao', code: 2 }, {}, []).some(m => m.rot === 'Cálculo pronto' && m.situacao === 4));
+  assert.ok(!OC.modelosPara({ type: 'geral', code: 2 }, {}, []).some(m => /Cálculo pronto|Férias em análise/.test(m.rot)), 'só nos tipos certos');
   const v = OC.variaveisTramite({ type: 'calcFerias', apelido: 'X', detalhe: 'Beltrano', typeLabel: 'Cálculo de férias', pagamentoAte: { alvo: '2026-10-30' } }, {}, {}, new Date('2026-10-20T10:00:00'), 'Ana');
   assert.deepEqual([v.pagamentoFerias, v.pagamentoRescisao], ['30/10/2026', undefined]);
   const vr = OC.variaveisTramite({ type: 'calcRescisao', apelido: 'X', detalhe: 'Beltrano', pagamentoAte: { alvo: '2026-11-10' } }, {}, {}, new Date('2026-10-20T10:00:00'), 'Ana');
@@ -2609,7 +2608,7 @@ test('textos de férias e rescisão: o prazo de 10 dias vale também para entreg
   for (const t of textos) assert.doesNotMatch(String(t), /assinad[oa]s?\b|comprovante|termo de rescis/i, String(t).slice(0, 80));
   // a mensagem pronta de "Concluído" do cálculo de rescisão (as observações entram na caixa): pagamento + documentos, sem pedir o termo assinado de volta
   const item = { type: 'calcRescisao', typeLabel: 'Cálculo de rescisão', code: 1, lado: 'esc', apelido: 'ACME', cliente: 'ACME LTDA', detalhe: 'FULANO', datas: { desligamento: '2026-10-15' } };
-  const m = OC.mensagensProntas(item, {}, []).find(x => x.sit === 5);
+  const m = OC.mensagensProntas(item, {}, []).find(x => x.sit === 4);
   assert.match(m.texto, /pagamento das verbas rescisórias e a entrega dos documentos de rescisão ao empregado/);
   assert.doesNotMatch(m.texto, /assinad|comprovante/i);
 });
@@ -2617,7 +2616,7 @@ test('textos de férias e rescisão: o prazo de 10 dias vale também para entreg
 test('mensagem pronta de rescisão: as observações não repetem o que o texto já diz (mesma regra legal, mesma data ou o mesmo texto)', () => {
   const item = { type: 'calcRescisao', typeLabel: 'Cálculo de rescisão', code: 1, lado: 'esc' };
   const obs = OC.DEFAULTS.observacoes.calcRescisao.map(t => ({ texto: t.replace('{pagamentoRescisaoDias}', '10') }));
-  for (const sit of [4, 5]) {
+  for (const sit of [4]) {
     const m = OC.mensagensProntas(item, {}, []).find(x => x.sit === sit);
     const t = OC.preencherModelo(m.texto, { saudacao: 'Bom dia', empregado: 'FULANO', tipo: 'cálculo de rescisão', pagamento: '23/11/2026', pagamentoRescisao: '23/11/2026' });
     assert.match(t, /pagamento das verbas rescisórias e a entrega dos documentos (de rescisão )?ao empregado/, 'sit ' + sit);
@@ -2635,21 +2634,34 @@ test('mensagem pronta: uma por trâmite, a do escritório mais específica, a da
   const ms = OC.mensagensProntas(ger, {}, []);
   assert.deepEqual(plano(ms.map(m => m.sit)), plano(OC.intencoesDe(ger, {}).map(x => x.sit)), 'uma para cada trâmite que o Onvio aceita');
   const por = sit => ms.find(m => m.sit === sit);
-  assert.match(por(4).texto, /precisamos de mais informações/);
-  assert.match(por(5).texto, /Solicitação concluída/);
-  assert.equal(por(5).completa, true, 'as do cliente levam as observações');
+  // Respondido: a entrega + pedir mais nesta mesma solicitação ou concluir; Concluído: só encerrar (sem observações)
+  assert.match(por(4).texto, /Sua solicitação foi atendida\.\n\nSe precisar de mais alguma coisa sobre este assunto, é só pedir aqui mesmo, nesta solicitação\. Se estiver tudo certo, pode concluí-la\./);
+  assert.match(por(5).texto, /Como não houve novo pedido nesta solicitação, estamos concluindo por aqui/);
+  assert.equal(por(4).completa, true, 'o Respondido leva as observações');
+  assert.equal(por(5).completa, false, 'o Concluído só encerra: sem observações');
   assert.equal(por(8).completa, false, 'a interna não leva');
   // a específica do tipo vence a geral
   const fer = OC.mensagensProntas({ type: 'calcFerias', code: 1, lado: 'esc' }, {}, []);
   assert.match(fer.find(m => m.sit === 2).texto, /férias de \{empregado\}/);
-  assert.match(fer.find(m => m.sit === 5).texto, /foi concluído e segue em anexo/);
+  assert.match(fer.find(m => m.sit === 4).texto, /foi concluído e segue em anexo\. O pagamento deve ser feito até \{pagamento\}\.\n\nSe precisar de mais alguma coisa[\s\S]*pode concluí-la/);
+  assert.doesNotMatch(fer.find(m => m.sit === 5).texto, /segue em anexo/, 'a entrega é o Respondido; o Concluído só encerra');
+  // um modelo do escritório que só pede algo (ex.: "Pedir atestado" no afastamento) não toma o lugar da entrega no Respondido
+  const regPedido = { modelosTramite: OC.DEFAULTS.modelosTramite.concat([{ rot: 'Pedir atestado', situacao: 4, tipos: ['afastamento'], texto: 'Envie o atestado.' }]) };
+  assert.match(OC.mensagensProntas({ type: 'afastamento', code: 1, lado: 'esc' }, regPedido, []).find(m => m.sit === 4).texto, /foi atendida/);
+  // em todos os tipos: o Respondido (ou o equivalente da lista) convida a pedir mais ou concluir; o Concluído encerra
+  for (const t of OC.TYPES) {
+    const ms2 = OC.mensagensProntas({ type: t.key, code: 1, lado: 'esc' }, {}, []);
+    const resp = ms2.find(m => m.sit === OC.situacaoEquivalente(4, { type: t.key })), fim = ms2.find(m => /Concluído/.test(m.rot));
+    if (resp) assert.match(resp.texto, /pode concluí-la/, t.key);
+    if (fim) assert.match(fim.texto, /estamos concluindo por aqui/, t.key);
+  }
   // lista errada (com aba própria): Em análise orienta
   assert.match(OC.mensagensProntas(Object.assign({ abaProvavel: { label: 'Aviso de férias' } }, ger), {}, []).find(m => m.sit === 2).texto, /aba própria/);
   // a da pessoa (deste tipo) fica no lugar e não leva observações
   const meu = [{ id: 'a', rot: 'x', texto: 'Minha', situacao: 4, tipo: 'geral' }, { id: 'b', rot: 'y', texto: 'Outro tipo', situacao: 4, tipo: 'calcFerias' }];
   const m4 = OC.mensagensProntas(ger, {}, meu).find(m => m.sit === 4);
   assert.deepEqual([m4.texto, m4.completa, m4.pessoal.id], ['Minha', false, 'a']);
-  assert.match(m4.padrao, /mais informações/, 'o padrão continua à mão para voltar');
+  assert.match(m4.padrao, /foi atendida/, 'o padrão continua à mão para voltar');
 });
 
 test('detalhe mais rápido: com o id já lido, dados e trâmites saem junto com a busca; a abertura passa na frente das leituras em massa; os tempos aparecem no Testar a leitura', async () => {

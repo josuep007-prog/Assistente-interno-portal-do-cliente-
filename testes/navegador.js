@@ -1758,11 +1758,13 @@ await passo('app · Tramitação: caixa de resposta fixa; intenção e efeito; m
   await p.waitForSelector('#mp-balao');
   assert.deepEqual(await p.$$eval('#mp-balao .mp-tab', e => e.map(x => x.textContent)), ['Respondido', 'Em análise', 'Em análise interna', 'Concluído'], 'um trâmite por aba');
   await p.click('#mp-balao [data-mp-sit="4"]');
-  assert.match(await p.inputValue('#mp-texto'), /^(Bom dia|Boa tarde|Boa noite)! Para seguirmos com a solicitação, precisamos de mais informações: \(descreva o que falta\)\..*\n\nObservações importantes:\n- Prazo de conclusão/s, 'completa: já vem com as observações para o cliente');
+  assert.match(await p.inputValue('#mp-texto'), /^(Bom dia|Boa tarde|Boa noite)! Sua solicitação foi atendida\.\n\nSe precisar de mais alguma coisa sobre este assunto, é só pedir aqui mesmo, nesta solicitação\. Se estiver tudo certo, pode concluí-la\.\n\nObservações importantes:\n- Prazo de conclusão/, 'Respondido: a entrega, o convite e as observações para o cliente');
   await p.click('#mp-balao [data-mp-sit="5"]');
-  assert.match(await p.inputValue('#mp-texto'), /Solicitação concluída/);
+  assert.match(await p.inputValue('#mp-texto'), /^(Bom dia|Boa tarde|Boa noite)! Como não houve novo pedido nesta solicitação, estamos concluindo por aqui\./);
+  assert.doesNotMatch(await p.inputValue('#mp-texto'), /Observações importantes/, 'o Concluído só encerra');
   await p.click('#mp-balao [data-mp-sit="4"]');
-  await p.fill('#mp-texto', (await p.inputValue('#mp-texto')).replace('Pode complementar', 'Pode nos mandar'));     // editada na hora
+  // editada na hora: aqui a pessoa troca a entrega por um pedido de informação (com o trecho a preencher)
+  await p.fill('#mp-texto', (await p.inputValue('#mp-texto')).replace(/^[\s\S]*?(\n\nObservações importantes)/, 'Bom dia! Para seguirmos com a solicitação, precisamos de mais informações: (descreva o que falta). Pode nos mandar por aqui, por favor?$1'));
   if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/mensagem-pronta.png' });
   await p.click('#mp-usar');
   assert.equal(await p.$('#mp-balao') === null, true, 'usar fecha o balão');

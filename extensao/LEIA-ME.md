@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.48.1)
+# Control Onvio · ControlTax (v0.49.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,13 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.49.0 (Respondido entrega, Concluído encerra)
+- **Respondido** (ou o equivalente da lista: "Aguardando o cliente" nos Cadastros) é a **entrega**: a mensagem pronta é a que antes ia no Concluído (no cálculo de férias e de rescisão, o cálculo pronto com o prazo de pagamento) e termina com o convite: "Se precisar de mais alguma coisa sobre este assunto, é só pedir aqui mesmo, nesta solicitação. Se estiver tudo certo, pode concluí-la." Vale para todos os tipos de solicitação.
+- **Concluído** só encerra, quando o cliente não falou mais nada ou disse que está tudo certo: "Como não houve novo pedido nesta solicitação, estamos concluindo por aqui. Se precisar de algo mais, é só abrir uma nova solicitação." Sem observações no fim.
+- Modelos: "Cálculo concluído" e "Envio da rescisão" viraram **Cálculo pronto** (Respondido); novo **Solicitação atendida** (Respondido). Um modelo do escritório que só pede algo ao cliente no mesmo trâmite (por exemplo "Pedir atestado") continua na lista, mas não toma o lugar da entrega na Mensagem pronta (`pronta` nos modelos).
+- A caixa de resposta não sugere mais trocar um Respondido sem pedido por Concluído (entregar e deixar com o cliente é o caminho certo agora).
+- O Respondido sem pedido continua contando como "considerada resolvida" depois de 3 dias úteis sem retorno do cliente (o convite não é um pedido).
 
 ## Novidades da v0.48.1 (Mensagem pronta sem repetir)
 - A mensagem pronta do cálculo de rescisão repetia a mesma regra duas vezes (o texto do trâmite e, logo abaixo, "Observações importantes"). Agora uma observação só entra se o texto ainda não diz aquilo: mesmo trecho, mesma data **ou a mesma regra legal** ("CLT, art. 477"), mesmo com outras palavras (`OC.observacoesFaltantes`).

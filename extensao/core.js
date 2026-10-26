@@ -78,6 +78,11 @@
   const TYPE_BY_KEY = Object.fromEntries(TYPES.map(t => [t.key, t]));
 
   // Férias em análise (sugestão, "Pôr em análise" e modelo da caixa): em tópicos; {abono} vira o tópico do abono ou some
+  // Respondido = a entrega (o mesmo texto que antes ia no Concluído) + o convite: pedir mais nesta mesma solicitação ou
+  // concluí-la. Concluído = só para encerrar, quando o cliente não falou mais nada ou disse que está tudo certo (pedido do Josué
+  // em 26/10/2026, vale para todos os tipos).
+  const CONVITE_RESPONDIDO = '\n\nSe precisar de mais alguma coisa sobre este assunto, é só pedir aqui mesmo, nesta solicitação. Se estiver tudo certo, pode concluí-la.';
+  const TEXTO_ENCERRAR = '{saudacao}! Como não houve novo pedido nesta solicitação, estamos concluindo por aqui. Se precisar de algo mais, é só abrir uma nova solicitação.';
   const TEXTO_FERIAS_ANALISE = '{saudacao}! Recebemos a solicitação de férias de {empregado} e já estamos analisando.\n\n' +
     'Pontos importantes:\n' +
     '- Empréstimos consignados: antes de calcular, precisamos aguardar a atualização dos empréstimos consignados, para o cálculo sair correto.\n' +
@@ -214,14 +219,14 @@
       { rot: 'Recebido, em análise', situacao: 2, texto: '{saudacao}! Recebemos a sua solicitação e já estamos analisando. Retornamos assim que houver novidades.' },
       { rot: 'Falta informação', situacao: 4, texto: '{saudacao}! Para seguirmos com a solicitação, precisamos de mais informações: (descreva o que falta). Pode complementar por aqui, por favor?' },
       { rot: 'Pedir documento', situacao: 4, texto: '{saudacao}! Para seguirmos, precisamos que envie: (descreva o documento). Pode anexar por aqui, por favor?' },
-      { rot: 'Concluído', situacao: 5, texto: '{saudacao}! Solicitação concluída. Qualquer dúvida, estamos à disposição.' },
-      { rot: 'Cálculo concluído', situacao: 5, tipos: ['calcFerias'], texto: '{saudacao}! O {tipo} de {empregado} foi concluído e segue em anexo. O pagamento deve ser feito até {pagamento}.' },
-      { rot: 'Cálculo concluído', situacao: 5, tipos: ['calcRescisao'], texto: '{saudacao}! O {tipo} de {empregado} foi concluído e segue em anexo. O pagamento das verbas rescisórias e a entrega dos documentos de rescisão ao empregado devem ser feitos em até 10 dias corridos do término do contrato (CLT, art. 477, §6º), ou seja, até {pagamento}.' },
+      { rot: 'Solicitação atendida', situacao: 4, pronta: true, texto: '{saudacao}! Sua solicitação foi atendida.' + CONVITE_RESPONDIDO },
+      { rot: 'Concluído', situacao: 5, pronta: true, encerra: true, texto: TEXTO_ENCERRAR },
+      { rot: 'Cálculo pronto', situacao: 4, pronta: true, tipos: ['calcFerias'], texto: '{saudacao}! O {tipo} de {empregado} foi concluído e segue em anexo. O pagamento deve ser feito até {pagamento}.' + CONVITE_RESPONDIDO },
+      { rot: 'Cálculo pronto', situacao: 4, pronta: true, tipos: ['calcRescisao'], texto: '{saudacao}! O {tipo} de {empregado} foi concluído e segue em anexo. O pagamento das verbas rescisórias e a entrega dos documentos de rescisão ao empregado devem ser feitos em até 10 dias corridos do término do contrato (CLT, art. 477, §6º), ou seja, até {pagamento}.' + CONVITE_RESPONDIDO },
       { rot: 'Resolvida fora do portal', situacao: 5, texto: 'Pelo que consta, esta solicitação já foi resolvida fora do portal. Estamos concluindo por aqui. Se ainda precisar de algo, é só abrir uma nova solicitação.' },
       { rot: 'Lista errada', situacao: 2, precisaAba: true, texto: '{saudacao}! Este pedido tem uma aba própria no Portal do Cliente: {aba}. Nas próximas vezes, por favor, abra a solicitação por lá, com os campos preenchidos, para conseguirmos atender dentro do prazo. Esta já está em análise e seguimos com ela por aqui.' },
       { rot: 'Repete outra solicitação', situacao: 5, texto: 'Esta solicitação repete a nº {numero}, que já está em atendimento. Seguimos por lá e estamos concluindo esta.' },
-      { rot: 'Férias em análise', situacao: 2, tipos: ['avisoFerias', 'calcFerias'], texto: TEXTO_FERIAS_ANALISE },
-      { rot: 'Envio da rescisão', situacao: 4, tipos: ['calcRescisao'], texto: '{saudacao}! Segue o cálculo da rescisão de {empregado}. Lembramos que o pagamento das verbas rescisórias e a entrega dos documentos ao empregado devem ser feitos em até 10 dias corridos do término do contrato (CLT, art. 477, §6º), ou seja, até {pagamentoRescisao}. Qualquer dúvida, estamos à disposição.' }
+      { rot: 'Férias em análise', situacao: 2, tipos: ['avisoFerias', 'calcFerias'], texto: TEXTO_FERIAS_ANALISE }
     ],
     // Segundos entre "Enviar" e a chamada ao Onvio, para a pessoa desistir (trâmite não pode ser excluído). 0 desliga.
     desfazerSeg: 5,
@@ -2679,13 +2684,15 @@
       .map(m => { const c = m.situacao ? situacaoEquivalente(m.situacao, item) : null; return Object.assign({}, m, { situacao: c && ok.includes(c) ? c : null }); });
   }
   // Mensagem pronta (caixa de resposta): UMA mensagem completa por trâmite (intenção) desta solicitação, que a pessoa edita na hora.
-  // Ordem de escolha: o modelo da pessoa para esse trâmite neste tipo (ou em qualquer tipo); senão o do escritório mais específico
-  // (deste tipo de solicitação; depois o de "lista errada" quando cabe; depois o geral); senão um texto base pelo lado do trâmite.
+  // Ordem de escolha: o modelo da pessoa para esse trâmite neste tipo (ou em qualquer tipo); senão o do escritório: o pronto deste tipo,
+  // o de "lista errada" quando cabe, o pronto geral, outro deste tipo, o primeiro; senão um texto base pelo lado do trâmite.
+  // Respondido = entrega + convite a pedir mais ou concluir; Concluído = só encerrar (sem observações).
   // completa: as observações para o cliente entram no fim (a tela acrescenta, sem repetir o que o texto já diz).
   const TEXTO_BASE = {
     esc: '{saudacao}! Recebemos a sua solicitação e já estamos analisando. Retornamos assim que houver novidades.',
+    // lado do cliente sem modelo: os outros pedidos ao cliente (ex.: "Aguardando correção" nas Rubricas); o Respondido tem o seu modelo
     cli: '{saudacao}! Para seguirmos com a solicitação, precisamos de mais informações: (descreva o que falta). Pode complementar por aqui, por favor?',
-    fim: '{saudacao}! Solicitação concluída. Qualquer dúvida, estamos à disposição.',
+    fim: TEXTO_ENCERRAR,
     int: 'Registro interno: (descreva o andamento).'
   };
   function mensagensProntas(item, settings, pessoais) {
@@ -2693,9 +2700,11 @@
     return intencoesDe(item, settings).map(x => {
       const meu = (Array.isArray(pessoais) ? pessoais : []).filter(m => m && Number(m.situacao) === x.sit && (!m.tipo || m.tipo === item.type)).sort((a, b) => (b.tipo ? 1 : 0) - (a.tipo ? 1 : 0))[0] || null;
       const deles = mods.filter(m => m.situacao === x.sit);
-      const pad = deles.find(m => m.tipos && m.tipos.includes(item.type)) || deles.find(m => m.precisaAba) || deles[0];
+      // pronta: a mensagem pronta daquele trâmite (vence um modelo do mesmo trâmite que é só um pedido, como "Pedir atestado")
+      const doTipo = m => m.tipos && m.tipos.includes(item.type);
+      const pad = deles.find(m => doTipo(m) && m.pronta) || deles.find(m => m.precisaAba) || deles.find(m => m.pronta) || deles.find(doTipo) || deles[0];
       const padrao = pad ? pad.texto : TEXTO_BASE[x.tom] || TEXTO_BASE.esc;
-      return { sit: x.sit, rot: x.rot, onvio: x.onvio, tom: x.tom, efeito: x.efeito, texto: meu ? meu.texto : padrao, padrao, pessoal: meu, completa: !meu && x.tom !== 'int' };
+      return { sit: x.sit, rot: x.rot, onvio: x.onvio, tom: x.tom, efeito: x.efeito, texto: meu ? meu.texto : padrao, padrao, pessoal: meu, completa: !meu && x.tom !== 'int' && x.tom !== 'fim' && !(pad && pad.encerra) };
     });
   }
   // Observações para o cliente que a mensagem ainda NÃO diz. Fora as que repetem o texto: o mesmo trecho, a mesma data ou a mesma
@@ -2718,11 +2727,10 @@
     if (m.length) out.push({ bloqueia: true, msg: 'Falta preencher: ' + m.join(', ') });
     if (t && sit) {
       const ints = intencoesDe(item || { type: 'geral', code: 1 }, settings);
-      const atual = ints.find(x => x.sit === sit), fim = ints.find(x => x.lado === 'fim'), cli = ints.find(x => x.pedeCliente);
+      const atual = ints.find(x => x.sit === sit), cli = ints.find(x => x.pedeCliente);
       if (atual) {
         const pede = pedeAlgoAoCliente(t, settings).pede;
         if (pede && atual.lado === 'fim' && cli) out.push({ msg: 'O texto pede algo ao cliente, mas "' + atual.onvio + '" encerra a solicitação. Prefira "' + cli.onvio + '".' });
-        else if (!pede && atual.pedeCliente && fim) out.push({ msg: 'O texto não pede nada ao cliente. Se a solicitação terminou, prefira "' + fim.onvio + '"; senão ela fica aguardando o cliente.' });
       }
     }
     return out;
@@ -2990,5 +2998,5 @@
     };
   }
 
-  g.OC = { montarLoteHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, dentroDoHorario, planoDistribuicaoAuto, acaoConcluir, agruparSugestoes, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, acaoAnalise, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, mensagensProntas, marcadoresPendentes, observacoesFaltantes, avisosResposta, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { montarLoteHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, dentroDoHorario, planoDistribuicaoAuto, acaoConcluir, agruparSugestoes, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, acaoAnalise, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, mensagensProntas, marcadoresPendentes, observacoesFaltantes, avisosResposta, situacaoEquivalente, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);
