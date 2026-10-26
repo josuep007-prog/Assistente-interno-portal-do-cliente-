@@ -1676,7 +1676,7 @@
     unionContribution: 'Contribuição sindical', costCenter: 'Centro de custo', jobPosition: 'Cargo', department: 'Departamento', hireDate: 'Admissão',
     clientEmployeeRelationship: 'Vínculo', employeeName: 'Empregado', clientEmployeeName: 'Empregado', rubricCode: 'Código da rubrica', rubricName: 'Rubrica',
     hoursQuantity: 'Quantidade de horas', daysQuantity: 'Quantidade de dias', basis: 'Competência',
-    employeeWorkload: 'Carga horária', integrationCode: 'Código de integração', esocialCode: 'Código no eSocial', esocialRegistration: 'Matrícula no eSocial',
+    employeeWorkload: 'Carga horária', integrationCode: 'Código do empregado', esocialCode: 'Código no eSocial', esocialRegistration: 'Matrícula no eSocial',
     jobPositionCode: 'Código do cargo', jobCode: 'Código do cargo', employeeCode: 'Código do empregado', clientEmployeeCode: 'Código do empregado',
     sex: 'Sexo', socialSecurityNumber: 'NIS/PIS', nis: 'NIS', cnpj: 'CNPJ', tradeName: 'Nome fantasia', companyName: 'Razão social', legalName: 'Razão social'
   });
