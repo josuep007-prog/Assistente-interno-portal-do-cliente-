@@ -2697,3 +2697,145 @@ test('detalhe mais rápido: com o id já lido, dados e trâmites saem junto com 
   const linhas = await new Promise(res => ouvintes[0]({ cmd: 'testarLeitura' }, { tab: { id: 5 } }, res));
   assert.match(JSON.stringify(linhas), /Abrir solicitação \(últimas 1\).*em paralelo/);
 });
+
+/* ---------- Control Hub: conjuntos completos (0.52.0) ---------- */
+const CPF_T = '123.456.789-09', NOME_T = 'Fulana de Tal', TOKEN_T = 'TOKEN-SEGREDO-123';
+function apiHub() {
+  const pagina = (arr, u) => { const per = Number(u.searchParams.get('itemsPerPage')) || 200, pg = Number(u.searchParams.get('pageIndex')) || 1; return { items: arr.slice((pg - 1) * per, pg * per), totalItems: arr.length, totalPages: Math.max(1, Math.ceil(arr.length / per)) }; };
+  const geral = Array.from({ length: 5 }, (_, i) => ({ id: 'g' + i, identifier: 100 + i, genericStatus: 1, created: '2026-10-01T10:00:00', lastUpdated: '2026-10-02T10:00:00', subject: 'Assunto ' + i, description: 'Texto\ncom quebra\te tab ' + NOME_T, requestWay: 'OTHER', departmentId: 'dep-1', clientExpanded: { id: 'c1', name: 'ACME', nickname: 'AC', code: 7, isOnvio: true, sendingEsocial: false, allowEmployeeRegistration: true }, staffResponsibleExpanded: { id: 'r1', name: 'Ana' }, requesterExpanded: { name: NOME_T } }));
+  const emp = Array.from({ length: 3 }, (_, i) => ({ id: 'e' + i, identifier: 200 + i, genericStatus: 1, admissionDate: '2026-10-05', nationalIdentity: CPF_T, name: NOME_T, wage: 3500.5, clientExpanded: { id: 'c1', name: 'ACME', code: 7 }, staffResponsibleExpanded: null, comments: 'obs ' + NOME_T, registration: 'M1' }));
+  const calc = [{ id: 'k1', identifier: 300, genericStatus: 1, created: '2026-10-01T10:00:00', clientEmployeeExpanded: { name: NOME_T, cpf: CPF_T, hireDate: '2020-01-01', status: 'ACTIVE', integrationCode: 55 }, clientExpanded: { id: 'c1', name: 'ACME', code: 7 }, resignationDate: '2026-10-20', terminationType: 'WORKED', terminationReasonId: 4 }];
+  return async url => {
+    const u = new URL(url), p = u.pathname.replace('/api/', '');
+    if (p === 'service-requesting/v1/tickets/generic') return pagina(geral, u);
+    if (p === 'br-payroll-sr/v1/employees-registrations') return pagina(emp, u);
+    if (p === 'br-payroll-sr/v1/termination-calculations') return pagina(calc, u);
+    if (/^br-payroll-sr\/v1\/(taxpayers-registrations|interns-registrations|prior-notice-vacations|vacation-calculations|prior-notice-terminations|employee-leave)$/.test(p) || p === 'br-payroll-sr/v1/payroll-entries') return pagina([], u);
+    if (p === 'cnd/v1/clients') return pagina([{ id: 'n1', clientName: 'ACME', code: 7, clientStatus: 'ACTIVE', nationalIdentity: '11222333000144', municipalInscription: 123, stateInscription: 456, stateInitials: 'SP', cityIbgeIdentifier: 3550308, documentType: 'CNPJ', isOnvio: true }], u);
+    if (p === 'manifesto/v1/clients') return pagina([{ id: 'm1', name: 'ACME', nickname: 'AC', code: 7, active: true, clientStatus: 'ACTIVE', nationalIdentity: '11222333000144', uf: 'SP', certificateExpanded: { validTo: '2027-03-01T00:00:00' } }], u);
+    if (p === 'security/v1/session-and-bindings') return { UdsSession: { SeamlessAuthenticationToken: TOKEN_T, LongToken: 'LONG-SEGREDO', EmailAddress: 'a@b.c', FirstName: 'Ana', LastName: 'Teste' }, UdsSessionBindings: { RoutingTable: { 'br-payroll-sr': 'https://payroll.onvio.com.br/x?token=SEGREDO' }, FeatureResourcePermissions: { FeatureResourcePermissionsMap: { BRAtendimento: { ServiceRequestGeneric: 'Granted' } } }, ApplicationConfiguration: { CompanyId: 'emp1' }, InfrastructureAccessControls: ['BR_ShowOnvioMessenger'] } };
+    if (p === 'br-default-department/v1/department') return { content: [{ departmentId: 'dep-1', code: 6, name: 'Pessoal', departmentDefault: true, created: '2025-01-01T00:00:00' }] };
+    if (p === 'br-payroll-sr/v1/company-department-access') return { departmentId: 'dep-1', companyId: 'emp1' };
+    if (p === 'br-payroll-sr/v1/employee-leave-types') return [{ id: 1, description: 'Doença', enableCat: false, visible: true }];
+    if (p === 'service-requesting/v1/ticket-prescriptions') return { prescribePendingTickets: true, prescribePendingTicketsDays: 30 };
+    if (p === 'provisioning/v1/licenses') return { featureResources: [{ feature: 'BRAtendimento', resource: 'Portal' }] };
+    if (p === 'storage/v1/folders') return { data: [{ id: 'f1', name: 'Clientes', rootType: 'Client', documentCount: 10, readUserCount: 2, isShared: true, createdDate: '2026-01-01T10:00:00', createdBy: { name: 'Ana' } }] };
+    if (p === 'br-news/v1/articles/shared') return { items: [{ id: 'a1', title: 'Aviso', tagline: 'Resumo', publishDate: '2026-10-10T08:00:00', published: true, visible: true, sharedWith: 'ALL', status: 'PUBLISHED', content: 'Texto da notícia' }] };
+    const e = new Error('sem rota simulada: ' + p); e.status = 404; throw e;
+  };
+}
+const todasCategorias = () => OC.HUB_CATEGORIAS.map(c => c.id);
+
+test('Hub: por padrão os dados pessoais ficam desligados e as demais categorias ligadas', () => {
+  const pessoais = OC.HUB_CATEGORIAS.filter(c => c.pessoal);
+  assert.deepEqual(plano(pessoais.map(c => c.id)), ['pessoais']);
+  assert.equal(pessoais[0].padrao, false);
+  assert.ok(OC.HUB_CATEGORIAS.filter(c => !c.pessoal).every(c => c.padrao));
+});
+
+test('Hub: partirTabela parte entre linhas, respeita o limite e nunca devolve zero partes', () => {
+  const linhas = Array.from({ length: 50 }, (_, i) => 'linha-' + i + '\tx'.repeat(20));
+  const partes = OC.partirTabela(linhas, 300);
+  assert.ok(partes.length > 3);
+  assert.ok(partes.every(p => p.length <= 300));
+  assert.equal(partes.join('\n').split('\n').length, 50, 'nenhuma linha perdida ou cortada ao meio');
+  assert.deepEqual(plano(OC.partirTabela([], 100)), ['']);
+});
+
+test('Hub: sem a categoria de dados pessoais, nada pessoal é lido nem enviado', async () => {
+  const enviados = [];
+  const res = await OC.hubExecutar(apiHub(), todasCategorias().filter(c => c !== 'pessoais'), { pausa: null, snapshot: { items: [] } }, async (c, p) => { enviados.push({ c, p }); return { ok: true }; });
+  assert.equal(enviados.length, 23, 'envia 10 listas, 2 de clientes, 9 do escritório, as pastas e as notícias');
+  assert.ok(enviados.every(x => x.c.categoria !== 'pessoais'));
+  const texto = JSON.stringify(enviados.map(x => x.p.partes));
+  for (const proibido of [CPF_T, NOME_T, '3500.5', 'obs ', 'Assunto 1', 'com quebra']) assert.ok(!texto.includes(proibido), 'vazou: ' + proibido);
+  assert.ok(res.every(r => r.ok));
+});
+
+test('Hub: nunca vão tokens, e-mail nem dados da sessão (UdsSession), mesmo com tudo ligado', async () => {
+  const enviados = [];
+  const snapshot = { items: [] };
+  await OC.hubExecutar(apiHub(), todasCategorias(), { pausa: null, snapshot }, async (c, p) => { enviados.push(p.partes.join('\n')); return { ok: true }; });
+  const texto = enviados.join('\n');
+  for (const segredo of [TOKEN_T, 'LONG-SEGREDO', 'a@b.c', 'SEGREDO']) assert.ok(!texto.includes(segredo), 'vazou: ' + segredo);
+  assert.ok(texto.includes('ServiceRequestGeneric\tGranted'), 'as permissões vão');
+  assert.ok(texto.includes('br-payroll-sr\tpayroll.onvio.com.br'), 'o serviço vai só com o host, sem caminho nem parâmetros');
+});
+
+test('Hub: listas completas trazem os campos da lista (sem pessoais) e uma linha por solicitação', async () => {
+  let achou = null;
+  await OC.hubExecutar(apiHub(), ['listas'], { pausa: null, snapshot: { items: [] } }, async (c, p) => { if (c.tipoDado === 'lista-geral') achou = { c, p }; return { ok: true }; });
+  assert.ok(achou);
+  assert.equal(achou.c.categoria, 'listas');
+  assert.equal(achou.p.nLinhasTotal, 5);
+  const [cab, ...lin] = [achou.c.colunas, ...achou.p.partes[0].split('\n').map(l => l.split('\t'))];
+  assert.equal(lin.length, 5);
+  assert.ok(lin.every(l => l.length === cab.length), 'todas as linhas têm o número de colunas do cabeçalho');
+  const col = n => cab.indexOf(n);
+  assert.equal(lin[0][col('Nº')], '100');
+  assert.equal(lin[0][col('Situação')], 'Sem análise');
+  assert.equal(lin[0][col('Vez')], 'escritório');
+  assert.equal(lin[0][col('Cliente usa o Onvio')], 'sim');
+  assert.equal(lin[0][col('Cliente envia eSocial')], 'não');
+  assert.equal(lin[0][col('Departamento (id)')], 'dep-1');
+});
+
+test('Hub: com a categoria pessoal, vão CPF, salário, nomes e textos (sem tab nem quebra de linha dentro da célula)', async () => {
+  const por = {};
+  await OC.hubExecutar(apiHub(), ['pessoais'], { pausa: null, snapshot: { items: [] } }, async (c, p) => { por[c.tipoDado] = { c, texto: p.partes.join('\n') }; return { ok: true }; });
+  assert.ok(por['pessoais-geral'].texto.includes(NOME_T));
+  assert.ok(por['pessoais-geral'].texto.includes('Texto com quebra e tab'), 'quebras viram espaço');
+  assert.ok(por['pessoais-cad-empregado'].texto.includes(CPF_T) && por['pessoais-cad-empregado'].texto.includes('3500.5'));
+  assert.ok(por['pessoais-calc-rescisao'].texto.includes(CPF_T) && por['pessoais-calc-rescisao'].texto.includes('\t55'), 'código do empregado no Domínio');
+  for (const x of Object.values(por).filter(y => y.texto)) assert.ok(x.texto.split('\n').every(l => l.split('\t').length === x.c.colunas.length), x.c.tipoDado + ': colunas por linha');
+  assert.ok(Object.values(por).every(x => x.c.categoria === 'pessoais'));
+});
+
+test('Hub: clientes de CND e NF-e trazem CNPJ, inscrições e a validade do certificado', async () => {
+  const por = {};
+  await OC.hubExecutar(apiHub(), ['clientes'], { pausa: null, snapshot: { items: [] } }, async (c, p) => { por[c.tipoDado] = p.partes.join('\n'); return { ok: true }; });
+  assert.ok(por['clientes-cnd'].includes('11222333000144\t123\t456\tSP\t3550308'));
+  assert.ok(por['clientes-nfe'].includes('sim\t2027-03-01'));
+});
+
+test('Hub: pendentes (dados completos traduzidos e trâmites) respeitam o limite e só entram com a categoria pessoal', async () => {
+  const itens = Array.from({ length: 5 }, (_, i) => ({ k: 'geral:g' + i, type: 'geral', typeLabel: 'Geral', id: 'g' + i, num: 100 + i, grav: i, nivel: 1 }));
+  const base = apiHub();
+  const f = async url => {
+    const u = new URL(url);
+    if (/\/tickets\/generic\/g\d$/.test(u.pathname)) return { id: 'g', subject: 'Assunto', description: 'Texto ' + NOME_T, genericStatus: 1, clientExpanded: { name: 'ACME', code: 7, id: 'c1' } };
+    if (/\/tickets\/g\d\/topics$/.test(u.pathname)) return { items: [{ id: 't1', created: '2026-10-01T10:00:00', status: 1, description: 'Abertura ' + NOME_T, createdByContactExpanded: { name: 'Cliente X' } }, { id: 't2', created: '2026-10-02T10:00:00', status: 2, description: 'Resposta', createdByContactExpanded: { name: 'Ana' } }] };
+    return base(url);
+  };
+  const por = {};
+  await OC.hubExecutar(f, ['pessoais'], { pausa: null, snapshot: { items: itens } }, async (c, p) => { por[c.tipoDado] = { c, p, texto: p.partes.join('\n') }; return { ok: true }; });
+  const tr = por['pessoais-pendentes-tramites'], dados = por['pessoais-pendentes-dados'];
+  assert.equal(tr.p.nLinhasTotal, 10, '5 pendentes x 2 trâmites');
+  assert.ok(tr.texto.includes('Abertura ' + NOME_T) && tr.texto.includes('\tcliente\t') && tr.texto.includes('\tescritório\t'));
+  assert.ok(dados.texto.includes('Assunto') && dados.texto.includes('Texto ' + NOME_T));
+});
+
+test('Hub: falha de leitura de uma tarefa não derruba as outras e vira motivo no resultado', async () => {
+  const base = apiHub();
+  const f = async url => { if (url.includes('cnd/v1/clients')) { const e = new Error('Erro 500'); throw e; } return base(url); };
+  const res = await OC.hubExecutar(f, ['clientes'], { pausa: null, snapshot: { items: [] } }, async () => ({ ok: true }));
+  const cnd = res.find(r => r.id === 'clientes:cnd'), nfe = res.find(r => r.id === 'clientes-nfe');
+  assert.equal(cnd.ok, false);
+  assert.match(cnd.motivo, /leitura/);
+  assert.equal(nfe.ok, true);
+});
+
+test('Hub: acesso de cliente (401/403) interrompe tudo e não segue lendo', async () => {
+  const f = async () => { const e = new Error('Sem acesso'); e.auth = true; throw e; };
+  await assert.rejects(OC.hubExecutar(f, ['listas'], { pausa: null, snapshot: { items: [] } }, async () => ({ ok: true })));
+});
+
+test('Hub: conjunto grande vira várias partes dentro do limite e marca o corte acima do máximo', () => {
+  const linhas = Array.from({ length: 4000 }, (_, i) => 'x'.repeat(100) + i);
+  const p = OC.hubPartesDe({ linhas, cortado: false });
+  assert.ok(p.partes.length > 1 && p.partes.every(x => x.length <= 140000));
+  assert.equal(p.nLinhasTotal, 4000);
+  const enorme = OC.hubPartesDe({ linhas: Array.from({ length: 100 }, () => 'y'.repeat(139000)), cortado: false });
+  assert.equal(enorme.partes.length, 80);
+  assert.equal(enorme.cortado, true);
+});
