@@ -2599,6 +2599,21 @@ test('aba Dados: cadastro de admissão (dados pessoais e profissionais) sem nenh
   for (const c of g.grupos.flatMap(x => x.campos)) assert.doesNotMatch(c.k + ' ' + c.v, ingles, c.k + ' = ' + c.v);
 });
 
+test('textos de férias e rescisão: o prazo de 10 dias vale também para entregar os documentos ao empregado, e nada pede documento assinado de volta (o DP não recebe)', () => {
+  const D = OC.DEFAULTS, obs = D.observacoes;
+  for (const k of ['avisoRescisao', 'calcRescisao']) assert.match(obs[k][0], /pagas e os documentos de rescisão entregues ao empregado em até \{pagamentoRescisaoDias\} dias corridos/, k);
+  assert.equal(obs.calcRescisao.length, 1, 'sem o pedido do comprovante e do termo de rescisão assinado');
+  assert.equal(obs.calcFerias.length, 1, 'sem o pedido do recibo de férias assinado');
+  // nenhum texto padrão de férias e rescisão (observações, modelos, sugestões) pede documento assinado ou comprovante de volta
+  const textos = [].concat(obs.avisoFerias, obs.calcFerias, obs.avisoRescisao, obs.calcRescisao, D.modelosTramite.filter(m => (m.tipos || []).some(t => /Ferias|Rescisao/.test(t))).map(m => m.texto), [D.textosSugestao.feriasAnalise, D.textosSugestao.rescisaoAnalise]);
+  for (const t of textos) assert.doesNotMatch(String(t), /assinad[oa]s?\b|comprovante|termo de rescis/i, String(t).slice(0, 80));
+  // a mensagem pronta de "Concluído" do cálculo de rescisão (as observações entram na caixa): pagamento + documentos, sem pedir o termo assinado de volta
+  const item = { type: 'calcRescisao', typeLabel: 'Cálculo de rescisão', code: 1, lado: 'esc', apelido: 'ACME', cliente: 'ACME LTDA', detalhe: 'FULANO', datas: { desligamento: '2026-10-15' } };
+  const m = OC.mensagensProntas(item, {}, []).find(x => x.sit === 5);
+  assert.match(m.texto, /pagamento das verbas rescisórias e a entrega dos documentos de rescisão ao empregado/);
+  assert.doesNotMatch(m.texto, /assinad|comprovante/i);
+});
+
 test('mensagem pronta: uma por trâmite, a do escritório mais específica, a da pessoa no lugar quando existe', () => {
   const ger = { type: 'geral', code: 1, lado: 'esc' };
   const ms = OC.mensagensProntas(ger, {}, []);

@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.47.0)
+# Control Onvio · ControlTax (v0.48.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,11 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.48.0 (textos de rescisão e férias)
+- **Rescisão:** o prazo de 10 dias corridos (CLT, art. 477, §6º) vale também para a **entrega dos documentos de rescisão ao empregado**. Os textos que falam do pagamento (observações do aviso e do cálculo de rescisão e a mensagem pronta "Concluído" do cálculo) agora dizem as duas coisas: "as verbas rescisórias devem ser pagas e os documentos de rescisão entregues ao empregado em até 10 dias corridos…".
+- **Saiu o pedido de documento assinado de volta:** "Depois do pagamento, envie o comprovante e o termo de rescisão assinado" (cálculo de rescisão) e "envie o recibo de férias assinado pelo empregado" (cálculo de férias). O DP não recebe documento assinado de volta em nenhum processo. Ficou como está o "termo de compromisso assinado" do estágio (é exigência do estágio, não um pedido de devolução): diga se também deve sair.
+- Quem usa o arquivo de regras do escritório (`observacoes`, `modelosTramite`) com esses textos precisa ajustar lá também.
 
 ## Novidades da v0.47.0 (só abre no Portal do Cliente)
 - **A extensão só abre dentro de `onvio.com.br/br-portal-do-cliente/`.** Saiu das telas `/staff/` do Onvio (a camada em tela cheia e o botão flutuante não aparecem mais nelas).

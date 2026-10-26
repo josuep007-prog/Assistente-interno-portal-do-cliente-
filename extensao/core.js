@@ -215,7 +215,8 @@
       { rot: 'Falta informação', situacao: 4, texto: '{saudacao}! Para seguirmos com a solicitação, precisamos de mais informações: (descreva o que falta). Pode complementar por aqui, por favor?' },
       { rot: 'Pedir documento', situacao: 4, texto: '{saudacao}! Para seguirmos, precisamos que envie: (descreva o documento). Pode anexar por aqui, por favor?' },
       { rot: 'Concluído', situacao: 5, texto: '{saudacao}! Solicitação concluída. Qualquer dúvida, estamos à disposição.' },
-      { rot: 'Cálculo concluído', situacao: 5, tipos: ['calcFerias', 'calcRescisao'], texto: '{saudacao}! O {tipo} de {empregado} foi concluído e segue em anexo. O pagamento deve ser feito até {pagamento}.' },
+      { rot: 'Cálculo concluído', situacao: 5, tipos: ['calcFerias'], texto: '{saudacao}! O {tipo} de {empregado} foi concluído e segue em anexo. O pagamento deve ser feito até {pagamento}.' },
+      { rot: 'Cálculo concluído', situacao: 5, tipos: ['calcRescisao'], texto: '{saudacao}! O {tipo} de {empregado} foi concluído e segue em anexo. O pagamento das verbas rescisórias e a entrega dos documentos de rescisão ao empregado devem ser feitos até {pagamento}.' },
       { rot: 'Resolvida fora do portal', situacao: 5, texto: 'Pelo que consta, esta solicitação já foi resolvida fora do portal. Estamos concluindo por aqui. Se ainda precisar de algo, é só abrir uma nova solicitação.' },
       { rot: 'Lista errada', situacao: 2, precisaAba: true, texto: '{saudacao}! Este pedido tem uma aba própria no Portal do Cliente: {aba}. Nas próximas vezes, por favor, abra a solicitação por lá, com os campos preenchidos, para conseguirmos atender dentro do prazo. Esta já está em análise e seguimos com ela por aqui.' },
       { rot: 'Repete outra solicitação', situacao: 5, texto: 'Esta solicitação repete a nº {numero}, que já está em atendimento. Seguimos por lá e estamos concluindo esta.' },
@@ -240,17 +241,15 @@
         'Se o empregado for vender 1/3 das férias (abono pecuniário) ou adiantar a 1ª parcela do 13º, informe na solicitação.'
       ],
       calcFerias: [
-        'O pagamento das férias deve ser feito até {pagamentoFerias} (no mínimo {pagamentoFeriasAntes} dias antes do início, em {inicio}; CLT, art. 145).',
-        'Depois do pagamento, envie o recibo de férias assinado pelo empregado.'
+        'O pagamento das férias deve ser feito até {pagamentoFerias} (no mínimo {pagamentoFeriasAntes} dias antes do início, em {inicio}; CLT, art. 145).'
       ],
       avisoRescisao: [
-        'Data do aviso: {aviso}. As verbas rescisórias devem ser pagas em até {pagamentoRescisaoDias} dias corridos após o término do contrato (CLT, art. 477, §6º).',
+        'Data do aviso: {aviso}. As verbas rescisórias devem ser pagas e os documentos de rescisão entregues ao empregado em até {pagamentoRescisaoDias} dias corridos após o término do contrato (CLT, art. 477, §6º).',
         'Para não perder o prazo, solicite o cálculo de rescisão assim que o último dia de trabalho estiver definido.',
         'Lembre de agendar o exame demissional, quando exigido.'
       ],
       calcRescisao: [
-        'As verbas rescisórias devem ser pagas em até {pagamentoRescisaoDias} dias corridos após o término do contrato (CLT, art. 477, §6º).',
-        'Depois do pagamento, envie o comprovante e o termo de rescisão assinado.'
+        'As verbas rescisórias devem ser pagas e os documentos de rescisão entregues ao empregado em até {pagamentoRescisaoDias} dias corridos após o término do contrato (CLT, art. 477, §6º).'
       ],
       afastamento: [
         'Os primeiros 15 dias de afastamento por doença são pagos pela empresa; a partir do 16º dia, o empregado deve ser encaminhado ao INSS.',
