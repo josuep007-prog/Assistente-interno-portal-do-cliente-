@@ -366,6 +366,34 @@ const irTramites = async p => { await p.waitForSelector('#gaveta .dtab'); if (!a
 const abrirCaixa = async p => { await irTramites(p); await p.waitForSelector('#cmp'); if (await p.$('#cmp-rec[aria-expanded="false"]')) await p.click('#cmp-rec'); await p.waitForSelector('#a-texto'); };
 const linhas = (p, sel) => p.$$eval(sel || '#corpo [data-k]', e => e.map(x => x.dataset.k));
 
+await passo('app · listas que antes cortavam (Sugestões do Hoje, Sem analista da Equipe): mostram tudo e rolam por dentro, sem "Ver todas", nos dois estilos', async () => {
+  const muitas = Array.from({ length: 14 }, (_, n) => ({ k: 'geral:m' + n, type: 'geral', typeLabel: 'Geral', id: 'm' + n, num: 200 + n, status: 'Aguardando resposta', lado: 'esc', nivel: 0, grav: 0, parado: 1, motivos: [], resp: n % 2 ? '' : 'Ana Teste', mine: n % 2 === 0, apelido: 'EMP' + n, cliente: 'EMPRESA ' + n, detalhe: 'Férias ' + n, abaProvavel: { tipo: 'avisoFerias', label: 'Aviso de férias', palavra: 'ferias' }, created: agoraIso(3), last: agoraIso(1) }));
+  const extra = { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: muitas }) };
+  for (const estilo of ['atual', 'simples']) {
+    const p = await abrirApp('#/inicio', extra, undefined, { estilo });
+    await p.evaluate(() => { window.__respostas = Object.assign(window.__respostas || {}, { casos: { ok: true, analises: {}, lidas: 14 }, detalhe: { ok: true, item: {}, tramites: [] } }); });
+    await p.click('#hj-carteira').catch(() => {});
+    await p.selectOption('#hj-carteira', '__equipe').catch(() => {});
+    await p.waitForFunction(() => document.querySelectorAll('#hj-sug .cs-l').length >= 9, null, { timeout: 6000 });
+    const n = await p.$$eval('#hj-sug .cs-l', e => e.length);
+    assert.ok(n >= 9, estilo + ': todas as sugestões estão na lista, não só 8 (' + n + ')');
+    assert.equal(await p.$('#sg-mais'), null, estilo + ': sem o botão Ver todas');
+    assert.doesNotMatch(await p.textContent('#hj-sug'), /Ver todas|Mostrar menos/);
+    const r = await p.$eval('#hj-sug .sg-lista', e => ({ passa: e.scrollHeight > e.clientHeight + 2, oy: getComputedStyle(e).overflowY, h: e.clientHeight }));
+    assert.equal(r.passa, true, estilo + ': a lista passa da caixa e rola por dentro');
+    assert.equal(r.oy, 'auto');
+    assert.ok(r.h <= 440, estilo + ': a caixa tem altura limitada (' + r.h + ')');
+    // "Não é o caso" no meio da lista não volta ao topo
+    await p.$eval('#hj-sug .sg-lista', e => { e.scrollTop = 150; });
+    const ks = await p.$$eval('#hj-sug [data-cs-ignorar]', e => e.map(x => x.dataset.csIgnorar));
+    await p.click('#hj-sug [data-cs-ignorar="' + ks[ks.length - 1] + '"]');
+    await p.waitForFunction(k => !document.querySelector('#hj-sug [data-cs-ignorar="' + k + '"]'), ks[ks.length - 1]);
+    assert.ok(await p.$eval('#hj-sug .sg-lista', e => e.scrollTop) > 100, estilo + ': a rolagem fica onde estava');
+    if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/sugestoes-rolagem-' + estilo + '.png' });
+    await p.close();
+  }
+});
+
 await passo('app · Hoje (analista): destaque com rosca, carrossel e próximos passos; painéis de avisos, sugestões e previsão; sem os painéis de vencimentos e de uso do portal', async () => {
   const p = await abrirApp('#/inicio', undefined, undefined, { estilo: 'atual' });      // o destaque com carrossel e legenda é do estilo Atual (o Simplificado tem passo próprio)
   await p.evaluate(() => { window.__respostas = Object.assign(window.__respostas || {}, { casos: { ok: true, analises: {}, lidas: 2 }, detalhe: { ok: true, item: {}, tramites: [] }, previsao: { ok: true, dias: 28, total: 12, prox30: 13, erros: [], empresas: [{ cliente: 'ACME LTDA', apelido: 'ACME', total: 8, porSemana: 2, prox7: 3, prox30: 11, tendencia: 'sobe', tipos: [{ tipo: 'Geral', n: 5 }, { tipo: 'Cálculo de férias', n: 3 }] }] } }); });

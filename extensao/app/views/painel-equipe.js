@@ -40,10 +40,10 @@ export function distribuicaoHtml() {
   const sem = porPrioridade(it.filter(i => !i.resp));
   const sug = new Map(OC.sugerirDistribuicao(it).map(s => [s.k, s]));
   const cargas = [...OC.cargaEscritorio(it).entries()].sort((a, b) => (a[1] - b[1]) || a[0].localeCompare(b[0], 'pt-BR'));
-  return '<section class="card" id="distribuicao"><div class="card-h"><h3>Sem analista: sugestão de distribuição</h3><span class="sub">' + plural(sem.length, 'solicitação', 'solicitações') + '</span><a href="#/fila?escopo=semresp">Ver todas</a></div><div class="card-b">' +
+  return '<section class="card" id="distribuicao"><div class="card-h"><h3>Sem analista: sugestão de distribuição</h3><span class="sub">' + plural(sem.length, 'solicitação', 'solicitações') + '</span></div><div class="card-b">' +
     (sem.length
       ? (cargas.length ? '<p class="dist-res">Menos carregados agora: ' + cargas.slice(0, 4).map(([r, c]) => '<b>' + esc(r) + '</b> (' + c + ')').join(', ') + '. Carga = pendências na vez do escritório, pesadas pela gravidade.</p>' : '') +
-        '<div class="dist" id="l-dist">' + sem.slice(0, 8).map(i => { const s = sug.get(i.k); return '<div class="dist-i lvl-' + nivelLegal(i) + '" tabindex="0" data-k="' + esc(i.k) + '"><div class="tx"><div class="m-top"><span class="mono">#' + esc(i.num) + '</span><span>' + esc(i.typeLabel) + '</span></div><b>' + esc(i.apelido || i.cliente || '—') + ' <span class="fraco">· ' + (i.parado || 0) + 'd parada</span></b></div>' + (s ? '<span class="sug">sugerido: <b>' + esc(s.sugerido) + '</b><small>carga ' + s.carga + '</small></span>' : '') + '</div>'; }).join('') + '</div>' +
+        '<div class="dist" id="l-dist">' + sem.map(i => { const s = sug.get(i.k); return '<div class="dist-i lvl-' + nivelLegal(i) + '" tabindex="0" data-k="' + esc(i.k) + '"><div class="tx"><div class="m-top"><span class="mono">#' + esc(i.num) + '</span><span>' + esc(i.typeLabel) + '</span></div><b>' + esc(i.apelido || i.cliente || '—') + ' <span class="fraco">· ' + (i.parado || 0) + 'd parada</span></b></div>' + (s ? '<span class="sug">sugerido: <b>' + esc(s.sugerido) + '</b><small>carga ' + s.carga + '</small></span>' : '') + '</div>'; }).join('') + '</div>' +
         '<p class="card-nota">Só sugestão: defina o responsável no Onvio.</p>'
       : '<div class="vazio" style="padding:10px 0"><b>Todas as solicitações têm analista</b>Quando chegar uma sem responsável, a sugestão aparece aqui.</div>') +
     '</div></section>';
@@ -52,7 +52,7 @@ export function distribuicaoHtml() {
 /* ---------- liga o que estiver na tela (Equipe) ---------- */
 export function ligarEquipe(el, ctx) {
   const dist = $('#l-dist', el);
-  if (dist) ligarItens(dist, porPrioridade(itens().filter(i => !i.resp)).slice(0, 8), ctx.abrirDetalhe);
+  if (dist) ligarItens(dist, porPrioridade(itens().filter(i => !i.resp)), ctx.abrirDetalhe);
   const mapa = $('#mapa-idade', el);
   if (mapa) mapa.addEventListener('click', e => { const c = e.target.closest('[data-col]'); if (c && !c.disabled) ctx.navegar('fila', Object.assign(c.dataset.id === SEM ? { escopo: 'semresp' } : { analista: c.dataset.id }, { idade: c.dataset.col })); });
 }

@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.44.0)
+# Control Onvio · ControlTax (v0.45.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,11 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.45.0 (listas rolam, sem "Ver todas")
+- **Listas inteiras com barra de rolagem.** As Sugestões de ação do Hoje não cortam mais em 8 com o botão "Ver todas": mostram todas e rolam por dentro da caixa (cerca de 8 linhas à vista). O mesmo vale para "Sem analista: sugestão de distribuição" (Equipe, sem o link "Ver todas"), a Previsão por empresa (antes só 10 empresas, com o cabeçalho fixo) e o registro da distribuição automática (antes 30, agora todos os guardados).
+- Ao tirar uma sugestão com "Não é o caso" (ou quando a leitura ao vivo redesenha a tela), a lista fica onde estava, sem voltar ao topo.
+- Vale nos dois estilos, Atual e Simplificado (em telas baixas a caixa fica menor). Fora desta regra: o "Ver tudo" do texto de um trâmite (texto longo, não lista) e o carrossel do destaque.
 
 ## Novidades da v0.44.0 (Mensagem pronta, aba Dados e leitura mais rápida)
 

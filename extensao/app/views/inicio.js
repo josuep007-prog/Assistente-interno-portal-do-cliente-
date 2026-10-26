@@ -27,11 +27,10 @@ const recolhidosLidos = () => { try { return JSON.parse(lerPref('hojeRecolhidos'
 const recolhido = id => { const r = recolhidosLidos(); return id in r ? !!r[id] : id === 'hj-prev'; };
 const gravarRecolhido = (id, rec) => gravarPref('hojeRecolhidos', JSON.stringify(Object.assign(recolhidosLidos(), { [id]: rec })));
 
-// Sugestões de ação: lista única com filtro por categoria (lembrado neste navegador) e "Ver todas"; ordem do que depende do
+// Sugestões de ação: lista única com filtro por categoria (lembrado neste navegador) e rolagem (todas na lista, sem "Ver todas"); ordem do que depende do
 // escritório (orientar, pôr em análise, pedir) para a limpeza (concluir sem retorno, resolvida fora)
-let filtroSug = lerPref('hojeSugFiltro', ''), sugTodas = false;
+let filtroSug = lerPref('hojeSugFiltro', '');
 const PRIO_SUG = ['abaErrada', 'feriasNova', 'rescisaoNova', 'falta', 'anexo', 'duplicada', 'avisoTrabalhado', 'fora', 'semRetorno'];
-const SUG_VISIVEIS = 8;
 
 let casosAtuais = [];      // as sugestões da última tela desenhada (o modo foco lê daqui, para saber o que já saiu)
 
@@ -160,7 +159,6 @@ export function render(el, ctx) {
     const hora = casosEm ? new Date(casosEm).toTimeString().slice(0, 5) : '';
     const situacao = casosLendo ? 'Conferindo os trâmites…' : casosErro ? 'Não deu para ler os trâmites: ' + casosErro : hora ? 'Trâmites conferidos às ' + hora : '';
     const lista = ordemSug().filter(c => !f || c.tipo === f);
-    const visiveis = sugTodas ? lista : lista.slice(0, SUG_VISIVEIS);
     // filtro por categoria, com a contagem
     const chips = '<div class="sg-filtros" role="group" aria-label="Filtrar sugestões">' +
       '<button type="button" class="sg-chip' + (!f ? ' on' : '') + '" data-sg-f="" aria-pressed="' + !f + '">Todas <b>' + casos.length + '</b></button>' +
@@ -185,10 +183,9 @@ export function render(el, ctx) {
           '<button type="button" class="icon-btn sg-nao" data-cs-ignorar="' + esc(i.k) + '" title="Não é o caso (sai das sugestões; volta se a solicitação mexer)" aria-label="Não é o caso">' + ic('x', 'ic-sm') + '</button>' +
         '</div></div>';
     };
-    const mais = lista.length > SUG_VISIVEIS ? '<button type="button" class="sg-mais" id="sg-mais">' + (sugTodas ? 'Mostrar menos' : 'Ver todas (' + lista.length + ')') + '</button>' : '';
     return painel('hj-sug', ic('chat', 'ic-sm') + ' Sugestões de ação' + (casos.length ? ' <span class="sc-n">' + casos.length + '</span>' : ''),
       'Uma lista só, do que depende do escritório para a limpeza. Filtre por categoria para fazer as de mesmo tipo de uma vez, ou revise uma a uma. A ação abre o trâmite já preenchido (você revisa e confirma) ou cria um lembrete seu.',
-      (casos.length ? chips + barraLote + '<div class="sg-lista">' + visiveis.map(linha).join('') + '</div>' + mais
+      (casos.length ? chips + barraLote + '<div class="sg-lista">' + lista.map(linha).join('') + '</div>'
         : vazio(casosLendo && !casosLidos ? 'Conferindo os trâmites das pendências…' : 'Nenhuma sugestão de ação por enquanto.')) +
       (situacao && (!simples() || casosErro) ? '<p class="hj-painel-nota" id="hj-sug-sit">' + esc(situacao) + '</p>' : ''),
       (casos.length ? '<button type="button" class="btn btn-sm" id="hj-sug-foco" title="Uma sugestão por vez, com o que será enviado (← → para andar)">' + ic('eye', 'ic-sm') + ' Revisar uma a uma</button>' : '') +
@@ -203,8 +200,8 @@ export function render(el, ctx) {
     else if (!fresca) corpo = '<div class="hj-painel-vazio">Lendo as últimas 4 semanas no Onvio…</div>';
     else if (previsao.erro) corpo = '<div class="hj-painel-vazio">Não foi possível ler: ' + esc(previsao.erro) + '</div>';
     else corpo = '<p class="hj-prev-tot">Escritório: <b>' + num(previsao.total) + '</b> abertas em 4 semanas · estimativa de <b>' + num(previsao.prox30) + '</b> nos próximos 30 dias</p>' +
-      '<table class="hj-prev"><thead><tr><th>Empresa</th><th class="num">Por semana</th><th class="num">Próx. 7 dias</th><th class="num">Próx. 30 dias</th><th>Mais pedidos</th></tr></thead><tbody>' +
-      previsao.empresas.slice(0, 10).map(e => '<tr><td>' + esc(e.apelido || e.cliente) + '</td><td class="num">' + String(e.porSemana).replace('.', ',') + '</td><td class="num">' + e.prox7 + '</td><td class="num"><b>' + e.prox30 + '</b> ' + seta(e.tendencia) + '</td><td class="fraco">' + esc(e.tipos.map(t => t.tipo).join(', ')) + '</td></tr>').join('') + '</tbody></table>';
+      '<div class="hj-prev-rola"><table class="hj-prev"><thead><tr><th>Empresa</th><th class="num">Por semana</th><th class="num">Próx. 7 dias</th><th class="num">Próx. 30 dias</th><th>Mais pedidos</th></tr></thead><tbody>' +
+      previsao.empresas.map(e => '<tr><td>' + esc(e.apelido || e.cliente) + '</td><td class="num">' + String(e.porSemana).replace('.', ',') + '</td><td class="num">' + e.prox7 + '</td><td class="num"><b>' + e.prox30 + '</b> ' + seta(e.tendencia) + '</td><td class="fraco">' + esc(e.tipos.map(t => t.tipo).join(', ')) + '</td></tr>').join('') + '</tbody></table></div>';
     return painel('hj-prev', ic('list', 'ic-sm') + ' Previsão de solicitações por empresa', 'Estimativa simples pela média das últimas 4 semanas, pesando mais as 2 mais recentes.', corpo,
       fresca ? '<button class="icon-btn" id="hj-prev-ler" title="Recalcular" aria-label="Recalcular">' + ic('refresh', 'ic-sm') + '</button>' : '');
   }
@@ -263,7 +260,7 @@ export function render(el, ctx) {
       const atr = OC.situacaoLembrete(l) === 'atrasado', h = new Date(l.quando);
       li.push('<li style="--i:' + (n++) + '"><div class="hj-step n-lem' + (atr ? ' late' : '') + '" tabindex="0" data-ag="lembrete|' + esc(l.id) + '"><i></i><span><b>' + esc(l.texto) + '</b><small>' + (atr ? 'Lembrete atrasado · ' + fmtDataHora(l.quando) : 'Lembrete · ' + String(h.getHours()).padStart(2, '0') + ':' + String(h.getMinutes()).padStart(2, '0')) + (l.rep && l.rep !== 'nao' ? ' · ' + esc(OC.REPETICOES[l.rep]) : '') + (l.num ? ' · #' + esc(l.num) + ' ' + esc(l.cliente) : '') + '</small></span><button class="btn btn-sm" data-feito title="Marcar como feito">' + ic('check', 'ic-sm') + ' Feito</button></div></li>');
     });
-    prio.slice(0, 8).forEach(p => {
+    prio.forEach(p => {
       const i = p.item;
       li.push('<li style="--i:' + (n++) + '"><div class="hj-step" tabindex="0" data-k="' + esc(i.k) + '" style="--c:' + cor(corMotivo[p.motivo]) + '"><i></i><span><b>' + esc(OC.acaoDe(i, p.motivo)) + '</b><small>#' + esc(i.num) + ' ' + esc(nomeCli(i)) + ' · ' + esc(i.typeLabel) + (cart === MINHA ? '' : ' · ' + esc(i.resp || 'sem analista')) + '</small></span>' + ic('chev-r', 'ic-sm') + '</div></li>');
     });
@@ -299,7 +296,7 @@ export function render(el, ctx) {
   ligarPrevisao();
   if (estado.snap && !previsaoLendo && (!previsao || Date.now() - previsaoEm > 30 * 60000)) { lerPrevisao(); const pv = $('#hj-prev .hj-painel-vazio', el); if (pv) pv.textContent = 'Lendo as últimas 4 semanas no Onvio…'; }
   // sugestões de ação: confere os trâmites sozinha ao abrir (no máximo a cada 10 min); só o painel é trocado na volta
-  const trocarSug = () => { const sec = $('#hj-sug', el); if (sec && el.isConnected) { const casosNovos = OC.casosSugeridos(base.concat(resolvidasBase), casosLidos, estado.settings, estado.sugIgnoradas); casos.splice(0, casos.length, ...casosNovos); sec.outerHTML = sugHtml(); ligarSug(); } };
+  const trocarSug = (noTopo) => { const sec = $('#hj-sug', el); if (sec && el.isConnected) { const rol = noTopo ? 0 : ($('.sg-lista', sec) || {}).scrollTop || 0; const casosNovos = OC.casosSugeridos(base.concat(resolvidasBase), casosLidos, estado.settings, estado.sugIgnoradas); casos.splice(0, casos.length, ...casosNovos); sec.outerHTML = sugHtml(); ligarSug(); const nova = $('#hj-sug .sg-lista', el); if (nova) nova.scrollTop = rol; } };
   const lerCasos = () => {
     casosLendo = true; casosErro = '';
     enviar({ cmd: 'casos' }).then(r => {
@@ -367,8 +364,7 @@ export function render(el, ctx) {
     if (!sec) return;
     ligarRec(sec);
     ligarItens(sec, casos.map(c => c.item), ctx.abrirDetalhe);
-    $$('[data-sg-f]', sec).forEach(b => b.onclick = () => { filtroSug = b.dataset.sgF; gravarPref('hojeSugFiltro', filtroSug); sugTodas = false; trocarSug(); });
-    if ($('#sg-mais', sec)) $('#sg-mais', sec).onclick = () => { sugTodas = !sugTodas; trocarSug(); };
+    $$('[data-sg-f]', sec).forEach(b => b.onclick = () => { filtroSug = b.dataset.sgF; gravarPref('hojeSugFiltro', filtroSug); trocarSug(true); });
     $$('[data-cs-acao]', sec).forEach(b => b.addEventListener('click', e => {
       e.stopPropagation();
       const c = casos.find(x => x.k === b.dataset.csAcao);
