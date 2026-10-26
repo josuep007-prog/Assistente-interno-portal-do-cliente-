@@ -3010,7 +3010,7 @@
     { id: 'escritorio', nome: 'Escritório e acesso', ajuda: 'Departamentos, seu acesso, tabelas de apoio, prescrição, conta, licenças, permissões, funcionalidades e serviços do Onvio. Sem tokens.', pessoal: false, padrao: true },
     { id: 'documentos', nome: 'Documentos', ajuda: 'Árvore de pastas do Onvio Drive (nomes, contagens, datas, quem leu).', pessoal: false, padrao: true },
     { id: 'noticias', nome: 'Notícias', ajuda: 'Artigos compartilhados com os clientes.', pessoal: false, padrao: true },
-    { id: 'pessoais', nome: 'Dados pessoais', ajuda: 'CPF, salário, nomes de empregados, assunto e descrição de todas as solicitações, dados completos e trâmites das pendentes, comunicações. Fica no banco do Hub, visível a quem acessa o Hub.', pessoal: true, padrao: false }
+    { id: 'pessoais', nome: 'Dados pessoais', ajuda: 'CPF, salário, nomes de empregados, a lista completa de empregados de cada empresa (uma leitura por empresa), assunto e descrição de todas as solicitações, dados completos e trâmites das pendentes, comunicações. Fica no banco do Hub, visível a quem acessa o Hub.', pessoal: true, padrao: false }
   ];
   const HUB_PARTE_CHARS = 140000;        // o Hub aceita até 150 mil por parte
   const HUB_PARTES_MAX = 80;
@@ -3081,6 +3081,42 @@
       if (pausa) await pausa(300);
     }
     return { itens, total };
+  }
+
+  // ----- empregados de cada cliente: a folha inteira da empresa, não só quem aparece numa solicitação (0.53.0) -----
+  // Uma leitura por cliente (só GET, com pausa). Os clientes vêm da lista da folha; os que as solicitações já mostraram entram também,
+  // para a lista não ficar vazia se a rota de clientes mudar. Falha de um cliente não derruba os outros; acesso de cliente interrompe tudo.
+  const HUB_CLIENTES_MAX = 3000;
+  const COLUNAS_EMPREGADOS = ['Id do cliente', 'Código do cliente', 'Cliente', 'Id', 'Nome', 'CPF', 'Admissão', 'Situação', 'Sexo', 'Cargo (código)', 'Carga horária', 'Código do empregado', 'Vínculo'];
+  const URL_EMPREGADOS = id => API + 'br-payroll-sr/v1/clients/' + encodeURIComponent(id) + '/employees?eprType=EMPLOYEE&eprType=INTERN&expand=clientEmployeeRelationshipExpanded';
+  async function lerClientesFolha(fetcher, pausa) {
+    const por = new Map();
+    for (let pagina = 1; pagina <= 60; pagina++) {
+      const d = await fetcher(API + 'br-payroll-sr/v1/clients?itemsPerPage=100&pageIndex=' + pagina + '&startIndex=' + ((pagina - 1) * 100));
+      const lote = listaDe(d), antes = por.size;
+      lote.forEach(c => { if (c && c.id != null && !por.has(String(c.id))) por.set(String(c.id), { id: String(c.id), codigo: c.code == null ? '' : c.code, nome: c.name || c.clientName || '' }); });
+      const total = Number(d && (d.totalItems || d.totalElements)) || 0;
+      if (lote.length < 100 || por.size === antes || (total && por.size >= total) || pagina >= ((d && d.totalPages) || 1)) break;
+      if (pausa) await pausa(300);
+    }
+    return por;
+  }
+  async function lerEmpregadosDosClientes(fetcher, ctx) {
+    const clientes = new Map(); let listaFalhou = false;
+    try { (await lerClientesFolha(fetcher, ctx.pausa)).forEach((c, id) => clientes.set(id, c)); }
+    catch (e) { if (e && e.auth) throw e; listaFalhou = true; }
+    if (ctx.clientesVistos) ctx.clientesVistos.forEach((c, id) => { if (!clientes.has(id)) clientes.set(id, c); });
+    const todos = [...clientes.values()], lidos = todos.slice(0, HUB_CLIENTES_MAX), linhas = []; let falhas = 0;
+    for (const c of lidos) {
+      try {
+        listaDe(await fetcher(URL_EMPREGADOS(c.id))).forEach(x => {
+          if (!x || typeof x !== 'object') return;
+          linhas.push(linhaTexto([c.id, c.codigo, c.nome, x.id, x.name, x.cpf, dataIso(x.hireDate), x.status, x.gender, x.jobPosition, x.employeeWorkload, x.integrationCode, (x.clientEmployeeRelationshipExpanded || {}).eprType], 120));
+        });
+      } catch (e) { if (e && e.auth) throw e; falhas++; }
+      if (ctx.pausa) await ctx.pausa(250);
+    }
+    return { colunas: COLUNAS_EMPREGADOS, linhas, clientes: todos.length, falhas, cortado: listaFalhou || falhas > 0 || todos.length > lidos.length };
   }
 
   // ----- clientes (CND e NF-e) -----
@@ -3216,6 +3252,7 @@
       id: 'lista:' + t.key, rotulo: t.label,
       async executar(fetcher, ctx) {
         const { itens, total } = await lerListaInteira(fetcher, t, ctx.pausa), out = [];
+        if (P) { const vistos = ctx.clientesVistos || (ctx.clientesVistos = new Map()); itens.forEach(r => { const c = r && r.clientExpanded; if (c && c.id != null && !vistos.has(String(c.id))) vistos.set(String(c.id), { id: String(c.id), codigo: c.code == null ? '' : c.code, nome: c.name || '' }); }); }
         if (L) { const x = tabelaLista(t, itens); out.push({ tipoDado: 'lista-' + slugHub(t.key), categoria: 'listas', titulo: 'Solicitações · ' + t.label + ' (todas)', colunas: x.colunas, linhas: x.linhas, totalNaOrigem: total, cortado: itens.length < total, porTipo: {} }); }
         if (P) { const x = tabelaPessoais(t, itens); out.push({ tipoDado: 'pessoais-' + slugHub(t.key), categoria: 'pessoais', titulo: 'Dados pessoais · ' + t.label, colunas: x.colunas, linhas: x.linhas, totalNaOrigem: total, cortado: itens.length < total, porTipo: {} }); }
         return out;
@@ -3230,6 +3267,8 @@
     if (quer('documentos')) tarefas.push({ id: 'documentos:pastas', rotulo: 'Pastas do Onvio Drive', async executar(f) { const x = await lerDocumentos(f, 'pastas'); return [{ tipoDado: 'documentos-pastas', categoria: 'documentos', titulo: 'Documentos · pastas', colunas: x.colunas, linhas: x.linhas, totalNaOrigem: x.linhas.length, cortado: false, porTipo: {} }]; } });
     if (quer('noticias')) tarefas.push({ id: 'noticias:artigos', rotulo: 'Notícias', async executar(f) { const x = await lerNoticias(f); return [{ tipoDado: 'noticias-artigos', categoria: 'noticias', titulo: 'Notícias compartilhadas', colunas: x.colunas, linhas: x.linhas, totalNaOrigem: x.linhas.length, cortado: false, porTipo: {} }]; } });
     if (P) {
+      tarefas.push({ id: 'pessoais:empregados', rotulo: 'Empregados de cada empresa',
+        async executar(f, ctx) { const x = await lerEmpregadosDosClientes(f, ctx); return [{ tipoDado: 'pessoais-empregados', categoria: 'pessoais', titulo: 'Dados pessoais · empregados de cada empresa', colunas: x.colunas, linhas: x.linhas, totalNaOrigem: x.clientes, cortado: x.cortado, porTipo: {} }]; } });
       tarefas.push({ id: 'pessoais:comunicacoes', rotulo: 'Comunicações', async executar(f) { const x = await lerDocumentos(f, 'comunicacoes'); return [{ tipoDado: 'pessoais-comunicacoes', categoria: 'pessoais', titulo: 'Dados pessoais · comunicações', colunas: x.colunas, linhas: x.linhas, totalNaOrigem: x.linhas.length, cortado: false, porTipo: {} }]; } });
       tarefas.push({ id: 'pessoais:pendentes', rotulo: 'Detalhes e trâmites das pendentes',
         async executar(f, ctx) {
