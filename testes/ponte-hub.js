@@ -40,17 +40,20 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const hubFalso = `<!doctype html><title>hub</title><script>
     window.lotes = [];
     // como o Hub real: em segundo plano (aba escondida) não avisa; as mensagens continuam chegando
-    const avisar = () => { if (window.__oculto) return; top.postMessage({ ctlhub: 1, de: 'hub', tipo: 'ola' }, '*'); };
+    // (o Hub publicado em 26/10/2026, versão 267: o aviso periódico só com a aba visível; o pedido "busca" da ponte responde sempre)
+    if (location.search.includes('oculto')) window.__oculto = true;
+    const anunciar = () => top.postMessage({ ctlhub: 1, de: 'hub', tipo: 'ola' }, '*');
+    const avisar = () => { if (window.__oculto) return; anunciar(); };
     avisar(); setInterval(avisar, 1000);
     addEventListener('message', e => { const d = e.data; if (!d || d.ctlhub !== 1) return;
-      if (d.de === 'ponte' && d.tipo === 'busca') return avisar();
+      if (d.de === 'ponte' && d.tipo === 'busca') return anunciar();
       if (d.de !== 'ext' || d.tipo !== 'lote') return;
       const ok = d.token === ${JSON.stringify(TOKEN)}; if (ok) window.lotes.push(d);
       e.source.postMessage({ ctlhub: 1, de: 'hub', tipo: 'ack', id: d.id, ok, motivo: ok ? '' : 'token', aceitos: d.nLinhas }, '*'); });
   <\/script>`;
   await ctx.route('https://claude.ai/**', r => {
     const u = new URL(r.request().url());
-    const html = u.pathname === '/viewer' ? '<!doctype html><title>viewer</title><iframe src="/hub" style="width:600px;height:300px"></iframe>' : u.pathname === '/hub' ? hubFalso : '';
+    const html = u.pathname === '/viewer' ? '<!doctype html><title>viewer</title><iframe src="/hub' + u.search + '" style="width:600px;height:300px"></iframe>' : u.pathname === '/hub' ? hubFalso : '';
     return r.fulfill({ contentType: 'text/html; charset=utf-8', body: html });
   });
   await (await ctx.newPage()).goto('https://onvio.com.br/br-portal-do-cliente/home');
@@ -99,6 +102,14 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   for (let i = 0; i < 20 && !chegou; i++) { await sleep(500); const fr = hub2.frames().find(f => /\/hub$/.test(f.url())); chegou = fr ? await fr.evaluate(() => window.lotes.length).catch(() => 0) : 0; }
   assert.equal(chegou, 1, 'ao abrir o Hub, o resumo chega sozinho');
   assert.equal((await opc.evaluate(() => chrome.storage.local.get('hubUltimo'))).hubUltimo.ok, true);
+  // Hub que nasce escondido (aba restaurada em segundo plano): nunca avisou sozinho, mas responde ao pedido da ponte
+  await hub2.close();
+  const hub3 = await ctx.newPage(); await hub3.goto('https://claude.ai/viewer?oculto=1'); await sleep(1500);
+  const f3 = () => hub3.frames().find(f => /\/hub/.test(f.url()));
+  assert.equal(await f3().evaluate(() => window.__oculto), true);
+  const r3 = await msg('hubEnviar');
+  assert.ok(r3.ok, 'Hub escondido desde o início também recebe (responde ao "busca"): ' + JSON.stringify(r3));
+  assert.equal((await f3().evaluate(() => window.lotes)).length, 1);
   // caminho de reserva: o resumo copiável não leva o código de pareamento
   const r = await msg('hubLote'); assert.ok(r.ok && !('token' in r.lote));
   // desconectar tira o script e a permissão

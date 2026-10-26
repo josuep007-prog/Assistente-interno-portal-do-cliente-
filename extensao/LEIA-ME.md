@@ -50,7 +50,8 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 - **O Hub aparece depois:** se um envio falhou por falta de Hub, ao abrir (ou recarregar) o Hub o resumo sai **na hora**, sem esperar a próxima leitura.
 - Envio mais rápido com várias abas do claude.ai abertas: primeiro tenta o Hub que cada aba já conhece, sem espera; só depois espera o Hub se anunciar.
 - Configurações → Control Hub diz "Hub aberto em segundo plano (responde mesmo assim)" e a mensagem de "Hub não aberto" explica que a aba pode ficar em segundo plano.
-- **A confirmar no Hub real:** uma aba do Hub aberta já escondida (por exemplo, reaberta pelo Chrome ao iniciar) só se anuncia quando ficar visível; depois disso a ponte a lembra. Para anunciar também escondida, o Hub precisa responder ao pedido "busca" da ponte mesmo com a aba escondida (uma linha em `avisar()` do `hub.js`, que não foi alterada aqui).
+- **Hub publicado junto (26/10/2026, versão 267 do artefato):** o Hub só anunciava com a aba visível, então uma aba do Hub aberta já escondida (por exemplo, reaberta pelo Chrome ao iniciar) nunca era encontrada. Em `avisar()` do `hub.js`, o pedido "busca" da ponte agora é respondido também com a aba escondida; o aviso periódico continua só com ela visível. Só essa mudança (+311 bytes); o resto do Hub ficou como estava.
+- **A confirmar no Hub real:** o envio com o Hub em segundo plano e com o Hub aberto escondido, com o claude.ai de verdade (aqui só foi testado contra um Hub simulado que imita o protocolo).
 
 ## Novidades da v0.50.0 (o ícone volta a abrir de qualquer página)
 - **O ícone da extensão volta a funcionar em qualquer página** (a 0.47.0 o apagava fora do portal). Fora do Portal do Cliente, o clique (ou o atalho Alt+Shift+O) **leva ao Portal do Cliente, nas Solicitações** (`service-requesting/general`): reaproveita uma aba do portal já aberta ou cria uma. Telas `/staff/` do Onvio não servem de destino: o painel continua só no portal.
