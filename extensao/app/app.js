@@ -279,7 +279,15 @@ function definirEstilo(n) {
   try { localStorage.setItem('controlonvio-estilo', n === 'atual' ? 'atual' : 'simples'); } catch (e) {}
   redesenharMantendo(); aoVivo(); if (aoRedim) aoRedim();
 }
-function redesenharMantendo() { const rolagem = $('#vista').scrollTop; desenhar(); $('#vista').scrollTop = rolagem; }
+// Redesenha sem perder onde a pessoa estava: a rolagem da tela e a das listas que rolam por dentro (Sugestões, Sem analista,
+// Previsão, Próximos passos, registro da distribuição).
+const LISTAS_ROLAM = ['#hj-sug .sg-lista', '#l-dist', '.hj-prev-rola', '#hj-passos', '.da-log'];
+function redesenharMantendo() {
+  const rolagem = $('#vista').scrollTop, listas = LISTAS_ROLAM.map(sel => [sel, ($('#vista ' + sel) || {}).scrollTop || 0]);
+  desenhar();
+  $('#vista').scrollTop = rolagem;
+  for (const [sel, topo] of listas) { const e = $('#vista ' + sel); if (e && topo) e.scrollTop = topo; }
+}
 
 async function atualizar() {
   const r = await enviar({ cmd: 'atualizar' });
@@ -297,7 +305,7 @@ async function atualizar() {
     if (relevante && ocupado) redesenharDepois = true;
     if (relevante && !ocupado) {
       redesenharDepois = false;
-      const rolagem = $('#vista').scrollTop; desenhar(); $('#vista').scrollTop = rolagem;
+      redesenharMantendo();
     } else if (quais.includes('status')) { if (bloqueado() !== document.body.classList.contains('bloqueado')) desenhar(); else if (!bloqueado()) avisoSessao(); }
     if (quais.includes('eventos')) avisarNovos();
     aoVivo(); contadores();
@@ -306,7 +314,7 @@ async function atualizar() {
   addEventListener('controlonvio-detalhe-fechado', () => {
     if (!redesenharDepois || !AO_VIVO.has(rota.nome) || lembreteAberto() || novaAberta()) return;
     redesenharDepois = false;
-    const rolagem = $('#vista').scrollTop; desenhar(); $('#vista').scrollTop = rolagem;
+    redesenharMantendo();
   });
   setInterval(aoVivo, 5000);
   let t = null;

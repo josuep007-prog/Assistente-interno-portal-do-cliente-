@@ -49,7 +49,7 @@ export function montarDistAuto(host, ctx) {
       '</div></section>' +
       '<section class="card"><div class="card-h"><h3>Últimas atribuições</h3><span class="sub">' + log.length + (log.length === 1 ? ' registro' : ' registros') + ' · só identificação e responsável</span></div>' +
         (log.length ? '<div class="card-b flush"><div class="tabela-wrap da-log"><table class="tabela"><thead><tr><th>Quando</th><th>Solicitação</th><th>Cliente</th><th>Responsável</th></tr></thead><tbody>' +
-          log.slice(0, 30).map(l => '<tr data-k="' + esc(l.k) + '" tabindex="0"><td>' + esc(hora(l.em)) + '</td><td><b>#' + esc(l.num) + '</b> ' + esc(l.typeLabel || '') + '</td><td>' + esc(l.cliente) + '</td><td>' + esc(l.resp) + '</td></tr>').join('') + '</tbody></table></div></div>' : '<div class="card-b"><p class="card-nota da-vazio">Nenhuma atribuição automática ainda.</p></div>') +
+          log.map(l => '<tr data-k="' + esc(l.k) + '" tabindex="0"><td>' + esc(hora(l.em)) + '</td><td><b>#' + esc(l.num) + '</b> ' + esc(l.typeLabel || '') + '</td><td>' + esc(l.cliente) + '</td><td>' + esc(l.resp) + '</td></tr>').join('') + '</tbody></table></div></div>' : '<div class="card-b"><p class="card-nota da-vazio">Nenhuma atribuição automática ainda.</p></div>') +
       '</section></div>' : '');
 
   const redesenhar = () => montarDistAuto(host, ctx);
