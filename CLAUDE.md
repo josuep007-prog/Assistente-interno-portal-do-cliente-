@@ -9,7 +9,8 @@ Existe uma extensão irmã, para o **cliente**: `josuep007-prog/assistente-porta
 1. **Entender antes de mexer.** Qualquer mudança que dependa da tela ou da API do Onvio parte de `mapeamento/portal-do-cliente.md` (rotas, endpoints, códigos de situação, riscos). Se descobrir algo novo, atualize o mapa.
 2. **Regra antes de código.** Prazo, feriado, palavra de "possível aba errada" e segundos da verificação ao vivo são dados: ficam em `DEFAULTS` (`extensao/core.js`) e podem ser sobrescritos pelo arquivo de regras do escritório (`regras/escritorio.exemplo.json` mostra o formato). Código só para mecânica nova.
 3. **Testar sempre.** `node --test testes/extensao.test.js` (sem dependências). Mudou grade, shell, app ou manifesto: rode também `node testes/navegador.js` e `node testes/extensao-real.js` (precisam do Playwright: `npm i -D playwright`, ou `NODE_PATH` para uma instalação global; use o Chromium do ambiente). Tipo de regra ou fluxo novo ganha teste novo.
-4. **Ao terminar:** suba `version` no `manifest.json` se mudou código, atualize `extensao/LEIA-ME.md` e o `README.md`, e faça commits pequenos, em português, um assunto por commit.
+4. **Os dois estilos, sempre (pedido do Josué em 26/10/2026):** toda mudança de tela vale para o **Atual** e para o **Simplificado**, adaptada a cada um (o Simplificado em `estilo-simples.css`, sob `:root[data-estilo="simples"]`), e os dois claro/escuro conferidos em captura. Mudança só num estilo precisa ser dita e justificada.
+5. **Ao terminar:** suba `version` no `manifest.json` se mudou código, atualize `extensao/LEIA-ME.md` e o `README.md`, e faça commits pequenos, em português, um assunto por commit.
 
 ## Segurança no portal real (inegociável)
 
