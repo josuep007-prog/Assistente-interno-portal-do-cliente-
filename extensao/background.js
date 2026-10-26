@@ -801,6 +801,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         reply({ ok: true, itens: await OC.search(f, msg.q, s) });
       } else if (msg.cmd === 'abrir') { await abrir(msg.item, sender.tab && sender.tab.id); reply({ ok: true }); }
       else if (msg.cmd === 'reagendar') { await agendar(); reply({ ok: true }); }
+      else if (msg.cmd === 'hubAbriu') { reply({ ok: true }); enviarAoHubAuto(null).catch(() => {}); }      // o Hub apareceu numa aba: manda o resumo se faltar
       else if (msg.cmd === 'hubStatus') reply(await hubStatus());
       else if (msg.cmd === 'hubRegistrar') reply(await hubRegistrar());
       else if (msg.cmd === 'hubDesconectar') reply(await hubDesconectar());
@@ -901,10 +902,10 @@ async function hubDesconectar() {
 }
 async function hubStatus() {
   const c = await hubCfg(), permitido = await hubPermitido(), abas = permitido ? await hubAbas() : [];
-  let hubAberto = false;
-  for (const t of abas) { try { const r = await chrome.tabs.sendMessage(t.id, { alvo: 'ponte-hub', cmd: 'status' }); if (r && r.hub) { hubAberto = true; break; } } catch (e) { /* aba sem o script */ } }
+  let hubAberto = false, hubAvisando = false;
+  for (const t of abas) { try { const r = await chrome.tabs.sendMessage(t.id, { alvo: 'ponte-hub', cmd: 'status' }); if (r && r.hub) { hubAberto = true; hubAvisando = !!r.avisando; break; } } catch (e) { /* aba sem o script */ } }
   const { hubUltimo } = await chrome.storage.local.get('hubUltimo');
-  return { ok: true, permitido, abasClaude: abas.length, hubAberto, temCodigo: !!c.token, auto: !!c.auto, ultimo: hubUltimo || null };
+  return { ok: true, permitido, abasClaude: abas.length, hubAberto, hubSegundoPlano: hubAberto && !hubAvisando, temCodigo: !!c.token, auto: !!c.auto, ultimo: hubUltimo || null };
 }
 const hashLote = l => { let h = 0; const t = l.tabela + '|' + JSON.stringify(l.porTipo); for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) | 0; return String(h); };
 // manual: envia sempre. Automático: só o que mudou desde o último envio aceito.
@@ -921,8 +922,13 @@ async function enviarAoHub(snap, manual) {
   lote.id = 'onvio-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   lote.token = c.token;
   let r = { ok: false, motivo: 'sem-hub' };
-  for (const t of await hubAbas()) {
-    try { const x = await chrome.tabs.sendMessage(t.id, { alvo: 'ponte-hub', cmd: 'enviar', lote }); if (x) r = x; if (x && x.ok) break; } catch (e) { /* aba sem o script */ }
+  const abasHub = await hubAbas();
+  // 1ª rodada sem esperar (usa o Hub que cada aba já conhece, mesmo em segundo plano); a 2ª espera o Hub se anunciar
+  for (const espera of [0, 5000]) {
+    for (const t of abasHub) {
+      try { const x = await chrome.tabs.sendMessage(t.id, { alvo: 'ponte-hub', cmd: 'enviar', lote, espera }); if (x && (x.ok || x.motivo !== 'sem-hub' || r.motivo === 'sem-hub')) r = x; if (x && x.ok) break; } catch (e) { /* aba sem o script */ }
+    }
+    if (r.ok || r.motivo !== 'sem-hub') break;
   }
   await chrome.storage.local.set({ hubUltimo: { ok: !!r.ok, motivo: r.motivo || '', em: new Date().toISOString(), linhas: lote.nLinhas, total: lote.totalNaOrigem, hash: r.ok ? hash : (hubUltimo && hubUltimo.hash) || '', mensagem: r.mensagem || '' } });
   return Object.assign({ linhas: lote.nLinhas, total: lote.totalNaOrigem }, r);
