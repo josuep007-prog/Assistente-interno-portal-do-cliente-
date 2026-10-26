@@ -531,30 +531,32 @@ test('ícone dentro do Portal do Cliente abre/fecha o painel daquela aba e não 
   }
 });
 
-test('ícone fora do Portal do Cliente não faz nada: nem abre painel, nem leva ao Onvio, nem cria aba (outros sites, /staff/, abas em branco)', async () => {
-  const fora = [undefined, '', 'chrome://newtab/', 'about:blank', 'https://exemplo.com/', 'https://exemplo.com/onvio.com.br', 'https://onvio.com.br.falso.com/br-portal-do-cliente/',
-    'https://onvio.com.br/staff/#/documents/all', 'https://onvio.com.br/staff/#/home', 'https://onvio.com.br/', 'https://onvio.com.br/clientcenter/', 'https://onvio.com.br/br-portal-do-clientex/',
-    'http://onvio.com.br/br-portal-do-cliente/'];
-  for (const url of fora) {
-    // com ou sem abas do portal abertas: o clique numa aba de fora nunca mexe nelas
-    const { ctx, chamadas } = carregarBackground({ abas: [aba(4, ONVIO_PORTAL)] });
+test('ícone fora do portal leva ao Portal do Cliente: reaproveita uma aba do portal (nunca uma tela /staff/) e pede o painel', async () => {
+  const { ctx, chamadas } = carregarBackground({ abas: [aba(3, 'https://onvio.com.br/staff/#/home'), aba(4, ONVIO_PORTAL)] });
+  await ctx.aoClicarNoIcone(aba(9, 'https://exemplo.com/'));
+  assert.deepEqual(plano(chamadas), [['atualizar', 4, { active: true }], ['janela', 7, { focused: true }], ['mensagem', 4, 'abrir']]);
+  // clicando numa tela /staff/ do Onvio: também vai ao portal (o painel não existe lá)
+  const b = carregarBackground({ abas: [aba(3, 'https://onvio.com.br/staff/#/home'), aba(4, ONVIO_PORTAL)] });
+  await b.ctx.aoClicarNoIcone(aba(3, 'https://onvio.com.br/staff/#/home'));
+  assert.deepEqual(plano(b.chamadas), [['atualizar', 4, { active: true }], ['janela', 7, { focused: true }], ['mensagem', 4, 'abrir']]);
+});
+
+test('ícone fora do portal sem nenhuma aba do portal cria uma nas Solicitações e pede o painel para quando a leitura terminar', async () => {
+  for (const url of [undefined, '', 'chrome://newtab/', 'about:blank', 'https://exemplo.com/', 'https://onvio.com.br.falso.com/br-portal-do-cliente/', 'https://onvio.com.br/staff/#/home', 'https://onvio.com.br/', 'https://onvio.com.br/br-portal-do-clientex/']) {
+    const { ctx, chamadas, store } = carregarBackground({ abas: url && /onvio\.com\.br\/(staff|$)/.test(url) ? [aba(9, url)] : [] });
     await ctx.aoClicarNoIcone({ id: 9, url });
-    assert.deepEqual(plano(chamadas), [], 'fora do portal: ' + url);
+    assert.equal(chamadas.length, 1, 'só cria a aba: ' + url);
+    assert.equal(chamadas[0][0], 'criar');
+    assert.equal(chamadas[0][1].url, ONVIO_PORTAL, 'direto nas Solicitações: ' + url);
+    assert.ok(Date.now() - store.abrirPainelAoCarregar < 5000, 'o painel abre sozinho ao carregar (shell.js)');
   }
 });
 
-test('o ícone fica ativo só nas abas do Portal do Cliente (e apagado, com a dica, em todo o resto)', async () => {
+test('o ícone nunca fica apagado (a 0.47.0 apagava fora do portal): o service worker só liga', async () => {
   const eventos = [];
-  const { chrome } = carregarBackground({ abas: [aba(1, ONVIO_PORTAL), aba(2, 'https://onvio.com.br/staff/#/home'), aba(3, 'https://exemplo.com/')],
-    action: { enable: id => eventos.push(['liga', id]), disable: id => eventos.push(['desliga', id]), setTitle: o => { eventos.push(['titulo', o.tabId, /Portal do Cliente/.test(o.title)]); } } });
+  carregarBackground({ abas: [aba(1, ONVIO_PORTAL), aba(2, 'https://exemplo.com/')], action: { enable: (...a) => eventos.push(['liga', ...a]), disable: (...a) => eventos.push(['desliga', ...a]) } });
   await new Promise(r => setTimeout(r, 20));
-  assert.deepEqual(plano(eventos.filter(e => e[0] !== 'titulo')).sort(), [['desliga', 2], ['desliga', 3], ['liga', 1]]);
-  assert.deepEqual(plano(eventos.filter(e => e[0] === 'titulo')).sort(), [['titulo', 2, true], ['titulo', 3, true]], 'dica nas abas apagadas');
-  // navegar de uma tela para outra reaplica (o Chrome zera o estado por aba a cada navegação)
-  eventos.length = 0;
-  chrome.tabs._atualizada(7, { status: 'loading', url: 'https://onvio.com.br/staff/#/x' }, { id: 7, url: 'https://onvio.com.br/staff/#/x' });
-  chrome.tabs._atualizada(8, { status: 'complete' }, { id: 8, url: ONVIO_PORTAL });
-  assert.deepEqual(plano(eventos.filter(e => e[0] !== 'titulo')), [['desliga', 7], ['liga', 8]]);
+  assert.deepEqual(plano(eventos), [['liga']], 'liga o ícone para todas as abas e não apaga nenhuma');
 });
 
 test('aba do Onvio aberta antes da instalação: injeta o script do painel e tenta de novo', async () => {

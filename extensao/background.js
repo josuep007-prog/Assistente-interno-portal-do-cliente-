@@ -729,24 +729,12 @@ chrome.notifications.onClicked.addListener(async id => {
 chrome.notifications.onClosed.addListener(id => { guardarNotifMap(null, id); });
 
 /* ---------- o painel só existe no Portal do Cliente ---------- */
-// Ícone da extensão e atalho: dentro do Portal do Cliente (onvio.com.br/br-portal-do-cliente/) abrem/fecham o painel; em
-// qualquer outra página (outros sites, outras telas do Onvio como /staff/) não fazem nada: o ícone fica apagado.
+// O painel (camada em tela cheia e botão) só aparece em onvio.com.br/br-portal-do-cliente/ (manifesto e shell.js). O ícone da
+// extensão e o atalho funcionam de qualquer página: dentro do portal abrem/fecham o painel; fora dele levam ao portal (às
+// Solicitações) e o painel abre sozinho assim que a primeira leitura termina.
 const ehPortal = u => { try { const x = new URL(u); return x.origin === 'https://onvio.com.br' && /^\/br-portal-do-cliente(\/|$)/i.test(x.pathname); } catch (e) { return false; } };
-const TITULO_FORA = 'Control Onvio · abra o Portal do Cliente (onvio.com.br/br-portal-do-cliente) para usar';
-
-// Ícone ativo só nas abas do Portal do Cliente (o estado por aba volta ao padrão a cada navegação: reaplica ao carregar)
-function marcarAba(tabId, u) {
-  if (tabId == null || !chrome.action) return;
-  const dentro = ehPortal(u);
-  try {
-    if (dentro) { chrome.action.enable && chrome.action.enable(tabId); }
-    else { chrome.action.disable && chrome.action.disable(tabId); chrome.action.setTitle && chrome.action.setTitle({ tabId, title: TITULO_FORA }); }
-  } catch (e) { /* aba fechada no meio */ }
-}
-if (chrome.tabs.onUpdated) chrome.tabs.onUpdated.addListener((id, mud, t) => { if (mud.url || mud.status) marcarAba(id, (t && t.url) || mud.url); });
-if (chrome.tabs.onActivated) chrome.tabs.onActivated.addListener(async i => { try { const t = await chrome.tabs.get(i.tabId); if (t) marcarAba(t.id, t.url); } catch (e) {} });
-async function marcarTodasAsAbas() { try { for (const t of await chrome.tabs.query({})) marcarAba(t.id, t.url); } catch (e) {} }
-marcarTodasAsAbas();
+// o ícone nunca fica apagado (a 0.47.0 apagava fora do portal): limpa qualquer estado antigo por aba
+try { chrome.action.enable && chrome.action.enable(); } catch (e) {}
 
 // Fala com o script do painel (shell.js). Se a aba é anterior à instalação/atualização, injeta o script antes.
 async function mensagemParaPainel(tabId, type) {
@@ -757,9 +745,26 @@ async function mensagemParaPainel(tabId, type) {
   }
 }
 
-// Só alterna o painel de uma aba do Portal do Cliente; fora dele não abre nada nem leva a lugar nenhum
+// Leva a pessoa ao Portal do Cliente com o painel pedido: usa uma aba do portal já aberta (só do portal; outras telas do Onvio
+// não servem) ou cria uma nas Solicitações. O painel abre quando a leitura está pronta (shell.js).
+async function irParaOnvio() {
+  const tabs = await chrome.tabs.query({ url: 'https://onvio.com.br/br-portal-do-cliente/*' });
+  const alvo = tabs.find(t => ehPortal(t.url));
+  if (alvo) {
+    await chrome.tabs.update(alvo.id, { active: true });
+    await chrome.windows.update(alvo.windowId, { focused: true });
+    await mensagemParaPainel(alvo.id, 'abrir').catch(() => {});
+    return alvo.id;
+  }
+  await chrome.storage.local.set({ abrirPainelAoCarregar: Date.now() });
+  const t = await chrome.tabs.create({ url: OC.PORTAL + 'service-requesting/general' });
+  return t.id;
+}
+
+// Dentro do portal alterna o painel daquela aba; em qualquer outra página leva ao portal (Solicitações) e abre o painel lá
 async function aoClicarNoIcone(tab) {
   if (tab && tab.id != null && ehPortal(tab.url)) await mensagemParaPainel(tab.id, 'alternar').catch(() => {});
+  else await irParaOnvio();
 }
 chrome.action.onClicked.addListener(aoClicarNoIcone);
 chrome.commands.onCommand.addListener(async (cmd, tab) => { if (cmd === 'alternar-painel') await aoClicarNoIcone(tab); });

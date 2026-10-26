@@ -301,6 +301,41 @@ await passo('shell: "Abrir no Onvio" chega com a camada escondida; desligar "abr
   assert.equal(await caso({ snapshot: COM_DADOS.snapshot, status: { estado: 'erro' }, abrirPainelAoCarregar: Date.now() }), true, 'pelo ícone abre para mostrar o erro');
 });
 
+await passo('shell: o pedido do ícone (ou "abrir" por mensagem) sem leitura ainda espera a primeira leitura e abre sozinho quando ela chega; erro abre na hora; com leitura guardada abre direto', async () => {
+  const p = await pagina(URL_PORTAL, '<!doctype html><body>Onvio</body>');
+  await semear(p, { snapshot: null, abrirPainelAoCarregar: Date.now(), status: { estado: 'lendo' } });          // 1ª vez: ainda não há resumo guardado
+  await p.goto(URL_PORTAL);
+  await p.addScriptTag({ content: lerExt('shell.js') });
+  await p.waitForTimeout(600);
+  assert.equal(await cheia(p), false, 'sem leitura: espera (só o botão)');
+  await p.evaluate(() => chrome.storage.local.set({ status: { estado: 'lendo', etapa: '3/10 · Geral' } }));
+  await p.waitForTimeout(300);
+  assert.equal(await cheia(p), false, 'lendo ainda: continua esperando');
+  await p.evaluate(snap => chrome.storage.local.set({ snapshot: snap, status: { estado: 'ok' } }), COM_DADOS.snapshot);
+  await esperar(() => cheia(p));
+  assert.equal(await cheia(p), true, 'a primeira leitura terminou: o app abre sozinho');
+  // o pedido por mensagem (ícone com a aba do portal já aberta) segue a mesma regra
+  const q = await pagina(URL_PORTAL, '<!doctype html><body>Onvio</body>');
+  await semear(q, { snapshot: null, settings: { abrirAoEntrar: false } });
+  await q.goto(URL_PORTAL);
+  await q.addScriptTag({ content: lerExt('shell.js') });
+  await q.evaluate(() => window.__ouvintes.forEach(f => f({ type: 'abrir' })));
+  await q.waitForTimeout(500);
+  assert.equal(await cheia(q), false, 'por mensagem, sem leitura: espera');
+  await q.evaluate(() => chrome.storage.local.set({ status: { estado: 'sem_sessao', msg: 'x' } }));
+  await esperar(() => cheia(q));
+  assert.equal(await cheia(q), true, 'a leitura respondeu com erro: abre para mostrar o aviso');
+  // já com leitura guardada: abre na hora
+  const r = await pagina(URL_PORTAL, '<!doctype html><body>Onvio</body>');
+  await semear(r, Object.assign({ settings: { abrirAoEntrar: false } }, COM_DADOS));
+  await r.goto(URL_PORTAL);
+  await r.addScriptTag({ content: lerExt('shell.js') });
+  await r.evaluate(() => window.__ouvintes.forEach(f => f({ type: 'abrir' })));
+  await esperar(() => cheia(r));
+  assert.equal(await cheia(r), true);
+  assert.deepEqual(p.erros, []);
+});
+
 await passo('shell: o botão é arrastável (clique só sem arraste), a posição fica guardada e é mantida dentro da janela', async () => {
   const p = await pagina(URL_PORTAL, '<!doctype html><body>Onvio</body>');
   await p.setViewportSize({ width: 1000, height: 700 });
