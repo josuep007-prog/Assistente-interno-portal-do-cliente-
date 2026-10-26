@@ -172,7 +172,7 @@
   const MOTIVOS_HUB = {
     'sem-codigo': 'Cole o código de pareamento do Hub.', 'sem-permissao': 'Falta permitir o claude.ai: clique em “Conectar ao Control Hub”.',
     'sem-leitura': 'Ainda não há leitura do Onvio para enviar. Abra o Control Onvio e aguarde a primeira leitura.',
-    'sem-hub': 'O Control Hub não está aberto no claude.ai (abra o Hub e deixe a aba aberta).', 'sem-resposta': 'O Hub não respondeu a tempo.',
+    'sem-hub': 'O Control Hub não está aberto numa aba do claude.ai. Abra o Hub; a aba pode ficar em segundo plano, mas precisa estar aberta.', 'sem-resposta': 'O Hub não respondeu a tempo.',
     'token': 'O código de pareamento não confere com o do Hub.', 'tamanho': 'O resumo passou do limite do Hub.',
     'somente-leitura': 'Sua conta só lê o Hub: peça a quem tem permissão de edição para conectar.', 'sem-config': 'O Hub ainda não criou o código de pareamento (abra “Entrada de dados”).',
     'sem-mudanca': 'Nada mudou desde o último envio.'
@@ -187,7 +187,7 @@
     const q = d => (d ? new Date(d).toLocaleString('pt-BR') : '—');
     if (!st) { $('#hub-estado').textContent = ''; return; }
     const u = st.ultimo;
-    $('#hub-estado').textContent = (st.permitido ? 'claude.ai permitido' : 'claude.ai ainda não permitido') + ' · ' + (st.hubAberto ? 'Hub aberto e respondendo' : 'Hub não encontrado numa aba aberta') + ' · ' +
+    $('#hub-estado').textContent = (st.permitido ? 'claude.ai permitido' : 'claude.ai ainda não permitido') + ' · ' + (st.hubAberto ? (st.hubSegundoPlano ? 'Hub aberto em segundo plano (responde mesmo assim)' : 'Hub aberto e respondendo') : 'Hub não encontrado numa aba aberta') + ' · ' +
       (u ? 'último envio ' + (u.ok ? 'aceito' : 'recusado') + ' em ' + q(u.em) + (u.ok ? ' (' + u.linhas + ' de ' + u.total + ' solicitações)' : ': ' + msgHub(u)) : 'nenhum envio ainda');
   }
   async function salvarHub() {

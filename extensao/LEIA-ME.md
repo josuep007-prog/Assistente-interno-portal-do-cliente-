@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.50.0)
+# Control Onvio · ControlTax (v0.51.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,13 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.51.0 (ponte com o Control Hub mais confiável)
+- **Hub em segundo plano.** O Hub só "avisa" que está aberto enquanto a aba está visível; com você trabalhando no Onvio, a aba do Hub fica escondida e a ponte achava que ele tinha fechado ("Hub não encontrado") e o envio automático falhava. Agora a ponte **lembra a aba do Hub enquanto ela existir** (até 6 h desde o último aviso) e entrega o resumo mesmo com ela em segundo plano; a página do Hub continua recebendo mensagens e grava normalmente.
+- **O Hub aparece depois:** se um envio falhou por falta de Hub, ao abrir (ou recarregar) o Hub o resumo sai **na hora**, sem esperar a próxima leitura.
+- Envio mais rápido com várias abas do claude.ai abertas: primeiro tenta o Hub que cada aba já conhece, sem espera; só depois espera o Hub se anunciar.
+- Configurações → Control Hub diz "Hub aberto em segundo plano (responde mesmo assim)" e a mensagem de "Hub não aberto" explica que a aba pode ficar em segundo plano.
+- **A confirmar no Hub real:** uma aba do Hub aberta já escondida (por exemplo, reaberta pelo Chrome ao iniciar) só se anuncia quando ficar visível; depois disso a ponte a lembra. Para anunciar também escondida, o Hub precisa responder ao pedido "busca" da ponte mesmo com a aba escondida (uma linha em `avisar()` do `hub.js`, que não foi alterada aqui).
 
 ## Novidades da v0.50.0 (o ícone volta a abrir de qualquer página)
 - **O ícone da extensão volta a funcionar em qualquer página** (a 0.47.0 o apagava fora do portal). Fora do Portal do Cliente, o clique (ou o atalho Alt+Shift+O) **leva ao Portal do Cliente, nas Solicitações** (`service-requesting/general`): reaproveita uma aba do portal já aberta ou cria uma. Telas `/staff/` do Onvio não servem de destino: o painel continua só no portal.

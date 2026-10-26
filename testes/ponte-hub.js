@@ -39,7 +39,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const TOKEN = 'TESTE1234567890TESTE1234';
   const hubFalso = `<!doctype html><title>hub</title><script>
     window.lotes = [];
-    const avisar = () => top.postMessage({ ctlhub: 1, de: 'hub', tipo: 'ola' }, '*');
+    // como o Hub real: em segundo plano (aba escondida) não avisa; as mensagens continuam chegando
+    const avisar = () => { if (window.__oculto) return; top.postMessage({ ctlhub: 1, de: 'hub', tipo: 'ola' }, '*'); };
     avisar(); setInterval(avisar, 1000);
     addEventListener('message', e => { const d = e.data; if (!d || d.ctlhub !== 1) return;
       if (d.de === 'ponte' && d.tipo === 'busca') return avisar();
@@ -74,6 +75,15 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   // a mesma leitura de novo não reenvia
   await msg('atualizar'); await sleep(900);
   assert.equal((await hub.frames().find(f => /\/hub$/.test(f.url())).evaluate(() => window.lotes)).length, 1, 'automático só envia o que mudou');
+  // Hub em segundo plano (aba escondida: para de avisar "ola"): passado o prazo do aviso, o envio ainda chega
+  await hub.frames().find(f => /\/hub$/.test(f.url())).evaluate(() => { window.__oculto = true; });
+  await sleep(38000);                                       // além do prazo em que o aviso conta como fresco (35 s)
+  await msg('hubEnviar');                                   // manual: manda o resumo mesmo sem mudança
+  assert.equal((await hub.frames().find(f => /\/hub$/.test(f.url())).evaluate(() => window.lotes)).length, 2, 'Hub em segundo plano recebe do mesmo jeito');
+  const stBg = await msg('hubStatus');
+  assert.equal(stBg.hubAberto, true); assert.equal(stBg.hubSegundoPlano, true, 'o estado diz "em segundo plano"');
+  await opc.reload(); await sleep(500);
+  assert.match(await opc.textContent('#hub-estado'), /Hub aberto em segundo plano/);
   // código errado
   await opc.fill('#hubCodigo', 'CODIGOERRADO000000000000'); await opc.dispatchEvent('#hubCodigo', 'change');
   const e1 = await msg('hubEnviar'); assert.equal(e1.ok, false); assert.equal(e1.motivo, 'token');
@@ -81,6 +91,14 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await opc.fill('#hubCodigo', TOKEN); await opc.dispatchEvent('#hubCodigo', 'change');
   await hub.close(); await sleep(300);
   assert.equal((await msg('hubEnviar')).motivo, 'sem-hub');
+  // o Hub aparece depois de um envio que falhou por falta de Hub: o resumo sai na hora, sem esperar a próxima leitura
+  assert.equal((await opc.evaluate(() => chrome.storage.local.get('hubUltimo'))).hubUltimo.ok, false);
+  const hub2 = await ctx.newPage(); await hub2.goto('https://claude.ai/viewer');
+  await opc.bringToFront();
+  let chegou = 0;
+  for (let i = 0; i < 20 && !chegou; i++) { await sleep(500); const fr = hub2.frames().find(f => /\/hub$/.test(f.url())); chegou = fr ? await fr.evaluate(() => window.lotes.length).catch(() => 0) : 0; }
+  assert.equal(chegou, 1, 'ao abrir o Hub, o resumo chega sozinho');
+  assert.equal((await opc.evaluate(() => chrome.storage.local.get('hubUltimo'))).hubUltimo.ok, true);
   // caminho de reserva: o resumo copiável não leva o código de pareamento
   const r = await msg('hubLote'); assert.ok(r.ok && !('token' in r.lote));
   // desconectar tira o script e a permissão
