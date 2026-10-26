@@ -177,6 +177,10 @@
     'somente-leitura': 'Sua conta só lê o Hub: peça a quem tem permissão de edição para conectar.', 'sem-config': 'O Hub ainda não criou o código de pareamento (abra “Entrada de dados”).',
     'sem-mudanca': 'Nada mudou desde o último envio.'
   };
+  MOTIVOS_HUB['sem-categoria'] = 'Marque pelo menos um conjunto para enviar.';
+  MOTIVOS_HUB['incompleto'] = 'O Hub não recebeu todas as partes.'; MOTIVOS_HUB['ciclo-perdido'] = 'O Hub foi recarregado no meio do envio: tente de novo.';
+  MOTIVOS_HUB['partes'] = 'O Hub recusou as partes (versão antiga do Hub?).'; MOTIVOS_HUB['categoria'] = 'O Hub não conhece esta categoria (publique a versão nova do Hub).'; MOTIVOS_HUB['fonte-desconhecida'] = 'O Hub não conhece este tipo de dado (publique a versão nova do Hub).';
+  MOTIVOS_HUB['visao-cliente'] = 'O Onvio está com um acesso de cliente: o envio é só da visão do escritório.';
   const msgHub = r => r.mensagem || MOTIVOS_HUB[r.motivo] || r.motivo || 'Não foi possível enviar.';
   async function mostrarHub() {
     const { hubCfg } = await chrome.storage.local.get('hubCfg');
@@ -186,6 +190,7 @@
     const st = await chrome.runtime.sendMessage({ cmd: 'hubStatus' }).catch(() => null);
     const q = d => (d ? new Date(d).toLocaleString('pt-BR') : '—');
     if (!st) { $('#hub-estado').textContent = ''; return; }
+    await mostrarEnvioCompleto(c);
     const u = st.ultimo;
     $('#hub-estado').textContent = (st.permitido ? 'claude.ai permitido' : 'claude.ai ainda não permitido') + ' · ' + (st.hubAberto ? (st.hubSegundoPlano ? 'Hub aberto em segundo plano (responde mesmo assim)' : 'Hub aberto e respondendo') : 'Hub não encontrado numa aba aberta') + ' · ' +
       (u ? 'último envio ' + (u.ok ? 'aceito' : 'recusado') + ' em ' + q(u.em) + (u.ok ? ' (' + u.linhas + ' de ' + u.total + ' solicitações)' : ': ' + msgHub(u)) : 'nenhum envio ainda');
@@ -193,9 +198,73 @@
   async function salvarHub() {
     const token = $('#hubCodigo').value.replace(/\s+/g, '').toUpperCase();
     const { hubCfg } = await chrome.storage.local.get('hubCfg');
-    await chrome.storage.local.set({ hubCfg: Object.assign({}, hubCfg || {}, { token, auto: $('#hubAuto').checked }) });
+    const extra = {};
+    if ($('#hubSyncHoras').value) extra.syncHoras = Math.min(48, Math.max(1, Number($('#hubSyncHoras').value) || 6));
+    extra.syncAuto = $('#hubSyncAuto').checked;
+    await chrome.storage.local.set({ hubCfg: Object.assign({}, hubCfg || {}, { token, auto: $('#hubAuto').checked }, extra) });
     return token;
   }
+  /* ----- envio completo: o que enviar e o andamento ----- */
+  let catsDesenhadas = false;
+  function desenharCategorias(c) {
+    const box = $('#hub-cats');
+    if (!catsDesenhadas) {
+      box.innerHTML = '';
+      for (const k of OC.HUB_CATEGORIAS) {
+        const lab = document.createElement('label'); lab.className = 'check'; lab.style.alignItems = 'flex-start';
+        const inp = document.createElement('input'); inp.type = 'checkbox'; inp.dataset.cat = k.id; inp.style.marginTop = '2px';
+        const tx = document.createElement('span'); tx.innerHTML = '<b></b><br><span style="font-weight:400; color:var(--ink-3); font-size:12px"></span>';
+        tx.querySelector('b').textContent = k.nome; tx.querySelector('span').textContent = k.ajuda;
+        lab.append(inp, tx); box.append(lab);
+      }
+      box.addEventListener('change', onCategoria);
+      catsDesenhadas = true;
+    }
+    for (const inp of box.querySelectorAll('input[data-cat]')) {
+      const k = OC.HUB_CATEGORIAS.find(x => x.id === inp.dataset.cat);
+      inp.checked = c.envio && c.envio[k.id] != null ? !!c.envio[k.id] : !!k.padrao;
+    }
+  }
+  async function gravarEnvio(id, valor) {
+    const { hubCfg } = await chrome.storage.local.get('hubCfg');
+    const c = Object.assign({}, hubCfg || {});
+    c.envio = Object.assign({}, c.envio || {}, { [id]: valor });
+    await chrome.storage.local.set({ hubCfg: c });
+  }
+  async function onCategoria(e) {
+    const inp = e.target.closest('input[data-cat]'); if (!inp) return;
+    const k = OC.HUB_CATEGORIAS.find(x => x.id === inp.dataset.cat);
+    if (k.pessoal && inp.checked) { inp.checked = false; $('#hub-pessoais-aviso').hidden = false; return; }   // pede confirmação antes de ligar
+    await gravarEnvio(k.id, inp.checked);
+  }
+  $('#hub-pessoais-sim').addEventListener('click', async () => { await gravarEnvio('pessoais', true); $('#hub-pessoais-aviso').hidden = true; await mostrarHub(); });
+  $('#hub-pessoais-nao').addEventListener('click', () => { $('#hub-pessoais-aviso').hidden = true; });
+  async function mostrarEnvioCompleto(c) {
+    desenharCategorias(c);
+    if (document.activeElement !== $('#hubSyncHoras')) $('#hubSyncHoras').value = c.syncHoras || 6;
+    $('#hubSyncAuto').checked = c.syncAuto !== false;
+    const { hubSync } = await chrome.storage.local.get('hubSync');
+    const box = $('#hub-sync-estado');
+    if (!hubSync) { box.textContent = 'Nenhum envio completo ainda.'; return; }
+    const q = d => (d ? new Date(d).toLocaleString('pt-BR') : '—');
+    const ok = (hubSync.resultados || []).filter(r => r.ok), mal = (hubSync.resultados || []).filter(r => !r.ok);
+    const cab = hubSync.estado === 'enviando' ? 'Enviando… ' + (hubSync.etapa || '') + ' (' + hubSync.feito + '/' + hubSync.total + ')'
+      : 'Último envio completo: ' + { ok: 'tudo aceito', parcial: 'parte aceita', erro: 'não concluído' }[hubSync.estado] + ' em ' + q(hubSync.terminouEm) + (hubSync.motivo ? ' · ' + (MOTIVOS_HUB[hubSync.motivo] || hubSync.motivo) : '');
+    box.textContent = '';
+    const l1 = document.createElement('div'); l1.textContent = cab + (hubSync.estado === 'enviando' ? '' : ' · ' + ok.length + ' conjuntos enviados, ' + ok.reduce((n, r) => n + (r.linhas || 0), 0).toLocaleString('pt-BR') + ' linhas'); box.append(l1);
+    for (const r of mal.slice(0, 12)) { const d = document.createElement('div'); d.style.color = 'var(--brand-red)'; d.textContent = '✕ ' + r.rotulo + ': ' + (MOTIVOS_HUB[r.motivo] || r.motivo); box.append(d); }
+    if (mal.length > 12) { const d = document.createElement('div'); d.textContent = '… e mais ' + (mal.length - 12) + ' com problema.'; box.append(d); }
+  }
+  $('#hubSyncAuto').addEventListener('change', salvarHub);
+  $('#hubSyncHoras').addEventListener('change', salvarHub);
+  $('#hub-sincronizar').addEventListener('click', async () => {
+    await salvarHub();
+    $('#hub-sync-estado').textContent = 'Iniciando…';
+    const r = await chrome.runtime.sendMessage({ cmd: 'hubSincronizar' }).catch(e => ({ ok: false, motivo: String(e) }));
+    if (r && r.ok === false) { $('#hub-sync-estado').textContent = msgHub(r); return; }
+    const acompanhar = async () => { await mostrarHub(); const { hubSync } = await chrome.storage.local.get('hubSync'); if (hubSync && hubSync.estado === 'enviando') setTimeout(acompanhar, 1500); };
+    setTimeout(acompanhar, 800);
+  });
   $('#hubCodigo').addEventListener('change', salvarHub);
   $('#hubAuto').addEventListener('change', salvarHub);
   $('#hub-conectar').addEventListener('click', async () => {

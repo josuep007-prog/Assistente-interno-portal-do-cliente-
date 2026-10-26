@@ -22,6 +22,7 @@ async function agendar() {
   // distribuição automática de responsáveis: só com o interruptor ligado (Equipe, gestor); a cada N minutos (padrão 15)
   await chrome.alarms.clear(ALARME_DIST);
   const da = await lerDistAuto();
+  chrome.alarms.create(ALARME_HUBSYNC, { periodInMinutes: 60, delayInMinutes: 6 });      // confere a cada hora se já passou o intervalo do envio completo ao Hub (só lê o armazenamento)
   if (da.ligada) chrome.alarms.create(ALARME_DIST, { periodInMinutes: Math.max(5, Number(s.distribuicaoAuto && s.distribuicaoAuto.minutos) || 15), delayInMinutes: 1 });
 }
 
@@ -801,11 +802,12 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         reply({ ok: true, itens: await OC.search(f, msg.q, s) });
       } else if (msg.cmd === 'abrir') { await abrir(msg.item, sender.tab && sender.tab.id); reply({ ok: true }); }
       else if (msg.cmd === 'reagendar') { await agendar(); reply({ ok: true }); }
-      else if (msg.cmd === 'hubAbriu') { reply({ ok: true }); enviarAoHubAuto(null).catch(() => {}); }      // o Hub apareceu numa aba: manda o resumo se faltar
+      else if (msg.cmd === 'hubAbriu') { reply({ ok: true }); enviarAoHubAuto(null).catch(() => {}); setTimeout(() => hubSincAuto().catch(() => {}), 4000); }      // o Hub apareceu numa aba: manda o resumo se faltar
       else if (msg.cmd === 'hubStatus') reply(await hubStatus());
       else if (msg.cmd === 'hubRegistrar') reply(await hubRegistrar());
       else if (msg.cmd === 'hubDesconectar') reply(await hubDesconectar());
       else if (msg.cmd === 'hubEnviar') reply(await enviarAoHub(null, true));
+      else if (msg.cmd === 'hubSincronizar') { if (hubSincRodando) reply({ ok: true, jaRodando: true }); else { hubSincronizar(true).catch(() => {}); reply({ ok: true, iniciado: true }); } }      // longo: a tela acompanha pelo hubSync
       else if (msg.cmd === 'hubLote') {                  // caminho de reserva: o resumo para colar no Hub (sem o código de pareamento)
         const { snapshot } = await chrome.storage.local.get('snapshot');
         reply(snapshot ? { ok: true, lote: OC.montarLoteHub(snapshot, { versao: chrome.runtime.getManifest().version }) } : { ok: false, motivo: 'sem-leitura' });
@@ -882,7 +884,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
  * pessoa clicar em "Conectar ao Control Hub" (permissão do claude.ai pedida na hora) e colar o código de pareamento. */
 const HUB_ORIGENS = ['https://claude.ai/*'];
 const HUB_SCRIPT_ID = 'ponte-hub';
-async function hubCfg() { const { hubCfg } = await chrome.storage.local.get('hubCfg'); return Object.assign({ token: '', auto: true }, hubCfg || {}); }
+async function hubCfg() { const { hubCfg } = await chrome.storage.local.get('hubCfg'); return Object.assign({ token: '', auto: true, syncAuto: true, syncHoras: 6, envio: {} }, hubCfg || {}); }
 async function hubGuardar(extra) { const c = await hubCfg(); await chrome.storage.local.set({ hubCfg: Object.assign(c, extra) }); }
 async function hubAbas() { try { return await chrome.tabs.query({ url: HUB_ORIGENS }); } catch (e) { return []; } }
 async function hubPermitido() { try { return await chrome.permissions.contains({ origins: HUB_ORIGENS }); } catch (e) { return false; } }
@@ -898,6 +900,7 @@ async function hubRegistrar() {
 async function hubDesconectar() {
   try { await chrome.scripting.unregisterContentScripts({ ids: [HUB_SCRIPT_ID] }); } catch (e) { /* já não estava */ }
   try { await chrome.permissions.remove({ origins: HUB_ORIGENS }); } catch (e) { /* ignora */ }
+  await chrome.storage.local.remove(['hubSync', 'hubSyncHash']);
   return { ok: true };
 }
 async function hubStatus() {
@@ -908,6 +911,19 @@ async function hubStatus() {
   return { ok: true, permitido, abasClaude: abas.length, hubAberto, hubSegundoPlano: hubAberto && !hubAvisando, temCodigo: !!c.token, auto: !!c.auto, ultimo: hubUltimo || null };
 }
 const hashLote = l => { let h = 0; const t = l.tabela + '|' + JSON.stringify(l.porTipo); for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) | 0; return String(h); };
+// Entrega um lote ao Hub pelas abas do claude.ai. 1ª rodada sem esperar (usa o Hub que cada aba já conhece, mesmo em
+// segundo plano); a 2ª espera o Hub se anunciar.
+async function entregarLote(lote) {
+  let r = { ok: false, motivo: 'sem-hub' };
+  const abasHub = await hubAbas();
+  for (const espera of [0, 5000]) {
+    for (const t of abasHub) {
+      try { const x = await chrome.tabs.sendMessage(t.id, { alvo: 'ponte-hub', cmd: 'enviar', lote, espera }); if (x && (x.ok || x.motivo !== 'sem-hub' || r.motivo === 'sem-hub')) r = x; if (x && x.ok) break; } catch (e) { /* aba sem o script (ainda não recarregada) */ }
+    }
+    if (r.ok || r.motivo !== 'sem-hub') break;
+  }
+  return r;
+}
 // manual: envia sempre. Automático: só o que mudou desde o último envio aceito.
 async function enviarAoHub(snap, manual) {
   const c = await hubCfg();
@@ -921,19 +937,87 @@ async function enviarAoHub(snap, manual) {
   if (!manual && hubUltimo && hubUltimo.ok && hubUltimo.hash === hash) return { ok: true, motivo: 'sem-mudanca' };
   lote.id = 'onvio-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   lote.token = c.token;
-  let r = { ok: false, motivo: 'sem-hub' };
-  const abasHub = await hubAbas();
-  // 1ª rodada sem esperar (usa o Hub que cada aba já conhece, mesmo em segundo plano); a 2ª espera o Hub se anunciar
-  for (const espera of [0, 5000]) {
-    for (const t of abasHub) {
-      try { const x = await chrome.tabs.sendMessage(t.id, { alvo: 'ponte-hub', cmd: 'enviar', lote, espera }); if (x && (x.ok || x.motivo !== 'sem-hub' || r.motivo === 'sem-hub')) r = x; if (x && x.ok) break; } catch (e) { /* aba sem o script */ }
-    }
-    if (r.ok || r.motivo !== 'sem-hub') break;
-  }
+  const r = await entregarLote(lote);
   await chrome.storage.local.set({ hubUltimo: { ok: !!r.ok, motivo: r.motivo || '', em: new Date().toISOString(), linhas: lote.nLinhas, total: lote.totalNaOrigem, hash: r.ok ? hash : (hubUltimo && hubUltimo.hash) || '', mensagem: r.mensagem || '' } });
   return Object.assign({ linhas: lote.nLinhas, total: lote.totalNaOrigem }, r);
 }
 async function enviarAoHubAuto(snap) { const c = await hubCfg(); if (c.token && c.auto) return enviarAoHub(snap, false); }
+
+/* ---------- Control Hub: envio completo (0.52.0) ----------
+ * Listas inteiras, clientes de CND e NF-e, escritório, permissões, documentos, notícias e (só se a pessoa ligar e
+ * confirmar) dados pessoais. Tudo é lido na hora pelo OC.hubExecutar e vai direto ao Hub em partes: nada fica na
+ * extensão, só o andamento (hubSync: nomes e contagens) e um resumo do conteúdo para não reenviar o que não mudou
+ * (hubSyncHash: só números). Automático a cada hubCfg.syncHoras horas (6), só com o Hub aberto numa aba. */
+const ALARME_HUBSYNC = 'controlOnvio.hubsync';
+let hubSincRodando = null;
+const hashTexto = t => { let h = 0; for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) | 0; return String(h) + ':' + t.length; };
+const ERROS_FATAIS_HUB = ['token', 'sem-hub', 'somente-leitura', 'sem-config', 'fonte-desconhecida', 'categoria'];
+async function hubEnvioCats() {
+  const c = await hubCfg();
+  return OC.HUB_CATEGORIAS.filter(k => (c.envio && c.envio[k.id] != null) ? !!c.envio[k.id] : k.padrao).map(k => k.id);
+}
+async function hubSincronizar(manual) {
+  if (hubSincRodando) return hubSincRodando;
+  hubSincRodando = (async () => {
+    const c = await hubCfg();
+    if (!c.token) return { ok: false, motivo: 'sem-codigo' };
+    if (!(await hubPermitido())) return { ok: false, motivo: 'sem-permissao' };
+    if (!(await hubAbas()).length) return { ok: false, motivo: 'sem-hub' };
+    const cats = await hubEnvioCats();
+    if (!cats.length) return { ok: false, motivo: 'sem-categoria' };
+    const status = { estado: 'enviando', manual: !!manual, iniciouEm: new Date().toISOString(), etapa: 'preparando', feito: 0, total: 0, categorias: cats, resultados: [] };
+    const grava = () => chrome.storage.local.set({ hubSync: status }).catch(() => {});
+    await grava();
+    try {
+      const { f } = await escolherFetcher(false);
+      const { snapshot, hubSyncHash } = await chrome.storage.local.get(['snapshot', 'hubSyncHash']);
+      const hashes = Object.assign({}, hubSyncHash);
+      const versao = chrome.runtime.getManifest().version, usuario = (snapshot && snapshot.user && snapshot.user.nome) || '';
+      let fatal = '';
+      const enviar = async (conj, p) => {
+        if (fatal) return { ok: false, motivo: fatal };
+        const hash = hashTexto(p.partes.join('\u0001'));
+        const antigo = hashes[conj.tipoDado];
+        if (!manual && antigo && antigo.h === hash && Date.now() - antigo.em < 24 * 3600e3) return { ok: true, motivo: 'sem-mudanca' };
+        const ciclo = 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+        for (let i = 0; i < p.partes.length; i++) {
+          const tabela = p.partes[i];
+          const lote = { id: 'onvio-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), token: c.token, fonte: 'onvio', tipoDado: conj.tipoDado, categoria: conj.categoria, titulo: conj.titulo,
+            extraidoEm: new Date().toISOString(), usuario, colunas: conj.colunas, tabela, nLinhas: tabela ? tabela.split('\n').length : 0, nLinhasTotal: p.nLinhasTotal, totalNaOrigem: conj.totalNaOrigem,
+            cortado: p.cortado, partes: p.partes.length, parte: i, ciclo, porTipo: conj.porTipo || {}, versaoExt: versao };
+          let r = await entregarLote(lote);
+          if (!r.ok && r.motivo === 'sem-resposta') r = await entregarLote(Object.assign({}, lote, { id: lote.id + 'r' }));
+          if (!r.ok) { if (ERROS_FATAIS_HUB.includes(r.motivo)) fatal = r.motivo; return { ok: false, motivo: r.motivo || 'erro', mensagem: r.mensagem || '' }; }
+        }
+        hashes[conj.tipoDado] = { h: hash, em: Date.now() };
+        return { ok: true };
+      };
+      const ctx = { snapshot, pausa: ms => new Promise(r => setTimeout(r, ms)), onItem: null };
+      const res = await OC.hubExecutar(emSegundoPlano(f), cats, ctx, enviar, pr => { status.etapa = pr.etapa; status.feito = pr.feito; status.total = pr.total; grava(); });
+      status.resultados = res.map(r => ({ id: r.id, rotulo: r.rotulo, categoria: r.categoria || '', ok: r.ok !== false, motivo: r.motivo || '', linhas: r.linhas || 0, partes: r.partes || 0 }));
+      status.estado = status.resultados.every(r => r.ok) ? 'ok' : status.resultados.some(r => r.ok) ? 'parcial' : 'erro';
+      if (fatal) status.motivo = fatal;
+      await chrome.storage.local.set({ hubSyncHash: hashes });
+    } catch (e) {
+      if (e && e.cliente) await bloquearVisaoCliente(e);
+      status.estado = 'erro'; status.motivo = e && e.cliente ? 'visao-cliente' : String((e && e.message) || e).slice(0, 160);
+    }
+    status.etapa = ''; status.terminouEm = new Date().toISOString();
+    await grava();
+    return { ok: status.estado === 'ok' || status.estado === 'parcial', estado: status.estado, motivo: status.motivo || '' };
+  })().finally(() => { hubSincRodando = null; });
+  return hubSincRodando;
+}
+// Automático: só se a pessoa conectou o Hub, deixou o envio automático ligado e já passou o intervalo desde o último envio completo.
+async function hubSincAuto() {
+  const c = await hubCfg();
+  if (!c.token || !c.auto || c.syncAuto === false || hubSincRodando) return;
+  const { hubSync } = await chrome.storage.local.get('hubSync');
+  const ult = hubSync && hubSync.terminouEm && (hubSync.estado === 'ok' || hubSync.estado === 'parcial') ? Date.parse(hubSync.terminouEm) : 0;
+  if (ult && Date.now() - ult < Math.max(1, Number(c.syncHoras) || 6) * 3600e3) return;
+  if (!(await hubPermitido()) || !(await hubAbas()).length) return;
+  hubSincronizar(false).catch(() => {});
+}
 
 /* ---------- ciclo de vida ---------- */
 async function iniciar() {
@@ -958,6 +1042,7 @@ chrome.alarms.onAlarm.addListener(a => {
   else if (a.name.startsWith(PREFIXO_LEMBRETE)) dispararLembrete(a.name.slice(PREFIXO_LEMBRETE.length));
   else if (a.name === ALARME_REGRAS) atualizarRegras();
   else if (a.name === ALARME_DIST) distribuirAutomatico(false);
+  else if (a.name === ALARME_HUBSYNC) hubSincAuto().catch(() => {});
 });
 chrome.storage.onChanged.addListener((ch, area) => {
   if (area !== 'local') return;

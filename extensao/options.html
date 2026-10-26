@@ -97,18 +97,30 @@
   </section>
   <section class="sec" id="sec-hub">
     <h2>Control Hub</h2>
-    <p>Opcional. Envia ao Control Hub um <b>resumo</b> das solicitações pendentes (lista, situação, cliente, responsável, datas e gravidade; <b>sem assunto, sem nome de empregado e sem trâmites</b>) para o escritório ver no Hub. O Hub precisa estar aberto no claude.ai. Nada sai da extensão sem você conectar.</p>
+    <p>Opcional. A ponte entrega ao Control Hub, aberto numa aba do claude.ai, um <b>resumo</b> das solicitações pendentes (a cada leitura, só se mudou) e, no <b>envio completo</b>, os conjuntos que você escolher abaixo. Tudo é lido na hora e vai direto ao Hub: nada fica guardado na extensão. Nada sai sem você conectar.</p>
     <div class="grid2">
       <label class="field">Código de pareamento (copie na tela “Entrada de dados” do Hub)<input type="text" id="hubCodigo" class="mono" autocomplete="off" spellcheck="false" placeholder="24 letras e números"></label>
       <label class="check" style="align-self:end"><input type="checkbox" id="hubAuto"> Enviar sozinho a cada leitura (só se mudou)</label>
     </div>
     <div class="foot" style="padding:10px 0 0; align-items:center; gap:8px; flex-wrap:wrap">
       <button class="btn btn-sm btn-primary" id="hub-conectar">Conectar ao Control Hub</button>
-      <button class="btn btn-sm" id="hub-enviar">Enviar agora</button>
+      <button class="btn btn-sm" id="hub-enviar">Enviar resumo agora</button>
+      <button class="btn btn-sm btn-primary" id="hub-sincronizar" title="Lê tudo o que está marcado abaixo e envia ao Hub, em partes">Enviar tudo agora</button>
       <button class="btn btn-sm" id="hub-copiar" title="Se a ponte não funcionar: copia o resumo para colar em Entrada de dados no Hub">Copiar resumo</button>
       <button class="btn btn-sm" id="hub-desconectar">Desconectar</button>
     </div>
     <p id="hub-estado" style="margin:10px 0 0"></p>
+    <h3 style="margin:18px 0 6px; font-size:13px">O que enviar no envio completo</h3>
+    <div id="hub-cats" style="display:grid; gap:8px"></div>
+    <div id="hub-pessoais-aviso" hidden style="margin:10px 0; padding:10px 12px; border:1px solid var(--brand-red); background:var(--brand-red-soft); color:var(--ink); border-radius:var(--r); font-size:12.5px">
+      <b>Dados pessoais no Hub.</b> Com esta opção vão para o banco do Hub (no claude.ai) CPF, salário, nomes de empregados, assunto e descrição de todas as solicitações, dados completos e trâmites das pendentes e comunicações. Quem acessa o Hub passa a poder ver. Só ligue se o escritório decidiu isso.
+      <div class="foot" style="padding:8px 0 0; gap:8px"><button class="btn btn-sm btn-primary" id="hub-pessoais-sim">Entendi, enviar dados pessoais</button> <button class="btn btn-sm" id="hub-pessoais-nao">Cancelar</button></div>
+    </div>
+    <div class="grid2" style="margin-top:10px">
+      <label class="check" style="align-self:end"><input type="checkbox" id="hubSyncAuto"> Envio completo automático</label>
+      <label class="field">A cada (horas)<input type="number" id="hubSyncHoras" min="1" max="48" step="1"></label>
+    </div>
+    <div id="hub-sync-estado" style="margin:10px 0 0; font-size:12.5px"></div>
   </section>
   <section class="sec">
     <h2>Diagnóstico</h2>

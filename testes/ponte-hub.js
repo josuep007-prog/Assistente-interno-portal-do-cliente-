@@ -64,7 +64,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   // sem código nem permissão registrada: nada sai
   assert.equal((await msg('hubEnviar')).motivo, 'sem-codigo');
   // conecta
-  await opc.fill('#hubCodigo', TOKEN); await opc.click('#hub-conectar'); await sleep(800);
+  await opc.fill('#hubCodigo', TOKEN); await opc.uncheck('#hubSyncAuto'); await opc.click('#hub-conectar'); await sleep(800);      // sem o envio completo automático nesta parte do teste
   assert.match(await opc.textContent('#hub-estado'), /Hub aberto e respondendo/);
   // a leitura do Onvio envia sozinha o resumo
   assert.ok((await msg('atualizar')).ok);
@@ -110,6 +110,54 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const r3 = await msg('hubEnviar');
   assert.ok(r3.ok, 'Hub escondido desde o início também recebe (responde ao "busca"): ' + JSON.stringify(r3));
   assert.equal((await f3().evaluate(() => window.lotes)).length, 1);
+  // ---- envio completo em partes (0.52.0) ----
+  const lotesHub3 = () => f3().evaluate(() => window.lotes);
+  const esperarSync = async () => { for (let i = 0; i < 90; i++) { await sleep(500); const h = (await opc.evaluate(() => chrome.storage.local.get('hubSync'))).hubSync; if (h && h.estado !== 'enviando' && h.terminouEm) return h; } throw new Error('envio completo não terminou'); };
+  // a tela mostra as 6 categorias; a de dados pessoais vem desligada
+  await opc.reload(); await sleep(600);
+  assert.equal(await opc.locator('#hub-cats input[data-cat]').count(), 6);
+  assert.equal(await opc.locator('#hub-cats input[data-cat="pessoais"]').isChecked(), false);
+  assert.equal(await opc.locator('#hub-cats input[data-cat="listas"]').isChecked(), true);
+  const antes = (await lotesHub3()).length;
+  assert.equal((await msg('hubSincronizar')).ok, true);
+  const h1 = await esperarSync();
+  assert.ok(['ok', 'parcial'].includes(h1.estado), 'envio completo terminou: ' + JSON.stringify(h1).slice(0, 300));
+  const novos = (await lotesHub3()).slice(antes);
+  assert.ok(novos.length >= 20, 'várias partes entregues (' + novos.length + ')');
+  assert.ok(novos.every(x => x.partes >= 1 && x.parte >= 0 && x.parte < x.partes && /^c[a-z0-9]+$/.test(x.ciclo) && x.categoria && x.token === TOKEN));
+  assert.ok(novos.every(x => x.categoria !== 'pessoais'), 'sem a categoria pessoal, nada pessoal');
+  assert.doesNotMatch(JSON.stringify(novos), /João Silva|Assunto secreto|ana@teste\.com|SeamlessAuthenticationToken/, 'nem assunto, nem nome de empregado, nem e-mail, nem sessão');
+  const geral = novos.find(x => x.tipoDado === 'lista-geral');
+  assert.ok(geral && geral.colunas.includes('Cliente') && geral.nLinhasTotal === 2);
+  // dados pessoais: aviso e confirmação antes de ligar
+  await opc.locator('#hub-cats input[data-cat="pessoais"]').click();
+  assert.equal(await opc.locator('#hub-pessoais-aviso').isVisible(), true);
+  assert.equal(await opc.locator('#hub-cats input[data-cat="pessoais"]').isChecked(), false, 'continua desligado até confirmar');
+  await opc.click('#hub-pessoais-sim'); await sleep(300);
+  assert.equal((await opc.evaluate(() => chrome.storage.local.get('hubCfg'))).hubCfg.envio.pessoais, true);
+  const antes2 = (await lotesHub3()).length;
+  await msg('hubSincronizar'); await esperarSync();
+  const novos2 = (await lotesHub3()).slice(antes2);
+  const pessoais = novos2.filter(x => x.categoria === 'pessoais');
+  assert.ok(pessoais.length >= 10, 'com a confirmação, os conjuntos pessoais vão (' + pessoais.length + ')');
+  assert.match(JSON.stringify(pessoais), /Férias do João Silva/, 'o assunto vai na categoria pessoal');
+  // sem mudança desde o último envio completo: o automático não reenvia o que já foi aceito (manual envia sempre)
+  const hs = (await opc.evaluate(() => chrome.storage.local.get('hubSyncHash'))).hubSyncHash;
+  assert.ok(hs && Object.keys(hs).length >= 20 && Object.values(hs).every(v => typeof v.h === 'string' && typeof v.em === 'number'), 'só números guardados');
+  // automático: com o envio completo automático ligado, ao abrir o Hub (e nunca antes de passar o intervalo) sai tudo sozinho
+  await opc.check('#hubSyncAuto'); await sleep(300);
+  assert.equal((await opc.evaluate(() => chrome.storage.local.get('hubCfg'))).hubCfg.syncAuto, true);
+  await opc.evaluate(() => chrome.storage.local.remove(['hubSync', 'hubSyncHash']));
+  await hub3.close();
+  const hub4 = await ctx.newPage(); await hub4.goto('https://claude.ai/viewer'); await opc.bringToFront();
+  const f4 = () => hub4.frames().find(f => /\/hub/.test(f.url()));
+  let auto = 0;
+  for (let i = 0; i < 60 && auto < 20; i++) { await sleep(500); auto = f4() ? await f4().evaluate(() => window.lotes.length).catch(() => 0) : 0; }
+  assert.ok(auto >= 20, 'ao abrir o Hub o envio completo sai sozinho (' + auto + ')');
+  await esperarSync();
+  const emPartes = () => f4().evaluate(() => window.lotes.filter(x => x.partes != null).length);
+  const ant = await emPartes(); await msg('hubAbriu'); await sleep(6000);
+  assert.equal(await emPartes(), ant, 'dentro do intervalo não envia de novo o envio completo');
   // caminho de reserva: o resumo copiável não leva o código de pareamento
   const r = await msg('hubLote'); assert.ok(r.ok && !('token' in r.lote));
   // desconectar tira o script e a permissão
