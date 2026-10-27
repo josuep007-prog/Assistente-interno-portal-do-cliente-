@@ -45,6 +45,12 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
 
+## Novidades da v0.57.0 (sondagem da lista de empregados)
+
+- Em Configurações → Avançado, o botão **Sondar a lista de empregados** lê uma única empresa (só GET) e mostra só o **formato**: nomes de campos do empregado e do cliente, contagens por situação, datas mínima e máxima de campos de desligamento ou sincronização, o resultado de variações da mesma leitura (sem filtros, `expand=all`, `status=INACTIVE`, incluindo inativos, outros tipos de vínculo) e o detalhe de um empregado. Nunca mostra nome, CPF nem código de empregado.
+- Motivo: a lista `br-payroll-sr/v1/clients/{id}/employees` devolve todos como `ACTIVE` e só cobre 158 de 1.059 empresas. A sondagem diz se o Onvio tem algum campo ou parâmetro que traga o desligamento. **A confirmar** com o Chrome do Josué: rodar o botão e colar o resultado.
+- Medido nos dados do Hub (27/10): das 845 rescisões de clientes que têm lista, só 5% das pessoas ainda aparecem nela. A lista acompanha boa parte dos desligamentos, mas não todos, e não é a folha do Domínio.
+
 ## Novidades da v0.56.0 (o Hub recebe a análise que só a extensão calcula)
 
 - Nova categoria **Análise do escritório** em Configurações → Control Hub (ligada de fábrica, sem dados pessoais): dois conjuntos novos, `analise-solicitacoes` (por solicitação: vez, dias parado e aberta, dias até o 1º trâmite, gravidade, prazo legal, motivos, prometido até, prescreve em, atraso de origem do cliente, "resolvida sem retorno", departamento; as consideradas resolvidas entram) e `analise-equipe` (por analista: pendentes, na vez do escritório e do cliente, vermelhas, G1–G3, sem análise, média até o 1º trâmite, resolvidas sem retorno).

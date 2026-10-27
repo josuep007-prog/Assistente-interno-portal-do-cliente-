@@ -868,6 +868,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'detalhe') { reply(Object.assign({ ok: true }, await detalhe(msg))); }
       else if (msg.cmd === 'baixarAnexos') { reply(Object.assign({ ok: true }, await baixarAnexos(msg))); }
       else if (msg.cmd === 'rotaAnexo') { reply({ ok: await guardarRotaAnexo(msg) }); }
+      else if (msg.cmd === 'sondarEmpregados') { const { f } = await escolherFetcher(); reply({ ok: true, linhas: await OC.sondarEmpregados(emSegundoPlano(f), ms => new Promise(r => setTimeout(r, ms))) }); }
       else if (msg.cmd === 'testarLeitura') { reply({ ok: true, linhas: await testarLeitura() }); }
       else if (msg.cmd === 'fecharPainel') { if (sender.tab && sender.tab.id != null) await mensagemParaPainel(sender.tab.id, 'fechar').catch(() => {}); reply({ ok: true }); }
       else reply({ ok: false, erro: 'comando desconhecido' });

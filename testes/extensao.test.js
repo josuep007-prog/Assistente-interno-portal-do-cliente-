@@ -2998,3 +2998,27 @@ test('Hub: a análise do escritório vai sem leitura nova e sem texto de solicit
   assert.equal(ana[eq.colunas.indexOf('Resolvidas sem retorno')], '1');
   assert.ok(OC.HUB_CATEGORIAS.find(c => c.id === 'analise' && !c.pessoal && c.padrao));
 });
+
+test('Sondagem da lista de empregados: só o formato (campos, contagens, situação), nunca nome, CPF nem código de um empregado', async () => {
+  const chamadas = [];
+  const emp = (i, st) => ({ id: 'e' + i, name: 'PESSOA SECRETA ' + i, cpf: '999.888.777-0' + i, status: st, hireDate: '2020-01-0' + i, terminationDate: i === 2 ? '2026-05-05' : null, integrationCode: 'COD' + i, employeeWorkload: 220, clientEmployeeRelationshipExpanded: { eprType: 'EMPLOYEE' } });
+  const f = async url => {
+    chamadas.push(url);
+    if (/clients\?itemsPerPage/.test(url)) return { items: [{ id: 'c0', code: 1, name: 'VAZIA' }, { id: 'c1', code: 2, name: 'COM EMPREGADOS', lastSyncDate: '2026-10-01', integrationStatus: 'OK' }] };
+    if (/clients\/c0\/employees/.test(url)) return [];
+    if (/clients\/c1\/employees\/e1/.test(url)) return emp(1, 'ACTIVE');
+    if (/clients\/c1\/employees/.test(url)) return /status=INACTIVE/.test(url) ? [] : [emp(1, 'ACTIVE'), emp(2, 'ACTIVE'), emp(3, 'INACTIVE')];
+    if (/clients\/c1$/.test(url)) return { id: 'c1', name: 'COM EMPREGADOS', lastSyncDate: '2026-10-01' };
+    throw new Error('Erro 404');
+  };
+  const linhas = await OC.sondarEmpregados(f, null);
+  const texto = linhas.join('\n');
+  assert.ok(chamadas.every(u => !/method|POST|PUT/i.test(u)), 'só leituras');
+  assert.match(texto, /Empresa sondada: a 2ª da lista, com 3 empregado/);
+  assert.match(texto, /terminationDate/);                               // o campo aparece pelo nome
+  assert.match(texto, /status \(3\): ACTIVE ×2, INACTIVE ×1/);
+  assert.match(texto, /terminationDate \(3\) datas 2026-05-05 a 2026-05-05: \(nulo\) ×2/);
+  assert.match(texto, /Variante "só estagiário e empregado \+ status=INACTIVE": 0/);
+  assert.match(texto, /lastSyncDate/);                                  // campo de sincronização do cliente
+  assert.ok(!/SECRETA|999\.888|COD\d/.test(texto), 'nada que identifique um empregado');
+});
