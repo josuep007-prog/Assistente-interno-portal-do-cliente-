@@ -472,6 +472,12 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     const sai = await page.evaluate(() => window.__hubApi.api('onvio').difs().filter(x => x.nome === 'Saiu Da Lista').map(x => ({ acao: x.acao, confirmar: x.confirmar, txt: x.txt })));
     assert.equal(sai.length, 1); assert.equal(sai[0].confirmar, true); assert.match(sai[0].txt, /não consta mais na lista de empregados do Onvio/);
     assert.ok(!d.some(x => x.nome === 'Rescindida Fora'), 'com rescisão e fora da lista: desligado, nada a cadastrar');
+    // recontratação: a mesma pessoa com dois registros na lista (um antigo, depois um novo): vale a admissão mais recente, qualquer que seja a ordem das linhas
+    const tdup = await D.empregados();
+    tdup.linhas.push(['c-lira', '903', 'LIRA PADARIA LTDA', 'l9', 'Diego Teste', '0', '2018-01-01', 'ACTIVE', 'F', 'A1', '220', '9', 'EMPLOYEE'].join('\t'));
+    await semearConjunto('pessoais-empregados', tdup, 'cH');
+    await page.waitForTimeout(1500);
+    assert.ok(!(await page.evaluate(() => window.__hubApi.api('onvio').difs().some(x => x.nome === 'Diego Teste' && x.tipo === 'admissao' && /2018/.test(x.depois)))), 'o registro antigo da recontratação não vira correção');
     // quem está ativo no DP e sumiu da lista do Onvio (empresa com lista): sugestão de "Desligado" a conferir, nunca automática; cadastro de menos de uma semana ainda pode não ter chegado
     await page.evaluate(() => { const e = window.__db.ler('dp_empresas/e-lira'); const f = (id, nome, adm) => ({ id, nome, cargo: '', codigo: '', admissao: adm, status: 'Ativo', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '', salario: '', obs: 'Criado a partir do Onvio' });
       e.funcionarios.push(f('f-ex', 'Ex Colega Sumido', '2020-03-03'), f('f-rec', 'Recem Cadastrado', new Date(Date.now() - 2 * 864e5).toISOString().slice(0, 10))); window.__db.semear('dp_empresas/e-lira', e); });
@@ -491,9 +497,9 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     assert.ok(!(await page.evaluate(() => window.__hubApi.api('onvio').difs().some(x => x.nome === 'Antiga Colega' && x.tipo === 'situacao'))), 'convergiu');
     // cobertura da folha: quantos clientes têm empregados e quantos ativos
     const cob = await page.evaluate(() => window.__hubApi.api('onvio').cobertura());
-    assert.equal(cob.empregados, 11); assert.equal(cob.ativos, 9); assert.equal(cob.clientesComEmpregados, 4);
+    assert.equal(cob.empregados, 12); assert.equal(cob.ativos, 10); assert.equal(cob.clientesComEmpregados, 4);
     await fr.locator('#cadro .cad-aviso.cob').waitFor({ timeout: 8000 });
-    assert.match(await fr.locator('#cadro .cad-aviso.cob').textContent(), /9 empregados ativos.*4 de/);
+    assert.match(await fr.locator('#cadro .cad-aviso.cob').textContent(), /10 empregados ativos.*4 de/);
   });
 
   await passo('Cache por ciclo: reabrir o Hub não baixa de novo as partes (só dos conjuntos sem dados pessoais)', async () => {
