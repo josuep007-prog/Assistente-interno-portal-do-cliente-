@@ -248,11 +248,14 @@
     if (!hubSync) { box.textContent = 'Nenhum envio completo ainda.'; return; }
     const q = d => (d ? new Date(d).toLocaleString('pt-BR') : '—');
     const ok = (hubSync.resultados || []).filter(r => r.ok), mal = (hubSync.resultados || []).filter(r => !r.ok);
-    const cab = hubSync.estado === 'enviando' ? 'Enviando… ' + (hubSync.etapa || '') + ' (' + hubSync.feito + '/' + hubSync.total + ')'
+    const preso = hubSync.estado === 'enviando' && hubSync.pulso && Date.now() - hubSync.pulso > 240000;        // sem sinal há 4 min: o envio morreu no meio
+    if (preso) hubSync.estado = 'interrompido';
+    const cab = hubSync.estado === 'interrompido' ? 'Último envio interrompido. O envio automático continua de onde parou, sem reenviar o que o Hub já aceitou.' : hubSync.estado === 'enviando' ? 'Enviando… ' + (hubSync.etapa || '') + ' (' + hubSync.feito + '/' + hubSync.total + ')'
       : 'Último envio completo: ' + { ok: 'tudo aceito', parcial: 'parte aceita', erro: 'não concluído' }[hubSync.estado] + ' em ' + q(hubSync.terminouEm) + (hubSync.motivo ? ' · ' + (MOTIVOS_HUB[hubSync.motivo] || hubSync.motivo) : '');
     box.textContent = '';
     const l1 = document.createElement('div'); l1.textContent = cab + (hubSync.estado === 'enviando' ? '' : ' · ' + ok.length + ' conjuntos enviados, ' + ok.reduce((n, r) => n + (r.linhas || 0), 0).toLocaleString('pt-BR') + ' linhas'); box.append(l1);
     for (const r of mal.slice(0, 12)) { const d = document.createElement('div'); d.style.color = 'var(--brand-red)'; d.textContent = '✕ ' + r.rotulo + ': ' + (MOTIVOS_HUB[r.motivo] || r.motivo); box.append(d); }
+    for (const r of ok.filter(x => x.cortado).slice(0, 6)) { const d = document.createElement('div'); d.style.color = 'var(--brand-red)'; d.textContent = '⚠ ' + r.rotulo + ': veio incompleto (cortado)'; box.append(d); }
     for (const r of ok.filter(x => x.motivo).slice(0, 6)) { const d = document.createElement('div'); d.style.color = 'var(--ink-3)'; d.textContent = '⚠ ' + r.rotulo + ': ' + r.motivo; box.append(d); }
     if (mal.length > 12) { const d = document.createElement('div'); d.textContent = '… e mais ' + (mal.length - 12) + ' com problema.'; box.append(d); }
   }

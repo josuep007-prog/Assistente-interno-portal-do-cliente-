@@ -176,6 +176,15 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const r = await msg('hubLote'); assert.ok(r.ok && !('token' in r.lote));
   // desconectar tira o script e a permissão
   await msg('hubDesconectar');
+  const depois = await opc.evaluate(() => chrome.storage.local.get(['hubCfg', 'hubSync', 'hubSyncHash', 'hubUltimo']));
+  assert.equal(depois.hubCfg.token, '', 'desconectar apaga o código de pareamento do armazenamento');
+  assert.equal(depois.hubCfg.envioConfirmado, false);
+  assert.ok(!depois.hubSync && !depois.hubSyncHash && !depois.hubUltimo, 'e o andamento');
+  assert.equal((await msg('hubEnviar')).motivo, 'sem-codigo', 'sem código nada sai');
+  // envio "preso" (o service worker morreu no meio) vira interrompido ao reiniciar
+  await opc.evaluate(() => chrome.storage.local.set({ hubSync: { estado: 'enviando', etapa: 'x', feito: 3, total: 9, pulso: Date.now() - 600000 } }));
+  await msg('hubReiniciar');
+  assert.equal((await opc.evaluate(() => chrome.storage.local.get('hubSync'))).hubSync.estado, 'interrompido');
   console.log('ponte com o Control Hub: ok');
   await ctx.close();
 })().catch(e => { console.error('FALHOU:', e.message); process.exit(1); });

@@ -804,6 +804,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'reagendar') { await agendar(); reply({ ok: true }); }
       else if (msg.cmd === 'hubAbriu') { reply({ ok: true }); enviarAoHubAuto(null).catch(() => {}); setTimeout(() => hubSincAuto().catch(() => {}), 4000); }      // o Hub apareceu numa aba: manda o resumo se faltar
       else if (msg.cmd === 'hubStatus') reply(await hubStatus());
+      else if (msg.cmd === 'hubReiniciar') { await hubRetomarDepoisDeReinicio(); reply({ ok: true }); }          // o mesmo que a extensão faz ao iniciar (usado no teste)
       else if (msg.cmd === 'hubProva') reply({ ok: await hubProvaConfere(msg.nonce, msg.prova) });      // a ponte pergunta se a janela que se diz Hub conhece o código de pareamento
       else if (msg.cmd === 'hubRegistrar') reply(await hubRegistrar());
       else if (msg.cmd === 'hubDesconectar') reply(await hubDesconectar());
@@ -899,9 +900,11 @@ async function hubRegistrar() {
   return { ok: true };
 }
 async function hubDesconectar() {
+  hubCancelar = true;                                                  // para o envio em andamento
   try { await chrome.scripting.unregisterContentScripts({ ids: [HUB_SCRIPT_ID] }); } catch (e) { /* já não estava */ }
   try { await chrome.permissions.remove({ origins: HUB_ORIGENS }); } catch (e) { /* ignora */ }
-  await chrome.storage.local.remove(['hubSync', 'hubSyncHash']);
+  await hubGuardar({ token: '', envioConfirmado: false });            // o código sai do armazenamento
+  await chrome.storage.local.remove(['hubSync', 'hubSyncHash', 'hubUltimo']);
   return { ok: true };
 }
 // Prova de que uma janela é o Hub do código de pareamento: HMAC-SHA256(código, nonce) em hexadecimal, comparado sem pressa (tempo constante).
@@ -961,7 +964,7 @@ async function enviarAoHubAuto(snap) { const c = await hubCfg(); if (c.token && 
  * extensão, só o andamento (hubSync: nomes e contagens) e um resumo do conteúdo para não reenviar o que não mudou
  * (hubSyncHash: só números). Automático a cada hubCfg.syncHoras horas (6), só com o Hub aberto numa aba. */
 const ALARME_HUBSYNC = 'controlOnvio.hubsync';
-let hubSincRodando = null;
+let hubSincRodando = null, hubCancelar = false;
 const hashTexto = t => { let h = 0; for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) | 0; return String(h) + ':' + t.length; };
 const ERROS_FATAIS_HUB = ['token', 'sem-hub', 'somente-leitura', 'sem-config', 'fonte-desconhecida', 'categoria'];
 async function hubEnvioCats() {
@@ -971,23 +974,29 @@ async function hubEnvioCats() {
 async function hubSincronizar(manual) {
   if (hubSincRodando) return hubSincRodando;
   hubSincRodando = (async () => {
+    hubCancelar = false;
+    if (manual) await hubGuardar({ envioConfirmado: true });         // a pessoa pediu o envio completo: vale como confirmação do que vai
     const c = await hubCfg();
     if (!c.token) return { ok: false, motivo: 'sem-codigo' };
     if (!(await hubPermitido())) return { ok: false, motivo: 'sem-permissao' };
     if (!(await hubAbas()).length) return { ok: false, motivo: 'sem-hub' };
+    if (!(await hubStatus()).hubAberto) return { ok: false, motivo: 'sem-hub' };          // sondar o Hub antes de ler o Onvio: sem Hub não há por que gastar as chamadas
     const cats = await hubEnvioCats();
     if (!cats.length) return { ok: false, motivo: 'sem-categoria' };
-    const status = { estado: 'enviando', manual: !!manual, iniciouEm: new Date().toISOString(), etapa: 'preparando', feito: 0, total: 0, categorias: cats, resultados: [] };
-    const grava = () => chrome.storage.local.set({ hubSync: status }).catch(() => {});
+    const status = { estado: 'enviando', manual: !!manual, iniciouEm: new Date().toISOString(), pulso: Date.now(), etapa: 'preparando', feito: 0, total: 0, categorias: cats, resultados: [] };
+    const grava = () => { status.pulso = Date.now(); return chrome.storage.local.set({ hubSync: status }).catch(() => {}); };
     await grava();
     try {
-      const { f } = await escolherFetcher(false);
+      let { f } = await escolherFetcher(false), trocas = 0;
+      // se a aba do Onvio sumir no meio, escolhe o leitor de novo (até 3 vezes) em vez de falhar cliente por cliente
+      const leitor = async url => { try { return await f(url); } catch (e) { if (e && !e.auth && !e.cliente && trocas < 3 && /aba|tab|frame|context|Abra o Onvio|Cannot access|No tab/i.test(String((e && e.message) || ''))) { trocas++; const novo = await escolherFetcher(false); f = novo.f; return f(url); } throw e; } };
       const { snapshot, hubSyncHash } = await chrome.storage.local.get(['snapshot', 'hubSyncHash']);
       const hashes = Object.assign({}, hubSyncHash);
       const versao = chrome.runtime.getManifest().version, usuario = (snapshot && snapshot.user && snapshot.user.nome) || '';
       let fatal = '';
       const enviar = async (conj, p) => {
-        if (fatal) return { ok: false, motivo: fatal };
+        if (hubCancelar) return { ok: false, motivo: 'cancelado', parar: true };
+        if (fatal) return { ok: false, motivo: fatal, parar: true };
         const hash = hashTexto(p.partes.join('\u0001'));
         const antigo = hashes[conj.tipoDado];
         if (!manual && antigo && antigo.h === hash && Date.now() - antigo.em < 24 * 3600e3) return { ok: true, motivo: 'sem-mudanca' };
@@ -1001,14 +1010,16 @@ async function hubSincronizar(manual) {
           if (!r.ok && r.motivo === 'sem-resposta') r = await entregarLote(Object.assign({}, lote, { id: lote.id + 'r' }));
           // outro envio ao mesmo conjunto em andamento (outra pessoa com a extensão): espera a vez em vez de misturar as partes
           for (let k = 0; i === 0 && !r.ok && r.motivo === 'ocupado' && k < 4; k++) { await new Promise(res => setTimeout(res, 20000)); r = await entregarLote(Object.assign({}, lote, { id: lote.id + 'o' + k })); }
-          if (!r.ok) { if (ERROS_FATAIS_HUB.includes(r.motivo)) fatal = r.motivo; return { ok: false, motivo: r.motivo || 'erro', mensagem: r.mensagem || '' }; }
+          if (!r.ok) { const grave = ERROS_FATAIS_HUB.includes(r.motivo) || r.motivo === 'sem-hub'; if (grave) fatal = r.motivo; return { ok: false, motivo: r.motivo || 'erro', mensagem: r.mensagem || '', parar: grave }; }
         }
         hashes[conj.tipoDado] = { h: hash, em: Date.now() };
+        await chrome.storage.local.set({ hubSyncHash: hashes });         // na hora: se o service worker morrer, o que já foi aceito não é reenviado
+        status.pulso = Date.now();
         return { ok: true };
       };
       const ctx = { snapshot, pausa: ms => new Promise(r => setTimeout(r, ms)), onItem: null };
-      const res = await OC.hubExecutar(emSegundoPlano(f), cats, ctx, enviar, pr => { status.etapa = pr.etapa; status.feito = pr.feito; status.total = pr.total; grava(); });
-      status.resultados = res.map(r => ({ id: r.id, rotulo: r.rotulo, categoria: r.categoria || '', ok: r.ok !== false, motivo: r.motivo || r.aviso || '', linhas: r.linhas || 0, partes: r.partes || 0 }));
+      const res = await OC.hubExecutar(emSegundoPlano(leitor), cats, ctx, enviar, pr => { status.etapa = pr.etapa; status.feito = pr.feito; status.total = pr.total; grava(); });
+      status.resultados = res.map(r => ({ id: r.id, rotulo: r.rotulo, categoria: r.categoria || '', ok: r.ok !== false, motivo: r.motivo || r.aviso || '', cortado: !!r.cortado, linhas: r.linhas || 0, partes: r.partes || 0 }));
       status.estado = status.resultados.every(r => r.ok) ? 'ok' : status.resultados.some(r => r.ok) ? 'parcial' : 'erro';
       if (fatal) status.motivo = fatal;
       await chrome.storage.local.set({ hubSyncHash: hashes });
@@ -1025,7 +1036,7 @@ async function hubSincronizar(manual) {
 // Automático: só se a pessoa conectou o Hub, deixou o envio automático ligado e já passou o intervalo desde o último envio completo.
 async function hubSincAuto() {
   const c = await hubCfg();
-  if (!c.token || !c.auto || c.syncAuto === false || hubSincRodando) return;
+  if (!c.token || !c.auto || c.syncAuto === false || !c.envioConfirmado || hubSincRodando) return;          // sem a confirmação da pessoa (quem conectou na 0.36 só tinha o resumo) não há envio completo sozinho
   const { hubSync } = await chrome.storage.local.get('hubSync');
   const ult = hubSync && hubSync.terminouEm && (hubSync.estado === 'ok' || hubSync.estado === 'parcial') ? Date.parse(hubSync.terminouEm) : 0;
   if (ult && Date.now() - ult < Math.max(1, Number(c.syncHoras) || 6) * 3600e3) return;
@@ -1034,8 +1045,16 @@ async function hubSincAuto() {
 }
 
 /* ---------- ciclo de vida ---------- */
+async function hubRetomarDepoisDeReinicio() {
+  try {
+    const { hubSync } = await chrome.storage.local.get('hubSync');
+    if (hubSync && hubSync.estado === 'enviando' && !hubSincRodando) await chrome.storage.local.set({ hubSync: Object.assign({}, hubSync, { estado: 'interrompido', etapa: '', terminouEm: new Date().toISOString(), motivo: 'interrompido' }) });      // o service worker morreu no meio
+    if ((await hubCfg()).token) await hubRegistrar();                 // abas do claude.ai abertas antes da atualização ganham a ponte nova
+  } catch (e) { /* sem Hub conectado */ }
+}
 async function iniciar() {
   await migrarSettings();
+  await hubRetomarDepoisDeReinicio();
   await chrome.storage.local.remove(['guias', 'clientes']);      // dados das guias (removidas na v0.7)
   await sincronizarLembretes();
   chrome.alarms.create(ALARME_REGRAS, { periodInMinutes: 60, delayInMinutes: 1 });
