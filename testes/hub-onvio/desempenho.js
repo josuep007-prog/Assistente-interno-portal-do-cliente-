@@ -155,6 +155,8 @@ const seed = async (page, docs) => { for (let i = 0; i < docs.length; i += 200) 
   await med('onvio.solicitacoes()', () => window.__hubApi.api('onvio').solicitacoes().todas.length);
   await med('abrirModulo(dp) de novo', () => { window.__hubApi.abrirModulo('dp'); });
   await med('dp.irPara(funcionarios)', () => { window.__hubApi.api('dp').irPara('funcionarios'); });
+  await med('funcionários: busca "funcionario 77"', async () => { const i = document.querySelector('#dp-func-search'); const t = performance.now(); i.value = 'funcionario 77'; i.dispatchEvent(new Event('input', { bubbles: true })); await new Promise(r => setTimeout(r, 400)); return Math.round(performance.now() - t - 400) + ' ms de desenho (fora a espera de 180 ms)'; });
+  await med('funcionários: 2ª busca "funcionario 12"', async () => { const i = document.querySelector('#dp-func-search'); const t = performance.now(); i.value = 'funcionario 12'; i.dispatchEvent(new Event('input', { bubbles: true })); await new Promise(r => setTimeout(r, 400)); const n = document.querySelectorAll('#dp-func-list .dp-row').length; i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); await new Promise(r => setTimeout(r, 300)); return n + ' linhas · ' + Math.round(performance.now() - t - 700) + ' ms'; });
   await med('dp.irPara(cartela)', () => { window.__hubApi.api('dp').irPara('cartela'); });
   await med('dp.irPara(agenda)', () => { window.__hubApi.api('dp').irPara('agenda'); });
   if (process.env.LIMPAR) await med('esvazia #ct-pane-cartela', () => { document.querySelector('#ct-pane-cartela').innerHTML = ''; });
