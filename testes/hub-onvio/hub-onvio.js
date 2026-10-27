@@ -472,6 +472,14 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     const sai = await page.evaluate(() => window.__hubApi.api('onvio').difs().filter(x => x.nome === 'Saiu Da Lista').map(x => ({ acao: x.acao, confirmar: x.confirmar, txt: x.txt })));
     assert.equal(sai.length, 1); assert.equal(sai[0].confirmar, true); assert.match(sai[0].txt, /não consta mais na lista de empregados do Onvio/);
     assert.ok(!d.some(x => x.nome === 'Rescindida Fora'), 'com rescisão e fora da lista: desligado, nada a cadastrar');
+    // quem está ativo no DP e sumiu da lista do Onvio (empresa com lista): sugestão de "Desligado" a conferir, nunca automática; cadastro de menos de uma semana ainda pode não ter chegado
+    await page.evaluate(() => { const e = window.__db.ler('dp_empresas/e-lira'); const f = (id, nome, adm) => ({ id, nome, cargo: '', codigo: '', admissao: adm, status: 'Ativo', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '', salario: '', obs: 'Criado a partir do Onvio' });
+      e.funcionarios.push(f('f-ex', 'Ex Colega Sumido', '2020-03-03'), f('f-rec', 'Recem Cadastrado', new Date(Date.now() - 2 * 864e5).toISOString().slice(0, 10))); window.__db.semear('dp_empresas/e-lira', e); });
+    await page.waitForFunction(() => window.__hubApi.api('onvio').difs().some(x => x.nome === 'Ex Colega Sumido'), null, { timeout: 10000 });
+    const sumido = await page.evaluate(() => window.__hubApi.api('onvio').difs().filter(x => /Sumido|Recem Cadastrado|Lira Funcionaria/.test(x.nome)).map(x => ({ nome: x.nome, tipo: x.tipo, acao: x.acao, confirmar: x.confirmar, depois: x.depois, txt: x.txt })));
+    const ex = sumido.filter(x => x.nome === 'Ex Colega Sumido'); assert.equal(ex.length, 1); assert.equal(ex[0].tipo, 'situacao'); assert.equal(ex[0].depois, 'Desligado'); assert.equal(ex[0].confirmar, true); assert.match(ex[0].txt, /Não consta mais na lista/);
+    assert.ok(!sumido.some(x => x.nome === 'Recem Cadastrado'), 'cadastro de menos de uma semana não é sugerido');
+    assert.ok(!sumido.some(x => x.nome === 'Lira Funcionaria' && x.tipo === 'situacao'), 'quem está na lista não é sugerido');
     const fer = d.find(x => x.nome === 'Erica Teste' && x.tipo === 'ferias');
     assert.ok(fer && !/2027/.test(fer.depois), 'as férias em curso, não a de 2027: ' + JSON.stringify(fer));
     // "Desligado" com férias cobrindo hoje: depois de aplicar a diferença some (antes voltava a cada visita)
@@ -553,6 +561,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     const lira = await page.evaluate(() => window.__db.ler('dp_empresas/e-lira'));
     assert.equal(lira.funcionarios.find(f => f.nome === 'Erica Teste').admissao, '2025-02-03'); assert.equal(lira.funcionarios.find(f => f.nome === 'Diego Teste').admissao, '2024-06-06');
     assert.equal(lira.funcionarios.filter(f => /Teste/.test(f.nome)).length, 2, 'ninguém duplicado');
+    assert.equal(lira.funcionarios.find(f => f.nome === 'Ex Colega Sumido').status, 'Ativo', 'o automático nunca marca Desligado por ausência da lista: fica para conferir');
     assert.equal(lira.historico.filter(h => /Admissão diferente/.test(h.alteracao) && /Teste/.test(h.alteracao)).length, 2, 'uma correção de admissão para cada um, sem vaivém');
     assert.ok(lira.historico.some(h => /automaticamente a partir do Onvio/.test(h.alteracao) && /Teste/.test(h.alteracao)), 'o automático registra "automaticamente"');
     // quem só consta na lista do Onvio (que nunca informa desligamento fora do portal) NÃO é cadastrado sozinho: fica para conferir à mão
