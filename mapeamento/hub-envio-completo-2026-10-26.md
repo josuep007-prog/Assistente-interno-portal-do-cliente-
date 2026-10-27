@@ -41,7 +41,7 @@ Até 150 mil caracteres por parte (a extensão manda até 140 mil) e até 80 par
 
 Veja a exceção no `CLAUDE.md`. Resumo: tudo lido na hora, nada guardado na extensão; só GET; da sessão do Onvio saem só permissões, nomes de funcionalidades e o host de cada serviço (nunca `UdsSession`, tokens ou cookies); a categoria `pessoais` vem desligada e pede confirmação.
 
-## Conjuntos (36)
+## Conjuntos (38)
 
 Colunas geradas a partir do código (`OC.hubPlano`). Listas sem dados pessoais usam `lista-*`; os dados pessoais das mesmas solicitações ficam em `pessoais-*`, ligados pela coluna **Id** (e **Nº**).
 
@@ -148,6 +148,10 @@ CPF, salário, nomes de empregados, assunto e descrição de todas as solicitaç
   Colunas (6): Chave · Nº · Lista · Grupo · Campo · Valor
 - **`pessoais-pendentes-tramites`** · Dados pessoais · trâmites das pendentes
   Colunas (10): Chave · Nº · Lista · Trâmite · Em · Situação · Vez · Autor · Texto · Anexos
+
+## Análise do escritório (0.56.0, Hub 280)
+
+Categoria `analise` (de fábrica ligada, sem dados pessoais), montada de `snapshot.items` e `snapshot.resolvidas` por `OC.tabelaAnaliseSolicitacoes` e `OC.tabelaAnaliseEquipe` (sem leitura no Onvio): `analise-solicitacoes` (chave = `k` da solicitação; colunas em `COLUNAS_ANALISE_SOL`) e `analise-equipe` (`porAnalista` + resolvidas). Teste: `Hub: a análise do escritório vai sem leitura nova…`. No Hub, `ovAnalise` junta pela chave e a ficha da empresa mostra gravidade, prazo legal e prometido. Fica para depois (precisa de mapeamento no Onvio real ou de decisão): contatos dos clientes, equipe do escritório (`employees/search`), conteúdo das pastas do Drive, Fiscal (CND histórico/manifestação), nota da avaliação da equipe, e dar uso a departamentos, comunicações e prescrição, ou parar de enviá-los.
 
 ## Limites e a confirmar
 

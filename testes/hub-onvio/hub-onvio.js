@@ -139,6 +139,9 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await page.click('#dp-section-onvio [data-ov-f="todas"]');
     assert.equal(await page.$$eval('#dp-section-onvio tr.ov-r', e => e.length), 4, 'todas');
     await page.click('#dp-section-onvio [data-ov-f="pend"]');
+    const ana = await page.textContent('#dp-section-onvio tr.ov-r:has-text("701") .ov-ana');
+    assert.match(ana, /G2/); assert.match(ana, /prazo legal/); assert.match(ana, /prometido até/);
+    assert.equal(await page.$$eval('#dp-section-onvio .ov-ana', e => e.length), 1, 'só a que a extensão analisou leva o selo');
     // abre a solicitação 701: dados completos e conversa das pendentes
     await page.click('#dp-section-onvio tr.ov-r:has-text("701")');
     await page.waitForFunction(() => /Recebido, vamos calcular\./.test((document.querySelector('#dp-section-onvio .ov-det') || {}).textContent || ''), null, { timeout: 8000 });

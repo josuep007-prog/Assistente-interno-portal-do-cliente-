@@ -45,6 +45,13 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
 
+## Novidades da v0.56.0 (o Hub recebe a análise que só a extensão calcula)
+
+- Nova categoria **Análise do escritório** em Configurações → Control Hub (ligada de fábrica, sem dados pessoais): dois conjuntos novos, `analise-solicitacoes` (por solicitação: vez, dias parado e aberta, dias até o 1º trâmite, gravidade, prazo legal, motivos, prometido até, prescreve em, atraso de origem do cliente, "resolvida sem retorno", departamento; as consideradas resolvidas entram) e `analise-equipe` (por analista: pendentes, na vez do escritório e do cliente, vermelhas, G1–G3, sem análise, média até o 1º trâmite, resolvidas sem retorno).
+- É calculada do que a extensão já leu: **nenhuma leitura nova no Onvio**, e nunca vão assunto, empregado, descrição nem trâmite.
+- No Hub (versão 280), a ficha da empresa, aba Onvio, mostra o selo de gravidade, "prazo legal" e "prometido até" em cada solicitação pendente que a extensão analisou.
+- A nota da avaliação da equipe continua só na extensão (calcular exige ler os trâmites de cada entrega do período).
+
 ## Novidades da v0.55.0 (o envio ao Control Hub fica mais robusto)
 
 - **Falha não vira "vazio aceito":** uma leitura que falha de verdade (erro 500, recusa) e não traz nada **não é enviada** (um conjunto vazio trocaria o bom que já está no Hub); aparece como "✕ … leitura falhou: <rota>". Quando traz parte, vai marcado como **cortado** e com o aviso do que falhou. Erro 404 continua sendo "não existe" (vazio legítimo). O resumo das pendentes também vai como cortado quando uma lista falhou na leitura.
