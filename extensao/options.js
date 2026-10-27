@@ -253,6 +253,7 @@
     box.textContent = '';
     const l1 = document.createElement('div'); l1.textContent = cab + (hubSync.estado === 'enviando' ? '' : ' · ' + ok.length + ' conjuntos enviados, ' + ok.reduce((n, r) => n + (r.linhas || 0), 0).toLocaleString('pt-BR') + ' linhas'); box.append(l1);
     for (const r of mal.slice(0, 12)) { const d = document.createElement('div'); d.style.color = 'var(--brand-red)'; d.textContent = '✕ ' + r.rotulo + ': ' + (MOTIVOS_HUB[r.motivo] || r.motivo); box.append(d); }
+    for (const r of ok.filter(x => x.motivo).slice(0, 6)) { const d = document.createElement('div'); d.style.color = 'var(--ink-3)'; d.textContent = '⚠ ' + r.rotulo + ': ' + r.motivo; box.append(d); }
     if (mal.length > 12) { const d = document.createElement('div'); d.textContent = '… e mais ' + (mal.length - 12) + ' com problema.'; box.append(d); }
   }
   $('#hubSyncAuto').addEventListener('change', salvarHub);

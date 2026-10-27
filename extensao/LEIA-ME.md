@@ -45,6 +45,14 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
 
+## Novidades da v0.53.1 (o envio ao Control Hub não para mais por uma leitura recusada)
+
+- **Corrigido:** com a 0.53.0, quando o Onvio recusava (HTTP 401/403, redirecionamento ou página no lugar de dados) uma leitura **opcional** do escritório (por exemplo a conta ou a ficha do escritório), o envio inteiro era interrompido ali e nada do que vinha depois chegava ao Hub: permissões, documentos, notícias, **a lista de empregados de cada empresa**, comunicações e as pendentes completas. Foi o que se viu no Hub: as listas e os clientes chegaram, mas não os empregados.
+- **Agora:** uma leitura recusada vira "indisponível" e o envio segue. Só interrompe quando **8 recusas seguidas** acontecem sem nenhuma leitura boa no meio (sessão perdida ou acesso de cliente de verdade). As listas inteiras continuam interrompendo na primeira recusa (sem elas não há envio útil), e a verificação de acesso de cliente no começo não mudou.
+- **Aviso no resultado:** o conjunto lido enquanto houve recusa aparece em Configurações → Control Hub com "⚠ … o Onvio recusou: <rotas>", para saber o que não veio. Se o envio todo parar, o motivo (por exemplo `HTTP 403`) aparece no cabeçalho do último envio.
+- No Hub, o aviso da Entrada de dados agora diz a verdade: com extensão 0.53.x que já enviou outros conjuntos, avisa que o envio parou antes da lista de empregados (e não que a extensão está velha).
+- Teste: `node --test testes/extensao.test.js` (recusa isolada não derruba o envio; recusas sem parar interrompem).
+
 ## Novidades da v0.53.0 (a folha inteira de cada empresa no Control Hub)
 
 - **Conjunto novo `pessoais-empregados`** (dentro de "Dados pessoais", pedido do Josué em 26/10/2026): até agora os funcionários que o Hub conhecia eram só os que apareciam em alguma solicitação. Agora, com os dados pessoais ligados, a extensão lê **a lista completa de empregados de cada cliente** (`GET br-payroll-sr/v1/clients/{id}/employees?eprType=EMPLOYEE&eprType=INTERN&expand=clientEmployeeRelationshipExpanded`, rota mapeada em 22/10/2026): cliente, nome, CPF, admissão, situação, sexo, cargo (código), carga horária, código do empregado no Domínio e vínculo (empregado ou estagiário). Quem nunca teve solicitação também vem.

@@ -395,6 +395,10 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
 
   await passo('Folha inteira de cada empresa: quem nunca teve solicitação vira cadastro novo; desligado sem solicitação não; cliente só da folha aparece para cadastrar', async () => {
     await page.evaluate(() => { const d = window.__db.ler('dp_empresas/e-vega'); d.funcionarios.push({ id: 'f-antiga', nome: 'Antiga Colega', cargo: '', codigo: '', admissao: '2020-02-02', status: 'Ativo', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '', salario: '', obs: '' }); window.__db.semear('dp_empresas/e-vega', d); });
+    // extensão antiga: o aviso pede para atualizar; extensão nova que já enviou outros conjuntos: o aviso diz que o envio parou
+    await page.waitForFunction(() => /precisa da extensão 0\.53\.0/.test(document.querySelector('#fontes-frame').contentDocument.querySelector('#cadro').textContent), null, { timeout: 8000 });
+    await page.evaluate(() => { const m = window.__db.ler('ing_dados/onvio~escritorio-tabelas'); m.versaoExt = '0.53.1'; window.__db.semear('ing_dados/onvio~escritorio-tabelas', m); });
+    await page.waitForFunction(() => /já enviou, mas a lista completa/.test(document.querySelector('#fontes-frame').contentDocument.querySelector('#cadro').textContent), null, { timeout: 8000 });
     await semearConjunto('pessoais-empregados', await D.empregados(), 'c2');
     await page.waitForFunction(() => window.__hubApi.api('onvio').difs().some(d => d.nome === 'Carlos Sem Pedido'), null, { timeout: 8000 });
     const d = await difsOnvio();

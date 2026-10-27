@@ -3086,6 +3086,12 @@
   // ----- empregados de cada cliente: a folha inteira da empresa, não só quem aparece numa solicitação (0.53.0) -----
   // Uma leitura por cliente (só GET, com pausa). Os clientes vêm da lista da folha; os que as solicitações já mostraram entram também,
   // para a lista não ficar vazia se a rota de clientes mudar. Falha de um cliente não derruba os outros; acesso de cliente interrompe tudo.
+  // Uma leitura opcional que o Onvio recusa (401/403, redirecionamento ou página no lugar de dados) vira "indisponível" e o envio segue:
+  // só interrompe tudo quando as recusas se repetem sem nenhuma leitura boa no meio (sessão perdida ou acesso de cliente de verdade).
+  const RECUSAS_MAX = 8;
+  const RUN = { seguidas: 0, recusadas: [] };
+  const recusaIsolada = (e, onde) => { if (!(e && e.auth)) return false; if (++RUN.seguidas > RECUSAS_MAX) throw e; if (onde && RUN.recusadas.length < 20) RUN.recusadas.push(String(onde).slice(0, 80)); return true; };
+  const leituraBoa = () => { RUN.seguidas = 0; };
   const HUB_CLIENTES_MAX = 3000;
   const COLUNAS_EMPREGADOS = ['Id do cliente', 'Código do cliente', 'Cliente', 'Id', 'Nome', 'CPF', 'Admissão', 'Situação', 'Sexo', 'Cargo (código)', 'Carga horária', 'Código do empregado', 'Vínculo'];
   const URL_EMPREGADOS = id => API + 'br-payroll-sr/v1/clients/' + encodeURIComponent(id) + '/employees?eprType=EMPLOYEE&eprType=INTERN&expand=clientEmployeeRelationshipExpanded';
@@ -3103,17 +3109,18 @@
   }
   async function lerEmpregadosDosClientes(fetcher, ctx) {
     const clientes = new Map(); let listaFalhou = false;
-    try { (await lerClientesFolha(fetcher, ctx.pausa)).forEach((c, id) => clientes.set(id, c)); }
-    catch (e) { if (e && e.auth) throw e; listaFalhou = true; }
+    try { (await lerClientesFolha(fetcher, ctx.pausa)).forEach((c, id) => clientes.set(id, c)); leituraBoa(); }
+    catch (e) { recusaIsolada(e, 'br-payroll-sr/v1/clients'); listaFalhou = true; }
     if (ctx.clientesVistos) ctx.clientesVistos.forEach((c, id) => { if (!clientes.has(id)) clientes.set(id, c); });
     const todos = [...clientes.values()], lidos = todos.slice(0, HUB_CLIENTES_MAX), linhas = []; let falhas = 0;
     for (const c of lidos) {
       try {
-        listaDe(await fetcher(URL_EMPREGADOS(c.id))).forEach(x => {
+        const resp = await fetcher(URL_EMPREGADOS(c.id)); leituraBoa();
+        listaDe(resp).forEach(x => {
           if (!x || typeof x !== 'object') return;
           linhas.push(linhaTexto([c.id, c.codigo, c.nome, x.id, x.name, x.cpf, dataIso(x.hireDate), x.status, x.gender, x.jobPosition, x.employeeWorkload, x.integrationCode, (x.clientEmployeeRelationshipExpanded || {}).eprType], 120));
         });
-      } catch (e) { if (e && e.auth) throw e; falhas++; }
+      } catch (e) { recusaIsolada(e, 'clients/' + c.id + '/employees'); falhas++; }
       if (ctx.pausa) await ctx.pausa(250);
     }
     return { colunas: COLUNAS_EMPREGADOS, linhas, clientes: todos.length, falhas, cortado: listaFalhou || falhas > 0 || todos.length > lidos.length };
@@ -3143,7 +3150,7 @@
     linhas: itens.map(c => linhaTexto([c.id, c.code, c.name, c.nickname, simNao(c.active), c.clientStatus, c.nationalIdentity, c.uf, simNao(c.isOnvio), c.certificateExpanded && Object.keys(c.certificateExpanded).length ? 'sim' : 'não', validadeCertificado(c.certificateExpanded)], 120)) });
 
   // ----- escritório, acesso e configuração (cada leitura que falha vira "indisponível" sem derrubar as outras) -----
-  async function tenta(fetcher, caminho) { try { return await fetcher(API + caminho); } catch (e) { if (e && e.auth) throw e; return null; } }
+  async function tenta(fetcher, caminho) { try { const r = await fetcher(API + caminho); leituraBoa(); return r; } catch (e) { recusaIsolada(e, caminho.split('?')[0]); return null; } }
   const listaDe = d => Array.isArray(d) ? d : (d && (d.items || d.content || (d.data && (d.data.items || d.data)))) || [];
   async function lerEscritorio(fetcher, id) {
     if (id === 'departamentos') {
@@ -3235,7 +3242,7 @@
           const tr = tramitesDe(t, await fetcher(urlTramites(t, it)));
           for (const x of tr) tramites.push(linhaTexto([it.k, it.num, it.typeLabel, x.n, dataHora(x.em), x.situacao, x.lado === 'cli' ? 'cliente' : 'escritório', x.autor, x.texto, x.anexos.join(' | ')], 1500));
         }
-      } catch (e) { if (e && e.auth) throw e; }
+      } catch (e) { recusaIsolada(e, 'pendente ' + it.k); }
       feitos++; if (onItem) onItem(feitos, itens.length);
       if (pausa) await pausa(250);
     }
@@ -3292,15 +3299,18 @@
   async function hubExecutar(fetcher, escolhidas, ctx, enviar, aoProgredir) {
     const tarefas = hubPlano(escolhidas), resultados = [];
     let i = 0;
+    RUN.seguidas = 0; RUN.recusadas = [];
     for (const tarefa of tarefas) {
       i++;
+      RUN.recusadas = [];
       if (aoProgredir) aoProgredir({ etapa: tarefa.rotulo, feito: i - 1, total: tarefas.length });
       let conjuntos;
       try { conjuntos = await tarefa.executar(fetcher, ctx); }
       catch (e) { if (e && e.auth) throw e; resultados.push({ id: tarefa.id, rotulo: tarefa.rotulo, ok: false, motivo: 'leitura: ' + celulaHub(e && e.message || e, 120) }); continue; }
+      const recusadas = RUN.recusadas.slice();
       for (const c of conjuntos) {
         const p = hubPartesDe(c);
-        try { const r = await enviar(c, p); resultados.push(Object.assign({ id: c.tipoDado, rotulo: c.titulo, categoria: c.categoria, linhas: p.nLinhasTotal, partes: p.partes.length }, r)); }
+        try { const r = await enviar(c, p); resultados.push(Object.assign({ id: c.tipoDado, rotulo: c.titulo, categoria: c.categoria, linhas: p.nLinhasTotal, partes: p.partes.length }, recusadas.length ? { aviso: 'o Onvio recusou: ' + [...new Set(recusadas)].slice(0, 4).join(', ') } : {}, r)); }
         catch (e) { resultados.push({ id: c.tipoDado, rotulo: c.titulo, categoria: c.categoria, ok: false, motivo: celulaHub(e && e.message || e, 120) }); }
       }
     }

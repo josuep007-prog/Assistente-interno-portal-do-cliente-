@@ -994,7 +994,7 @@ async function hubSincronizar(manual) {
       };
       const ctx = { snapshot, pausa: ms => new Promise(r => setTimeout(r, ms)), onItem: null };
       const res = await OC.hubExecutar(emSegundoPlano(f), cats, ctx, enviar, pr => { status.etapa = pr.etapa; status.feito = pr.feito; status.total = pr.total; grava(); });
-      status.resultados = res.map(r => ({ id: r.id, rotulo: r.rotulo, categoria: r.categoria || '', ok: r.ok !== false, motivo: r.motivo || '', linhas: r.linhas || 0, partes: r.partes || 0 }));
+      status.resultados = res.map(r => ({ id: r.id, rotulo: r.rotulo, categoria: r.categoria || '', ok: r.ok !== false, motivo: r.motivo || r.aviso || '', linhas: r.linhas || 0, partes: r.partes || 0 }));
       status.estado = status.resultados.every(r => r.ok) ? 'ok' : status.resultados.some(r => r.ok) ? 'parcial' : 'erro';
       if (fatal) status.motivo = fatal;
       await chrome.storage.local.set({ hubSyncHash: hashes });
