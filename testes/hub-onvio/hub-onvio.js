@@ -666,6 +666,34 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await page.waitForFunction(() => !window.__hubApi.api('onvio').auto().bloqueio, null, { timeout: 8000 });
   });
 
+  await passo('Empresa do escritório: a equipe ativa do escritório vale como lista de ativos (a lista do Onvio não acompanha desligamentos dela); detectada pela sobreposição de nomes', async () => {
+    const t = await D.empregados();
+    [['Ana Alfa Silva', 'a1'], ['Bruno Beta Souza', 'a2'], ['Carla Gama Lima', 'a3'], ['Davi Delta Rocha', 'a4'], ['Eva Epsilon Dias', 'a5'], ['Fabio Zeta Melo', 'a6'], ['Gina Eta Costa', 'a7']]
+      .forEach(([n, i]) => t.linhas.push(['c-lira', '903', 'LIRA PADARIA LTDA', i, n, '0', '2023-01-01', 'ACTIVE', 'F', 'A1', '220', i.slice(1), 'EMPLOYEE'].join('\t')));
+    await semearConjunto('pessoais-empregados', t, 'cE1');
+    await page.evaluate(() => { const e = window.__db.ler('dp_empresas/e-lira'); const f = (id, nome) => ({ id, nome, cargo: '', codigo: '', admissao: '2023-01-01', status: 'Ativo', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '', salario: '', obs: 'Criado a partir do Onvio' });
+      e.funcionarios.push(f('f-ana', 'Ana Alfa Silva'), f('f-fab', 'Fabio Zeta Melo')); window.__db.semear('dp_empresas/e-lira', e); });
+    // sem a equipe do escritório, a regra não existe: quem sumiu da equipe não é tratado como desligado automático
+    assert.ok(!(await page.evaluate(() => window.__hubApi.api('onvio').difs().some(x => x.nome === 'Fabio Zeta Melo' && x.tipo === 'situacao'))), 'Fabio está na lista do Onvio: nada sem a equipe');
+    // a equipe ativa vem com nomes abreviados (primeiro e último nome)
+    const eq = { categoria: 'escritorio', colunas: ['Id', 'Contato (id)', 'Nome'], linhas: ['Ana Silva', 'Bruno Souza', 'Carla Lima', 'Davi Rocha', 'Eva Dias', 'Lira Funcionaria', 'Erica Teste', 'Diego Teste', 'Maria Souza', 'Joao Lima', 'Carlos Sem Pedido'].map((n, i) => ['id' + i, 'c' + i, n].join('\t')) };
+    await semearConjunto('escritorio-funcionarios', eq, 'cE1');
+    await page.waitForFunction(() => window.__hubApi.api('onvio').difs().some(x => x.nome === 'Fabio Zeta Melo' && x.tipo === 'situacao'), null, { timeout: 10000 });
+    const d = await page.evaluate(() => window.__hubApi.api('onvio').difs().map(x => ({ nome: x.nome, tipo: x.tipo, acao: x.acao, confirmar: x.confirmar, depois: x.depois, txt: x.txt })));
+    const fab = d.filter(x => x.nome === 'Fabio Zeta Melo' && x.tipo === 'situacao');
+    assert.equal(fab.length, 1); assert.equal(fab[0].depois, 'Desligado'); assert.equal(fab[0].confirmar, false, 'a equipe ativa é autoridade: sem "conferir antes"'); assert.match(fab[0].txt, /equipe ativa do escritório/);
+    assert.ok(!d.some(x => x.nome === 'Ana Alfa Silva' && x.tipo === 'situacao'), 'quem está na equipe ativa segue ativo');
+    assert.ok(!d.some(x => x.nome === 'Gina Eta Costa'), 'só consta na lista do Onvio e não na equipe: nem é cadastro novo');
+    // empresa comum (poucos empregados na lista, sem sobreposição): a equipe não vale
+    assert.ok(!d.some(x => x.empId === 'e-orion' && /equipe ativa/.test(x.txt || '')), 'outras empresas não são afetadas');
+    // equipe incompleta (cortada): a regra some
+    await page.evaluate(() => { const m = window.__db.ler('ing_dados/onvio~escritorio-funcionarios'); m.cortado = true; window.__db.semear('ing_dados/onvio~escritorio-funcionarios', m); });
+    await page.waitForFunction(() => !window.__hubApi.api('onvio').difs().some(x => x.nome === 'Fabio Zeta Melo' && x.tipo === 'situacao'), null, { timeout: 10000 });
+    // volta ao estado anterior
+    await semearConjunto('pessoais-empregados', await D.empregados(), 'cE2');
+    await semearConjunto('escritorio-funcionarios', { categoria: 'escritorio', colunas: eq.colunas, linhas: [] }, 'cE2');
+  });
+
   await passo('Cartela → Onvio (resumo antigo) continua igual e ganha o CNPJ completo dos clientes de CND/NF-e', async () => {
     const cols = ['Lista', 'Nº', 'Situação', 'Vez', 'Cliente', 'Responsável', 'Aberta em', 'Última movimentação', 'Dias parado', 'Gravidade'];
     // o cliente do resumo tem outro nome que o do DP, mas o final do CNPJ (0001-81) e o nome do cadastro de CND batem

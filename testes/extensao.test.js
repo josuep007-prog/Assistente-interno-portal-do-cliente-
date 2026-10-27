@@ -2751,7 +2751,7 @@ test('Hub: partirTabela parte entre linhas, respeita o limite e nunca devolve ze
 test('Hub: sem a categoria de dados pessoais, nada pessoal é lido nem enviado', async () => {
   const enviados = [];
   const res = await OC.hubExecutar(apiHub(), todasCategorias().filter(c => c !== 'pessoais'), { pausa: null, snapshot: { items: [] } }, async (c, p) => { enviados.push({ c, p }); return { ok: true }; });
-  assert.equal(enviados.length, 25, 'envia 10 listas, 2 de clientes, 9 do escritório, as pastas, as notícias e as 2 de análise');
+  assert.equal(enviados.length, 26, 'envia 10 listas, 2 de clientes, 10 do escritório, as pastas, as notícias e as 2 de análise');
   assert.ok(enviados.every(x => x.c.categoria !== 'pessoais'));
   const texto = JSON.stringify(enviados.map(x => x.p.partes));
   for (const proibido of [CPF_T, NOME_T, '3500.5', 'obs ', 'Assunto 1', 'com quebra']) assert.ok(!texto.includes(proibido), 'vazou: ' + proibido);
@@ -3022,4 +3022,18 @@ test('Sondagem da lista de empregados: só o formato (campos, contagens, situaç
   assert.match(texto, /Variante "só estagiário e empregado \+ status=INACTIVE": 0/);
   assert.match(texto, /lastSyncDate/);                                  // campo de sincronização do cliente
   assert.ok(!/SECRETA|999\.888|COD\d/.test(texto), 'nada que identifique um empregado');
+});
+
+test('Hub: a equipe ativa do escritório vem de /employees (pageIndex a partir de 0), deduplicada e conferida com o total', async () => {
+  const chamadas = [];
+  const mk = (itens, total, paginas) => async url => { chamadas.push(url); if (/br-payroll-sr\/v1\/employees\?/.test(url)) return { items: itens, totalItems: total, totalPages: paginas }; return []; };
+  const it = [{ id: 'a', contactId: 'ca', name: 'Debora Bicas' }, { id: 'b', contactId: 'cb', name: 'Lavinia Capucho' }, { id: 'a', contactId: 'ca', name: 'Debora Bicas' }];
+  const ok = await OC.lerEscritorio(mk(it, 2, 1), 'funcionarios');
+  assert.equal(ok.linhas.length, 2, 'repetido por id entra uma vez');
+  assert.equal(ok.cortado, false);
+  const lida = chamadas.find(u => /br-payroll-sr\/v1\/employees\?/.test(u));
+  assert.ok(lida && lida.includes('pageIndex=0') && lida.includes('itemsPerPage=500'), 'página grande, começando em 0: ' + chamadas.join(' | '));
+  assert.deepEqual(plano(ok.colunas), ['Id', 'Contato (id)', 'Nome']);
+  const curto = await OC.lerEscritorio(mk(it.slice(0, 2), 5, 1), 'funcionarios');
+  assert.equal(curto.cortado, true, 'vieram menos do que o total: avisa que está incompleto');
 });
