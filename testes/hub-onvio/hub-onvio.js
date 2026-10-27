@@ -319,6 +319,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     assert.equal(await page.evaluate((id) => (window.__hubApi.api('onvio').solicitacoes().porEmp.get(id) || []).length, omega.id), 1, 'a solicitação 709 já é da empresa nova (pelo CNPJ)');
     await fr.locator('#loteNao').click();
     // ZETA: ligar a uma empresa que já existe com outro nome
+    await fr.locator('tr[data-k] [data-cad-emp]').focus();                       // a lista completa de empresas só entra quando a pessoa abre o seletor
     await fr.locator('tr[data-k] [data-cad-emp]').selectOption('e-zeta');
     await fr.locator('tr[data-k] [data-cad-ligar]').click();
     await fr.locator('#dlgConf[open]').waitFor();
@@ -382,6 +383,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     const c = await page.evaluate(() => window.__db.ler('dp_config/onvio')); assert.equal(c.auto.ligada, true); assert.ok(c.auto.ultima && c.auto.ultima.n >= 3, 'última aplicação guardada');
     await page.waitForFunction(() => window.__hubApi.api('onvio').difs().length === 0 || window.__hubApi.api('onvio').difs().every(d => d.acao === 'x'), null, { timeout: 8000 }).catch(() => {});
     const resto = await difsOnvio(); assert.deepEqual(resto.filter(d => d.acao === 'novo' || d.acao === 'complementar'), [], 'nada de novo ou complemento pendente: ' + JSON.stringify(resto));
+    await fr.locator('#autoBox').getByText('Última aplicação automática').waitFor({ timeout: 8000 });                // a tela espera os dados assentarem antes de redesenhar
     assert.match(await fr.locator('#autoBox').textContent(), /Última aplicação automática/);
     if (CAP) { await fr.locator('#secCadastro h2').evaluate(e => e.scrollIntoView({ block: 'start' })); await page.waitForTimeout(500); await page.screenshot({ path: path.join(CAP, 'entrada-dados-auto-ligado-claro.png') }); }
     // empresas novas: só depois de escolher a opção (com confirmação)
