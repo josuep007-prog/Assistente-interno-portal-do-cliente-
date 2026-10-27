@@ -160,9 +160,8 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     assert.match(await page.textContent('#dp-ov-dif'), /5 diferenças com o Onvio desta empresa aguardam decisão na Entrada de dados/);
     await page.keyboard.press('Escape');
     await page.evaluate(() => window.__hubApi.api('dp').irPara('funcionarios'));
-    await page.waitForSelector('#dp-func-ovdif:not([hidden]) .ov-aviso');
-    assert.match(await page.textContent('#dp-func-ovdif'), /9 diferenças com o Onvio nos cadastros aguardam decisão na Entrada de dados/);
-    if (CAP) { await page.waitForTimeout(700); await page.screenshot({ path: path.join(CAP, 'funcionarios-aviso-claro.png') }); }
+    await page.waitForSelector('#dp-func-cards .fn-card');
+    assert.equal(await page.locator('#dp-func-ovdif').isVisible(), false, 'a aba Funcionários não mostra avisos nem alertas: só a quantidade de ativos e a evolução');
     // a ficha da empresa sem ligação também só informa
     await page.evaluate(() => window.__hubApi.api('dp').abrirEmpresa('e-zeta', 'onvio'));
     await page.waitForSelector('#dp-section-onvio .dp-empty');
@@ -171,15 +170,16 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await page.keyboard.press('Escape');
     const botoes = await page.evaluate(() => document.querySelectorAll('[data-ov-aplicar],[data-ov-ignorar],[data-ov-vinc-btn],[data-ov-vinc-sel]').length);
     assert.equal(botoes, 0, 'nenhum botão de decisão no DP');
-    await page.evaluate(() => window.__hubApi.api('dp').irPara('funcionarios'));
-    await page.click('#dp-func-ovdif [data-ov-fontes]');
+    await page.evaluate(() => window.__hubApi.api('dp').abrirEmpresa('e-orion', 'funcionarios'));
+    await page.waitForSelector('#dp-ov-dif:not([hidden]) [data-ov-fontes]');
+    await page.click('#dp-ov-dif [data-ov-fontes]');
     await page.waitForSelector('#fontes-frame', { state: 'visible' });
   });
 
   const fr = page.frameLocator('#fontes-frame');
   const aplicarNoQuadro = async (linha, botao) => { await fr.locator(`#cadro tr[data-emp]:has-text("${linha}") ${botao}`).click(); await fr.locator('#dlgConf[open]').waitFor(); };
 
-  await passo('Funcionários do DP: cartões por empresa (sem lista completa), busca pelo nome, filtro, linha do tempo e abrir a empresa', async () => {
+  await passo('Funcionários do DP: cartões por empresa (sem lista completa), busca pelo nome, só ativos, sem alertas, evolução e abrir a empresa', async () => {
     await page.evaluate(() => window.__hubApi.abrirModulo('dp'));
     await page.evaluate(() => window.__hubApi.api('dp').irPara('funcionarios'));
     await page.waitForSelector('#dp-func-cards .fn-card');
@@ -187,9 +187,11 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     assert.equal(await page.locator('#dp-func-list .dp-row').count(), 0, 'nenhuma linha de funcionário sem busca');
     const card = page.locator('#dp-func-cards .fn-card:has-text("ORION")');
     assert.equal(await card.count(), 1);
-    assert.match(await card.textContent(), /2\s*func/); assert.match(await card.textContent(), /alerta/);
-    assert.ok(await card.locator('.fn-bar span').count() >= 1, 'barra da situação');
-    assert.match(await page.locator('#dp-func-resumo').textContent(), /funcionários em/);
+    assert.match(await card.textContent(), /2\s*ativos/); assert.doesNotMatch(await card.textContent(), /alerta|desligad|férias/i, 'o cartão só mostra a quantidade de ativos');
+    assert.equal(await card.locator('.fn-bar').count(), 0, 'sem barra de situações');
+    assert.match(await page.locator('#dp-func-resumo').textContent(), /funcionários ativos em/); assert.doesNotMatch(await page.locator('#dp-func-resumo').textContent(), /alerta|desligad|férias|afastad/i);
+    assert.equal(await page.locator('#dp-badge-func').isVisible(), false, 'sem selo de alertas na aba Funcionários');
+    assert.deepEqual((await page.locator('#dp-func-chips .dp-chip').allTextContents()).map(t => t.replace(/\s+\d+$/, '').trim()), ['Ativos', 'Desligados'], 'só ativos e desligados (sem filtro de alerta)');
     assert.equal(await page.locator('[data-func-modo="lista"]').count(), 0, 'sem o modo Lista');
     if (CAP) { await page.waitForTimeout(400); await page.screenshot({ path: path.join(CAP, 'funcionarios-cartoes-claro.png') }); }
     // uma letra não busca; duas ou mais, sim, pelo nome
@@ -202,18 +204,21 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     assert.equal(await page.locator('#dp-func-cards').isVisible(), false, 'na busca só o resultado');
     if (CAP) { await page.waitForTimeout(300); await page.screenshot({ path: path.join(CAP, 'funcionarios-busca-claro.png') }); }
     await page.fill('#dp-func-search', 'zzzzz'); await page.waitForSelector('#dp-func-list .dp-empty');
-    // filtro: sem ninguém de férias nenhum cartão
+    // desligados: só para consulta
     await page.fill('#dp-func-search', '');
     await page.waitForSelector('#dp-func-cards .fn-card');
-    await page.click('#dp-func-chips [data-f="Férias"]');
-    await page.waitForSelector('#dp-func-cards .dp-empty');                                // ninguém de férias: nenhum cartão
-    await page.click('#dp-func-chips [data-f="Ativo"]');
-    await page.waitForSelector('#dp-func-cards .fn-card:has-text("ORION")');
+    await page.click('#dp-func-chips [data-f="Desligado"]');
+    await page.waitForSelector('#dp-func-cards .dp-empty, #dp-func-cards .fn-card');
     await page.click('#dp-func-chips [data-f=""]');
-    // linha do tempo
+    await page.waitForSelector('#dp-func-cards .fn-card:has-text("ORION")');
+    // evolução da quantidade de ativos
     await page.click('[data-func-modo="tempo"]');
-    await page.waitForSelector('#dp-func-tl .tl-card, #dp-func-tl .dp-empty');
-    assert.equal(await page.locator('#dp-func-cards').isVisible(), false);
+    await page.waitForSelector('#dp-func-cards .fe-svg');
+    assert.match(await page.locator('#dp-func-cards').textContent(), /ativos hoje/); assert.doesNotMatch(await page.locator('#dp-func-cards').textContent(), /alerta/i);
+    assert.ok(await page.locator('#dp-func-cards .fe-svg circle').count() >= 24, 'um ponto por mês');
+    assert.ok(await page.locator('#dp-func-cards .dp-row:has-text("ORION")').count() >= 1, 'a empresa aparece com ativos hoje e a variação');
+    if (CAP) { await page.waitForTimeout(500); await page.screenshot({ path: path.join(CAP, 'funcionarios-evolucao-claro.png') }); }
+    assert.equal(await page.locator('#dp-func-tl').isVisible(), false);
     await page.click('[data-func-modo="empresas"]');
     await page.waitForSelector('#dp-func-cards .fn-card');
     // o cartão abre a empresa na aba Funcionários
@@ -556,6 +561,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
 
   await passo('Aplicação automática: liga com confirmação, aplica sozinho sem perguntar, registra "automaticamente" no histórico e só cadastra empresas se for escolhido', async () => {
     const antes = await page.evaluate(() => window.__db.listar('dp_empresas').length);
+    await fr.locator('#autoLigar:not([disabled])').waitFor({ timeout: 20000 });          // o interruptor só habilita depois que todos os conjuntos carregam
     await fr.locator('#autoLigar').check();
     await fr.locator('#dlgConf[open]').waitFor();
     assert.match(await fr.locator('#confTxt').textContent(), /sem pedir confirmação/); assert.match(await fr.locator('#confTxt').textContent(), /Pendente agora: \d+ complemento/);
