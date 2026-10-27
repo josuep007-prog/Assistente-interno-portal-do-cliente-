@@ -42,7 +42,7 @@ const BANCO = `(() => {
   const avisa = (p) => { (docL.get(p) || []).forEach(cb => cb(snapDoc(p))); (colL.get(colDe(p)) || []).forEach(cb => cb(snapCol(colDe(p)))); };
   const poe = (m, k, cb) => { if (!m.has(k)) m.set(k, []); m.get(k).push(cb); };
   const doc = (p) => ({ id: p.split('/').pop(), path: p,
-    get: async () => snapDoc(p),
+    get: async () => { (window.__gets = window.__gets || []).push(p); return snapDoc(p); },
     set: async (d) => { store.set(p, clone(d)); window.__gravacoes.push(['set', p]); avisa(p); },
     update: async (d) => { store.set(p, Object.assign({}, store.get(p) || {}, clone(d))); window.__gravacoes.push(['update', p]); avisa(p); },
     delete: async () => { store.delete(p); avisa(p); },
@@ -441,6 +441,52 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     if (CAP) { await fr.locator('#secCadastro h2').evaluate(e => e.scrollIntoView({ block: 'start' })); await page.waitForTimeout(400); await page.screenshot({ path: path.join(CAP, 'entrada-dados-auto-desligado-claro.png') }); }
   });
 
+  await passo('Regras de diferença: contribuinte autônomo não vira funcionário; as férias comparadas são as em curso (não uma de 2027); "Desligado" converge; cobertura da folha à vista', async () => {
+    const it = D.itens(), base = (id, n, cli, extra) => Object.assign({ id, identifier: n, genericStatus: 1, created: D.dia(-3) + 'T10:00:00', changed: D.dia(-1) + 'T10:00:00', lastUpdated: D.dia(-1) + 'T10:00:00', requestWay: 'PORTAL', clientExpanded: cli, staffResponsibleExpanded: { id: 'u-ana', name: 'Ana Teste' }, departmentId: 'dep-1', requesterExpanded: { name: 'Contato' } }, extra);
+    it.cadContribuinte = [base('cc1', 720, D.CLI.lira, { admissionDate: D.dia(5), name: 'Autonomo Teste', clientEmployeeExpanded: undefined, subject: 'Contribuinte' })];
+    it.avisoFerias.push(
+      base('fe1', 721, D.CLI.lira, { vacationStartDate: D.dia(-2), vacationDays: 20, clientEmployeeExpanded: D.emp('Erica Teste', '26', '2024-06-06'), subject: 'Férias em curso' }),
+      base('fe2', 722, D.CLI.lira, { vacationStartDate: '2027-03-01', vacationDays: 20, clientEmployeeExpanded: D.emp('Erica Teste', '26', '2024-06-06'), subject: 'Férias de 2027' }));
+    for (const k of ['cadContribuinte', 'avisoFerias']) {
+      const t = D.OC.TYPE_BY_KEY[k], slug = D.OC.slugHub(k);
+      await semearConjunto('lista-' + slug, { categoria: 'listas', ...D.OC.tabelaLista(t, it[k]) }, 'cF');
+      await semearConjunto('pessoais-' + slug, { categoria: 'pessoais', ...D.OC.tabelaPessoais(t, it[k]) }, 'cF');
+    }
+    await page.waitForFunction(() => window.__hubApi.api('onvio').difs().some(d => d.nome === 'Erica Teste' && d.tipo === 'ferias'), null, { timeout: 10000 });
+    const d = await page.evaluate(() => window.__hubApi.api('onvio').difs().map(x => ({ nome: x.nome, tipo: x.tipo, depois: x.depois })));
+    assert.ok(!d.some(x => x.nome === 'Autonomo Teste'), 'contribuinte (autônomo) não é funcionário');
+    const fer = d.find(x => x.nome === 'Erica Teste' && x.tipo === 'ferias');
+    assert.ok(fer && !/2027/.test(fer.depois), 'as férias em curso, não a de 2027: ' + JSON.stringify(fer));
+    // "Desligado" com férias cobrindo hoje: depois de aplicar a diferença some (antes voltava a cada visita)
+    await page.evaluate(() => { const e = window.__db.ler('dp_empresas/e-vega'); e.funcionarios.forEach(f => { if (f.nome === 'Antiga Colega') { f.feriasInicio = new Date(Date.now() - 5 * 864e5).toISOString().slice(0, 10); f.feriasFim = new Date(Date.now() + 5 * 864e5).toISOString().slice(0, 10); f.status = 'Ativo'; } }); window.__db.semear('dp_empresas/e-vega', e); });
+    const ds = await page.evaluate(() => window.__hubApi.api('onvio').difs().find(x => x.nome === 'Antiga Colega' && x.tipo === 'situacao'));
+    assert.ok(ds, 'desligado na folha e ativo/de férias no DP: sugestão');
+    const rs = await page.evaluate(([e, c]) => window.__hubApi.api('onvio').aplicar(e, c), [ds.empId, ds.chave]);
+    assert.equal(rs.ok, true);
+    assert.ok(!(await page.evaluate(() => window.__hubApi.api('onvio').difs().some(x => x.nome === 'Antiga Colega' && x.tipo === 'situacao'))), 'convergiu');
+    // cobertura da folha: quantos clientes têm empregados e quantos ativos
+    const cob = await page.evaluate(() => window.__hubApi.api('onvio').cobertura());
+    assert.equal(cob.empregados, 11); assert.equal(cob.ativos, 9); assert.equal(cob.clientesComEmpregados, 4);
+    await fr.locator('#cadro .cad-aviso.cob').waitFor({ timeout: 8000 });
+    assert.match(await fr.locator('#cadro .cad-aviso.cob').textContent(), /9 empregados ativos.*4 de/);
+  });
+
+  await passo('Cache por ciclo: reabrir o Hub não baixa de novo as partes (só dos conjuntos sem dados pessoais)', async () => {
+    const outra = await ctx.newPage(); await outra.addInitScript(BANCO); await outra.addInitScript(() => { try { localStorage.setItem('controlhub-theme', 'light'); } catch (e) {} });
+    await outra.goto(url); await outra.waitForFunction(() => window.__hubApi && window.__db);
+    for (const e of D.empresas()) { const { id, ...corpo } = e; await outra.evaluate(([p, d]) => window.__db.semear(p, d), ['dp_empresas/' + id, corpo]); }
+    // os mesmos conjuntos, no mesmo ciclo ('c1' = os do início do teste), numa janela nova do mesmo navegador
+    for (const d of montarBanco()) await outra.evaluate(([p, x]) => window.__db.semear(p, x), [d.path, d.data]);
+    await outra.evaluate(() => window.__hubApi.abrirModulo('dp'));
+    await outra.waitForFunction(() => { const a = window.__hubApi.api('onvio'); try { return a.solicitacoes().todas.length > 0; } catch (e) { return false; } }, null, { timeout: 10000 });
+    await outra.waitForTimeout(800);
+    const gets = await outra.evaluate(() => (window.__gets || []).filter(p => /^ing_partes\//.test(p)));
+    const baixadas = gets.filter(p => !/lista-aviso-ferias|lista-cad-contribuinte/.test(p) && /~lista-|~clientes-|~escritorio-/.test(p));
+    assert.deepEqual(baixadas, [], 'listas, clientes e escritório vieram do cache');
+    assert.ok(gets.some(p => /~pessoais-/.test(p)), 'dados pessoais nunca ficam no cache do navegador');
+    await outra.close();
+  });
+
   await passo('Escrita segura: o Hub relê a empresa antes de gravar (não perde o que outro navegador gravou) e recusa documento grande demais', async () => {
     const dif = () => page.evaluate(() => window.__hubApi.api('onvio').difs().find(d => d.empId === 'e-lira' && d.acao !== 'novo' && d.pode));
     // um funcionário gravado "por fora" que o desenho local ainda não conhece
@@ -560,6 +606,18 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await page.evaluate(() => window.__hubApi.api('onvio').autoAgora());
     await page.waitForFunction(() => window.__db.ler('dp_empresas/e-orion').funcionarios.some(f => f.nome === 'Chegou Na Ana'), null, { timeout: 15000 });
     await page.evaluate(() => { const c = window.__db.ler('dp_config/onvio'); c.auto.ligada = false; window.__db.semear('dp_config/onvio', c); });
+  });
+
+  await passo('Aplicação automática: pausa com conjunto cortado ou velho demais (decidir à mão continua possível)', async () => {
+    await page.evaluate(() => { const c = window.__db.ler('dp_config/onvio'); c.auto.ligada = true; window.__db.semear('dp_config/onvio', c); });
+    await page.evaluate(() => { const m = window.__db.ler('ing_dados/onvio~clientes-nfe'); m.cortado = true; window.__db.semear('ing_dados/onvio~clientes-nfe', m); });
+    await page.waitForFunction(() => /cortado/.test(window.__hubApi.api('onvio').auto().bloqueio || ''), null, { timeout: 8000 });
+    const r = await page.evaluate(() => window.__hubApi.api('onvio').autoAgora());
+    assert.equal(r.motivo, 'incompleto'); assert.match(r.detalhe, /cortado/);
+    await page.evaluate(() => { const m = window.__db.ler('ing_dados/onvio~clientes-nfe'); m.cortado = false; m.recebidoEm = Date.now() - 72 * 3600e3; window.__db.semear('ing_dados/onvio~clientes-nfe', m); });
+    await page.waitForFunction(() => /48 h/.test(window.__hubApi.api('onvio').auto().bloqueio || ''), null, { timeout: 8000 });
+    await page.evaluate(() => { const m = window.__db.ler('ing_dados/onvio~clientes-nfe'); m.recebidoEm = Date.now(); window.__db.semear('ing_dados/onvio~clientes-nfe', m); const c = window.__db.ler('dp_config/onvio'); c.auto.ligada = false; window.__db.semear('dp_config/onvio', c); });
+    await page.waitForFunction(() => !window.__hubApi.api('onvio').auto().bloqueio, null, { timeout: 8000 });
   });
 
   await passo('Cartela → Onvio (resumo antigo) continua igual e ganha o CNPJ completo dos clientes de CND/NF-e', async () => {
