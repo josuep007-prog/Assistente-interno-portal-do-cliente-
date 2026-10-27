@@ -120,4 +120,6 @@ async function empregados() {
   return { categoria: 'pessoais', colunas: c.colunas, linhas: c.linhas };
 }
 
-module.exports = { tabelas, empregados, empresas, dia, OC };
+const itens = () => JSON.parse(JSON.stringify(ITENS));         // cópia das solicitações do teste (para montar conjuntos novos)
+const CLI = CLIENTES;
+module.exports = { tabelas, empregados, empresas, itens, CLI, emp, dia, OC };
