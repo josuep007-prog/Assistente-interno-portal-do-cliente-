@@ -45,6 +45,10 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
 
+## Novidades da v0.58.0
+
+- A lista de empregados de cada empresa (`pessoais-empregados`) ganhou a coluna **Criado no Onvio em** (a data em que o Onvio criou o registro do empregado). Serve para testar a hipótese de que a lista do Onvio é "quem estava ativo na carga inicial, mais as admissões, menos quem saiu por rescisão no portal": na PLANT, 11 de 12 registros foram criados em 10/04/2026 (carga inicial); na ControlTax (código 1) a lista traz 143 empregados e ainda mostra demitidos. Depois do próximo "Enviar tudo agora" dá para cruzar a data com os demitidos do Domínio.
+
 ## Novidades da v0.57.0 (sondagem da lista de empregados)
 
 - Em Configurações → Avançado, o botão **Sondar a lista de empregados** lê uma única empresa (só GET) e mostra só o **formato**: nomes de campos do empregado e do cliente, contagens por situação, datas mínima e máxima de campos de desligamento ou sincronização, o resultado de variações da mesma leitura (sem filtros, `expand=all`, `status=INACTIVE`, incluindo inativos, outros tipos de vínculo) e o detalhe de um empregado. Nunca mostra nome, CPF nem código de empregado.

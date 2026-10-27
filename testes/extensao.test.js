@@ -2816,6 +2816,7 @@ test('Hub: a folha inteira de cada empresa vem pela lista de clientes, com quem 
   assert.equal(de(NOME_T)[col('Admissão')], '2020-01-01');
   assert.equal(de(NOME_T)[col('Código do empregado')], '55');
   assert.equal(de(NOME_T)[col('Cliente')], 'ACME');
+  assert.ok(col('Criado no Onvio em') >= 0, 'a data em que o Onvio criou o registro vai junto');
   assert.equal(de(NOME_T)[col('Vínculo')], 'EMPLOYEE');
   assert.equal(de('Sem Solicitacao Nenhuma')[col('Vínculo')], 'INTERN', 'quem nunca teve solicitação também vem');
   assert.equal(de('Quem Saiu')[col('Situação')], 'INACTIVE');

@@ -3103,7 +3103,7 @@
   };
   const leituraBoa = () => { RUN.seguidas = 0; };
   const HUB_CLIENTES_MAX = 3000;
-  const COLUNAS_EMPREGADOS = ['Id do cliente', 'Código do cliente', 'Cliente', 'Id', 'Nome', 'CPF', 'Admissão', 'Situação', 'Sexo', 'Cargo (código)', 'Carga horária', 'Código do empregado', 'Vínculo'];
+  const COLUNAS_EMPREGADOS = ['Id do cliente', 'Código do cliente', 'Cliente', 'Id', 'Nome', 'CPF', 'Admissão', 'Situação', 'Sexo', 'Cargo (código)', 'Carga horária', 'Código do empregado', 'Vínculo', 'Criado no Onvio em'];
   const URL_EMPREGADOS = id => API + 'br-payroll-sr/v1/clients/' + encodeURIComponent(id) + '/employees?eprType=EMPLOYEE&eprType=INTERN&expand=clientEmployeeRelationshipExpanded';
   async function lerClientesFolha(fetcher, pausa) {
     const por = new Map();
@@ -3132,7 +3132,7 @@
         const lista = listaDe(resp); if ([50, 100, 200, 250, 500, 1000].includes(lista.length)) suspeitas++;          // tamanho redondo: pode ser uma página cortada pelo Onvio
         lista.forEach(x => {
           if (!x || typeof x !== 'object') return;
-          linhas.push(linhaTexto([c.id, c.codigo, c.nome, x.id, x.name, x.cpf, dataIso(x.hireDate), x.status, x.gender, x.jobPosition, x.employeeWorkload, x.integrationCode, (x.clientEmployeeRelationshipExpanded || {}).eprType], 120));
+          linhas.push(linhaTexto([c.id, c.codigo, c.nome, x.id, x.name, x.cpf, dataIso(x.hireDate), x.status, x.gender, x.jobPosition, x.employeeWorkload, x.integrationCode, (x.clientEmployeeRelationshipExpanded || {}).eprType, dataHora(x.created)], 120));
         });
       } catch (e) { recusaIsolada(e, 'clients/' + c.id + '/employees'); falhas++; }
       if (ctx.pausa) await ctx.pausa(250);
