@@ -172,6 +172,52 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
   const fr = page.frameLocator('#fontes-frame');
   const aplicarNoQuadro = async (linha, botao) => { await fr.locator(`#cadro tr[data-emp]:has-text("${linha}") ${botao}`).click(); await fr.locator('#dlgConf[open]').waitFor(); };
 
+  await passo('Funcionários do DP: cartões por empresa (sem lista completa), busca pelo nome, filtro, linha do tempo e abrir a empresa', async () => {
+    await page.evaluate(() => window.__hubApi.abrirModulo('dp'));
+    await page.evaluate(() => window.__hubApi.api('dp').irPara('funcionarios'));
+    await page.waitForSelector('#dp-func-cards .fn-card');
+    assert.equal(await page.locator('#dp-func-listcard').isVisible(), false, 'a lista completa não aparece');
+    assert.equal(await page.locator('#dp-func-list .dp-row').count(), 0, 'nenhuma linha de funcionário sem busca');
+    const card = page.locator('#dp-func-cards .fn-card:has-text("ORION")');
+    assert.equal(await card.count(), 1);
+    assert.match(await card.textContent(), /2\s*func/); assert.match(await card.textContent(), /alerta/);
+    assert.ok(await card.locator('.fn-bar span').count() >= 1, 'barra da situação');
+    assert.match(await page.locator('#dp-func-resumo').textContent(), /funcionários em/);
+    assert.equal(await page.locator('[data-func-modo="lista"]').count(), 0, 'sem o modo Lista');
+    if (CAP) { await page.waitForTimeout(400); await page.screenshot({ path: path.join(CAP, 'funcionarios-cartoes-claro.png') }); }
+    // uma letra não busca; duas ou mais, sim, pelo nome
+    await page.fill('#dp-func-search', 'm'); await page.waitForTimeout(400);
+    assert.equal(await page.locator('#dp-func-list .dp-row').count(), 0);
+    await page.fill('#dp-func-search', 'maria');
+    await page.waitForSelector('#dp-func-list .dp-row');
+    assert.equal(await page.locator('#dp-func-list .dp-row').count(), 1);
+    assert.match(await page.locator('#dp-func-list').textContent(), /Maria Souza/);
+    assert.equal(await page.locator('#dp-func-cards').isVisible(), false, 'na busca só o resultado');
+    if (CAP) { await page.waitForTimeout(300); await page.screenshot({ path: path.join(CAP, 'funcionarios-busca-claro.png') }); }
+    await page.fill('#dp-func-search', 'zzzzz'); await page.waitForSelector('#dp-func-list .dp-empty');
+    // filtro: sem ninguém de férias nenhum cartão
+    await page.fill('#dp-func-search', '');
+    await page.waitForSelector('#dp-func-cards .fn-card');
+    await page.click('#dp-func-chips [data-f="Férias"]');
+    await page.waitForSelector('#dp-func-cards .dp-empty');                                // ninguém de férias: nenhum cartão
+    await page.click('#dp-func-chips [data-f="Ativo"]');
+    await page.waitForSelector('#dp-func-cards .fn-card:has-text("ORION")');
+    await page.click('#dp-func-chips [data-f=""]');
+    // linha do tempo
+    await page.click('[data-func-modo="tempo"]');
+    await page.waitForSelector('#dp-func-tl .tl-card, #dp-func-tl .dp-empty');
+    assert.equal(await page.locator('#dp-func-cards').isVisible(), false);
+    await page.click('[data-func-modo="empresas"]');
+    await page.waitForSelector('#dp-func-cards .fn-card');
+    // o cartão abre a empresa na aba Funcionários
+    await page.click('#dp-func-cards .fn-card:has-text("ORION")');
+    await page.waitForSelector('#dlg-dp-detail[open]');
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('#dlg-dp-detail[open]'), null, { timeout: 5000 }).catch(() => { throw new Error('a ficha não fechou com Esc'); });
+    await page.evaluate(() => window.__hubApi.abrirModulo('fontes'));                     // os próximos passos continuam na Entrada de dados
+    await page.waitForFunction(() => { const f = document.querySelector('#fontes-frame'); return f && f.contentDocument && f.contentDocument.querySelector('#cadro tr[data-emp]'); }, null, { timeout: 10000 });
+  });
+
   await passo('Entrada de dados: separa complementar, corrigir e cadastro novo; clientes sem empresa; nada é gravado antes de confirmar', async () => {
     await fr.locator('#cadro tr[data-emp]').first().waitFor({ timeout: 10000 });
     assert.equal(await fr.locator('#cadro tr[data-emp]').count(), 9, 'ORION 5 + VEGA 2 + LIRA 2');
