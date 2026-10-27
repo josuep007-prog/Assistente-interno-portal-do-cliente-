@@ -2834,14 +2834,36 @@ test('Hub: se a lista de clientes da folha falhar, vale o que as solicitações 
   assert.equal(por['pessoais-empregados'].c.cortado, true);
 });
 
-test('Hub: falha em um cliente não derruba os outros (e marca incompleto); acesso de cliente interrompe', async () => {
+test('Hub: falha em um cliente não derruba os outros (e marca incompleto)', async () => {
   const base = apiHub(), f = async url => { if (/clients\/c2\/employees/.test(url)) { const e = new Error('Erro 500'); e.status = 500; throw e; } return base(url); };
   const por = {};
   await OC.hubExecutar(f, ['pessoais'], { pausa: null, snapshot: { items: [] } }, async (c, p) => { por[c.tipoDado] = { c, p }; return { ok: true }; });
   assert.equal(por['pessoais-empregados'].p.nLinhasTotal, 3);
   assert.equal(por['pessoais-empregados'].c.cortado, true);
-  const auth = async url => { if (/\/employees\?/.test(url)) { const e = new Error('Sem acesso'); e.auth = true; throw e; } return base(url); };
-  await assert.rejects(OC.hubExecutar(auth, ['pessoais'], { pausa: null, snapshot: { items: [] } }, async () => ({ ok: true })));
+});
+
+const recusa = (msg) => { const e = new Error(msg || 'HTTP 403'); e.auth = true; return e; };
+test('Hub: uma leitura opcional recusada pelo Onvio (403) vira indisponível e o envio segue até os empregados', async () => {
+  const base = apiHub();
+  const f = async url => { if (/profiles\/v1\/accounts|core\/v3\/companies\/.+\/main/.test(url)) throw recusa(); return base(url); };
+  const por = {};
+  const res = await OC.hubExecutar(f, todasCategorias(), { pausa: null, snapshot: { items: [] } }, async (c, p) => { por[c.tipoDado] = p.partes.join('\n'); return { ok: true }; });
+  for (const k of ['escritorio-conta', 'escritorio-licencas', 'escritorio-permissoes', 'documentos-pastas', 'noticias-artigos', 'pessoais-empregados', 'pessoais-comunicacoes']) assert.ok(k in por, 'faltou ' + k);
+  const conta = res.find(r => r.id === 'escritorio-conta');
+  assert.match(conta.aviso || '', /recusou.*profiles\/v1\/accounts/, 'o resultado diz o que foi recusado');
+  assert.ok(res.every(r => r.ok));
+});
+
+test('Hub: recusa de um cliente isolado não derruba a leitura dos empregados; recusas sem parar (sessão perdida) interrompem', async () => {
+  const base = apiHub();
+  const um = async url => { if (/clients\/c2\/employees/.test(url)) throw recusa(); return base(url); };
+  const por = {};
+  await OC.hubExecutar(um, ['pessoais'], { pausa: null, snapshot: { items: [] } }, async (c, p) => { por[c.tipoDado] = { c, p }; return { ok: true }; });
+  assert.equal(por['pessoais-empregados'].p.nLinhasTotal, 3, 'os de ACME vieram');
+  assert.equal(por['pessoais-empregados'].c.cortado, true, 'e o conjunto avisa que ficou incompleto');
+  const muitos = Array.from({ length: 12 }, (_, i) => ({ id: 'z' + i, code: 100 + i, name: 'Z' + i }));
+  const f = async url => { const u = new URL(url); if (/br-payroll-sr\/v1\/clients$/.test(u.pathname)) return { items: muitos, totalItems: 12, totalPages: 1 }; if (/\/employees$/.test(u.pathname)) throw recusa(); return base(url); };
+  await assert.rejects(OC.hubExecutar(f, ['pessoais'], { pausa: null, snapshot: { items: [] } }, async () => ({ ok: true })), e => e.auth === true);
 });
 
 test('Hub: clientes de CND e NF-e trazem CNPJ, inscrições e a validade do certificado', async () => {
