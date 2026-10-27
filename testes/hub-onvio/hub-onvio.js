@@ -424,6 +424,13 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     assert.match(await fr.locator('#confTxt').textContent(), /sem pedir confirmação/); assert.match(await fr.locator('#confTxt').textContent(), /Pendente agora: \d+ complemento/);
     await fr.locator('#confSim').click();
     await page.waitForFunction(() => { const o = window.__db.ler('dp_empresas/e-orion'), l = window.__db.ler('dp_empresas/e-lira'); return o.funcionarios.some(f => f.nome === 'Carlos Sem Pedido') && l.funcionarios.some(f => f.nome === 'Lira Funcionaria'); }, null, { timeout: 15000 });
+    // dois empregados do Onvio com datas trocadas em relação ao DP e um código repetido: cada um é corrigido no seu próprio funcionário e fica assim
+    await page.waitForFunction(() => { const l = window.__db.ler('dp_empresas/e-lira').funcionarios, g = (n) => l.find(f => f.nome === n); return g('Erica Teste').admissao === '2025-02-03' && g('Diego Teste').admissao === '2024-06-06'; }, null, { timeout: 15000 });
+    await page.waitForTimeout(3500);
+    const lira = await page.evaluate(() => window.__db.ler('dp_empresas/e-lira'));
+    assert.equal(lira.funcionarios.find(f => f.nome === 'Erica Teste').admissao, '2025-02-03'); assert.equal(lira.funcionarios.find(f => f.nome === 'Diego Teste').admissao, '2024-06-06');
+    assert.equal(lira.funcionarios.filter(f => /Teste/.test(f.nome)).length, 2, 'ninguém duplicado');
+    assert.equal(lira.historico.filter(h => /Admissão diferente/.test(h.alteracao) && /Teste/.test(h.alteracao)).length, 2, 'uma correção de admissão para cada um, sem vaivém');
     const orion = await page.evaluate(() => window.__db.ler('dp_empresas/e-orion'));
     assert.ok(orion.historico.some(h => /automaticamente a partir do Onvio/.test(h.alteracao) && /Carlos Sem Pedido/.test(h.alteracao)));
     const carlos = orion.funcionarios.find(f => f.nome === 'Carlos Sem Pedido'); assert.equal(carlos.admissao, '2021-06-01'); assert.equal(carlos.codigo, '105'); assert.equal(carlos.status, 'Ativo');
