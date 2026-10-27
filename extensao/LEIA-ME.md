@@ -45,6 +45,11 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
 
+## Novidades da v0.59.0 (equipe ativa do escritório)
+
+- Novo conjunto `escritorio-funcionarios` (categoria **Escritório e acesso**): os nomes da equipe **ativa** do escritório, lidos de `GET br-payroll-sr/v1/employees` (só `id`, `contactId` e `name`; sem CPF nem situação, porque a própria lista é só de ativos: 107 de 108 batem com Gestão > Configuração > Contatos > Funcionários, Status = Ativo). Cuidados do Onvio: o `pageIndex` começa em **0** e a paginação de 25 em 25 repete e perde itens; por isso a extensão pede uma página de 500, deduplica por `id` e marca o conjunto como incompleto se vierem menos do que o `totalItems`.
+- Motivo: nas empresas do próprio escritório (códigos 1, 6 e 7) a lista de empregados do Onvio não acompanha os desligamentos, e a equipe ativa é a fonte confiável. O Hub 286 detecta sozinho essas empresas (a maioria dos empregados da empresa na lista do Onvio está na equipe ativa) e passa a tratar quem não está na equipe como desligado, inclusive no aplicar automático.
+
 ## Novidades da v0.58.0
 
 - A lista de empregados de cada empresa (`pessoais-empregados`) ganhou a coluna **Criado no Onvio em** (a data em que o Onvio criou o registro do empregado). Serve para testar a hipótese de que a lista do Onvio é "quem estava ativo na carga inicial, mais as admissões, menos quem saiu por rescisão no portal": na PLANT, 11 de 12 registros foram criados em 10/04/2026 (carga inicial); na ControlTax (código 1) a lista traz 143 empregados e ainda mostra demitidos. Depois do próximo "Enviar tudo agora" dá para cruzar a data com os demitidos do Domínio.

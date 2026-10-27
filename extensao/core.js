@@ -3008,7 +3008,7 @@
     { id: 'analise', nome: 'Análise do escritório', ajuda: 'O que a extensão calcula e o Hub não tem: de quem é a vez, dias com o escritório, prazo legal e prometido, gravidade, resolvidas sem retorno do cliente e a carga por analista. Só números e datas; sem texto de solicitação. Não faz nenhuma leitura nova no Onvio.', pessoal: false, padrao: true },
     { id: 'listas', nome: 'Solicitações completas', ajuda: 'As 10 listas inteiras (não só as pendentes): situação, datas, cliente, responsável, departamento e campos de cada tipo. Sem dados pessoais.', pessoal: false, padrao: true },
     { id: 'clientes', nome: 'Clientes', ajuda: 'Clientes de CND e de NF-e: nome, código, CNPJ/CPF, inscrições, UF e município, certificado.', pessoal: false, padrao: true },
-    { id: 'escritorio', nome: 'Escritório e acesso', ajuda: 'Departamentos, seu acesso, tabelas de apoio, prescrição, conta, licenças, permissões, funcionalidades e serviços do Onvio. Sem tokens.', pessoal: false, padrao: true },
+    { id: 'escritorio', nome: 'Escritório e acesso', ajuda: 'Departamentos, seu acesso, tabelas de apoio, prescrição, conta, licenças, permissões, funcionalidades, serviços do Onvio e os nomes da equipe ativa do escritório. Sem tokens.', pessoal: false, padrao: true },
     { id: 'documentos', nome: 'Documentos', ajuda: 'Árvore de pastas do Onvio Drive (nomes, contagens, datas, quem leu).', pessoal: false, padrao: true },
     { id: 'noticias', nome: 'Notícias', ajuda: 'Artigos compartilhados com os clientes.', pessoal: false, padrao: true },
     { id: 'pessoais', nome: 'Dados pessoais', ajuda: 'CPF, salário, nomes de empregados, a lista completa de empregados de cada empresa (uma leitura por empresa), assunto e descrição de todas as solicitações, dados completos e trâmites das pendentes, comunicações. Fica no banco do Hub, visível a quem acessa o Hub.', pessoal: true, padrao: false }
@@ -3291,6 +3291,19 @@
       return { colunas: ['Grupo', 'Permissão', 'Valor'], linhas };
     }
     if (id === 'funcionalidades') return { colunas: ['Funcionalidade'], linhas: (Array.isArray(b.InfrastructureAccessControls) ? b.InfrastructureAccessControls : []).map(x => linhaTexto([String(x).slice(0, 120)])) };
+    if (id === 'funcionarios') {
+      // Equipe do escritório (só ativos: bate com a tela Gestão > Contatos > Funcionários filtrada por Status = Ativo). Atenção: aqui o pageIndex começa em 0
+      // e a paginação de 25 em 25 repete e perde itens; por isso uma página grande e, se vier mais de uma, deduplica por id e confere com totalItems.
+      const por = new Map(); let total = 0;
+      for (let pagina = 0; pagina < 20; pagina++) {
+        const d = await tenta(fetcher, 'br-payroll-sr/v1/employees?itemsPerPage=500&pageIndex=' + pagina);
+        if (!d) break;
+        total = Number(d.totalItems) || total;
+        const lote = listaDe(d); lote.forEach(x => { if (x && x.id != null && !por.has(String(x.id))) por.set(String(x.id), x); });
+        if (!lote.length || (total && por.size >= total) || pagina + 1 >= (Number(d.totalPages) || 1)) break;
+      }
+      return { colunas: ['Id', 'Contato (id)', 'Nome'], linhas: [...por.values()].map(x => linhaTexto([x.id, x.contactId, x.name])), cortado: !!total && por.size < total };
+    }
     if (id === 'servicos') {
       const rt = b.RoutingTable && typeof b.RoutingTable === 'object' ? b.RoutingTable : {};
       return { colunas: ['Serviço', 'Endereço (host)'], linhas: Object.entries(rt).map(([k, v]) => { let h = ''; try { h = new URL(String(v)).host; } catch (e) { h = ''; } return linhaTexto([k, h]); }) };
@@ -3385,8 +3398,8 @@
       tarefas.push({ id: 'clientes:cnd', rotulo: 'Clientes de CND', async executar(f, ctx) { const { itens, total } = await lerClientes(f, 'cnd/v1/clients', ctx.pausa), x = tabelaCnd(itens); return [{ tipoDado: 'clientes-cnd', categoria: 'clientes', titulo: 'Clientes de CND', colunas: x.colunas, linhas: x.linhas, totalNaOrigem: total, cortado: itens.length < total, porTipo: {} }]; } });
       tarefas.push({ id: 'clientes:nfe', rotulo: 'Clientes de NF-e', async executar(f, ctx) { const { itens, total } = await lerClientes(f, 'manifesto/v1/clients', ctx.pausa), x = tabelaNfe(itens); return [{ tipoDado: 'clientes-nfe', categoria: 'clientes', titulo: 'Clientes de NF-e', colunas: x.colunas, linhas: x.linhas, totalNaOrigem: total, cortado: itens.length < total, porTipo: {} }]; } });
     }
-    if (quer('escritorio')) for (const [id, titulo] of [['departamentos', 'Departamentos'], ['acesso', 'Acesso do usuário'], ['tabelas', 'Tabelas de apoio'], ['prescricao', 'Prescrição'], ['conta', 'Conta e configuração do escritório'], ['licencas', 'Licenças'], ['permissoes', 'Permissões do usuário'], ['funcionalidades', 'Funcionalidades do Onvio'], ['servicos', 'Serviços do Onvio']])
-      tarefas.push({ id: 'escritorio:' + id, rotulo: titulo, async executar(f) { const x = await lerEscritorio(f, id); return [{ tipoDado: 'escritorio-' + id, categoria: 'escritorio', titulo: 'Escritório · ' + titulo, colunas: x.colunas, linhas: x.linhas, totalNaOrigem: x.linhas.length, cortado: false, porTipo: {} }]; } });
+    if (quer('escritorio')) for (const [id, titulo] of [['departamentos', 'Departamentos'], ['acesso', 'Acesso do usuário'], ['tabelas', 'Tabelas de apoio'], ['prescricao', 'Prescrição'], ['conta', 'Conta e configuração do escritório'], ['licencas', 'Licenças'], ['permissoes', 'Permissões do usuário'], ['funcionalidades', 'Funcionalidades do Onvio'], ['servicos', 'Serviços do Onvio'], ['funcionarios', 'Equipe do escritório (ativos)']])
+      tarefas.push({ id: 'escritorio:' + id, rotulo: titulo, async executar(f) { const x = await lerEscritorio(f, id); return [{ tipoDado: 'escritorio-' + id, categoria: 'escritorio', titulo: 'Escritório · ' + titulo, colunas: x.colunas, linhas: x.linhas, totalNaOrigem: x.linhas.length, cortado: !!x.cortado, porTipo: {} }]; } });
     if (quer('documentos')) tarefas.push({ id: 'documentos:pastas', rotulo: 'Pastas do Onvio Drive', async executar(f) { const x = await lerDocumentos(f, 'pastas'); return [{ tipoDado: 'documentos-pastas', categoria: 'documentos', titulo: 'Documentos · pastas', colunas: x.colunas, linhas: x.linhas, totalNaOrigem: x.linhas.length, cortado: false, porTipo: {} }]; } });
     if (quer('noticias')) tarefas.push({ id: 'noticias:artigos', rotulo: 'Notícias', async executar(f) { const x = await lerNoticias(f); return [{ tipoDado: 'noticias-artigos', categoria: 'noticias', titulo: 'Notícias compartilhadas', colunas: x.colunas, linhas: x.linhas, totalNaOrigem: x.linhas.length, cortado: false, porTipo: {} }]; } });
     if (P) {
