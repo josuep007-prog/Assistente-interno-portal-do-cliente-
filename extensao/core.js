@@ -3140,6 +3140,82 @@
     return { colunas: COLUNAS_EMPREGADOS, linhas, clientes: todos.length, falhas, cortado: listaFalhou || falhas > 0 || suspeitas > 0 || todos.length > lidos.length };
   }
 
+  /* Sondagem da lista de empregados (0.57.0, pedido do Josué em 27/10/2026): o Onvio devolve todos como ACTIVE, e ele precisa de uma lista fiel ao
+   * Domínio. Só GET, em uma empresa, e só o FORMATO volta: nomes de campos, tipos, contagens e a distribuição de campos de situação/data
+   * (nunca nome, CPF ou valor de um empregado). É para descobrir se existe campo ou rota que diga quem foi desligado. */
+  function caminhosDe(v, prefixo, out, prof) {
+    if (v == null || prof > 3) return;
+    if (Array.isArray(v)) { v.slice(0, 3).forEach(x => caminhosDe(x, prefixo, out, prof)); return; }
+    if (typeof v !== 'object') return;
+    for (const k of Object.keys(v)) {
+      const x = v[k], p = prefixo ? prefixo + '.' + k : k;
+      if (x && typeof x === 'object' && !Array.isArray(x)) { out.add(p + ':objeto'); caminhosDe(x, p, out, prof + 1); }
+      else if (Array.isArray(x)) { out.add(p + ':lista(' + x.length + ')'); caminhosDe(x, p, out, prof + 1); }
+      else out.add(p + ':' + (x === null ? 'nulo' : typeof x));
+    }
+  }
+  const SUSPEITO = /status|situa|terminat|dismiss|demiss|desligad|inactiv|inativ|leave|enddate|end_date|fim|exit|sync|integr|updated|changed|lastmod|lastupd|lastsync/i;
+  const PESSOAL = /cpf|name|nome|code|codigo|identifier|email|phone|(^|\.)id$/i;       // nunca entra valor de campo que identifica a pessoa
+  function resumoDeCampos(lista) {
+    const out = {};
+    lista.forEach(x => {
+      if (!x || typeof x !== 'object') return;
+      const visita = (o, pre, prof) => { for (const k of Object.keys(o)) {
+        const v = o[k], p = pre ? pre + '.' + k : k;
+        if (v && typeof v === 'object' && !Array.isArray(v)) { if (prof < 2) visita(v, p, prof + 1); }
+        else if (SUSPEITO.test(k) && !PESSOAL.test(p)) { const r = out[p] || (out[p] = { n: 0, vals: new Map(), min: '', max: '' }); r.n++; const t = v == null ? '(nulo)' : String(v);
+          if (/^\d{4}-\d{2}-\d{2}/.test(t)) { const d = t.slice(0, 10); if (!r.min || d < r.min) r.min = d; if (!r.max || d > r.max) r.max = d; } else r.vals.set(t.slice(0, 40), (r.vals.get(t.slice(0, 40)) || 0) + 1); } } };
+      visita(x, '', 0);
+    });
+    return Object.keys(out).map(p => { const r = out[p]; return p + ' (' + r.n + ')' + (r.min ? ' datas ' + r.min + ' a ' + r.max : '') + (r.vals.size ? ': ' + (r.vals.size > 8 ? r.vals.size + ' valores distintos' : [...r.vals.entries()].sort((a, b) => b[1] - a[1]).map(([v, n]) => v + ' ×' + n).join(', ')) : ''); });
+  }
+  async function sondarEmpregados(fetcher, pausa) {
+    const linhas = [], base = API + 'br-payroll-sr/v1/clients/';
+    const ler = async (url) => { try { return { ok: true, d: await fetcher(url) }; } catch (e) { return { ok: false, erro: celulaHub(e && e.message || e, 80) }; } };
+    // acha uma empresa que tenha empregados (até 12 tentativas)
+    const clientes = await ler(API + 'br-payroll-sr/v1/clients?itemsPerPage=100&pageIndex=1&startIndex=0');
+    if (!clientes.ok) return ['Não consegui ler a lista de clientes da folha: ' + clientes.erro];
+    const lc = listaDe(clientes.d).filter(c => c && c.id != null);
+    linhas.push('Clientes da folha na 1ª página: ' + lc.length);
+    let alvo = null, empregados = [];
+    for (const c of lc.slice(0, 12)) {
+      const r = await ler(URL_EMPREGADOS(c.id)); if (pausa) await pausa(250);
+      if (r.ok && listaDe(r.d).length) { alvo = c; empregados = listaDe(r.d); break; }
+    }
+    // chaves do próprio cliente (sem valores pessoais): procura campo de integração/sincronização
+    if (lc[0]) { const k = new Set(); caminhosDe(lc[0], '', k, 0); linhas.push('Campos do cliente: ' + [...k].join(', ')); const sus = resumoDeCampos(lc.slice(0, 50)).filter(l => /sync|integr|updated|last/i.test(l)); if (sus.length) linhas.push('Campos de integração/atualização do cliente: ' + sus.join(' | ')); }
+    if (!alvo) { linhas.push('Nenhuma das primeiras 12 empresas devolveu empregados.'); return linhas; }
+    linhas.push('Empresa sondada: a ' + (lc.indexOf(alvo) + 1) + 'ª da lista, com ' + empregados.length + ' empregado(s) na leitura de hoje');
+    const k = new Set(); empregados.slice(0, 5).forEach(x => caminhosDe(x, '', k, 0));
+    linhas.push('Campos de um empregado (' + k.size + '): ' + [...k].join(', '));
+    resumoDeCampos(empregados).forEach(l => linhas.push('  campo de situação/data: ' + l));
+    // variações da mesma leitura: só contagem e valores de situação
+    const id = encodeURIComponent(alvo.id), emp = base + id + '/employees';
+    const variantes = [
+      ['sem filtros', emp],
+      ['expand=all', emp + '?eprType=EMPLOYEE&eprType=INTERN&expand=all'],
+      ['só estagiário e empregado + status=INACTIVE', emp + '?eprType=EMPLOYEE&eprType=INTERN&status=INACTIVE'],
+      ['incluindo inativos (includeInactive=true)', emp + '?eprType=EMPLOYEE&eprType=INTERN&includeInactive=true'],
+      ['todos os eprType', emp + '?eprType=EMPLOYEE&eprType=INTERN&eprType=PARTNER&eprType=OTHER']
+    ];
+    for (const [rot, url] of variantes) {
+      const r = await ler(url); if (pausa) await pausa(250);
+      if (!r.ok) { linhas.push('Variante "' + rot + '": ' + r.erro); continue; }
+      const l = listaDe(r.d), st = new Map(); l.forEach(x => st.set(String(x && x.status), (st.get(String(x && x.status)) || 0) + 1));
+      linhas.push('Variante "' + rot + '": ' + l.length + ' empregado(s) · status: ' + ([...st.entries()].map(([v, n]) => v + ' ×' + n).join(', ') || '—'));
+    }
+    // um empregado em detalhe (só o formato) e o cliente em detalhe
+    if (empregados[0] && empregados[0].id != null) {
+      const r = await ler(emp + '/' + encodeURIComponent(empregados[0].id) + '?expand=all'); if (pausa) await pausa(250);
+      if (r.ok && r.d && typeof r.d === 'object') { const kk = new Set(); caminhosDe(r.d, '', kk, 0); linhas.push('Detalhe de um empregado (' + kk.size + ' campos): ' + [...kk].join(', ')); }
+      else linhas.push('Detalhe de um empregado: ' + (r.erro || 'sem corpo'));
+    }
+    const rc = await ler(base + id); if (pausa) await pausa(250);
+    if (rc.ok && rc.d && typeof rc.d === 'object') { const kk = new Set(); caminhosDe(rc.d, '', kk, 0); linhas.push('Detalhe do cliente (' + kk.size + ' campos): ' + [...kk].join(', ')); }
+    else linhas.push('Detalhe do cliente: ' + (rc.erro || 'sem corpo'));
+    return linhas;
+  }
+
   // ----- clientes (CND e NF-e) -----
   async function lerClientes(fetcher, caminho, pausa) {
     const itens = []; let total = 0;
@@ -3367,5 +3443,5 @@
     return resultados;
   }
 
-  g.OC = { montarLoteHub, HUB_CATEGORIAS, tabelaAnaliseSolicitacoes, tabelaAnaliseEquipe, hubPlano, hubExecutar, hubPartesDe, partirTabela, tabelaLista, tabelaPessoais, tabelaCnd, tabelaNfe, lerEscritorio, lerDocumentos, lerNoticias, slugHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, dentroDoHorario, planoDistribuicaoAuto, acaoConcluir, agruparSugestoes, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, acaoAnalise, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, mensagensProntas, marcadoresPendentes, observacoesFaltantes, avisosResposta, situacaoEquivalente, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { sondarEmpregados, montarLoteHub, HUB_CATEGORIAS, tabelaAnaliseSolicitacoes, tabelaAnaliseEquipe, hubPlano, hubExecutar, hubPartesDe, partirTabela, tabelaLista, tabelaPessoais, tabelaCnd, tabelaNfe, lerEscritorio, lerDocumentos, lerNoticias, slugHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, dentroDoHorario, planoDistribuicaoAuto, acaoConcluir, agruparSugestoes, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, acaoAnalise, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, mensagensProntas, marcadoresPendentes, observacoesFaltantes, avisosResposta, situacaoEquivalente, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);

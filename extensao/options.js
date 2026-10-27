@@ -128,6 +128,13 @@
     box.textContent = r.ok ? r.linhas.join('\n') : 'Não foi possível testar: ' + (r.erro || chrome.runtime.lastError || 'sem resposta');
   });
 
+  $('#sondar-empregados').addEventListener('click', async () => {
+    const box = $('#teste-leitura');
+    box.hidden = false; box.textContent = 'Sondando a lista de empregados (uma empresa, só leitura)…';
+    const r = await new Promise(res => chrome.runtime.sendMessage({ cmd: 'sondarEmpregados' }, x => res(x || {})));
+    box.textContent = r.ok ? r.linhas.join('\n') : 'Não foi possível sondar: ' + (r.erro || chrome.runtime.lastError || 'sem resposta');
+  });
+
   /* ---------- aprender ações ---------- */
   const APRENDER_MAX_MS = 2 * 3600 * 1000;
   const ativo = a => !!(a && a.ligado && Date.now() - (a.desde || 0) < APRENDER_MAX_MS);
