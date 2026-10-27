@@ -418,6 +418,11 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     assert.equal(await page.evaluate(() => window.__db.existe('ing_reservas/onvio~noticias-artigos')), false, 'reserva liberada ao publicar');
     assert.equal((await envia(lote('b0b', 'cB', 0))).ok, true, 'liberado, o segundo pode enviar');
     const errado = lote('c0', 'cC', 0); errado.token = 'OUTRO'; assert.equal((await envia(errado)).motivo, 'token');
+    // toda categoria que a extensão envia (OC.HUB_CATEGORIAS) tem de ser aceita pelo recebimento real do Hub
+    for (const c of D.OC.HUB_CATEGORIAS) {
+      const l = { ...lote('cat-' + c.id, 'cK', 0), tipoDado: (c.id === 'analise' ? 'analise-solicitacoes' : 'categoria-' + c.id), categoria: c.id, partes: 1, nLinhasTotal: 1, totalNaOrigem: 1 };
+      const r = await envia(l); assert.equal(r.ok, true, 'categoria ' + c.id + ' aceita (' + (r.motivo || '') + ')');
+    }
   });
 
   await passo('Folha inteira de cada empresa: quem nunca teve solicitação vira cadastro novo; desligado sem solicitação não; cliente só da folha aparece para cadastrar', async () => {

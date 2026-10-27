@@ -153,6 +153,8 @@ CPF, salário, nomes de empregados, assunto e descrição de todas as solicitaç
 
 Categoria `analise` (de fábrica ligada, sem dados pessoais), montada de `snapshot.items` e `snapshot.resolvidas` por `OC.tabelaAnaliseSolicitacoes` e `OC.tabelaAnaliseEquipe` (sem leitura no Onvio): `analise-solicitacoes` (chave = `k` da solicitação; colunas em `COLUNAS_ANALISE_SOL`) e `analise-equipe` (`porAnalista` + resolvidas). Teste: `Hub: a análise do escritório vai sem leitura nova…`. No Hub, `ovAnalise` junta pela chave e a ficha da empresa mostra gravidade, prazo legal e prometido. Fica para depois (precisa de mapeamento no Onvio real ou de decisão): contatos dos clientes, equipe do escritório (`employees/search`), conteúdo das pastas do Drive, Fiscal (CND histórico/manifestação), nota da avaliação da equipe, e dar uso a departamentos, comunicações e prescrição, ou parar de enviá-los.
 
+**Lição do Hub 281:** o recebimento do Hub tem duas listas fixas (`ING_CATS` para a categoria e a regra do `tipoDado`). A categoria `analise` foi esquecida no Hub 280 e o primeiro envio real foi recusado ("O Hub não conhece esta categoria"). Agora o teste `testes/hub-onvio/hub-onvio.js` manda **cada categoria de `OC.HUB_CATEGORIAS`** pelo recebimento real do Hub; categoria nova na extensão exige publicar o Hub antes.
+
 ## Limites e a confirmar
 
 - Detalhes completos e trâmites: só das pendentes (até 300, as mais graves primeiro), uma leitura por item. As listas inteiras vêm de uma leitura por página de 200.
