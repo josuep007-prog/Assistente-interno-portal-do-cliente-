@@ -45,6 +45,17 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
 
+## Novidades da v0.55.0 (o envio ao Control Hub fica mais robusto)
+
+- **Falha não vira "vazio aceito":** uma leitura que falha de verdade (erro 500, recusa) e não traz nada **não é enviada** (um conjunto vazio trocaria o bom que já está no Hub); aparece como "✕ … leitura falhou: <rota>". Quando traz parte, vai marcado como **cortado** e com o aviso do que falhou. Erro 404 continua sendo "não existe" (vazio legítimo). O resumo das pendentes também vai como cortado quando uma lista falhou na leitura.
+- **Para cedo:** antes de ler o Onvio a extensão confere se o Hub responde; erro que vale para o envio todo (código errado, Hub sumiu) interrompe a leitura do resto em vez de gastar centenas de chamadas.
+- **Retomada:** o resumo de cada conjunto aceito é gravado na hora, então se o service worker morrer o próximo envio automático continua de onde parou, sem reenviar o que o Hub já aceitou; o "Enviando…" preso vira "interrompido" (sem sinal há 4 min ou ao reiniciar).
+- **Aba do Onvio fechada no meio:** o leitor é escolhido de novo (até 3 vezes). Limite de chamadas (429) nos empregados: espera 5 s e tenta uma vez. Página de empregados com tamanho redondo (50, 100, 200…) marca o conjunto como incompleto.
+- **Cortado visível:** Configurações → Control Hub lista "⚠ … veio incompleto (cortado)".
+- **Desconectar de verdade:** cancela o envio em andamento, apaga o código de pareamento do armazenamento e o andamento, e tira o script e a permissão.
+- **Consentimento:** o envio completo automático só começa depois de a pessoa clicar em **Enviar tudo agora** (quem conectou na 0.36, só com o resumo, não passa a enviar tudo sozinha ao atualizar). Ao atualizar a extensão a ponte é reinjetada nas abas do claude.ai já abertas.
+- Testes: `node --test testes/extensao.test.js` e `node testes/ponte-hub.js`.
+
 ## Novidades da v0.54.0 (a ponte só confia no Hub que prova o código de pareamento)
 
 - **Quem é o Hub:** qualquer janela da página do claude.ai (outro artefato, por exemplo) podia dizer "ola" e passar a receber o código e os dados do envio. Agora cada janela que se anuncia recebe um **desafio** (`busca` com um nonce) e só vale se responder com `HMAC-SHA256(código, nonce)`, que o service worker confere com o código guardado (`hubProva`). O código **nunca** vai para uma janela que não provou conhecê-lo. Teste: `node testes/ponte-hub.js` (com uma janela impostora que se faz passar pelo Hub e nada recebe).

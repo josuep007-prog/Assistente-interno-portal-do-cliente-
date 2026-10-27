@@ -2993,7 +2993,7 @@
       extraidoEm: (snap && snap.fetchedAt) || new Date().toISOString(),
       usuario: limpa(snap && snap.user && snap.user.nome || ''),
       colunas: HUB_COLUNAS.slice(), tabela: linhas.join('\n'), nLinhas: linhas.length,
-      totalNaOrigem: itens.length, cortado: linhas.length < itens.length,
+      totalNaOrigem: itens.length, cortado: linhas.length < itens.length || !!(snap && snap.erros && snap.erros.length),
       porTipo, versaoExt: opcoes.versao || ''
     };
   }
@@ -3089,8 +3089,17 @@
   // Uma leitura opcional que o Onvio recusa (401/403, redirecionamento ou página no lugar de dados) vira "indisponível" e o envio segue:
   // só interrompe tudo quando as recusas se repetem sem nenhuma leitura boa no meio (sessão perdida ou acesso de cliente de verdade).
   const RECUSAS_MAX = 8;
-  const RUN = { seguidas: 0, recusadas: [] };
-  const recusaIsolada = (e, onde) => { if (!(e && e.auth)) return false; if (++RUN.seguidas > RECUSAS_MAX) throw e; if (onde && RUN.recusadas.length < 20) RUN.recusadas.push(String(onde).slice(0, 80)); return true; };
+  const RUN = { seguidas: 0, recusadas: [], erros: [] };
+  // Toda leitura que falha (recusada ou não) é lembrada na tarefa: conjunto vazio por falha não é enviado (apagaria o bom do Hub) e o que
+  // veio incompleto vai marcado como cortado. Só a recusa (401/403…) conta para interromper tudo.
+  const recusaIsolada = (e, onde) => {
+    const ausente = !!e && !e.auth && (e.status === 404 || /\b404\b/.test(String(e.message || '')));        // 404: o recurso não existe (vazio de verdade), não é falha
+    if (onde && !ausente && RUN.erros.length < 30) RUN.erros.push(String(onde).slice(0, 80));
+    if (!(e && e.auth)) return false;
+    if (++RUN.seguidas > RECUSAS_MAX) throw e;
+    if (onde && RUN.recusadas.length < 20) RUN.recusadas.push(String(onde).slice(0, 80));
+    return true;
+  };
   const leituraBoa = () => { RUN.seguidas = 0; };
   const HUB_CLIENTES_MAX = 3000;
   const COLUNAS_EMPREGADOS = ['Id do cliente', 'Código do cliente', 'Cliente', 'Id', 'Nome', 'CPF', 'Admissão', 'Situação', 'Sexo', 'Cargo (código)', 'Carga horária', 'Código do empregado', 'Vínculo'];
@@ -3112,18 +3121,22 @@
     try { (await lerClientesFolha(fetcher, ctx.pausa)).forEach((c, id) => clientes.set(id, c)); leituraBoa(); }
     catch (e) { recusaIsolada(e, 'br-payroll-sr/v1/clients'); listaFalhou = true; }
     if (ctx.clientesVistos) ctx.clientesVistos.forEach((c, id) => { if (!clientes.has(id)) clientes.set(id, c); });
-    const todos = [...clientes.values()], lidos = todos.slice(0, HUB_CLIENTES_MAX), linhas = []; let falhas = 0;
+    const todos = [...clientes.values()], lidos = todos.slice(0, HUB_CLIENTES_MAX), linhas = []; let falhas = 0, suspeitas = 0;
     for (const c of lidos) {
       try {
-        const resp = await fetcher(URL_EMPREGADOS(c.id)); leituraBoa();
-        listaDe(resp).forEach(x => {
+        let resp;
+        try { resp = await fetcher(URL_EMPREGADOS(c.id)); }
+        catch (e1) { if (e1 && /429/.test(String(e1.message || '')) && ctx.pausa) { await ctx.pausa(5000); resp = await fetcher(URL_EMPREGADOS(c.id)); } else throw e1; }       // limite de chamadas: espera e tenta uma vez
+        leituraBoa();
+        const lista = listaDe(resp); if ([50, 100, 200, 250, 500, 1000].includes(lista.length)) suspeitas++;          // tamanho redondo: pode ser uma página cortada pelo Onvio
+        lista.forEach(x => {
           if (!x || typeof x !== 'object') return;
           linhas.push(linhaTexto([c.id, c.codigo, c.nome, x.id, x.name, x.cpf, dataIso(x.hireDate), x.status, x.gender, x.jobPosition, x.employeeWorkload, x.integrationCode, (x.clientEmployeeRelationshipExpanded || {}).eprType], 120));
         });
       } catch (e) { recusaIsolada(e, 'clients/' + c.id + '/employees'); falhas++; }
       if (ctx.pausa) await ctx.pausa(250);
     }
-    return { colunas: COLUNAS_EMPREGADOS, linhas, clientes: todos.length, falhas, cortado: listaFalhou || falhas > 0 || todos.length > lidos.length };
+    return { colunas: COLUNAS_EMPREGADOS, linhas, clientes: todos.length, falhas, cortado: listaFalhou || falhas > 0 || suspeitas > 0 || todos.length > lidos.length };
   }
 
   // ----- clientes (CND e NF-e) -----
@@ -3298,19 +3311,28 @@
   // Executa o plano: lê cada tarefa, partilha cada conjunto e entrega pelo callback enviar(conjunto, partes).
   async function hubExecutar(fetcher, escolhidas, ctx, enviar, aoProgredir) {
     const tarefas = hubPlano(escolhidas), resultados = [];
-    let i = 0;
-    RUN.seguidas = 0; RUN.recusadas = [];
+    let i = 0, parar = false;
+    RUN.seguidas = 0; RUN.recusadas = []; RUN.erros = [];
     for (const tarefa of tarefas) {
+      if (parar) break;
       i++;
-      RUN.recusadas = [];
+      RUN.recusadas = []; RUN.erros = [];
       if (aoProgredir) aoProgredir({ etapa: tarefa.rotulo, feito: i - 1, total: tarefas.length });
       let conjuntos;
       try { conjuntos = await tarefa.executar(fetcher, ctx); }
       catch (e) { if (e && e.auth) throw e; resultados.push({ id: tarefa.id, rotulo: tarefa.rotulo, ok: false, motivo: 'leitura: ' + celulaHub(e && e.message || e, 120) }); continue; }
-      const recusadas = RUN.recusadas.slice();
+      const recusadas = RUN.recusadas.slice(), erros = RUN.erros.slice();
       for (const c of conjuntos) {
+        // leitura que falhou e não trouxe nada: não manda (um conjunto vazio trocaria o bom que já está no Hub)
+        if (erros.length && !c.linhas.length) { resultados.push({ id: c.tipoDado, rotulo: c.titulo, categoria: c.categoria, ok: false, motivo: 'leitura falhou: ' + [...new Set(erros)].slice(0, 3).join(', ') }); continue; }
+        if (erros.length) c.cortado = true;
         const p = hubPartesDe(c);
-        try { const r = await enviar(c, p); resultados.push(Object.assign({ id: c.tipoDado, rotulo: c.titulo, categoria: c.categoria, linhas: p.nLinhasTotal, partes: p.partes.length }, recusadas.length ? { aviso: 'o Onvio recusou: ' + [...new Set(recusadas)].slice(0, 4).join(', ') } : {}, r)); }
+        try {
+          const r = await enviar(c, p);
+          resultados.push(Object.assign({ id: c.tipoDado, rotulo: c.titulo, categoria: c.categoria, linhas: p.nLinhasTotal, partes: p.partes.length, cortado: !!p.cortado },
+            recusadas.length ? { aviso: 'o Onvio recusou: ' + [...new Set(recusadas)].slice(0, 4).join(', ') } : erros.length ? { aviso: 'incompleto, falhou: ' + [...new Set(erros)].slice(0, 4).join(', ') } : {}, r));
+          if (r && r.parar) { parar = true; break; }          // erro que vale para o envio todo (código errado, Hub sumiu): não adianta ler o resto
+        }
         catch (e) { resultados.push({ id: c.tipoDado, rotulo: c.titulo, categoria: c.categoria, ok: false, motivo: celulaHub(e && e.message || e, 120) }); }
       }
     }

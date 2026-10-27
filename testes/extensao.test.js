@@ -2848,10 +2848,11 @@ test('Hub: uma leitura opcional recusada pelo Onvio (403) vira indisponível e o
   const f = async url => { if (/profiles\/v1\/accounts|core\/v3\/companies\/.+\/main/.test(url)) throw recusa(); return base(url); };
   const por = {};
   const res = await OC.hubExecutar(f, todasCategorias(), { pausa: null, snapshot: { items: [] } }, async (c, p) => { por[c.tipoDado] = p.partes.join('\n'); return { ok: true }; });
-  for (const k of ['escritorio-conta', 'escritorio-licencas', 'escritorio-permissoes', 'documentos-pastas', 'noticias-artigos', 'pessoais-empregados', 'pessoais-comunicacoes']) assert.ok(k in por, 'faltou ' + k);
+  for (const k of ['escritorio-licencas', 'escritorio-permissoes', 'documentos-pastas', 'noticias-artigos', 'pessoais-empregados', 'pessoais-comunicacoes']) assert.ok(k in por, 'faltou ' + k);
+  assert.ok(!('escritorio-conta' in por), 'conjunto que só trouxe recusa não é enviado (um vazio trocaria o bom do Hub)');
   const conta = res.find(r => r.id === 'escritorio-conta');
-  assert.match(conta.aviso || '', /recusou.*profiles\/v1\/accounts/, 'o resultado diz o que foi recusado');
-  assert.ok(res.every(r => r.ok));
+  assert.equal(conta.ok, false); assert.match(conta.motivo, /leitura falhou.*profiles\/v1\/accounts/, 'o resultado diz o que falhou');
+  assert.ok(res.filter(r => r.id !== 'escritorio-conta').every(r => r.ok));
 });
 
 test('Hub: recusa de um cliente isolado não derruba a leitura dos empregados; recusas sem parar (sessão perdida) interrompem', async () => {
@@ -2864,6 +2865,55 @@ test('Hub: recusa de um cliente isolado não derruba a leitura dos empregados; r
   const muitos = Array.from({ length: 12 }, (_, i) => ({ id: 'z' + i, code: 100 + i, name: 'Z' + i }));
   const f = async url => { const u = new URL(url); if (/br-payroll-sr\/v1\/clients$/.test(u.pathname)) return { items: muitos, totalItems: 12, totalPages: 1 }; if (/\/employees$/.test(u.pathname)) throw recusa(); return base(url); };
   await assert.rejects(OC.hubExecutar(f, ['pessoais'], { pausa: null, snapshot: { items: [] } }, async () => ({ ok: true })), e => e.auth === true);
+});
+
+test('Hub: leitura que falha de verdade (500) e não traz nada não é enviada; o que veio incompleto segue marcado como cortado', async () => {
+  const base = apiHub();
+  const f = async url => { if (/br-news\/v1\/articles/.test(url)) { const e = new Error('Erro 500'); e.status = 500; throw e; } return base(url); };
+  const por = {};
+  const res = await OC.hubExecutar(f, todasCategorias(), { pausa: null, snapshot: { items: [] } }, async (c, p) => { por[c.tipoDado] = c; return { ok: true }; });
+  assert.ok(!('noticias-artigos' in por), 'um vazio por falha trocaria as notícias boas do Hub');
+  const n = res.find(r => r.id === 'noticias-artigos' || r.rotulo === 'Notícias' || /not[ií]cias/i.test(r.rotulo || ''));
+  assert.ok(n && n.ok === false && /leitura falhou/.test(n.motivo), JSON.stringify(res.filter(r => !r.ok)));
+  assert.ok('documentos-pastas' in por && 'pessoais-empregados' in por, 'o resto segue');
+  // 404 é "não existe": conjunto vazio legítimo, enviado normalmente
+  const f404 = async url => { if (/br-news\/v1\/articles/.test(url)) { const e = new Error('Erro 404'); e.status = 404; throw e; } return base(url); };
+  const por2 = {};
+  await OC.hubExecutar(f404, ['noticias'], { pausa: null, snapshot: { items: [] } }, async (c) => { por2[c.tipoDado] = c; return { ok: true }; });
+  assert.ok('noticias-artigos' in por2);
+});
+
+test('Hub: erro que vale para o envio todo (código errado, Hub sumiu) interrompe a leitura do resto; o resultado leva cortado e avisos', async () => {
+  const base = apiHub(); let leituras = 0;
+  const f = async url => { leituras++; return base(url); };
+  const res = await OC.hubExecutar(f, todasCategorias(), { pausa: null, snapshot: { items: [] } }, async (c) => ({ ok: false, motivo: 'token', parar: true }));
+  assert.equal(res.length, 1, 'parou no primeiro conjunto');
+  const total = leituras;
+  leituras = 0;
+  await OC.hubExecutar(base, todasCategorias(), { pausa: null, snapshot: { items: [] } }, async () => ({ ok: true }));
+  assert.ok(total < 40, 'leu só a primeira tarefa (' + total + ' chamadas)');
+  // pendentes com uma recusa isolada: o conjunto segue com o aviso
+  const itens = [{ k: 'geral:g0', type: 'geral', typeLabel: 'Geral', id: 'g0', num: 100, grav: 1, nivel: 1 }, { k: 'geral:g1', type: 'geral', typeLabel: 'Geral', id: 'g1', num: 101, grav: 1, nivel: 1 }];
+  const fp = async url => { const u = new URL(url); if (/\/tickets\/generic\/g0$/.test(u.pathname)) return { id: 'g0', subject: 'A', genericStatus: 1, clientExpanded: { name: 'ACME' } }; if (/\/tickets\/generic\/g1$/.test(u.pathname)) { const e = new Error('Erro 500'); e.status = 500; throw e; } if (/\/topics$/.test(u.pathname)) return { items: [] }; return base(url); };
+  const por = {};
+  const r2 = await OC.hubExecutar(fp, ['pessoais'], { pausa: null, snapshot: { items: itens } }, async (c, p) => { por[c.tipoDado] = { c, p }; return { ok: true }; });
+  assert.equal(por['pessoais-pendentes-dados'].c.cortado, true, 'uma pendente falhou: conjunto marcado como cortado');
+  assert.ok(r2.find(r => r.id === 'pessoais-pendentes-dados').cortado === true && /incompleto/.test(r2.find(r => r.id === 'pessoais-pendentes-dados').aviso));
+});
+
+test('Hub: limite de chamadas (429) espera e tenta de novo; página de tamanho redondo marca incompleto', async () => {
+  const base = apiHub(); let primeira = true; const esperas = [];
+  const f = async url => { if (/clients\/c1\/employees/.test(url) && primeira) { primeira = false; const e = new Error('Erro 429'); e.status = 429; throw e; } return base(url); };
+  const por = {};
+  await OC.hubExecutar(f, ['pessoais'], { pausa: ms => { esperas.push(ms); return Promise.resolve(); }, snapshot: { items: [] } }, async (c, p) => { por[c.tipoDado] = { c, p }; return { ok: true }; });
+  assert.ok(esperas.includes(5000), 'esperou 5 s');
+  assert.equal(por['pessoais-empregados'].p.nLinhasTotal, 4, 'depois da espera trouxe os dois clientes');
+  assert.equal(por['pessoais-empregados'].c.cortado, false);
+  const cem = Array.from({ length: 100 }, (_, i) => ({ id: 'z' + i, name: 'Z' + i, hireDate: '2020-01-01', status: 'ACTIVE' }));
+  const g = async url => /clients\/c1\/employees/.test(url) ? cem : base(url);
+  const por2 = {};
+  await OC.hubExecutar(g, ['pessoais'], { pausa: null, snapshot: { items: [] } }, async (c, p) => { por2[c.tipoDado] = c; return { ok: true }; });
+  assert.equal(por2['pessoais-empregados'].cortado, true, '100 linhas de um cliente: pode ser página cortada');
 });
 
 test('Hub: clientes de CND e NF-e trazem CNPJ, inscrições e a validade do certificado', async () => {
