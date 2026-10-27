@@ -42,18 +42,28 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     // como o Hub real: em segundo plano (aba escondida) não avisa; as mensagens continuam chegando
     // (o Hub publicado em 26/10/2026, versão 267: o aviso periódico só com a aba visível; o pedido "busca" da ponte responde sempre)
     if (location.search.includes('oculto')) window.__oculto = true;
-    const anunciar = () => top.postMessage({ ctlhub: 1, de: 'hub', tipo: 'ola' }, '*');
+    // como o Hub real (versão 278): responde ao desafio da ponte com HMAC-SHA256(token, nonce)
+    const hex = b => Array.from(new Uint8Array(b), x => x.toString(16).padStart(2, '0')).join('');
+    const prova = async nonce => { const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(${JSON.stringify(TOKEN)}), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']); return hex(await crypto.subtle.sign('HMAC', k, new TextEncoder().encode(nonce))); };
+    const anunciar = async nonce => top.postMessage(Object.assign({ ctlhub: 1, de: 'hub', tipo: 'ola' }, nonce ? { nonce, prova: await prova(nonce) } : {}), '*');
     const avisar = () => { if (window.__oculto) return; anunciar(); };
     avisar(); setInterval(avisar, 1000);
     addEventListener('message', e => { const d = e.data; if (!d || d.ctlhub !== 1) return;
-      if (d.de === 'ponte' && d.tipo === 'busca') return anunciar();
+      if (d.de === 'ponte' && d.tipo === 'busca') return anunciar(d.nonce);
       if (d.de !== 'ext' || d.tipo !== 'lote') return;
       const ok = d.token === ${JSON.stringify(TOKEN)}; if (ok) window.lotes.push(d);
       e.source.postMessage({ ctlhub: 1, de: 'hub', tipo: 'ack', id: d.id, ok, motivo: ok ? '' : 'token', aceitos: d.nLinhas }, '*'); });
   <\/script>`;
+  // outra janela da página que se faz passar pelo Hub (outro artefato): diz "ola" sem saber o token e guarda tudo o que recebe
+  const impostor = `<!doctype html><title>impostor</title><script>
+    window.recebido = [];
+    setInterval(() => top.postMessage({ ctlhub: 1, de: 'hub', tipo: 'ola' }, '*'), 300);
+    addEventListener('message', e => { const d = e.data; if (!d || d.ctlhub !== 1) return; window.recebido.push(d.tipo + (d.token ? ':COM-TOKEN' : ''));
+      if (d.tipo === 'busca') top.postMessage({ ctlhub: 1, de: 'hub', tipo: 'ola', nonce: d.nonce, prova: '0'.repeat(64) }, '*'); });
+  <\/script>`;
   await ctx.route('https://claude.ai/**', r => {
     const u = new URL(r.request().url());
-    const html = u.pathname === '/viewer' ? '<!doctype html><title>viewer</title><iframe src="/hub' + u.search + '" style="width:600px;height:300px"></iframe>' : u.pathname === '/hub' ? hubFalso : '';
+    const html = u.pathname === '/viewer' ? '<!doctype html><title>viewer</title><iframe src="/impostor" style="width:300px;height:100px"></iframe><iframe src="/hub' + u.search + '" style="width:600px;height:300px"></iframe>' : u.pathname === '/impostor' ? impostor : u.pathname === '/hub' ? hubFalso : '';
     return r.fulfill({ contentType: 'text/html; charset=utf-8', body: html });
   });
   await (await ctx.newPage()).goto('https://onvio.com.br/br-portal-do-cliente/home');
@@ -71,6 +81,10 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await sleep(1200);
   const lotes = await hub.frames().find(f => /\/hub$/.test(f.url())).evaluate(() => window.lotes);
   assert.equal(lotes.length, 1, 'um lote entregue');
+  // a janela que se fez passar pelo Hub foi desafiada e nunca recebeu lote nem token
+  const impo = await hub.frames().find(f => /\/impostor$/.test(f.url())).evaluate(() => window.recebido);
+  assert.ok(impo.includes('busca'), 'foi desafiada');
+  assert.ok(!impo.includes('lote') && !impo.some(x => /COM-TOKEN/.test(x)), 'nada de lote nem de token para o impostor: ' + JSON.stringify(impo));
   const l = lotes[0];
   assert.equal(l.fonte, 'onvio'); assert.equal(l.nLinhas, 2); assert.equal(l.usuario, 'Ana Teste');
   assert.deepEqual(l.colunas.slice(0, 3), ['Lista', 'Nº', 'Situação']);

@@ -804,6 +804,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'reagendar') { await agendar(); reply({ ok: true }); }
       else if (msg.cmd === 'hubAbriu') { reply({ ok: true }); enviarAoHubAuto(null).catch(() => {}); setTimeout(() => hubSincAuto().catch(() => {}), 4000); }      // o Hub apareceu numa aba: manda o resumo se faltar
       else if (msg.cmd === 'hubStatus') reply(await hubStatus());
+      else if (msg.cmd === 'hubProva') reply({ ok: await hubProvaConfere(msg.nonce, msg.prova) });      // a ponte pergunta se a janela que se diz Hub conhece o código de pareamento
       else if (msg.cmd === 'hubRegistrar') reply(await hubRegistrar());
       else if (msg.cmd === 'hubDesconectar') reply(await hubDesconectar());
       else if (msg.cmd === 'hubEnviar') reply(await enviarAoHub(null, true));
@@ -903,6 +904,17 @@ async function hubDesconectar() {
   await chrome.storage.local.remove(['hubSync', 'hubSyncHash']);
   return { ok: true };
 }
+// Prova de que uma janela é o Hub do código de pareamento: HMAC-SHA256(código, nonce) em hexadecimal, comparado sem pressa (tempo constante).
+async function hubProvaConfere(nonce, prova) {
+  const c = await hubCfg();
+  nonce = String(nonce || ''); prova = String(prova || '');
+  if (!c.token || !nonce || nonce.length > 64 || !/^[0-9a-f]{64}$/.test(prova)) return false;
+  const enc = new TextEncoder();
+  const chave = await crypto.subtle.importKey('raw', enc.encode(c.token), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const mac = Array.from(new Uint8Array(await crypto.subtle.sign('HMAC', chave, enc.encode(nonce))), b => b.toString(16).padStart(2, '0')).join('');
+  let dif = 0; for (let i = 0; i < 64; i++) dif |= mac.charCodeAt(i) ^ prova.charCodeAt(i);
+  return dif === 0;
+}
 async function hubStatus() {
   const c = await hubCfg(), permitido = await hubPermitido(), abas = permitido ? await hubAbas() : [];
   let hubAberto = false, hubAvisando = false;
@@ -987,6 +999,8 @@ async function hubSincronizar(manual) {
             cortado: p.cortado, partes: p.partes.length, parte: i, ciclo, porTipo: conj.porTipo || {}, versaoExt: versao };
           let r = await entregarLote(lote);
           if (!r.ok && r.motivo === 'sem-resposta') r = await entregarLote(Object.assign({}, lote, { id: lote.id + 'r' }));
+          // outro envio ao mesmo conjunto em andamento (outra pessoa com a extensão): espera a vez em vez de misturar as partes
+          for (let k = 0; i === 0 && !r.ok && r.motivo === 'ocupado' && k < 4; k++) { await new Promise(res => setTimeout(res, 20000)); r = await entregarLote(Object.assign({}, lote, { id: lote.id + 'o' + k })); }
           if (!r.ok) { if (ERROS_FATAIS_HUB.includes(r.motivo)) fatal = r.motivo; return { ok: false, motivo: r.motivo || 'erro', mensagem: r.mensagem || '' }; }
         }
         hashes[conj.tipoDado] = { h: hash, em: Date.now() };

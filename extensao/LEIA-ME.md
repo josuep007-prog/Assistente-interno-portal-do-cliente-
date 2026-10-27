@@ -45,6 +45,13 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
 
+## Novidades da v0.54.0 (a ponte só confia no Hub que prova o código de pareamento)
+
+- **Quem é o Hub:** qualquer janela da página do claude.ai (outro artefato, por exemplo) podia dizer "ola" e passar a receber o código e os dados do envio. Agora cada janela que se anuncia recebe um **desafio** (`busca` com um nonce) e só vale se responder com `HMAC-SHA256(código, nonce)`, que o service worker confere com o código guardado (`hubProva`). O código **nunca** vai para uma janela que não provou conhecê-lo. Teste: `node testes/ponte-hub.js` (com uma janela impostora que se faz passar pelo Hub e nada recebe).
+- **Compatibilidade:** vale com o Hub da versão 278 ou mais nova (publique o Hub antes de atualizar a extensão); o Hub novo continua servindo extensões antigas.
+- **Envio concorrente:** se outra pessoa já está enviando o mesmo conjunto ao Hub, o Hub responde "ocupado" e a extensão espera a vez (até 4 tentativas de 20 s) em vez de misturar as partes.
+- No Hub (versão 278): o código de pareamento só aparece para quem edita o Hub; dados pessoais do Onvio só são lidos por coordenação e analista do DP; escrita em `ing_*` e no "Ignorar" só por coordenação e analista; o aplicar automático tem **um executor por vez** (lease) e grava relendo a empresa no banco; limite de tamanho do documento da empresa; empresa nova automática só com CNPJ completo e sem nome parecido.
+
 ## Novidades da v0.53.1 (o envio ao Control Hub não para mais por uma leitura recusada)
 
 - **Corrigido:** com a 0.53.0, quando o Onvio recusava (HTTP 401/403, redirecionamento ou página no lugar de dados) uma leitura **opcional** do escritório (por exemplo a conta ou a ficha do escritório), o envio inteiro era interrompido ali e nada do que vinha depois chegava ao Hub: permissões, documentos, notícias, **a lista de empregados de cada empresa**, comunicações e as pendentes completas. Foi o que se viu no Hub: as listas e os clientes chegaram, mas não os empregados.

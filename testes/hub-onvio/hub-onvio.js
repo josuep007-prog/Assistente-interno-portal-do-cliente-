@@ -50,8 +50,8 @@ const BANCO = `(() => {
     collection: (n) => col(p + '/' + n) });
   const col = (p) => ({ path: p, doc: (id) => doc(p + '/' + id), get: async () => snapCol(p), onSnapshot: (cb) => { poe(colL, p, cb); setTimeout(() => cb(snapCol(p)), 0); return () => {}; } });
   window.__gravacoes = [];
-  window.__db = { listar: (c) => [...store.keys()].filter(k => colDe(k) === c).map(k => Object.assign({ id: k.split('/').pop() }, clone(store.get(k)))), semear: (p, d) => { store.set(p, clone(d)); avisa(p); }, ler: (p) => clone(store.get(p)), existe: (p) => store.has(p) };
-  window.claude = { use: async (n) => n === 'db' ? { doc, collection: col } : n === 'downloads' ? { save: async () => {} } : n === 'user' ? { id: async () => 'u-teste', can: async () => true, profiles: async () => ({}) } : null };
+  window.__db = { listar: (c) => [...store.keys()].filter(k => colDe(k) === c).map(k => Object.assign({ id: k.split('/').pop() }, clone(store.get(k)))), semear: (p, d) => { store.set(p, clone(d)); avisa(p); }, silencioso: (p, d) => { store.set(p, clone(d)); }, ler: (p) => clone(store.get(p)), existe: (p) => store.has(p) };
+  window.claude = { use: async (n) => n === 'db' ? { doc, collection: col } : n === 'downloads' ? { save: async () => {} } : n === 'user' ? { id: async () => 'u-teste', can: async () => true, canEdit: async () => window.__canEdit !== false, profiles: async () => ({}) } : null };
 })();`;
 
 function montarBanco() {
@@ -393,6 +393,30 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
   };
   const difsOnvio = () => page.evaluate(() => window.__hubApi.api('onvio').difs().map(d => ({ emp: d.empNome, nome: d.nome, acao: d.acao, tipo: d.tipo, txt: d.txt })));
 
+  await passo('Ponte: o Hub só prova ser o Hub com o código de pareamento (HMAC do desafio); o recebimento reserva o conjunto e recusa o segundo emissor', async () => {
+    const cfg = await page.evaluate(() => window.__db.ler('ing_config/cfg')); assert.ok(cfg && cfg.token, 'o Hub gerou o código');
+    await page.evaluate(() => { window.__msgs = []; window.addEventListener('message', (e) => { if (e.data && e.data.ctlhub === 1 && e.data.de === 'hub') window.__msgs.push(e.data); }); });
+    await page.evaluate(() => window.postMessage({ ctlhub: 1, de: 'ponte', tipo: 'busca', nonce: 'desafio-123' }, '*'));
+    await page.waitForFunction(() => window.__msgs.some(m => m.tipo === 'ola' && m.nonce === 'desafio-123'), null, { timeout: 5000 });
+    const ola = await page.evaluate(() => window.__msgs.find(m => m.tipo === 'ola' && m.nonce === 'desafio-123'));
+    const esperado = require('node:crypto').createHmac('sha256', cfg.token).update('desafio-123').digest('hex');
+    assert.equal(ola.prova, esperado, 'prova = HMAC-SHA256(token, nonce)');
+    assert.ok(!JSON.stringify(ola).includes(cfg.token), 'o token nunca vai na mensagem');
+    await page.evaluate(() => { window.__msgs.length = 0; window.postMessage({ ctlhub: 1, de: 'ponte', tipo: 'busca' }, '*'); });
+    await page.waitForFunction(() => window.__msgs.some(m => m.tipo === 'ola'), null, { timeout: 5000 });
+    assert.equal(await page.evaluate(() => window.__msgs.find(m => m.tipo === 'ola').prova), undefined, 'sem desafio, sem prova');
+    // dois emissores no mesmo conjunto: o segundo espera
+    const lote = (id, ciclo, parte) => ({ ctlhub: 1, de: 'ext', tipo: 'lote', id, token: cfg.token, fonte: 'onvio', tipoDado: 'noticias-artigos', categoria: 'noticias', titulo: 't', colunas: ['Id'], tabela: 'x' + parte, nLinhas: 1, nLinhasTotal: 2, totalNaOrigem: 2, cortado: false, partes: 2, parte, ciclo, porTipo: {}, versaoExt: '0.54.0' });
+    const envia = async (l) => { await page.evaluate((l) => { window.__msgs.length = 0; window.postMessage(l, '*'); }, l); await page.waitForFunction((id) => window.__msgs.some(m => m.tipo === 'ack' && m.id === id), l.id, { timeout: 5000 }); return page.evaluate((id) => window.__msgs.find(m => m.tipo === 'ack' && m.id === id), l.id); };
+    assert.equal((await envia(lote('a0', 'cA', 0))).ok, true);
+    const b = await envia(lote('b0', 'cB', 0)); assert.equal(b.ok, false); assert.equal(b.motivo, 'ocupado');
+    assert.equal((await envia(lote('a1', 'cA', 1))).ok, true);
+    const man = await page.evaluate(() => window.__db.ler('ing_dados/onvio~noticias-artigos')); assert.equal(man.ciclo, 'cA'); assert.equal(man.partes, 2);
+    assert.equal(await page.evaluate(() => window.__db.existe('ing_reservas/onvio~noticias-artigos')), false, 'reserva liberada ao publicar');
+    assert.equal((await envia(lote('b0b', 'cB', 0))).ok, true, 'liberado, o segundo pode enviar');
+    const errado = lote('c0', 'cC', 0); errado.token = 'OUTRO'; assert.equal((await envia(errado)).motivo, 'token');
+  });
+
   await passo('Folha inteira de cada empresa: quem nunca teve solicitação vira cadastro novo; desligado sem solicitação não; cliente só da folha aparece para cadastrar', async () => {
     await page.evaluate(() => { const d = window.__db.ler('dp_empresas/e-vega'); d.funcionarios.push({ id: 'f-antiga', nome: 'Antiga Colega', cargo: '', codigo: '', admissao: '2020-02-02', status: 'Ativo', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '', salario: '', obs: '' }); window.__db.semear('dp_empresas/e-vega', d); });
     // extensão antiga: o aviso pede para atualizar; extensão nova que já enviou outros conjuntos: o aviso diz que o envio parou
@@ -415,6 +439,43 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     assert.equal(await fr.locator('#autoBox .auto-bloco').count(), 1);
     assert.equal(await fr.locator('#autoLigar').isChecked(), false, 'vem desligado');
     if (CAP) { await fr.locator('#secCadastro h2').evaluate(e => e.scrollIntoView({ block: 'start' })); await page.waitForTimeout(400); await page.screenshot({ path: path.join(CAP, 'entrada-dados-auto-desligado-claro.png') }); }
+  });
+
+  await passo('Escrita segura: o Hub relê a empresa antes de gravar (não perde o que outro navegador gravou) e recusa documento grande demais', async () => {
+    const dif = () => page.evaluate(() => window.__hubApi.api('onvio').difs().find(d => d.empId === 'e-lira' && d.acao !== 'novo' && d.pode));
+    // um funcionário gravado "por fora" que o desenho local ainda não conhece
+    await page.evaluate(() => { const d = window.__db.ler('dp_empresas/e-lira'); d.funcionarios.push({ id: 'f-concorrente', nome: 'Concorrente Silencioso', cargo: '', codigo: '', admissao: '2020-01-01', status: 'Ativo', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '', salario: '', obs: '' }); window.__db.silencioso('dp_empresas/e-lira', d); });
+    const d1 = await dif(); assert.ok(d1, 'há uma diferença da LIRA para aplicar');
+    const r = await page.evaluate(([e, c]) => window.__hubApi.api('onvio').aplicar(e, c), [d1.empId, d1.chave]);
+    assert.equal(r.ok, true, JSON.stringify(r));
+    const lira = await page.evaluate(() => window.__db.ler('dp_empresas/e-lira'));
+    assert.ok(lira.funcionarios.some(f => f.nome === 'Concorrente Silencioso'), 'o funcionário gravado por fora continua lá');
+    assert.ok(lira.historico.some(h => /a partir do Onvio/.test(h.alteracao)));
+    // documento grande: não grava e não muda o que está na tela
+    await page.evaluate(() => { const d = window.__db.ler('dp_empresas/e-lira'); d.observacoes = 'x'.repeat(245000); window.__db.silencioso('dp_empresas/e-lira', d); });
+    const d2 = await dif(); assert.ok(d2, 'ainda há diferença da LIRA');
+    const antes = await page.evaluate(() => window.__db.ler('dp_empresas/e-lira').historico.length);
+    const rl = await page.evaluate(([e, c]) => window.__hubApi.api('onvio').aplicar(e, c), [d2.empId, d2.chave]);
+    assert.equal(rl.ok, false); assert.match(rl.erro, /grande demais/);
+    assert.equal(await page.evaluate(() => window.__db.ler('dp_empresas/e-lira').historico.length), antes, 'nada foi gravado');
+    await page.evaluate(() => { const d = window.__db.ler('dp_empresas/e-lira'); d.observacoes = ''; d.funcionarios = d.funcionarios.filter(f => f.id !== 'f-concorrente'); window.__db.semear('dp_empresas/e-lira', d); });
+  });
+
+  await passo('Permissões: o código de pareamento só aparece para quem edita o Hub; dados pessoais do Onvio só para coordenação e analista do DP', async () => {
+    const outra = await ctx.newPage(); await outra.addInitScript(BANCO); await outra.addInitScript(() => { window.__canEdit = false; try { localStorage.setItem('controlhub-theme', 'light'); } catch (e) {} });
+    await outra.goto(url); await outra.waitForFunction(() => window.__hubApi && window.__db);
+    await outra.evaluate(() => window.__db.semear('ing_config/cfg', { token: 'SEGREDO1234567890ABCDEF', criadoEm: Date.now() }));
+    await outra.evaluate(() => window.__hubApi.abrirModulo('fontes'));
+    await outra.waitForFunction(() => { const f = document.querySelector('#fontes-frame'); return f && f.contentDocument && f.contentDocument.querySelector('#codigo') && f.contentDocument.querySelector('#codigo').textContent !== '…'; }, null, { timeout: 8000 });
+    assert.equal(await outra.evaluate(() => document.querySelector('#fontes-frame').contentDocument.querySelector('#codigo').textContent), 'peça a quem edita o Hub', 'sem o código para quem não edita');
+    await outra.close();
+    // com acesso de consulta, o Hub não lê os conjuntos pessoais do Onvio
+    const antes = await page.evaluate(() => window.__hubApi.api('onvio').ler('pessoais-aviso-ferias').length);
+    assert.ok(antes > 0, 'a coordenação lê');
+    await page.evaluate(() => { window.__auth = { nivel: () => 'consulta', analista: () => '', podeVer: () => true, ehAdmin: () => false, usuario: () => ({ nome: 'Carla', id: 'u-carla', prefs: {} }) }; });
+    assert.equal(await page.evaluate(() => window.__hubApi.api('onvio').ler('pessoais-aviso-ferias').length), 0, 'consulta não lê dados pessoais');
+    assert.equal(await page.evaluate(() => window.__hubApi.api('onvio').ler('lista-aviso-ferias').length > 0), true, 'as listas sem dados pessoais continuam');
+    await page.evaluate(() => { delete window.__auth; });
   });
 
   await passo('Aplicação automática: liga com confirmação, aplica sozinho sem perguntar, registra "automaticamente" no histórico e só cadastra empresas se for escolhido', async () => {
@@ -448,6 +509,11 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await fr.locator('#dlgConf[open]').waitFor();
     assert.match(await fr.locator('#confTxt').textContent(), /Cadastrar empresas novas automaticamente/);
     await fr.locator('#confSim').click();
+    // sem CNPJ completo no Onvio o automático não cadastra a empresa (decisão manual); depois do cadastro manual, os funcionários entram sozinhos
+    await page.waitForTimeout(4000);
+    assert.ok(!(await page.evaluate(() => window.__db.listar('dp_empresas').some(e => /NOVA CLIENTE/.test(e.nome)))), 'cliente sem CNPJ: o automático não cria a empresa');
+    const k = await page.evaluate(() => window.__hubApi.api('onvio').semVinculo().find(g => /NOVA CLIENTE/.test(g.cli)).k);
+    assert.equal((await page.evaluate((k) => window.__hubApi.api('onvio').criarEmpresa(k), k)).ok, true);
     await page.waitForFunction(() => window.__db.listar('dp_empresas').some(e => /NOVA CLIENTE/.test(e.nome)), null, { timeout: 15000 });
     const nova = await page.evaluate(() => window.__db.listar('dp_empresas').find(e => /NOVA CLIENTE/.test(e.nome)));
     await page.waitForFunction((id) => (window.__db.ler('dp_empresas/' + id).funcionarios || []).length === 2, nova.id, { timeout: 15000 });
@@ -475,8 +541,16 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     const t = await D.empregados();
     t.linhas.push(['c-orion', '900', 'ORION COMERCIO LTDA', 'o10', 'Chegou Na Ana', '0', '2026-10-02', 'ACTIVE', 'M', 'A1', '220', '801', 'EMPLOYEE'].join('\t'), ['c-orion', '900', 'ORION COMERCIO LTDA', 'o9', 'Recem Chegado', '0', '2026-10-01', 'ACTIVE', 'M', 'A1', '220', '777', 'EMPLOYEE'].join('\t'), ['c-vega', '901', 'VEGA SERVICOS ME', 'v9', 'Chegou No Bruno', '0', '2026-10-03', 'ACTIVE', 'M', 'A1', '220', '802', 'EMPLOYEE'].join('\t'));
     await page.evaluate(() => { window.__auth = { nivel: () => 'analista', analista: () => 'Bruno Teste', podeVer: () => true, ehAdmin: () => false, usuario: () => ({ nome: 'Bruno', id: 'u-bruno', prefs: {} }) }; });
+    // outro executor (a coordenação, em outro navegador) tem o lease: este navegador não aplica nada
+    await page.evaluate(() => window.__db.semear('ing_auto/lease', { por: 'u-coordenacao', nivel: 2, ate: Date.now() + 120000 }));
     await page.evaluate(() => { const c = window.__db.ler('dp_config/onvio'); c.auto.ligada = true; c.auto.tipos.empresa = true; window.__db.semear('dp_config/onvio', c); });
     await semearConjunto('pessoais-empregados', t, 'c4');
+    await page.waitForFunction(() => window.__hubApi.api('onvio').difs().some(d => d.nome === 'Chegou No Bruno'), null, { timeout: 8000 });
+    await page.waitForTimeout(4000);
+    assert.ok(!(await page.evaluate(() => window.__db.ler('dp_empresas/e-vega').funcionarios.some(f => f.nome === 'Chegou No Bruno'))), 'com outro executor ativo, este navegador espera');
+    assert.equal((await page.evaluate(() => window.__hubApi.api('onvio').autoAgora())).motivo, 'outro-executor');
+    await page.evaluate(() => window.__db.semear('ing_auto/lease', { por: 'u-coordenacao', nivel: 2, ate: Date.now() - 1000 }));          // o lease venceu
+    await page.evaluate(() => window.__hubApi.api('onvio').autoAgora());
     await page.waitForFunction(() => window.__db.ler('dp_empresas/e-vega').funcionarios.some(f => f.nome === 'Chegou No Bruno'), null, { timeout: 15000 });
     await page.waitForTimeout(3500);
     assert.ok(!(await page.evaluate(() => window.__db.ler('dp_empresas/e-orion').funcionarios.some(f => f.nome === 'Chegou Na Ana'))), 'ORION é da Ana: o analista não aplica');
