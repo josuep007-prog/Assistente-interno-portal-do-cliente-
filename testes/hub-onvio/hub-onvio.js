@@ -394,7 +394,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     for (let i = 0; i < partes.length; i++) await page.evaluate(([p, d]) => window.__db.semear(p, d), [`ing_partes/onvio~${tipo}~b${i}`, { ciclo, parte: i, tabela: partes[i] }]);
     await page.evaluate(([p, d]) => window.__db.semear(p, d), [`ing_dados/onvio~${tipo}`, { fonte: 'onvio', tipoDado: tipo, categoria: c.categoria, titulo: tipo, colunas: c.colunas, nLinhas: c.linhas.length, totalNaOrigem: c.linhas.length, cortado: false, partes: partes.length, slot: 'b', ciclo, recebidoEm: Date.now(), extraidoEm: new Date().toISOString(), usuario: 'Ana Teste', por: 'u-teste', versaoExt: '0.53.0' }]);
   };
-  const difsOnvio = () => page.evaluate(() => window.__hubApi.api('onvio').difs().map(d => ({ emp: d.empNome, nome: d.nome, acao: d.acao, tipo: d.tipo, txt: d.txt })));
+  const difsOnvio = () => page.evaluate(() => window.__hubApi.api('onvio').difs().map(d => ({ emp: d.empNome, nome: d.nome, acao: d.acao, tipo: d.tipo, txt: d.txt, confirmar: d.confirmar })));
 
   await passo('Ponte: o Hub só prova ser o Hub com o código de pareamento (HMAC do desafio); o recebimento reserva o conjunto e recusa o segundo emissor', async () => {
     const cfg = await page.evaluate(() => window.__db.ler('ing_config/cfg')); assert.ok(cfg && cfg.token, 'o Hub gerou o código');
@@ -435,8 +435,11 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await page.waitForFunction(() => window.__hubApi.api('onvio').difs().some(d => d.nome === 'Carlos Sem Pedido'), null, { timeout: 8000 });
     const d = await difsOnvio();
     const de = (n) => d.filter(x => x.nome === n);
-    assert.equal(de('Carlos Sem Pedido').length, 1); assert.equal(de('Carlos Sem Pedido')[0].acao, 'novo'); assert.match(de('Carlos Sem Pedido')[0].txt, /folha do cliente/);
+    assert.equal(de('Carlos Sem Pedido').length, 1); assert.equal(de('Carlos Sem Pedido')[0].acao, 'novo'); assert.match(de('Carlos Sem Pedido')[0].txt, /desligamento/);
     assert.equal(de('Lira Funcionaria')[0].acao, 'novo'); assert.equal(de('Lira Funcionaria')[0].emp, 'LIRA PADARIA');
+    // o Onvio nunca informa desligamento fora do portal: quem só consta na lista dele (sem movimento recente) fica para conferir à mão
+    assert.equal(de('Carlos Sem Pedido')[0].confirmar, true); assert.match(de('Carlos Sem Pedido')[0].txt, /desligamento feito fora do portal/);
+    assert.equal(de('Lira Funcionaria')[0].confirmar, true);
     assert.equal(de('Dona Antiga').length, 0, 'desligado que nunca teve solicitação não entra');
     assert.equal(de('Antiga Colega')[0].acao, 'corrigir'); assert.match(de('Antiga Colega')[0].txt, /Desligado na folha/);
     const sem = await page.evaluate(() => window.__hubApi.api('onvio').semVinculo().map(g => ({ cli: g.cli, n: g.n, nEmp: g.nEmp })));
@@ -538,7 +541,6 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await fr.locator('#dlgConf[open]').waitFor();
     assert.match(await fr.locator('#confTxt').textContent(), /sem pedir confirmação/); assert.match(await fr.locator('#confTxt').textContent(), /Pendente agora: \d+ complemento/);
     await fr.locator('#confSim').click();
-    await page.waitForFunction(() => { const o = window.__db.ler('dp_empresas/e-orion'), l = window.__db.ler('dp_empresas/e-lira'); return o.funcionarios.some(f => f.nome === 'Carlos Sem Pedido') && l.funcionarios.some(f => f.nome === 'Lira Funcionaria'); }, null, { timeout: 15000 });
     // dois empregados do Onvio com datas trocadas em relação ao DP e um código repetido: cada um é corrigido no seu próprio funcionário e fica assim
     await page.waitForFunction(() => { const l = window.__db.ler('dp_empresas/e-lira').funcionarios, g = (n) => l.find(f => f.nome === n); return g('Erica Teste').admissao === '2025-02-03' && g('Diego Teste').admissao === '2024-06-06'; }, null, { timeout: 15000 });
     await page.waitForTimeout(3500);
@@ -546,8 +548,16 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     assert.equal(lira.funcionarios.find(f => f.nome === 'Erica Teste').admissao, '2025-02-03'); assert.equal(lira.funcionarios.find(f => f.nome === 'Diego Teste').admissao, '2024-06-06');
     assert.equal(lira.funcionarios.filter(f => /Teste/.test(f.nome)).length, 2, 'ninguém duplicado');
     assert.equal(lira.historico.filter(h => /Admissão diferente/.test(h.alteracao) && /Teste/.test(h.alteracao)).length, 2, 'uma correção de admissão para cada um, sem vaivém');
-    const orion = await page.evaluate(() => window.__db.ler('dp_empresas/e-orion'));
-    assert.ok(orion.historico.some(h => /automaticamente a partir do Onvio/.test(h.alteracao) && /Carlos Sem Pedido/.test(h.alteracao)));
+    assert.ok(lira.historico.some(h => /automaticamente a partir do Onvio/.test(h.alteracao) && /Teste/.test(h.alteracao)), 'o automático registra "automaticamente"');
+    // quem só consta na lista do Onvio (que nunca informa desligamento fora do portal) NÃO é cadastrado sozinho: fica para conferir à mão
+    let orion = await page.evaluate(() => window.__db.ler('dp_empresas/e-orion'));
+    assert.ok(!orion.funcionarios.some(f => f.nome === 'Carlos Sem Pedido'), 'automático não cadastra quem só está na lista do Onvio');
+    assert.ok(!lira.funcionarios.some(f => f.nome === 'Lira Funcionaria'));
+    const pend = await difsOnvio(); assert.ok(pend.some(d => d.nome === 'Carlos Sem Pedido' && d.confirmar), 'segue pendente, marcado para conferir');
+    assert.match(await fr.locator('#cadro').textContent(), /conferir antes/);
+    // decidido à mão, entra como antes
+    await page.evaluate(async () => { const a = window.__hubApi.api('onvio'); for (const n of ['Carlos Sem Pedido', 'Lira Funcionaria']) { const d = a.difs().find(x => x.nome === n && x.acao === 'novo'); await a.aplicar(d.empId, d.chave); } });
+    orion = await page.evaluate(() => window.__db.ler('dp_empresas/e-orion'));
     const carlos = orion.funcionarios.find(f => f.nome === 'Carlos Sem Pedido'); assert.equal(carlos.admissao, '2021-06-01'); assert.equal(carlos.codigo, '105'); assert.equal(carlos.status, 'Ativo');
     assert.ok(!orion.funcionarios.some(f => f.nome === 'Dona Antiga'));
     await page.waitForFunction(() => window.__db.ler('dp_empresas/e-vega').funcionarios.find(f => f.nome === 'Antiga Colega').status === 'Desligado', null, { timeout: 8000 });
@@ -570,49 +580,56 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     assert.equal((await page.evaluate((k) => window.__hubApi.api('onvio').criarEmpresa(k), k)).ok, true);
     await page.waitForFunction(() => window.__db.listar('dp_empresas').some(e => /NOVA CLIENTE/.test(e.nome)), null, { timeout: 15000 });
     const nova = await page.evaluate(() => window.__db.listar('dp_empresas').find(e => /NOVA CLIENTE/.test(e.nome)));
+    // os empregados dela só constam na lista do Onvio: o automático não os cadastra, ficam para conferir à mão
+    await page.waitForFunction(() => window.__hubApi.api('onvio').difs().filter(d => /^Nova (Um|Dois)$/.test(d.nome) && d.confirmar).length === 2, null, { timeout: 15000 });
+    await page.waitForTimeout(3500);
+    assert.equal((await page.evaluate((id) => (window.__db.ler('dp_empresas/' + id).funcionarios || []).length, nova.id)), 0, 'automático não cadastra quem só está na lista do Onvio');
+    await page.evaluate(async () => { const a = window.__hubApi.api('onvio'); for (const d of a.difs().filter(x => /^Nova (Um|Dois)$/.test(x.nome))) await a.aplicar(d.empId, d.chave); });
     await page.waitForFunction((id) => (window.__db.ler('dp_empresas/' + id).funcionarios || []).length === 2, nova.id, { timeout: 15000 });
     assert.deepEqual((await page.evaluate((id) => window.__db.ler('dp_empresas/' + id).funcionarios.map(f => f.nome).sort(), nova.id)), ['Nova Dois', 'Nova Um']);
     assert.equal(await page.evaluate(() => window.__db.listar('dp_empresas').filter(e => /NOVA CLIENTE/.test(e.nome)).length), 1, 'só uma empresa, sem duplicar');
   });
 
+  // quem já está no cadastro do DP e muda no Onvio (aqui, o código Domínio) é o que o automático aplica; quem só consta na lista do Onvio fica para conferir
+  const trocaCodigo = (t, nome, cod) => ({ ...t, linhas: t.linhas.map(l => { const c = l.split('\t'); if (c[4] === nome) c[11] = cod; return c.join('\t'); }) });
+
   await passo('Aplicação automática: desligar para; o que foi ignorado continua ignorado; "Aplicar agora" sem nada pendente não muda nada', async () => {
     await fr.locator('#autoLigar').uncheck();
     await page.waitForFunction(() => window.__db.ler('dp_config/onvio').auto.ligada === false, null, { timeout: 5000 });
-    // chega uma admissão nova na folha: desligado, nada acontece
-    const t = await D.empregados(); t.linhas.push(['c-orion', '900', 'ORION COMERCIO LTDA', 'o9', 'Recem Chegado', '0', '2026-10-01', 'ACTIVE', 'M', 'A1', '220', '777', 'EMPLOYEE'].join('\t'));
-    await semearConjunto('pessoais-empregados', t, 'c3');
-    await page.waitForFunction(() => window.__hubApi.api('onvio').difs().some(d => d.nome === 'Recem Chegado'), null, { timeout: 8000 });
+    // o código de uma funcionária muda no Onvio: desligado, nada acontece
+    await semearConjunto('pessoais-empregados', trocaCodigo(await D.empregados(), 'Carlos Sem Pedido', '111'), 'c3');
+    await page.waitForFunction(() => window.__hubApi.api('onvio').difs().some(d => d.nome === 'Carlos Sem Pedido' && d.tipo === 'codigo'), null, { timeout: 8000 });
     await page.waitForTimeout(3500);
-    assert.ok(!(await page.evaluate(() => window.__db.ler('dp_empresas/e-orion').funcionarios.some(f => f.nome === 'Recem Chegado'))), 'desligado: nada aplicado sozinho');
+    assert.equal(await page.evaluate(() => window.__db.ler('dp_empresas/e-orion').funcionarios.find(f => f.nome === 'Carlos Sem Pedido').codigo), '105', 'desligado: nada aplicado sozinho');
     // ligar de novo: aplica
     await fr.locator('#autoLigar').check(); await fr.locator('#dlgConf[open]').waitFor(); await fr.locator('#confSim').click();
-    await page.waitForFunction(() => window.__db.ler('dp_empresas/e-orion').funcionarios.some(f => f.nome === 'Recem Chegado'), null, { timeout: 15000 });
+    await page.waitForFunction(() => window.__db.ler('dp_empresas/e-orion').funcionarios.find(f => f.nome === 'Carlos Sem Pedido').codigo === '111', null, { timeout: 15000 });
     await fr.locator('#autoLigar').uncheck();
     await page.waitForFunction(() => window.__db.ler('dp_config/onvio').auto.ligada === false, null, { timeout: 5000 });
   });
 
   await passo('Aplicação automática: o analista com o Hub aberto só aplica onde pode (carteira dele) e não cadastra empresas', async () => {
-    const t = await D.empregados();
-    t.linhas.push(['c-orion', '900', 'ORION COMERCIO LTDA', 'o10', 'Chegou Na Ana', '0', '2026-10-02', 'ACTIVE', 'M', 'A1', '220', '801', 'EMPLOYEE'].join('\t'), ['c-orion', '900', 'ORION COMERCIO LTDA', 'o9', 'Recem Chegado', '0', '2026-10-01', 'ACTIVE', 'M', 'A1', '220', '777', 'EMPLOYEE'].join('\t'), ['c-vega', '901', 'VEGA SERVICOS ME', 'v9', 'Chegou No Bruno', '0', '2026-10-03', 'ACTIVE', 'M', 'A1', '220', '802', 'EMPLOYEE'].join('\t'));
+    const t = trocaCodigo(trocaCodigo(await D.empregados(), 'Carlos Sem Pedido', '112'), 'Antiga Colega', '303');
     await page.evaluate(() => { window.__auth = { nivel: () => 'analista', analista: () => 'Bruno Teste', podeVer: () => true, ehAdmin: () => false, usuario: () => ({ nome: 'Bruno', id: 'u-bruno', prefs: {} }) }; });
     // outro executor (a coordenação, em outro navegador) tem o lease: este navegador não aplica nada
     await page.evaluate(() => window.__db.semear('ing_auto/lease', { por: 'u-coordenacao', nivel: 2, ate: Date.now() + 120000 }));
     await page.evaluate(() => { const c = window.__db.ler('dp_config/onvio'); c.auto.ligada = true; c.auto.tipos.empresa = true; window.__db.semear('dp_config/onvio', c); });
     await semearConjunto('pessoais-empregados', t, 'c4');
-    await page.waitForFunction(() => window.__hubApi.api('onvio').difs().some(d => d.nome === 'Chegou No Bruno'), null, { timeout: 8000 });
+    await page.waitForFunction(() => window.__hubApi.api('onvio').difs().some(d => d.nome === 'Antiga Colega' && d.tipo === 'codigo'), null, { timeout: 8000 });
     await page.waitForTimeout(4000);
-    assert.ok(!(await page.evaluate(() => window.__db.ler('dp_empresas/e-vega').funcionarios.some(f => f.nome === 'Chegou No Bruno'))), 'com outro executor ativo, este navegador espera');
+    const cod = (emp, n) => page.evaluate(([e, n]) => window.__db.ler('dp_empresas/' + e).funcionarios.find(f => f.nome === n).codigo, [emp, n]);
+    assert.equal(await cod('e-vega', 'Antiga Colega'), '302', 'com outro executor ativo, este navegador espera');
     assert.equal((await page.evaluate(() => window.__hubApi.api('onvio').autoAgora())).motivo, 'outro-executor');
     await page.evaluate(() => window.__db.semear('ing_auto/lease', { por: 'u-coordenacao', nivel: 2, ate: Date.now() - 1000 }));          // o lease venceu
     await page.evaluate(() => window.__hubApi.api('onvio').autoAgora());
-    await page.waitForFunction(() => window.__db.ler('dp_empresas/e-vega').funcionarios.some(f => f.nome === 'Chegou No Bruno'), null, { timeout: 15000 });
+    await page.waitForFunction(() => window.__db.ler('dp_empresas/e-vega').funcionarios.find(f => f.nome === 'Antiga Colega').codigo === '303', null, { timeout: 15000 });
     await page.waitForTimeout(3500);
-    assert.ok(!(await page.evaluate(() => window.__db.ler('dp_empresas/e-orion').funcionarios.some(f => f.nome === 'Chegou Na Ana'))), 'ORION é da Ana: o analista não aplica');
+    assert.equal(await cod('e-orion', 'Carlos Sem Pedido'), '111', 'ORION é da Ana: o analista não aplica');
     assert.ok((await page.evaluate(() => window.__db.ler('dp_empresas/e-vega').historico[0].alteracao)).includes('automaticamente'));
     await page.evaluate(() => { delete window.__auth; });
     // de volta como coordenação, com o automático ligado: a pendência da Ana é aplicada
     await page.evaluate(() => window.__hubApi.api('onvio').autoAgora());
-    await page.waitForFunction(() => window.__db.ler('dp_empresas/e-orion').funcionarios.some(f => f.nome === 'Chegou Na Ana'), null, { timeout: 15000 });
+    await page.waitForFunction(() => window.__db.ler('dp_empresas/e-orion').funcionarios.find(f => f.nome === 'Carlos Sem Pedido').codigo === '112', null, { timeout: 15000 });
     await page.evaluate(() => { const c = window.__db.ler('dp_config/onvio'); c.auto.ligada = false; window.__db.semear('dp_config/onvio', c); });
   });
 
