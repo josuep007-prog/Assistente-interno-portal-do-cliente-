@@ -94,7 +94,7 @@ function empresas() {
     { id: 'e-orion', cod: '55', nome: 'ORION COMERCIO LTDA', cnpj: '11.222.333/0001-81', codigoDominio: '55', tributacao: 'Simples Nacional', responsavel: 'Ana Teste', situacao: 'Ativa', uf: 'São Paulo/SP',
       funcionarios: [f('f-maria', 'Maria Souza', '101', '2024-03-01'), f('f-beltrano', 'Beltrano Silva', '', '2022-02-02')], historico: [], lembretes: [], prazos: [] },
     { id: 'e-vega', cod: '56', nome: 'VEGA SERVICOS ME', cnpj: '22.333.444/0001-92', codigoDominio: '56', tributacao: 'Simples Nacional', responsavel: 'Bruno Teste', situacao: 'Ativa', uf: 'São Paulo/SP', funcionarios: [], historico: [], lembretes: [], prazos: [] },
-    { id: 'e-lira', cod: '58', nome: 'LIRA PADARIA', cnpj: '', codigoDominio: '58', tributacao: 'Simples Nacional', responsavel: 'Ana Teste', situacao: 'Ativa', uf: 'Campinas/RJ', funcionarios: [], historico: [], lembretes: [], prazos: [] }
+    { id: 'e-lira', cod: '58', nome: 'LIRA PADARIA', cnpj: '', codigoDominio: '58', tributacao: 'Simples Nacional', responsavel: 'Ana Teste', situacao: 'Ativa', uf: 'Campinas/RJ', funcionarios: [f('f-erica', 'Erica Teste', '26', '2024-06-06'), f('f-diego', 'Diego Teste', '', '2025-02-03')], historico: [], lembretes: [], prazos: [] }
   ];
 }
 
@@ -105,7 +105,7 @@ async function empregados() {
   const porCliente = {
     'c-orion': [dto('o1', 'Maria Souza', '101', '2024-03-01'), dto('o2', 'Beltrano Silva', '202', '2022-02-01'), dto('o3', 'Carlos Sem Pedido', '105', '2021-06-01'), dto('o4', 'Dona Antiga', '99', '2018-01-10', 'INACTIVE')],
     'c-vega': [dto('v1', 'Joao Lima', '301', '2023-05-02'), dto('v2', 'Antiga Colega', '302', '2020-02-02', 'INACTIVE')],
-    'c-lira': [dto('l1', 'Lira Funcionaria', '401', '2022-09-05')],
+    'c-lira': [dto('l1', 'Lira Funcionaria', '401', '2022-09-05'), dto('l2', 'Erica Teste', '26', '2025-02-03'), dto('l3', 'Diego Teste', '26', '2024-06-06')],   // Erica e Diego: no DP as datas estão trocadas e os dois têm o código 26 no Onvio (numerações de filiais diferentes se cruzam)
     'c-nova': [dto('n1', 'Nova Um', '501', '2024-01-02'), dto('n2', 'Nova Dois', '502', '2024-02-03', 'ACTIVE', { clientEmployeeRelationshipExpanded: { eprType: 'INTERN' } })]
   };
   const clientes = [{ id: 'c-orion', code: 900, name: 'ORION COMERCIO LTDA' }, { id: 'c-vega', code: 901, name: 'VEGA SERVICOS ME' }, { id: 'c-lira', code: 903, name: 'LIRA PADARIA LTDA' }, { id: 'c-nova', code: 950, name: 'NOVA CLIENTE SA' }];
