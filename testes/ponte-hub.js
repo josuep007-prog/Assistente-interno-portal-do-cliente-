@@ -127,9 +127,9 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   // ---- envio completo em partes (0.52.0) ----
   const lotesHub3 = () => f3().evaluate(() => window.lotes);
   const esperarSync = async () => { for (let i = 0; i < 90; i++) { await sleep(500); const h = (await opc.evaluate(() => chrome.storage.local.get('hubSync'))).hubSync; if (h && h.estado !== 'enviando' && h.terminouEm) return h; } throw new Error('envio completo não terminou'); };
-  // a tela mostra as 6 categorias; a de dados pessoais vem desligada
+  // a tela mostra as 7 categorias; a de dados pessoais vem desligada
   await opc.reload(); await sleep(600);
-  assert.equal(await opc.locator('#hub-cats input[data-cat]').count(), 6);
+  assert.equal(await opc.locator('#hub-cats input[data-cat]').count(), 7);
   assert.equal(await opc.locator('#hub-cats input[data-cat="pessoais"]').isChecked(), false);
   assert.equal(await opc.locator('#hub-cats input[data-cat="listas"]').isChecked(), true);
   const antes = (await lotesHub3()).length;

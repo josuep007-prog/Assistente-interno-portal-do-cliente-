@@ -3005,6 +3005,7 @@
    * dados pessoais (CPF, salário, nomes, descrições, trâmites, comunicações) vem desligada e pede confirmação.
    * Nunca vão: tokens e dados da sessão (UdsSession), cookies, armazenamento do navegador. */
   const HUB_CATEGORIAS = [
+    { id: 'analise', nome: 'Análise do escritório', ajuda: 'O que a extensão calcula e o Hub não tem: de quem é a vez, dias com o escritório, prazo legal e prometido, gravidade, resolvidas sem retorno do cliente e a carga por analista. Só números e datas; sem texto de solicitação. Não faz nenhuma leitura nova no Onvio.', pessoal: false, padrao: true },
     { id: 'listas', nome: 'Solicitações completas', ajuda: 'As 10 listas inteiras (não só as pendentes): situação, datas, cliente, responsável, departamento e campos de cada tipo. Sem dados pessoais.', pessoal: false, padrao: true },
     { id: 'clientes', nome: 'Clientes', ajuda: 'Clientes de CND e de NF-e: nome, código, CNPJ/CPF, inscrições, UF e município, certificado.', pessoal: false, padrao: true },
     { id: 'escritorio', nome: 'Escritório e acesso', ajuda: 'Departamentos, seu acesso, tabelas de apoio, prescrição, conta, licenças, permissões, funcionalidades e serviços do Onvio. Sem tokens.', pessoal: false, padrao: true },
@@ -3262,12 +3263,38 @@
     return { detalhes, tramites, lidas: feitos, total: ((snapshot && snapshot.items) || []).length };
   }
 
+  // Análise calculada pela extensão (0.56.0): sem leitura nova, sem texto livre (assunto, empregado, trâmite).
+  const COLUNAS_ANALISE_SOL = ['Chave', 'Lista', 'Nº', 'Situação', 'Vez', 'Cliente', 'Responsável', 'Aberta em', 'Última movimentação', 'Dias parado', 'D.u. parado', 'D.u. aberta', 'D.u. até o 1º trâmite', 'Gravidade', 'Prazo legal', 'Motivos', 'Prometido até', 'Prescreve em', 'Atraso do cliente', 'Resolvida sem retorno', 'Departamento'];
+  function tabelaAnaliseSolicitacoes(snap) {
+    const dia = v => { const d = parseDate(v); return d ? ymd(d) : ''; };
+    const linhaDe = (i, resolvida) => {
+      const ms = Array.isArray(i.motivos) ? i.motivos : [];
+      return linhaTexto([i.k, i.typeLabel || i.type, i.num, i.status, resolvida ? 'resolvida' : (LADO_HUB[i.lado] || i.lado), i.apelido || i.cliente, i.resp || 'sem responsável', dia(i.created), dia(i.last),
+        i.parado == null ? '' : i.parado, i.uteisParado == null ? '' : i.uteisParado, i.uteisAberto == null ? '' : i.uteisAberto, i.ptUteis == null ? '' : i.ptUteis,
+        i.grav ? 'G' + i.grav : '', simNao(ms.some(m => m && m.legal)), ms.map(m => m && m.m).filter(Boolean).join(' | '), dataIso(i.prazoPrometido), dataIso(i.prescreveEm),
+        simNao(ms.some(m => m && m.o === 'cli')), resolvida ? (i.semRetorno == null ? 'sim' : i.semRetorno + ' d.u.') : '', i.departmentId == null ? '' : i.departmentId], 300);
+    };
+    const itens = ((snap && snap.items) || []), res = ((snap && snap.resolvidas) || []);
+    return { colunas: COLUNAS_ANALISE_SOL.slice(), linhas: itens.map(i => linhaDe(i, false)).concat(res.map(i => linhaDe(i, true))), total: itens.length + res.length };
+  }
+  const COLUNAS_ANALISE_EQUIPE = ['Responsável', 'Pendentes', 'Na vez do escritório', 'Na vez do cliente', 'Vermelhas', 'Amarelas', 'G1', 'G2', 'G3', 'Sem análise', 'D.u. médios até o 1º trâmite', 'Resolvidas sem retorno'];
+  function tabelaAnaliseEquipe(snap) {
+    const linhas = porAnalista((snap && snap.items) || []);
+    const res = {}; ((snap && snap.resolvidas) || []).forEach(i => { const k = i.resp || '(sem responsável)'; res[k] = (res[k] || 0) + 1; });
+    Object.keys(res).forEach(k => { if (!linhas.some(r => r.resp === k)) linhas.push({ resp: k, total: 0, esc: 0, cli: 0, vermelho: 0, amarelo: 0, g1: 0, g2: 0, g3: 0, semPrimeiro: 0, ptMedia: null }); });
+    return { colunas: COLUNAS_ANALISE_EQUIPE.slice(), linhas: linhas.map(r => linhaTexto([r.resp, r.total, r.esc, r.cli, r.vermelho, r.amarelo, r.g1, r.g2, r.g3, r.semPrimeiro, r.ptMedia == null ? '' : r.ptMedia, res[r.resp] || 0], 120)) };
+  }
+
   // Plano do envio: lista de tarefas { id, rotulo, categorias, executar(fetcher, ctx) -> [conjunto] }.
   // Conjunto: { tipoDado, categoria, titulo, colunas, linhas (textos), totalNaOrigem, cortado, porTipo }.
   function hubPlano(escolhidas) {
     const quer = c => escolhidas.indexOf(c) !== -1;
     const tarefas = [];
     const L = quer('listas'), P = quer('pessoais');
+    if (quer('analise')) {
+      tarefas.push({ id: 'analise:solicitacoes', rotulo: 'Análise das solicitações', async executar(f, ctx) { const x = tabelaAnaliseSolicitacoes(ctx.snapshot); return [{ tipoDado: 'analise-solicitacoes', categoria: 'analise', titulo: 'Análise · solicitações pendentes', colunas: x.colunas, linhas: x.linhas, totalNaOrigem: x.total, cortado: false, porTipo: {} }]; } });
+      tarefas.push({ id: 'analise:equipe', rotulo: 'Carga por analista', async executar(f, ctx) { const x = tabelaAnaliseEquipe(ctx.snapshot); return [{ tipoDado: 'analise-equipe', categoria: 'analise', titulo: 'Análise · carga por analista', colunas: x.colunas, linhas: x.linhas, totalNaOrigem: x.linhas.length, cortado: false, porTipo: {} }]; } });
+    }
     if (L || P) for (const t of TYPES) tarefas.push({
       id: 'lista:' + t.key, rotulo: t.label,
       async executar(fetcher, ctx) {
@@ -3340,5 +3367,5 @@
     return resultados;
   }
 
-  g.OC = { montarLoteHub, HUB_CATEGORIAS, hubPlano, hubExecutar, hubPartesDe, partirTabela, tabelaLista, tabelaPessoais, tabelaCnd, tabelaNfe, lerEscritorio, lerDocumentos, lerNoticias, slugHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, dentroDoHorario, planoDistribuicaoAuto, acaoConcluir, agruparSugestoes, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, acaoAnalise, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, mensagensProntas, marcadoresPendentes, observacoesFaltantes, avisosResposta, situacaoEquivalente, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { montarLoteHub, HUB_CATEGORIAS, tabelaAnaliseSolicitacoes, tabelaAnaliseEquipe, hubPlano, hubExecutar, hubPartesDe, partirTabela, tabelaLista, tabelaPessoais, tabelaCnd, tabelaNfe, lerEscritorio, lerDocumentos, lerNoticias, slugHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, dentroDoHorario, planoDistribuicaoAuto, acaoConcluir, agruparSugestoes, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, acaoAnalise, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, mensagensProntas, marcadoresPendentes, observacoesFaltantes, avisosResposta, situacaoEquivalente, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);

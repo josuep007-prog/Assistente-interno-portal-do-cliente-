@@ -84,6 +84,9 @@ function tabelas() {
     'avisoFerias:f1\t701\tAviso de férias\t1\t' + dia(-1) + ' 09:00\tSem análise\tcliente\tContato da ORION\tOlá, segue o aviso de férias da Maria.\t',
     'avisoFerias:f1\t701\tAviso de férias\t2\t' + dia(0) + ' 08:30\tEm análise\tescritório\tAna Teste\tRecebido, vamos calcular.\t'
   ] };
+  out['analise-solicitacoes'] = { categoria: 'analise', colunas: ['Chave', 'Lista', 'Nº', 'Situação', 'Vez', 'Cliente', 'Responsável', 'Aberta em', 'Última movimentação', 'Dias parado', 'D.u. parado', 'D.u. aberta', 'D.u. até o 1º trâmite', 'Gravidade', 'Prazo legal', 'Motivos', 'Prometido até', 'Prescreve em', 'Atraso do cliente', 'Resolvida sem retorno', 'Departamento'], linhas: [
+    'avisoFerias:f1\tAviso de férias\t701\tSem análise\tescritório\tORION\tAna Teste\t' + dia(-5) + '\t' + dia(-1) + '\t1\t1\t4\t\tG2\tsim\tAberta há 4 d.u. (limite 3)\t' + dia(2) + '\t\tnão\t\t7'
+  ] };
   return out;
 }
 

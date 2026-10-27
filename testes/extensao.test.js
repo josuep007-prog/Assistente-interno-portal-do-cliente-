@@ -2751,7 +2751,7 @@ test('Hub: partirTabela parte entre linhas, respeita o limite e nunca devolve ze
 test('Hub: sem a categoria de dados pessoais, nada pessoal é lido nem enviado', async () => {
   const enviados = [];
   const res = await OC.hubExecutar(apiHub(), todasCategorias().filter(c => c !== 'pessoais'), { pausa: null, snapshot: { items: [] } }, async (c, p) => { enviados.push({ c, p }); return { ok: true }; });
-  assert.equal(enviados.length, 23, 'envia 10 listas, 2 de clientes, 9 do escritório, as pastas e as notícias');
+  assert.equal(enviados.length, 25, 'envia 10 listas, 2 de clientes, 9 do escritório, as pastas, as notícias e as 2 de análise');
   assert.ok(enviados.every(x => x.c.categoria !== 'pessoais'));
   const texto = JSON.stringify(enviados.map(x => x.p.partes));
   for (const proibido of [CPF_T, NOME_T, '3500.5', 'obs ', 'Assunto 1', 'com quebra']) assert.ok(!texto.includes(proibido), 'vazou: ' + proibido);
@@ -2963,4 +2963,38 @@ test('Hub: conjunto grande vira várias partes dentro do limite e marca o corte 
   const enorme = OC.hubPartesDe({ linhas: Array.from({ length: 100 }, () => 'y'.repeat(139000)), cortado: false });
   assert.equal(enorme.partes.length, 80);
   assert.equal(enorme.cortado, true);
+});
+
+test('Hub: a análise do escritório vai sem leitura nova e sem texto de solicitação (assunto, empregado, trâmite)', async () => {
+  const hoje = '2026-10-20T12:00:00Z';
+  const snapshot = {
+    items: [
+      { k: 'geral:1', type: 'geral', typeLabel: 'Geral', num: 10, status: 'Sem análise', lado: 'esc', cliente: 'EMPRESA A LTDA', apelido: 'Empresa A', resp: 'Ana', created: hoje, last: hoje, parado: 3, uteisParado: 2, uteisAberto: 4, ptUteis: 1, grav: 2, nivel: 2,
+        motivos: [{ n: 2, m: 'Aberta há 4 d.u. (limite 3)' }, { n: 2, m: 'Pagamento vence em 1 d.u.', legal: true }], prazoPrometido: '2026-10-22', departmentId: 7,
+        assunto: 'SEGREDO assunto', empregado: 'FULANO SECRETO', descricao: 'texto livre' },
+      { k: 'geral:2', type: 'geral', typeLabel: 'Geral', num: 11, status: 'Respondido', lado: 'cli', cliente: 'B', resp: '', created: hoje, last: hoje, parado: 1, grav: 0, nivel: 0, motivos: [] }
+    ],
+    resolvidas: [{ k: 'geral:3', type: 'geral', typeLabel: 'Geral', num: 12, status: 'Respondido', lado: 'cli', cliente: 'C', resp: 'Ana', created: hoje, last: hoje, semRetorno: 5 }]
+  };
+  const lotes = [];
+  let leituras = 0;
+  const res = await OC.hubExecutar(async () => { leituras++; return {}; }, ['analise'], { pausa: null, snapshot }, async (c, p) => { lotes.push({ c, p }); return { ok: true }; });
+  assert.equal(leituras, 0, 'nenhuma leitura no Onvio');
+  assert.deepEqual(plano(res.map(r => r.id)), ['analise-solicitacoes', 'analise-equipe']);
+  const sol = lotes[0].c, eq = lotes[1].c;
+  assert.equal(sol.linhas.length, 3, 'as duas pendentes e a resolvida');
+  const col = n => sol.colunas.indexOf(n);
+  const l0 = sol.linhas[0].split('\t'), l2 = sol.linhas[2].split('\t');
+  assert.equal(l0[col('Gravidade')], 'G2');
+  assert.equal(l0[col('Prazo legal')], 'sim');
+  assert.equal(l0[col('Prometido até')], '2026-10-22');
+  assert.equal(l0[col('D.u. até o 1º trâmite')], '1');
+  assert.equal(l2[col('Vez')], 'resolvida');
+  assert.equal(l2[col('Resolvida sem retorno')], '5 d.u.');
+  const tudo = JSON.stringify([sol, eq]);
+  assert.ok(!/SEGREDO|FULANO|texto livre/.test(tudo), 'nada de texto livre');
+  const ana = eq.linhas.map(l => l.split('\t')).find(l => l[0] === 'Ana');
+  assert.equal(ana[eq.colunas.indexOf('Pendentes')], '1');
+  assert.equal(ana[eq.colunas.indexOf('Resolvidas sem retorno')], '1');
+  assert.ok(OC.HUB_CATEGORIAS.find(c => c.id === 'analise' && !c.pessoal && c.padrao));
 });
