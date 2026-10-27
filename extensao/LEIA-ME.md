@@ -49,7 +49,7 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 
 - Em Configurações → Avançado, o botão **Sondar a lista de empregados** lê uma única empresa (só GET) e mostra só o **formato**: nomes de campos do empregado e do cliente, contagens por situação, datas mínima e máxima de campos de desligamento ou sincronização, o resultado de variações da mesma leitura (sem filtros, `expand=all`, `status=INACTIVE`, incluindo inativos, outros tipos de vínculo) e o detalhe de um empregado. Nunca mostra nome, CPF nem código de empregado.
 - Motivo: a lista `br-payroll-sr/v1/clients/{id}/employees` devolve todos como `ACTIVE` e só cobre 158 de 1.059 empresas. A sondagem diz se o Onvio tem algum campo ou parâmetro que traga o desligamento. **A confirmar** com o Chrome do Josué: rodar o botão e colar o resultado.
-- Medido nos dados do Hub (27/10): das 845 rescisões de clientes que têm lista, só 5% das pessoas ainda aparecem nela. A lista acompanha boa parte dos desligamentos, mas não todos, e não é a folha do Domínio.
+- Medido nos dados do Hub (27/10): das 845 rescisões de clientes que têm lista, só 5% das pessoas ainda aparecem nela. A investigação de 27/10 no Onvio real (`mapeamento/onvio-empregados-desligamento-2026-10-27.md`) conferiu duas empresas contra relatórios do Domínio e a lista bateu: todos os demitidos estavam fora e todos os admitidos dentro, mesmo sem rescisão no portal. O campo `status` não serve (sempre `ACTIVE`); quem diz que alguém saiu é a **ausência** da lista, e só nas empresas que têm lista (cerca de 158 de 1.054; o `allowEmployeeRegistration` sozinho não explica quais).
 
 ## Novidades da v0.56.0 (o Hub recebe a análise que só a extensão calcula)
 

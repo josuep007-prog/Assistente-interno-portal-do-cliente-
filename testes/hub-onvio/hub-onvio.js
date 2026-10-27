@@ -457,8 +457,10 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     it.cadContribuinte = [base('cc1', 720, D.CLI.lira, { admissionDate: D.dia(5), name: 'Autonomo Teste', clientEmployeeExpanded: undefined, subject: 'Contribuinte' })];
     it.avisoFerias.push(
       base('fe1', 721, D.CLI.lira, { vacationStartDate: D.dia(-2), vacationDays: 20, clientEmployeeExpanded: D.emp('Erica Teste', '26', '2024-06-06'), subject: 'Férias em curso' }),
-      base('fe2', 722, D.CLI.lira, { vacationStartDate: '2027-03-01', vacationDays: 20, clientEmployeeExpanded: D.emp('Erica Teste', '26', '2024-06-06'), subject: 'Férias de 2027' }));
-    for (const k of ['cadContribuinte', 'avisoFerias']) {
+      base('fe2', 722, D.CLI.lira, { vacationStartDate: '2027-03-01', vacationDays: 20, clientEmployeeExpanded: D.emp('Erica Teste', '26', '2024-06-06'), subject: 'Férias de 2027' }),
+      base('fe3', 724, D.CLI.lira, { vacationStartDate: D.dia(15), vacationDays: 20, clientEmployeeExpanded: D.emp('Saiu Da Lista', '410', '2022-01-10'), subject: 'Férias de quem já saiu' }));
+    it.calcRescisao.push(base('rx1', 725, D.CLI.lira, { resignationDate: D.dia(-20), terminationReasonId: 'm1', terminationType: 'WORKED', clientEmployeeExpanded: D.emp('Rescindida Fora', '411', '2021-01-10'), subject: 'Rescisão que já saiu da lista' }));
+    for (const k of ['cadContribuinte', 'avisoFerias', 'calcRescisao']) {
       const t = D.OC.TYPE_BY_KEY[k], slug = D.OC.slugHub(k);
       await semearConjunto('lista-' + slug, { categoria: 'listas', ...D.OC.tabelaLista(t, it[k]) }, 'cF');
       await semearConjunto('pessoais-' + slug, { categoria: 'pessoais', ...D.OC.tabelaPessoais(t, it[k]) }, 'cF');
@@ -466,6 +468,10 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await page.waitForFunction(() => window.__hubApi.api('onvio').difs().some(d => d.nome === 'Erica Teste' && d.tipo === 'ferias'), null, { timeout: 10000 });
     const d = await page.evaluate(() => window.__hubApi.api('onvio').difs().map(x => ({ nome: x.nome, tipo: x.tipo, depois: x.depois })));
     assert.ok(!d.some(x => x.nome === 'Autonomo Teste'), 'contribuinte (autônomo) não é funcionário');
+    // o Onvio retira da lista quem o Domínio desligou (conferido em 27/10): com a lista da empresa presente, quem só aparece nas solicitações NÃO vira cadastro novo
+    const sai = await page.evaluate(() => window.__hubApi.api('onvio').difs().filter(x => x.nome === 'Saiu Da Lista').map(x => ({ acao: x.acao, confirmar: x.confirmar, txt: x.txt })));
+    assert.equal(sai.length, 1); assert.equal(sai[0].confirmar, true); assert.match(sai[0].txt, /não consta mais na lista de empregados do Onvio/);
+    assert.ok(!d.some(x => x.nome === 'Rescindida Fora'), 'com rescisão e fora da lista: desligado, nada a cadastrar');
     const fer = d.find(x => x.nome === 'Erica Teste' && x.tipo === 'ferias');
     assert.ok(fer && !/2027/.test(fer.depois), 'as férias em curso, não a de 2027: ' + JSON.stringify(fer));
     // "Desligado" com férias cobrindo hoje: depois de aplicar a diferença some (antes voltava a cada visita)
@@ -492,7 +498,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await outra.waitForFunction(() => { const a = window.__hubApi.api('onvio'); try { return a.solicitacoes().todas.length > 0; } catch (e) { return false; } }, null, { timeout: 10000 });
     await outra.waitForTimeout(800);
     const gets = await outra.evaluate(() => (window.__gets || []).filter(p => /^ing_partes\//.test(p)));
-    const baixadas = gets.filter(p => !/lista-aviso-ferias|lista-cad-contribuinte/.test(p) && /~lista-|~clientes-|~escritorio-/.test(p));
+    const baixadas = gets.filter(p => !/lista-aviso-ferias|lista-cad-contribuinte|lista-calc-rescisao/.test(p) && /~lista-|~clientes-|~escritorio-/.test(p));
     assert.deepEqual(baixadas, [], 'listas, clientes e escritório vieram do cache');
     assert.ok(gets.some(p => /~pessoais-/.test(p)), 'dados pessoais nunca ficam no cache do navegador');
     await outra.close();
@@ -564,7 +570,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     assert.equal(await page.evaluate(() => window.__db.listar('dp_empresas').length), antes, 'sem a opção de empresas novas, nenhuma empresa é cadastrada');
     const c = await page.evaluate(() => window.__db.ler('dp_config/onvio')); assert.equal(c.auto.ligada, true); assert.ok(c.auto.ultima && c.auto.ultima.n >= 3, 'última aplicação guardada');
     await page.waitForFunction(() => window.__hubApi.api('onvio').difs().length === 0 || window.__hubApi.api('onvio').difs().every(d => d.acao === 'x'), null, { timeout: 8000 }).catch(() => {});
-    const resto = await difsOnvio(); assert.deepEqual(resto.filter(d => d.acao === 'novo' || d.acao === 'complementar'), [], 'nada de novo ou complemento pendente: ' + JSON.stringify(resto));
+    const resto = await difsOnvio(); assert.deepEqual(resto.filter(d => (d.acao === 'novo' || d.acao === 'complementar') && !d.confirmar), [], 'nada de novo ou complemento pendente: ' + JSON.stringify(resto));
     await fr.locator('#autoBox').getByText('Última aplicação automática').waitFor({ timeout: 8000 });                // a tela espera os dados assentarem antes de redesenhar
     assert.match(await fr.locator('#autoBox').textContent(), /Última aplicação automática/);
     if (CAP) { await fr.locator('#secCadastro h2').evaluate(e => e.scrollIntoView({ block: 'start' })); await page.waitForTimeout(500); await page.screenshot({ path: path.join(CAP, 'entrada-dados-auto-ligado-claro.png') }); }
