@@ -103,7 +103,7 @@ function empresas() {
 
 // A folha inteira de cada cliente (pessoais-empregados), gerada pela tarefa real da extensão (OC.hubPlano) com uma API simulada:
 // quem nunca teve solicitação também vem. NOVA CLIENTE não está no DP nem nos clientes de CND (só aparece aqui).
-async function empregados() {
+async function empregados(soNomes) {
   const dto = (id, name, cod, adm, status, extra) => Object.assign({ id, name, cpf: '00000000000', hireDate: adm, status: status || 'ACTIVE', gender: 'F', jobPosition: 'A1', employeeWorkload: '220', integrationCode: cod, clientEmployeeRelationshipExpanded: { eprType: 'EMPLOYEE' } }, extra);
   const porCliente = {
     'c-orion': [dto('o1', 'Maria Souza', '101', '2024-03-01'), dto('o2', 'Beltrano Silva', '202', '2022-02-01'), dto('o3', 'Carlos Sem Pedido', '105', '2021-06-01'), dto('o4', 'Dona Antiga', '99', '2018-01-10', 'INACTIVE')],
@@ -118,6 +118,7 @@ async function empregados() {
     if (/br-payroll-sr\/v1\/clients$/.test(u.pathname)) return { items: clientes, totalItems: clientes.length, totalPages: 1 };
     throw new Error('sem rota ' + u.pathname);
   };
+  if (soNomes) for (const k of Object.keys(porCliente)) porCliente[k] = porCliente[k].filter(x => soNomes.includes(x.name));     // só quem aparece nas solicitações do teste
   const t = OC.hubPlano(['pessoais']).find(x => x.id === 'pessoais:empregados');
   const [c] = await t.executar(f, { pausa: null });
   return { categoria: 'pessoais', colunas: c.colunas, linhas: c.linhas };
