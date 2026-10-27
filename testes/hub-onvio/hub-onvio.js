@@ -54,8 +54,10 @@ const BANCO = `(() => {
   window.claude = { use: async (n) => n === 'db' ? { doc, collection: col } : n === 'downloads' ? { save: async () => {} } : n === 'user' ? { id: async () => 'u-teste', can: async () => true, canEdit: async () => window.__canEdit !== false, profiles: async () => ({}) } : null };
 })();`;
 
+// A regra é: só é ativo quem está na lista de empregados do Onvio. A base do teste traz a lista só com quem aparece nas solicitações; o resto chega nos passos que testam a lista.
+let ROSTER_BASE = null;
 function montarBanco() {
-  const docs = [], T = D.tabelas(), agora = Date.now();
+  const docs = [], T = Object.assign({}, D.tabelas(), ROSTER_BASE ? { 'pessoais-empregados': ROSTER_BASE } : {}), agora = Date.now();
   for (const [tipo, c] of Object.entries(T)) {
     const partes = D.OC.partirTabela(c.linhas, 900);                // limite pequeno de propósito: força várias partes
     partes.forEach((tabela, i) => docs.push({ path: `ing_partes/onvio~${tipo}~a${i}`, data: { ciclo: 'c1', parte: i, tabela } }));
@@ -69,6 +71,8 @@ async function passo(nome, fn) { try { await fn(); console.log('ok   ' + nome); 
 const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
 
 (async () => {
+  ROSTER_BASE = await D.empregados(['Maria Souza', 'Beltrano Silva', 'Joao Lima']);
+  ROSTER_BASE.linhas.push(['c-vega', '901', 'VEGA SERVICOS ME', 'v9', 'Novo Funcionario', '0', D.dia(3), 'ACTIVE', 'F', 'A1', '220', '777', 'EMPLOYEE'].join('\t'));     // o que antes vinha só da solicitação de admissão agora precisa estar na lista
   await new Promise(r => servidor.listen(0, r));
   const url = `http://localhost:${servidor.address().port}/index.html`;
   const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined });
@@ -232,7 +236,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     assert.deepEqual(chips.map(t => t.replace(/\s+/g, ' ').trim()), ['Todas 9', 'Complementar 4', 'Corrigir 3', 'Cadastro novo 2'], chips.join('|'));
     assert.match(await fr.locator('#cadro tr[data-emp]:has-text("Código Domínio vazio")').textContent(), /Complementar/);
     assert.match(await fr.locator('#cadro tr[data-emp]:has-text("Admissão diferente")').textContent(), /Corrigir/);
-    assert.match(await fr.locator('#cadro tr[data-emp]:has-text("Só existe no Onvio")').first().textContent(), /Cadastrar/);
+    assert.match(await fr.locator('#cadro tr[data-emp]:has-text("Está na lista de empregados do Onvio")').first().textContent(), /Cadastrar/);
     assert.match(await fr.locator('#cadro tr[data-emp]:has-text("CNPJ ou CPF vazio")').textContent(), /LIRA|Dados da empresa/);
     if (CAP) { await fr.locator('#secCadastro').scrollIntoViewIfNeeded(); await fr.locator('#secCadastro h2').evaluate(e => e.scrollIntoView({ block: 'start' })); await page.waitForTimeout(500); await page.screenshot({ path: path.join(CAP, 'entrada-dados-claro.png') }); }
     const g0 = await page.evaluate(() => window.__gravacoes.length);
@@ -345,7 +349,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
   });
 
   await passo('Entrada de dados: cadastrar o funcionário que só existe no Onvio; cadastrar o cliente do portal como empresa nova (em lote) e ligar o outro a uma empresa existente', async () => {
-    await aplicarNoQuadro('Só existe no Onvio', '[data-cad-aplicar]');
+    await aplicarNoQuadro('Está na lista de empregados do Onvio', '[data-cad-aplicar]');
     assert.match(await fr.locator('#confTxt').textContent(), /Cadastrar no DP como novo\?/);
     await fr.locator('#confSim').click();
     await page.waitForFunction(() => ((window.__db.ler('dp_empresas/e-vega') || {}).funcionarios || []).length === 1, null, { timeout: 5000 });
@@ -427,19 +431,14 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
 
   await passo('Folha inteira de cada empresa: quem nunca teve solicitação vira cadastro novo; desligado sem solicitação não; cliente só da folha aparece para cadastrar', async () => {
     await page.evaluate(() => { const d = window.__db.ler('dp_empresas/e-vega'); d.funcionarios.push({ id: 'f-antiga', nome: 'Antiga Colega', cargo: '', codigo: '', admissao: '2020-02-02', status: 'Ativo', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '', salario: '', obs: '' }); window.__db.semear('dp_empresas/e-vega', d); });
-    // extensão antiga: o aviso pede para atualizar; extensão nova que já enviou outros conjuntos: o aviso diz que o envio parou
-    await page.waitForFunction(() => /precisa da extensão 0\.53\.0/.test(document.querySelector('#fontes-frame').contentDocument.querySelector('#cadro').textContent), null, { timeout: 8000 });
-    await page.evaluate(() => { const m = window.__db.ler('ing_dados/onvio~escritorio-tabelas'); m.versaoExt = '0.53.1'; window.__db.semear('ing_dados/onvio~escritorio-tabelas', m); });
-    await page.waitForFunction(() => /já enviou, mas a lista completa/.test(document.querySelector('#fontes-frame').contentDocument.querySelector('#cadro').textContent), null, { timeout: 8000 });
     await semearConjunto('pessoais-empregados', await D.empregados(), 'c2');
     await page.waitForFunction(() => window.__hubApi.api('onvio').difs().some(d => d.nome === 'Carlos Sem Pedido'), null, { timeout: 8000 });
     const d = await difsOnvio();
     const de = (n) => d.filter(x => x.nome === n);
-    assert.equal(de('Carlos Sem Pedido').length, 1); assert.equal(de('Carlos Sem Pedido')[0].acao, 'novo'); assert.match(de('Carlos Sem Pedido')[0].txt, /desligamento/);
+    assert.equal(de('Carlos Sem Pedido').length, 1); assert.equal(de('Carlos Sem Pedido')[0].acao, 'novo'); assert.match(de('Carlos Sem Pedido')[0].txt, /Está na lista de empregados do Onvio/);
     assert.equal(de('Lira Funcionaria')[0].acao, 'novo'); assert.equal(de('Lira Funcionaria')[0].emp, 'LIRA PADARIA');
-    // o Onvio nunca informa desligamento fora do portal: quem só consta na lista dele (sem movimento recente) fica para conferir à mão
-    assert.equal(de('Carlos Sem Pedido')[0].confirmar, true); assert.match(de('Carlos Sem Pedido')[0].txt, /desligamento feito fora do portal/);
-    assert.equal(de('Lira Funcionaria')[0].confirmar, true);
+    // regra absoluta: quem está na lista do Onvio é ativo (e entra como cadastro novo, sem "conferir antes")
+    assert.equal(de('Carlos Sem Pedido')[0].confirmar, false); assert.equal(de('Lira Funcionaria')[0].confirmar, false);
     assert.equal(de('Dona Antiga').length, 0, 'desligado que nunca teve solicitação não entra');
     assert.equal(de('Antiga Colega')[0].acao, 'corrigir'); assert.match(de('Antiga Colega')[0].txt, /Desligado na folha/);
     const sem = await page.evaluate(() => window.__hubApi.api('onvio').semVinculo().map(g => ({ cli: g.cli, n: g.n, nEmp: g.nEmp })));
@@ -470,7 +469,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     assert.ok(!d.some(x => x.nome === 'Autonomo Teste'), 'contribuinte (autônomo) não é funcionário');
     // o Onvio retira da lista quem o Domínio desligou (conferido em 27/10): com a lista da empresa presente, quem só aparece nas solicitações NÃO vira cadastro novo
     const sai = await page.evaluate(() => window.__hubApi.api('onvio').difs().filter(x => x.nome === 'Saiu Da Lista').map(x => ({ acao: x.acao, confirmar: x.confirmar, txt: x.txt })));
-    assert.equal(sai.length, 1); assert.equal(sai[0].confirmar, true); assert.match(sai[0].txt, /não consta mais na lista de empregados do Onvio/);
+    assert.equal(sai.length, 0, 'aparece só nas solicitações e não está na lista: desconsiderado');
     assert.ok(!d.some(x => x.nome === 'Rescindida Fora'), 'com rescisão e fora da lista: desligado, nada a cadastrar');
     // recontratação: a mesma pessoa com dois registros na lista (um antigo, depois um novo): vale a admissão mais recente, qualquer que seja a ordem das linhas
     const tdup = await D.empregados();
@@ -483,7 +482,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
       e.funcionarios.push(f('f-ex', 'Ex Colega Sumido', '2020-03-03'), f('f-rec', 'Recem Cadastrado', new Date(Date.now() - 2 * 864e5).toISOString().slice(0, 10))); window.__db.semear('dp_empresas/e-lira', e); });
     await page.waitForFunction(() => window.__hubApi.api('onvio').difs().some(x => x.nome === 'Ex Colega Sumido'), null, { timeout: 10000 });
     const sumido = await page.evaluate(() => window.__hubApi.api('onvio').difs().filter(x => /Sumido|Recem Cadastrado|Lira Funcionaria/.test(x.nome)).map(x => ({ nome: x.nome, tipo: x.tipo, acao: x.acao, confirmar: x.confirmar, depois: x.depois, txt: x.txt })));
-    const ex = sumido.filter(x => x.nome === 'Ex Colega Sumido'); assert.equal(ex.length, 1); assert.equal(ex[0].tipo, 'situacao'); assert.equal(ex[0].depois, 'Desligado'); assert.equal(ex[0].confirmar, true); assert.match(ex[0].txt, /Não consta mais na lista/);
+    const ex = sumido.filter(x => x.nome === 'Ex Colega Sumido'); assert.equal(ex.length, 1); assert.equal(ex[0].tipo, 'situacao'); assert.equal(ex[0].depois, 'Desligado'); assert.equal(ex[0].confirmar, false, 'sumiu da lista: desligado, sem conferir antes'); assert.match(ex[0].txt, /Não consta na lista de empregados do Onvio/);
     assert.ok(!sumido.some(x => x.nome === 'Recem Cadastrado'), 'cadastro de menos de uma semana não é sugerido');
     assert.ok(!sumido.some(x => x.nome === 'Lira Funcionaria' && x.tipo === 'situacao'), 'quem está na lista não é sugerido');
     const fer = d.find(x => x.nome === 'Erica Teste' && x.tipo === 'ferias');
@@ -567,18 +566,13 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     const lira = await page.evaluate(() => window.__db.ler('dp_empresas/e-lira'));
     assert.equal(lira.funcionarios.find(f => f.nome === 'Erica Teste').admissao, '2025-02-03'); assert.equal(lira.funcionarios.find(f => f.nome === 'Diego Teste').admissao, '2024-06-06');
     assert.equal(lira.funcionarios.filter(f => /Teste/.test(f.nome)).length, 2, 'ninguém duplicado');
-    assert.equal(lira.funcionarios.find(f => f.nome === 'Ex Colega Sumido').status, 'Ativo', 'o automático nunca marca Desligado por ausência da lista: fica para conferir');
+    assert.equal(lira.funcionarios.find(f => f.nome === 'Ex Colega Sumido').status, 'Desligado', 'regra absoluta: quem sumiu da lista do Onvio não é mais ativo, e o automático aplica');
     assert.equal(lira.historico.filter(h => /Admissão diferente/.test(h.alteracao) && /Teste/.test(h.alteracao)).length, 2, 'uma correção de admissão para cada um, sem vaivém');
     assert.ok(lira.historico.some(h => /automaticamente a partir do Onvio/.test(h.alteracao) && /Teste/.test(h.alteracao)), 'o automático registra "automaticamente"');
-    // quem só consta na lista do Onvio (que nunca informa desligamento fora do portal) NÃO é cadastrado sozinho: fica para conferir à mão
-    let orion = await page.evaluate(() => window.__db.ler('dp_empresas/e-orion'));
-    assert.ok(!orion.funcionarios.some(f => f.nome === 'Carlos Sem Pedido'), 'automático não cadastra quem só está na lista do Onvio');
-    assert.ok(!lira.funcionarios.some(f => f.nome === 'Lira Funcionaria'));
-    const pend = await difsOnvio(); assert.ok(pend.some(d => d.nome === 'Carlos Sem Pedido' && d.confirmar), 'segue pendente, marcado para conferir');
-    assert.match(await fr.locator('#cadro').textContent(), /conferir antes/);
-    // decidido à mão, entra como antes
-    await page.evaluate(async () => { const a = window.__hubApi.api('onvio'); for (const n of ['Carlos Sem Pedido', 'Lira Funcionaria']) { const d = a.difs().find(x => x.nome === n && x.acao === 'novo'); await a.aplicar(d.empId, d.chave); } });
-    orion = await page.evaluate(() => window.__db.ler('dp_empresas/e-orion'));
+    // regra absoluta: quem está na lista de empregados do Onvio é ativo, então o automático cadastra
+    await page.waitForFunction(() => window.__db.ler('dp_empresas/e-orion').funcionarios.some(f => f.nome === 'Carlos Sem Pedido') && window.__db.ler('dp_empresas/e-lira').funcionarios.some(f => f.nome === 'Lira Funcionaria'), null, { timeout: 15000 });
+    const orion = await page.evaluate(() => window.__db.ler('dp_empresas/e-orion'));
+    assert.ok(orion.historico.some(h => /automaticamente a partir do Onvio/.test(h.alteracao) && /Carlos Sem Pedido/.test(h.alteracao)));
     const carlos = orion.funcionarios.find(f => f.nome === 'Carlos Sem Pedido'); assert.equal(carlos.admissao, '2021-06-01'); assert.equal(carlos.codigo, '105'); assert.equal(carlos.status, 'Ativo');
     assert.ok(!orion.funcionarios.some(f => f.nome === 'Dona Antiga'));
     await page.waitForFunction(() => window.__db.ler('dp_empresas/e-vega').funcionarios.find(f => f.nome === 'Antiga Colega').status === 'Desligado', null, { timeout: 8000 });
@@ -601,11 +595,6 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     assert.equal((await page.evaluate((k) => window.__hubApi.api('onvio').criarEmpresa(k), k)).ok, true);
     await page.waitForFunction(() => window.__db.listar('dp_empresas').some(e => /NOVA CLIENTE/.test(e.nome)), null, { timeout: 15000 });
     const nova = await page.evaluate(() => window.__db.listar('dp_empresas').find(e => /NOVA CLIENTE/.test(e.nome)));
-    // os empregados dela só constam na lista do Onvio: o automático não os cadastra, ficam para conferir à mão
-    await page.waitForFunction(() => window.__hubApi.api('onvio').difs().filter(d => /^Nova (Um|Dois)$/.test(d.nome) && d.confirmar).length === 2, null, { timeout: 15000 });
-    await page.waitForTimeout(3500);
-    assert.equal((await page.evaluate((id) => (window.__db.ler('dp_empresas/' + id).funcionarios || []).length, nova.id)), 0, 'automático não cadastra quem só está na lista do Onvio');
-    await page.evaluate(async () => { const a = window.__hubApi.api('onvio'); for (const d of a.difs().filter(x => /^Nova (Um|Dois)$/.test(x.nome))) await a.aplicar(d.empId, d.chave); });
     await page.waitForFunction((id) => (window.__db.ler('dp_empresas/' + id).funcionarios || []).length === 2, nova.id, { timeout: 15000 });
     assert.deepEqual((await page.evaluate((id) => window.__db.ler('dp_empresas/' + id).funcionarios.map(f => f.nome).sort(), nova.id)), ['Nova Dois', 'Nova Um']);
     assert.equal(await page.evaluate(() => window.__db.listar('dp_empresas').filter(e => /NOVA CLIENTE/.test(e.nome)).length), 1, 'só uma empresa, sem duplicar');
