@@ -527,7 +527,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     const sem = await page.evaluate(() => window.__hubApi.api('onvio').semVinculo().map(g => ({ cli: g.cli, n: g.n, nEmp: g.nEmp })));
     const nova = sem.find(g => /NOVA CLIENTE/.test(g.cli));
     assert.ok(nova, 'cliente que só existe na folha'); assert.equal(nova.n, 0); assert.equal(nova.nEmp, 2);
-    await fr.locator('#vincro tr[data-k]:has-text("NOVA CLIENTE SA")').waitFor({ timeout: 8000 });
+    await fr.locator('#vincro tr[data-k]:has-text("NOVA CLIENTE |")').waitFor({ timeout: 8000 });
     assert.match(await fr.locator('#vincro').textContent(), /NOVA CLIENTE SA/); assert.match(await fr.locator('#vincro').textContent(), /2 empregados ativos/);
     assert.equal(await fr.locator('#autoBox .auto-bloco').count(), 1);
     assert.equal(await fr.locator('#autoLigar').isChecked(), false, 'vem desligado');
