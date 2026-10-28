@@ -66,10 +66,14 @@ function tabelas() {
     { id: 'c-vega', code: '901', clientName: 'VEGA SERVICOS ME', clientStatus: 'ACTIVE', nationalIdentity: '22333444000192', municipalInscription: '', stateInscription: '', stateInitials: 'SP', cityIbgeIdentifier: '3550308', documentType: 'CNPJ', isOnvio: true },
     { id: 'c-zeta', code: '902', clientName: 'ZETA TRANSPORTES LTDA', clientStatus: 'ACTIVE', nationalIdentity: '33444555000103', municipalInscription: '', stateInscription: '55555', stateInitials: 'MG', cityIbgeIdentifier: '3106200', documentType: 'CNPJ', isOnvio: true },
     { id: 'c-lira', code: '903', clientName: 'LIRA PADARIA LTDA', clientStatus: 'ACTIVE', nationalIdentity: '44555666000104', municipalInscription: '777', stateInscription: '', stateInitials: 'SP', cityIbgeIdentifier: '3509502', documentType: 'CNPJ', isOnvio: true },
+    { id: 'c-ct', code: '1', clientName: 'CONTROLTAX CONSULTORIA E NEGOCIOS LTDA', clientStatus: 'ACTIVE', nationalIdentity: '10870633000104', municipalInscription: '', stateInscription: '', stateInitials: 'ES', cityIbgeIdentifier: '3205309', documentType: 'CNPJ', isOnvio: true },
+    { id: 'c-dyn', code: '6', clientName: 'DYNEXA TRIBUTARIO & GESTAO ESTRATEGICA LTDA', clientStatus: 'ACTIVE', nationalIdentity: '17339246000195', municipalInscription: '', stateInscription: '', stateInitials: 'ES', cityIbgeIdentifier: '3205309', documentType: 'CNPJ', isOnvio: true },
     { id: 'c-omega', code: '904', clientName: 'OMEGA SERVICOS LTDA', clientStatus: 'ACTIVE', nationalIdentity: '55666777000105', municipalInscription: '888', stateInscription: '999', stateInitials: 'RJ', cityIbgeIdentifier: '3304557', documentType: 'CNPJ', isOnvio: true }
   ]) };
   out['clientes-nfe'] = { categoria: 'clientes', ...OC.tabelaNfe([
-    { id: 'c-orion', code: '900', name: 'ORION COMERCIO LTDA', nickname: 'ORION', active: true, clientStatus: 'ACTIVE', nationalIdentity: '11222333000181', uf: 'SP', isOnvio: true, certificateExpanded: { expirationDate: dia(20) + 'T00:00:00' } }
+    { id: 'c-orion', code: '900', name: 'ORION COMERCIO LTDA', nickname: 'ORION', active: true, clientStatus: 'ACTIVE', nationalIdentity: '11222333000181', uf: 'SP', isOnvio: true, certificateExpanded: { expirationDate: dia(20) + 'T00:00:00' } },
+    { id: 'c-of', code: '7', name: 'OFICINA BUSINESS APOIO ADMINISTRATIVO LTDA', nickname: 'OFICINA | 0001-07', active: true, clientStatus: 'ACTIVE', nationalIdentity: '40035488000107', uf: 'ES', isOnvio: true },
+    { id: 'c-dk', code: '615', name: 'DISKCONTADOR SERVICOS CONTABEIS LTDA', nickname: 'DISKCONTADOR 0001-17', active: true, clientStatus: 'ACTIVE', nationalIdentity: '47261129000117', uf: 'ES', isOnvio: true }
   ]) };
   out['escritorio-tabelas'] = { categoria: 'escritorio', colunas: ['Tabela', 'Código', 'Descrição', 'Detalhes'], linhas: [
     'Tipos de afastamento\t3\tDoença (até 15 dias)\tgera CAT: não · visível: sim',
@@ -97,6 +101,8 @@ function empresas() {
     { id: 'e-orion', cod: '55', nome: 'ORION COMERCIO LTDA', cnpj: '11.222.333/0001-81', codigoDominio: '55', tributacao: 'Simples Nacional', responsavel: 'Ana Teste', situacao: 'Ativa', uf: 'São Paulo/SP',
       funcionarios: [f('f-maria', 'Maria Souza', '101', '2024-03-01'), f('f-beltrano', 'Beltrano Silva', '', '2022-02-02')], historico: [], lembretes: [], prazos: [] },
     { id: 'e-vega', cod: '56', nome: 'VEGA SERVICOS ME', cnpj: '22.333.444/0001-92', codigoDominio: '56', tributacao: 'Simples Nacional', responsavel: 'Bruno Teste', situacao: 'Ativa', uf: 'São Paulo/SP', funcionarios: [], historico: [], lembretes: [], prazos: [] },
+    { id: 'e-ct', cod: '1', nome: 'CONTROLTAX GESTAO LTDA', cnpj: '10.870.633/0001-04', codigoDominio: '1', tributacao: 'Lucro Presumido', responsavel: 'Ana Teste', situacao: 'Ativa', uf: 'Espírito Santo', funcionarios: [f('f-ct1', 'Fulano Do Escritorio', '1', '2020-01-01'), f('f-ct2', 'Ciclana Do Escritorio', '2', '2021-01-01')], historico: [], lembretes: [], prazos: [] },
+    { id: 'e-dyn', cod: '6', nome: 'DYNEXA TRIBUTARIO & GESTAO ESTRATEGICA LTDA', cnpj: '17.339.246/0001-95', codigoDominio: '6', tributacao: 'Lucro Presumido', responsavel: 'Ana Teste', situacao: 'Ativa', uf: 'Espírito Santo', funcionarios: [f('f-dy1', 'Beltrano Dynexa', '3', '2022-01-01')], historico: [], lembretes: [], prazos: [] },
     { id: 'e-lira', cod: '58', nome: 'LIRA PADARIA', cnpj: '', codigoDominio: '58', tributacao: 'Simples Nacional', responsavel: 'Ana Teste', situacao: 'Ativa', uf: 'Campinas/RJ', funcionarios: [f('f-erica', 'Erica Teste', '26', '2024-06-06'), f('f-diego', 'Diego Teste', '', '2025-02-03')], historico: [], lembretes: [], prazos: [] }
   ];
 }

@@ -3103,6 +3103,10 @@
   };
   const leituraBoa = () => { RUN.seguidas = 0; };
   const HUB_CLIENTES_MAX = 3000;
+  // Empresas do próprio escritório (ControlTax, Dynexa, Oficina, Diskcontador): nada delas vai ao Hub (decisão do Josué, 28/10/2026). Reconhecidas pelo nome ou apelido.
+  const ESCRITORIO_PROPRIO = [/\b(controltax|dynexa|diskcontador)\b/, /\boficina business\b/, /^oficina\s*(\||\d|$)/];
+  const ehEscritorioProprio = (...nomes) => nomes.some(n => { const t = semAcento(n).trim(); return !!t && ESCRITORIO_PROPRIO.some(r => r.test(t)); });
+  const semProprio = (itens, nomes) => { const ficam = itens.filter(r => !ehEscritorioProprio(...nomes(r))); return { itens: ficam, fora: itens.length - ficam.length }; };
   const COLUNAS_EMPREGADOS = ['Id do cliente', 'Código do cliente', 'Cliente', 'Id', 'Nome', 'CPF', 'Admissão', 'Situação', 'Sexo', 'Cargo (código)', 'Carga horária', 'Código do empregado', 'Vínculo', 'Criado no Onvio em'];
   const URL_EMPREGADOS = id => API + 'br-payroll-sr/v1/clients/' + encodeURIComponent(id) + '/employees?eprType=EMPLOYEE&eprType=INTERN&expand=clientEmployeeRelationshipExpanded';
   async function lerClientesFolha(fetcher, pausa) {
@@ -3122,7 +3126,7 @@
     try { (await lerClientesFolha(fetcher, ctx.pausa)).forEach((c, id) => clientes.set(id, c)); leituraBoa(); }
     catch (e) { recusaIsolada(e, 'br-payroll-sr/v1/clients'); listaFalhou = true; }
     if (ctx.clientesVistos) ctx.clientesVistos.forEach((c, id) => { if (!clientes.has(id)) clientes.set(id, c); });
-    const todos = [...clientes.values()], lidos = todos.slice(0, HUB_CLIENTES_MAX), linhas = []; let falhas = 0, suspeitas = 0;
+    const todos = [...clientes.values()].filter(c => !ehEscritorioProprio(c.nome)), lidos = todos.slice(0, HUB_CLIENTES_MAX), linhas = []; let falhas = 0, suspeitas = 0;
     for (const c of lidos) {
       try {
         let resp;
@@ -3320,7 +3324,7 @@
     }
     const d = await tenta(fetcher, 'storage/v2/requests?requestTypes=Approval&requestTypes=Informational&requestTypes=Send&requestTypes=Outlook&sort=createdDate:desc');
     return { colunas: ['Id', 'Assunto', 'Cliente', 'Tipo', 'Situação', 'Situação da comunicação', 'Enviada em', 'Expira em', 'Visualizada', 'Destinatários', 'Criada por'],
-      linhas: listaDe(d).map(x => linhaTexto([x.id, x.subject, x.clientName, x.requestType, x.status, x.communicationStatus, dataHora(x.sendDate), dataHora(x.expirationDate), simNao(x.isViewed), Array.isArray(x.recipients) ? x.recipients.length : '', nomeDe(x.createdBy)], 400)) };
+      linhas: listaDe(d).filter(x => !ehEscritorioProprio(x && x.clientName)).map(x => linhaTexto([x.id, x.subject, x.clientName, x.requestType, x.status, x.communicationStatus, dataHora(x.sendDate), dataHora(x.expirationDate), simNao(x.isViewed), Array.isArray(x.recipients) ? x.recipients.length : '', nomeDe(x.createdBy)], 400)) };
   }
   async function lerNoticias(fetcher) {
     const d = await tenta(fetcher, 'br-news/v1/articles/shared?expand=all&itemsPerPage=100&pageIndex=1');
@@ -3363,13 +3367,15 @@
         i.grav ? 'G' + i.grav : '', simNao(ms.some(m => m && m.legal)), ms.map(m => m && m.m).filter(Boolean).join(' | '), dataIso(i.prazoPrometido), dataIso(i.prescreveEm),
         simNao(ms.some(m => m && m.o === 'cli')), resolvida ? (i.semRetorno == null ? 'sim' : i.semRetorno + ' d.u.') : '', i.departmentId == null ? '' : i.departmentId], 300);
     };
-    const itens = ((snap && snap.items) || []), res = ((snap && snap.resolvidas) || []);
+    const alheio = i => !ehEscritorioProprio(i && i.cliente, i && i.apelido);
+    const itens = ((snap && snap.items) || []).filter(alheio), res = ((snap && snap.resolvidas) || []).filter(alheio);
     return { colunas: COLUNAS_ANALISE_SOL.slice(), linhas: itens.map(i => linhaDe(i, false)).concat(res.map(i => linhaDe(i, true))), total: itens.length + res.length };
   }
   const COLUNAS_ANALISE_EQUIPE = ['Responsável', 'Pendentes', 'Na vez do escritório', 'Na vez do cliente', 'Vermelhas', 'Amarelas', 'G1', 'G2', 'G3', 'Sem análise', 'D.u. médios até o 1º trâmite', 'Resolvidas sem retorno'];
   function tabelaAnaliseEquipe(snap) {
-    const linhas = porAnalista((snap && snap.items) || []);
-    const res = {}; ((snap && snap.resolvidas) || []).forEach(i => { const k = i.resp || '(sem responsável)'; res[k] = (res[k] || 0) + 1; });
+    const alheio = i => !ehEscritorioProprio(i && i.cliente, i && i.apelido);
+    const linhas = porAnalista(((snap && snap.items) || []).filter(alheio));
+    const res = {}; ((snap && snap.resolvidas) || []).filter(alheio).forEach(i => { const k = i.resp || '(sem responsável)'; res[k] = (res[k] || 0) + 1; });
     Object.keys(res).forEach(k => { if (!linhas.some(r => r.resp === k)) linhas.push({ resp: k, total: 0, esc: 0, cli: 0, vermelho: 0, amarelo: 0, g1: 0, g2: 0, g3: 0, semPrimeiro: 0, ptMedia: null }); });
     return { colunas: COLUNAS_ANALISE_EQUIPE.slice(), linhas: linhas.map(r => linhaTexto([r.resp, r.total, r.esc, r.cli, r.vermelho, r.amarelo, r.g1, r.g2, r.g3, r.semPrimeiro, r.ptMedia == null ? '' : r.ptMedia, res[r.resp] || 0], 120)) };
   }
@@ -3387,7 +3393,7 @@
     if (L || P) for (const t of TYPES) tarefas.push({
       id: 'lista:' + t.key, rotulo: t.label,
       async executar(fetcher, ctx) {
-        const { itens, total } = await lerListaInteira(fetcher, t, ctx.pausa), out = [];
+        const lida = await lerListaInteira(fetcher, t, ctx.pausa), out = [], sp = semProprio(lida.itens, r => [r && r.clientExpanded && r.clientExpanded.name, r && r.clientExpanded && r.clientExpanded.nickName, r && r.clientName]), itens = sp.itens, total = lida.total - sp.fora;
         if (P) { const vistos = ctx.clientesVistos || (ctx.clientesVistos = new Map()); itens.forEach(r => { const c = r && r.clientExpanded; if (c && c.id != null && !vistos.has(String(c.id))) vistos.set(String(c.id), { id: String(c.id), codigo: c.code == null ? '' : c.code, nome: c.name || '' }); }); }
         if (L) { const x = tabelaLista(t, itens); out.push({ tipoDado: 'lista-' + slugHub(t.key), categoria: 'listas', titulo: 'Solicitações · ' + t.label + ' (todas)', colunas: x.colunas, linhas: x.linhas, totalNaOrigem: total, cortado: itens.length < total, porTipo: {} }); }
         if (P) { const x = tabelaPessoais(t, itens); out.push({ tipoDado: 'pessoais-' + slugHub(t.key), categoria: 'pessoais', titulo: 'Dados pessoais · ' + t.label, colunas: x.colunas, linhas: x.linhas, totalNaOrigem: total, cortado: itens.length < total, porTipo: {} }); }
@@ -3395,8 +3401,8 @@
       }
     });
     if (quer('clientes')) {
-      tarefas.push({ id: 'clientes:cnd', rotulo: 'Clientes de CND', async executar(f, ctx) { const { itens, total } = await lerClientes(f, 'cnd/v1/clients', ctx.pausa), x = tabelaCnd(itens); return [{ tipoDado: 'clientes-cnd', categoria: 'clientes', titulo: 'Clientes de CND', colunas: x.colunas, linhas: x.linhas, totalNaOrigem: total, cortado: itens.length < total, porTipo: {} }]; } });
-      tarefas.push({ id: 'clientes:nfe', rotulo: 'Clientes de NF-e', async executar(f, ctx) { const { itens, total } = await lerClientes(f, 'manifesto/v1/clients', ctx.pausa), x = tabelaNfe(itens); return [{ tipoDado: 'clientes-nfe', categoria: 'clientes', titulo: 'Clientes de NF-e', colunas: x.colunas, linhas: x.linhas, totalNaOrigem: total, cortado: itens.length < total, porTipo: {} }]; } });
+      tarefas.push({ id: 'clientes:cnd', rotulo: 'Clientes de CND', async executar(f, ctx) { const lido = await lerClientes(f, 'cnd/v1/clients', ctx.pausa), sp = semProprio(lido.itens, c => [c.clientName, c.name, c.nickname]), itens = sp.itens, total = lido.total - sp.fora, x = tabelaCnd(itens); return [{ tipoDado: 'clientes-cnd', categoria: 'clientes', titulo: 'Clientes de CND', colunas: x.colunas, linhas: x.linhas, totalNaOrigem: total, cortado: itens.length < total, porTipo: {} }]; } });
+      tarefas.push({ id: 'clientes:nfe', rotulo: 'Clientes de NF-e', async executar(f, ctx) { const lido = await lerClientes(f, 'manifesto/v1/clients', ctx.pausa), sp = semProprio(lido.itens, c => [c.name, c.clientName, c.nickname]), itens = sp.itens, total = lido.total - sp.fora, x = tabelaNfe(itens); return [{ tipoDado: 'clientes-nfe', categoria: 'clientes', titulo: 'Clientes de NF-e', colunas: x.colunas, linhas: x.linhas, totalNaOrigem: total, cortado: itens.length < total, porTipo: {} }]; } });
     }
     if (quer('escritorio')) for (const [id, titulo] of [['departamentos', 'Departamentos'], ['acesso', 'Acesso do usuário'], ['tabelas', 'Tabelas de apoio'], ['prescricao', 'Prescrição'], ['conta', 'Conta e configuração do escritório'], ['licencas', 'Licenças'], ['permissoes', 'Permissões do usuário'], ['funcionalidades', 'Funcionalidades do Onvio'], ['servicos', 'Serviços do Onvio'], ['funcionarios', 'Equipe do escritório (ativos)']])
       tarefas.push({ id: 'escritorio:' + id, rotulo: titulo, async executar(f) { const x = await lerEscritorio(f, id); return [{ tipoDado: 'escritorio-' + id, categoria: 'escritorio', titulo: 'Escritório · ' + titulo, colunas: x.colunas, linhas: x.linhas, totalNaOrigem: x.linhas.length, cortado: !!x.cortado, porTipo: {} }]; } });
@@ -3456,5 +3462,5 @@
     return resultados;
   }
 
-  g.OC = { sondarEmpregados, montarLoteHub, HUB_CATEGORIAS, tabelaAnaliseSolicitacoes, tabelaAnaliseEquipe, hubPlano, hubExecutar, hubPartesDe, partirTabela, tabelaLista, tabelaPessoais, tabelaCnd, tabelaNfe, lerEscritorio, lerDocumentos, lerNoticias, slugHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, dentroDoHorario, planoDistribuicaoAuto, acaoConcluir, agruparSugestoes, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, acaoAnalise, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, mensagensProntas, marcadoresPendentes, observacoesFaltantes, avisosResposta, situacaoEquivalente, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { ehEscritorioProprio, sondarEmpregados, montarLoteHub, HUB_CATEGORIAS, tabelaAnaliseSolicitacoes, tabelaAnaliseEquipe, hubPlano, hubExecutar, hubPartesDe, partirTabela, tabelaLista, tabelaPessoais, tabelaCnd, tabelaNfe, lerEscritorio, lerDocumentos, lerNoticias, slugHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, dentroDoHorario, planoDistribuicaoAuto, acaoConcluir, agruparSugestoes, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, acaoAnalise, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, mensagensProntas, marcadoresPendentes, observacoesFaltantes, avisosResposta, situacaoEquivalente, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);
