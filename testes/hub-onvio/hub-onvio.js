@@ -786,6 +786,52 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     assert.doesNotMatch(await page.textContent('#dp-func-resumo'), /CONTROLTAX|DYNEXA/i);
   });
 
+  await passo('Filiais com o mesmo nome (Mercocamp): cada cliente vai para a empresa do seu CNPJ, cadastro antigo de empresa inativada é ignorado, quem é de outra filial não vira desligado sem conferir e muitos de uma vez ficam para decisão', async () => {
+    const lerLinhas = (tipo) => page.evaluate((tp) => { const m = window.__db.ler('ing_dados/onvio~' + tp); let x = []; for (let i = 0; i < m.partes; i++) x.push(window.__db.ler(`ing_partes/onvio~${tp}~${m.slot}${i}`).tabela); return { colunas: m.colunas, categoria: m.categoria, linhas: x.join('\n').split('\n').filter(Boolean) }; }, tipo);
+    const NOME = 'MERCOCAMP COMERCIO INTERNACIONAL S/A';
+    const cnd = await lerLinhas('clientes-cnd'), nfe = await lerLinhas('clientes-nfe');
+    const novoCliente = (cod, cnpj) => ({ id: 'c-m' + cod, code: cod, clientName: NOME, name: NOME, nickname: 'MERCOCAMP', active: true, clientStatus: 'ACTIVE', nationalIdentity: cnpj, uf: 'ES', stateInitials: 'ES', isOnvio: true });
+    const cli = [novoCliente('992', '05521163001024'), novoCliente('986', '05521163000133')];
+    await semearConjunto('clientes-cnd', { ...cnd, linhas: cnd.linhas.concat(D.OC.tabelaCnd(cli).linhas) }, 'cM1');
+    await semearConjunto('clientes-nfe', { ...nfe, linhas: nfe.linhas.concat(D.OC.tabelaNfe(cli).linhas) }, 'cM1');
+    const emp = await lerLinhas('pessoais-empregados');
+    const lin = (cod, nome, cd) => [`id-${cod}`, cod, NOME, `e-${cod}-${nome.replace(/\W/g, '')}`, nome, '', '2020-01-01', 'ACTIVE', '', '', '', cd, 'EMPLOYEE', '2020-01-01 10:00'].join('\t');
+    const intrusos = ['Intruso Um Filial', 'Intruso Dois Filial', 'Intruso Tres Filial', 'Intruso Quatro Filial', 'Intruso Cinco Filial', 'Intruso Seis Filial'];
+    await semearConjunto('pessoais-empregados', { ...emp, linhas: emp.linhas.concat([lin('992', 'Ana Propria Mercocamp', '1'), ...intrusos.map((n, i) => lin('986', n, String(10 + i))), lin('986', 'Novo Da Filial', '30'), lin('160', 'Antigo Um Legado', '40'), lin('160', 'Antigo Dois Legado', '41')]) }, 'cM1');
+    await page.evaluate(([nome, intr]) => {
+      const f = (id, n, adm, extra) => Object.assign({ id, nome: n, cargo: '', codigo: '', admissao: adm, status: 'Ativo', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '', salario: '', obs: '' }, extra || {});
+      const base = { cod: '', tributacao: 'Lucro Presumido', responsavel: 'Ana Teste', situacao: 'Ativa', uf: 'Espírito Santo', historico: [], lembretes: [], prazos: [] };
+      window.__db.semear('dp_empresas/e-mc10', { ...base, id: 'e-mc10', nome, cnpj: '05.521.163/0010-24', codigoDominio: '992', funcionarios: [f('f-propria', 'Ana Propria Mercocamp', '2020-01-01', { codigo: '1' }), f('f-sumido', 'Sumido Da Empresa', '2019-05-05'), ...intr.map((n, i) => f('f-i' + i, n, '2021-0' + (i + 1) + '-01'))] });
+      window.__db.semear('dp_empresas/e-mc01', { ...base, id: 'e-mc01', nome: 'MERCOCAMP COMERCIO', cnpj: '05.521.163/0001-33', codigoDominio: '986', funcionarios: [] });
+      const c = window.__db.ler('dp_config/onvio') || {}; c.vinc = { ...(c.vinc || {}), 'mercocamp comercio internacional s a': 'e-mc10' };   // o vínculo pelo nome que juntava todas as filiais numa empresa só
+      window.__db.semear('dp_config/onvio', c);
+    }, [NOME, intrusos]);
+    await page.waitForFunction(() => window.__hubApi.api('onvio').difs().some(d => d.empId === 'e-mc01' && /Novo Da Filial/.test(d.nome)), null, { timeout: 15000 });
+    const dif = () => page.evaluate(() => window.__hubApi.api('onvio').difs().filter(d => /^e-mc/.test(d.empId)).map(d => ({ emp: d.empId, nome: d.nome, tipo: d.tipo, acao: d.acao, txt: d.txt, confirmar: d.confirmar, patch: d.patch })));
+    let d = await dif();
+    const cob = await page.evaluate(() => window.__hubApi.api('onvio').cobertura());
+    assert.ok(cob.clientesAntigos >= 1, 'o cliente 160 (fora de CND e NF-e) é cadastro antigo');
+    assert.ok(!d.some(x => /Antigo (Um|Dois) Legado/.test(x.nome)), 'ninguém do cadastro antigo vira cadastro novo');
+    assert.deepEqual(d.filter(x => x.emp === 'e-mc01' && x.tipo === 'novo').map(x => x.nome).sort(), ['Intruso Cinco Filial', 'Intruso Dois Filial', 'Intruso Quatro Filial', 'Intruso Seis Filial', 'Intruso Tres Filial', 'Intruso Um Filial', 'Novo Da Filial'], 'os empregados da filial 0001-33 vão para a empresa dela');
+    assert.ok(!d.some(x => x.emp === 'e-mc10' && x.tipo === 'novo'), 'a empresa 0010-24 só recebe a lista do cliente 992');
+    const mc10 = d.filter(x => x.emp === 'e-mc10' && x.tipo === 'situacao');
+    assert.equal(mc10.length, 7, 'os 6 de outra filial e o que sumiu viram sugestão de saída');
+    assert.ok(mc10.every(x => x.confirmar === true && /Muitos de uma vez \(7 de 8\)/.test(x.txt)), 'muitos de uma vez: o automático não aplica, fica para conferir');
+    assert.ok(mc10.filter(x => /Intruso/.test(x.nome)).every(x => /consta na de outra \(MERCOCAMP/.test(x.txt)), 'diz que a pessoa está na lista de outra filial');
+    // poucos: sem trava, e a saída de quem é de outra filial não inventa um desligamento (a data de saída é a admissão)
+    await page.evaluate(() => { const e = window.__db.ler('dp_empresas/e-mc10'); e.funcionarios = e.funcionarios.filter(f => !/^f-i[1-5]$/.test(f.id)); window.__db.semear('dp_empresas/e-mc10', e); });
+    await page.waitForFunction(() => window.__hubApi.api('onvio').difs().filter(d => d.empId === 'e-mc10' && d.tipo === 'situacao').length === 2, null, { timeout: 15000 });
+    d = (await dif()).filter(x => x.emp === 'e-mc10' && x.tipo === 'situacao');
+    assert.ok(d.every(x => x.confirmar === false), 'só 2 (menos de 5): sem trava');
+    assert.equal(d.find(x => /Intruso/.test(x.nome)).patch.saidaEm, '2021-01-01', 'quem era de outra filial não ganha data de saída falsa');
+    // rescisão passada, mas ainda na lista desta empresa: conflito para conferir, nunca desligamento automático
+    await page.evaluate(() => { const e = window.__db.ler('dp_empresas/e-mc10'); e.funcionarios.find(f => f.id === 'f-propria').rescisao = '2020-02-02'; window.__db.semear('dp_empresas/e-mc10', e); });
+    await page.waitForFunction(() => window.__hubApi.api('onvio').difs().some(x => x.empId === 'e-mc10' && /rescisao-conflito/.test(x.chave)), null, { timeout: 15000 });
+    const conf = (await dif()).find(x => /Rescisão de/.test(x.txt));
+    assert.ok(conf && conf.confirmar === true && conf.nome === 'Ana Propria Mercocamp', 'conflito de rescisão: sugestão a conferir');
+    await page.evaluate(() => { for (const id of ['e-mc10', 'e-mc01']) window.__db.apagar ? window.__db.apagar('dp_empresas/' + id) : null; });
+  });
+
   await passo('Tema escuro e tela estreita: ficha e diferenças legíveis, sem rolagem horizontal', async () => {
     await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
     await page.evaluate(() => window.__hubApi.api('dp').abrirEmpresa('e-orion', 'onvio'));
