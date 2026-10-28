@@ -528,7 +528,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     const nova = sem.find(g => /NOVA CLIENTE/.test(g.cli));
     assert.ok(nova, 'cliente que só existe na folha'); assert.equal(nova.n, 0); assert.equal(nova.nEmp, 2);
     await fr.locator('#vincro tr[data-k]:has-text("NOVA CLIENTE |")').waitFor({ timeout: 8000 });
-    assert.match(await fr.locator('#vincro').textContent(), /NOVA CLIENTE SA/); assert.match(await fr.locator('#vincro').textContent(), /2 empregados ativos/);
+    assert.match(await fr.locator('#vincro').textContent(), /NOVA CLIENTE \| sem CNPJ/); assert.match(await fr.locator('#vincro').textContent(), /2 empregados ativos/);
     assert.equal(await fr.locator('#autoBox .auto-bloco').count(), 1);
     assert.equal(await fr.locator('#autoLigar').isChecked(), false, 'vem desligado');
     if (CAP) { await fr.locator('#secCadastro h2').evaluate(e => e.scrollIntoView({ block: 'start' })); await page.waitForTimeout(400); await page.screenshot({ path: path.join(CAP, 'entrada-dados-auto-desligado-claro.png') }); }
