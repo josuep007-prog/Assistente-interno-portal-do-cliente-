@@ -891,6 +891,9 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await fr.locator('#cuRel').click(); await fr.locator('#cuBox .cu-det').first().waitFor({ timeout: 15000 });
     assert.match(await fr.locator('#cuBox').textContent(), /Duplicadas no mesmo módulo[\s\S]*Sem CNPJ completo/);
     if (CAP) { await page.waitForTimeout(300); await page.screenshot({ path: path.join(CAP, 'cadastro-unico-claro.png') }); }
+    // limpa o que este passo semeou no DP (a duplicada separaria as solicitações da ORION nos passos seguintes)
+    await page.evaluate(async () => { const d = await window.claude.use('db'); await d.doc('dp_empresas/e-orion-dup').delete(); await d.doc('dp_empresas/domestica-teste').delete(); });
+    await page.evaluate(() => window.__hubApi.abrirModulo('dp'));
   });
 
   await passo('Tema escuro e tela estreita: ficha e diferenças legíveis, sem rolagem horizontal', async () => {
