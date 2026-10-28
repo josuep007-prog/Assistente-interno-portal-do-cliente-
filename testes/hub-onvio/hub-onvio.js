@@ -641,7 +641,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     const antes = await page.evaluate(() => window.__db.listar('dp_empresas').length);
     await page.evaluate(() => window.__hubApi.api('onvio').garantir());                    // depois do passo da consulta, relê os conjuntos (sem isso o interruptor espera o próximo ciclo da tela)
     await fr.locator('#autoLigar:not([disabled])').waitFor({ timeout: 20000 });          // o interruptor só habilita depois que todos os conjuntos carregam
-    await fr.locator('#autoLigar').check();
+    await fr.locator('#autoLigar').check({ force: true });
     await fr.locator('#dlgConf[open]').waitFor();
     assert.match(await fr.locator('#confTxt').textContent(), /sem pedir confirmação/); assert.match(await fr.locator('#confTxt').textContent(), /Pendente agora: \d+ complemento/);
     await fr.locator('#confSim').click();
@@ -697,7 +697,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await page.waitForTimeout(3500);
     assert.equal(await page.evaluate(() => window.__db.ler('dp_empresas/e-orion').funcionarios.find(f => f.nome === 'Carlos Sem Pedido').codigo), '105', 'desligado: nada aplicado sozinho');
     // ligar de novo: aplica
-    await fr.locator('#autoLigar').check(); await fr.locator('#dlgConf[open]').waitFor(); await fr.locator('#confSim').click();
+    await fr.locator('#autoLigar').check({ force: true }); await fr.locator('#dlgConf[open]').waitFor(); await fr.locator('#confSim').click();
     await page.waitForFunction(() => window.__db.ler('dp_empresas/e-orion').funcionarios.find(f => f.nome === 'Carlos Sem Pedido').codigo === '111', null, { timeout: 15000 });
     await fr.locator('#autoLigar').uncheck();
     await page.waitForFunction(() => window.__db.ler('dp_config/onvio').auto.ligada === false, null, { timeout: 5000 });
