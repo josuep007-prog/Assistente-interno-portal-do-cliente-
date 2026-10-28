@@ -175,15 +175,43 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await page.keyboard.press('Tab').catch(() => {});
     assert.doesNotMatch(await sec.textContent(), /Ficha Desligada/);
     const btn = sec.locator('[data-ficha-desl]'); assert.match(await btn.textContent(), /Desligados \(1\)/);
+    assert.equal(await sec.locator('.fn-pop').count(), 0, 'o balão começa fechado');
     await btn.click();
-    await page.waitForSelector('#dp-section-funcionarios .fn-cab:has-text("desligados")');
-    assert.equal(await sec.locator('.dp-section-row.fn-lin').count(), 1); assert.match(await sec.textContent(), /Ficha Desligada/);
-    assert.match(await btn.textContent(), /Voltar aos ativos \(2\)/);
+    await page.waitForSelector('#dp-section-funcionarios .fn-pop');
+    assert.match(await sec.locator('.fn-pop').textContent(), /Ficha Desligada/, 'os desligados abrem num balão por cima');
+    assert.equal(await sec.locator(':scope > .dp-section-rows > .fn-lin').count(), 2, 'a lista de ativos continua por baixo');
+    assert.equal(await sec.locator('.fn-pop').evaluate(el => getComputedStyle(el).position), 'absolute');
     if (CAP) { await page.waitForTimeout(300); await page.screenshot({ path: path.join(CAP, 'ficha-funcionarios-desligados-claro.png') }); }
-    await btn.click();
-    await page.waitForSelector('#dp-section-funcionarios .fn-cab:has-text("ativos")');
-    if (CAP) { await page.waitForTimeout(300); await page.screenshot({ path: path.join(CAP, 'ficha-funcionarios-claro.png') }); }
+    await page.keyboard.press('Escape');
+    await page.waitForSelector('#dp-section-funcionarios .fn-pop', { state: 'detached' });
+    assert.equal(await page.locator('#dlg-dp-detail').evaluate(d => d.open), true, 'Esc fecha só o balão, não a ficha');
+    await btn.click(); await page.waitForSelector('#dp-section-funcionarios .fn-pop');
+    await sec.locator('.fn-cab-wrap .dlg-section-title span').click();
+    await page.waitForSelector('#dp-section-funcionarios .fn-pop', { state: 'detached' });
+    await btn.click(); await page.waitForSelector('#dp-section-funcionarios .fn-pop');
+    await sec.locator('.fn-pop .fn-lin:has-text("Ficha Desligada")').click();
+    await page.waitForSelector('#dp-section-funcionarios .dp-section-row.editing');
+    assert.equal(await sec.locator('.fn-pop').count(), 0, 'abrir os dados fecha o balão');
+    await sec.locator('[data-sec-cancel="funcionarios"]').click();
+    await page.waitForSelector('#dp-section-funcionarios .dp-section-row.fn-lin');
+    // janela baixa: o cabeçalho e as abas da ficha não são espremidos
+    const vp = page.viewportSize(); await page.setViewportSize({ width: vp.width, height: 420 }); await page.waitForTimeout(200);
+    const hAbas = await page.locator('#dp-dtabs').evaluate(el => el.getBoundingClientRect().height), hCab = await page.locator('#dlg-dp-detail > .dlg-head').evaluate(el => el.getBoundingClientRect().height);
+    assert.ok(hAbas >= 28 && hCab >= 30, `abas e cabeçalho mantêm a altura em janela baixa (${hAbas}, ${hCab})`);
+    await page.setViewportSize(vp); await page.waitForTimeout(150);
+    if (CAP) { await page.screenshot({ path: path.join(CAP, 'ficha-funcionarios-claro.png') }); }
     await page.evaluate(() => { const e = window.__db.ler('dp_empresas/e-orion'); e.funcionarios = e.funcionarios.filter(f => f.id !== 'f-desl-ficha'); window.__db.semear('dp_empresas/e-orion', e); });
+  });
+
+  await passo('Nomes das empresas: o apelido do Onvio, resumido, sempre terminado em " | final do CNPJ"; o nome inteiro fica na dica', async () => {
+    const r = await page.evaluate(() => { const a = window.__hubApi; const cur = (e) => a.nomeEmpresa(e);
+      return { orion: cur('e-orion'), sem: cur({ nome: 'ALFA COMERCIO E SERVICOS LTDA', cnpj: '' }), filial: cur({ nome: 'BETA TRADING FILIAL (0007-22)', cnpj: '11.222.333/0007-22' }), apel: cur({ nome: 'GAMA S/A', cnpj: '11222333000299' }), cpf: cur({ nome: 'JOAO ME', cnpj: '123.456.789-09' }),
+        html: a.nomeEmpresa('e-orion', true) }; });
+    assert.equal(r.orion, 'ORION | 0001-81', 'apelido do Onvio (clientes-nfe) + final do CNPJ');
+    assert.equal(r.sem, 'ALFA COMERCIO E SERVICOS | sem CNPJ', 'sem apelido: tira LTDA; sem CNPJ avisa');
+    assert.equal(r.filial, 'BETA TRADING | 0007-22', 'a filial mostra a ordem do CNPJ e não repete o final que o nome já trazia');
+    assert.equal(r.apel, 'GAMA | 0002-99'); assert.equal(r.cpf, 'JOAO | CPF');
+    assert.match(r.html, /title="ORION COMERCIO LTDA"/, 'o nome inteiro na dica');
   });
 
   await passo('DP: as diferenças só aparecem como aviso (ficha e tela Funcionários), sem nenhum botão de decisão, e o link abre a Entrada de dados', async () => {
@@ -729,7 +757,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await page.evaluate(() => window.__hubApi.api('dp').irPara('cartela'));
     await page.click('#ct-modo [data-ct-modo="onvio"]');
     await page.waitForSelector('#ct-pane-onvio .ct-ov-tab tbody tr');
-    assert.match(await page.textContent('#ct-pane-onvio .ct-ov-tab'), /ORION COMERCIO LTDA/);
+    assert.match(await page.textContent('#ct-pane-onvio .ct-ov-tab'), /ORION \| 0001-81/);
     assert.match(await page.textContent('#ct-pane-onvio .ct-ov-tab'), /901/);
   });
 
