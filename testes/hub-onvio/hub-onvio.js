@@ -225,6 +225,11 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     assert.equal(r.filial, 'BETA TRADING | 0007-22', 'a filial mostra a ordem do CNPJ e não repete o final que o nome já trazia');
     assert.equal(r.apel, 'GAMA | 0002-99'); assert.equal(r.cpf, 'JOAO | CPF');
     assert.match(r.html, /title="ORION COMERCIO LTDA"/, 'o nome inteiro na dica');
+    // a Entrada de dados (fontes.html) usa estes nomes: empresas, diferenças, parecidas e clientes sem empresa vêm no mesmo padrão
+    const o = await page.evaluate(() => { const a = window.__hubApi.api('onvio'); return { emp: a.empresas().find(e => e.id === 'e-orion'), difs: [...new Set(a.difs().map(d => d.empNome))], sem: a.semVinculo().map(g => ({ cli: g.cli, par: g.parecidas.map(p => p.nome) })) }; });
+    assert.equal(o.emp.nome, 'ORION | 0001-81'); assert.equal(o.emp.nomeCompleto, 'ORION COMERCIO LTDA');
+    assert.ok(o.difs.length >= 1 && o.difs.every(n => / \| (\d{4}-\d{2}|CPF|sem CNPJ)$/.test(n)), 'diferenças por empresa no padrão: ' + o.difs.join(' / '));
+    assert.ok(o.sem.length >= 1 && o.sem.every(g => / \| (\d{4}-\d{2}|CPF|sem CNPJ)$/.test(g.cli) && g.par.every(n => / \| /.test(n))), 'clientes sem empresa e parecidas no padrão: ' + JSON.stringify(o.sem));
   });
 
   await passo('DP: as diferenças só aparecem como aviso (ficha e tela Funcionários), sem nenhum botão de decisão, e o link abre a Entrada de dados', async () => {
@@ -307,7 +312,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await fr.locator('#cadro tr[data-emp]').first().waitFor({ timeout: 10000 });
     assert.equal(await fr.locator('#cadro tr[data-emp]').count(), 9, 'ORION 5 + VEGA 2 + LIRA 2');
     assert.match(await fr.locator('#cadSub').textContent(), /9 diferenças · 2 clientes sem empresa/);
-    assert.match(await fr.locator('#vincro').textContent(), /ZETA TRANSPORTES LTDA/); assert.match(await fr.locator('#vincro').textContent(), /OMEGA SERVICOS LTDA/);
+    assert.match(await fr.locator('#vincro').textContent(), /ZETA TRANSPORTES \| 0001-03/); assert.match(await fr.locator('#vincro').textContent(), /OMEGA SERVICOS \| 0001-05/);
     assert.match(await fr.locator('#resumoTopo').textContent(), /11\s*para decidir/);
     // chips por ação: complementar 4 (código, férias, rescisão, CNPJ), corrigir 3 (admissão, afastamento, UF), novo 2
     const chips = await fr.locator('.chips.acoes .chipf').allTextContents();
@@ -454,7 +459,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await fr.locator('tr[data-k] [data-cad-emp]').selectOption('e-zeta');
     await fr.locator('tr[data-k] [data-cad-ligar]').click();
     await fr.locator('#dlgConf[open]').waitFor();
-    assert.match(await fr.locator('#confTxt').textContent(), /ZETA TRANSPORTES LTDA[\s\S]*TRANSPORTES ZETA/);
+    assert.match(await fr.locator('#confTxt').textContent(), /ZETA TRANSPORTES \| 0001-03[\s\S]*TRANSPORTES ZETA \| 0001-99/);
     await fr.locator('#confSim').click();
     await page.waitForFunction(() => { const c = window.__db.ler('dp_config/onvio'); return c && Object.values(c.vinc || {}).includes('e-zeta'); }, null, { timeout: 5000 });
     assert.equal(await page.evaluate(() => (window.__hubApi.api('onvio').solicitacoes().porEmp.get('e-zeta') || []).length), 1, 'a solicitação 706 agora é da empresa');
@@ -514,7 +519,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     const d = await difsOnvio();
     const de = (n) => d.filter(x => x.nome === n);
     assert.equal(de('Carlos Sem Pedido').length, 1); assert.equal(de('Carlos Sem Pedido')[0].acao, 'novo'); assert.match(de('Carlos Sem Pedido')[0].txt, /Está na lista de empregados do Onvio/);
-    assert.equal(de('Lira Funcionaria')[0].acao, 'novo'); assert.equal(de('Lira Funcionaria')[0].emp, 'LIRA PADARIA');
+    assert.equal(de('Lira Funcionaria')[0].acao, 'novo'); assert.equal(de('Lira Funcionaria')[0].emp, 'LIRA PADARIA | 0001-04');
     // regra absoluta: quem está na lista do Onvio é ativo (e entra como cadastro novo, sem "conferir antes")
     assert.equal(de('Carlos Sem Pedido')[0].confirmar, false); assert.equal(de('Lira Funcionaria')[0].confirmar, false);
     assert.equal(de('Dona Antiga').length, 0, 'desligado que nunca teve solicitação não entra');
@@ -522,8 +527,8 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     const sem = await page.evaluate(() => window.__hubApi.api('onvio').semVinculo().map(g => ({ cli: g.cli, n: g.n, nEmp: g.nEmp })));
     const nova = sem.find(g => /NOVA CLIENTE/.test(g.cli));
     assert.ok(nova, 'cliente que só existe na folha'); assert.equal(nova.n, 0); assert.equal(nova.nEmp, 2);
-    await fr.locator('#vincro tr[data-k]:has-text("NOVA CLIENTE SA")').waitFor({ timeout: 8000 });
-    assert.match(await fr.locator('#vincro').textContent(), /NOVA CLIENTE SA/); assert.match(await fr.locator('#vincro').textContent(), /2 empregados ativos/);
+    await fr.locator('#vincro tr[data-k]:has-text("NOVA CLIENTE |")').waitFor({ timeout: 8000 });
+    assert.match(await fr.locator('#vincro').textContent(), /NOVA CLIENTE \| sem CNPJ/); assert.match(await fr.locator('#vincro').textContent(), /2 empregados ativos/);
     assert.equal(await fr.locator('#autoBox .auto-bloco').count(), 1);
     assert.equal(await fr.locator('#autoLigar').isChecked(), false, 'vem desligado');
     if (CAP) { await fr.locator('#secCadastro h2').evaluate(e => e.scrollIntoView({ block: 'start' })); await page.waitForTimeout(400); await page.screenshot({ path: path.join(CAP, 'entrada-dados-auto-desligado-claro.png') }); }
