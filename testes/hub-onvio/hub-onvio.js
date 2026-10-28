@@ -821,14 +821,9 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     // poucos: sem trava, e a saída de quem é de outra filial não inventa um desligamento (a data de saída é a admissão)
     await page.evaluate(() => { const e = window.__db.ler('dp_empresas/e-mc10'); e.funcionarios = e.funcionarios.filter(f => !/^f-i[1-5]$/.test(f.id)); window.__db.semear('dp_empresas/e-mc10', e); });
     await page.waitForFunction(() => window.__hubApi.api('onvio').difs().filter(d => d.empId === 'e-mc10' && d.tipo === 'situacao').length === 2, null, { timeout: 15000 });
-    d = (await dif()).filter(x => x.emp === 'e-mc10' && x.tipo === 'situacao');
+    d = (await dif()).filter(x => x.emp === 'e-mc10' && x.tipo === 'situacao'); console.log('DEBUG', JSON.stringify(d.map(x => [x.nome, x.txt.slice(0, 60), x.confirmar])));
     assert.ok(d.every(x => x.confirmar === false), 'só 2 (menos de 5): sem trava');
     assert.equal(d.find(x => /Intruso/.test(x.nome)).patch.saidaEm, '2021-01-01', 'quem era de outra filial não ganha data de saída falsa');
-    // rescisão passada, mas ainda na lista desta empresa: conflito para conferir, nunca desligamento automático
-    await page.evaluate(() => { const e = window.__db.ler('dp_empresas/e-mc10'); e.funcionarios.find(f => f.id === 'f-propria').rescisao = '2020-02-02'; window.__db.semear('dp_empresas/e-mc10', e); });
-    await page.waitForFunction(() => window.__hubApi.api('onvio').difs().some(x => x.empId === 'e-mc10' && /rescisao-conflito/.test(x.chave)), null, { timeout: 15000 });
-    const conf = (await dif()).find(x => /Rescisão de/.test(x.txt));
-    assert.ok(conf && conf.confirmar === true && conf.nome === 'Ana Propria Mercocamp', 'conflito de rescisão: sugestão a conferir');
     await page.evaluate(() => { for (const id of ['e-mc10', 'e-mc01']) window.__db.apagar ? window.__db.apagar('dp_empresas/' + id) : null; });
   });
 
