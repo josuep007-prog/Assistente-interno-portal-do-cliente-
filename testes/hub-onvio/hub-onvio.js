@@ -154,6 +154,30 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     if (CAP) await page.screenshot({ path: path.join(CAP, 'ficha-onvio-claro.png') });
   });
 
+  await passo('Ficha da empresa, Funcionários: cada linha só com nome, admissão e código do Domínio; desligados atrás de um botão no cabeçalho; a origem da lista e o aviso de que pode não ser 100% fiel', async () => {
+    await page.evaluate(() => { const e = window.__db.ler('dp_empresas/e-orion'); e.funcionarios.push({ id: 'f-desl-ficha', nome: 'Ficha Desligada', cargo: 'X', codigo: '777', admissao: '2020-05-05', status: 'Desligado', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '2026-01-10', salario: '', obs: 'Criado a partir do Onvio' }); window.__db.semear('dp_empresas/e-orion', e); });
+    await page.evaluate(() => window.__hubApi.api('dp').abrirEmpresa('e-orion', 'funcionarios'));
+    await page.waitForSelector('#dp-section-funcionarios .dp-section-row.fn-lin');
+    const sec = page.locator('#dp-section-funcionarios');
+    const txt = (await sec.textContent()).replace(/\s+/g, ' ');
+    assert.match(txt, /De onde vem esta lista/); assert.match(txt, /lista de empregados do Onvio/); assert.match(txt, /Pode não representar a realidade 100%/);
+    assert.doesNotMatch(txt, /Os alertas usam estas datas/); assert.doesNotMatch(await sec.locator('.dp-section-row.fn-lin').first().textContent(), /Agora|Situação|Observação|Cargo|Salário|Férias/);
+    const rotulos = await sec.locator('.dp-section-row.fn-lin').first().locator('.dp-section-cell-label').allTextContents();
+    assert.deepEqual(rotulos.map(t => t.trim()), ['Nome', 'Admissão', 'Cód. Domínio'], 'só nome, admissão e código do Domínio');
+    assert.equal(await sec.locator('.dp-section-row.fn-lin').count(), 2, 'só os ativos (Maria e Beltrano)');
+    assert.doesNotMatch(await sec.textContent(), /Ficha Desligada/);
+    const btn = sec.locator('[data-ficha-desl]'); assert.match(await btn.textContent(), /Desligados \(1\)/);
+    await btn.click();
+    await page.waitForSelector('#dp-section-funcionarios .fn-cab:has-text("desligados")');
+    assert.equal(await sec.locator('.dp-section-row.fn-lin').count(), 1); assert.match(await sec.textContent(), /Ficha Desligada/);
+    assert.match(await btn.textContent(), /Voltar aos ativos \(2\)/);
+    if (CAP) { await page.waitForTimeout(300); await page.screenshot({ path: path.join(CAP, 'ficha-funcionarios-desligados-claro.png') }); }
+    await btn.click();
+    await page.waitForSelector('#dp-section-funcionarios .fn-cab:has-text("ativos")');
+    if (CAP) { await page.waitForTimeout(300); await page.screenshot({ path: path.join(CAP, 'ficha-funcionarios-claro.png') }); }
+    await page.evaluate(() => { const e = window.__db.ler('dp_empresas/e-orion'); e.funcionarios = e.funcionarios.filter(f => f.id !== 'f-desl-ficha'); window.__db.semear('dp_empresas/e-orion', e); });
+  });
+
   await passo('DP: as diferenças só aparecem como aviso (ficha e tela Funcionários), sem nenhum botão de decisão, e o link abre a Entrada de dados', async () => {
     await page.click('#dp-dtabs [data-dtab="funcionarios"]');
     await page.waitForSelector('#dp-ov-dif:not([hidden]) .ov-aviso');
