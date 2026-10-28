@@ -32,3 +32,16 @@ Quatro cadastros separados, sem ligação entre si:
 - **Fundir as duplicadas e dar CNPJ aos cadastros sem CNPJ** é decisão manual (o relatório só propõe).
 - **Restaurar o backup** é manual (copiar os pacotes de `cad_backup` de volta); não há botão.
 - Sem teste automático dos três módulos (o repositório só testa o Hub).
+
+## Unificar empresas duplicadas do DP (Hub 301, 28/10/2026)
+
+Pedido do Josué ao ver "ADEGA SC | 0002-66" duas vezes na lista de ligar cliente a empresa do DP. No banco: 7 CNPJs com duas empresas no DP. Seis são **gêmeas criadas no mesmo instante** (mesmo `order`, ids uuid, uma com os funcionários e a outra só com a nota "cadastrada a partir do Onvio"): a aplicação automática rodando em dois navegadores ao mesmo tempo, antes do executor único. A sétima é a Mercocamp (001024), cadastro antigo × cadastro atual.
+
+- Entrada de dados → Cadastro único → Ver relatório → "Duplicadas no mesmo módulo" (DP): botão **Unificar A em B** por par (só coordenação). B é a que fica: a com mais funcionários, e no empate a que tem vínculo do Onvio.
+- Antes de gravar, a janela mostra quem fica, quem sai e o que passa para a que fica (campos vazios, linhas que só a outra tem, observações e histórico), mais o vínculo do Onvio que será redirecionado.
+- Ordem das gravações, parando na primeira falha sem apagar nada: cópia da descartada em `cad_backup/dup_<id>` → empresa que fica → `dp_config/onvio` (vínculos) → exclusão da descartada. A que fica ganha uma nota no histórico.
+- Recusa: CNPJs completos diferentes, documento resultante acima de 240 KB, descartada acima de 235 KB, sem permissão de coordenação.
+- Lembretes pessoais (`data/users/...`) ligados à descartada perdem o vínculo com a empresa (são privados de cada pessoa; o aviso está na janela).
+- Contábil, Fiscal e Portal não são alterados.
+- Para voltar atrás: o documento original da descartada fica em `cad_backup/dup_<id>` (campo `dados`).
+- Teste: passo "Cadastro único de empresas" em `testes/hub-onvio/hub-onvio.js`.

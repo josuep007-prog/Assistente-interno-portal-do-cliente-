@@ -891,6 +891,25 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await fr.locator('#cuRel').click(); await fr.locator('#cuBox .cu-det').first().waitFor({ timeout: 15000 });
     assert.match(await fr.locator('#cuBox').textContent(), /Duplicadas no mesmo módulo[\s\S]*Sem CNPJ completo/);
     if (CAP) { await page.waitForTimeout(300); await page.screenshot({ path: path.join(CAP, 'cadastro-unico-claro.png') }); }
+    // unificar duplicadas do DP: prévia sem gravar, mesmo CNPJ obrigatório, backup do descartado, vínculo redirecionado
+    const nf = await page.evaluate(() => window.__db.ler('dp_empresas/e-orion').funcionarios.length);
+    const prev = await page.evaluate(() => window.__hubApi.api('cadastro').unificarDp('e-orion', 'e-orion-dup', { simular: true }));
+    assert.equal(prev.ok, true, JSON.stringify(prev)); assert.equal(prev.vence.id, 'e-orion'); assert.equal(prev.perde.id, 'e-orion-dup');
+    assert.ok(await page.evaluate(() => !!window.__db.ler('dp_empresas/e-orion-dup')), 'a prévia não apaga nada');
+    const outro = await page.evaluate(() => window.__hubApi.api('cadastro').unificarDp('e-orion', 'e-zeta-sem-igual', { simular: true })); assert.equal(outro.ok, false);
+    await page.evaluate(() => window.__db.semear('dp_config/onvio', { ...(window.__db.ler('dp_config/onvio') || {}), vinc: { 'orion dup teste': 'e-orion-dup' } }));
+    await fr.locator('#cuRel').click(); await fr.locator('#cuBox .cu-det:has-text("Duplicadas") summary').waitFor({ timeout: 15000 });
+    await fr.locator('#cuBox .cu-det:has-text("Duplicadas") summary').click();
+    await fr.locator('[data-cu-unificar]').first().click();
+    await fr.locator('#confSim').waitFor({ state: 'visible', timeout: 10000 });
+    assert.match(await fr.locator('#confTxt').textContent(), /Fica: [\s\S]*Sai: [\s\S]*cad_backup/);
+    await fr.locator('#confSim').click();
+    await fr.locator('#cuBox:has-text("Unificadas")').waitFor({ timeout: 15000 });
+    assert.ok(await page.evaluate(() => !window.__db.ler('dp_empresas/e-orion-dup')), 'a duplicada foi apagada');
+    assert.equal(await page.evaluate(() => window.__db.ler('dp_empresas/e-orion').funcionarios.length), nf, 'a que fica manteve os funcionários');
+    assert.ok(await page.evaluate(() => !!window.__db.ler('cad_backup/dup_e-orion-dup')), 'a descartada foi copiada para o backup');
+    assert.equal(await page.evaluate(() => window.__db.ler('dp_config/onvio').vinc['orion dup teste']), 'e-orion', 'o vínculo do Onvio passou para a que fica');
+    assert.match(await page.evaluate(() => window.__db.ler('dp_empresas/e-orion').historico[0].alteracao), /Unificada com a empresa duplicada/);
     // limpa o que este passo semeou no DP (a duplicada separaria as solicitações da ORION nos passos seguintes)
     await page.evaluate(async () => { const d = await window.claude.use('db'); await d.doc('dp_empresas/e-orion-dup').delete(); await d.doc('dp_empresas/domestica-teste').delete(); });
     await page.evaluate(() => window.__hubApi.abrirModulo('dp'));
