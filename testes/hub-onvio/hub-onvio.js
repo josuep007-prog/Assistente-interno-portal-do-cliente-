@@ -807,7 +807,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
       window.__db.semear('dp_config/onvio', c);
     }, [NOME, intrusos]);
     await page.waitForFunction(() => window.__hubApi.api('onvio').difs().some(d => d.empId === 'e-mc01' && /Novo Da Filial/.test(d.nome)), null, { timeout: 15000 });
-    const dif = () => page.evaluate(() => window.__hubApi.api('onvio').difs().filter(d => /^e-mc/.test(d.empId)).map(d => ({ emp: d.empId, nome: d.nome, tipo: d.tipo, acao: d.acao, txt: d.txt, confirmar: d.confirmar, patch: d.patch })));
+    const dif = () => page.evaluate(() => window.__hubApi.api('onvio').difs().filter(d => /^e-mc/.test(d.empId)).map(d => ({ emp: d.empId, nome: d.nome, tipo: d.tipo, acao: d.acao, txt: d.txt, confirmar: d.confirmar, chave: d.chave })));
     let d = await dif();
     const cob = await page.evaluate(() => window.__hubApi.api('onvio').cobertura());
     assert.ok(cob.clientesAntigos >= 1, 'o cliente 160 (fora de CND e NF-e) é cadastro antigo');
@@ -821,9 +821,11 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     // poucos: sem trava, e a saída de quem é de outra filial não inventa um desligamento (a data de saída é a admissão)
     await page.evaluate(() => { const e = window.__db.ler('dp_empresas/e-mc10'); e.funcionarios = e.funcionarios.filter(f => !/^f-i[1-5]$/.test(f.id)); window.__db.semear('dp_empresas/e-mc10', e); });
     await page.waitForFunction(() => window.__hubApi.api('onvio').difs().filter(d => d.empId === 'e-mc10' && d.tipo === 'situacao').length === 2, null, { timeout: 15000 });
-    d = (await dif()).filter(x => x.emp === 'e-mc10' && x.tipo === 'situacao'); console.log('DEBUG', JSON.stringify(d.map(x => [x.nome, x.txt.slice(0, 60), x.confirmar])));
+    d = (await dif()).filter(x => x.emp === 'e-mc10' && x.tipo === 'situacao');
     assert.ok(d.every(x => x.confirmar === false), 'só 2 (menos de 5): sem trava');
-    assert.equal(d.find(x => /Intruso/.test(x.nome)).patch.saidaEm, '2021-01-01', 'quem era de outra filial não ganha data de saída falsa');
+    const ch = d.find(x => /Intruso/.test(x.nome)).chave;
+    assert.equal((await page.evaluate(([id, c]) => window.__hubApi.api('onvio').aplicar(id, c), ['e-mc10', ch])).ok, true);
+    assert.equal(await page.evaluate(() => window.__db.ler('dp_empresas/e-mc10').funcionarios.find(f => f.id === 'f-i0').saidaEm), '2021-01-01', 'quem era de outra filial não ganha data de saída falsa (a saída é a própria admissão)');
     await page.evaluate(() => { for (const id of ['e-mc10', 'e-mc01']) window.__db.apagar ? window.__db.apagar('dp_empresas/' + id) : null; });
   });
 
