@@ -186,7 +186,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await page.waitForSelector('#dp-section-funcionarios .fn-pop', { state: 'detached' });
     assert.equal(await page.locator('#dlg-dp-detail').evaluate(d => d.open), true, 'Esc fecha só o balão, não a ficha');
     await btn.click(); await page.waitForSelector('#dp-section-funcionarios .fn-pop');
-    await sec.locator('.fn-cab-wrap .dlg-section-title span').click();
+    await sec.locator('.fn-cab > span:first-child').click();
     await page.waitForSelector('#dp-section-funcionarios .fn-pop', { state: 'detached' });
     await btn.click(); await page.waitForSelector('#dp-section-funcionarios .fn-pop');
     await sec.locator('.fn-pop .fn-lin:has-text("Ficha Desligada")').click();
@@ -194,6 +194,19 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     assert.equal(await sec.locator('.fn-pop').count(), 0, 'abrir os dados fecha o balão');
     await sec.locator('[data-sec-cancel="funcionarios"]').click();
     await page.waitForSelector('#dp-section-funcionarios .dp-section-row.fn-lin');
+    // busca: filtra ativos e desligados por nome ou código, sem perder o foco
+    const busca = page.locator('#fn-busca'); assert.equal(await busca.count(), 1, 'a ficha tem barra de pesquisa');
+    await busca.click(); await page.keyboard.type('beltr');
+    assert.equal(await sec.locator(':scope > .dp-section-rows > .fn-lin:visible').count(), 1, 'só o Beltrano');
+    assert.match(await sec.locator('.fn-busca-n').textContent(), /1 de 2/);
+    assert.equal(await page.evaluate(() => document.activeElement && document.activeElement.id), 'fn-busca', 'o foco continua no campo');
+    await busca.fill('101'); assert.equal(await sec.locator(':scope > .dp-section-rows > .fn-lin:visible').count(), 1, 'pelo código do Domínio'); assert.match(await sec.locator(':scope > .dp-section-rows > .fn-lin:visible').textContent(), /Maria/);
+    await busca.fill('zzz'); assert.match(await sec.locator(':scope > .dp-section-rows').textContent(), /Nenhum funcionário encontrado/);
+    await btn.click(); await page.waitForSelector('#dp-section-funcionarios .fn-pop');
+    assert.equal(await busca.inputValue(), 'zzz', 'a busca continua ao abrir o balão'); assert.match(await sec.locator('.fn-pop').textContent(), /Nenhum funcionário encontrado/);
+    await busca.fill('ficha desl'); assert.equal(await sec.locator('.fn-pop .fn-lin:visible').count(), 1, 'o balão também filtra');
+    await page.keyboard.press('Escape'); await page.waitForSelector('#dp-section-funcionarios .fn-pop', { state: 'detached' });
+    await busca.fill(''); assert.equal(await sec.locator(':scope > .dp-section-rows > .fn-lin:visible').count(), 2);
     // janela baixa: o cabeçalho e as abas da ficha não são espremidos
     const vp = page.viewportSize(); await page.setViewportSize({ width: vp.width, height: 420 }); await page.waitForTimeout(200);
     const hAbas = await page.locator('#dp-dtabs').evaluate(el => el.getBoundingClientRect().height), hCab = await page.locator('#dlg-dp-detail > .dlg-head').evaluate(el => el.getBoundingClientRect().height);
