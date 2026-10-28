@@ -639,6 +639,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
 
   await passo('Aplicação automática: liga com confirmação, aplica sozinho sem perguntar, registra "automaticamente" no histórico e só cadastra empresas se for escolhido', async () => {
     const antes = await page.evaluate(() => window.__db.listar('dp_empresas').length);
+    await page.evaluate(() => window.__hubApi.api('onvio').garantir());                    // depois do passo da consulta, relê os conjuntos (sem isso o interruptor espera o próximo ciclo da tela)
     await fr.locator('#autoLigar:not([disabled])').waitFor({ timeout: 20000 });          // o interruptor só habilita depois que todos os conjuntos carregam
     await fr.locator('#autoLigar').check();
     await fr.locator('#dlgConf[open]').waitFor();
