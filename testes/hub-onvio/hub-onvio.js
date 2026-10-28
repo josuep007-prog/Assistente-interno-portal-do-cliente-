@@ -834,6 +834,64 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await page.evaluate(() => { for (const id of ['e-mc10', 'e-mc01']) window.__db.apagar ? window.__db.apagar('dp_empresas/' + id) : null; });
   });
 
+  await passo('Cadastro único de empresas: relatório sem gravar, backup antes de gerar, base nos clientes do Onvio, duplicadas e sem CNPJ só propostas, escritório fora, nome pelo cadastro e vínculos entre módulos', async () => {
+    await page.evaluate(() => {
+      const base = { ativo: true, exemplo: false, setoresDemanda: { contabil: true, fiscal: false, pessoal: true }, habilitacao: { status: 'concluido' } };
+      window.__db.semear('empresas/orion-comercio-ltda', { ...base, nome: 'ORION COMERCIO LTDA', cnpj: '11.222.333/0001-81' });
+      window.__db.semear('empresas/zeta-transportes', { ...base, nome: 'ZETA TRANSPORTES LTDA', cnpj: '33.444.555/0001-03' });
+      window.__db.semear('empresas/so-no-portal', { ...base, nome: 'EMPRESA SO NO PORTAL', cnpj: '12.345.678/0001-95' });
+      window.__db.semear('empresas/controltax-x', { ...base, nome: 'CONTROLTAX CONSULTORIA E NEGOCIOS LTDA', cnpj: '10.870.633/0001-04' });
+      window.__db.semear('ctb_emp/b0', { c11222333000181: { id: 'c11222333000181', nome: 'ORION', cnpj: '11.222.333/0001-81', sit: 'ativa', analista: 'Ana Teste', excluida: false }, nrazac: { id: 'nrazac', nome: 'RAZAC TRADING', cnpj: '', sit: 'ativa' } });
+      const dup = window.__db.ler('dp_empresas/e-orion'); window.__db.semear('dp_empresas/e-orion-dup', { ...dup, id: 'e-orion-dup', funcionarios: [] });
+      window.__db.semear('dp_empresas/domestica-teste', { id: 'domestica-teste', nome: 'DOMESTICA - MARIA TESTE', cnpj: '', funcionarios: [], historico: [], lembretes: [], prazos: [] });
+    });
+    const gravacoes = () => page.evaluate(() => window.__gravacoes.length);
+    const g0 = await gravacoes();
+    const r = await page.evaluate(() => window.__hubApi.api('cadastro').relatorio());
+    assert.equal(r.ok, true); assert.equal(await gravacoes(), g0, 'o relatório não grava nada');
+    const rel = r.relatorio;
+    assert.ok(rel.duplicadas.some(d => d.cnpj === '11.222.333/0001-81' && d.modulo === 'DP' && /e-orion/.test(d.sugestao)), 'duplicada do DP proposta, com a que tem funcionários como sugestão: ' + JSON.stringify(rel.duplicadas));
+    assert.ok(rel.semCnpj.some(d => /RAZAC/.test(d.nome) && d.modulo === 'Contábil'), 'Contábil sem CNPJ listado');
+    assert.ok(rel.domesticas.some(d => /MARIA TESTE/.test(d.nome)), 'doméstica à parte');
+    assert.ok(rel.foraDoOnvio.some(d => /SO NO PORTAL/.test(d.nome) && d.modulos.includes('Portal')), 'empresa do Portal que o Onvio não tem');
+    assert.ok(rel.escritorio.some(n => /CONTROLTAX/.test(n)), 'o escritório fica de fora');
+    // gerar exige backup
+    const semBkp = await page.evaluate(() => window.__hubApi.api('cadastro').gerar()); assert.equal(semBkp.ok, false); assert.match(semBkp.erro, /backup/i);
+    const bk = await page.evaluate(() => window.__hubApi.api('cadastro').backup());
+    assert.equal(bk.ok, true, JSON.stringify(bk)); assert.ok(bk.meta.itens >= 8 && bk.meta.pacotes >= 1);
+    assert.ok(await page.evaluate(() => !!window.__db.ler('cad_backup/_meta') && !!window.__db.ler('cad_backup/p0')), 'o backup está no banco');
+    const ger = await page.evaluate(() => window.__hubApi.api('cadastro').gerar());
+    assert.equal(ger.ok, true, JSON.stringify(ger)); assert.ok(ger.mudou >= 5);
+    const m = await page.evaluate(() => { const a = window.__hubApi.api('cadastro'); return { orion: a.get('11.222.333/0001-81'), so: a.get('12345678000195'), ct: a.get('10.870.633/0001-04'), n: a.todos().length, nome: window.__hubApi.nomeEmpresa('e-orion') }; });
+    assert.ok(m.orion && m.orion.origem === 'onvio' && m.orion.situacao === 'ativa' && m.orion.apelido === 'ORION', 'cliente do Onvio na base');
+    assert.deepEqual(m.orion.vinculos.dp, ['e-orion', 'e-orion-dup'], 'DP: a empresa com funcionários vem primeiro'); assert.deepEqual(m.orion.vinculos.ctb, ['c11222333000181']); assert.deepEqual(m.orion.vinculos.portal, ['orion-comercio-ltda']);
+    assert.ok(m.so && m.so.origem === 'hub' && m.so.situacao === 'fora-do-onvio'); assert.equal(m.ct, null, 'ControlTax não entra');
+    assert.equal(m.nome, 'ORION | 0001-81');
+    // nada dos módulos foi alterado
+    assert.equal(await page.evaluate(() => window.__db.ler('empresas/orion-comercio-ltda').nome), 'ORION COMERCIO LTDA');
+    assert.equal(await page.evaluate(() => Object.keys(window.__db.ler('ctb_emp/b0')).length), 2);
+    // segunda geração: nada mudou, nada gravado
+    const g1 = await gravacoes(); const ger2 = await page.evaluate(() => window.__hubApi.api('cadastro').gerar()); assert.equal(ger2.mudou, 0, 'gerar de novo não regrava'); assert.equal(await gravacoes(), g1);
+    // empresa nova de qualquer módulo entra no cadastro
+    const rg = await page.evaluate(() => window.__cadastro.registrar({ cnpj: '98.765.432/0001-98', nome: 'NOVA PELO CONTABIL LTDA', modulo: 'ctb', id: 'c98765432000198' }));
+    assert.equal(rg.ok, true); assert.deepEqual(await page.evaluate(() => window.__cadastro.vinculos('98765432000198').ctb), ['c98765432000198']);
+    assert.equal(await page.evaluate(() => window.__cadastro.nome('98765432000198')), 'NOVA PELO CONTABIL | 0001-98');
+    // ficha do DP mostra o cadastro único e onde mais a empresa está
+    await page.evaluate(() => window.__hubApi.api('dp').abrirEmpresa('e-orion', 'dados'));
+    await page.waitForSelector('#dp-section-cadunico .cad-box');
+    const ficha = await page.textContent('#dp-section-cadunico'); assert.match(ficha, /Razão social[\s\S]*ORION COMERCIO LTDA/); assert.match(ficha, /Contábil/); assert.match(ficha, /Portal do Cliente/);
+    assert.equal(await page.locator('#dp-section-cadunico [data-cad-abrir="ctb"]').count(), 1, 'atalho para abrir no Contábil');
+    await page.keyboard.press('Escape');
+    // a aba da Entrada de dados
+    await page.evaluate(() => window.__hubApi.abrirModulo('fontes'));
+    await fr.locator('[data-aba-btn="empresas"]').click();
+    await fr.locator('#cuBox .cu-cards').first().waitFor({ timeout: 10000 });
+    assert.match(await fr.locator('#cuBox').textContent(), /no cadastro único/);
+    await fr.locator('#cuRel').click(); await fr.locator('#cuBox .cu-det').first().waitFor({ timeout: 15000 });
+    assert.match(await fr.locator('#cuBox').textContent(), /Duplicadas no mesmo módulo[\s\S]*Sem CNPJ completo/);
+    if (CAP) { await page.waitForTimeout(300); await page.screenshot({ path: path.join(CAP, 'cadastro-unico-claro.png') }); }
+  });
+
   await passo('Tema escuro e tela estreita: ficha e diferenças legíveis, sem rolagem horizontal', async () => {
     await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
     await page.evaluate(() => window.__hubApi.api('dp').abrirEmpresa('e-orion', 'onvio'));
