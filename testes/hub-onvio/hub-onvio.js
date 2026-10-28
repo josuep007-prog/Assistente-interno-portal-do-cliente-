@@ -373,7 +373,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     assert.deepEqual(recusa.map(r => r.ok), [false, false, false, false]);
     assert.match(recusa[0].erro, /carteira/); assert.match(recusa[2].erro, /coordenação/); assert.match(recusa[3].erro, /coordenação/);
     assert.equal(await page.evaluate(() => window.__db.ler('dp_empresas/e-orion').funcionarios.find(f => f.nome === 'Beltrano Silva').rescisao), '', 'a rescisão do ORION não foi aplicada');
-    assert.equal(await page.evaluate(() => window.__db.listar('dp_empresas').length), 4, 'nenhuma empresa foi cadastrada');
+    assert.equal(await page.evaluate(() => window.__db.listar('dp_empresas').filter(e => !/controltax|dynexa/i.test(e.nome)).length), 4, 'nenhuma empresa foi cadastrada (as 2 do escritório só ficam escondidas)');
     await page.evaluate(() => { delete window.__auth; });
   });
 
@@ -772,6 +772,18 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await page.waitForSelector('#ct-pane-onvio .ct-ov-tab tbody tr');
     assert.match(await page.textContent('#ct-pane-onvio .ct-ov-tab'), /ORION \| 0001-81/);
     assert.match(await page.textContent('#ct-pane-onvio .ct-ov-tab'), /901/);
+  });
+
+  await passo('Empresas do escritório (ControlTax, Dynexa, Oficina, Diskcontador): não aparecem em nada no Hub, nem as já cadastradas no DP nem as que vêm do Onvio', async () => {
+    assert.ok(await page.evaluate(() => !!window.__db.ler('dp_empresas/e-ct') && !!window.__db.ler('dp_empresas/e-dyn')), 'elas estão no banco (nada é apagado)');
+    const r = await page.evaluate(() => { const o = window.__hubApi.api('onvio'); return { emps: o.empresas().map(e => e.nome), clientes: [...o.clientes().values()].map(c => c.nome + ' ' + c.apelido), semVinculo: JSON.stringify(o.semVinculo()), manCli: !!window.__db.ler('ing_dados/onvio~clientes-nfe') }; });
+    assert.ok(r.manCli);
+    assert.ok(r.emps.length >= 3 && !r.emps.some(n => /controltax|dynexa/i.test(n)), 'a lista de empresas do DP esconde as do escritório: ' + r.emps.join(' / '));
+    assert.ok(r.clientes.length >= 1 && !r.clientes.some(n => /controltax|dynexa|oficina|diskcontador/i.test(n)), 'os clientes do Onvio também: ' + r.clientes.join(' / '));
+    assert.doesNotMatch(r.semVinculo, /controltax|dynexa|oficina business|diskcontador/i, 'nem na lista de clientes sem empresa');
+    await page.evaluate(() => window.__hubApi.api('dp').irPara('funcionarios')); await page.waitForSelector('#dp-func-cards .fn-card');
+    assert.doesNotMatch(await page.textContent('#dp-func-cards'), /CONTROLTAX|DYNEXA/i, 'nem nos cartões de Funcionários');
+    assert.doesNotMatch(await page.textContent('#dp-func-resumo'), /CONTROLTAX|DYNEXA/i);
   });
 
   await passo('Tema escuro e tela estreita: ficha e diferenças legíveis, sem rolagem horizontal', async () => {

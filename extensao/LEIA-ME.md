@@ -45,6 +45,10 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
 
+## Novidades da v0.60.0 (empresas do escritório fora do Hub)
+
+- ControlTax, Dynexa, Oficina Business e Diskcontador **não vão ao Hub em nada** (pedido do Josué em 28/10/2026): nenhuma linha delas nas 10 listas, nos dados pessoais, nos clientes de CND e NF-e, nas comunicações nem na análise do escritório, e os empregados delas nem são lidos. Reconhecidas pelo nome ou apelido (`OC.ehEscritorioProprio`; as empresas-exemplo "... CONTROLTAX" também). Cliente comum com a palavra "oficina" no nome continua. O Hub (292 em diante) faz o mesmo ao ler e esconde as que já estavam cadastradas (nada é apagado).
+
 ## Novidades da v0.59.0 (equipe ativa do escritório)
 
 - Novo conjunto `escritorio-funcionarios` (categoria **Escritório e acesso**): os nomes da equipe **ativa** do escritório, lidos de `GET br-payroll-sr/v1/employees` (só `id`, `contactId` e `name`; sem CPF nem situação, porque a própria lista é só de ativos: 107 de 108 batem com Gestão > Configuração > Contatos > Funcionários, Status = Ativo). Cuidados do Onvio: o `pageIndex` começa em **0** e a paginação de 25 em 25 repete e perde itens; por isso a extensão pede uma página de 500, deduplica por `id` e marca o conjunto como incompleto se vierem menos do que o `totalItems`.

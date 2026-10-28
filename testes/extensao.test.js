@@ -2827,6 +2827,29 @@ test('Hub: a folha inteira de cada empresa vem pela lista de clientes, com quem 
   assert.ok(!sem['pessoais-empregados'] && !Object.keys(sem).some(k => /^pessoais/.test(k)), 'sem a categoria pessoal nada disso é lido');
 });
 
+test('Hub: empresas do próprio escritório (ControlTax, Dynexa, Oficina, Diskcontador) nunca vão ao Hub, em nenhum conjunto', async () => {
+  const NOMES = ['CONTROLTAX CONSULTORIA E NEGOCIOS LTDA', 'DYNEXA TRIBUTARIO & GESTAO ESTRATEGICA LTDA', 'OFICINA BUSINESS APOIO ADMINISTRATIVO LTDA', 'DISKCONTADOR SERVICOS CONTABEIS LTDA'];
+  assert.ok(NOMES.every(n => OC.ehEscritorioProprio(n)) && OC.ehEscritorioProprio('x', 'OFICINA | 0001-07') && OC.ehEscritorioProprio('EX LP CONTROLTAX'));
+  assert.ok(!OC.ehEscritorioProprio('OFICINA DO JOAO LTDA') && !OC.ehEscritorioProprio('ACME') && !OC.ehEscritorioProprio(''), 'cliente comum com a palavra oficina continua');
+  const lidas = [], base = apiHub();
+  const f = async url => {
+    lidas.push(url); const d = await base(url);
+    if (!d || typeof d !== 'object') return d;
+    const dobra = (lote, mexe) => { const novos = NOMES.map((n, i) => mexe(JSON.parse(JSON.stringify(lote[0])), n, i)); lote.push(...novos); };
+    if (/br-payroll-sr\/v1\/clients\?/.test(url) && Array.isArray(d.items || d)) { const l = d.items || d; NOMES.forEach((n, i) => l.push({ id: 'prop' + i, code: 900 + i, name: n })); }
+    else if (/\/(cnd|manifesto)\/v1\/clients/.test(url) && Array.isArray(d.items)) { dobra(d.items, (x, n, i) => Object.assign(x, { id: 'p' + i, clientName: n, name: n, nickname: i === 2 ? 'OFICINA | 0001-07' : x.nickname })); d.totalItems = (d.totalItems || 0) + NOMES.length; }
+    else if (Array.isArray(d.items) && d.items.length && d.items[0].clientExpanded) { dobra(d.items, (x, n, i) => Object.assign(x, { id: 'p' + i, identifier: 9000 + i, clientExpanded: Object.assign({}, x.clientExpanded, { name: n }) })); d.totalItems = (d.totalItems || 0) + NOMES.length; }
+    return d;
+  };
+  const textos = {};
+  await OC.hubExecutar(f, todasCategorias(), { pausa: null, snapshot: { items: [{ k: 'a', cliente: NOMES[0], apelido: 'CONTROLTAX', typeLabel: 'Geral', num: 1, resp: 'Ana', lado: 'esc' }, { k: 'b', cliente: 'ACME', apelido: 'ACME', typeLabel: 'Geral', num: 2, resp: 'Ana', lado: 'esc' }], resolvidas: [] } }, async (c, p) => { textos[c.tipoDado] = { c, t: p.partes.join('\n') }; return { ok: true }; });
+  const vistos = Object.values(textos).filter(x => /controltax|dynexa|oficina business|diskcontador/i.test(x.t));
+  assert.deepEqual(vistos.map(x => x.c.tipoDado), [], 'nenhum conjunto leva o nome de empresa do escritório');
+  assert.ok(!lidas.some(u => /\/clients\/prop\d\/employees/.test(u)), 'nem os empregados delas são lidos');
+  assert.ok(textos['analise-solicitacoes'].t.includes('ACME') && !/CONTROLTAX/.test(textos['analise-solicitacoes'].t));
+  assert.ok(Object.values(textos).some(x => /^lista-/.test(x.c.tipoDado) && x.c.cortado === false), 'o filtro não marca a lista como cortada');
+});
+
 test('Hub: se a lista de clientes da folha falhar, vale o que as solicitações mostraram e o conjunto avisa que está incompleto', async () => {
   const base = apiHub(), f = async url => { if (/br-payroll-sr\/v1\/clients\?/.test(url)) { const e = new Error('Erro 404'); e.status = 404; throw e; } return base(url); };
   const por = {};
