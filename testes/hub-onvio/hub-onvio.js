@@ -312,7 +312,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await fr.locator('#cadro tr[data-emp]').first().waitFor({ timeout: 10000 });
     assert.equal(await fr.locator('#cadro tr[data-emp]').count(), 9, 'ORION 5 + VEGA 2 + LIRA 2');
     assert.match(await fr.locator('#cadSub').textContent(), /9 diferenças · 2 clientes sem empresa/);
-    assert.match(await fr.locator('#vincro').textContent(), /ZETA TRANSPORTES LTDA/); assert.match(await fr.locator('#vincro').textContent(), /OMEGA SERVICOS LTDA/);
+    assert.match(await fr.locator('#vincro').textContent(), /ZETA TRANSPORTES \| 0001-03/); assert.match(await fr.locator('#vincro').textContent(), /OMEGA SERVICOS \| 0001-05/);
     assert.match(await fr.locator('#resumoTopo').textContent(), /11\s*para decidir/);
     // chips por ação: complementar 4 (código, férias, rescisão, CNPJ), corrigir 3 (admissão, afastamento, UF), novo 2
     const chips = await fr.locator('.chips.acoes .chipf').allTextContents();
@@ -459,7 +459,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await fr.locator('tr[data-k] [data-cad-emp]').selectOption('e-zeta');
     await fr.locator('tr[data-k] [data-cad-ligar]').click();
     await fr.locator('#dlgConf[open]').waitFor();
-    assert.match(await fr.locator('#confTxt').textContent(), /ZETA TRANSPORTES LTDA[\s\S]*TRANSPORTES ZETA/);
+    assert.match(await fr.locator('#confTxt').textContent(), /ZETA TRANSPORTES \| 0001-03[\s\S]*TRANSPORTES ZETA \| 0001-99/);
     await fr.locator('#confSim').click();
     await page.waitForFunction(() => { const c = window.__db.ler('dp_config/onvio'); return c && Object.values(c.vinc || {}).includes('e-zeta'); }, null, { timeout: 5000 });
     assert.equal(await page.evaluate(() => (window.__hubApi.api('onvio').solicitacoes().porEmp.get('e-zeta') || []).length), 1, 'a solicitação 706 agora é da empresa');
@@ -519,7 +519,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     const d = await difsOnvio();
     const de = (n) => d.filter(x => x.nome === n);
     assert.equal(de('Carlos Sem Pedido').length, 1); assert.equal(de('Carlos Sem Pedido')[0].acao, 'novo'); assert.match(de('Carlos Sem Pedido')[0].txt, /Está na lista de empregados do Onvio/);
-    assert.equal(de('Lira Funcionaria')[0].acao, 'novo'); assert.equal(de('Lira Funcionaria')[0].emp, 'LIRA PADARIA');
+    assert.equal(de('Lira Funcionaria')[0].acao, 'novo'); assert.equal(de('Lira Funcionaria')[0].emp, 'LIRA PADARIA | 0001-04');
     // regra absoluta: quem está na lista do Onvio é ativo (e entra como cadastro novo, sem "conferir antes")
     assert.equal(de('Carlos Sem Pedido')[0].confirmar, false); assert.equal(de('Lira Funcionaria')[0].confirmar, false);
     assert.equal(de('Dona Antiga').length, 0, 'desligado que nunca teve solicitação não entra');
