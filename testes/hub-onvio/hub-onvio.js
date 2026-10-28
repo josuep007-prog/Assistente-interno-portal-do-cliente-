@@ -853,7 +853,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     assert.ok(rel.duplicadas.some(d => d.cnpj === '11.222.333/0001-81' && d.modulo === 'DP' && /e-orion/.test(d.sugestao)), 'duplicada do DP proposta, com a que tem funcionários como sugestão: ' + JSON.stringify(rel.duplicadas));
     assert.ok(rel.semCnpj.some(d => /RAZAC/.test(d.nome) && d.modulo === 'Contábil'), 'Contábil sem CNPJ listado');
     assert.ok(rel.domesticas.some(d => /MARIA TESTE/.test(d.nome)), 'doméstica à parte');
-    assert.ok(rel.foraDoOnvio.some(d => /SO NO PORTAL/.test(d.nome) && d.modulos.includes('Portal')), 'empresa do Portal que o Onvio não tem');
+    assert.ok(rel.foraDoOnvio.some(d => /SO NO PORTAL/.test(d.nome) && d.modulos.includes('Portal do Cliente')), 'empresa do Portal que o Onvio não tem');
     assert.ok(rel.escritorio.some(n => /CONTROLTAX/.test(n)), 'o escritório fica de fora');
     // gerar exige backup
     const semBkp = await page.evaluate(() => window.__hubApi.api('cadastro').gerar()); assert.equal(semBkp.ok, false); assert.match(semBkp.erro, /backup/i);
