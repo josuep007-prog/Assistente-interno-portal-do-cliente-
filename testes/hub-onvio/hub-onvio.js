@@ -165,6 +165,14 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     const rotulos = await sec.locator('.dp-section-row.fn-lin').first().locator('.dp-section-cell-label').allTextContents();
     assert.deepEqual(rotulos.map(t => t.trim()), ['Nome', 'Admissão', 'Cód. Domínio'], 'só nome, admissão e código do Domínio');
     assert.equal(await sec.locator('.dp-section-row.fn-lin').count(), 2, 'só os ativos (Maria e Beltrano)');
+    assert.equal(await sec.locator('.dp-section-row.fn-lin .icon-btn').count(), 0, 'sem lápis e sem lixeira na linha do funcionário');
+    // clicar na linha abre os dados
+    await sec.locator('.dp-section-row.fn-lin:has-text("Maria Souza")').click();
+    await page.waitForSelector('#dp-section-funcionarios .dp-section-row.editing');
+    assert.ok(await sec.locator('.dp-section-row.editing [data-field="status"]').count() >= 1, 'abre todos os dados (situação, cargo…)');
+    await sec.locator('[data-sec-cancel="funcionarios"]').click();
+    await page.waitForSelector('#dp-section-funcionarios .dp-section-row.fn-lin');
+    await page.keyboard.press('Tab').catch(() => {});
     assert.doesNotMatch(await sec.textContent(), /Ficha Desligada/);
     const btn = sec.locator('[data-ficha-desl]'); assert.match(await btn.textContent(), /Desligados \(1\)/);
     await btn.click();
