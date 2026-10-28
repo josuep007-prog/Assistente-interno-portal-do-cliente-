@@ -225,6 +225,11 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     assert.equal(r.filial, 'BETA TRADING | 0007-22', 'a filial mostra a ordem do CNPJ e não repete o final que o nome já trazia');
     assert.equal(r.apel, 'GAMA | 0002-99'); assert.equal(r.cpf, 'JOAO | CPF');
     assert.match(r.html, /title="ORION COMERCIO LTDA"/, 'o nome inteiro na dica');
+    // a Entrada de dados (fontes.html) usa estes nomes: empresas, diferenças, parecidas e clientes sem empresa vêm no mesmo padrão
+    const o = await page.evaluate(() => { const a = window.__hubApi.api('onvio'); return { emp: a.empresas().find(e => e.id === 'e-orion'), difs: [...new Set(a.difs().map(d => d.empNome))], sem: a.semVinculo().map(g => ({ cli: g.cli, par: g.parecidas.map(p => p.nome) })) }; });
+    assert.equal(o.emp.nome, 'ORION | 0001-81'); assert.equal(o.emp.nomeCompleto, 'ORION COMERCIO LTDA');
+    assert.ok(o.difs.length >= 1 && o.difs.every(n => / \| (\d{4}-\d{2}|CPF|sem CNPJ)$/.test(n)), 'diferenças por empresa no padrão: ' + o.difs.join(' / '));
+    assert.ok(o.sem.length >= 1 && o.sem.every(g => / \| (\d{4}-\d{2}|CPF|sem CNPJ)$/.test(g.cli) && g.par.every(n => / \| /.test(n))), 'clientes sem empresa e parecidas no padrão: ' + JSON.stringify(o.sem));
   });
 
   await passo('DP: as diferenças só aparecem como aviso (ficha e tela Funcionários), sem nenhum botão de decisão, e o link abre a Entrada de dados', async () => {
