@@ -1898,11 +1898,9 @@ await passo('app · detalhe em janela larga: conversa com a resposta embaixo e o
   await p.waitForTimeout(150);
   await p.setViewportSize({ width: 1360, height: 860 });
   assert.equal(await p.$eval('#a-texto', t => t.value), 'Rascunho que fica.', 'o rascunho não se perde ao mudar o tamanho');
-  // negrito: o botão envolve a seleção com ** e a conferência mostra em negrito
-  await p.fill('#a-texto', 'Pague até 28/11.');
-  await p.$eval('#a-texto', t => t.setSelectionRange(10, 15));
-  await p.click('#a-negrito');
-  assert.equal(await p.$eval('#a-texto', t => t.value), 'Pague até **28/11**.');
+  // negrito: a marcação ** escrita no texto aparece em negrito na conferência (não há botão para isso)
+  await p.fill('#a-texto', 'Pague até **28/11**.');
+  assert.equal(await p.$('#a-negrito'), null, 'a caixa de resposta não tem botão de negrito');
   await p.click('.cmp-int[data-sit="4"]');
   await p.click('#a-revisar');
   await p.waitForSelector('#a-enviar');

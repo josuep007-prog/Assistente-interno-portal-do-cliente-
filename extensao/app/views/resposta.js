@@ -187,12 +187,11 @@ export function respostaHtml(i, obs, ctx) {
       '<div class="cmp-pe"><button class="btn btn-sm" id="mg-cancelar" type="button">Cancelar</button><button class="btn btn-sm btn-primary" id="mg-salvar" type="button">Salvar modelo</button></div></div>' : '';
   return '<div class="cmp' + (aberto ? ' aberto' : '') + '" id="cmp">' + cab + ok + erro +
     '<div class="cmp-caixa">' +
-      '<textarea id="a-texto" rows="2" placeholder="Escreva a resposta ao cliente. Para destacar em negrito, selecione o trecho e clique em Negrito (ou escreva **assim**).">' + esc(r.texto) + '</textarea>' +
+      '<textarea id="a-texto" rows="2" placeholder="Escreva a resposta ao cliente.">' + esc(r.texto) + '</textarea>' +
       '<div class="cmp-fer">' +
         '<label class="cmp-fer-b" title="Anexar arquivos ao trâmite (até ' + MAX_ANEXOS + ' de 15 MB; também dá para arrastar ou colar uma imagem)">' + ic('paperclip', 'ic-sm') + ' Anexar<input type="file" id="a-arquivos" multiple hidden></label>' +
         '<button type="button" class="cmp-fer-b' + (r.mp ? ' on' : '') + '" id="cmp-mp" aria-expanded="' + !!r.mp + '" title="Uma mensagem completa para cada trâmite (com as observações para o cliente); você edita antes de usar">' + ic('chat', 'ic-sm') + ' Mensagem pronta</button>' +
         '<button type="button" class="cmp-fer-b" id="a-guardar" title="' + (tem ? 'Salva o texto escrito como a sua mensagem pronta para um trâmite (dados desta solicitação viram variáveis)' : 'Cria uma mensagem pronta sua para um trâmite') + '">' + ic('plus', 'ic-sm') + ' <span id="a-guardar-tx">' + (tem ? 'Salvar como modelo' : 'Criar modelo') + '</span></button>' +
-        '<button type="button" class="cmp-fer-b" id="a-negrito" title="Destaca o trecho selecionado em negrito (o Onvio só aceita texto puro: vai com letras em negrito)"><b>B</b> Negrito</button>' +
         '<span class="cmp-fer-dica">arraste arquivos ou cole uma imagem</span>' +
       '</div>' +
       balao +
@@ -260,16 +259,6 @@ export function ligarResposta(g, i, r0, obs, cb) {
       r.selMarca = '';
     }
   }
-  // Negrito: envolve a seleção com **…** (vira letras em negrito no envio); sem seleção, põe ** ** e deixa o cursor no meio
-  const bN = $('#a-negrito', g);
-  if (bN && t) bN.onmousedown = e => e.preventDefault();          // não tira o foco nem a seleção do texto
-  if (bN && t) bN.onclick = () => {
-    const a = t.selectionStart, b = t.selectionEnd, sel = t.value.slice(a, b);
-    const ini = sel.match(/^\s*/)[0], fim = sel.match(/\s*$/)[0], miolo = sel.trim();
-    t.value = t.value.slice(0, a) + ini + '**' + miolo + '**' + fim + t.value.slice(b);
-    const p0 = a + ini.length + 2; t.focus(); t.setSelectionRange(p0, p0 + miolo.length);
-    r.texto = t.value; limparErro(); cresce(t); atualizar();
-  };
   cmp.onkeydown = e => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && r.modo === 'revisar' && e.target.tagName !== 'BUTTON' && cmp.contains(e.target)) { e.preventDefault(); const b = $('#a-enviar', g); if (b) b.click(); }
   };

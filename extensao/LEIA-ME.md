@@ -45,6 +45,10 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
 
+## Novidades da v0.61.1
+
+- **Botão Negrito removido** da caixa de resposta (pedido do Josué em 29/10/2026). A marcação `**assim**` das mensagens prontas continua virando negrito no envio.
+
 ## Novidades da v0.61.0 (7 melhorias de uso, pedidas pelo Josué em 29/10/2026)
 
 - **Solicitação aberta sem abas:** a conversa (trâmites, com a caixa de resposta embaixo) fica ao lado do **painel de dados**: em destaque no topo, e em seções que abrem e fecham "Todos os dados", Anexos, Para o cliente e Lembretes. Sempre abre na conversa; em janela estreita (menos de 1000 px) o painel vai para cima. Cada trâmite do escritório mostra a situação na bolha.
@@ -52,7 +56,7 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 - **Responder:** o primeiro botão agora é **"Enviar resposta ›"** (mostra como vai ficar) e o segundo, **"Confirmar envio"**.
 - **Nenhum documento assinado vem ao escritório**, só a carta de pedido de demissão: o texto do abono de férias explica que o pedido do empregado fica guardado na empresa e pede só a confirmação; o atestado e o termo de estágio não falam mais em assinatura. Um teste confere todos os textos padrão.
 - **Mensagem pronta editável e salva ali mesmo:** no balão, "Salvar como minha mensagem" (ou "Salvar alterações", quando já é sua) guarda o texto editado para aquele trâmite e tipo, com os dados da solicitação trocados por variáveis.
-- **Negrito:** `**assim**` (ou o botão **Negrito** da caixa) vira letras em negrito do Unicode no envio, porque o Onvio só aceita texto puro. As mensagens prontas destacam datas de pagamento e títulos. A leitura das respostas (pede algo ao cliente, prazo prometido) entende o negrito.
+- **Negrito:** `**assim**` vira letras em negrito do Unicode no envio, porque o Onvio só aceita texto puro. As mensagens prontas destacam datas de pagamento e títulos. A leitura das respostas (pede algo ao cliente, prazo prometido) entende o negrito.
 - **Todos os anexos enviados:** um envio por arquivo, em sequência; se algum falhar, o aviso diz qual e o trâmite fica. Acima de 10 arquivos ou 15 MB a caixa avisa na hora, e nomes repetidos ganham "(2)".
 - **A confirmar no Onvio real:** como o negrito Unicode aparece para o cliente (tela e e-mail) e se os 3 PDFs de uma resposta aparecem todos no trâmite.
 
