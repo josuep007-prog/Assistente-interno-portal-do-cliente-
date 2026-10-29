@@ -1639,3 +1639,11 @@ body.setor-fora .trilho [data-rota="equipe"], body.setor-fora .trilho [data-rota
 .g-lemb .menu-list{right:0; min-width:340px; max-width:min(460px, 90vw); max-height:60vh; overflow-y:auto; gap:6px; padding:10px}
 .g-lemb .item-ag{padding:8px 0}
 .g-lemb-novo{align-self:flex-start}
+
+/* anexos: o que ficou de fora e o que não chegou ao Onvio nunca some em silêncio (0.63.0) */
+.cmp-fora{display:flex; align-items:flex-start; gap:8px; padding:8px 10px; border:1px solid color-mix(in srgb, var(--status-warn) 45%, transparent); border-radius:var(--r); background:color-mix(in srgb, var(--viz-warn) 14%, var(--surface)); font-size:12.5px; color:var(--ink)}
+.cmp-fora .ic{margin-top:2px; color:var(--status-warn); flex:none}
+.cmp-fora ul, .cmp-pend ul{margin:4px 0 8px; padding-left:18px}
+.cmp-fora small, .cmp-pend small{color:var(--ink-3)}
+.cmp-pend-faixa{align-items:flex-start}
+.cmp-pend-faixa p{margin:4px 0 0}

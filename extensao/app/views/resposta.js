@@ -10,7 +10,7 @@ import { estado, enviar, primeiroNome, salvarModelosPessoais } from '../estado.j
 import { esc, toast, simples, $, $$ } from '../util.js';
 const OC = window.OC;
 
-const MAX_ANEXOS = 10, MAX_BYTES = 15 * 1024 * 1024;
+const MAX_ANEXOS = 30, MAX_BYTES = 15 * 1024 * 1024;
 const rascunhos = new Map();     // 'tipo:num' -> rascunho (só na memória)
 let pendente = null;             // { chave, timer }: contagem para desistir
 let enviado = null;              // { chave, em }: o último envio, para o aviso e o destaque da bolha
@@ -22,7 +22,7 @@ document.addEventListener('mousedown', e => {
   if (!aoAbrir || !aoAbrir.r.mp || !e.target.closest || e.target.closest('#mp-balao, #cmp-mp')) return;
   aoAbrir.r.mp = null; aoAbrir.redesenhar();
 });
-const novoRascunho = () => ({ mp: null, guardSit: '', guardDeTexto: false, texto: '', sit: '', arquivos: [], modo: 'editar', erro: '', aoEnviar: null, antes: [], guardando: false, guardTexto: '', guardRot: '', aberto: false, menuAberto: false, focar: false, selMarca: '', proxima: false, fimEm: 0, segTotal: 0 });
+const novoRascunho = () => ({ mp: null, guardSit: '', guardDeTexto: false, texto: '', sit: '', arquivos: [], modo: 'editar', erro: '', aoEnviar: null, antes: [], guardando: false, guardTexto: '', guardRot: '', aberto: false, menuAberto: false, fora: [], pend: null, reenviando: false, prog: '', focar: false, selMarca: '', proxima: false, fimEm: 0, segTotal: 0 });
 const rascunho = i => { const k = chaveDe(i); if (!rascunhos.has(k)) rascunhos.set(k, novoRascunho()); return rascunhos.get(k); };
 const ic = (n, c) => '<svg class="ic' + (c ? ' ' + c : '') + '"><use href="#i-' + n + '"/></svg>';
 const tamanho = n => n < 1024 ? n + ' B' : n < 1048576 ? Math.round(n / 1024) + ' KB' : (n / 1048576).toFixed(1).replace('.', ',') + ' MB';
@@ -38,7 +38,9 @@ export function prepararResposta(i, preset) {
   r.preencherPendente = /\{\w+\}/.test(r.texto);       // {variáveis} do texto sugerido são preenchidas quando o detalhe é lido (datas, empregado)
 }
 // Há algo em andamento nesta solicitação (texto, anexo, balão, modelo ou revisão/envio): a gaveta não fecha sozinha
-export const temRascunho = i => { const r = rascunhos.get(chaveDe(i)); return !!r && !!(r.texto.trim() || r.arquivos.length || r.mp || r.guardando || r.modo !== 'editar'); };
+export const temRascunho = i => { const r = rascunhos.get(chaveDe(i)); return !!r && !!(r.texto.trim() || r.arquivos.length || r.mp || r.guardando || r.pend || r.fora.length || r.modo !== 'editar'); };
+// Trâmite enviado cujos anexos não chegaram (ou não deu para conferir): o aviso fica na caixa até a pessoa resolver
+export const anexosPendentes = i => { const r = i && rascunhos.get(chaveDe(i)); return r && r.pend ? r.pend : null; };
 export const recemEnviado = i => !!(enviado && enviado.chave === chaveDe(i) && Date.now() - enviado.em < 20000);
 export const respostaEmAndamento = i => { const r = rascunhos.get(chaveDe(i)); return !!r && r.modo !== 'editar'; };
 // a pessoa fechou a janela ou foi para outra solicitação durante a contagem: cancela (nada foi enviado)
@@ -70,6 +72,20 @@ function intsDe(i, r) {
     efeito: 'Primeiro registra "' + r.antes.map(a => a.rot).join('" e "') + '" e em seguida conclui: a solicitação sai da fila' }]);
 }
 const horaDe = ms => new Date(ms).toTimeString().slice(0, 5);
+// Arquivos que ficaram de fora ao escolher (grandes, vazios, passou do limite): o aviso NÃO some sozinho e o envio só segue depois do "Entendi"
+const foraHtml = r => r.fora.length ? '<div class="cmp-fora" role="alert">' + ic('alert', 'ic-sm') + '<div><b>' + (r.fora.length === 1 ? 'Este arquivo NÃO vai no envio:' : 'Estes ' + r.fora.length + ' arquivos NÃO vão no envio:') + '</b><ul>' +
+  r.fora.map(x => '<li>' + esc(x.nome) + ' <small>· ' + esc(x.motivo) + '</small></li>').join('') + '</ul><button type="button" class="btn btn-sm" id="a-fora-ok">Entendi, seguir sem eles</button></div></div>' : '';
+// Anexos que não chegaram ao Onvio depois do trâmite enviado: ficam aqui, com o motivo de cada um, até tentar de novo ou resolver pelo Onvio
+function pendHtml(i, r) {
+  const p = r.pend, n = r.arquivos.length;
+  const cab = p.naoConferido && !n
+    ? '<b>O trâmite foi enviado e o Onvio aceitou ' + p.naoConferido.length + (p.naoConferido.length === 1 ? ' anexo' : ' anexos') + ', mas não consegui conferir no trâmite se chegaram.</b><p class="fraco">Abra o trâmite no Onvio e confira: ' + esc(p.naoConferido.join(', ')) + '.</p>'
+    : '<b>O trâmite foi enviado, mas ' + (n === 1 ? '1 anexo não chegou' : n + ' anexos não chegaram') + ' ao Onvio:</b><ul>' + r.arquivos.map(a => '<li>' + esc(a.name) + ' <small>· ' + tamanho(a.size) + ' · ' + esc((p.motivos && p.motivos[a.name]) || 'não chegou') + '</small></li>').join('') + '</ul><p class="fraco">Eles continuam guardados aqui, só nesta visita. Tente de novo ou anexe pelo Onvio.</p>';
+  const meio = r.reenviando ? '<div class="cmp-contagem"><span id="cmp-env-tx">' + esc(r.prog || 'Anexando…') + '</span></div>'
+    : '<div class="cmp-pe"><span class="spacer"></span><button class="btn btn-sm" id="a-pend-abrir" type="button">' + ic('link', 'ic-sm') + ' Abrir no Onvio</button>' + (n && p.topicId ? '<button class="btn btn-sm btn-primary" id="a-reanexar" type="button">Tentar anexar de novo</button>' : '') +
+      '<button class="btn btn-sm" id="a-pend-fechar" type="button" title="Só tire o aviso depois de conferir no Onvio">' + (n ? 'Anexei pelo Onvio, tirar o aviso' : 'Conferi, tirar o aviso') + '</button></div>';
+  return '<div class="cmp aberto cmp-pend" id="cmp"><div class="cmp-erro cmp-pend-faixa" role="alert">' + ic('alert', 'ic-sm') + '<div>' + cab + '</div></div>' + meio + '</div>';
+}
 
 function avisosHtml(r, i) {
   return OC.avisosResposta(r.texto, r.sit, estado.settings, i).map(a => '<div class="cmp-aviso' + (a.bloqueia ? ' bloqueia' : '') + '">' + ic(a.bloqueia ? 'alert' : 'chat', 'ic-sm') + '<span>' + esc(a.msg) + '</span></div>').join('');
@@ -129,6 +145,7 @@ export function respostaHtml(i, obs, ctx) {
   }
   const ints = intsDe(i, r);
   const it = ints.find(x => String(x.sit) === String(r.sit));
+  if (r.pend) return pendHtml(i, r);
   const aberto = r.aberto || r.texto || r.sit || r.arquivos.length || r.guardando || r.erro;
   const ok = recemEnviado(i) ? '<div class="cmp-ok">' + ic('check', 'ic-sm') + ' Trâmite enviado às ' + horaDe(enviado.em) + '. Ele aparece no fim da conversa.</div>' : '';
   const erro = r.erro ? '<div class="cmp-erro">' + ic('alert', 'ic-sm') + '<span>' + esc(r.erro) + '</span></div>' : '';
@@ -140,7 +157,7 @@ export function respostaHtml(i, obs, ctx) {
     const proxDisp = ctx && ctx.proxima;
     let pe;
     if (r.modo === 'contagem') pe = '<div class="cmp-contagem"><span id="cmp-conta-tx">Enviando em ' + resta + ' s…</span><i class="cmp-barra"><i id="cmp-barra" style="--dur:' + r.segTotal + 's"></i></i><button class="btn btn-sm" id="a-desfazer" type="button">Desfazer</button></div>';
-    else if (r.modo === 'enviando') pe = '<div class="cmp-contagem"><span>Enviando ao Onvio…</span></div>';
+    else if (r.modo === 'enviando') pe = '<div class="cmp-contagem"><span id="cmp-env-tx">' + esc(r.prog || 'Enviando ao Onvio…') + '</span></div>';
     else pe = '<div class="cmp-pe"><span class="spacer"></span><button class="btn btn-sm" id="a-voltar" type="button">Voltar e editar</button>' +
       (proxDisp ? '<button class="btn btn-sm" id="a-enviar-prox" type="button" title="Envia e abre a próxima solicitação da lista">Confirmar e ir para a próxima</button>' : '') +
       '<button class="btn btn-sm btn-primary" id="a-enviar" type="button">Confirmar envio</button></div>';
@@ -164,7 +181,7 @@ export function respostaHtml(i, obs, ctx) {
       '<p class="fraco">Vira a sua mensagem pronta para esse trâmite em ' + esc(i.typeLabel) + ' (no lugar da do escritório). Nomes e datas desta solicitação viraram {variáveis}: confira se não ficou nome, CPF ou valor.</p>' +
       '<div class="cmp-pe"><button class="btn btn-sm" id="mg-cancelar" type="button">Cancelar</button><button class="btn btn-sm btn-primary" id="mg-salvar" type="button">Salvar modelo</button></div></div>' : '';
   const rotSit = it ? it.rot.split(' · ')[0] : '';
-  return '<div class="cmp' + (aberto ? ' aberto' : '') + '" id="cmp">' + ok + erro + arqs + guardar +
+  return '<div class="cmp' + (aberto ? ' aberto' : '') + '" id="cmp">' + ok + erro + foraHtml(r) + arqs + guardar +
     '<div class="cmp-caixa">' +
       '<div class="cmp-chat">' +
         '<label class="cmp-fer-b cmp-ico" title="Anexar arquivos ao trâmite (até ' + MAX_ANEXOS + ' de 15 MB; também dá para arrastar ou colar uma imagem)" aria-label="Anexar">' + ic('paperclip') + '<input type="file" id="a-arquivos" multiple hidden></label>' +
@@ -332,9 +349,15 @@ export function ligarResposta(g, i, r0, obs, cb) {
   };
 
   function adicionar(novos) {
-    const grandes = novos.filter(a => a.size > MAX_BYTES);
-    const cabem = novos.filter(a => a.size <= MAX_BYTES);
-    const vagas = Math.max(0, MAX_ANEXOS - r.arquivos.length), sobra = cabem.slice(vagas);
+    // o que não entra NUNCA some em silêncio: fica listado na caixa, com o motivo, até a pessoa dizer "Entendi" (e o envio espera por isso)
+    const fora = [], bons = [];
+    for (const a of novos) {
+      if (!a.size) fora.push({ nome: a.name, motivo: 'arquivo vazio' });
+      else if (a.size > MAX_BYTES) fora.push({ nome: a.name, motivo: 'maior que 15 MB (' + tamanho(a.size) + ')' });
+      else bons.push(a);
+    }
+    const vagas = Math.max(0, MAX_ANEXOS - r.arquivos.length);
+    bons.slice(vagas).forEach(a => fora.push({ nome: a.name, motivo: 'passou do limite de ' + MAX_ANEXOS + ' anexos por trâmite' }));
     // nomes repetidos (ex.: várias "image.png" coladas) ganham (2), (3)… para o Onvio não confundir os arquivos
     const usados = new Set(r.arquivos.map(a => a.name.toLowerCase()));
     const unico = a => {
@@ -344,9 +367,8 @@ export function ligarResposta(g, i, r0, obs, cb) {
       usados.add(nome.toLowerCase());
       try { return new File([a], nome, { type: a.type }); } catch (e) { return a; }
     };
-    r.arquivos = r.arquivos.concat(cabem.slice(0, vagas).map(unico));
-    if (grandes.length) toast('Maior que 15 MB, ficou de fora: ' + grandes.map(a => a.name).join(', '), true);
-    if (sobra.length) toast('No máximo ' + MAX_ANEXOS + ' anexos por trâmite; ficou de fora: ' + sobra.map(a => a.name).join(', '), true);
+    r.arquivos = r.arquivos.concat(bons.slice(0, vagas).map(unico));
+    if (fora.length) { r.fora = r.fora.concat(fora); toast(fora.length + (fora.length === 1 ? ' arquivo ficou de fora' : ' arquivos ficaram de fora') + ': veja o aviso na caixa de resposta', true); }
     r.aberto = true; r.focar = true; cb.redesenhar();
   }
   if ($('#a-arquivos', g)) $('#a-arquivos', g).onchange = e => adicionar([...e.target.files]);
@@ -355,7 +377,7 @@ export function ligarResposta(g, i, r0, obs, cb) {
   if ($('#a-descartar', g)) $('#a-descartar', g).onclick = () => { rascunhos.delete(chaveDe(i)); cb.redesenhar(); };
   if ($('#a-revisar', g)) $('#a-revisar', g).onclick = () => {
     const bloq = OC.avisosResposta(r.texto, r.sit, estado.settings, i).find(a => a.bloqueia);
-    r.erro = !r.texto.trim() ? 'Escreva o texto da resposta.' : !r.sit ? 'Escolha a situação do trâmite (Respondido, Em análise, Concluído...).' : bloq ? bloq.msg : '';
+    r.erro = r.fora.length ? 'Há arquivos que ficaram de fora do envio (veja o aviso acima): confirme com "Entendi" ou escolha-os de novo.' : !r.texto.trim() ? 'Escreva o texto da resposta.' : !r.sit ? 'Escolha a situação do trâmite (Respondido, Em análise, Concluído...).' : bloq ? bloq.msg : '';
     if (!r.erro) r.modo = 'revisar';
     else if (r.texto.trim() && !r.sit) r.menuAberto = true;       // falta só a situação: a lista já abre
     else if (!r.texto.trim() || bloq) { r.focar = true; r.selMarca = bloq ? OC.marcadoresPendentes(r.texto)[0] : ''; }   // volta o cursor para onde falta escrever
@@ -384,11 +406,49 @@ export function ligarResposta(g, i, r0, obs, cb) {
       if (resta <= 0) { clearInterval(pendente.timer); pendente = null; enviarAgora(); }
     }, 100) };
   }
+  // Sobe os arquivos de um trâmite que já existe, um por vez (cada um com o seu resultado) e confere no Onvio, lendo o trâmite de volta,
+  // se os aceitos de fato aparecem lá. Devolve os que falharam (com o motivo) e se a conferência deu certo (true/false/null = não deu para ler).
+  async function subirAnexos(arquivos, topicId) {
+    const prog = tx => { r.prog = tx; const e = $('#cmp-env-tx'); if (e) e.textContent = tx; };
+    const falhas = [], aceitos = [];
+    for (let n = 0; n < arquivos.length; n++) {
+      const a = arquivos[n];
+      prog('Anexando ' + (n + 1) + ' de ' + arquivos.length + ': ' + a.name);
+      let b64;
+      try { b64 = await base64(a); } catch (e) { falhas.push({ arq: a, motivo: 'não consegui ler o arquivo' }); continue; }
+      if (!b64) { falhas.push({ arq: a, motivo: 'arquivo vazio' }); continue; }
+      let x;
+      try { x = await enviar({ cmd: 'anexar', type: i.type, num: String(i.num), topicId, arquivo: { nome: a.name, tipo: a.type, b64 } }); } catch (e) { x = { ok: false, erro: String(e.message || e) }; }
+      if (x && x.ok) aceitos.push(a);
+      else falhas.push({ arq: a, motivo: x && x.status ? 'o Onvio respondeu HTTP ' + x.status : (x && x.erro) || 'o Onvio não aceitou' });
+    }
+    let conferido = aceitos.length ? null : true, naoAchados = [];
+    if (aceitos.length) {
+      prog('Conferindo no Onvio se ' + (aceitos.length === 1 ? 'o anexo chegou' : 'os ' + aceitos.length + ' anexos chegaram') + '…');
+      let c; try { c = await enviar({ cmd: 'conferirAnexos', type: i.type, num: String(i.num), topicId, nomes: aceitos.map(a => a.name) }); } catch (e) { c = null; }
+      if (c && c.ok) { conferido = c.conferido; naoAchados = (c.naoAchados || []).map(n => String(n).toLowerCase()); }
+    }
+    for (const a of aceitos) if (naoAchados.includes(a.name.toLowerCase())) falhas.push({ arq: a, motivo: 'o Onvio disse que aceitou, mas o anexo não aparece no trâmite' });
+    return { falhas, conferido, enviados: aceitos.length - falhas.filter(f => naoAchados.includes(f.arq.name.toLowerCase())).length, aceitos };
+  }
+  // Fecha a conta dos anexos: sem pendência segue o fluxo; com pendência a faixa fica na caixa (nunca só um aviso que passa)
+  function fecharAnexos(s, topicId) {
+    if (s.falhas.length || s.conferido === null) {
+      r.pend = { topicId, motivos: Object.fromEntries(s.falhas.map(f => [f.arq.name, f.motivo])), naoConferido: !s.falhas.length ? s.aceitos.map(a => a.name) : null, em: Date.now() };
+      r.arquivos = s.falhas.map(f => f.arq);
+      return true;
+    }
+    r.pend = null; r.arquivos = [];
+    return false;
+  }
   async function enviarAgora() {
-    r.modo = 'enviando'; r.erro = '';
+    r.modo = 'enviando'; r.erro = ''; r.prog = '';
     cb.redesenhar();
     try {
-      const arquivos = await Promise.all(r.arquivos.map(async a => ({ nome: a.name, tipo: a.type, b64: await base64(a) })));
+      // antes de criar o trâmite, todos os arquivos precisam estar legíveis: um que foi movido, apagado ou alterado depois de escolhido falharia no meio
+      const ilegiveis = [];
+      for (const a of r.arquivos) { try { const buf = await a.slice(0, 1024).arrayBuffer(); if (!a.size || !buf) throw new Error('vazio'); } catch (e) { ilegiveis.push(a.name); } }
+      if (ilegiveis.length) throw new Error('não consegui ler ' + ilegiveis.join(', ') + ' (o arquivo foi movido, apagado ou alterado depois de escolhido). Tire-o e escolha de novo. Nada foi enviado');
       // sugestão em dois passos: cada um só segue se o anterior foi aceito (o service worker confere a situação de verdade antes de cada envio)
       const passos = r.antes.slice();
       for (let n = 0; n < passos.length; n++) {
@@ -397,23 +457,49 @@ export function ligarResposta(g, i, r0, obs, cb) {
         r.antes.shift();
         await new Promise(ok => setTimeout(ok, 500));
       }
+      // o trâmite vai sem os arquivos; eles sobem em seguida, um por vez, com andamento e conferência (0.63.0)
       let resp;
-      try { resp = await enviar({ cmd: 'acao', type: i.type, num: String(i.num), acao: 'tramite', texto: r.texto, situacao: r.sit, analista: '', data: '', arquivos }); }
+      try { resp = await enviar({ cmd: 'acao', type: i.type, num: String(i.num), acao: 'tramite', texto: r.texto, situacao: r.sit, analista: '', data: '', arquivos: [] }); }
       catch (e) { if (passos.length) { r.erro = 'O passo "' + passos[passos.length - 1].rot + '" foi enviado, mas a conclusão não: ' + (e.message || e) + '. Atualize e conclua de novo.'; r.modo = 'editar'; cb.redesenhar(); return; } throw e; }
       if (!resp.ok && passos.length) { r.erro = 'O passo "' + passos[passos.length - 1].rot + '" foi enviado, mas a conclusão não: ' + (resp.erro || 'o Onvio não aceitou') + '. Atualize e conclua de novo.'; r.modo = 'editar'; cb.redesenhar(); return; }
       if (!resp.ok) throw new Error(resp.erro || 'o Onvio não aceitou');
-      if (resp.erroAnexos) toast('Trâmite enviado ao Onvio, mas ' + resp.erroAnexos.replace(/^o trâmite foi enviado, mas /, ''), true);
-      else toast('Trâmite enviado ao Onvio' + (resp.anexos ? ' com ' + (resp.anexos === 1 ? '1 anexo' : resp.anexos + ' anexos') : ''));
-      const depois = r.aoEnviar, prox = r.proxima;
-      rascunhos.delete(chaveDe(i));
+      const depois = r.aoEnviar, prox = r.proxima, total = r.arquivos.length;
       enviado = { chave: chaveDe(i), em: Date.now() };
+      let pendente2 = false, s = null;
+      if (total) {
+        if (!resp.topicId) { s = { falhas: r.arquivos.map(a => ({ arq: a, motivo: 'o Onvio não devolveu o número do trâmite' })), conferido: true, aceitos: [] }; }
+        else s = await subirAnexos(r.arquivos.slice(), resp.topicId);
+        r.texto = ''; r.sit = ''; r.antes = []; r.aoEnviar = null; r.fora = [];
+        pendente2 = fecharAnexos(s, resp.topicId || null);
+      }
       if (depois) { try { await depois(); } catch (e) { console.error(e); } }
+      if (pendente2) {
+        r.modo = 'editar'; r.aberto = true; r.erro = '';
+        toast('Trâmite enviado, mas ' + (s.falhas.length ? (s.falhas.length === 1 ? '1 anexo não chegou' : s.falhas.length + ' anexos não chegaram') : 'não consegui conferir os anexos') + ': veja o aviso na caixa de resposta', true);
+        cb.redesenhar();
+        return;
+      }
+      toast('Trâmite enviado ao Onvio' + (total ? ' com ' + (total === 1 ? '1 anexo' : total + ' anexos') + ' (conferido no trâmite)' : ''));
+      rascunhos.delete(chaveDe(i));
       cb.feito(prox);
     } catch (e) {
       r.modo = 'editar'; r.erro = 'Não foi enviado: ' + (e.message || e);
       cb.redesenhar();
     }
   }
+  // Anexos que ficaram para trás: tentar de novo (só os que faltam, no trâmite que já existe), abrir o Onvio ou tirar o aviso depois de conferir
+  if ($('#a-reanexar', g)) $('#a-reanexar', g).onclick = async () => {
+    const topicId = r.pend && r.pend.topicId, arqs = r.arquivos.slice();
+    if (!topicId) { toast('Sem o número do trâmite não dá para tentar de novo por aqui: anexe pelo Onvio', true); return; }
+    r.reenviando = true; r.prog = 'Anexando…'; cb.redesenhar();
+    const s = await subirAnexos(arqs, topicId);
+    r.reenviando = false;
+    if (fecharAnexos(s, topicId)) { toast(s.falhas.length ? (s.falhas.length === 1 ? 'Ainda falta 1 anexo' : 'Ainda faltam ' + s.falhas.length + ' anexos') + ': veja o aviso' : 'Não consegui conferir os anexos: veja o aviso', true); cb.redesenhar(); }
+    else { toast('Todos os anexos chegaram ao Onvio (conferido no trâmite)'); rascunhos.delete(chaveDe(i)); cb.feito(false); }
+  };
+  if ($('#a-pend-abrir', g)) $('#a-pend-abrir', g).onclick = async () => { const x = await enviar({ cmd: 'abrir', item: { type: i.type, num: String(i.num) } }); if (!x.ok) toast('Não foi possível abrir no Onvio: ' + (x.erro || ''), true); };
+  if ($('#a-pend-fechar', g)) $('#a-pend-fechar', g).onclick = () => { rascunhos.delete(chaveDe(i)); cb.redesenhar(); };
+  if ($('#a-fora-ok', g)) $('#a-fora-ok', g).onclick = () => { r.fora = []; cb.redesenhar(); };
   // depois de um redesenho no meio da contagem, a barra continua de onde estava
   if (r.modo === 'contagem') { const b = $('#cmp-barra', g); if (b) b.style.animationDelay = '-' + Math.max(0, r.segTotal * 1000 - Math.max(0, r.fimEm - Date.now())) + 'ms'; }
 }

@@ -362,7 +362,7 @@ function escritaPorAba(tabId) {
     return (res && res.result) || { status: 0, erro: 'sem resposta da aba' };
   };
 }
-const MAX_ANEXOS = 10, MAX_BYTES = 15 * 1024 * 1024;
+const MAX_ANEXOS = 30, MAX_BYTES = 15 * 1024 * 1024;
 
 /* ---------- baixar anexos escolhidos ----------
  * Molde do caminho aprendido quando o próprio Onvio baixa um anexo (acao-hook.js -> shell.js -> rotaAnexo). Guarda só
@@ -443,6 +443,62 @@ async function baixarAnexos(msg) {
   const lista = (res && res.result) || [];
   return { baixados: lista.filter(x => x.ok).length, falhas: lista.filter(x => !x.ok).map(x => x.nome + ': ' + x.erro), semRota: semRota.length, rotas: (rotasAnexo || []).length };
 }
+/* ---------- anexos de um trâmite: nunca ficam para trás em silêncio (0.63.0) ----------
+ * O arquivo sobe num pedido só (um por vez), cada um com o seu resultado, e o que o Onvio diz ter aceitado é CONFERIDO lendo o
+ * trâmite de volta: o que não aparece lá conta como faltando. Erro de um arquivo (inclusive exceção) nunca interrompe os outros. */
+async function prepararEscrita(msg) {
+  const t = OC.TYPE_BY_KEY[msg.type];
+  if (!t) throw new Error('tipo desconhecido');
+  const { f } = await escolherFetcher(true);                     // confere de novo que é o escritório
+  const tab = await abaOnvio();
+  if (!tab) throw new Error('Abra o Onvio numa aba para enviar.');
+  const d = await f(OC.urlConsulta(t, { numero: msg.num, per: 5 }));
+  const r = ((d && d.items) || []).find(x => String(x.identifier) === String(msg.num));
+  if (!r) throw new Error('solicitação #' + msg.num + ' não encontrada em ' + t.label);
+  return { t, f, tab, r };
+}
+const topicoValido = id => typeof id === 'string' && /^[0-9a-f-]{8,64}$/i.test(id);
+function arquivoValido(a) { return !!a && typeof a.nome === 'string' && a.nome && typeof a.b64 === 'string' && a.b64.length > 0 && a.b64.length * 0.75 <= MAX_BYTES; }
+async function subirArquivo(escreve, u, a) {
+  let ra;
+  try { ra = await escreve('POST', u, null, [a]); } catch (e) { ra = { status: 0, erro: String((e && e.message) || e).slice(0, 200) }; }
+  const ok = ra.status >= 200 && ra.status < 300;
+  return { nome: a.nome, ok, status: ra.status || 0, erro: ok ? null : (ra.erro || null) };
+}
+// Lê o trâmite de volta e diz quais dos nomes (aceitos pelo Onvio) não aparecem nos anexos dele. Duas leituras, com uma pausa: o Onvio
+// pode demorar um instante para listar. conferido: true (todos lá), false (faltam) ou null (não deu para ler).
+async function conferirAnexos(t, r, topicId, f, nomes) {
+  const quer = (nomes || []).map(n => String(n));
+  if (!quer.length) return { conferido: true, naoAchados: [], achados: 0 };
+  let ultimo = { conferido: null, naoAchados: [], achados: 0 };
+  for (let n = 0; n < 2; n++) {
+    if (n) await new Promise(ok => setTimeout(ok, 1500));
+    try {
+      const d = await f(OC.urlTramites(t, r.id));
+      const tr = OC.tramitesDe(t, d).find(x => x.id === topicId);
+      if (!tr) { ultimo = { conferido: null, naoAchados: [], achados: 0 }; continue; }
+      const lista = tr.arquivos.map(x => x.nome.toLowerCase());
+      const faltam = quer.filter(nome => { const i = lista.indexOf(nome.toLowerCase()); if (i < 0) return true; lista.splice(i, 1); return false; });
+      ultimo = { conferido: faltam.length === 0, naoAchados: faltam, achados: tr.arquivos.length };
+      if (ultimo.conferido) return ultimo;
+    } catch (e) { if (e && e.auth) throw e; ultimo = { conferido: null, naoAchados: [], achados: 0 }; }
+  }
+  return ultimo;
+}
+// Um arquivo para um trâmite que já existe (o app manda um por vez, para mostrar o andamento e não estourar o limite de mensagem)
+async function anexarUm(msg) {
+  const { t, tab, r } = await prepararEscrita(msg);
+  if (!topicoValido(msg.topicId)) throw new Error('trâmite inválido');
+  if (!arquivoValido(msg.arquivo)) throw new Error('arquivo inválido, vazio ou maior que 15 MB');
+  const u = OC.urlAnexoTramite(t, r.id, msg.topicId);
+  if (!OC.escritaPermitida('POST', u)) throw new Error('endereço de anexo não permitido');
+  return await subirArquivo(escritaPorAba(tab.id), u, msg.arquivo);
+}
+async function conferirAnexosCmd(msg) {
+  const { t, f, r } = await prepararEscrita(msg);
+  if (!topicoValido(msg.topicId)) throw new Error('trâmite inválido');
+  return await conferirAnexos(t, r, msg.topicId, f, Array.isArray(msg.nomes) ? msg.nomes.slice(0, MAX_ANEXOS) : []);
+}
 async function executarAcao(msg) {
   const t = OC.TYPE_BY_KEY[msg.type];
   if (!t) throw new Error('tipo desconhecido');
@@ -460,29 +516,27 @@ async function executarAcao(msg) {
   if (!OC.escritaPermitida(p.metodo, p.url)) throw new Error('endereço de escrita não permitido');
   const arquivos = Array.isArray(msg.arquivos) ? msg.arquivos : [];
   if (arquivos.length > MAX_ANEXOS) throw new Error('no máximo ' + MAX_ANEXOS + ' anexos por trâmite');
-  if (arquivos.some(a => !a || typeof a.b64 !== 'string' || a.b64.length * 0.75 > MAX_BYTES)) throw new Error('anexo inválido ou maior que 15 MB');
+  if (arquivos.some(a => !arquivoValido(a))) throw new Error('anexo inválido, vazio ou maior que 15 MB');
   const escreve = escritaPorAba(tab.id);
   const res = await escreve(p.metodo, p.url, p.corpo);
   if (res.status === 401 || res.status === 403) { const e = new Error('o Onvio recusou a ação (HTTP ' + res.status + '). Faça pelo Onvio e avise quem mantém a extensão.'); e.recusado = true; throw e; }
   if (res.status < 200 || res.status >= 300) throw new Error('o Onvio não aceitou (' + (res.status ? 'HTTP ' + res.status : res.erro || 'falha de rede') + ')');
-  const out = { acao: msg.acao, anexos: 0, erroAnexos: null };
+  const out = { acao: msg.acao, anexos: 0, erroAnexos: null, topicId: msg.acao === 'tramite' ? (OC.idDoLocation(res.location) || null) : null };
   if (msg.acao === 'tramite' && arquivos.length) {
-    const topicId = OC.idDoLocation(res.location);
+    const topicId = out.topicId;
     const u = topicId && OC.urlAnexoTramite(t, r.id, topicId);
-    if (!u) out.erroAnexos = 'o Onvio não devolveu o número do trâmite; anexe pelo Onvio';
-    else if (!OC.escritaPermitida('POST', u)) out.erroAnexos = 'endereço de anexo não permitido';
+    if (!u) { out.erroAnexos = 'o Onvio não devolveu o número do trâmite; anexe pelo Onvio'; out.faltam = arquivos.map(a => a.nome); }
+    else if (!OC.escritaPermitida('POST', u)) { out.erroAnexos = 'endereço de anexo não permitido'; out.faltam = arquivos.map(a => a.nome); }
     else {
-      // Um pedido por arquivo (0.61.0): o formato foi mapeado com um arquivo só; com vários `file[]` no mesmo pedido o Onvio
-      // guardava só um. Em sequência, cada um com o seu resultado; um que falha não impede os outros.
+      // Um pedido por arquivo (0.61.0): com vários `file[]` no mesmo pedido o Onvio guardava só um. Em sequência, cada um com o seu
+      // resultado; um que falha (ou dá exceção) não impede os outros; o que o Onvio aceitou é conferido lendo o trâmite (0.63.0).
       out.arquivos = [];
-      for (const a of arquivos) {
-        const ra = await escreve('POST', u, null, [a]);
-        const ok = ra.status >= 200 && ra.status < 300;
-        out.arquivos.push({ nome: a.nome, ok, status: ra.status || 0 });
-        if (ok) out.anexos++;
-      }
-      const falhas = out.arquivos.filter(x => !x.ok);
-      if (falhas.length) out.erroAnexos = 'o trâmite foi enviado, mas ' + (falhas.length === arquivos.length ? (arquivos.length > 1 ? 'nenhum anexo' : 'o anexo não') : out.anexos + ' de ' + arquivos.length + ' anexos') + ' foi aceito pelo Onvio (falhou: ' + falhas.map(x => x.nome + (x.status ? ' · HTTP ' + x.status : '')).join(', ') + '). Anexe pelo Onvio o que faltou.';
+      for (const a of arquivos) { const x = await subirArquivo(escreve, u, a); out.arquivos.push(x); if (x.ok) out.anexos++; }
+      const conf = await conferirAnexos(t, r, topicId, f, out.arquivos.filter(x => x.ok).map(x => x.nome));
+      out.conferido = conf.conferido; out.naoAchados = conf.naoAchados;
+      out.faltam = out.arquivos.filter(x => !x.ok).map(x => x.nome).concat(conf.naoAchados);
+      if (out.faltam.length) out.erroAnexos = 'o trâmite foi enviado, mas ' + (out.faltam.length === arquivos.length ? (arquivos.length > 1 ? 'nenhum anexo' : 'o anexo não') : (arquivos.length - out.faltam.length) + ' de ' + arquivos.length + ' anexos') + ' chegou ao Onvio (faltou: ' + out.faltam.map(n => { const x = out.arquivos.find(y => y.nome === n && !y.ok); return n + (x && x.status ? ' · HTTP ' + x.status : x && x.erro ? ' · ' + x.erro : ' · não apareceu no trâmite'); }).join(', ') + '). Anexe pelo Onvio o que faltou.';
+      else if (conf.conferido === null) out.avisoConferencia = 'não consegui conferir no Onvio se os anexos chegaram: confira no trâmite';
     }
   }
   if (!msg.semColetar) coletar(false).catch(() => {});           // a fila e o Hoje já refletem a ação
@@ -872,6 +926,8 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'distribuicaoAutoAgora') { reply(Object.assign({ ok: true }, await distribuirAutomatico(true))); }
       else if (msg.cmd === 'consultar') { reply(Object.assign({ ok: true }, await consultar(msg))); }
       else if (msg.cmd === 'acao') { reply(Object.assign({ ok: true }, await executarAcao(msg))); }
+      else if (msg.cmd === 'anexar') { reply(Object.assign({ ok: true }, await anexarUm(msg))); }
+      else if (msg.cmd === 'conferirAnexos') { reply(Object.assign({ ok: true }, await conferirAnexosCmd(msg))); }
       else if (msg.cmd === 'criar') { reply(Object.assign({ ok: true }, await criarSolicitacao(msg))); }
       else if (msg.cmd === 'detalhe') { reply(Object.assign({ ok: true }, await detalhe(msg))); }
       else if (msg.cmd === 'baixarAnexos') { reply(Object.assign({ ok: true }, await baixarAnexos(msg))); }
