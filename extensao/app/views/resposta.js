@@ -326,8 +326,20 @@ export function ligarResposta(g, i, r0, obs, cb) {
 
   function adicionar(novos) {
     const grandes = novos.filter(a => a.size > MAX_BYTES);
-    r.arquivos = r.arquivos.concat(novos.filter(a => a.size <= MAX_BYTES)).slice(0, MAX_ANEXOS);
+    const cabem = novos.filter(a => a.size <= MAX_BYTES);
+    const vagas = Math.max(0, MAX_ANEXOS - r.arquivos.length), sobra = cabem.slice(vagas);
+    // nomes repetidos (ex.: várias "image.png" coladas) ganham (2), (3)… para o Onvio não confundir os arquivos
+    const usados = new Set(r.arquivos.map(a => a.name.toLowerCase()));
+    const unico = a => {
+      if (!usados.has(a.name.toLowerCase())) { usados.add(a.name.toLowerCase()); return a; }
+      const m = /^(.*?)(\.[^.]*)?$/.exec(a.name); let n = 2, nome;
+      do { nome = m[1] + ' (' + n++ + ')' + (m[2] || ''); } while (usados.has(nome.toLowerCase()));
+      usados.add(nome.toLowerCase());
+      try { return new File([a], nome, { type: a.type }); } catch (e) { return a; }
+    };
+    r.arquivos = r.arquivos.concat(cabem.slice(0, vagas).map(unico));
     if (grandes.length) toast('Maior que 15 MB, ficou de fora: ' + grandes.map(a => a.name).join(', '), true);
+    if (sobra.length) toast('No máximo ' + MAX_ANEXOS + ' anexos por trâmite; ficou de fora: ' + sobra.map(a => a.name).join(', '), true);
     r.aberto = true; r.focar = true; cb.redesenhar();
   }
   if ($('#a-arquivos', g)) $('#a-arquivos', g).onchange = e => adicionar([...e.target.files]);
@@ -382,8 +394,8 @@ export function ligarResposta(g, i, r0, obs, cb) {
       catch (e) { if (passos.length) { r.erro = 'O passo "' + passos[passos.length - 1].rot + '" foi enviado, mas a conclusão não: ' + (e.message || e) + '. Atualize e conclua de novo.'; r.modo = 'editar'; cb.redesenhar(); return; } throw e; }
       if (!resp.ok && passos.length) { r.erro = 'O passo "' + passos[passos.length - 1].rot + '" foi enviado, mas a conclusão não: ' + (resp.erro || 'o Onvio não aceitou') + '. Atualize e conclua de novo.'; r.modo = 'editar'; cb.redesenhar(); return; }
       if (!resp.ok) throw new Error(resp.erro || 'o Onvio não aceitou');
-      if (resp.erroAnexos) toast('Trâmite enviado ao Onvio, mas: ' + resp.erroAnexos, true);
-      else toast('Trâmite enviado ao Onvio' + (resp.anexos ? ' com ' + resp.anexos + ' anexo(s)' : ''));
+      if (resp.erroAnexos) toast('Trâmite enviado ao Onvio, mas ' + resp.erroAnexos.replace(/^o trâmite foi enviado, mas /, ''), true);
+      else toast('Trâmite enviado ao Onvio' + (resp.anexos ? ' com ' + (resp.anexos === 1 ? '1 anexo' : resp.anexos + ' anexos') : ''));
       const depois = r.aoEnviar, prox = r.proxima;
       rascunhos.delete(chaveDe(i));
       enviado = { chave: chaveDe(i), em: Date.now() };

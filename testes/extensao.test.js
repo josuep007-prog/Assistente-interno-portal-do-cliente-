@@ -1674,6 +1674,33 @@ test('background: ação manda o trâmite pela aba do Onvio, com a autorização
   assert.equal(escritas.length, 3, 'pedido inválido não sai');
 });
 
+test('background: vários anexos saem um por pedido; um que falha não impede os outros e o resultado diz qual (0.61.0)', async () => {
+  const base = apiSimulada({ itens: { geral: [pend('g1', 77)] } });
+  const escritas = [];
+  const api = async (url, init) => {
+    if (init && init.method && init.method !== 'GET') {
+      const corpo = init.body instanceof FormData ? [...init.body.entries()].map(([k, v]) => k + '=' + v.name) : JSON.parse(init.body);
+      escritas.push({ url: new URL(url).pathname, corpo });
+      const falha = Array.isArray(corpo) && corpo[0] === 'file[]=b.pdf';
+      const r = respHttp(falha ? 500 : 201, 'application/json', '');
+      return Object.assign(r, { headers: { get: k => (k === 'location' && /\/topics$/.test(url) ? url + '/top9' : k === 'content-type' ? 'application/json' : null) } });
+    }
+    return base(url);
+  };
+  const { ctx, ouvintes } = carregarBackground({ abas: [aba(5, ONVIO_PORTAL)], fetchPorMundo: { MAIN: api }, fetch: api });
+  ctx.__controlOnvioAutorizacao = () => 'Bearer x';
+  const pedir = m => new Promise(res => ouvintes[0](m, { tab: { id: 5 } }, res));
+  const pdf = n => ({ nome: n, tipo: 'application/pdf', b64: Buffer.from('%PDF ' + n).toString('base64') });
+  const r = await pedir({ cmd: 'acao', acao: 'tramite', type: 'geral', num: 77, texto: 'Seguem', situacao: 4, arquivos: [pdf('a.pdf'), pdf('b.pdf'), pdf('c.pdf')] });
+  assert.equal(r.ok, true, r.erro);
+  const anexos = escritas.filter(e => /attachments$/.test(e.url));
+  assert.equal(anexos.length, 3, 'um pedido por arquivo');
+  assert.deepEqual(plano(anexos.map(e => e.corpo)), [['file[]=a.pdf'], ['file[]=b.pdf'], ['file[]=c.pdf']]);
+  assert.equal(r.anexos, 2);
+  assert.deepEqual(plano(r.arquivos.map(x => [x.nome, x.ok])), [['a.pdf', true], ['b.pdf', false], ['c.pdf', true]]);
+  assert.match(r.erroAnexos, /2 de 3 anexos.*b\.pdf/);
+});
+
 test('background: ação recusada pelo Onvio, sem aba ou com acesso de cliente não escreve', async () => {
   const base = apiSimulada({ itens: { geral: [pend('g1', 77)] } });
   let escritas = 0;
