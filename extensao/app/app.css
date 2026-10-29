@@ -850,14 +850,14 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .dados-g{margin-bottom:18px}
 .dados-g:last-child{margin-bottom:0}
 /* aba Dados: cada grupo num cartão, rótulos em letra normal e colunas que não se espalham na tela cheia (pedido do Josué, 23/10/2026) */
-#g-corpo .dados-g{max-width:1100px; margin-bottom:12px; padding:12px 16px 14px; border:1px solid var(--rule); border-radius:var(--r); background:var(--surface)}
-#g-corpo .dados-cab{display:flex; align-items:baseline; flex-wrap:wrap; gap:4px 10px; margin:0 0 10px}
-#g-corpo .dados-cab .dados-tit{margin:0; padding:0; border:0}
+:is(#g-corpo, #g-painel) .dados-g{max-width:1100px; margin-bottom:12px; padding:12px 16px 14px; border:1px solid var(--rule); border-radius:var(--r); background:var(--surface)}
+:is(#g-corpo, #g-painel) .dados-cab{display:flex; align-items:baseline; flex-wrap:wrap; gap:4px 10px; margin:0 0 10px}
+:is(#g-corpo, #g-painel) .dados-cab .dados-tit{margin:0; padding:0; border:0}
 .dados-nome{font-size:14px; font-weight:600; color:var(--ink)}
-#g-corpo .dados-g .campos{grid-template-columns:repeat(auto-fill, minmax(170px, 1fr)); gap:10px 18px; margin-bottom:0}
-#g-corpo .dados-g .campo .k{font-size:12px; font-weight:500; text-transform:none; letter-spacing:0}
-#g-corpo .dados-g .campo .v{font-size:13.5px; color:var(--ink)}
-#g-corpo .dados-g .campo-longo{margin-top:10px}
+:is(#g-corpo, #g-painel) .dados-g .campos{grid-template-columns:repeat(auto-fill, minmax(170px, 1fr)); gap:10px 18px; margin-bottom:0}
+:is(#g-corpo, #g-painel) .dados-g .campo .k{font-size:12px; font-weight:500; text-transform:none; letter-spacing:0}
+:is(#g-corpo, #g-painel) .dados-g .campo .v{font-size:13.5px; color:var(--ink)}
+:is(#g-corpo, #g-painel) .dados-g .campo-longo{margin-top:10px}
 .campo-longo{margin:12px 0 0}
 .campo-longo .texto-longo{margin-top:4px}
 
@@ -1571,3 +1571,38 @@ body.setor-fora .trilho [data-rota="equipe"], body.setor-fora .trilho [data-rota
 .hj-prev-rola{max-height:min(380px, 52vh); overflow-y:auto; overscroll-behavior:contain; scrollbar-width:thin}
 .hj-prev-rola .hj-prev thead th{position:sticky; top:0; z-index:1; background:var(--surface)}
 @media (max-height:820px){ #hj-sug .sg-lista{max-height:min(360px, 50vh)} .dist{max-height:min(300px, 46vh)} .hj-prev-rola{max-height:min(300px, 46vh)} }
+
+/* 0.61.0 · solicitação aberta: a conversa (com a caixa de resposta embaixo) e, ao lado, o painel com os dados da solicitação,
+   sempre à vista (pedido do Josué em 29/10/2026). Em janela estreita o painel fica em cima da conversa, com altura limitada. */
+.dlg-cols.dlg-v2{display:grid; grid-template-columns:minmax(0,1fr) minmax(300px,360px); min-height:0}
+.dlg-conv{display:flex; flex-direction:column; min-height:0; min-width:0}
+.dlg-painel{min-height:0; min-width:0; overflow-y:auto; display:flex; flex-direction:column; gap:10px; padding:14px 16px 18px; border-left:1px solid var(--rule); background:var(--surface-2)}
+.pn-cab{font:700 11.5px "Archivo",sans-serif; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-2)}
+.dlg-painel .dlg-destaques{display:grid; grid-template-columns:1fr 1fr; gap:6px; padding:0}
+.dlg-painel .dq{min-width:0}
+.dlg-painel .dq b{white-space:normal; overflow-wrap:anywhere}
+.pn-sec{border:1px solid var(--rule); border-radius:var(--r); background:var(--surface)}
+.pn-sec > summary{display:flex; align-items:center; gap:8px; padding:9px 12px; cursor:pointer; list-style:none; font:600 12.5px "IBM Plex Sans",sans-serif; color:var(--ink)}
+.pn-sec > summary::-webkit-details-marker{display:none}
+.pn-sec > summary::before{content:""; flex:none; width:6px; height:6px; margin:0 2px; border-right:1.5px solid var(--ink-2); border-bottom:1.5px solid var(--ink-2); transform:rotate(-45deg); transition:transform .12s}
+.pn-sec[open] > summary::before{transform:rotate(45deg)}
+.pn-sec > summary:hover{color:var(--blue-deep)}
+.pn-sec > summary:focus-visible{outline:2px solid var(--blue-mid); outline-offset:-2px}
+.pn-n{margin-left:auto; font:600 12px "IBM Plex Mono",monospace; color:var(--ink-2)}
+.pn-n.late{color:var(--brand-red)}
+.pn-corpo{padding:0 12px 12px; font-size:13px}
+.pn-corpo .vazio{padding:12px 0; text-align:left}
+#g-painel .dados-g{max-width:none; padding:10px 0 0; border:0; border-top:1px solid var(--rule); border-radius:0; background:none; margin-bottom:10px}
+#g-painel .dados-g:first-child{border-top:0; padding-top:0}
+#g-painel .dados-g .campos{grid-template-columns:1fr 1fr; gap:8px 12px}
+#g-painel .obs-lista{margin:8px 0 12px}
+#g-painel .anexos{margin:0 0 8px}
+#g-painel .item-ag{padding:8px 0}
+.tr-sit-pill{font:600 11px "IBM Plex Sans",sans-serif; padding:1px 7px; border-radius:3px; background:var(--surface-3); color:var(--ink-2); white-space:nowrap}
+.tr-item.esc .tr-sit-pill{background:color-mix(in srgb, var(--blue-deep) 14%, var(--surface))}
+@media (max-width:999px){
+  .dlg-cols.dlg-v2{display:flex; flex-direction:column}
+  .dlg-cols.dlg-v2 > .dlg-conv{flex:1 1 auto}
+  .dlg-painel{order:-1; flex:0 0 auto; max-height:34vh; border-left:0; border-bottom:1px solid var(--rule); padding:10px 16px 12px}
+  .dlg-painel .dlg-destaques{grid-template-columns:repeat(auto-fill, minmax(150px, 1fr))}
+}

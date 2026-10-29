@@ -10,9 +10,10 @@ import { abrirNova, novaAberta } from './nova-dlg.js';
 import { abrirAnexos, anexosAbertos, contarAnexos, tipoArquivo } from './anexos-dlg.js';
 const OC = window.OC;
 
-const LARGURA_LATERAL = 1180;   // a partir daqui a caixa de resposta vai para o lado da conversa
 let atual = null;        // { type, num }
-let aba = 'tramites';
+let aba = 'tramites';     // 'tramites' (a conversa) ou 'acao' (formulário de uma ação no lugar da conversa)
+const CAIXA_SEMPRE_ABERTA = 1000;   // a partir desta largura a caixa de resposta não recolhe
+const painelAbertos = new Map();   // seções do painel de dados abertas/fechadas pela pessoa (vale enquanto o app está aberto)
 let lista = null;        // lista de onde a pessoa abriu (para anterior/próxima)
 let ultimo = null;       // { i, r, erro, carregando } para redesenhar ao trocar de aba ou ao mudar lembretes
 let rolada = null;       // solicitação cuja conversa já foi levada ao fim (uma vez por abertura)
@@ -39,7 +40,7 @@ export async function abrirDetalhe(ref, fonte, opcoes) {
   const mesma = !!atual && atual.type === ref.type && atual.num === String(ref.num);
   if (!mesma) { cancelarPendente(); fecharAcao(); if (aba === 'acao') aba = 'tramites'; }
   atual = { type: ref.type, num: String(ref.num) };
-  if ((aba === 'lembretes' || aba === 'acao') && !ultimo) aba = 'tramites';
+  if (aba === 'acao' && !ultimo) aba = 'tramites';
   if (opcoes && opcoes.acao === 'tramite') { prepararResposta({ type: ref.type, num: String(ref.num) }, opcoes.preset); aba = 'tramites'; }
   else if (opcoes && opcoes.acao) { novaAcao(opcoes.acao, opcoes.preset); aba = 'acao'; }
   const doResumo = itens().find(i => i.type === ref.type && String(i.num) === String(ref.num));
@@ -52,9 +53,8 @@ export async function abrirDetalhe(ref, fonte, opcoes) {
   const r = await enviar({ cmd: 'detalhe', type: ref.type, num: String(ref.num) });
   if (atual !== meu) return;                                        // a pessoa já abriu outra
   if (!r.ok) { desenhar(base, null, 'Não foi possível ler a solicitação no Onvio: ' + (r.erro || ''), false); return; }
-  // solicitação aberta agora (não a mesma de antes, nem por uma ação): com trâmite do escritório, na conversa; sem nenhum
-  // (só a abertura do cliente, ou nada), nos Dados. Se a leitura dos trâmites falhou, na conversa, que mostra o erro.
-  if (!mesma && !(opcoes && opcoes.acao)) aba = r.erroTramites || (Array.isArray(r.tramites) && r.tramites.some(x => x.lado === 'esc')) ? 'tramites' : 'dados';
+  // sempre abre na conversa: os dados ficam à vista no painel ao lado (0.61.0)
+  if (!mesma && !(opcoes && opcoes.acao)) aba = 'tramites';
   desenhar(Object.assign({}, base, r.item), r, null, false);
 }
 
@@ -67,12 +67,6 @@ function andar(d) {
 }
 const meusLembretes = i => (estado.lembretes || []).filter(l => l.type === i.type && String(l.num) === String(i.num));
 
-// a janela mudou de tamanho: passa a caixa de resposta para o lado (ou de volta para baixo) sem perder o rascunho
-addEventListener('resize', () => {
-  if (!ultimo || !detalheAberto() || aba !== 'tramites') return;
-  const quer = innerWidth >= LARGURA_LATERAL && !ultimo.carregando && !ultimo.erro && !!ultimo.r;
-  if (quer !== !!document.querySelector('#gaveta .dlg-cols.lateral')) desenhar(ultimo.i, ultimo.r, ultimo.erro, ultimo.carregando);
-});
 
 function desenhar(i, r, erro, carregando) {
   ultimo = { i, r, erro, carregando };
@@ -80,9 +74,9 @@ function desenhar(i, r, erro, carregando) {
   const corpoAntes = $('#g-corpo'), stAntes = corpoAntes ? corpoAntes.scrollTop : 0;   // só a caixa de resposta mudou: a conversa fica onde estava
   const tramites = r && r.tramites;
   const lems = meusLembretes(i);
-  // janela larga: a conversa ocupa a altura toda e a caixa de resposta fica ao lado, sempre aberta
-  const lado = aba === 'tramites' && !carregando && !erro && !!r && window.innerWidth >= LARGURA_LATERAL;
-  definirLateral(lado);
+  // a caixa de resposta fica sempre embaixo da conversa; ao lado fica o painel com os dados da solicitação (0.61.0).
+  // Com a janela larga ela já vem aberta (sem recolher), para ficar claro onde se responde; estreita, começa recolhida.
+  definirLateral(innerWidth >= CAIXA_SEMPRE_ABERTA);
   const p = posicao();
   const ultimoTr = tramites && tramites.length ? tramites[tramites.length - 1] : null;
   // prazo legal de pagamento (férias e rescisão): o da leitura ou, no detalhe, calculado das datas lidas agora
@@ -118,17 +112,14 @@ function desenhar(i, r, erro, carregando) {
     '<button class="icon-btn" id="g-fechar" aria-label="Fechar" title="Fechar (Esc)"><svg class="ic"><use href="#i-x"/></svg></button></div>' +
     '<div class="dp-last">' + dpLast() +
     '</div>' +
-    destaquesHtml(r) +
-    '<div class="dtabs" role="tablist">' +
-      '<button class="dtab' + (aba === 'tramites' ? ' on' : '') + '" data-aba="tramites" role="tab">Trâmites<span class="n">' + (tramites ? tramites.length : '') + '</span></button>' +
-      '<button class="dtab' + (aba === 'dados' ? ' on' : '') + '" data-aba="dados" role="tab">Dados' + (r && r.anexos && r.anexos.length ? '<span class="n">' + r.anexos.length + ' anexo' + (r.anexos.length > 1 ? 's' : '') + '</span>' : '') + '</button>' +
-      '<button class="dtab' + (aba === 'cliente' ? ' on' : '') + '" data-aba="cliente" role="tab">Para o cliente' + (obs.some(o => o.alerta) ? '<span class="n late">!</span>' : '') + '</button>' +
-      '<button class="dtab' + (aba === 'lembretes' ? ' on' : '') + '" data-aba="lembretes" role="tab">Lembretes<span class="n">' + (lems.filter(l => !l.feito).length || '') + '</span></button>' +
-    '</div>' +
-    '<div class="dlg-cols' + (lado ? ' lateral' : '') + '">' +
+    // conversa (trâmites + caixa de resposta embaixo) e, ao lado, o painel com os dados, os anexos, o que dizer ao cliente e os lembretes
+    '<div class="dlg-cols dlg-v2">' +
+    '<div class="dlg-conv">' +
     '<div class="dlg-body" id="g-corpo">' + (erro ? '<div class="faixa"><svg class="ic"><use href="#i-alert"/></svg>' + esc(erro) + '</div>' : '') +
-      (aba === 'acao' && acaoAberta() ? formAcao(i) : aba === 'dados' ? dados(i, r, carregando) : aba === 'cliente' ? clienteHtml(obs, carregando) : aba === 'lembretes' ? lembretesHtml(lems) : tramitesHtml(r, carregando, i)) + '</div>' +
+      (aba === 'acao' && acaoAberta() ? formAcao(i) : tramitesHtml(r, carregando, i)) + '</div>' +
     (aba === 'tramites' && !carregando && r && !erro ? respostaHtml(i, obs, { datas: r.datas, proxima: p >= 0 && p < lista.length - 1 }) : '') +
+    '</div>' +
+    painelHtml(i, r, carregando, obs, lems, nAnexos) +
     '</div>' +
     '<div class="dlg-actions">' +
       '<button class="btn btn-sm" id="g-onvio"><svg class="ic ic-sm"><use href="#i-link"/></svg> Abrir no Onvio</button>' +
@@ -162,7 +153,8 @@ function desenhar(i, r, erro, carregando) {
     if (rolar && c) c.scrollTop = c.scrollHeight;
   });
   if ($('#g-ant')) { $('#g-ant').onclick = () => andar(-1); $('#g-prox').onclick = () => andar(1); }
-  $$('[data-aba]', g).forEach(b => b.onclick = () => { aba = b.dataset.aba; desenhar(i, r, erro, carregando); });
+  // painel: lembra quais seções a pessoa abriu ou fechou
+  $$('#g-painel details[data-pn]', g).forEach(d => d.addEventListener('toggle', () => painelAbertos.set(d.dataset.pn, d.open)));
   $('#g-onvio').onclick = async () => {
     const x = await enviar({ cmd: 'abrir', item: { type: i.type, num: String(i.num) } });
     if (!x.ok) toast('Não foi possível abrir no Onvio: ' + (x.erro || ''), true);
@@ -263,7 +255,7 @@ function tramitesHtml(r, carregando, i) {
       '<span class="tr-av" title="' + esc(quem) + '">' + esc(iniciais(quem) || (lado === 'esc' ? 'E' : 'C')) + '</span>' +
       '<div class="tr-bolha">' +
         '<div class="tr-meta"><b>' + esc(quem) + '</b><span class="tr-lado">' + (x.n === 1 ? 'abertura' : lado === 'esc' ? 'escritório' : 'cliente') + '</span>' +
-          '<span class="tr-quando" title="' + esc(fmtDataHora(x.em)) + '">#' + String(x.n).padStart(2, '0') + ' · ' + esc(simples() ? relativo(x.em) : relativo(x.em) !== fmtDataHora(x.em) ? relativo(x.em) + ' · ' + fmtDataHora(x.em) : fmtDataHora(x.em)) + '</span></div>' +
+          (x.situacao && x.n !== 1 ? '<span class="tr-sit-pill" title="Situação gravada por este trâmite">' + esc(x.situacao) + '</span>' : '') + '<span class="tr-quando" title="' + esc(fmtDataHora(x.em)) + '">#' + String(x.n).padStart(2, '0') + ' · ' + esc(simples() ? relativo(x.em) : relativo(x.em) !== fmtDataHora(x.em) ? relativo(x.em) + ' · ' + fmtDataHora(x.em) : fmtDataHora(x.em)) + '</span></div>' +
         (x.texto ? '<div class="tr-texto">' + esc(textoPuro(x.texto)) + '</div><button type="button" class="tr-mais">Ver tudo</button>' : '<div class="tr-texto fraco">Sem texto' + (anexos.length ? ' (só anexo)' : '') + '</div>') +
         (anexos.length ? '<div class="tr-anexos">' + anexos.map((a, ai) => { const tp = tipoArquivo(a.nome); return '<button type="button" class="tr-arq"' + (a.id || a.direto ? ' data-ax-abrir="' + gi + ':' + ai + '"' : ' disabled') + ' title="Baixar ' + esc(a.nome) + '"><span class="ax-ic ' + tp.cls + '">' + tp.rot + '</span><span class="ax-nome">' + esc(a.nome) + '</span></button>'; }).join('') + '</div>' : '') +
       '</div>' + (x === ultCli && x.n !== 1 ? responder : '') + '</div>' + sit;
@@ -271,15 +263,40 @@ function tramitesHtml(r, carregando, i) {
   return '<div class="tr-lista" id="tr-lista">' + corpo + rasc + '</div>';
 }
 
-// Em destaque (sutil): as datas e os dados que definem o atendimento, tirados da solicitação completa.
+// Em destaque: as datas e os dados que definem o atendimento, tirados da solicitação completa (no painel, sempre à vista).
 function destaquesHtml(r) {
   const l = [];
-  for (const g of (r && r.grupos) || []) for (const c of g.campos) if (c.destaque && !c.longo && l.length < 6 && !l.some(x => x.k === c.k)) l.push(c);
+  for (const g of (r && r.grupos) || []) for (const c of g.campos) if (c.destaque && !c.longo && l.length < 8 && !l.some(x => x.k === c.k)) l.push(c);
+  // sem campo em destaque: os primeiros dados curtos da solicitação
+  if (!l.length) for (const g of (r && r.grupos) || []) for (const c of g.campos) if (!c.longo && l.length < 6 && !l.some(x => x.k === c.k)) l.push(c);
   if (!l.length) return '';
   return '<div class="dlg-destaques" aria-label="Em destaque">' + l.map(c => '<span class="dq"><small>' + esc(c.k) + '</small><b>' + esc(c.v) + '</b></span>').join('') + '</div>';
 }
 
-// Aba Dados: só o que serve para atender. Responsável, datas, solicitante e prazos já estão no topo da janela.
+// Painel de dados (0.61.0, pedido do Josué em 29/10/2026): ao lado da conversa, sempre à vista; em janela estreita, em cima dela.
+// Em destaque no topo; "Todos os dados", Anexos, Para o cliente e Lembretes em seções que abrem e fecham.
+function painelHtml(i, r, carregando, obs, lems, nAnexos) {
+  const sec = (id, tit, n, corpo, padrao, alerta) => {
+    const ab = painelAbertos.has(id) ? painelAbertos.get(id) : padrao;
+    return '<details class="pn-sec" data-pn="' + id + '"' + (ab ? ' open' : '') + '><summary><span class="pn-tit">' + tit + '</span>' + (n ? '<span class="pn-n' + (alerta ? ' late' : '') + '">' + n + '</span>' : '') + '</summary><div class="pn-corpo">' + corpo + '</div></details>';
+  };
+  if (carregando) return '<aside class="dlg-painel" id="g-painel" aria-label="Dados da solicitação"><div class="pn-cab">Dados da solicitação</div><div class="vazio">Lendo a solicitação completa no Onvio…</div></aside>';
+  const abertura = (r && r.anexos) || [], total = Math.max(nAnexos, abertura.length);
+  const anexos = total ? (abertura.length ? '<div class="anexos">' + abertura.map(a => '<span><svg class="ic ic-sm"><use href="#i-paperclip"/></svg>' + esc(a) + '</span>').join('') + '</div>' : '') +
+    (total > abertura.length ? '<p class="fraco">' + (abertura.length ? 'E mais ' + (total - abertura.length) + ' nos trâmites da conversa.' : total + (total === 1 ? ' anexo' : ' anexos') + ' nos trâmites da conversa.') + '</p>' : '') +
+    (nAnexos ? '<button type="button" class="btn btn-sm" id="g-anexos2"><svg class="ic ic-sm"><use href="#i-download"/></svg> Escolher e baixar</button>' : '') : '';
+  const pend = lems.filter(l => !l.feito).length, dq = destaquesHtml(r);
+  return '<aside class="dlg-painel" id="g-painel" aria-label="Dados da solicitação">' +
+    '<div class="pn-cab">Dados da solicitação</div>' +
+    dq +
+    sec('dados', 'Todos os dados', '', dados(i, r, false), !dq) +           // sem destaque no topo, os dados já vêm abertos
+    (total ? sec('anexos', 'Anexos', String(total), anexos, true) : '') +
+    sec('cliente', 'Para o cliente', obs.some(o => o.alerta) ? '!' : '', clienteHtml(obs, false), obs.some(o => o.alerta), true) +
+    sec('lembretes', 'Lembretes', pend ? String(pend) : '', lembretesHtml(lems), pend > 0) +
+  '</aside>';
+}
+
+// Todos os dados (seção do painel): só o que serve para atender. Responsável, datas, solicitante e prazos já estão no topo da janela.
 function dados(i, r, carregando) {
   const grade = cs => '<div class="campos">' + cs.map(([k, v, dq]) => '<div class="campo' + (dq ? ' dq-campo' : '') + '"><div class="k">' + esc(k) + '</div><div class="v">' + esc(v) + '</div></div>').join('') + '</div>';
   if (carregando) return '<div class="vazio">Lendo a solicitação completa no Onvio…</div>';
@@ -293,7 +310,6 @@ function dados(i, r, carregando) {
         (curtos.length ? grade(curtos.map(c => [c.k, c.v, c.destaque])) : '') +
         longos.map(c => '<div class="campo campo-longo"><div class="k">' + esc(c.k) + '</div><div class="texto-longo">' + esc(textoPuro(c.v)) + '</div></div>').join('') + '</section>';
     }).join('');
-    if (r.anexos && r.anexos.length) html += '<section class="dados-g"><h4 class="dados-tit">Anexos da solicitação</h4><div class="anexos">' + r.anexos.map(a => '<span><svg class="ic ic-sm"><use href="#i-paperclip"/></svg>' + esc(a) + '</span>').join('') + '</div><div style="margin-top:8px"><button type="button" class="btn btn-sm" id="g-anexos2"><svg class="ic ic-sm"><use href="#i-download"/></svg> Escolher e baixar anexos</button></div></section>';
     return html || '<div class="vazio">O Onvio não trouxe outros dados desta solicitação.</div>';
   }
   const aviso = r && r.erroDados ? '<div class="faixa warn"><svg class="ic"><use href="#i-alert"/></svg>Não foi possível ler a solicitação completa (' + esc(r.erroDados) + '). Mostrando o que veio da lista.</div>' : '';
@@ -334,7 +350,7 @@ addEventListener('keydown', e => {
   else if (e.key === 'ArrowRight') andar(1);
   else if ((e.key === 'r' || e.key === 'R') && !e.ctrlKey && !e.metaKey && !e.altKey) {
     if (focarResposta()) e.preventDefault();
-    else if (ultimo && ultimo.r && aba !== 'tramites') { aba = 'tramites'; desenhar(ultimo.i, ultimo.r, ultimo.erro, ultimo.carregando); if (focarResposta()) e.preventDefault(); }
+    else if (ultimo && ultimo.r && aba !== 'tramites') { aba = 'tramites'; fecharAcao(); desenhar(ultimo.i, ultimo.r, ultimo.erro, ultimo.carregando); if (focarResposta()) e.preventDefault(); }
   }
 });
 aoMudar(quais => {

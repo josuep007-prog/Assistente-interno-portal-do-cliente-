@@ -16,7 +16,7 @@ let pendente = null;             // { chave, timer }: contagem para desistir
 let enviado = null;              // { chave, em }: o último envio, para o aviso e o destaque da bolha
 let recolhida = true;            // começa só com a barra de título, para a conversa ter a janela; abre ao clicar, no atalho R ou ao preparar uma resposta (vale nesta visita)
 let chaveAberta = '';            // a solicitação a que o estado recolhida/aberta se refere: ao abrir outra, volta a recolher
-let lateral = false;              // janela larga: a caixa de resposta fica ao lado da conversa, sempre aberta (sem recolher)
+let lateral = false;              // janela larga: a caixa de resposta fica sempre aberta (sem recolher), embaixo da conversa
 let aoAbrir = null;              // { r, redesenhar } da caixa na tela, para o atalho R e o botão Responder abrirem a recolhida
 
 const chaveDe = i => i.type + ':' + i.num;

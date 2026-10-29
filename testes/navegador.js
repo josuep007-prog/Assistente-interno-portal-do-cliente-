@@ -397,7 +397,7 @@ async function abrirApp(rota, extra, antes, o) {
 }
 // a caixa de resposta começa recolhida (a conversa fica com a janela): abre pela barra, se preciso
 // sem trâmites a solicitação abre nos Dados: vai à conversa para chegar na caixa de resposta
-const irTramites = async p => { await p.waitForSelector('#gaveta .dtab'); if (!await p.$('#cmp')) await p.click('#gaveta [data-aba="tramites"]'); };
+const irTramites = async p => { await p.waitForSelector('#gaveta #g-painel'); await p.waitForSelector('#gaveta #cmp'); };
 const abrirCaixa = async p => { await irTramites(p); await p.waitForSelector('#cmp'); if (await p.$('#cmp-rec[aria-expanded="false"]')) await p.click('#cmp-rec'); await p.waitForSelector('#a-texto'); };
 const linhas = (p, sel) => p.$$eval(sel || '#corpo [data-k]', e => e.map(x => x.dataset.k));
 
@@ -412,7 +412,7 @@ await passo('app · listas que antes cortavam (Sugestões do Hoje, Sem analista 
     await p.waitForFunction(() => document.querySelectorAll('#hj-sug .cs-l').length >= 9, null, { timeout: 6000 });
     const n = await p.$$eval('#hj-sug .cs-l', e => e.length);
     assert.ok(n >= 9, estilo + ': todas as sugestões estão na lista, não só 8 (' + n + ')');
-    assert.equal(await p.$('#sg-mais'), null, estilo + ': sem o botão Ver todas');
+    assert.equal(await p.$('#sg-mais') === null, true, estilo + ': sem o botão Ver todas');
     assert.doesNotMatch(await p.textContent('#hj-sug'), /Ver todas|Mostrar menos/);
     const r = await p.$eval('#hj-sug .sg-lista', e => ({ passa: e.scrollHeight > e.clientHeight + 2, oy: getComputedStyle(e).overflowY, h: e.clientHeight }));
     assert.equal(r.passa, true, estilo + ': a lista passa da caixa e rola por dentro');
@@ -535,8 +535,8 @@ await passo('app · Hoje (analista): destaque com rosca, carrossel e próximos p
   assert.equal(await p.textContent('#n-equipe'), '1', 'G3 da equipe na vez do escritório');
   assert.match(await p.textContent('#aovivo-tx'), /^Ao vivo · \d\d:\d\d:\d\d$/);
   assert.match(await p.textContent('.trilho [data-rota="fila"]'), /Solicitações/);
-  assert.equal(await p.$('.trilho [data-rota="solicitacoes"]'), null, 'Consultar no Onvio saiu');
-  assert.equal(await p.$('.trilho [data-rota="clientes"]'), null, 'Clientes saiu');
+  assert.equal(await p.$('.trilho [data-rota="solicitacoes"]') === null, true, 'Consultar no Onvio saiu');
+  assert.equal(await p.$('.trilho [data-rota="clientes"]') === null, true, 'Clientes saiu');
   assert.deepEqual(p.erros, []);
 });
 
@@ -761,7 +761,7 @@ await passo('app · Hoje: rescisão nova (aviso): põe em análise com o aviso d
   await abrirCaixa(p);
   const tx = await p.$eval('#a-texto', t => t.value);
   assert.match(tx, /rescisão de Maria Souza/);
-  assert.match(tx, /até 30\/10\/2026/, 'a data do pagamento foi preenchida');
+  assert.match(tx, /até \*\*30\/10\/2026\*\*/, "a data do pagamento foi preenchida, em destaque");
   assert.match(tx, /exame demissional/i);
   assert.match(tx, /documentos/);
   assert.match(tx, /eSocial/);
@@ -786,7 +786,7 @@ await passo('app · Hoje: sugestões de férias nova (trâmite já preenchido co
   await abrirCaixa(p);
   const tx = await p.$eval('#a-texto', t => t.value);
   assert.match(tx, /empréstimos consignados/);
-  assert.match(tx, /até 18\/12\/2026/, 'a variável {pagamentoFerias} foi preenchida');
+  assert.match(tx, /até \*\*18\/12\/2026\*\*/, "a variável {pagamentoFerias} foi preenchida, em destaque");
   assert.doesNotMatch(tx, /\{[a-zA-Z]+\}/, 'nenhuma variável sobrando: ' + tx);
   assert.equal(await p.$eval('.cmp-int.on', b => b.dataset.sit), '2', 'Em análise');
   await p.keyboard.press('Escape');
@@ -827,7 +827,7 @@ await passo('app · Solicitações: responsável sugerido nas sem responsável a
   assert.match(await p.getAttribute('[data-sug-resp="geral:s1"]', 'title'), /atendeu 3 de 4 solicitações desta empresa/);
   assert.equal(await p.textContent('[data-sug-resp="geral:s2"]'), 'Escolher responsável', 'sem histórico');
   assert.equal(await p.textContent('[data-sug-resp="geral:s3"]'), 'Escolher responsável', 'sem sugestão (chegou depois da leitura): o botão de escolher continua');
-  assert.equal(await p.$('#corpo .c-sub .today'), null, 'nenhuma sem responsável fica sem o botão');
+  assert.equal(await p.$('#corpo .c-sub .today') === null, true, 'nenhuma sem responsável fica sem o botão');
   assert.equal(await p.$eval('[data-sug-resp="geral:s1"]', b => getComputedStyle(b).borderTopStyle), 'solid', 'botão padrão, sem borda tracejada');
   assert.ok(await p.$eval('[data-sug-resp="geral:s2"]', b => b.classList.contains('btn') && b.classList.contains('btn-sm')), 'o mesmo botão pequeno do resto da tela');
   if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/sug-resp.png' });
@@ -852,7 +852,7 @@ await passo('app · Hoje sem nada com você: abre na equipe toda e a frase expli
   await p.waitForFunction(() => document.querySelector('#hj-titulo em') && document.querySelector('#hj-titulo em').textContent === '3');
   await p.selectOption('#hj-carteira', '__minha');
   await p.waitForFunction(() => /Nada pendente nesta carteira/.test(document.querySelector('#hj-titulo').textContent));
-  assert.equal(await p.$('#ht-resumo'), null, 'escolheu: sem a frase');
+  assert.equal(await p.$('#ht-resumo') === null, true, 'escolheu: sem a frase');
   const vazio = await abrirApp('#/inicio', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: [] }) });
   assert.match(await vazio.textContent('#ht-resumo'), /não trouxe nenhuma pendência em nenhuma das 10 listas.*Testar a leitura/);
   assert.deepEqual(p.erros.concat(vazio.erros), []);
@@ -870,7 +870,7 @@ await passo('app · Fila: abas Minhas, Todas e Respondidas, cartões por padrão
   await p.click('#ativos [data-tira="kpi"]');
   await p.waitForFunction(() => location.hash === '#/fila');
   await p.click('#abas [data-aba="todas"]'); await p.waitForFunction(() => document.querySelectorAll('#corpo [data-k]').length === 4);
-  assert.equal(await p.$('[data-lado]'), null, 'sem o seletor de vez antigo');
+  assert.equal(await p.$('[data-lado]') === null, true, 'sem o seletor de vez antigo');
   // etiqueta de situação sempre numa linha só (cartões e lista), com o texto completo no title
   for (const vis of ['cartoes', 'lista']) {
     await p.click('[data-vis="' + vis + '"]'); await p.waitForSelector('#corpo .pill-sit');
@@ -885,7 +885,7 @@ await passo('app · Fila: abas Minhas, Todas e Respondidas, cartões por padrão
   assert.equal(await p.$$eval('#tipos .tipo-par .tipo-elo', e => e.length), 0, 'sem o ícone de link entre aviso e cálculo');
   assert.deepEqual(await p.$$eval('#tipos .tipo-par-cab', e => e.map(x => x.textContent)), ['Férias', 'Rescisão'], 'só o nome da família no título');
   assert.equal(await p.$$eval('#tipos .tipo-rot', e => e.filter(x => x.scrollWidth > x.clientWidth + 1).length), 0, 'nome do tipo sem texto cortado');
-  assert.equal(await p.$('#f-vez'), null, 'sem o filtro Aguardando o cliente: o cliente tem a aba Respondidas');
+  assert.equal(await p.$('#f-vez') === null, true, 'sem o filtro Aguardando o cliente: o cliente tem a aba Respondidas');
   assert.match(await p.textContent('#vez-tit'), /^Todas as pendências/);
   // grupos pela ordem de prioridade: prazo legal, sem análise, em análise, cliente respondeu, aguardando o cliente
   assert.deepEqual(await p.$$eval('#corpo .emp-cab b', e => e.map(x => x.textContent)), ['Sem análise', 'Em análise', 'Cliente respondeu', 'Aguardando o cliente']);
@@ -906,7 +906,7 @@ await passo('app · Fila: abas Minhas, Todas e Respondidas, cartões por padrão
   assert.equal(await p.textContent('#n-filtros'), '1');
   await p.click('#f-limpar');
   assert.equal((await linhas(p)).length, 4);
-  assert.equal(await p.$('#f-grav'), null, 'o filtro de gravidade saiu: o prazo interno não aparece');
+  assert.equal(await p.$('#f-grav') === null, true, 'o filtro de gravidade saiu: o prazo interno não aparece');
   assert.equal(await p.$$eval('#corpo .sc', e => e.length), 4);
   await p.click('[data-vis="lista"]');
   if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/fila-lista.png' });
@@ -966,7 +966,7 @@ await passo('app · Distribuir: distribuição automática no topo; ligar exige 
   await p.evaluate(a => chrome.storage.local.set({ distribuicaoAuto: { ligada: true, ligadaEm: a, ultima: { em: a, atribuidas: 2, falhas: 0, puladas: { semHistorico: 3, jaTemResponsavel: 1 }, parou: '' } }, distribuicaoLog: [{ k: 'geral:b', type: 'geral', num: 102, typeLabel: 'Geral', cliente: 'BETA', resp: 'Bia Souza', em: a }] }), agora);
   await p.waitForFunction(() => document.querySelector('#da-estado') && document.querySelector('#da-estado').textContent.trim() === 'Ligada');
   // detalhes (regras, última rodada e atribuições) abrem sob demanda
-  assert.equal(await p.$('.da-num'), null, 'os detalhes começam fechados');
+  assert.equal(await p.$('.da-num') === null, true, 'os detalhes começam fechados');
   await p.click('#da-detalhes');
   await p.waitForSelector('.da-num');
   assert.match(await p.textContent('.da-num'), /2atribuídas0com erro/);
@@ -983,7 +983,7 @@ await passo('app · Distribuir: distribuição automática no topo; ligar exige 
   await p.reload(); await p.waitForSelector('#da-ligar');
   await p.click('#da-ligar');
   await p.waitForSelector('#da-conf');
-  assert.equal(await p.$('#da-senha'), null, 'liberada: sem pedir a senha');
+  assert.equal(await p.$('#da-senha') === null, true, 'liberada: sem pedir a senha');
   // o endereço antigo da aba na Equipe leva para o Distribuir
   await p.evaluate(() => { location.hash = '#/equipe?aba=dist'; });
   await p.waitForFunction(() => location.hash.startsWith('#/distribuir'));
@@ -994,11 +994,11 @@ await passo('app · Equipe (área do gestor): pede a senha; Desempenho com nota,
   const p = await abrirApp('#/equipe');
   // trava: sem a senha certa não mostra nada da equipe
   await p.waitForSelector('#g-trava');
-  assert.equal(await p.$('.av-hero'), null);
+  assert.equal(await p.$('.av-hero') === null, true);
   await p.fill('#g-senha', 'errada');
   await p.click('#g-entrar');
   await p.waitForSelector('#g-erro:not([hidden])');
-  assert.equal(await p.$('.av-hero'), null, 'senha errada: continua travada');
+  assert.equal(await p.$('.av-hero') === null, true, 'senha errada: continua travada');
   assert.equal(await p.inputValue('#g-senha'), '', 'o campo é limpo');
   // entregas simuladas do período (o service worker leria no Onvio)
   await p.evaluate(() => {
@@ -1018,7 +1018,7 @@ await passo('app · Equipe (área do gestor): pede a senha; Desempenho com nota,
   await p.press('#g-senha', 'Enter');
   await p.waitForSelector('.av-hero');
   assert.ok(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'desempenho' && m.dias === 30)), 'pediu as entregas de 30 dias');
-  assert.equal(await p.$('#av-periodo [data-dias]'), null, 'período fixo em 30 dias, sem 7 e 14');
+  assert.equal(await p.$('#av-periodo [data-dias]') === null, true, 'período fixo em 30 dias, sem 7 e 14');
   assert.match(await p.textContent('#titulo'), /Equipe/);
   assert.deepEqual(await p.$$eval('#abas .aba', e => e.map(x => x.dataset.aba)), ['desempenho', 'carga', 'resp']);
   // números da equipe
@@ -1045,11 +1045,11 @@ await passo('app · Equipe (área do gestor): pede a senha; Desempenho com nota,
   assert.match(await p.textContent('#av-barras'), /Bia3 · 100% no prazo/, 'a f2 conta para a Bia, que a concluiu');
   assert.match(await p.textContent('#av-barras'), /Caio.*sem entregas no período/s);
   assert.doesNotMatch(await p.textContent('#av-barras'), /Caio[^A-Z]*\b0%/, 'quem não entregou não aparece com 0%');
-  assert.equal(await p.$('#av-disp'), null, 'a dispersão saiu');
+  assert.equal(await p.$('#av-disp') === null, true, 'a dispersão saiu');
   await p.click('#av-barras text[data-id="Ana Teste"]');
   // a pessoa abre numa janela por cima (não numa lista embaixo)
   await p.waitForSelector('#dlg-pessoa:not([hidden])');
-  assert.equal(await p.$('#av-det .av-det'), null, 'sem o detalhe embaixo da tela');
+  assert.equal(await p.$('#av-det .av-det') === null, true, 'sem o detalhe embaixo da tela');
   assert.match(await p.textContent('#dlg-pessoa h2'), /Ana Teste/);
   assert.match(await p.textContent('#dlg-pessoa .dlg-l1'), /1º no ranking/);
   assert.equal(await p.$eval('#av-rank .av-lin.ativo', r => r.dataset.resp), 'Ana Teste');
@@ -1080,12 +1080,12 @@ await passo('app · Equipe (área do gestor): pede a senha; Desempenho com nota,
   await p.waitForSelector('.av-exc');
   assert.match(await p.textContent('.av-exc'), /1 caso fora da conta/);
   assert.ok(await p.$eval('#av-rank [data-resp="Ana Teste"] .av-nota-tag', e => Number(e.textContent)) > antes, 'sem o caso, a nota sobe');
-  assert.equal(await p.$('#pp-lista [data-k="calcFerias:a"]'), null, 'o caso sai da janela');
+  assert.equal(await p.$('#pp-lista [data-k="calcFerias:a"]') === null, true, 'o caso sai da janela');
   assert.deepEqual(Object.keys(await p.evaluate(() => JSON.parse(localStorage.getItem('__mem')).avaliacaoExcecoes)), ['calcFerias:a'], 'guarda só o k');
   if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/pessoa.png' });
   await p.keyboard.press('Escape');
   await p.waitForSelector('#dlg-pessoa', { state: 'hidden' });
-  assert.equal(await p.$('#av-rank .av-lin.ativo'), null);
+  assert.equal(await p.$('#av-rank .av-lin.ativo') === null, true);
   await p.click('#av-exc-limpar');
   await p.waitForFunction(() => !document.querySelector('.av-exc'));
   await p.click('#av-como');
@@ -1097,8 +1097,8 @@ await passo('app · Equipe (área do gestor): pede a senha; Desempenho com nota,
   const kpis = await p.$$eval('.kpi', e => e.map(x => x.querySelector('.rot').textContent + '=' + x.querySelector('.val').textContent));
   assert.deepEqual(kpis, ['Pendências=5', 'Sem responsável=1', 'Fora do prazo=2', '1º trâmite (média)=1', 'Hoje=3 / 1']);
   for (const id of ['#g-carga', '#g-dias', '#g-horas', '#g-tipo']) assert.ok(await p.$(id + ' svg'), 'gráfico ' + id);
-  assert.equal(await p.$('#l-presc'), null, 'o painel de prescrição saiu da Equipe');
-  assert.equal(await p.$('#distribuicao'), null, 'sem a sugestão por quem tem menos pendências');
+  assert.equal(await p.$('#l-presc') === null, true, 'o painel de prescrição saiu da Equipe');
+  assert.equal(await p.$('#distribuicao') === null, true, 'sem a sugestão por quem tem menos pendências');
   await p.hover('#g-carga [data-tip]');
   assert.equal(await p.isVisible('#dica'), true, 'dica ao passar o mouse');
   // Responsáveis: mapa de calor e a fila da pessoa
@@ -1202,18 +1202,18 @@ await passo('app · Configurações: prazos com efeito na fila antes de salvar, 
 await passo('app · o analista não vê prazo interno nem gravidade (só o prazo legal); cantos quadrados em botões, etiquetas e janelas', async () => {
   const p = await abrirApp('#/fila?escopo=todas', {});
   await p.waitForSelector('#corpo [data-k="calcFerias:a"]');
-  assert.equal(await p.$('#corpo .c-porque'), null, 'sem G3 nem o porquê na lista');
-  assert.equal(await p.$('#corpo .sc-g3'), null);
+  assert.equal(await p.$('#corpo .c-porque') === null, true, 'sem G3 nem o porquê na lista');
+  assert.equal(await p.$('#corpo .sc-g3') === null, true);
   assert.doesNotMatch(await p.textContent('#corpo [data-k="calcFerias:a"]'), /Parada há 31 dias|G3|Crítica/, 'o motivo interno não aparece no cartão');
   await p.evaluate(() => { window.__respostas = { detalhe: { ok: true, item: {}, tramites: [] } }; });
   await p.click('#corpo [data-k="calcFerias:a"]');
   await p.waitForSelector('#gaveta h2');
-  assert.equal(await p.$('#gaveta .grav-porque'), null, 'o detalhe não explica gravidade ao analista');
-  assert.equal(await p.$('#gaveta .motivos'), null, 'nem motivos internos');
+  assert.equal(await p.$('#gaveta .grav-porque') === null, true, 'o detalhe não explica gravidade ao analista');
+  assert.equal(await p.$('#gaveta .motivos') === null, true, 'nem motivos internos');
   // cantos: até 4 px em botões, etiquetas, chips e janelas; iniciais continuam redondas
   const raio = sel => p.$eval(sel, e => parseFloat(getComputedStyle(e).borderTopLeftRadius));
   // a janela é redesenhada quando a leitura chega: mede depois que ela parou de mudar
-  for (const sel of ['#gaveta', '#gaveta .pill', '#gaveta .btn', '#gaveta .dtab']) await p.waitForFunction(s => { const e = document.querySelector(s); return e && e.isConnected && parseFloat(getComputedStyle(e).borderTopLeftRadius) <= 4; }, sel, { timeout: 3000 }).catch(async () => assert.fail(sel + ': ' + await raio(sel)));
+  for (const sel of ['#gaveta', '#gaveta .pill', '#gaveta .btn', '#gaveta .pn-sec']) await p.waitForFunction(s => { const e = document.querySelector(s); return e && e.isConnected && parseFloat(getComputedStyle(e).borderTopLeftRadius) <= 4; }, sel, { timeout: 3000 }).catch(async () => assert.fail(sel + ': ' + await raio(sel)));
   await p.keyboard.press('Escape');
   await p.evaluate(() => { const x = document.createElement('div'); x.innerHTML = '<span class="pr-tag" id="t1">x</span><span class="chip-f" id="t2">x</span><span class="sc-n" id="t3">1</span><span class="orig" id="t4">x</span><span class="tr-av" id="t5">AT</span>'; document.body.appendChild(x); });
   for (const sel of ['#t1', '#t2', '#t3', '#t4']) assert.ok(await raio(sel) <= 4, sel + ': ' + await raio(sel));
@@ -1221,7 +1221,7 @@ await passo('app · o analista não vê prazo interno nem gravidade (só o prazo
   assert.deepEqual(p.erros, []);
 });
 
-await passo('app · detalhe: janela com dados e trâmites lidos na hora; lembrete ligado à solicitação aparece na aba Lembretes', async () => {
+await passo('app · detalhe: janela com dados e trâmites lidos na hora; lembrete ligado à solicitação aparece no painel, em Lembretes', async () => {
   const p = await abrirApp('#/fila', {});
   await p.evaluate(() => { window.__respostas = { detalhe: { ok: true, item: { assunto: 'Férias do João', descricao: '<p>Segue <b>pedido</b></p>', meio: 'WEB' }, tramites: [{ n: 1, em: '2026-10-10T10:00:00', situacao: 'Sem análise', autor: 'Cliente BETA', texto: 'Abertura', anexos: ['aviso.pdf'] }, { n: 2, lado: 'esc', em: '2026-10-12T10:00:00', situacao: 'Aguardando resposta', autor: 'Cliente BETA', texto: 'Alguma novidade?', anexos: [] }] } }; });
   await p.click('#corpo [data-k="geral:b"]');
@@ -1229,11 +1229,12 @@ await passo('app · detalhe: janela com dados e trâmites lidos na hora; lembret
   assert.equal(await p.$$eval('#gaveta .tr-item', e => e.length), 2);
   assert.match(await p.textContent('#gaveta .dlg-head h2'), /BETA/);
   assert.match(await p.textContent('#gaveta'), /aviso\.pdf/);
-  assert.match(await p.textContent('#gaveta [data-aba="tramites"]'), /Trâmites2/);
+  assert.equal(await p.$('#gaveta .dtabs') === null, true, 'sem abas: a conversa e os dados juntos (0.61.0)');
+  assert.equal(await p.isVisible('#g-painel'), true, 'o painel de dados fica à vista com a conversa');
   const pedido = await p.evaluate(() => window.__msgs.find(m => m.cmd === 'detalhe'));
   assert.deepEqual([pedido.type, String(pedido.num)], ['geral', '102']);
-  await p.click('#gaveta [data-aba="dados"]');
-  assert.match(await p.textContent('#g-corpo'), /Segue pedido/, 'HTML do Onvio vira texto puro');
+  await p.click('#g-painel [data-pn="dados"] > summary');
+  assert.match(await p.textContent('#g-painel'), /Segue pedido/, 'HTML do Onvio vira texto puro');
   await p.click('#g-lembrete');
   await p.fill('#lt', 'Ligar para o João');
   await p.selectOption('#lr', 'semanal');
@@ -1242,8 +1243,8 @@ await passo('app · detalhe: janela com dados e trâmites lidos na hora; lembret
   const l = await p.evaluate(() => JSON.parse(localStorage.getItem('__mem')).lembretes[1]);
   assert.deepEqual([l.texto, l.type, l.num, l.rep], ['Ligar para o João', 'geral', '102', 'semanal']);
   assert.equal(await p.isHidden('#dlg-lembrete'), true);
-  await p.click('#gaveta [data-aba="lembretes"]');
-  await p.waitForFunction(() => /Ligar para o João/.test(document.querySelector('#g-corpo').textContent) && /Cobrar o BETA/.test(document.querySelector('#g-corpo').textContent));
+  await p.waitForSelector('#g-painel [data-pn="lembretes"][open]');
+  await p.waitForFunction(() => /Ligar para o João/.test(document.querySelector('#g-painel').textContent) && /Cobrar o BETA/.test(document.querySelector('#g-painel').textContent));
   await p.click('#g-onvio');
   assert.ok(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'abrir' && m.item.num === '102')));
   await p.keyboard.press('Escape');
@@ -1251,7 +1252,7 @@ await passo('app · detalhe: janela com dados e trâmites lidos na hora; lembret
   assert.deepEqual(p.erros, []);
 });
 
-await passo('app · detalhe: aba Dados com a solicitação completa em grupos e anexos; "Para o cliente" com avisos e copiar com um clique', async () => {
+await passo('app · detalhe: painel com a solicitação completa em grupos e anexos; "Para o cliente" com avisos e copiar com um clique', async () => {
   const p = await abrirApp('#/fila', {});
   await p.evaluate(() => {
     window.__copiado = null;
@@ -1263,22 +1264,21 @@ await passo('app · detalhe: aba Dados com a solicitação completa em grupos e 
       anexos: ['aviso-assinado.pdf'] } };
   });
   await p.click('#corpo [data-k="geral:b"]');
-  await p.waitForSelector('#gaveta [data-aba="cliente"]');
-  await p.click('#gaveta [data-aba="dados"]');
-  const t = await p.textContent('#g-corpo');
+  await p.waitForSelector('#g-painel [data-pn="cliente"]');
+  await p.click('#g-painel [data-pn="dados"] > summary');
+  const t = await p.textContent('#g-painel [data-pn="dados"] .pn-corpo');
   assert.match(t, /^Solicitação.*Início das férias27\/10\/2026.*Dias de férias30/, 'sem o bloco "Controle" repetindo o topo');
   assert.ok(!/Controle|Dias parada|1º trâmite/.test(t));
   assert.match(await p.textContent('.dp-last'), /Responsável: .*Aberta em /, 'abertura no topo da janela');
   assert.match(t, /EmpregadoFulano.*CargoAuxiliar/);
-  assert.equal(await p.textContent('#g-corpo .dados-nome'), 'Fulano', 'o nome vai para o título do cartão do grupo');
-  assert.equal(await p.$$eval('#g-corpo .campo .k', e => e.filter(x => x.textContent === 'Nome').length), 0, 'e não se repete como campo');
-  assert.equal(await p.$eval('#g-corpo .campo .k', e => getComputedStyle(e).textTransform), 'none', 'rótulos em letra normal');
+  assert.equal(await p.textContent('#g-painel .dados-nome'), 'Fulano', 'o nome vai para o título do cartão do grupo');
+  assert.equal(await p.$$eval('#g-painel [data-pn="dados"] .campo .k', e => e.filter(x => x.textContent === 'Nome').length), 0, 'e não se repete como campo');
+  assert.equal(await p.$eval('#g-painel [data-pn="dados"] .campo .k', e => getComputedStyle(e).textTransform), 'none', 'rótulos em letra normal');
   assert.match(t, /Pedido do cliente/);
-  assert.match(t, /Anexos da solicitação.*aviso-assinado\.pdf/);
-  assert.match(await p.textContent('#gaveta [data-aba="dados"]'), /1 anexo/);
-  // Para o cliente: aviso calculado (menos de 30 dias) marcado com "!" na aba
-  assert.match(await p.textContent('#gaveta [data-aba="cliente"]'), /Para o cliente!/);
-  await p.click('#gaveta [data-aba="cliente"]');
+  assert.match(await p.textContent('#g-painel [data-pn="anexos"]'), /Anexos1.*aviso-assinado\.pdf/, 'anexos numa seção própria do painel, aberta');
+  // Para o cliente: aviso calculado (menos de 30 dias) marcado com "!" e a seção já vem aberta
+  assert.match(await p.textContent('#g-painel [data-pn="cliente"] > summary'), /Para o cliente!/);
+  await p.waitForSelector('#g-painel [data-pn="cliente"][open]');
   const obs = await p.$$eval('#g-obs .obs', e => e.map(x => x.textContent));
   assert.match(obs[0], /^Atenção: faltam 12 dias para o início das férias/);
   assert.ok(obs.some(x => /O aviso precisa ser entregue ao empregado com pelo menos 30 dias/.test(x)));
@@ -1300,8 +1300,8 @@ await passo('app · Hoje: o quadro de avisos sem cálculo saiu (nem com avisos d
   ]);
   const p = await abrirApp('#/inicio', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens }), settings: { __v: 2, desfazerSeg: 0 } });
   await p.waitForSelector('.hj-hero');
-  assert.equal(await p.$('#hj-semcalc'), null);
-  assert.equal(await p.$('.sc-cols'), null);
+  assert.equal(await p.$('#hj-semcalc') === null, true);
+  assert.equal(await p.$('.sc-cols') === null, true);
   assert.ok(!/sem cálculo/i.test(await p.textContent('.app-body')), 'nenhum texto de aviso sem cálculo no Hoje');
   assert.deepEqual(p.erros, []);
 });
@@ -1318,30 +1318,19 @@ await passo('app · Hoje: os cartões de tipo abrem as Solicitações naquele ti
   assert.deepEqual(p.erros, []);
 });
 
-await passo('app · detalhe: sem trâmite do escritório (nenhum ou só a abertura do cliente) abre nos Dados; com trâmite do escritório, na conversa; motivo da rescisão em português', async () => {
+await passo('app · detalhe: sempre abre na conversa, com os dados no painel ao lado (0.61.0); sem trâmites, a conversa diz que não há resposta', async () => {
   const p = await abrirApp('#/fila?escopo=equipe');
-  await p.evaluate(() => { window.__respostas = Object.assign(window.__respostas || {}, { detalhe: { ok: true, item: { assunto: 'x' }, tramites: [], grupos: [{ titulo: 'Solicitação', campos: [{ k: 'Motivo da rescisão', v: 'Rescisão por acordo entre as partes' }] }] } }); });
+  await p.evaluate(() => { window.__respostas = Object.assign(window.__respostas || {}, { detalhe: { ok: true, item: { assunto: 'x' }, tramites: [], grupos: [{ titulo: 'Solicitação', campos: [{ k: 'Motivo da rescisão', v: 'Rescisão por acordo entre as partes', destaque: true }] }] } }); });
   await p.click('#corpo [data-k="geral:b"]');
-  await p.waitForSelector('#gaveta .dtab.on[data-aba="dados"]');
-  assert.equal(await p.isVisible('#gaveta .dtab.on[data-aba="dados"]'), true, 'sem trâmites: direto nos dados');
+  await p.waitForSelector('#g-painel .dq');
+  assert.match(await p.textContent('#g-corpo'), /Nenhum trâmite ainda/);
+  assert.match(await p.textContent('#g-painel .dlg-destaques'), /Motivo da rescisãoRescisão por acordo entre as partes/, 'em destaque no painel, em português');
+  assert.ok(await p.$('#gaveta #cmp'), 'a caixa de resposta está embaixo da conversa');
   await p.keyboard.press('Escape');
-  // só a abertura do cliente (e uma resposta dele): ainda não é conversa com o escritório, abre nos Dados
-  await p.evaluate(() => { window.__respostas.detalhe = { ok: true, item: { assunto: 'x' }, tramites: [{ id: 't1', n: 1, lado: 'cli', autor: 'Cliente', em: '2026-10-14T10:00:00', texto: 'Olá' }, { id: 't2', n: 2, lado: 'cli', autor: 'Cliente', em: '2026-10-15T10:00:00', texto: 'Alguém?' }] }; });
-  await p.click('#corpo [data-k="geral:b"]');
-  await p.waitForSelector('#gaveta .dtab.on[data-aba="dados"]');
-  await p.waitForFunction(() => (document.querySelector('#gaveta .dtab[data-aba="tramites"] .n') || {}).textContent === '2');       // já leu os trâmites
-  assert.equal(await p.isVisible('#gaveta .dtab.on[data-aba="dados"]'), true, 'continua nos Dados, com os trâmites na aba ao lado');
-  await p.keyboard.press('Escape');
-  // com um trâmite do escritório: na conversa
-  await p.evaluate(() => { window.__respostas.detalhe = { ok: true, item: { assunto: 'x' }, tramites: [{ id: 't1', n: 1, lado: 'cli', autor: 'Cliente', em: '2026-10-14T10:00:00', texto: 'Olá' }, { id: 't2', n: 2, lado: 'esc', autor: 'Ana', em: '2026-10-15T10:00:00', texto: 'Oi' }] }; });
-  await p.click('#corpo [data-k="geral:b"]');
-  await p.waitForSelector('#gaveta .dtab.on[data-aba="tramites"]');
-  assert.equal(await p.isVisible('#gaveta .dtab.on[data-aba="tramites"]'), true, 'com trâmite do escritório: na conversa');
-  await p.keyboard.press('Escape');
-  // a leitura dos trâmites falhou: na conversa, onde o erro aparece
+  // a leitura dos trâmites falhou: a conversa mostra o erro
   await p.evaluate(() => { window.__respostas.detalhe = { ok: true, item: { assunto: 'x' }, tramites: null, erroTramites: 'o Onvio não respondeu' }; });
   await p.click('#corpo [data-k="geral:b"]');
-  await p.waitForSelector('#gaveta .dtab.on[data-aba="tramites"]');
+  await p.waitForFunction(() => /Não foi possível ler os trâmites/.test(document.querySelector('#g-corpo').textContent));
   assert.deepEqual(p.erros, []);
 });
 
@@ -1461,7 +1450,7 @@ await passo('app · Nova solicitação (Geral): do Hoje, das Solicitações e do
   await p.click('#g-mais summary');
   await p.click('#g-nova');
   await p.waitForSelector('#dlg-nova #nv-assunto');
-  assert.equal(await p.$('#nv-cliente'), null);
+  assert.equal(await p.$('#nv-cliente') === null, true);
   await p.keyboard.press('Escape');
   await p.waitForSelector('#dlg-nova', { state: 'hidden' });
   assert.equal(await p.isHidden('#gaveta'), false, 'Esc fecha só a janela de cima');
@@ -1509,7 +1498,7 @@ await passo('app · detalhe de solicitação com o cliente: "Pedir ao cliente pa
   await p.click('#corpo [data-k="rubricas:d"]');
   await p.waitForSelector('#g-mais');
   await p.click('#g-mais summary');
-  assert.equal(await p.$('#g-concluir'), null, 'só na vez do cliente');
+  assert.equal(await p.$('#g-concluir') === null, true, 'só na vez do cliente');
   assert.deepEqual(p.erros, []);
 });
 
@@ -1524,7 +1513,7 @@ await passo('app · Nova solicitação por departamento: modelos de DP, Fiscal e
   assert.ok((await p.$$eval('#nv-modelo option', o => o.length)) >= 4, 'modelos do DP');
   assert.match(await p.textContent('#dlg-nova #nv-dep-aviso'), /id do departamento DP ainda não está nas regras/, 'DP sem id: avisa');
   await p.selectOption('#nv-dep', 'fiscal');
-  assert.equal(await p.$('#nv-dep-aviso'), null, 'Fiscal tem id nas regras');
+  assert.equal(await p.$('#nv-dep-aviso') === null, true, 'Fiscal tem id nas regras');
   await p.selectOption('#nv-modelo', { label: 'Documentos fiscais do mês' });
   assert.equal(await p.$eval('#nv-assunto', x => x.value), 'Documentos fiscais pendentes da competência');
   assert.match(await p.$eval('#nv-desc', x => x.value), /\(descreva a competência\)/);
@@ -1616,7 +1605,7 @@ await passo('app · detalhe: destaques sutis; trâmites como conversa (filtro, o
   const [bolha, botao] = await p.$eval('#g-corpo .tr-item.ultimo', e => [e.querySelector('.tr-bolha').getBoundingClientRect(), e.querySelector('.tr-responder').getBoundingClientRect()].map(r => ({ x: r.left, d: r.right })));
   assert.ok(botao.x >= bolha.d, 'ao lado da bolha');
   assert.match(await p.textContent('#g-corpo .tr-lista'), /5 dias depois/);
-  assert.equal(await p.$('[data-tr-filtro], [data-tr-ordem], .tr-barra'), null, 'sem filtros por cliente, escritório ou anexo');
+  assert.equal(await p.$('[data-tr-filtro], [data-tr-ordem], .tr-barra') === null, true, 'sem filtros por cliente, escritório ou anexo');
   assert.ok(await p.$eval('#g-corpo', c => c.scrollHeight <= c.clientHeight || c.scrollTop + c.clientHeight >= c.scrollHeight - 2), 'mostra o fim da conversa ' + await p.$eval('#g-corpo', c => [c.scrollTop, c.clientHeight, c.scrollHeight].join()));
   const ladoEsc = await p.$eval('#g-corpo .tr-item.esc', e => getComputedStyle(e).flexDirection);
   assert.equal(ladoEsc, 'row-reverse');
@@ -1656,27 +1645,31 @@ await passo('app · detalhe: destaques sutis; trâmites como conversa (filtro, o
   await p.keyboard.press('Escape');
   assert.equal(await p.isHidden('#dlg-anexos'), true);
   assert.equal(await p.isHidden('#gaveta'), false, 'Esc fecha só a janela de anexos');
-  // aba Dados: o campo em destaque tem marca própria
-  await p.click('#gaveta [data-aba="dados"]');
-  assert.equal(await p.$$eval('#g-corpo .campo.dq-campo', e => e.length), 2);
-  // o campo em destaque dos Dados tem o mesmo desenho do destaque do topo: fundo azul-claro, borda fina, sem a barra grossa do lado
-  const est = await p.evaluate(() => { const f = n => { const c = getComputedStyle(n); return [c.backgroundColor, c.borderTopWidth, c.borderLeftWidth, c.boxShadow, c.borderTopLeftRadius].join('|'); }; return { topo: f(document.querySelector('#gaveta .dlg-destaques .dq')), dados: f(document.querySelector('#g-corpo .campo.dq-campo')) }; });
-  assert.equal(est.dados, est.topo, 'mesmo estilo no topo e na aba Dados');
+  // Todos os dados (painel): o campo em destaque tem marca própria
+  await p.click('#g-painel [data-pn="dados"] > summary');
+  assert.equal(await p.$$eval('#g-painel .campo.dq-campo', e => e.length), 2);
+  // o campo em destaque em "Todos os dados" tem o mesmo desenho do destaque do painel: fundo, borda fina, sem a barra grossa do lado
+  const est = await p.evaluate(() => { const f = n => { const c = getComputedStyle(n); return [c.backgroundColor, c.borderTopWidth, c.borderLeftWidth, c.boxShadow, c.borderTopLeftRadius].join('|'); }; return { topo: f(document.querySelector('#gaveta .dlg-destaques .dq')), dados: f(document.querySelector('#g-painel .campo.dq-campo')) }; });
+  assert.equal(est.dados, est.topo, 'mesmo estilo no destaque e em Todos os dados');
   assert.match(est.dados, /\|1px\|1px\|none\|/, 'borda fina e sem sombra lateral');
   if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/dq-dados.png' });
   assert.deepEqual(p.erros, []);
 });
 
-await passo('app · detalhe: abas inteiras (não achatadas) mesmo com muito conteúdo e janela baixa', async () => {
+await passo('app · detalhe: com muito conteúdo e janela baixa, a conversa e o painel rolam cada um por dentro; estreita, o painel vai para cima', async () => {
   const p = await abrirApp('#/fila', {});
   await p.setViewportSize({ width: 1100, height: 560 });
-  await p.evaluate(() => { window.__respostas = { detalhe: { ok: true, item: { assunto: 'Férias' }, tramites: Array.from({ length: 30 }, (x, n) => ({ n: n + 1, lado: n ? 'esc' : 'cli', em: '2026-10-10T10:00:00', situacao: 'Em análise', autor: 'Ana', texto: 'Texto '.repeat(40), anexos: [] })), datas: {}, grupos: [], anexos: [] } }; });
+  await p.evaluate(() => { window.__respostas = { detalhe: { ok: true, item: { assunto: 'Férias' }, tramites: Array.from({ length: 30 }, (x, n) => ({ n: n + 1, lado: n ? 'esc' : 'cli', em: '2026-10-10T10:00:00', situacao: 'Em análise', autor: 'Ana', texto: 'Texto '.repeat(40), anexos: [] })), datas: {}, grupos: [{ titulo: 'Solicitação', campos: Array.from({ length: 30 }, (x, n) => ({ k: 'Campo ' + n, v: 'valor ' + n })) }], anexos: [] } }; });
   await p.click('#corpo [data-k="geral:b"]');
   await p.waitForFunction(() => document.querySelectorAll('#g-corpo .tr-item').length === 30);
-  const m = await p.$eval('#gaveta .dtabs', e => ({ h: e.clientHeight, s: e.scrollHeight, tab: e.querySelector('.dtab').getBoundingClientRect().height }));
-  assert.ok(m.h >= m.s - 1 && m.h >= 40 && m.tab >= 30, 'abas com a altura toda: ' + JSON.stringify(m));
   const corpo = await p.$eval('#g-corpo', e => ({ h: e.clientHeight, s: e.scrollHeight }));
-  assert.ok(corpo.s > corpo.h, 'quem rola é o corpo');
+  assert.ok(corpo.s > corpo.h, 'quem rola é a conversa');
+  const lados = await p.evaluate(() => { const c = document.querySelector('.dlg-conv').getBoundingClientRect(), pn = document.querySelector('#g-painel').getBoundingClientRect(); return { lado: pn.left >= c.right - 1, larg: pn.width }; });
+  assert.ok(lados.lado && lados.larg >= 290 && lados.larg <= 370, 'painel ao lado da conversa: ' + JSON.stringify(lados));
+  assert.equal(await p.$eval('.tr-item.esc .tr-sit-pill', e => e.textContent), 'Em análise', 'a situação gravada aparece na bolha do escritório');
+  await p.setViewportSize({ width: 900, height: 700 });
+  const est = await p.evaluate(() => { const c = document.querySelector('.dlg-conv').getBoundingClientRect(), pn = document.querySelector('#g-painel').getBoundingClientRect(); return { cima: pn.bottom <= c.top + 1, alt: pn.height }; });
+  assert.ok(est.cima && est.alt <= 700 * 0.36, 'estreita: painel em cima, com altura limitada: ' + JSON.stringify(est));
   assert.deepEqual(p.erros, []);
 });
 
@@ -1718,7 +1711,7 @@ await passo('app · Distribuir: mostra para quem vai cada sem responsável, com 
   assert.equal(await p.textContent('#titulo'), 'Distribuir');
   assert.equal((await p.evaluate(() => window.__msgs.find(m => m.cmd === 'distribuicao'))).dias, 30);
   assert.match(await p.textContent('#subtitulo'), /nos últimos 30 dias/);
-  assert.equal(await p.$('[data-dias]'), null, 'só 30 dias: 7 e 14 saíram');
+  assert.equal(await p.$('[data-dias]') === null, true, 'só 30 dias: 7 e 14 saíram');
   assert.match(await p.textContent('.dist-l'), /#103GAMA.*Aviso de rescisão · Ciclano.*atendeu 3 de 4 solicitações desta empresa nos últimos 30 dias · depois: Ana Teste \(1\)/);
   assert.equal(await p.$eval('.dist-l select', s => s.value), 'id-bia');
   assert.match(await p.textContent('#d-todas'), /Atribuir todas \(2\)/, 'Rubricas entra (responsável mapeado em 19/10/2026)');
@@ -1737,12 +1730,12 @@ await passo('app · Distribuir: mostra para quem vai cada sem responsável, com 
 
 await passo('app · Tramitação: caixa de resposta fixa; intenção e efeito; modelos e variáveis; avisos; rascunho na conversa; envio com anexo; erro mantém o texto; lista não mapeada', async () => {
   const p = await abrirApp('#/fila', { settings: { __v: 2, desfazerSeg: 0 } });
-  await p.setViewportSize({ width: 1100, height: 860 });       // janela estreita: a caixa de resposta fica embaixo e recolhe
+  await p.setViewportSize({ width: 900, height: 860 });        // janela estreita (< 1000 px): a caixa de resposta recolhe
   await p.evaluate(() => { window.__respostas = { acao: { ok: true, acao: 'tramite', anexos: 1 }, detalhe: { ok: true, item: { assunto: 'Férias' }, tramites: [], datas: {} } }; });
   await p.click('#corpo [data-k="geral:b"]');
   await irTramites(p);
   await p.waitForSelector('#cmp');
-  assert.equal(await p.$('#a-texto'), null, 'a caixa de resposta começa recolhida: a conversa fica com a janela');
+  assert.equal(await p.$('#a-texto') === null, true, 'a caixa de resposta começa recolhida: a conversa fica com a janela');
   assert.equal(await p.getAttribute('#cmp-rec', 'aria-expanded'), 'false');
   await abrirCaixa(p);
   assert.equal(await p.$eval('#cmp', c => c.closest('#g-corpo') === null), true, 'a caixa fica fora da área que rola');
@@ -1750,14 +1743,14 @@ await passo('app · Tramitação: caixa de resposta fixa; intenção e efeito; m
   if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/tram-fechada.png' });
   assert.equal(await p.isVisible('.cmp-int[data-sit="4"]'), true, 'Respondido já está à vista, sem precisar clicar na caixa');
   assert.equal(await p.isVisible('#cmp-mp'), true, 'e a Mensagem pronta (um botão na barra da caixa) também');
-  assert.equal(await p.$('#cmp-ab-modelos, #cmp-ab-obs'), null, 'Modelos e Observações viraram um botão só');
+  assert.equal(await p.$('#cmp-ab-modelos, #cmp-ab-obs') === null, true, 'Modelos e Observações viraram um botão só');
   assert.equal(await p.$('.cmp-pe kbd') === null, true, 'sem o indicador do atalho Ctrl+Enter');
   assert.equal(await p.$('#mp-balao') === null, true, 'a mensagem pronta só aparece num balão que a pessoa abre');
   // recolher: sobra só a barra, o rascunho fica; a barra abre de novo (o Responder do rodapé saiu: a caixa já está ali)
-  assert.equal(await p.$('#g-responder'), null, 'sem o Responder do rodapé');
+  assert.equal(await p.$('#g-responder') === null, true, 'sem o Responder do rodapé');
   await p.fill('#a-texto', 'Rascunho que fica.');
   await p.click('#cmp-rec');
-  assert.equal(await p.$('#a-texto'), null, 'recolhida: sem a caixa de texto');
+  assert.equal(await p.$('#a-texto') === null, true, 'recolhida: sem a caixa de texto');
   assert.match(await p.textContent('.cmp-min-rasc'), /Rascunho guardado \(18 caracteres\)/);
   assert.equal(await p.getAttribute('#cmp-rec', 'aria-expanded'), 'false');
   await p.click('.cmp-min');
@@ -1768,10 +1761,6 @@ await passo('app · Tramitação: caixa de resposta fixa; intenção e efeito; m
   await p.click('#cmp-rec');
   await abrirCaixa(p);
   await p.click('#a-descartar');
-  // de outra aba, a caixa some; volta com a aba Trâmites
-  await p.click('#gaveta [data-aba="dados"]');
-  assert.equal(await p.$('#cmp'), null, 'a caixa é da aba Trâmites');
-  await p.click('#gaveta [data-aba="tramites"]');
   await abrirCaixa(p);
   // revisar sem texto: o aviso diz o que falta, sem sair da tela (a caixa abre ao clicar nela)
   await p.click('#a-texto');
@@ -1810,7 +1799,7 @@ await passo('app · Tramitação: caixa de resposta fixa; intenção e efeito; m
   assert.match(await p.textContent('#cmp-avisos'), /Falta preencher: \(descreva o que falta\)/);
   await p.click('#a-revisar');
   assert.match(await p.textContent('.cmp-erro'), /Falta preencher/);
-  assert.equal(await p.$('#a-enviar'), null, 'com marcador sobrando não chega à revisão');
+  assert.equal(await p.$('#a-enviar') === null, true, 'com marcador sobrando não chega à revisão');
   await p.keyboard.type('a guia do FGTS de setembro');       // escreve por cima do trecho marcado
   assert.equal(await p.textContent('#cmp-avisos'), '');
   if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/tram-editar.png' });
@@ -1837,7 +1826,7 @@ await passo('app · Tramitação: caixa de resposta fixa; intenção e efeito; m
   await p.waitForFunction(() => window.__msgs.filter(x => x.cmd === 'detalhe').length >= 2, null, { timeout: 3000 });
   await p.waitForSelector('.cmp-ok');
   assert.match(await p.textContent('.cmp-ok'), /Trâmite enviado às \d\d:\d\d/);
-  assert.equal(await p.$('#tr-rascunho'), null, 'depois de enviado, o rascunho sai da conversa');
+  assert.equal(await p.$('#tr-rascunho') === null, true, 'depois de enviado, o rascunho sai da conversa');
   // erro do Onvio aparece e nada se perde
   await p.evaluate(() => { window.__respostas.acao = { ok: false, erro: 'o Onvio recusou a ação (HTTP 403)' }; });
   await p.fill('#a-texto', 'Concluído.');
@@ -1850,14 +1839,14 @@ await passo('app · Tramitação: caixa de resposta fixa; intenção e efeito; m
   await p.evaluate(() => { location.hash = '#/fila?escopo=equipe'; });
   await p.click('#corpo [data-k="rubricas:d"]');
   await abrirCaixa(p);
-  assert.equal(await p.$('#gaveta .cmp-nota'), null);
+  assert.equal(await p.$('#gaveta .cmp-nota') === null, true);
   assert.deepEqual(await p.$$eval('.cmp-int', b => b.map(x => x.dataset.sit + ':' + x.dataset.tom)), ['6:cli', '5:esc', '2:esc', '8:fim'], 'Aguardando correção, Aguardando resposta, Em análise, Concluído');
   await p.click('.cmp-int[data-sit="6"]');
   assert.match(await p.textContent('#cmp-efeito'), /A vez passa ao cliente/);
   await p.fill('#a-texto', 'Por favor, corrija a rubrica.');
   await p.click('#a-revisar');
   assert.match(await p.textContent('#a-conf'), /Aguardando correção/);
-  assert.equal(await p.$('#g-responder'), null, 'sem o Responder do rodapé (a caixa já fica ao lado)');
+  assert.equal(await p.$('#g-responder') === null, true, 'sem o Responder do rodapé (a caixa já fica ao lado)');
   await p.click('#a-voltar'); await p.click('#a-descartar');
   assert.deepEqual(p.erros, []);
 });
@@ -1883,44 +1872,48 @@ await passo('app · detalhe em janela baixa: a caixa de resposta não empurra o 
   }
 });
 
-await passo('app · detalhe em janela larga: conversa à esquerda e resposta ao lado (trâmite, modelos e observações em seções); janela estreita volta a caixa para baixo', async () => {
+await passo('app · detalhe em janela larga: conversa com a resposta embaixo e o painel de dados ao lado; o rascunho fica ao mudar o tamanho', async () => {
   const p = await abrirApp('#/fila', { settings: { __v: 2, desfazerSeg: 0 } });                       // 1360 de largura
   await p.evaluate(() => { window.__respostas = { acao: { ok: true, acao: 'tramite', anexos: 0 }, detalhe: { ok: true, item: { assunto: 'Férias' }, tramites: [], datas: {} } }; });
   await p.click('#corpo [data-k="geral:b"]');
-  await irTramites(p);
-  await p.waitForSelector('.dlg-cols.lateral #a-texto');
-  const m = await p.evaluate(() => { const g = document.querySelector('#gaveta').getBoundingClientRect(), c = document.querySelector('#g-corpo').getBoundingClientRect(), r = document.querySelector('#cmp').getBoundingClientRect(); return { g: g.width, c: [c.left, c.right, c.height], r: [r.left, r.right, r.height], fora: document.querySelector('#cmp-rec') !== null }; });
-  assert.ok(m.g >= 1250, 'a janela ficou mais larga: ' + m.g);
-  assert.ok(m.c[1] <= m.r[0] + 1, 'a conversa fica à esquerda e a resposta ao lado');
-  assert.ok(m.r[2] >= m.c[2] - 2, 'a caixa de resposta tem a altura toda da conversa');
-  assert.equal(m.fora, false, 'sem botão de recolher: a caixa fica sempre aberta');
+  await abrirCaixa(p);
+  const m = await p.evaluate(() => { const c = document.querySelector('#g-corpo').getBoundingClientRect(), r = document.querySelector('#cmp').getBoundingClientRect(), pn = document.querySelector('#g-painel').getBoundingClientRect(); return { c: [c.left, c.right, c.bottom], r: [r.left, r.right, r.top], pn: [pn.left] }; });
+  assert.ok(m.r[2] >= m.c[2] - 1, 'a caixa de resposta fica embaixo da conversa');
+  assert.ok(m.pn[0] >= m.c[1] - 1 && m.pn[0] >= m.r[1] - 1, 'o painel de dados fica ao lado da conversa e da resposta');
   assert.equal(await p.textContent('.cmp-envio > .cmp-rot'), 'Trâmite', 'o rótulo é Trâmite');
+  assert.match(await p.textContent('#a-revisar'), /Enviar resposta/, 'o primeiro botão diz que é para responder (0.61.0)');
   assert.equal(await p.isVisible('#cmp-mp'), true);
   await p.click('#cmp-mp');
   assert.equal(await p.isVisible('#mp-balao'), true);
   const bal = await p.$eval('#mp-balao', e => { const r = e.getBoundingClientRect(); return [r.top >= 0, r.bottom <= innerHeight, r.left >= 0, r.right <= innerWidth]; });
   assert.deepEqual(bal, [true, true, true, true], 'o balão fica inteiro na tela');
   await p.click('#cmp-mp');
-  assert.equal(await p.$('#mp-balao'), null, 'o mesmo botão fecha');
+  assert.equal(await p.$('#mp-balao') === null, true, 'o mesmo botão fecha');
   assert.equal(await p.textContent('#cmp-efeito'), 'Escolha a situação do trâmite.');
   await p.click('.cmp-int[data-sit="5"]');
   assert.match(await p.textContent('#cmp-efeito'), /^Trâmite: /);
   if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/detalhe-larga.png' });
-  // a janela encolhe: a caixa vai para baixo e recolhe; o rascunho continua
   await p.fill('#a-texto', 'Rascunho que fica.');
-  await p.setViewportSize({ width: 1000, height: 860 });
-  await p.waitForSelector('.dlg-cols:not(.lateral)');
-  assert.equal(await p.$eval('#cmp', c => c.closest('.dlg-cols') !== null && !c.closest('.lateral')), true);
-  await p.waitForSelector('#cmp-rec');
+  await p.setViewportSize({ width: 900, height: 860 });
+  await p.waitForTimeout(150);
   await p.setViewportSize({ width: 1360, height: 860 });
-  await p.waitForSelector('.dlg-cols.lateral #a-texto');
   assert.equal(await p.$eval('#a-texto', t => t.value), 'Rascunho que fica.', 'o rascunho não se perde ao mudar o tamanho');
+  // negrito: o botão envolve a seleção com ** e a conferência mostra em negrito
+  await p.fill('#a-texto', 'Pague até 28/11.');
+  await p.$eval('#a-texto', t => t.setSelectionRange(10, 15));
+  await p.click('#a-negrito');
+  assert.equal(await p.$eval('#a-texto', t => t.value), 'Pague até **28/11**.');
+  await p.click('.cmp-int[data-sit="4"]');
+  await p.click('#a-revisar');
+  await p.waitForSelector('#a-enviar');
+  assert.equal(await p.textContent('#a-enviar'), 'Confirmar envio');
+  assert.match(await p.textContent('#tr-rascunho .tr-texto'), /Pague até 𝟮𝟴\/𝟭𝟭\./, 'a prévia já mostra em negrito');
   assert.deepEqual(p.erros, []);
 });
 
 await passo('app · Tramitação: 5 s para desfazer; enviar e ir para a próxima; rascunho só na memória; atalho R e Ctrl+Enter; situação como linha na conversa', async () => {
   const p = await abrirApp('#/fila?escopo=equipe', { settings: { __v: 2, desfazerSeg: 3 } });
-  await p.setViewportSize({ width: 1100, height: 860 });       // janela estreita: a caixa de resposta fica embaixo e recolhe
+  await p.setViewportSize({ width: 900, height: 860 });        // janela estreita (< 1000 px): a caixa de resposta recolhe
   await p.evaluate(() => { window.__respostas = { acao: { ok: true, acao: 'tramite', anexos: 0 }, detalhe: { ok: true, item: { assunto: 'Férias' }, datas: {}, tramites: [
     { n: 1, em: '2026-10-01T10:00:00', situacao: 'Sem análise', lado: 'cli', autor: 'Cliente BETA', texto: 'Abertura', anexos: [] },
     { n: 2, em: '2026-10-02T10:00:00', situacao: 'Em análise', lado: 'esc', autor: 'Ana Teste', texto: 'Vamos ver.', anexos: [] },
@@ -1951,7 +1944,7 @@ await passo('app · Tramitação: 5 s para desfazer; enviar e ir para a próxima
   await p.focus('#a-texto');
   await p.keyboard.press('Control+Enter');
   await p.waitForSelector('#a-enviar');
-  assert.equal(await p.$('#a-desfazer'), null, 'um Ctrl+Enter só revisa, nunca envia');
+  assert.equal(await p.$('#a-desfazer') === null, true, 'um Ctrl+Enter só revisa, nunca envia');
   // enviar espera alguns segundos: dá para desfazer e nada vai ao Onvio
   await p.click('#a-enviar');
   await p.waitForSelector('#a-desfazer');
@@ -1982,7 +1975,7 @@ await passo('app · Tramitação: 5 s para desfazer; enviar e ir para a próxima
 await passo('app · tema claro por padrão (mesmo com o sistema escuro); caixa de resposta recolhe ao clicar fora, sem perder o rascunho', async () => {
   const p = await pagina(URL_APP, '');
   await p.emulateMedia({ colorScheme: 'dark' });
-  await p.setViewportSize({ width: 1100, height: 860 });
+  await p.setViewportSize({ width: 900, height: 860 });
   await semear(p, Object.assign({}, ESTADO_APP, { settings: { __v: 2, desfazerSeg: 0 } }));
   await p.goto(URL_APP + '#/fila');
   await p.waitForFunction(() => document.querySelector('#vista').children.length > 0);
@@ -2000,7 +1993,7 @@ await passo('app · tema claro por padrão (mesmo com o sistema escuro); caixa d
   await p.fill('#a-texto', 'Rascunho que fica');
   await p.click('#g-corpo .tr-texto');                                                     // clique fora da caixa
   await p.waitForSelector('.cmp-min-rasc');
-  assert.equal(await p.$('#a-texto'), null, 'recolheu');
+  assert.equal(await p.$('#a-texto') === null, true, 'recolheu');
   await p.click('#cmp-rec');
   await p.waitForSelector('#a-texto');
   assert.equal(await p.inputValue('#a-texto'), 'Rascunho que fica', 'o rascunho ficou');
@@ -2044,7 +2037,7 @@ await passo('app · Tramitação: modelo pessoal sem dado de cliente; passar par
   await p.waitForFunction(() => !/sua/.test(document.querySelector('#mp-balao [data-mp-sit="4"]').textContent));
   assert.equal(await p.evaluate(() => JSON.parse(localStorage.getItem('__mem')).modelosPessoais.length), 0);
   await p.keyboard.press('Escape');
-  assert.equal(await p.$('#mp-balao'), null, 'Esc fecha só o balão');
+  assert.equal(await p.$('#mp-balao') === null, true, 'Esc fecha só o balão');
   assert.equal(await p.isHidden('#gaveta'), false);
   // sem texto: cria do zero
   await p.fill('#a-texto', '');
@@ -2070,7 +2063,7 @@ await passo('app · Tramitação: modelo pessoal sem dado de cliente; passar par
   await p.click('#g-mais summary'); await p.click('[data-acao="passar"]');
   await p.click('input[name="a-modo"][value="responsavel"]');
   await p.waitForSelector('#a-analista');
-  assert.equal(await p.$('#a-texto'), null, 'sem comentário ao trocar o responsável');
+  assert.equal(await p.$('#a-texto') === null, true, 'sem comentário ao trocar o responsável');
   await p.selectOption('#a-analista', 'id-bia');
   await p.click('#a-revisar'); await p.click('#a-enviar');
   await p.waitForFunction(() => window.__msgs.filter(m => m.cmd === 'acao').length === 2);
@@ -2089,7 +2082,7 @@ await passo('app · Tramitação: modelo pessoal sem dado de cliente; passar par
   await p.waitForSelector('#g-mais');
   await p.click('#g-mais summary');
   assert.equal(await p.$eval('[data-acao="passar"]', b => b.disabled), false, 'Rubricas também encaminha e define responsável (0.28.0)');
-  assert.equal(await p.$('[data-acao="expectativa"]'), null, 'expectativa: só a Geral');
+  assert.equal(await p.$('[data-acao="expectativa"]') === null, true, 'expectativa: só a Geral');
   assert.deepEqual(p.erros, []);
 });
 
@@ -2240,7 +2233,7 @@ await passo('app · Simplificado em tela pequena (1366×650 e 1280×720): cabeç
     // detalhe (abre nos Dados ou na conversa) e as outras telas
     await p.evaluate(() => { location.hash = '#/fila?escopo=todas'; });
     await p.waitForSelector('#corpo [data-k]');
-    await p.click('#corpo [data-k="geral:b"]'); await p.waitForSelector('#gaveta .dtab');
+    await p.click('#corpo [data-k="geral:b"]'); await p.waitForSelector('#gaveta #g-painel');
     // a solicitação aberta ocupa a tela toda
     assert.deepEqual(await p.$eval('#gaveta', e => { const r = e.getBoundingClientRect(); return [r.left, r.top, Math.round(r.width), Math.round(r.height)]; }), [0, 0, w, h], onde + ': a solicitação ocupa a tela toda');
     await sem_rolagem(p, onde + ' detalhe');
@@ -2263,16 +2256,16 @@ await passo('app · Atual intacto: grade de tipos, destaque escuro com carrossel
   assert.equal(await p.$eval('.hj-hero', e => getComputedStyle(e).backgroundColor), 'rgb(15, 22, 28)', 'destaque sempre escuro');
   assert.ok(await p.$('.hj-tick .hj-bola') && await p.$('.hj-legenda'), 'carrossel e legenda');
   assert.equal(await p.$eval('.hj-hero .an-svg', e => Math.round(e.getBoundingClientRect().width)), 150, 'rosca de 150 px');
-  assert.equal(await p.$('#hj-tipos.hj-rec'), null, 'sem barras recolhíveis');
+  assert.equal(await p.$('#hj-tipos.hj-rec') === null, true, 'sem barras recolhíveis');
   assert.ok(await p.$('#hj-tipos .hj-painel-sub, #hj-tipos + .hj-painel-sub') || (await p.textContent('#hj-tipos')).includes('Da mais urgente para a menos urgente'), 'explicação à vista');
   assert.match(await p.$eval('.trilho', e => getComputedStyle(e).backgroundImage), /gradient/, 'trilho escuro');
   await p.evaluate(() => { location.hash = '#/fila'; });
   await p.waitForSelector('#corpo .sc');
   assert.ok(await p.$$eval('#tipos .tipo-c', e => e.length) >= 9, 'grade de tipos à vista');
-  assert.equal(await p.$('#tipos-ver'), null);
+  assert.equal(await p.$('#tipos-ver') === null, true);
   assert.equal(await p.$eval('.fila-cab h3', e => getComputedStyle(e).display) !== 'none', true, 'título da lista');
   assert.match(await p.textContent('#subtitulo'), /pendências lidas do Onvio, ao vivo/);
-  await p.click('#corpo [data-k="geral:b"]'); await p.waitForSelector('#gaveta .dtab');
+  await p.click('#corpo [data-k="geral:b"]'); await p.waitForSelector('#gaveta #g-painel');
   await irTramites(p);
   assert.ok(await p.$('#gaveta .cmp-atalho') && await p.$('#gaveta .cmp-rot'), 'atalho R e rótulo Trâmite à vista');
   assert.ok((await p.textContent('#gaveta .dp-last')).includes('Parada há') || true);

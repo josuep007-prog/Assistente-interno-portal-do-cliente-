@@ -293,3 +293,10 @@
 :root[data-estilo="simples"] .cfg-card{ padding:12px 14px }
 :root[data-estilo="simples"] .cfg-grade{ gap:var(--gap) }
 :root[data-estilo="simples"] .cfg-col{ gap:var(--gap) }
+
+/* 0.61.0 · painel de dados da solicitação no Simplificado: liso, sem sombras, títulos em letra normal */
+:root[data-estilo="simples"] .dlg-painel{ background:var(--surface); padding:12px 14px 16px }
+:root[data-estilo="simples"] .pn-cab{ font:600 13px "IBM Plex Sans",sans-serif; letter-spacing:0; text-transform:none; color:var(--ink) }
+:root[data-estilo="simples"] .pn-sec{ border-color:var(--rule) }
+:root[data-estilo="simples"] .pn-sec > summary{ font-weight:600 }
+:root[data-estilo="simples"] .tr-sit-pill{ font-weight:500 }
