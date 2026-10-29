@@ -59,9 +59,9 @@
 :root[data-estilo="simples"] .aovivo.ok .ponto{ animation:none }
 :root[data-estilo="simples"] .mod-cab .icon-btn{ border-color:var(--rule-strong) }
 :root[data-estilo="simples"] .mod-abas{ margin-top:4px }
-:root[data-estilo="simples"] .aba{ padding:8px 12px; font-weight:500; color:var(--ink-3) }
+:root[data-estilo="simples"] .aba{ padding:8px 12px; font-weight:500; color:var(--ink-2) }
 :root[data-estilo="simples"] .aba.on{ color:var(--ink); border-bottom-color:var(--blue-deep); font-weight:600 }
-:root[data-estilo="simples"] .aba .n{ background:none; padding:0 2px; color:var(--ink-3); font-weight:500 }
+:root[data-estilo="simples"] .aba .n{ background:none; padding:0 2px; color:var(--ink-2); font-weight:500 }
 :root[data-estilo="simples"] .aba .n.late{ background:none; color:var(--late); font-weight:600 }
 @media (max-width:1100px){ :root[data-estilo="simples"] .btn-ver{ font-size:0; gap:0; padding:0 9px } :root[data-estilo="simples"] .btn-ver .ic{ margin:0 } }
 
@@ -293,3 +293,14 @@
 :root[data-estilo="simples"] .cfg-card{ padding:12px 14px }
 :root[data-estilo="simples"] .cfg-grade{ gap:var(--gap) }
 :root[data-estilo="simples"] .cfg-col{ gap:var(--gap) }
+
+/* 0.61.0 · painel de dados da solicitação no Simplificado: liso, sem sombras, títulos em letra normal */
+:root[data-estilo="simples"] .dlg-painel{ background:var(--surface); padding:12px 14px 16px }
+:root[data-estilo="simples"] .pn-cab{ font:600 13px "IBM Plex Sans",sans-serif; letter-spacing:0; text-transform:none; color:var(--ink) }
+:root[data-estilo="simples"] .pn-sec{ border-color:var(--rule) }
+:root[data-estilo="simples"] .pn-sec > summary{ font-weight:600 }
+:root[data-estilo="simples"] .tr-sit-pill{ font-weight:500 }
+
+/* Leitura (0.61.0, pedido do Josué em 29/10/2026: "muitos textos cinzas e apagados"): o --ink-3 ficou mais escuro nos tokens
+   e os textos de apoio com frase (não os rótulos em maiúsculas) não ficam abaixo de 12 px */
+:root[data-estilo="simples"] :is(.c-porque, .cmp-fer-dica, .card-h .sub, .tr-gap, .pp-n small, .pp-dias small, .pp-comp small, .hj-mini-q small){ font-size:12px }

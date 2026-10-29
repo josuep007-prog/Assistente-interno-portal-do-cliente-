@@ -472,9 +472,17 @@ async function executarAcao(msg) {
     if (!u) out.erroAnexos = 'o Onvio não devolveu o número do trâmite; anexe pelo Onvio';
     else if (!OC.escritaPermitida('POST', u)) out.erroAnexos = 'endereço de anexo não permitido';
     else {
-      const ra = await escreve('POST', u, null, arquivos);
-      if (ra.status >= 200 && ra.status < 300) out.anexos = arquivos.length;
-      else out.erroAnexos = 'o trâmite foi enviado, mas o anexo não (' + (ra.status ? 'HTTP ' + ra.status : ra.erro || 'falha de rede') + '). Anexe pelo Onvio.';
+      // Um pedido por arquivo (0.61.0): o formato foi mapeado com um arquivo só; com vários `file[]` no mesmo pedido o Onvio
+      // guardava só um. Em sequência, cada um com o seu resultado; um que falha não impede os outros.
+      out.arquivos = [];
+      for (const a of arquivos) {
+        const ra = await escreve('POST', u, null, [a]);
+        const ok = ra.status >= 200 && ra.status < 300;
+        out.arquivos.push({ nome: a.nome, ok, status: ra.status || 0 });
+        if (ok) out.anexos++;
+      }
+      const falhas = out.arquivos.filter(x => !x.ok);
+      if (falhas.length) out.erroAnexos = 'o trâmite foi enviado, mas ' + (falhas.length === arquivos.length ? (arquivos.length > 1 ? 'nenhum anexo' : 'o anexo não') : out.anexos + ' de ' + arquivos.length + ' anexos') + ' foi aceito pelo Onvio (falhou: ' + falhas.map(x => x.nome + (x.status ? ' · HTTP ' + x.status : '')).join(', ') + '). Anexe pelo Onvio o que faltou.';
     }
   }
   if (!msg.semColetar) coletar(false).catch(() => {});           // a fila e o Hoje já refletem a ação

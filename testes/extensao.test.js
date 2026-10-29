@@ -1674,6 +1674,33 @@ test('background: ação manda o trâmite pela aba do Onvio, com a autorização
   assert.equal(escritas.length, 3, 'pedido inválido não sai');
 });
 
+test('background: vários anexos saem um por pedido; um que falha não impede os outros e o resultado diz qual (0.61.0)', async () => {
+  const base = apiSimulada({ itens: { geral: [pend('g1', 77)] } });
+  const escritas = [];
+  const api = async (url, init) => {
+    if (init && init.method && init.method !== 'GET') {
+      const corpo = init.body instanceof FormData ? [...init.body.entries()].map(([k, v]) => k + '=' + v.name) : JSON.parse(init.body);
+      escritas.push({ url: new URL(url).pathname, corpo });
+      const falha = Array.isArray(corpo) && corpo[0] === 'file[]=b.pdf';
+      const r = respHttp(falha ? 500 : 201, 'application/json', '');
+      return Object.assign(r, { headers: { get: k => (k === 'location' && /\/topics$/.test(url) ? url + '/top9' : k === 'content-type' ? 'application/json' : null) } });
+    }
+    return base(url);
+  };
+  const { ctx, ouvintes } = carregarBackground({ abas: [aba(5, ONVIO_PORTAL)], fetchPorMundo: { MAIN: api }, fetch: api });
+  ctx.__controlOnvioAutorizacao = () => 'Bearer x';
+  const pedir = m => new Promise(res => ouvintes[0](m, { tab: { id: 5 } }, res));
+  const pdf = n => ({ nome: n, tipo: 'application/pdf', b64: Buffer.from('%PDF ' + n).toString('base64') });
+  const r = await pedir({ cmd: 'acao', acao: 'tramite', type: 'geral', num: 77, texto: 'Seguem', situacao: 4, arquivos: [pdf('a.pdf'), pdf('b.pdf'), pdf('c.pdf')] });
+  assert.equal(r.ok, true, r.erro);
+  const anexos = escritas.filter(e => /attachments$/.test(e.url));
+  assert.equal(anexos.length, 3, 'um pedido por arquivo');
+  assert.deepEqual(plano(anexos.map(e => e.corpo)), [['file[]=a.pdf'], ['file[]=b.pdf'], ['file[]=c.pdf']]);
+  assert.equal(r.anexos, 2);
+  assert.deepEqual(plano(r.arquivos.map(x => [x.nome, x.ok])), [['a.pdf', true], ['b.pdf', false], ['c.pdf', true]]);
+  assert.match(r.erroAnexos, /2 de 3 anexos.*b\.pdf/);
+});
+
 test('background: ação recusada pelo Onvio, sem aba ou com acesso de cliente não escreve', async () => {
   const base = apiSimulada({ itens: { geral: [pend('g1', 77)] } });
   let escritas = 0;
@@ -2308,7 +2335,7 @@ test('rodada 2: férias nova em análise, aviso trabalhado com lembrete, acident
   assert.equal(OC.preencherModelo('até {pagamentoRescisao}', vr), 'até 10/11/2026');
 });
 
-test('férias em análise: com abono pecuniário o texto manda o empregado pedir em carta de próprio punho (art. 143 da CLT); sem abono, nada muda', () => {
+test('férias em análise: com abono pecuniário o texto explica o pedido do empregado (art. 143 da CLT), sem pedir a carta ao escritório; sem abono, nada muda', () => {
   const item = { type: 'calcFerias', code: 3, lado: 'esc', apelido: 'X', detalhe: 'Beltrano', typeLabel: 'Cálculo de férias' };
   assert.equal(OC.datasDe({ payBonusDays: true }).abono, true);
   assert.equal(OC.datasDe({ bonusDays: 10 }).abono, true);
@@ -2318,11 +2345,13 @@ test('férias em análise: com abono pecuniário o texto manda o empregado pedir
   const modelo = OC.modelosPara(item, {}, []).find(m => m.rot === 'Férias em análise').texto;
   for (const txt of [modelo, OC.acaoAnalise(item, {}).acao.texto]) {
     const com = monta(txt, { inicio: '2026-11-10', abono: true }), sem = monta(txt, { inicio: '2026-11-10', abono: false });
-    assert.match(com, /abono pecuniário.*carta de próprio punho.*15 dias antes do término do período aquisitivo.*art\. 143/si);
-    assert.doesNotMatch(sem, /abono|carta/i, 'sem abono, nada do abono');
+    assert.match(com, /abono pecuniário.*pelo próprio empregado, por escrito.*15 dias antes do término do período aquisitivo.*art\. 143/si);
+    assert.match(com, /pedido fica guardado na empresa e não precisa ser enviado ao escritório/, 'nenhum documento assinado vem ao escritório (Josué, 29/10/2026)');
+    assert.doesNotMatch(com, /precisamos receber|envie a carta/i);
+    assert.doesNotMatch(sem, /abono|por escrito/i, 'sem abono, nada do abono');
     assert.ok(!/\{\w+\}/.test(com) && !/\{\w+\}/.test(sem), 'nenhuma variável sobra');
     assert.ok(sem.endsWith('30 dias de antecedência.'), 'sem espaço sobrando no fim');
-    assert.match(com, /\n- Abono pecuniário/, 'o abono vira um tópico');
+    assert.match(com, /\n- \*\*Abono pecuniário\*\*/, 'o abono vira um tópico, com o nome em destaque');
   }
   // sem o detalhe lido ainda, o abono é desconhecido: o marcador fica e barra o envio (como o prazo de pagamento)
   assert.deepEqual(OC.marcadoresPendentes(monta(modelo, null)).includes('{abono}'), true);
@@ -2615,6 +2644,26 @@ test('textos de férias e rescisão: o prazo de 10 dias vale também para entreg
   assert.doesNotMatch(m.texto, /assinad|comprovante/i);
 });
 
+test('nenhum texto padrão pede documento assinado ao escritório; a única exceção é a carta de pedido de demissão (Josué, 29/10/2026)', () => {
+  const D = OC.DEFAULTS, textos = [];
+  const junta = (o, onde) => { if (o == null) return; if (typeof o === 'string') textos.push([onde, o]); else if (Array.isArray(o)) o.forEach((x, n) => junta(x, onde + '[' + n + ']')); else if (typeof o === 'object') Object.entries(o).forEach(([k, v]) => junta(v, onde + '.' + k)); };
+  junta(D.textosSugestao, 'textosSugestao'); junta(D.observacoes, 'observacoes');
+  junta(D.modelosTramite.map(m => m.texto), 'modelosTramite'); junta((D.modelosCriacao || []).map(m => m.descricao), 'modelosCriacao');
+  // as mensagens prontas de todos os tipos e trâmites (com as observações acrescentadas)
+  for (const t of OC.TYPES) for (const lado of ['esc', 'cli']) {
+    const item = { type: t.key, typeLabel: t.label, code: 1, lado, apelido: 'ACME', cliente: 'ACME LTDA', detalhe: 'FULANO', datas: { inicio: '2026-12-01', abono: true, desligamento: '2026-11-20' } };
+    OC.mensagensProntas(item, {}, []).forEach(m => textos.push(['mensagemPronta.' + t.key + '.' + m.sit, m.texto]));
+  }
+  const regras = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'regras', 'escritorio.exemplo.json'), 'utf8'));
+  junta(regras, 'regras.exemplo');
+  assert.ok(textos.length > 60);
+  for (const [onde, t] of textos) {
+    // a frase que diz que o documento fica na empresa, ou que fala da carta de pedido de demissão, não conta
+    const frases = String(t).split(/(?<=[.!?])\s+|\n+/).filter(f => !/pedido de demiss|fica (guardad[oa] )?na empresa|não precisa ser enviad/i.test(f));
+    for (const f of frases) assert.doesNotMatch(f, /assinad[oa]s?\b|assinatura|\bcarta\b|termo de rescis/i, onde + ': ' + f.slice(0, 120));
+  }
+});
+
 test('mensagem pronta de rescisão: as observações não repetem o que o texto já diz (mesma regra legal, mesma data ou o mesmo texto)', () => {
   const item = { type: 'calcRescisao', typeLabel: 'Cálculo de rescisão', code: 1, lado: 'esc' };
   const obs = OC.DEFAULTS.observacoes.calcRescisao.map(t => ({ texto: t.replace('{pagamentoRescisaoDias}', '10') }));
@@ -2645,7 +2694,7 @@ test('mensagem pronta: uma por trâmite, a do escritório mais específica, a da
   // a específica do tipo vence a geral
   const fer = OC.mensagensProntas({ type: 'calcFerias', code: 1, lado: 'esc' }, {}, []);
   assert.match(fer.find(m => m.sit === 2).texto, /férias de \{empregado\}/);
-  assert.match(fer.find(m => m.sit === 4).texto, /foi concluído e segue em anexo\. O pagamento deve ser feito até \{pagamento\}\.\n\nSe precisar de mais alguma coisa[\s\S]*pode concluí-la/);
+  assert.match(fer.find(m => m.sit === 4).texto, /foi concluído e segue em anexo\. O pagamento deve ser feito até \*\*\{pagamento\}\*\*\.\n\nSe precisar de mais alguma coisa[\s\S]*pode concluí-la/);
   assert.doesNotMatch(fer.find(m => m.sit === 5).texto, /segue em anexo/, 'a entrega é o Respondido; o Concluído só encerra');
   // um modelo do escritório que só pede algo (ex.: "Pedir atestado" no afastamento) não toma o lugar da entrega no Respondido
   const regPedido = { modelosTramite: OC.DEFAULTS.modelosTramite.concat([{ rot: 'Pedir atestado', situacao: 4, tipos: ['afastamento'], texto: 'Envie o atestado.' }]) };
@@ -3059,4 +3108,21 @@ test('Hub: a equipe ativa do escritório vem de /employees (pageIndex a partir d
   assert.deepEqual(plano(ok.colunas), ['Id', 'Contato (id)', 'Nome']);
   const curto = await OC.lerEscritorio(mk(it.slice(0, 2), 5, 1), 'funcionarios');
   assert.equal(curto.cortado, true, 'vieram menos do que o total: avisa que está incompleto');
+});
+
+test('negrito: **marcação** vira letras em negrito do Unicode no envio, e as regras que leem o texto continuam entendendo (0.61.0)', () => {
+  assert.equal(OC.negritoUnicode('Pago 28/11'), '𝗣𝗮𝗴𝗼 𝟮𝟴/𝟭𝟭');
+  assert.equal(OC.negritoUnicode('até').normalize('NFKC'), 'até', 'acento combinado: volta ao normal');
+  assert.equal(OC.aplicarDestaques('Pague até **28/11** e **envie o aviso**.'), 'Pague até 𝟮𝟴/𝟭𝟭 e 𝗲𝗻𝘃𝗶𝗲 𝗼 𝗮𝘃𝗶𝘀𝗼.');
+  assert.equal(OC.aplicarDestaques('5 ** 2 e ** solto'), '5 ** 2 e ** solto', 'asterisco solto não vira nada');
+  // o pedido ao Onvio sai em negrito; nada de HTML
+  const r = { id: 'g1' }, item = { type: 'geral', code: 1, lado: 'esc' };
+  const p = OC.pedidoAcao({ acao: 'tramite', type: 'geral', texto: 'Prazo: **até 28/11**.', situacao: 4 }, r, item);
+  assert.equal(p.corpo.description, 'Prazo: 𝗮𝘁𝗲́ 𝟮𝟴/𝟭𝟭.'.normalize('NFD').replace(/𝗮𝘁𝗲́/, OC.negritoUnicode('até')));
+  assert.doesNotMatch(p.corpo.description, /\*\*|<b>/);
+  // leitura: a resposta em negrito ainda é reconhecida como pedido ao cliente e o prazo prometido é achado
+  assert.equal(OC.pedeAlgoAoCliente(OC.aplicarDestaques('Por favor, **envie o documento** até sexta.'), OC.DEFAULTS).pede, true);
+  // os textos padrão marcam o que é importante
+  assert.match(OC.DEFAULTS.textosSugestao.feriasAnalise, /\*\*\{pagamentoFerias\}\*\*/);
+  assert.match(OC.DEFAULTS.textosSugestao.rescisaoAnalise, /\*\*\{pagamentoRescisao\}\*\*/);
 });
