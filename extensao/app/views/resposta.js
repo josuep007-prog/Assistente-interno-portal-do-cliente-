@@ -22,6 +22,8 @@ document.addEventListener('mousedown', e => {
   if (!aoAbrir || !aoAbrir.r.mp || !e.target.closest || e.target.closest('#mp-balao, #cmp-mp')) return;
   aoAbrir.r.mp = null; aoAbrir.redesenhar();
 });
+// janela larga (a partir de 1000 px): a caixa fica ao lado da conversa e as situações do trâmite ficam sempre à vista (CSS .g-cols > .cmp); abaixo disso, lista suspensa
+const listaFixa = () => innerWidth >= 1000;
 const novoRascunho = () => ({ mp: null, guardSit: '', guardDeTexto: false, texto: '', sit: '', arquivos: [], modo: 'editar', erro: '', aoEnviar: null, antes: [], guardando: false, guardTexto: '', guardRot: '', aberto: false, menuAberto: false, fora: [], pend: null, reenviando: false, prog: '', focar: false, selMarca: '', proxima: false, fimEm: 0, segTotal: 0 });
 const rascunho = i => { const k = chaveDe(i); if (!rascunhos.has(k)) rascunhos.set(k, novoRascunho()); return rascunhos.get(k); };
 const ic = (n, c) => '<svg class="ic' + (c ? ' ' + c : '') + '"><use href="#i-' + n + '"/></svg>';
@@ -190,7 +192,7 @@ export function respostaHtml(i, obs, ctx) {
         '<div class="cmp-envia">' +
           '<button class="btn btn-primary cmp-enviar" id="a-revisar" type="button" title="Mostra como vai ficar e pede a confirmação antes de enviar ao Onvio">Enviar como <b id="a-sit-rot">' + (it ? esc(rotSit) : '…') + '</b></button>' +
           '<button class="btn btn-primary cmp-split" id="a-sit-menu" type="button" aria-haspopup="true" aria-expanded="' + !!r.menuAberto + '" title="Escolher a situação do trâmite" aria-label="Escolher a situação do trâmite">' + ic('chev-d', 'ic-sm') + '</button>' +
-          '<div class="cmp-seg" id="cmp-seg" role="radiogroup" aria-label="Situação do trâmite"' + (r.menuAberto ? '' : ' hidden') + '>' +
+          '<div class="cmp-seg" id="cmp-seg" role="radiogroup" aria-label="Situação do trâmite"' + (r.menuAberto || listaFixa() ? '' : ' hidden') + '>' +
             ints.map(x => { const [t1, t2] = x.rot.split(' · '); return '<button type="button" class="cmp-int' + (String(r.sit) === String(x.sit) ? ' on' : '') + '" role="radio" aria-checked="' + (String(r.sit) === String(x.sit)) + '" data-sit="' + x.sit + '" data-tom="' + x.tom + '" data-pede="' + (x.pedeCliente ? '1' : '0') + '" title="' + esc(x.efeito) + '"><i class="cmp-pt"></i><span class="t">' + esc(t1) + '</span>' + (t2 ? '<span class="s"><span class="sep"> · </span>' + esc(t2) + '</span>' : '') + '</button>'; }).join('') +
           '</div>' +
         '</div>' +
@@ -263,7 +265,7 @@ export function ligarResposta(g, i, r0, obs, cb) {
   // "Enviar como ▾": a lista de situações abre sob o botão e fecha ao escolher, ao clicar fora ou com Esc
   const seg = $('#cmp-seg', g), caret = $('#a-sit-menu', g);
   const menu = abrir => {
-    if (!seg || !caret) return;
+    if (!seg || !caret || listaFixa()) return;
     seg.hidden = !abrir; caret.setAttribute('aria-expanded', String(!!abrir));
     if (abrir) {                                           // fixa por cima de tudo (a caixa rola por dentro e cortaria a lista)
       const b = caret.getBoundingClientRect(), h = seg.offsetHeight, acima = b.top - 6 - h >= 8;
@@ -273,7 +275,7 @@ export function ligarResposta(g, i, r0, obs, cb) {
   };
   if (caret) caret.onclick = e => { e.stopPropagation(); menu(seg.hidden); };
   if (seg) {
-    $('.cmp-envia', g).onkeydown = e => { if (e.key === 'Escape' && !seg.hidden) { e.preventDefault(); e.stopPropagation(); menu(false); caret.focus(); } };      // Esc fecha só a lista, não o detalhe
+    $('.cmp-envia', g).onkeydown = e => { if (e.key === 'Escape' && !seg.hidden && !listaFixa()) { e.preventDefault(); e.stopPropagation(); menu(false); caret.focus(); } };      // Esc fecha só a lista, não o detalhe
     const fora = e => { if (!document.contains(seg)) { document.removeEventListener('mousedown', fora); return; } if (!seg.hidden && !e.target.closest('.cmp-envia')) menu(false); };
     document.addEventListener('mousedown', fora);
   }
