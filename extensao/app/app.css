@@ -243,9 +243,10 @@ a{color:var(--blue-deep)}
 .sc-cli{font:700 15px/1.25 "Archivo",sans-serif; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
 .sc-sub{font-size:12.5px; color:var(--ink-2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:-4px}
 /* rodapé do cartão: a idade e o responsável à esquerda; os botões fixos no canto inferior direito (0.62.1) */
-.sc-pe{display:flex; align-items:flex-end; justify-content:space-between; gap:6px 10px; margin-top:auto; padding-top:8px; border-top:1px solid var(--rule); font-size:12px; color:var(--ink-3)}
+.sc-pe{display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:6px 10px; margin-top:auto; padding-top:8px; border-top:1px solid var(--rule); font-size:12px; color:var(--ink-3)}
 .sc-pe b{font:600 13px "IBM Plex Mono",monospace; color:var(--ink-2)}
-.sc-info{flex:1 1 0; min-width:0; display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 10px}
+.sc-info{flex:1 1 auto; min-width:0; display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 10px}
+.sc-info > span:first-child{flex:none; white-space:nowrap}
 .sc-info .resp{min-width:0; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
 .sc-acoes{flex:none; max-width:100%; margin-left:auto; display:flex; flex-wrap:wrap; justify-content:flex-end; align-items:center; gap:6px}
 .sc .motivos{display:flex; gap:4px; flex-wrap:wrap}

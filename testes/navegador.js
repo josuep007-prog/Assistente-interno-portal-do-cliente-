@@ -1674,6 +1674,19 @@ await passo('app · detalhe: com muito conteúdo e janela baixa, a conversa (na 
 await passo('app · Fila: cartões por tipo (todos, enxutos; de novo tira); ordem por prioridade, empresa (agrupada) e mais recente', async () => {
   const p = await abrirApp('#/fila?escopo=todas');
   const tipos = await p.$$eval('#tipos .tipo-c', e => e.map(x => x.dataset.tipo + '=' + x.querySelector('b').textContent));
+  // rodapé do cartão: com dois botões largos (Escolher responsável + Pôr em análise) a idade nunca é coberta e os botões ficam à direita
+  await p.waitForSelector('#corpo .sc, #tipos .tipo-c');
+  const ov = await p.evaluate(() => {
+    const base = document.querySelector('#corpo .sc'); if (!base) return null;
+    const c = base.cloneNode(true), ac = c.querySelector('.sc-acoes');
+    ac.innerHTML = '<button class="btn btn-sm sug-resp">Escolher responsável</button><button class="btn btn-sm btn-concluir btn-analise">Pôr em análise</button>';
+    c.style.width = '290px'; c.style.justifySelf = 'start';                   // cartão estreito, como numa tela menor
+    base.parentNode.appendChild(c);
+    const i = c.querySelector('.sc-info').firstElementChild.getBoundingClientRect(), a = ac.getBoundingClientRect(), k = c.getBoundingClientRect();
+    const cruza = !(i.right <= a.left + 1 || a.right <= i.left + 1 || i.bottom <= a.top + 1 || a.bottom <= i.top + 1);
+    return { cruza, direita: Math.round(k.right - a.right) <= 16 };
+  });
+  if (ov) { assert.equal(ov.cruza, false, 'os botões não cobrem "Nd parada"'); assert.equal(ov.direita, true, 'e ficam no canto direito do cartão'); }
   assert.equal(tipos.length, 11, 'todos os tipos, como antes');
   assert.ok(tipos.includes('=4') && tipos.includes('geral=1') && tipos.includes('calcFerias=1') && tipos.includes('afastamento=0'), tipos.join());
   // a mesma linha de apoio do Hoje: o motivo mais urgente do tipo (e o total, quando há mais)
