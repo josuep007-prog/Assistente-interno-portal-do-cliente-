@@ -1029,8 +1029,8 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .ax-grupo .dados-tit small{display:block; font-weight:400; text-transform:none; letter-spacing:0; color:var(--ink-3); margin-top:1px}
 .ax-arq{display:flex; align-items:center; gap:10px; padding:6px 10px; border-radius:4px; cursor:pointer}
 .ax-arq:hover{background:var(--surface-2)}
-.ax-ic{flex:none; display:grid; place-items:center; width:30px; height:20px; border-radius:3px; font:700 9.5px "IBM Plex Mono", monospace; color:#fff; background:var(--ink-3)}
-.ax-ic.pdf{background:#d03b3b} .ax-ic.img{background:#2a78d6} .ax-ic.xls{background:#1baf7a} .ax-ic.doc{background:#6250d6} .ax-ic.zip{background:#c98500}
+.ax-ic{flex:none; display:grid; place-items:center; width:30px; height:20px; border-radius:3px; font:700 10.5px "IBM Plex Mono", monospace; color:#fff; background:#55606B}
+.ax-ic.pdf{background:#B52827} .ax-ic.img{background:#1A5CAD} .ax-ic.xls{background:#0B7050} .ax-ic.doc{background:#5645C8} .ax-ic.zip{background:#8A5E00}
 .ax-nome{min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
 .ax-falhas{margin:6px 0 0; padding-left:18px}
 .n-anexos{margin-left:6px; padding:0 6px; border-radius:3px; background:var(--blue-pale); color:var(--blue-deep); font:600 12px "IBM Plex Mono", monospace}
@@ -1550,39 +1550,41 @@ body.setor-fora .trilho [data-rota="equipe"], body.setor-fora .trilho [data-rota
 /* 0.62.0 · solicitação aberta: abre nos dados (largura total, cartões lado a lado, nada cortado). Na borda direita fica a barra "Conversa";
    ao passar o mouse abre a gaveta com os trâmites e a caixa de resposta (pedido do Josué em 29/10/2026). Fixada, os dados abrem espaço. */
 .dlg-cols.dlg-v3{position:relative; display:flex; min-height:0; overflow:hidden}
-.dlg-dados{flex:1 1 auto; min-width:0; min-height:0; overflow-y:auto; display:flex; flex-direction:column; gap:12px; padding:14px 22px 20px 22px; margin-right:40px; background:var(--surface-2)}
+.dlg-dados{flex:1 1 auto; min-width:0; min-height:0; overflow:hidden; display:flex; flex-direction:column; gap:10px; padding:12px 22px 14px 22px; margin-right:40px; background:var(--surface-2)}
 .dlg-v3.fixa .dlg-dados{margin-right:0}
-.dlg-dados .dlg-destaques{display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); gap:8px; padding:0}
+.dlg-dados .dlg-destaques{flex:none; display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); gap:8px; padding:0}
 .dlg-dados .dq{min-width:0; max-width:none}
 .dlg-dados .dq b{white-space:normal; overflow-wrap:anywhere}
-.pn-extras{display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:12px; align-items:start}
-.pn-sec{border:1px solid var(--rule); border-radius:var(--r); background:var(--surface)}
-.pn-sec > summary{display:flex; align-items:center; gap:8px; padding:9px 12px; cursor:pointer; list-style:none; font:600 12.5px "IBM Plex Sans",sans-serif; color:var(--ink)}
-.pn-sec > summary::-webkit-details-marker{display:none}
-.pn-sec > summary::before{content:""; flex:none; width:6px; height:6px; margin:0 2px; border-right:1.5px solid var(--ink-2); border-bottom:1.5px solid var(--ink-2); transform:rotate(-45deg); transition:transform .12s}
-.pn-sec[open] > summary::before{transform:rotate(45deg)}
-.pn-sec > summary:hover{color:var(--blue-deep)}
-.pn-sec > summary:focus-visible{outline:2px solid var(--blue-mid); outline-offset:-2px}
-.pn-n{margin-left:auto; font:600 12px "IBM Plex Mono",monospace; color:var(--ink-2)}
-.pn-n.late{color:var(--brand-red)}
-.pn-corpo{padding:0 12px 12px; font-size:13px}
-.pn-corpo .vazio{padding:12px 0; text-align:left}
-#g-painel [data-pn="dados"] .pn-corpo{display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:12px; align-items:start}
-#g-painel .dados-g{max-width:none; margin:0; padding:12px 14px 14px; border:1px solid var(--rule); border-radius:var(--r); background:var(--surface)}
-#g-painel .dados-g .campos{grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:10px 14px}
-#g-painel .dados-g .campo .v{overflow-wrap:anywhere}
+/* 0.65.0: dados e anexos sempre à vista; a página não rola, cada bloco rola por dentro quando não cabe */
+.pn-fluxo{flex:1 1 0; min-height:0; display:grid; grid-template-columns:minmax(0,1fr); gap:12px}
+.pn-fluxo.com-anexos{grid-template-columns:minmax(0,1fr) minmax(250px, 300px)}
+.pn-dados{min-height:0; overflow-y:auto; column-width:300px; column-gap:12px; padding:1px; outline-offset:-2px}
+.pn-dados > .vazio{column-span:all}
+.pn-anex{min-height:0; display:flex; flex-direction:column; border:1px solid var(--rule); border-radius:var(--r); background:var(--surface)}
+.pn-anex-cab{flex:none; display:flex; align-items:center; gap:8px; padding:8px 10px 8px 12px; border-bottom:1px solid var(--rule); font:600 13px "IBM Plex Sans",sans-serif}
+.pn-anex-cab .btn{margin-left:auto}
+.pn-n{font:600 12px "IBM Plex Mono",monospace; color:var(--ink-2)}
+.pn-anex-lista{list-style:none; margin:0; padding:4px 6px; overflow-y:auto; min-height:0; flex:1 1 auto}
+.pn-anex-lista li{display:flex; align-items:center; gap:8px; padding:5px 6px; border-radius:3px; font-size:12.5px; color:var(--ink)}
+.pn-anex-lista li + li{border-top:1px solid var(--rule)}
+.pn-anex-lista .ax-nome{min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.pn-anex-mais{flex:none; margin:0; padding:6px 12px 8px; border-top:1px solid var(--rule); font-size:12px}
+#g-painel .dados-g{max-width:none; margin:0 0 10px; padding:10px 12px 12px; border:1px solid var(--rule); border-radius:var(--r); background:var(--surface); break-inside:avoid}
+#g-painel .dados-cab{margin:0 0 8px}
+#g-painel .dados-g .campos{grid-template-columns:repeat(auto-fill, minmax(118px, 1fr)); gap:8px 12px}
+#g-painel .dados-g .campo .k{font-size:12px; line-height:1.25}
+#g-painel .dados-g .campo .v{font-size:13px; line-height:1.3; overflow-wrap:anywhere}
+#g-painel .dados-g .texto-longo{max-height:6.5em; overflow-y:auto}
 #g-painel .obs-lista{margin:8px 0 12px}
-#g-painel .anexos{margin:0 0 8px}
-#g-painel .item-ag{padding:8px 0}
 .tr-sit-pill{font:600 12px "IBM Plex Sans",sans-serif; padding:1px 7px; border-radius:3px; background:var(--surface-3); color:var(--ink-2); white-space:nowrap}
 .tr-item.esc .tr-sit-pill{background:color-mix(in srgb, var(--blue-deep) 14%, var(--surface))}
 
 /* gaveta da direita: a barra "Conversa" fica na borda; a gaveta desliza por cima dos dados (ou ao lado, fixada) */
-.g-gaveta{--gav:min(92vw, max(540px, 70vw)); position:absolute; top:0; right:0; bottom:0; z-index:5; display:flex; width:calc(var(--gav) + 40px); transform:translateX(var(--gav)); transition:transform .16s ease; pointer-events:none}
+.g-gaveta{--gav:min(94vw, max(540px, 88vw)); position:absolute; top:0; right:0; bottom:0; z-index:5; display:flex; width:calc(var(--gav) + 40px); transform:translateX(var(--gav)); transition:transform .16s ease; pointer-events:none}
 .g-gaveta.aberta{transform:none; pointer-events:auto}
 .g-gaveta > *{pointer-events:auto}
 .g-gaveta.aberta .g-gaveta-in{box-shadow:-12px 0 28px -14px rgba(16,24,32,.35)}
-.g-gaveta.fixa{position:relative; flex:none; transform:none; box-shadow:none}
+.g-gaveta.fixa{--gav:min(80vw, max(880px, 62vw)); position:relative; flex:none; transform:none; box-shadow:none}
 .g-gaveta.fixa .g-gaveta-in{box-shadow:none}
 .g-barra{flex:none; width:40px; display:flex; flex-direction:column; align-items:center; gap:8px; padding:12px 0; border:0; border-left:3px solid var(--blue-deep); background:color-mix(in srgb, var(--blue-deep) 9%, var(--surface)); color:var(--blue-deep); cursor:pointer; font:600 12px "IBM Plex Sans",sans-serif}
 .g-barra:hover, .g-gaveta.aberta .g-barra{background:color-mix(in srgb, var(--blue-deep) 18%, var(--surface))}
@@ -1603,10 +1605,36 @@ body.setor-fora .trilho [data-rota="equipe"], body.setor-fora .trilho [data-rota
 .g-gaveta-cab .icon-btn:hover{background:var(--surface-3); color:var(--ink)}
 .g-pin[aria-pressed="true"]{background:var(--blue-pale); color:var(--blue-deep)}
 .g-gaveta-in .dlg-body{padding:14px 16px 16px}
+/* 0.65.0 (pedido do Josué em 29/10/2026): trâmites ocupam mais da tela e a caixa de resposta fica À DIREITA da conversa, com as situações
+   do trâmite sempre à vista (sem lista escondida). Só em janela larga; abaixo de 1000 px continua a gaveta de baixo, com a lista suspensa. */
+.g-cols{flex:1 1 0; min-height:0; display:flex; flex-direction:column}
+@media (min-width:1000px){
+  .g-cols{flex-direction:row}
+  .g-cols > .dlg-body{flex:1 1 0; min-width:0}
+  .g-gaveta-in .g-cols > .cmp{flex:none; width:clamp(340px, 34%, 440px); max-height:none; height:auto; padding:12px 14px 14px; gap:8px; border-top:0; border-left:1px solid var(--rule); box-shadow:none; overflow-y:auto}
+  .g-cols > .cmp .cmp-caixa{display:flex; flex-direction:column; flex:1 0 auto}
+  .g-cols > .cmp .cmp-arqs{max-height:150px; overflow-y:auto}
+  .g-cols > .cmp .cmp-chat{flex:1 0 auto; flex-wrap:wrap; align-content:flex-start; gap:6px; padding:8px}
+  .g-cols > .cmp .cmp-chat .cmp-ico{order:1}
+  .g-cols > .cmp .cmp-chat textarea{order:2; flex:1 1 100%; min-height:150px; max-height:none; height:auto}
+  .g-cols > .cmp .cmp-envia{display:contents}
+  .g-cols > .cmp .cmp-envia .cmp-seg, .g-cols > .cmp .cmp-envia .cmp-seg[hidden]{order:3; position:static; display:flex; flex-direction:column; width:100%; min-width:0; max-width:none; box-shadow:none; border:1px solid var(--rule-strong); border-radius:var(--r); background:var(--surface); overflow:hidden}
+  .g-cols > .cmp .cmp-envia .cmp-int{width:100%; border-bottom:1px solid var(--rule)}
+  .g-cols > .cmp .cmp-envia .cmp-int:last-child{border-bottom:0}
+  .g-cols > .cmp .cmp-envia .cmp-enviar{order:4; flex:1 1 100%; justify-content:center; border-radius:var(--r)}
+  .g-cols > .cmp .cmp-envia .cmp-split{display:none}
+}
 /* janela estreita: a barra vira uma aba embaixo e a gaveta sobe por cima dos dados (só ao clicar) */
 @media (max-width:999px){
   .g-barra{border-left:0; border-top:3px solid var(--blue-deep)}
-  .dlg-dados{margin-right:0; padding-bottom:56px}
+  .dlg-dados{margin-right:0; padding-bottom:50px}
+  .pn-fluxo.com-anexos{grid-template-columns:minmax(0,1fr); grid-template-rows:minmax(0,1fr) auto}
+  .pn-anex{flex-direction:row; align-items:center}
+  .pn-anex-cab{border-bottom:0; border-right:1px solid var(--rule)}
+  .pn-anex-lista{display:flex; gap:6px; overflow:auto hidden; padding:6px 8px}
+  .pn-anex-lista li{flex:none; max-width:220px; border:1px solid var(--rule); border-radius:3px}
+  .pn-anex-lista li + li{border-top:1px solid var(--rule)}
+  .pn-anex-mais{border-top:0; border-left:1px solid var(--rule)}
   .g-gaveta{--gav:min(78%, 640px); top:auto; left:0; right:0; bottom:0; width:auto; height:var(--gav); flex-direction:column-reverse; transform:translateY(calc(100% - 40px))}
   .g-barra{width:auto; height:40px; flex-direction:row; justify-content:center; padding:0 12px}
   .g-barra-tx{writing-mode:horizontal-tb; transform:none}

@@ -18,7 +18,6 @@ let gavetaAberta = false;      // aberta pelo mouse, pelo clique na barra, pela 
 let gavetaFixa = (() => { try { return localStorage.getItem(GAV_FIXA) === '1'; } catch (e) { return false; } })();   // fixada: fica aberta e os dados abrem espaço
 let lembAberto = false;        // o menu "Lembretes" do topo está aberto (continua aberto ao salvar um lembrete)
 let saiTimer = null, fechouEu = false;   // fechouEu: a pessoa fechou a gaveta de propósito (vale até ela abrir de novo)
-const painelAbertos = new Map();   // seções do painel de dados abertas/fechadas pela pessoa (vale enquanto o app está aberto)
 let lista = null;        // lista de onde a pessoa abriu (para anterior/próxima)
 let ultimo = null;       // { i, r, erro, carregando } para redesenhar ao trocar de aba ou ao mudar lembretes
 let rolada = null;       // solicitação cuja conversa já foi levada ao fim (uma vez por abertura)
@@ -156,8 +155,6 @@ function desenhar(i, r, erro, carregando) {
     if (rolar && c) c.scrollTop = c.scrollHeight;
   });
   if ($('#g-ant')) { $('#g-ant').onclick = () => andar(-1); $('#g-prox').onclick = () => andar(1); }
-  // painel: lembra quais seções a pessoa abriu ou fechou
-  $$('#g-painel details[data-pn]', g).forEach(d => d.addEventListener('toggle', () => painelAbertos.set(d.dataset.pn, d.open)));
   if ($('#g-lemb')) $('#g-lemb').addEventListener('toggle', e => { lembAberto = e.target.open; });
   $('#g-onvio').onclick = async () => {
     const x = await enviar({ cmd: 'abrir', item: { type: i.type, num: String(i.num) } });
@@ -273,24 +270,22 @@ function destaquesHtml(r) {
   return '<div class="dlg-destaques" aria-label="Em destaque">' + l.map(c => '<span class="dq"><small>' + esc(c.k) + '</small><b>' + esc(c.v) + '</b></span>').join('') + '</div>';
 }
 
-// Painel de dados (0.62.0, pedido do Josué em 29/10/2026): a solicitação abre nele, em largura total (a conversa e a resposta ficam na gaveta
-// da direita). Em destaque no topo; "Todos os dados" em cartões lado a lado; Anexos numa seção que abre e fecha.
+// Painel de dados (0.62.0; 0.65.0, pedido do Josué em 29/10/2026: dados e anexos à vista, sem rolar a página): a solicitação abre nele, em
+// largura total (a conversa e a resposta ficam na gaveta da direita). Em destaque no topo; embaixo, os dados em colunas compactas e, ao lado,
+// o painel de Anexos (em janela estreita, uma faixa de uma linha). Quem rola é cada bloco por dentro, nunca a página.
 function painelHtml(i, r, carregando, nAnexos) {
-  const sec = (id, tit, n, corpo, padrao, alerta) => {
-    const ab = painelAbertos.has(id) ? painelAbertos.get(id) : padrao;
-    return '<details class="pn-sec" data-pn="' + id + '"' + (ab ? ' open' : '') + '><summary><span class="pn-tit">' + tit + '</span>' + (n ? '<span class="pn-n' + (alerta ? ' late' : '') + '">' + n + '</span>' : '') + '</summary><div class="pn-corpo">' + corpo + '</div></details>';
-  };
   if (carregando) return '<section class="dlg-dados" id="g-painel" aria-label="Dados da solicitação"><div class="vazio">Lendo a solicitação completa no Onvio…</div></section>';
   const abertura = (r && r.anexos) || [], total = Math.max(nAnexos, abertura.length);
-  const anexos = total ? (abertura.length ? '<div class="anexos">' + abertura.map(a => '<span><svg class="ic ic-sm"><use href="#i-paperclip"/></svg>' + esc(a) + '</span>').join('') + '</div>' : '') +
-    (total > abertura.length ? '<p class="fraco">' + (abertura.length ? 'E mais ' + (total - abertura.length) + ' nos trâmites da conversa.' : total + (total === 1 ? ' anexo' : ' anexos') + ' nos trâmites da conversa.') + '</p>' : '') +
-    (nAnexos ? '<button type="button" class="btn btn-sm" id="g-anexos2"><svg class="ic ic-sm"><use href="#i-download"/></svg> Escolher e baixar</button>' : '') : '';
-  const dq = destaquesHtml(r);
+  const arq = nome => { const tp = tipoArquivo(nome); return '<li title="' + esc(nome) + '"><span class="ax-ic ' + tp.cls + '">' + tp.rot + '</span><span class="ax-nome">' + esc(nome) + '</span></li>'; };
+  const anexos = total ? '<aside class="pn-anex" id="pn-anex" data-pn="anexos" aria-label="Anexos"><header class="pn-anex-cab"><b>Anexos</b><span class="pn-n">' + total + '</span>' +
+      (nAnexos ? '<button type="button" class="btn btn-sm" id="g-anexos2" title="Escolha quais anexos baixar"><svg class="ic ic-sm"><use href="#i-download"/></svg> Baixar</button>' : '') + '</header>' +
+    '<ul class="pn-anex-lista">' + abertura.map(arq).join('') + '</ul>' +
+    (total > abertura.length ? '<p class="fraco pn-anex-mais">' + (abertura.length ? 'E mais ' + (total - abertura.length) + ' nos trâmites da conversa.' : total + (total === 1 ? ' anexo' : ' anexos') + ' nos trâmites da conversa.') + '</p>' : '') + '</aside>' : '';
   return '<section class="dlg-dados" id="g-painel" aria-label="Dados da solicitação">' +
-    dq +
-    sec('dados', 'Todos os dados', '', dados(i, r, false), true) +
-    '<div class="pn-extras">' +
-    (total ? sec('anexos', 'Anexos', String(total), anexos, true) : '') +
+    destaquesHtml(r) +
+    '<div class="pn-fluxo' + (total ? ' com-anexos' : '') + '">' +
+      '<div class="pn-dados" id="pn-dados" data-pn="dados" tabindex="0" aria-label="Todos os dados">' + dados(i, r, false) + '</div>' +
+      anexos +
     '</div>' +
   '</section>';
 }
@@ -310,9 +305,11 @@ function gavetaHtml(i, r, erro, carregando, obs, p, tramites) {
       '<div class="g-gaveta-cab"><b>Trâmites e resposta</b>' + (nTr ? '<span class="g-gaveta-n">' + nTr + '</span>' : '') + '<span class="spacer"></span>' +
         '<button type="button" class="icon-btn g-pin" id="g-pin" aria-pressed="' + gavetaFixa + '" title="' + (gavetaFixa ? 'Soltar: volta a abrir só ao passar o mouse' : 'Fixar aberta: os dados passam para o lado') + '" aria-label="Fixar a conversa aberta">' + ico('pin') + '</button>' +
         '<button type="button" class="icon-btn" id="g-gav-x" title="Fechar a conversa" aria-label="Fechar a conversa">' + ico('chev-r') + '</button></div>' +
+      '<div class="g-cols">' +
       '<div class="dlg-body" id="g-corpo">' + (erro ? '<div class="faixa"><svg class="ic"><use href="#i-alert"/></svg>' + esc(erro) + '</div>' : '') +
         (aba === 'acao' && acaoAberta() ? formAcao(i) : tramitesHtml(r, carregando, i)) + '</div>' +
       (aba === 'tramites' && !carregando && r && !erro ? respostaHtml(i, obs, { datas: r.datas, proxima: p >= 0 && p < lista.length - 1 }) : '') +
+      '</div>' +
     '</div></aside>';
 }
 function abrirGaveta() {

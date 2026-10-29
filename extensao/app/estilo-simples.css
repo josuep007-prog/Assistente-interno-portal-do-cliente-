@@ -292,8 +292,10 @@
 
 /* 0.62.0 · dados da solicitação (largura total) no Simplificado: liso, sem sombras, títulos em letra normal */
 :root[data-estilo="simples"] .dlg-dados{ background:var(--surface-2); padding:12px 20px 18px }
-:root[data-estilo="simples"] .pn-sec{ border-color:var(--rule) }
-:root[data-estilo="simples"] .pn-sec > summary{ font-weight:600 }
+@media (max-width:999px){ :root[data-estilo="simples"] .dlg-dados{ padding-bottom:50px } }        /* a aba "Trâmites e resposta" fica por cima da borda de baixo */
+:root[data-estilo="simples"] .pn-anex{ border-color:var(--rule) }
+:root[data-estilo="simples"] .pn-anex-cab{ font-weight:600; font-size:13px }
+:root[data-estilo="simples"] .pn-anex-lista li{ font-size:13px }
 :root[data-estilo="simples"] .tr-sit-pill{ font-weight:500 }
 
 /* Leitura (0.61.0, pedido do Josué em 29/10/2026: "muitos textos cinzas e apagados"): o --ink-3 ficou mais escuro nos tokens

@@ -1207,7 +1207,7 @@ await passo('app · o analista não vê prazo interno nem gravidade (só o prazo
   assert.equal(await p.$('#corpo .c-porque') === null, true, 'sem G3 nem o porquê na lista');
   assert.equal(await p.$('#corpo .sc-g3') === null, true);
   assert.doesNotMatch(await p.textContent('#corpo [data-k="calcFerias:a"]'), /Parada há 31 dias|G3|Crítica/, 'o motivo interno não aparece no cartão');
-  await p.evaluate(() => { window.__respostas = { detalhe: { ok: true, item: {}, tramites: [] } }; });
+  await p.evaluate(() => { window.__respostas = { detalhe: { ok: true, item: {}, tramites: [], anexos: ['x.pdf'] } }; });
   await p.click('#corpo [data-k="calcFerias:a"]');
   await p.waitForSelector('#gaveta h2');
   assert.equal(await p.$('#gaveta .grav-porque') === null, true, 'o detalhe não explica gravidade ao analista');
@@ -1215,7 +1215,7 @@ await passo('app · o analista não vê prazo interno nem gravidade (só o prazo
   // cantos: até 4 px em botões, etiquetas, chips e janelas; iniciais continuam redondas
   const raio = sel => p.$eval(sel, e => parseFloat(getComputedStyle(e).borderTopLeftRadius));
   // a janela é redesenhada quando a leitura chega: mede depois que ela parou de mudar
-  for (const sel of ['#gaveta', '#gaveta .pill', '#gaveta .btn', '#gaveta .pn-sec']) await p.waitForFunction(s => { const e = document.querySelector(s); return e && e.isConnected && parseFloat(getComputedStyle(e).borderTopLeftRadius) <= 4; }, sel, { timeout: 3000 }).catch(async () => assert.fail(sel + ': ' + await raio(sel)));
+  for (const sel of ['#gaveta', '#gaveta .pill', '#gaveta .btn', '#gaveta .pn-anex']) await p.waitForFunction(s => { const e = document.querySelector(s); return e && e.isConnected && parseFloat(getComputedStyle(e).borderTopLeftRadius) <= 4; }, sel, { timeout: 3000 }).catch(async () => assert.fail(sel + ': ' + await raio(sel)));
   await p.keyboard.press('Escape');
   await p.evaluate(() => { const x = document.createElement('div'); x.innerHTML = '<span class="pr-tag" id="t1">x</span><span class="chip-f" id="t2">x</span><span class="sc-n" id="t3">1</span><span class="orig" id="t4">x</span><span class="tr-av" id="t5">AT</span>'; document.body.appendChild(x); });
   for (const sel of ['#t1', '#t2', '#t3', '#t4']) assert.ok(await raio(sel) <= 4, sel + ': ' + await raio(sel));
@@ -1235,7 +1235,6 @@ await passo('app · detalhe: janela com dados e trâmites lidos na hora; lembret
   assert.equal(await p.isVisible('#g-painel'), true, 'o painel de dados fica à vista com a conversa');
   const pedido = await p.evaluate(() => window.__msgs.find(m => m.cmd === 'detalhe'));
   assert.deepEqual([pedido.type, String(pedido.num)], ['geral', '102']);
-  await p.click('#g-painel [data-pn="dados"] > summary');
   assert.match(await p.textContent('#g-painel'), /Segue pedido/, 'HTML do Onvio vira texto puro');
   assert.equal(await p.$('#g-lemb') !== null && await p.$('#g-painel [data-pn="lembretes"]') === null, true, 'Lembretes é um botão no topo, não uma seção dos dados');
   assert.match(await p.textContent('#g-lemb > summary'), /Lembretes\s*1/, 'o botão mostra quantos lembretes pendentes');
@@ -1271,8 +1270,7 @@ await passo('app · detalhe: painel com a solicitação completa em grupos e ane
   });
   await p.click('#corpo [data-k="geral:b"]');
   await p.waitForSelector('#g-painel [data-pn="anexos"]');
-  await p.click('#g-painel [data-pn="dados"] > summary');
-  const t = await p.textContent('#g-painel [data-pn="dados"] .pn-corpo');
+  const t = await p.textContent('#g-painel [data-pn="dados"]');
   assert.match(t, /^Solicitação.*Início das férias27\/10\/2026.*Dias de férias30/, 'sem o bloco "Controle" repetindo o topo');
   assert.ok(!/Controle|Dias parada|1º trâmite/.test(t));
   assert.match(await p.textContent('.dp-last'), /Responsável: .*Aberta em /, 'abertura no topo da janela');
@@ -1281,7 +1279,7 @@ await passo('app · detalhe: painel com a solicitação completa em grupos e ane
   assert.equal(await p.$$eval('#g-painel [data-pn="dados"] .campo .k', e => e.filter(x => x.textContent === 'Nome').length), 0, 'e não se repete como campo');
   assert.equal(await p.$eval('#g-painel [data-pn="dados"] .campo .k', e => getComputedStyle(e).textTransform), 'none', 'rótulos em letra normal');
   assert.match(t, /Pedido do cliente/);
-  assert.match(await p.textContent('#g-painel [data-pn="anexos"]'), /Anexos1.*aviso-assinado\.pdf/, 'anexos numa seção própria do painel, aberta');
+  assert.match(await p.textContent('#g-painel [data-pn="anexos"]'), /Anexos\s*1.*aviso-assinado\.pdf/, 'anexos num painel próprio, sempre à vista');
   assert.equal(await p.$('#g-painel [data-pn="cliente"]') === null && await p.$('#g-copiar-obs') === null, true, 'a seção "Para o cliente" e o copiar observações saíram (0.62.1)');
   assert.deepEqual(p.erros, []);
 });
@@ -1639,7 +1637,6 @@ await passo('app · detalhe: destaques sutis; trâmites como conversa (filtro, o
   assert.equal(await p.isHidden('#dlg-anexos'), true);
   assert.equal(await p.isHidden('#gaveta'), false, 'Esc fecha só a janela de anexos');
   // Todos os dados (painel): o campo em destaque tem marca própria
-  await p.click('#g-painel [data-pn="dados"] > summary');
   assert.equal(await p.$$eval('#g-painel .campo.dq-campo', e => e.length), 2);
   // o campo em destaque em "Todos os dados" tem o mesmo desenho do destaque do painel: fundo, borda fina, sem a barra grossa do lado
   const est = await p.evaluate(() => { const f = n => { const c = getComputedStyle(n); return [c.backgroundColor, c.borderTopWidth, c.borderLeftWidth, c.boxShadow, c.borderTopLeftRadius].join('|'); }; return { topo: f(document.querySelector('#gaveta .dlg-destaques .dq')), dados: f(document.querySelector('#g-painel .campo.dq-campo')) }; });
@@ -1660,7 +1657,7 @@ await passo('app · detalhe: com muito conteúdo e janela baixa, a conversa (na 
   const corpo = await p.$eval('#g-corpo', e => ({ h: e.clientHeight, s: e.scrollHeight }));
   assert.ok(corpo.s > corpo.h, 'quem rola é a conversa');
   const lados = await p.evaluate(() => { const g = document.querySelector('#g-gaveta').getBoundingClientRect(), pn = document.querySelector('#g-painel').getBoundingClientRect(); return { dados: pn.width, gav: g.width, ladoDireito: Math.round(g.right) === innerWidth }; });
-  assert.ok(lados.dados >= 1100 - 60 && lados.ladoDireito && lados.gav >= 1100 * 0.7 && lados.gav <= 1100 * 0.8, 'dados em largura total e a gaveta com 70% da tela, na borda direita: ' + JSON.stringify(lados));
+  assert.ok(lados.dados >= 1100 - 60 && lados.ladoDireito && lados.gav >= 1100 * 0.85 && lados.gav <= 1100 * 0.92, 'dados em largura total e a gaveta com ~88% da tela, na borda direita: ' + JSON.stringify(lados));
   assert.equal(await p.$eval('.tr-item.esc .tr-sit-pill', e => e.textContent), 'Em análise', 'a situação gravada aparece na bolha do escritório');
   await p.setViewportSize({ width: 900, height: 700 });
   await p.click('#g-gav-x');
@@ -1933,7 +1930,8 @@ await passo('app · detalhe em janela larga: abre nos dados, a gaveta abre ao pa
   await p.waitForSelector('#g-gaveta:not(.fixa)');
   await abrirCaixa(p);
   const m = await p.evaluate(() => { const c = document.querySelector('#g-corpo').getBoundingClientRect(), r = document.querySelector('#cmp').getBoundingClientRect(), pn = document.querySelector('#g-painel').getBoundingClientRect(); return { c: [c.left, c.right, c.bottom], r: [r.left, r.right, r.top], pn: [pn.left] }; });
-  assert.ok(m.r[2] >= m.c[2] - 1, 'a caixa de resposta fica embaixo da conversa');
+  assert.ok(m.r[0] >= m.c[1] - 1 && m.r[1] - m.r[0] >= 330, 'a caixa de resposta fica à direita da conversa (0.65.0), com folga para escrever');
+  assert.equal(await p.$$eval('#cmp-seg .cmp-int', e => e.filter(b => b.offsetParent !== null).length), 4, 'as situações do trâmite ficam sempre à vista, sem lista escondida');
   assert.ok(m.pn[0] < m.c[0], 'os dados ocupam a janela e a gaveta fica na direita, por cima deles');
   assert.match(await p.textContent('#a-revisar'), /Enviar como/, 'o botão diz que é para enviar e como (0.62.0)');
   assert.equal(await p.textContent('#a-sit-rot'), '…', 'sem situação escolhida');
@@ -2400,6 +2398,31 @@ await passo('app · Atual intacto: grade de tipos, destaque escuro com carrossel
   assert.ok(await p.isVisible('#g-barra') && await p.$('#gaveta .cmp-chat'), 'a barra Conversa à vista e a caixa de resposta compacta (0.62.0)');
   assert.ok((await p.textContent('#gaveta .dp-last')).includes('Parada há') || true);
   assert.deepEqual(p.erros, []);
+});
+
+await passo('app · detalhe: dados e anexos à vista, lado a lado, sem rolar a página (0.65.0), nos dois estilos', async () => {
+  const campos = (pre, n) => Array.from({ length: n }, (_, k) => ({ k: pre + ' ' + (k + 1), v: 'Valor ' + (k + 1) }));
+  const anexos = Array.from({ length: 15 }, (_, k) => k % 2 ? '1630_Documento_' + k + '.pdf' : '1630_Foto_' + k + '.jpg');
+  const det = { ok: true, item: { assunto: 'ATIVA | 0004-37', type: 'geral' }, datas: {}, tramites: [], anexos,
+    grupos: [{ titulo: 'Solicitação', campos: campos('Dado da solicitação', 8).concat([{ k: 'Descrição', v: 'Texto longo '.repeat(60), longo: true }]) },
+      { titulo: 'Empregado', campos: [{ k: 'Nome', v: 'Fulano', destaque: true }].concat(campos('Dado pessoal', 14)) },
+      { titulo: 'Contrato', campos: campos('Dado do contrato', 12) }] };
+  for (const estilo of ['simples', 'atual']) for (const [w, h] of [[1440, 860], [1100, 760], [900, 700]]) {
+    const p = await abrirApp('#/fila?escopo=todas', { settings: { __v: 2 } }, undefined, { estilo });
+    await p.setViewportSize({ width: w, height: h });
+    await p.evaluate(d => { window.__respostas = { detalhe: d }; }, det);
+    await p.click('#corpo [data-k="geral:b"]'); await p.waitForSelector('#gaveta #pn-anex'); await p.waitForTimeout(400);
+    const m = await p.evaluate(() => { const r = n => document.querySelector(n).getBoundingClientRect(), pan = document.querySelector('#g-painel'), g = r('#gaveta');
+      return { pagina: pan.scrollHeight - pan.clientHeight, anexTopo: r('#pn-anex').top, anexBase: r('#pn-anex').bottom, dadosBase: r('#pn-dados').bottom, janelaBase: g.bottom, dadosLarg: r('#pn-dados').width, anexLarg: r('#pn-anex').width, n: document.querySelectorAll('#pn-anex li').length, lado: r('#pn-anex').left >= r('#pn-dados').right - 1 }; });
+    const onde = estilo + ' ' + w + 'x' + h;
+    assert.equal(m.n, 15, onde + ': todos os anexos listados');
+    assert.ok(m.pagina <= 1, onde + ': o painel não rola, só cada bloco por dentro (sobra ' + m.pagina + ')');
+    assert.ok(m.anexBase <= m.janelaBase + 1 && m.dadosBase <= m.janelaBase + 1 && m.anexTopo >= 0, onde + ': anexos e dados dentro da janela');
+    if (w >= 1100) assert.equal(m.lado, true, onde + ': anexos ao lado dos dados');
+    else assert.ok(m.anexTopo > 0, onde + ': estreita, os anexos viram uma faixa embaixo dos dados');
+    assert.deepEqual(p.erros, [], onde);
+    await p.context().close();
+  }
 });
 
 await passo('app · contraste: nenhum texto abaixo de 4,5:1 (WCAG AA) nas telas principais, nos dois estilos e nos dois temas (0.64.0)', async () => {
