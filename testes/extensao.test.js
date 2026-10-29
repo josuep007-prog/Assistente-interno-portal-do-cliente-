@@ -2351,7 +2351,7 @@ test('férias em análise: com abono pecuniário o texto explica o pedido do emp
     assert.doesNotMatch(sem, /abono|por escrito/i, 'sem abono, nada do abono');
     assert.ok(!/\{\w+\}/.test(com) && !/\{\w+\}/.test(sem), 'nenhuma variável sobra');
     assert.ok(sem.endsWith('30 dias de antecedência.'), 'sem espaço sobrando no fim');
-    assert.match(com, /\n- Abono pecuniário/, 'o abono vira um tópico');
+    assert.match(com, /\n- \*\*Abono pecuniário\*\*/, 'o abono vira um tópico, com o nome em destaque');
   }
   // sem o detalhe lido ainda, o abono é desconhecido: o marcador fica e barra o envio (como o prazo de pagamento)
   assert.deepEqual(OC.marcadoresPendentes(monta(modelo, null)).includes('{abono}'), true);
@@ -2694,7 +2694,7 @@ test('mensagem pronta: uma por trâmite, a do escritório mais específica, a da
   // a específica do tipo vence a geral
   const fer = OC.mensagensProntas({ type: 'calcFerias', code: 1, lado: 'esc' }, {}, []);
   assert.match(fer.find(m => m.sit === 2).texto, /férias de \{empregado\}/);
-  assert.match(fer.find(m => m.sit === 4).texto, /foi concluído e segue em anexo\. O pagamento deve ser feito até \{pagamento\}\.\n\nSe precisar de mais alguma coisa[\s\S]*pode concluí-la/);
+  assert.match(fer.find(m => m.sit === 4).texto, /foi concluído e segue em anexo\. O pagamento deve ser feito até \*\*\{pagamento\}\*\*\.\n\nSe precisar de mais alguma coisa[\s\S]*pode concluí-la/);
   assert.doesNotMatch(fer.find(m => m.sit === 5).texto, /segue em anexo/, 'a entrega é o Respondido; o Concluído só encerra');
   // um modelo do escritório que só pede algo (ex.: "Pedir atestado" no afastamento) não toma o lugar da entrega no Respondido
   const regPedido = { modelosTramite: OC.DEFAULTS.modelosTramite.concat([{ rot: 'Pedir atestado', situacao: 4, tipos: ['afastamento'], texto: 'Envie o atestado.' }]) };
@@ -3108,4 +3108,21 @@ test('Hub: a equipe ativa do escritório vem de /employees (pageIndex a partir d
   assert.deepEqual(plano(ok.colunas), ['Id', 'Contato (id)', 'Nome']);
   const curto = await OC.lerEscritorio(mk(it.slice(0, 2), 5, 1), 'funcionarios');
   assert.equal(curto.cortado, true, 'vieram menos do que o total: avisa que está incompleto');
+});
+
+test('negrito: **marcação** vira letras em negrito do Unicode no envio, e as regras que leem o texto continuam entendendo (0.61.0)', () => {
+  assert.equal(OC.negritoUnicode('Pago 28/11'), '𝗣𝗮𝗴𝗼 𝟮𝟴/𝟭𝟭');
+  assert.equal(OC.negritoUnicode('até').normalize('NFKC'), 'até', 'acento combinado: volta ao normal');
+  assert.equal(OC.aplicarDestaques('Pague até **28/11** e **envie o aviso**.'), 'Pague até 𝟮𝟴/𝟭𝟭 e 𝗲𝗻𝘃𝗶𝗲 𝗼 𝗮𝘃𝗶𝘀𝗼.');
+  assert.equal(OC.aplicarDestaques('5 ** 2 e ** solto'), '5 ** 2 e ** solto', 'asterisco solto não vira nada');
+  // o pedido ao Onvio sai em negrito; nada de HTML
+  const r = { id: 'g1' }, item = { type: 'geral', code: 1, lado: 'esc' };
+  const p = OC.pedidoAcao({ acao: 'tramite', type: 'geral', texto: 'Prazo: **até 28/11**.', situacao: 4 }, r, item);
+  assert.equal(p.corpo.description, 'Prazo: 𝗮𝘁𝗲́ 𝟮𝟴/𝟭𝟭.'.normalize('NFD').replace(/𝗮𝘁𝗲́/, OC.negritoUnicode('até')));
+  assert.doesNotMatch(p.corpo.description, /\*\*|<b>/);
+  // leitura: a resposta em negrito ainda é reconhecida como pedido ao cliente e o prazo prometido é achado
+  assert.equal(OC.pedeAlgoAoCliente(OC.aplicarDestaques('Por favor, **envie o documento** até sexta.'), OC.DEFAULTS).pede, true);
+  // os textos padrão marcam o que é importante
+  assert.match(OC.DEFAULTS.textosSugestao.feriasAnalise, /\*\*\{pagamentoFerias\}\*\*/);
+  assert.match(OC.DEFAULTS.textosSugestao.rescisaoAnalise, /\*\*\{pagamentoRescisao\}\*\*/);
 });

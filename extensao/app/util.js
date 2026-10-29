@@ -134,7 +134,7 @@ export function ligarItens(el, fonte, abrir) {
   });
 }
 // Sem acento e em minúsculas, para buscar "joao" e achar "João".
-export const normal = s => String(s == null ? '' : s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+export const normal = s => String(s == null ? '' : s).normalize('NFKC').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 export const iniciais = n => String(n || '').split(/\s+/).filter(Boolean).slice(0, 2).map(x => x[0].toUpperCase()).join('');
 export const saudacao = () => { const h = new Date().getHours(); return h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite'; };
 export const dataExtensa = d => { const s = (d || new Date()).toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }); return s[0].toUpperCase() + s.slice(1); };

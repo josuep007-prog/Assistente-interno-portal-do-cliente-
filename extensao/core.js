@@ -84,10 +84,10 @@
   const CONVITE_RESPONDIDO = '\n\nSe precisar de mais alguma coisa sobre este assunto, é só pedir aqui mesmo, nesta solicitação. Se estiver tudo certo, pode concluí-la.';
   const TEXTO_ENCERRAR = '{saudacao}! Como não houve novo pedido nesta solicitação, estamos concluindo por aqui. Se precisar de algo mais, é só abrir uma nova solicitação.';
   const TEXTO_FERIAS_ANALISE = '{saudacao}! Recebemos a solicitação de férias de {empregado} e já estamos analisando.\n\n' +
-    'Pontos importantes:\n' +
-    '- Empréstimos consignados: antes de calcular, precisamos aguardar a atualização dos empréstimos consignados, para o cálculo sair correto.\n' +
-    '- Pagamento: as férias devem ser pagas até {pagamentoFerias} (prazo legal: 2 dias antes do início).\n' +
-    '- Aviso de férias: o empregado precisa ser comunicado das férias com 30 dias de antecedência.{abono}';
+    '**Pontos importantes:**\n' +
+    '- **Empréstimos consignados:** antes de calcular, precisamos aguardar a atualização dos empréstimos consignados, para o cálculo sair correto.\n' +
+    '- **Pagamento:** as férias devem ser pagas até **{pagamentoFerias}** (prazo legal: 2 dias antes do início).\n' +
+    '- **Aviso de férias:** o empregado precisa ser comunicado das férias com 30 dias de antecedência.{abono}';
   const DEFAULTS = {
     // Distribuição automática de responsáveis (liga o gestor, na Equipe): de quantos em quantos minutos e em que horas (seg a sex, hora local do Chrome)
     distribuicaoAuto: { minutos: 15, inicio: 8, fim: 18 },
@@ -197,19 +197,19 @@
       emAnalise: 'Olá! Estamos cientes da solicitação e daremos continuidade a ela.',
       // Textos longos vão em tópicos (\n entre as linhas), para o cliente ler com calma; o Onvio guarda texto puro
       rescisaoAnalise: '{saudacao}! Recebemos a solicitação de rescisão de {empregado} e já estamos analisando.\n\n' +
-        'Para o cálculo sair correto, por favor confirme:\n' +
+        '**Para o cálculo sair correto, por favor confirme:**\n' +
         '- o último dia trabalhado;\n' +
         '- o tipo de rescisão;\n' +
         '- se o aviso prévio é trabalhado ou indenizado;\n' +
         '- os descontos, como empréstimo consignado e adiantamentos.\n\n' +
-        'Pontos importantes, para qualquer tipo de rescisão:\n' +
-        '1. Pagamento e documentos: as verbas rescisórias devem ser pagas e os documentos entregues ao empregado em até 10 dias corridos do término do contrato (CLT, art. 477, §6º), ou seja, até {pagamentoRescisao}.\n' +
-        '2. Exame demissional (ASO): precisa ser feito quando exigido; o ideal é agendá-lo já, para não atrasar a rescisão.\n' +
-        '3. eSocial e FGTS: o envio do desligamento ao eSocial e o FGTS da rescisão também têm prazo de 10 dias.\n\n' +
+        '**Pontos importantes, para qualquer tipo de rescisão:**\n' +
+        '1. **Pagamento e documentos:** as verbas rescisórias devem ser pagas e os documentos entregues ao empregado em até 10 dias corridos do término do contrato (CLT, art. 477, §6º), ou seja, até **{pagamentoRescisao}**.\n' +
+        '2. **Exame demissional (ASO):** precisa ser feito quando exigido; o ideal é agendá-lo já, para não atrasar a rescisão.\n' +
+        '3. **eSocial e FGTS:** o envio do desligamento ao eSocial e o FGTS da rescisão também têm prazo de 10 dias.\n\n' +
         'Qualquer dúvida, estamos à disposição.',
       feriasAnalise: TEXTO_FERIAS_ANALISE,
       // entra no lugar de {abono} (texto de férias em análise) quando há pagamento de abono; sem abono, {abono} some
-      feriasAbono: '\n- Abono pecuniário (venda de 1/3 das férias): deve ser pedido pelo próprio empregado, por escrito, até 15 dias antes do término do período aquisitivo (CLT, art. 143, §1º). O pedido fica guardado na empresa e não precisa ser enviado ao escritório: basta confirmar aqui na solicitação que o empregado pediu o abono.'
+      feriasAbono: '\n- **Abono pecuniário** (venda de 1/3 das férias): deve ser pedido pelo próprio empregado, por escrito, até 15 dias antes do término do período aquisitivo (CLT, art. 143, §1º). O pedido fica guardado na empresa e não precisa ser enviado ao escritório: basta confirmar aqui na solicitação que o empregado pediu o abono.'
     },
     // Modelos de resposta (caixa de resposta do detalhe). Texto padrão, nunca de cliente. {variáveis}: saudacao, cliente,
     // empregado, tipo, inicio, pagamento, aba, analista, numero. O que não tiver valor fica como está e o envio é barrado
@@ -221,8 +221,8 @@
       { rot: 'Pedir documento', situacao: 4, texto: '{saudacao}! Para seguirmos, precisamos que envie: (descreva o documento). Pode anexar por aqui, por favor?' },
       { rot: 'Solicitação atendida', situacao: 4, pronta: true, texto: '{saudacao}! Sua solicitação foi atendida.' + CONVITE_RESPONDIDO },
       { rot: 'Concluído', situacao: 5, pronta: true, encerra: true, texto: TEXTO_ENCERRAR },
-      { rot: 'Cálculo pronto', situacao: 4, pronta: true, tipos: ['calcFerias'], texto: '{saudacao}! O {tipo} de {empregado} foi concluído e segue em anexo. O pagamento deve ser feito até {pagamento}.' + CONVITE_RESPONDIDO },
-      { rot: 'Cálculo pronto', situacao: 4, pronta: true, tipos: ['calcRescisao'], texto: '{saudacao}! O {tipo} de {empregado} foi concluído e segue em anexo. O pagamento das verbas rescisórias e a entrega dos documentos de rescisão ao empregado devem ser feitos em até 10 dias corridos do término do contrato (CLT, art. 477, §6º), ou seja, até {pagamento}.' + CONVITE_RESPONDIDO },
+      { rot: 'Cálculo pronto', situacao: 4, pronta: true, tipos: ['calcFerias'], texto: '{saudacao}! O {tipo} de {empregado} foi concluído e segue em anexo. O pagamento deve ser feito até **{pagamento}**.' + CONVITE_RESPONDIDO },
+      { rot: 'Cálculo pronto', situacao: 4, pronta: true, tipos: ['calcRescisao'], texto: '{saudacao}! O {tipo} de {empregado} foi concluído e segue em anexo. O pagamento das verbas rescisórias e a entrega dos documentos de rescisão ao empregado devem ser feitos em até 10 dias corridos do término do contrato (CLT, art. 477, §6º), ou seja, até **{pagamento}**.' + CONVITE_RESPONDIDO },
       { rot: 'Resolvida fora do portal', situacao: 5, texto: 'Pelo que consta, esta solicitação já foi resolvida fora do portal. Estamos concluindo por aqui. Se ainda precisar de algo, é só abrir uma nova solicitação.' },
       { rot: 'Lista errada', situacao: 2, precisaAba: true, texto: '{saudacao}! Este pedido tem uma aba própria no Portal do Cliente: {aba}. Nas próximas vezes, por favor, abra a solicitação por lá, com os campos preenchidos, para conseguirmos atender dentro do prazo. Esta já está em análise e seguimos com ela por aqui.' },
       { rot: 'Repete outra solicitação', situacao: 5, texto: 'Esta solicitação repete a nº {numero}, que já está em atendimento. Seguimos por lá e estamos concluindo esta.' },
@@ -412,7 +412,20 @@
   }
 
   /* ---------- "possível aba errada" (Geral) ---------- */
-  const semAcento = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  // NFKC antes: as letras em negrito do Unicode (𝗣𝗮𝗴𝗮𝗺𝗲𝗻𝘁𝗼) voltam a ser letras comuns para as regras que leem os textos
+  const semAcento = t => String(t || '').normalize('NFKC').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+  /* ---------- destaques em negrito (0.61.0, pedido do Josué em 29/10/2026) ----------
+   * O Onvio guarda o trâmite como texto puro (<b> aparece literal, mapeamento de 15/10/2026). O destaque vai como as letras do
+   * bloco "Mathematical Sans-Serif Bold" do Unicode, que já parecem negrito em qualquer tela. Nos textos padrão e no que o
+   * analista escreve, a marcação é **assim**; ela vira negrito no envio (pedidoAcao/pedidoCriacao) e na prévia. */
+  function negritoUnicode(txt) {
+    return String(txt || '').normalize('NFD').replace(/[A-Za-z0-9]/g, c => {
+      const n = c.charCodeAt(0);
+      return String.fromCodePoint(n <= 57 ? 0x1D7EC + n - 48 : n <= 90 ? 0x1D5D4 + n - 65 : 0x1D5EE + n - 97);
+    });
+  }
+  const aplicarDestaques = txt => String(txt || '').replace(/\*\*(?=\S)([^*\n]*?\S)\*\*/g, (_, x) => negritoUnicode(x));
   const escRe = t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   // Devolve { tipo, label, palavra } da primeira entrada cujas palavras aparecem no assunto, ou null.
   function abaProvavel(assunto, regras) {
@@ -2484,7 +2497,7 @@
     const pode = podeAcao(acao, item);
     if (!pode.ok) throw new Error('Não dá para ' + ({ tramite: 'incluir trâmite', encaminhar: 'encaminhar', responsavel: 'definir responsável', expectativa: 'alterar a expectativa' }[acao] || acao) + ': ' + pode.motivo);
     if (o.acao === 'tramite') {
-      const texto = String(o.texto || '').trim();
+      const texto = aplicarDestaques(String(o.texto || '').trim());
       if (!texto) throw new Error('escreva o texto do trâmite');
       if (texto.length > 20000) throw new Error('texto longo demais');
       const corpo = { description: texto };
@@ -2530,7 +2543,7 @@
   }
   function pedidoCriacao(o, clienteId, modelo) {
     const assunto = String((o && o.assunto) || '').replace(/\s+/g, ' ').trim();
-    const descricao = String((o && o.descricao) || '').trim();
+    const descricao = aplicarDestaques(String((o && o.descricao) || '').trim());
     if (!clienteId) throw new Error('escolha o cliente');
     if (!assunto) throw new Error('escreva o assunto');
     if (assunto.length > 200) throw new Error('assunto longo demais (até 200 caracteres)');
@@ -3462,5 +3475,5 @@
     return resultados;
   }
 
-  g.OC = { ehEscritorioProprio, sondarEmpregados, montarLoteHub, HUB_CATEGORIAS, tabelaAnaliseSolicitacoes, tabelaAnaliseEquipe, hubPlano, hubExecutar, hubPartesDe, partirTabela, tabelaLista, tabelaPessoais, tabelaCnd, tabelaNfe, lerEscritorio, lerDocumentos, lerNoticias, slugHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, dentroDoHorario, planoDistribuicaoAuto, acaoConcluir, agruparSugestoes, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, acaoAnalise, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, mensagensProntas, marcadoresPendentes, observacoesFaltantes, avisosResposta, situacaoEquivalente, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { negritoUnicode, aplicarDestaques, ehEscritorioProprio, sondarEmpregados, montarLoteHub, HUB_CATEGORIAS, tabelaAnaliseSolicitacoes, tabelaAnaliseEquipe, hubPlano, hubExecutar, hubPartesDe, partirTabela, tabelaLista, tabelaPessoais, tabelaCnd, tabelaNfe, lerEscritorio, lerDocumentos, lerNoticias, slugHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, dentroDoHorario, planoDistribuicaoAuto, acaoConcluir, agruparSugestoes, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, acaoAnalise, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, mensagensProntas, marcadoresPendentes, observacoesFaltantes, avisosResposta, situacaoEquivalente, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);
