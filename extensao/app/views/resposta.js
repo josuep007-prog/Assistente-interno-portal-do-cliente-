@@ -2,7 +2,7 @@
  * - escolhe o que acontece depois do envio (Respondido, Em análise, Concluído...), com o efeito em palavras;
  * - modelos com variáveis ({saudacao}, {empregado}...), do escritório (regras) e pessoais;
  * - avisos de coerência entre o texto e a situação; marcadores como "(descreva ...)" barram o envio;
- * - "Revisar" mostra o rascunho na própria conversa; "Enviar" espera alguns segundos para desistir (trâmite não pode
+ * - "Enviar resposta" mostra o rascunho na própria conversa; "Confirmar envio" espera alguns segundos para desistir (trâmite não pode
  *   ser excluído) e só então chama o Onvio (cmd 'acao', pelo service worker, depois da conferência de escritório);
  * - o rascunho fica só na memória desta visita (nunca gravado); texto e anexos enviados também não são guardados.
  * Sempre com confirmação da pessoa: nada sai sem "Enviar". */
@@ -96,7 +96,7 @@ export function bolhaRascunho(i) {
   const quem = primeiroNome() || 'Você';
   return '<div class="tr-item esc rascunho" id="tr-rascunho"><span class="tr-av" title="' + esc(quem) + '">' + esc((quem[0] || 'V').toUpperCase()) + '</span><div class="tr-bolha">' +
     '<div class="tr-meta"><b>' + esc(quem) + '</b><span class="tr-lado">rascunho</span>' + (it ? '<span class="pill">' + esc(it.onvio) + '</span>' : '') + '<span class="tr-quando">ainda não enviado</span></div>' +
-    '<div class="tr-texto">' + esc(r.texto) + '</div>' +
+    '<div class="tr-texto">' + esc(OC.aplicarDestaques(r.texto)) + '</div>' +
     (r.arquivos.length ? '<div class="tr-anexos">' + r.arquivos.map(a => '<span class="tr-arq off"><span class="ax-nome">' + esc(a.name) + ' · ' + tamanho(a.size) + '</span></span>').join('') + '</div>' : '') +
     '</div></div>';
 }
@@ -122,6 +122,7 @@ function balaoHtml(i, r, cliObs, ctx) {
     '<textarea id="mp-texto" rows="9" aria-label="Texto da mensagem pronta">' + esc(txt) + '</textarea>' +
     '<div class="mp-pe"><span class="fraco">Trâmite <b>' + esc(m.onvio) + '</b>' + (m.pessoal ? ' · mensagem sua' : '') + '</span><span class="spacer"></span>' +
       (m.pessoal ? '<button type="button" class="btn btn-sm" id="mp-padrao" title="Apaga a sua e volta à mensagem do escritório">Voltar à do escritório</button>' : '') +
+      '<button type="button" class="btn btn-sm" id="mp-salvar" title="Guarda o texto como está aqui como a sua mensagem pronta para este trâmite em ' + esc(i.typeLabel) + ' (nomes e datas desta solicitação viram {variáveis})">' + ic('check', 'ic-sm') + ' ' + (m.pessoal ? 'Salvar alterações' : 'Salvar como minha mensagem') + '</button>' +
       (tem ? '<button type="button" class="btn btn-sm" id="mp-acrescentar">Acrescentar ao texto</button>' : '') +
       '<button type="button" class="btn btn-sm btn-primary" id="mp-usar">' + (tem ? 'Substituir o texto' : 'Usar mensagem') + '</button></div>' +
     (outros.length ? '<div class="mp-outros"><span class="fraco">Outros modelos seus:</span>' + outros.map(x => '<button type="button" class="linkish" data-mp-outro="' + esc(x.id) + '">' + esc(x.rot) + '</button>').join('') + '</div>' : '') +
@@ -163,12 +164,12 @@ export function respostaHtml(i, obs, ctx) {
     if (r.modo === 'contagem') pe = '<div class="cmp-contagem"><span id="cmp-conta-tx">Enviando em ' + resta + ' s…</span><i class="cmp-barra"><i id="cmp-barra" style="--dur:' + r.segTotal + 's"></i></i><button class="btn btn-sm" id="a-desfazer" type="button">Desfazer</button></div>';
     else if (r.modo === 'enviando') pe = '<div class="cmp-contagem"><span>Enviando ao Onvio…</span></div>';
     else pe = '<div class="cmp-pe"><span class="spacer"></span><button class="btn btn-sm" id="a-voltar" type="button">Voltar e editar</button>' +
-      (proxDisp ? '<button class="btn btn-sm" id="a-enviar-prox" type="button" title="Envia e abre a próxima solicitação da lista">Enviar e ir para a próxima</button>' : '') +
-      '<button class="btn btn-sm btn-primary" id="a-enviar" type="button">Enviar</button></div>';
-    return '<div class="cmp aberto revisando" id="cmp" tabindex="-1">' + cab + erro + '<div class="acao-conf cmp-conf" id="a-conf"><b>Confira o rascunho na conversa e envie ao Onvio:</b><ul>' +
+      (proxDisp ? '<button class="btn btn-sm" id="a-enviar-prox" type="button" title="Envia e abre a próxima solicitação da lista">Confirmar e ir para a próxima</button>' : '') +
+      '<button class="btn btn-sm btn-primary" id="a-enviar" type="button">Confirmar envio</button></div>';
+    return '<div class="cmp aberto revisando" id="cmp" tabindex="-1">' + cab + erro + '<div class="acao-conf cmp-conf" id="a-conf"><b>Confira o rascunho na conversa e confirme o envio ao Onvio:</b><ul>' +
       (r.antes.length ? '<li>Em ' + (r.antes.length + 1) + ' passos, um depois do outro: ' + r.antes.map((a, n) => (n + 1) + ') ' + esc(a.rot) + ' (texto: "' + esc(a.texto) + '")').join(', ') + ', ' + (r.antes.length + 1) + ') ' + esc(it ? it.onvio : '?') + ' (com o texto abaixo)</li>' : '') +
       '<li>Situação do trâmite: ' + esc(it ? it.onvio + ' (' + it.efeito.toLowerCase() + ')' : '?') + '</li>' +
-      '<li>Texto: "' + esc(r.texto.length > 140 ? r.texto.slice(0, 140) + '…' : r.texto) + '"</li>' +
+      '<li>Texto: "' + esc(OC.aplicarDestaques(r.texto.length > 140 ? r.texto.slice(0, 140) + '…' : r.texto)) + '"</li>' +
       (r.arquivos.length ? '<li>' + r.arquivos.length + ' anexo(s): ' + esc(r.arquivos.map(a => a.name).join(', ')) + '</li>' : '') +
       '</ul><p class="fraco">Fica registrado no Onvio em seu nome e o cliente pode ver o trâmite. Depois de enviado, não dá para desfazer pela extensão.</p>' + avisosHtml(r, i) + '</div>' + pe + '</div>';
   }
@@ -186,11 +187,12 @@ export function respostaHtml(i, obs, ctx) {
       '<div class="cmp-pe"><button class="btn btn-sm" id="mg-cancelar" type="button">Cancelar</button><button class="btn btn-sm btn-primary" id="mg-salvar" type="button">Salvar modelo</button></div></div>' : '';
   return '<div class="cmp' + (aberto ? ' aberto' : '') + '" id="cmp">' + cab + ok + erro +
     '<div class="cmp-caixa">' +
-      '<textarea id="a-texto" rows="2" placeholder="Escreva a resposta ao cliente (texto simples; o Onvio não usa formatação)">' + esc(r.texto) + '</textarea>' +
+      '<textarea id="a-texto" rows="2" placeholder="Escreva a resposta ao cliente. Para destacar em negrito, selecione o trecho e clique em Negrito (ou escreva **assim**).">' + esc(r.texto) + '</textarea>' +
       '<div class="cmp-fer">' +
         '<label class="cmp-fer-b" title="Anexar arquivos ao trâmite (até ' + MAX_ANEXOS + ' de 15 MB; também dá para arrastar ou colar uma imagem)">' + ic('paperclip', 'ic-sm') + ' Anexar<input type="file" id="a-arquivos" multiple hidden></label>' +
         '<button type="button" class="cmp-fer-b' + (r.mp ? ' on' : '') + '" id="cmp-mp" aria-expanded="' + !!r.mp + '" title="Uma mensagem completa para cada trâmite (com as observações para o cliente); você edita antes de usar">' + ic('chat', 'ic-sm') + ' Mensagem pronta</button>' +
         '<button type="button" class="cmp-fer-b" id="a-guardar" title="' + (tem ? 'Salva o texto escrito como a sua mensagem pronta para um trâmite (dados desta solicitação viram variáveis)' : 'Cria uma mensagem pronta sua para um trâmite') + '">' + ic('plus', 'ic-sm') + ' <span id="a-guardar-tx">' + (tem ? 'Salvar como modelo' : 'Criar modelo') + '</span></button>' +
+        '<button type="button" class="cmp-fer-b" id="a-negrito" title="Destaca o trecho selecionado em negrito (o Onvio só aceita texto puro: vai com letras em negrito)"><b>B</b> Negrito</button>' +
         '<span class="cmp-fer-dica">arraste arquivos ou cole uma imagem</span>' +
       '</div>' +
       balao +
@@ -202,7 +204,7 @@ export function respostaHtml(i, obs, ctx) {
         ints.map(x => { const [t1, t2] = x.rot.split(' · '); return '<button type="button" class="cmp-int' + (String(r.sit) === String(x.sit) ? ' on' : '') + '" role="radio" aria-checked="' + (String(r.sit) === String(x.sit)) + '" data-sit="' + x.sit + '" data-tom="' + x.tom + '" data-pede="' + (x.pedeCliente ? '1' : '0') + '" title="' + esc(x.efeito) + '"><i class="cmp-pt"></i><span class="t">' + esc(t1) + '</span>' + (t2 ? '<span class="s"><span class="sep"> · </span>' + esc(t2) + '</span>' : '') + '</button>'; }).join('') +
       '</div></div>' +
     '<p class="cmp-efeito" id="cmp-efeito">' + (it ? 'Trâmite: ' + esc(it.efeito) + '.' : 'Escolha a situação do trâmite.') + '</p>' +
-    '<div class="cmp-pe"><span class="spacer"></span><button class="btn btn-sm" id="a-descartar" type="button"' + (r.texto || r.arquivos.length || r.sit ? '' : ' disabled') + '>Descartar</button><button class="btn btn-sm btn-primary" id="a-revisar" type="button">Revisar ' + ic('chev-r', 'ic-sm') + '</button></div>' +
+    '<div class="cmp-pe"><span class="spacer"></span><button class="btn btn-sm" id="a-descartar" type="button"' + (r.texto || r.arquivos.length || r.sit ? '' : ' disabled') + '>Descartar</button><button class="btn btn-sm btn-primary" id="a-revisar" type="button" title="Mostra como vai ficar e pede a confirmação antes de enviar ao Onvio">Enviar resposta ' + ic('chev-r', 'ic-sm') + '</button></div>' +
   '</div>';
 }
 
@@ -258,6 +260,16 @@ export function ligarResposta(g, i, r0, obs, cb) {
       r.selMarca = '';
     }
   }
+  // Negrito: envolve a seleção com **…** (vira letras em negrito no envio); sem seleção, põe ** ** e deixa o cursor no meio
+  const bN = $('#a-negrito', g);
+  if (bN && t) bN.onmousedown = e => e.preventDefault();          // não tira o foco nem a seleção do texto
+  if (bN && t) bN.onclick = () => {
+    const a = t.selectionStart, b = t.selectionEnd, sel = t.value.slice(a, b);
+    const ini = sel.match(/^\s*/)[0], fim = sel.match(/\s*$/)[0], miolo = sel.trim();
+    t.value = t.value.slice(0, a) + ini + '**' + miolo + '**' + fim + t.value.slice(b);
+    const p0 = a + ini.length + 2; t.focus(); t.setSelectionRange(p0, p0 + miolo.length);
+    r.texto = t.value; limparErro(); cresce(t); atualizar();
+  };
   cmp.onkeydown = e => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && r.modo === 'revisar' && e.target.tagName !== 'BUTTON' && cmp.contains(e.target)) { e.preventDefault(); const b = $('#a-enviar', g); if (b) b.click(); }
   };
@@ -298,6 +310,18 @@ export function ligarResposta(g, i, r0, obs, cb) {
       await salvarModelosPessoais((estado.modelosPessoais || []).filter(x => x.id !== m.pessoal.id));
       delete r.mp.txt[r.mp.sit];
       toast('Voltou à mensagem do escritório');
+      cb.redesenhar();
+    };
+    // Salvar ali mesmo o que a pessoa editou no balão: vira (ou substitui) a mensagem pronta dela para este trâmite e tipo
+    $('#mp-salvar', bal).onclick = async () => {
+      const m = OC.mensagensProntas(i, estado.settings, estado.modelosPessoais).find(x => String(x.sit) === String(r.mp.sit));
+      const texto = OC.despersonalizar(tx.value.trim(), vars(i, ctx));
+      if (!m || !texto) { toast('Escreva o texto da mensagem antes de salvar', true); return; }
+      const outros = (estado.modelosPessoais || []).filter(x => !(Number(x.situacao) === Number(m.sit) && x.tipo === i.type));
+      if (outros.length >= 20) { toast('Você já tem 20 mensagens suas: volte alguma à do escritório antes', true); return; }
+      await salvarModelosPessoais(outros.concat([{ id: 'm' + Date.now().toString(36), rot: m.rot.split(' · ')[0] + ' · ' + i.typeLabel, texto, situacao: Number(m.sit), tipo: i.type }]));
+      delete r.mp.txt[r.mp.sit];
+      toast((m.pessoal ? 'Alterações salvas' : 'Salva como a sua mensagem') + ' para "' + m.onvio + '" em ' + i.typeLabel + ' (nomes e datas desta solicitação viraram variáveis)');
       cb.redesenhar();
     };
     $$('[data-mp-outro]', bal).forEach(b2 => b2.onclick = () => { const m = (estado.modelosPessoais || []).find(x => x.id === b2.dataset.mpOutro); if (m) poeTexto(OC.preencherModelo(m.texto, vars(i, ctx)), '', !!r.texto.trim()); });
