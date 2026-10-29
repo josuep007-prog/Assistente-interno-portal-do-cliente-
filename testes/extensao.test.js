@@ -2335,7 +2335,7 @@ test('rodada 2: férias nova em análise, aviso trabalhado com lembrete, acident
   assert.equal(OC.preencherModelo('até {pagamentoRescisao}', vr), 'até 10/11/2026');
 });
 
-test('férias em análise: com abono pecuniário o texto manda o empregado pedir em carta de próprio punho (art. 143 da CLT); sem abono, nada muda', () => {
+test('férias em análise: com abono pecuniário o texto explica o pedido do empregado (art. 143 da CLT), sem pedir a carta ao escritório; sem abono, nada muda', () => {
   const item = { type: 'calcFerias', code: 3, lado: 'esc', apelido: 'X', detalhe: 'Beltrano', typeLabel: 'Cálculo de férias' };
   assert.equal(OC.datasDe({ payBonusDays: true }).abono, true);
   assert.equal(OC.datasDe({ bonusDays: 10 }).abono, true);
@@ -2345,8 +2345,10 @@ test('férias em análise: com abono pecuniário o texto manda o empregado pedir
   const modelo = OC.modelosPara(item, {}, []).find(m => m.rot === 'Férias em análise').texto;
   for (const txt of [modelo, OC.acaoAnalise(item, {}).acao.texto]) {
     const com = monta(txt, { inicio: '2026-11-10', abono: true }), sem = monta(txt, { inicio: '2026-11-10', abono: false });
-    assert.match(com, /abono pecuniário.*carta de próprio punho.*15 dias antes do término do período aquisitivo.*art\. 143/si);
-    assert.doesNotMatch(sem, /abono|carta/i, 'sem abono, nada do abono');
+    assert.match(com, /abono pecuniário.*pelo próprio empregado, por escrito.*15 dias antes do término do período aquisitivo.*art\. 143/si);
+    assert.match(com, /pedido fica guardado na empresa e não precisa ser enviado ao escritório/, 'nenhum documento assinado vem ao escritório (Josué, 29/10/2026)');
+    assert.doesNotMatch(com, /precisamos receber|envie a carta/i);
+    assert.doesNotMatch(sem, /abono|por escrito/i, 'sem abono, nada do abono');
     assert.ok(!/\{\w+\}/.test(com) && !/\{\w+\}/.test(sem), 'nenhuma variável sobra');
     assert.ok(sem.endsWith('30 dias de antecedência.'), 'sem espaço sobrando no fim');
     assert.match(com, /\n- Abono pecuniário/, 'o abono vira um tópico');
@@ -2640,6 +2642,26 @@ test('textos de férias e rescisão: o prazo de 10 dias vale também para entreg
   const m = OC.mensagensProntas(item, {}, []).find(x => x.sit === 4);
   assert.match(m.texto, /pagamento das verbas rescisórias e a entrega dos documentos de rescisão ao empregado/);
   assert.doesNotMatch(m.texto, /assinad|comprovante/i);
+});
+
+test('nenhum texto padrão pede documento assinado ao escritório; a única exceção é a carta de pedido de demissão (Josué, 29/10/2026)', () => {
+  const D = OC.DEFAULTS, textos = [];
+  const junta = (o, onde) => { if (o == null) return; if (typeof o === 'string') textos.push([onde, o]); else if (Array.isArray(o)) o.forEach((x, n) => junta(x, onde + '[' + n + ']')); else if (typeof o === 'object') Object.entries(o).forEach(([k, v]) => junta(v, onde + '.' + k)); };
+  junta(D.textosSugestao, 'textosSugestao'); junta(D.observacoes, 'observacoes');
+  junta(D.modelosTramite.map(m => m.texto), 'modelosTramite'); junta((D.modelosCriacao || []).map(m => m.descricao), 'modelosCriacao');
+  // as mensagens prontas de todos os tipos e trâmites (com as observações acrescentadas)
+  for (const t of OC.TYPES) for (const lado of ['esc', 'cli']) {
+    const item = { type: t.key, typeLabel: t.label, code: 1, lado, apelido: 'ACME', cliente: 'ACME LTDA', detalhe: 'FULANO', datas: { inicio: '2026-12-01', abono: true, desligamento: '2026-11-20' } };
+    OC.mensagensProntas(item, {}, []).forEach(m => textos.push(['mensagemPronta.' + t.key + '.' + m.sit, m.texto]));
+  }
+  const regras = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'regras', 'escritorio.exemplo.json'), 'utf8'));
+  junta(regras, 'regras.exemplo');
+  assert.ok(textos.length > 60);
+  for (const [onde, t] of textos) {
+    // a frase que diz que o documento fica na empresa, ou que fala da carta de pedido de demissão, não conta
+    const frases = String(t).split(/(?<=[.!?])\s+|\n+/).filter(f => !/pedido de demiss|fica (guardad[oa] )?na empresa|não precisa ser enviad/i.test(f));
+    for (const f of frases) assert.doesNotMatch(f, /assinad[oa]s?\b|assinatura|\bcarta\b|termo de rescis/i, onde + ': ' + f.slice(0, 120));
+  }
 });
 
 test('mensagem pronta de rescisão: as observações não repetem o que o texto já diz (mesma regra legal, mesma data ou o mesmo texto)', () => {

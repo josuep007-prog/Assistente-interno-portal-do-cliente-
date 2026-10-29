@@ -209,7 +209,7 @@
         'Qualquer dúvida, estamos à disposição.',
       feriasAnalise: TEXTO_FERIAS_ANALISE,
       // entra no lugar de {abono} (texto de férias em análise) quando há pagamento de abono; sem abono, {abono} some
-      feriasAbono: '\n- Abono pecuniário (venda de 1/3 das férias): deve ser solicitado pelo próprio empregado, em carta de próprio punho, até 15 dias antes do término do período aquisitivo (CLT, art. 143, §1º). Precisamos receber essa carta para incluir o abono no cálculo.'
+      feriasAbono: '\n- Abono pecuniário (venda de 1/3 das férias): deve ser pedido pelo próprio empregado, por escrito, até 15 dias antes do término do período aquisitivo (CLT, art. 143, §1º). O pedido fica guardado na empresa e não precisa ser enviado ao escritório: basta confirmar aqui na solicitação que o empregado pediu o abono.'
     },
     // Modelos de resposta (caixa de resposta do detalhe). Texto padrão, nunca de cliente. {variáveis}: saudacao, cliente,
     // empregado, tipo, inicio, pagamento, aba, analista, numero. O que não tiver valor fica como está e o envio é barrado
@@ -258,13 +258,13 @@
       ],
       afastamento: [
         'Os primeiros 15 dias de afastamento por doença são pagos pela empresa; a partir do 16º dia, o empregado deve ser encaminhado ao INSS.',
-        'Envie o atestado legível, com data, período de afastamento e assinatura do médico.'
+        'Envie o atestado legível, com a data e o período de afastamento.'
       ],
       cadEmpregado: [
         'Início das atividades em {admissao}. A admissão precisa ser enviada ao eSocial até o dia anterior ao início, então a documentação completa deve chegar antes disso.',
         'O exame admissional deve ser feito antes do início das atividades.'
       ],
-      cadEstagiario: ['O estágio precisa do termo de compromisso assinado pela empresa, pelo estagiário e pela instituição de ensino antes do início.', 'Início do estágio em {admissao}. O cadastro do estagiário no eSocial vai até {estagiarioPrazoDias} dias depois do início, então a documentação deve chegar o quanto antes.'],
+      cadEstagiario: ['O estágio precisa do termo de compromisso entre a empresa, o estagiário e a instituição de ensino antes do início; o termo fica guardado na empresa.', 'Início do estágio em {admissao}. O cadastro do estagiário no eSocial vai até {estagiarioPrazoDias} dias depois do início, então a documentação deve chegar o quanto antes.'],
       cadContribuinte: ['Informe a data de início e o valor do pró-labore ou da retirada, para o cadastro no eSocial.'],
       rubricas: ['Lançamentos da competência {competencia} precisam chegar antes do fechamento da folha; depois disso entram na competência seguinte.']
     },
@@ -285,7 +285,7 @@
       { dep: 'dp', rot: 'Admissão: documentos pendentes', assunto: 'Documentos pendentes da admissão', descricao: 'Para concluir a admissão, precisamos dos seguintes documentos: (descreva os documentos). Pode anexá-los respondendo a esta solicitação, por favor?' },
       { dep: 'dp', rot: 'Férias: informar o período', assunto: 'Informações para as férias', descricao: 'Para programar as férias de (descreva o empregado), precisamos que informe o período desejado e se haverá abono pecuniário (venda de 1/3). Aguardamos o seu retorno.' },
       { dep: 'dp', rot: 'Rescisão: dados do desligamento', assunto: 'Dados do desligamento', descricao: 'Para preparar a rescisão de (descreva o empregado), precisamos da data do desligamento, do tipo de aviso prévio (trabalhado ou indenizado) e do motivo.' },
-      { dep: 'dp', rot: 'Afastamento: enviar o atestado', assunto: 'Envio do atestado de afastamento', descricao: 'Recebemos a comunicação de afastamento. Por favor, envie o atestado legível, com data, período de afastamento e assinatura do médico, respondendo a esta solicitação.' },
+      { dep: 'dp', rot: 'Afastamento: enviar o atestado', assunto: 'Envio do atestado de afastamento', descricao: 'Recebemos a comunicação de afastamento. Por favor, envie o atestado legível, com a data e o período de afastamento, respondendo a esta solicitação.' },
       { dep: 'dp', rot: 'Folha: variáveis do mês', assunto: 'Variáveis da folha do mês', descricao: 'Para fechar a folha da competência (descreva a competência), precisamos das variáveis do mês: horas extras, faltas, comissões e demais lançamentos. O prazo para o envio é (descreva o prazo).' },
       { dep: 'fiscal', rot: 'Documentos fiscais do mês', assunto: 'Documentos fiscais pendentes da competência', descricao: 'Para apurar os impostos da competência (descreva a competência), precisamos das notas fiscais de entrada e de saída e dos demais documentos. Pode anexá-los respondendo a esta solicitação, por favor?' },
       { dep: 'fiscal', rot: 'Nota fiscal: esclarecer', assunto: 'Esclarecimento sobre nota fiscal', descricao: 'Sobre a nota fiscal nº (descreva o número), precisamos de mais informações: (descreva a dúvida). Pode nos responder por aqui, por favor?' },
@@ -2664,7 +2664,7 @@
       if (pg) { v.pagamento = fmt(pg); if (/Ferias$/.test(item.type)) v.pagamentoFerias = fmt(pg); else if (/Rescisao$/.test(item.type)) v.pagamentoRescisao = fmt(pg); }
     }
     if (d.inicio) v.inicio = fmt(diaDe(d.inicio));
-    // {abono}: com o detalhe lido, a frase do abono (carta de próprio punho, art. 143 da CLT) só quando há pagamento de abono; senão, vazio
+    // {abono}: com o detalhe lido, a frase do abono (pedido do empregado, art. 143 da CLT; a carta fica na empresa) só quando há pagamento de abono; senão, vazio
     if (datas && item && /Ferias$/.test(item.type)) v.abono = d.abono ? String(Object.assign({}, DEFAULTS.textosSugestao, (settings && settings.textosSugestao) || {}).feriasAbono || '') : '';
     if (analista) v.analista = analista;
     return v;
