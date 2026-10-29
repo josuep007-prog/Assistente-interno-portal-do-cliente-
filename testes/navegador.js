@@ -1758,7 +1758,7 @@ await passo('app · Distribuir: mostra para quem vai cada sem responsável, com 
 await passo('app · Tramitação: caixa de resposta fixa; intenção e efeito; modelos e variáveis; avisos; rascunho na conversa; envio com anexo; erro mantém o texto; lista não mapeada', async () => {
   const p = await abrirApp('#/fila', { settings: { __v: 2, desfazerSeg: 0 } });
   await p.setViewportSize({ width: 900, height: 860 });        // janela estreita (< 1000 px): a gaveta só abre ao clicar na barra
-  await p.evaluate(() => { window.__respostas = { acao: { ok: true, acao: 'tramite', anexos: 1 }, detalhe: { ok: true, item: { assunto: 'Férias' }, tramites: [], datas: {} } }; });
+  await p.evaluate(() => { window.__respostas = { acao: { ok: true, acao: 'tramite', anexos: 0, topicId: 'a1b2c3d4-0000-4000-8000-0123456789ab' }, anexar: { ok: true, nome: 'recibo.txt', status: 201 }, conferirAnexos: { ok: true, conferido: true, naoAchados: [], achados: 1 }, detalhe: { ok: true, item: { assunto: 'Férias' }, tramites: [], datas: {} } }; });
   await p.click('#corpo [data-k="geral:b"]');
   await p.waitForSelector('#gaveta #g-painel'); await p.waitForSelector('#g-barra'); await p.waitForSelector('#cmp', { state: 'attached' });
   assert.equal(await p.$('#g-gaveta.aberta') === null, true, 'a solicitação abre nos Dados: a gaveta da conversa e da resposta começa fechada');
@@ -1846,8 +1846,11 @@ await passo('app · Tramitação: caixa de resposta fixa; intenção e efeito; m
   await p.click('#a-enviar');
   await p.waitForFunction(() => window.__msgs.some(m => m.cmd === 'acao'));
   const m = await p.evaluate(() => window.__msgs.find(x => x.cmd === 'acao'));
-  assert.deepEqual([m.acao, m.type, m.num, m.situacao, m.arquivos.length, m.arquivos[0].nome, m.arquivos[0].b64], ['tramite', 'geral', '102', '4', 1, 'recibo.txt', 'b2xh']);
-  await p.waitForFunction(() => /Trâmite enviado ao Onvio com 1 anexo/.test(document.querySelector('#toast').textContent));
+  assert.deepEqual([m.acao, m.type, m.num, m.situacao, (m.arquivos || []).length], ['tramite', 'geral', '102', '4', 0], 'o trâmite vai sem os arquivos (0.63.0)');
+  await p.waitForFunction(() => /Trâmite enviado ao Onvio com 1 anexo \(conferido no trâmite\)/.test(document.querySelector('#toast').textContent));
+  const an = await p.evaluate(() => window.__msgs.filter(x => x.cmd === 'anexar' || x.cmd === 'conferirAnexos'));
+  assert.deepEqual(an.map(x => x.cmd), ['anexar', 'conferirAnexos'], 'um pedido por arquivo e a conferência no fim');
+  assert.deepEqual([an[0].topicId, an[0].arquivo.nome, an[0].arquivo.b64, an[1].nomes], ['a1b2c3d4-0000-4000-8000-0123456789ab', 'recibo.txt', 'b2xh', ['recibo.txt']]);
   await p.waitForFunction(() => window.__msgs.filter(x => x.cmd === 'detalhe').length >= 2, null, { timeout: 3000 });
   await p.waitForSelector('.cmp-ok');
   assert.match(await p.textContent('.cmp-ok'), /Trâmite enviado às \d\d:\d\d/);
@@ -1947,6 +1950,79 @@ await passo('app · detalhe em janela larga: abre nos dados, a gaveta abre ao pa
   await p.waitForSelector('#a-enviar');
   assert.equal(await p.textContent('#a-enviar'), 'Confirmar envio');
   assert.match(await p.textContent('#tr-rascunho .tr-texto'), /Pague até 𝟮𝟴\/𝟭𝟭\./, 'a prévia já mostra em negrito');
+  assert.deepEqual(p.erros, []);
+});
+
+await passo('app · Anexos: nada fica para trás em silêncio (limites visíveis, falha de um arquivo, conferência no Onvio, tentar de novo, aviso que não some) (0.63.0)', async () => {
+  const p = await abrirApp('#/fila', { settings: { __v: 2, desfazerSeg: 0 } });
+  const GUID = 'a1b2c3d4-0000-4000-8000-0123456789ab';
+  const resp = o => p.evaluate(x => { window.__respostas = Object.assign({ acao: { ok: true, acao: 'tramite', anexos: 0, topicId: x.g }, detalhe: { ok: true, item: { assunto: 'Férias' }, tramites: [], datas: {} }, conferirAnexos: { ok: true, conferido: true, naoAchados: [] } }, x.o); }, { g: GUID, o });
+  await resp({ anexar: { ok: true, nome: 'x', status: 201 } });
+  await p.click('#corpo [data-k="geral:b"]');
+  await abrirCaixa(p);
+  const arq = n => ({ name: n, mimeType: 'text/plain', buffer: Buffer.from('conteudo ' + n) });
+  // 1) o que não entra fica listado na caixa (não só num aviso que passa) e o envio espera o "Entendi"
+  await p.setInputFiles('#a-arquivos', [arq('a.txt'), { name: 'vazio.txt', mimeType: 'text/plain', buffer: Buffer.alloc(0) }, { name: 'enorme.bin', mimeType: 'application/octet-stream', buffer: Buffer.alloc(15 * 1024 * 1024 + 10) }]);
+  await p.waitForSelector('.cmp-fora');
+  if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/anexos-fora.png' });
+  const fora = await p.textContent('.cmp-fora');
+  assert.match(fora, /2 arquivos NÃO vão no envio/); assert.match(fora, /vazio\.txt.*arquivo vazio/); assert.match(fora, /enorme\.bin.*maior que 15 MB/);
+  await p.fill('#a-texto', 'Seguem os arquivos.'); await sit(p, '4');
+  await p.click('#a-revisar');
+  assert.match(await p.textContent('.cmp-erro'), /ficaram de fora do envio/, 'não segue com arquivo de fora sem o "Entendi"');
+  assert.equal(await p.$('#a-enviar') === null, true);
+  await p.click('#a-fora-ok');
+  assert.equal(await p.$('.cmp-fora') === null, true);
+  // mais de 30 também fica de fora e listado
+  await p.setInputFiles('#a-arquivos', Array.from({ length: 31 }, (x, n) => arq('f' + n + '.txt')));
+  await p.waitForSelector('.cmp-fora');
+  assert.match(await p.textContent('.cmp-fora'), /f30\.txt.*passou do limite de 30/);
+  assert.equal(await p.$$eval('.cmp-arqs .cmp-arq', e => e.length), 30, 'cabem 30 por trâmite');
+  await p.click('#a-fora-ok');
+  await p.click('#a-descartar');
+  // 2) um arquivo falha: o trâmite vai, a faixa fica na caixa com o motivo e o arquivo que faltou continua guardado
+  await abrirCaixa(p);
+  await resp({ anexar: { ok: false, nome: 'b.txt', status: 500, erro: null }, conferirAnexos: { ok: true, conferido: true, naoAchados: [] } });
+  await p.setInputFiles('#a-arquivos', [arq('a.txt'), arq('b.txt')]);
+  await p.fill('#a-texto', 'Seguem.'); await sit(p, '4');
+  await p.click('#a-revisar'); await p.click('#a-enviar');
+  await p.waitForSelector('.cmp-pend');
+  if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/anexos-pendentes.png' });
+  const pend = await p.textContent('.cmp-pend');
+  assert.match(pend, /O trâmite foi enviado, mas 2 anexos não chegaram/); assert.match(pend, /a\.txt.*HTTP 500/); assert.match(pend, /b\.txt.*HTTP 500/);
+  assert.equal(await p.$('#a-texto') === null, true, 'sem caixa de texto: não dá para criar outro trâmite com os mesmos arquivos por engano');
+  assert.ok(await p.$('#g-gaveta.aberta'), 'a gaveta fica aberta com o aviso');
+  await p.mouse.move(5, 300); await p.waitForTimeout(600);
+  assert.ok(await p.$('#g-gaveta.aberta') && await p.$('.cmp-pend'), 'o aviso não some ao tirar o mouse');
+  assert.equal(await p.evaluate(() => window.__msgs.filter(m => m.cmd === 'acao').length), 1, 'um trâmite só');
+  // 3) tentar de novo: só os que faltam, no mesmo trâmite; chegou tudo -> o aviso sai
+  await resp({ anexar: { ok: true, nome: 'x', status: 201 }, conferirAnexos: { ok: true, conferido: true, naoAchados: [] } });
+  await p.evaluate(() => { window.__msgs.length = 0; });
+  await p.click('#a-reanexar');
+  await p.waitForFunction(() => !document.querySelector('.cmp-pend'), null, { timeout: 8000 });
+  const t2 = await p.evaluate(() => window.__msgs.filter(m => m.cmd === 'anexar' || m.cmd === 'acao').map(m => [m.cmd, m.topicId || '', (m.arquivo || {}).nome || '']));
+  assert.deepEqual(t2, [['anexar', GUID, 'a.txt'], ['anexar', GUID, 'b.txt']], 'no mesmo trâmite, sem criar outro');
+  // 4) o Onvio aceitou mas o trâmite não mostra um deles: conta como faltando
+  await p.click('#g-gav-x').catch(() => {}); await abrirCaixa(p);
+  await resp({ anexar: { ok: true, nome: 'x', status: 201 }, conferirAnexos: { ok: true, conferido: false, naoAchados: ['b.txt'], achados: 1 } });
+  await p.setInputFiles('#a-arquivos', [arq('a.txt'), arq('b.txt')]);
+  await p.fill('#a-texto', 'Seguem.'); await sit(p, '4');
+  await p.click('#a-revisar'); await p.click('#a-enviar');
+  await p.waitForSelector('.cmp-pend');
+  const p4 = await p.textContent('.cmp-pend');
+  assert.match(p4, /1 anexo não chegou/); assert.match(p4, /b\.txt.*não aparece no trâmite/); assert.doesNotMatch(p4, /a\.txt/);
+  assert.equal(await p.$$eval('.cmp-arqs .cmp-arq', e => e.length), 0, 'só o que faltou continua');
+  await p.click('#a-pend-fechar');
+  assert.equal(await p.$('.cmp-pend') === null, true, 'só some quando a pessoa diz que resolveu');
+  // 5) não deu para conferir: também fica o aviso (nunca finge que conferiu)
+  await abrirCaixa(p);
+  await resp({ anexar: { ok: true, nome: 'x', status: 201 }, conferirAnexos: { ok: true, conferido: null, naoAchados: [] } });
+  await p.setInputFiles('#a-arquivos', [arq('c.txt')]);
+  await p.fill('#a-texto', 'Segue.'); await sit(p, '4');
+  await p.click('#a-revisar'); await p.click('#a-enviar');
+  await p.waitForSelector('.cmp-pend');
+  assert.match(await p.textContent('.cmp-pend'), /não consegui conferir no trâmite se chegaram.*c\.txt/);
+  await p.click('#a-pend-fechar');
   assert.deepEqual(p.erros, []);
 });
 

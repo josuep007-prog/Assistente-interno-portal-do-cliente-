@@ -45,6 +45,18 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
 
+## Novidades da v0.63.0 (anexos que nunca ficam para trás em silêncio)
+
+Depois de um caso em que vários arquivos enviados pela caixa de resposta ficaram para trás sem aviso, o caminho dos anexos foi revisto de ponta a ponta:
+
+- **O que não entra fica listado, não só num aviso que passa:** arquivo vazio, maior que 15 MB ou acima de **30 anexos** por trâmite aparece num quadro amarelo na caixa ("Estes arquivos NÃO vão no envio") e o **Enviar resposta só segue depois do "Entendi"**. O limite subiu de 10 para 30 (o envio agora é um arquivo por vez, sem limite de mensagem).
+- **Antes de criar o trâmite**, todos os arquivos são testados: um que foi movido, apagado ou alterado depois de escolhido impede o envio inteiro (nada vai pela metade).
+- **Um arquivo por pedido, com andamento** ("Anexando 3 de 12: nome…"), cada um com o seu resultado; erro de rede ou exceção num arquivo não interrompe os outros.
+- **Conferência de verdade:** depois de subir, a extensão **lê o trâmite de volta no Onvio** e confere se cada anexo aceito (HTTP 2xx) aparece lá. O que o Onvio disse que aceitou e não aparece conta como faltando. Se não der para ler o trâmite, ela diz que **não conseguiu conferir** (nunca finge que conferiu).
+- **Faixa que não some:** se algum anexo não chegou (ou não foi conferido), o trâmite fica enviado e a caixa mostra, com o motivo de cada arquivo, "O trâmite foi enviado, mas N anexos não chegaram". Os arquivos continuam guardados (só na memória desta visita), a gaveta não fecha sozinha e a caixa de texto some para não criar um segundo trâmite com os mesmos arquivos por engano. Botões: **Tentar anexar de novo** (só os que faltam, no mesmo trâmite, com nova conferência), **Abrir no Onvio** e **tirar o aviso** (depois de conferir). Ao sair da solicitação com a faixa aberta, um aviso lembra.
+- Novos comandos do service worker: `anexar` (um arquivo, trâmite já existente) e `conferirAnexos` (lê o trâmite); `acao` com `arquivos` continua valendo e agora também confere, devolve `topicId`, `faltam` e `conferido`.
+- **A confirmar na tela real:** se o Onvio lista os anexos do trâmite logo depois do envio (a conferência tenta duas vezes, com 1,5 s de pausa); se não, ela avisa "não consegui conferir" em vez de dar falso alarme.
+
 ## Novidades da v0.62.2 (alinhamento, pedido do Josué em 29/10/2026)
 
 - **Cartões das Solicitações:** os botões (Escolher responsável, Concluir, Pôr em análise) ficam fixos no **canto inferior direito** do cartão, sempre no mesmo lugar; a idade e o responsável ficam à esquerda.

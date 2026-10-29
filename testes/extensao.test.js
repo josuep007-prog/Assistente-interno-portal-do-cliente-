@@ -1701,6 +1701,82 @@ test('background: vários anexos saem um por pedido; um que falha não impede os
   assert.match(r.erroAnexos, /2 de 3 anexos.*b\.pdf/);
 });
 
+const TOP = 'a1b2c3d4-0000-4000-8000-0123456789ab';     // id de trâmite (GUID) do Onvio simulado
+// Onvio simulado para os anexos: aceita tudo (201), guarda no trâmite só o que a função `guarda` deixar e lista os anexos na leitura do trâmite
+function onvioAnexos({ guarda = () => true, rejeita = () => false, quebra = () => false } = {}) {
+  const base = apiSimulada({ itens: { geral: [pend('g1', 77)] } });
+  const no = [];                         // nomes que o Onvio guardou no trâmite top9
+  const escritas = [];
+  const api = async (url, init) => {
+    if (init && init.method && init.method !== 'GET') {
+      const eh = /attachments$/.test(url);
+      const nome = init.body instanceof FormData ? [...init.body.entries()][0][1].name : null;
+      escritas.push({ url: new URL(url).pathname, nome });
+      if (eh && quebra(nome)) throw new Error('rede caiu');
+      const falha = eh && rejeita(nome);
+      if (eh && !falha && guarda(nome)) no.push(nome);
+      const r = respHttp(falha ? 500 : 201, 'application/json', '');
+      return Object.assign(r, { headers: { get: k => (k === 'location' && /\/topics$/.test(url) ? url + '/' + TOP : k === 'content-type' ? 'application/json' : null) } });
+    }
+    if (/\/topics\?/.test(url) || /\/topics$/.test(url)) return respHttp(200, 'application/json', JSON.stringify({ items: [{ id: TOP, created: '2026-10-29T10:00:00', status: 4, description: 'x', attachmentsExpanded: no.map((n, i) => ({ id: 'a' + i, name: n })) }] }));
+    return base(url);
+  };
+  const { ctx, ouvintes } = carregarBackground({ abas: [aba(5, ONVIO_PORTAL)], fetchPorMundo: { MAIN: api }, fetch: api });
+  ctx.__controlOnvioAutorizacao = () => 'Bearer x';
+  const pedir = m => new Promise(res => ouvintes[0](m, { tab: { id: 5 } }, res));
+  return { pedir, escritas, no };
+}
+const pdfB64 = n => ({ nome: n, tipo: 'application/pdf', b64: Buffer.from('%PDF ' + n).toString('base64') });
+
+test('anexos: o Onvio diz que aceitou (201) mas não guarda um deles: a conferência lê o trâmite de volta e aponta o que faltou (0.63.0)', async () => {
+  const o = onvioAnexos({ guarda: n => n !== 'b.pdf' });
+  const r = await o.pedir({ cmd: 'acao', acao: 'tramite', type: 'geral', num: 77, texto: 'Seguem', situacao: 4, arquivos: [pdfB64('a.pdf'), pdfB64('b.pdf'), pdfB64('c.pdf')] });
+  assert.equal(r.ok, true, r.erro);
+  assert.equal(r.topicId, TOP);
+  assert.equal(r.anexos, 3, 'os três pedidos foram aceitos (201)');
+  assert.equal(r.conferido, false, 'mas a leitura do trâmite mostra que um não ficou');
+  assert.deepEqual(plano(r.faltam), ['b.pdf']);
+  assert.match(r.erroAnexos, /2 de 3 anexos.*b\.pdf.*não apareceu no trâmite/);
+});
+
+test('anexos: tudo certo é conferido; se o trâmite não pode ser lido, diz que não conferiu (nunca finge que conferiu)', async () => {
+  const ok = onvioAnexos();
+  const r1 = await ok.pedir({ cmd: 'acao', acao: 'tramite', type: 'geral', num: 77, texto: 'x', situacao: 4, arquivos: [pdfB64('a.pdf'), pdfB64('b.pdf')] });
+  assert.equal(r1.conferido, true); assert.deepEqual(plano(r1.faltam), []); assert.equal(r1.erroAnexos, null);
+  // nomes repetidos com o Onvio guardando os dois: conta cada um uma vez
+  const dup = onvioAnexos();
+  const r2 = await dup.pedir({ cmd: 'acao', acao: 'tramite', type: 'geral', num: 77, texto: 'x', situacao: 4, arquivos: [pdfB64('a.pdf'), pdfB64('a (2).pdf')] });
+  assert.equal(r2.conferido, true);
+});
+
+test('anexos: um arquivo que dá erro de rede não impede os outros e o resultado diz qual e por quê (0.63.0)', async () => {
+  const o = onvioAnexos({ quebra: n => n === 'b.pdf' });
+  const r = await o.pedir({ cmd: 'acao', acao: 'tramite', type: 'geral', num: 77, texto: 'x', situacao: 4, arquivos: [pdfB64('a.pdf'), pdfB64('b.pdf'), pdfB64('c.pdf')] });
+  assert.equal(r.ok, true);
+  assert.deepEqual(plano(r.arquivos.map(x => [x.nome, x.ok])), [['a.pdf', true], ['b.pdf', false], ['c.pdf', true]]);
+  assert.match(r.arquivos[1].erro, /rede caiu/);
+  assert.deepEqual(plano(r.faltam), ['b.pdf']);
+  assert.equal(o.escritas.filter(e => e.nome).length, 3, 'o c.pdf foi tentado depois do que falhou');
+});
+
+test('anexos: "anexar" sobe um arquivo por vez num trâmite que já existe e "conferirAnexos" lê o trâmite; entradas inválidas são recusadas (0.63.0)', async () => {
+  const o = onvioAnexos({ guarda: n => n !== 'perdido.pdf' });
+  const a = await o.pedir({ cmd: 'anexar', type: 'geral', num: 77, topicId: TOP, arquivo: pdfB64('a.pdf') });
+  assert.equal(a.ok, true); assert.equal(a.nome, 'a.pdf'); assert.equal(a.status, 201);
+  const b = await o.pedir({ cmd: 'anexar', type: 'geral', num: 77, topicId: TOP, arquivo: pdfB64('perdido.pdf') });
+  assert.equal(b.ok, true, 'o Onvio aceitou (201)');
+  const c = await o.pedir({ cmd: 'conferirAnexos', type: 'geral', num: 77, topicId: TOP, nomes: ['a.pdf', 'perdido.pdf'] });
+  assert.equal(c.ok, true); assert.equal(c.conferido, false); assert.deepEqual(plano(c.naoAchados), ['perdido.pdf']);
+  const rec = onvioAnexos({ rejeita: n => n === 'x.pdf' });
+  const x = await rec.pedir({ cmd: 'anexar', type: 'geral', num: 77, topicId: TOP, arquivo: pdfB64('x.pdf') });
+  assert.equal(x.ok, false); assert.equal(x.status, 500);
+  for (const ruim of [{ topicId: 'x/../y', arquivo: pdfB64('a.pdf') }, { topicId: TOP, arquivo: { nome: 'v.pdf', b64: '' } }, { topicId: TOP, arquivo: { nome: 'g.pdf', b64: 'A'.repeat(21 * 1024 * 1024) } }, { topicId: TOP }]) {
+    const e = await o.pedir(Object.assign({ cmd: 'anexar', type: 'geral', num: 77 }, ruim));
+    assert.equal(e.ok, false, JSON.stringify(Object.keys(ruim)));
+  }
+  assert.equal(o.escritas.length, 2, 'nada foi escrito com entrada inválida');
+});
+
 test('background: ação recusada pelo Onvio, sem aba ou com acesso de cliente não escreve', async () => {
   const base = apiSimulada({ itens: { geral: [pend('g1', 77)] } });
   let escritas = 0;

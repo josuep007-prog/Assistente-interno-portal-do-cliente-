@@ -3,7 +3,7 @@
  * anterior/próxima (setas ← → ou os botões do topo) sem fechar. */
 import { estado, itens, enviar, salvarLembretes, aoMudar } from '../estado.js';
 import { formAcao, ligarAcao, novaAcao, acaoAberta, fecharAcao, opcoesPassar } from './acao-form.js';
-import { respostaHtml, ligarResposta, prepararResposta, bolhaRascunho, recemEnviado, respostaEmAndamento, cancelarPendente, focarResposta, temRascunho } from './resposta.js';
+import { respostaHtml, ligarResposta, prepararResposta, bolhaRascunho, recemEnviado, respostaEmAndamento, cancelarPendente, focarResposta, temRascunho, anexosPendentes } from './resposta.js';
 import { esc, pillSituacao, motivosHtml, fmtDataHora, fmtData, textoPuro, toast, ladoTexto, relativo, iniciais, simples, $, $$ } from '../util.js';
 import { abrirLembrete, lembreteAberto } from './lembrete-dlg.js';
 import { abrirNova, novaAberta } from './nova-dlg.js';
@@ -27,6 +27,7 @@ let ultimaChave = '', ultimaAba = '';   // para manter a rolagem da conversa qua
 export const detalheAberto = () => !$('#gaveta').hidden;
 export function fecharDetalhe() {
   const estava = detalheAberto();
+  avisarAnexos();
   cancelarPendente(); fecharAcao(); gavetaAberta = false;
   ultimaChave = ''; ultimaAba = '';
   $('#gaveta').hidden = true; $('#fundo').hidden = true;
@@ -35,6 +36,10 @@ export function fecharDetalhe() {
   if (estava) dispatchEvent(new CustomEvent('controlonvio-detalhe-fechado'));
 }
 
+// Saindo de uma solicitação cujo trâmite foi enviado mas os anexos não chegaram: avisa (a faixa continua guardada nesta visita)
+function avisarAnexos() {
+  if (atual && anexosPendentes(atual)) toast('Atenção: na solicitação #' + atual.num + ' o trâmite foi enviado, mas há anexos que não chegaram ou não foram conferidos. O aviso continua na caixa de resposta ao reabri-la.', true);
+}
 // ref: item da fila, evento do sino ou lembrete (precisa de type e num); fonte: lista para navegar
 // opcoes.acao: já abre na caixa de resposta ('tramite') ou no formulário da ação (com opcoes.preset), por exemplo "Avisar o cliente" no Hoje
 export async function abrirDetalhe(ref, fonte, opcoes) {
@@ -43,6 +48,7 @@ export async function abrirDetalhe(ref, fonte, opcoes) {
   if (!t) return;
   if (fonte !== undefined) lista = Array.isArray(fonte) && fonte.length > 1 ? fonte : null;
   const mesma = !!atual && atual.type === ref.type && atual.num === String(ref.num);
+  if (!mesma) avisarAnexos();
   if (!mesma) { cancelarPendente(); fecharAcao(); gavetaAberta = false; fechouEu = false; if (aba === 'acao') aba = 'tramites'; }
   atual = { type: ref.type, num: String(ref.num) };
   if (aba === 'acao' && !ultimo) aba = 'tramites';
