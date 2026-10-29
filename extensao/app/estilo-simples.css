@@ -235,20 +235,14 @@
 :root[data-estilo="simples"] .dp-mais > summary::after{ content:" ▾" }
 :root[data-estilo="simples"] .dp-mais[open] > summary::after{ content:" ▴" }
 /* caixa: sem o rótulo "Trâmite" nem a linha do efeito (cada intenção já traz o efeito na dica) e sem o "atalho R" à vista */
-:root[data-estilo="simples"] .cmp-rot, :root[data-estilo="simples"] .cmp-efeito, :root[data-estilo="simples"] .cmp-atalho{ display:none }
-:root[data-estilo="simples"] .cmp-cab b{ cursor:help }
-:root[data-estilo="simples"] .cmp-mais{ margin-left:0 }
-:root[data-estilo="simples"] .cmp-mais > summary{ list-style:none }
-:root[data-estilo="simples"] .cmp-mais > summary::-webkit-details-marker{ display:none }
-:root[data-estilo="simples"] .cmp-mais .menu-list{ left:auto; right:0; top:auto; bottom:calc(100% + 4px); min-width:210px }
-/* janela larga: a caixa ao lado da conversa, com as medidas amarradas ao novo espaço */
-:root[data-estilo="simples"] .dlg-cols.lateral .dlg-body{ padding:14px 22px 16px }
-:root[data-estilo="simples"] .dlg-cols.lateral .cmp{ padding:10px 18px 0; gap:10px }
-:root[data-estilo="simples"] .dlg-cols.lateral .cmp-cab{ top:-10px; margin:-10px -18px 0; padding:10px 18px 8px }
-:root[data-estilo="simples"] .dlg-cols.lateral .cmp-pe{ margin:auto -18px 0; padding:10px 18px }
-@media (max-height:760px){
-  :root[data-estilo="simples"] .dlg-cols.lateral .cmp-caixa textarea, :root[data-estilo="simples"] .dlg-cols.lateral .cmp.aberto .cmp-caixa textarea{ min-height:72px }
-}
+:root[data-estilo="simples"] .cmp-efeito{ display:none }
+/* 0.62.0 · gaveta e caixa de resposta compacta no Simplificado: lisas, sem sombra na caixa; a barra e o botão Enviar seguem o tema */
+:root[data-estilo="simples"] .g-gaveta-in .cmp{ padding:8px 12px 10px; gap:6px }
+:root[data-estilo="simples"] .g-gaveta-cab{ background:var(--surface); padding:10px 14px }
+:root[data-estilo="simples"] .g-gaveta-cab b{ font:600 14px "IBM Plex Sans",sans-serif }
+:root[data-estilo="simples"] .g-barra-tx{ letter-spacing:.02em; text-transform:none; font-size:12px }
+:root[data-estilo="simples"] .g-gaveta.aberta .g-gaveta-in{ box-shadow:-8px 0 20px -14px rgba(16,24,32,.3) }
+:root[data-estilo="simples"] .cmp-envia .cmp-seg{ box-shadow:0 6px 18px rgba(16,24,32,.18) }
 /* conversa: balões sem sombra e linha do tempo mais leve */
 :root[data-estilo="simples"] .tr-bolha{ box-shadow:none }
 
@@ -294,13 +288,12 @@
 :root[data-estilo="simples"] .cfg-grade{ gap:var(--gap) }
 :root[data-estilo="simples"] .cfg-col{ gap:var(--gap) }
 
-/* 0.61.0 · painel de dados da solicitação no Simplificado: liso, sem sombras, títulos em letra normal */
-:root[data-estilo="simples"] .dlg-painel{ background:var(--surface); padding:12px 14px 16px }
-:root[data-estilo="simples"] .pn-cab{ font:600 13px "IBM Plex Sans",sans-serif; letter-spacing:0; text-transform:none; color:var(--ink) }
+/* 0.62.0 · dados da solicitação (largura total) no Simplificado: liso, sem sombras, títulos em letra normal */
+:root[data-estilo="simples"] .dlg-dados{ background:var(--surface-2); padding:12px 20px 18px }
 :root[data-estilo="simples"] .pn-sec{ border-color:var(--rule) }
 :root[data-estilo="simples"] .pn-sec > summary{ font-weight:600 }
 :root[data-estilo="simples"] .tr-sit-pill{ font-weight:500 }
 
 /* Leitura (0.61.0, pedido do Josué em 29/10/2026: "muitos textos cinzas e apagados"): o --ink-3 ficou mais escuro nos tokens
    e os textos de apoio com frase (não os rótulos em maiúsculas) não ficam abaixo de 12 px */
-:root[data-estilo="simples"] :is(.c-porque, .cmp-fer-dica, .card-h .sub, .tr-gap, .pp-n small, .pp-dias small, .pp-comp small, .hj-mini-q small){ font-size:12px }
+:root[data-estilo="simples"] :is(.c-porque, .card-h .sub, .tr-gap, .pp-n small, .pp-dias small, .pp-comp small, .hj-mini-q small){ font-size:12px }
