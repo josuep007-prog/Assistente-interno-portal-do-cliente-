@@ -45,6 +45,14 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
 
+## Novidades da v0.64.0 (texto legível em toda a extensão, pedido do Josué em 29/10/2026)
+
+- **Auditoria de contraste de ponta a ponta:** um medidor (`testes/contraste-lib.js`) percorre todo texto visível de Hoje, Solicitações, Distribuir, Agenda, Configurações, detalhe (com a resposta e o balão abertos), Equipe e Nova solicitação, nos dois estilos e nos dois temas, compondo o fundo real e a opacidade. O que estava abaixo de 4,5:1 foi corrigido; **hoje nada fica abaixo disso** e o teste `app · contraste` falha se alguém voltar a fazer texto apagado.
+- **Cinzas mais fortes:** `--ink-3` (textos de apoio) e `--ink-2` ficaram bem mais escuros no claro e mais claros no escuro, nos dois estilos (apoio com 5,8:1 a 6,5:1; antes 4,3:1 a 5:1); no destaque escuro do Hoje (Atual) e no trilho também. Rótulos pequenos (de 9 a 11 px) subiram cerca de 1 px.
+- **Cores que são texto:** os grupos de situação (Sem análise, Em análise, Cliente respondeu…) tinham cores de gráfico usadas como texto (3,7:1); agora o texto usa uma variante mais escura no claro e mais clara no escuro (`--sit-*-tx`), e o ponto/barra continua na cor do gráfico. Vermelho de atraso no escuro, laranja e verde de status no claro também ajustados; selo vermelho com texto branco usa `--red-solid`.
+- **Corrigidos de verdade:** o dia selecionado da Agenda no Simplificado (número branco sobre fundo branco quando tinha pontos), o botão "Claro/Escuro" escolhido no tema escuro (branco sobre azul-claro), as iniciais do avatar de trâmites, os campos de texto vazios (placeholder 3,7:1), os dias de outro mês na Agenda (opacidade 40%) e os cartões/situações "sem nada" (opacidade 55%).
+- Controles desabilitados continuam mais claros de propósito.
+
 ## Novidades da v0.63.1
 
 - **Cartões das Solicitações:** quando os botões não cabem ao lado da idade (por exemplo "Escolher responsável" + "Pôr em análise" num cartão estreito), eles descem para a linha de baixo, alinhados à direita, em vez de cobrir o "Nd parada". Teste com cartão de 290 px.
