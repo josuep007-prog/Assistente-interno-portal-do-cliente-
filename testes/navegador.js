@@ -2402,6 +2402,41 @@ await passo('app · Atual intacto: grade de tipos, destaque escuro com carrossel
   assert.deepEqual(p.erros, []);
 });
 
+await passo('app · contraste: nenhum texto abaixo de 4,5:1 (WCAG AA) nas telas principais, nos dois estilos e nos dois temas (0.64.0)', async () => {
+  const medir = require('./contraste-lib.js');
+  const TR = [
+    { n: 1, em: '2026-10-01T10:00:00', situacao: 'Sem análise', lado: 'cli', autor: 'Cliente BETA', texto: 'Bom dia, segue o pedido de férias.', anexos: ['aviso.pdf'] },
+    { n: 2, em: '2026-10-02T10:00:00', situacao: 'Em análise', lado: 'esc', autor: 'Ana Teste', texto: 'Recebemos e estamos analisando.', anexos: [] },
+    { n: 3, em: '2026-10-03T10:00:00', situacao: 'Aguardando resposta', lado: 'cli', autor: 'Cliente BETA', texto: 'Ok, obrigado.', anexos: [] }];
+  const DET = { ok: true, item: { assunto: 'Férias', type: 'geral' }, datas: {}, tramites: TR, anexos: ['aviso.pdf'],
+    grupos: [{ titulo: 'Solicitação', campos: [{ k: 'Início das férias', v: '03/11/2026', destaque: true }, { k: 'Dias de férias', v: '30', destaque: true }] }, { titulo: 'Empregado', campos: [{ k: 'Nome', v: 'Fulano', destaque: true }, { k: 'Cargo', v: 'Auxiliar' }] }] };
+  const abrirDet = async p => { await p.evaluate(d => { window.__respostas = { detalhe: d }; }, DET); await p.click('#corpo [data-k="geral:b"]'); await p.waitForSelector('#gaveta'); await p.waitForTimeout(300); };
+  const telas = [
+    ['Hoje', '#/inicio', async () => {}],
+    ['Solicitações em cartões', '#/fila?escopo=todas', async () => {}],
+    ['Distribuir', '#/distribuir', async () => {}],
+    ['Agenda', '#/lembretes', async () => {}],
+    ['Configurações · Aparência', '#/config', async () => {}],
+    ['Configurações · Prazos', '#/config?aba=prazos', async () => {}],
+    ['Configurações · Feriados', '#/config?aba=feriados', async () => {}],
+    ['Detalhe', '#/fila?escopo=todas', abrirDet],
+    ['Detalhe com a resposta aberta', '#/fila?escopo=todas', async p => { await abrirDet(p); await p.keyboard.press('r'); await p.waitForSelector('#a-texto'); await p.click('#cmp-mp'); await p.waitForSelector('#mp-balao'); }],
+  ];
+  const ruins = [];
+  for (const estilo of ['simples', 'atual']) for (const tema of ['light', 'dark']) for (const [nome, rota, fn] of telas) {
+    const p = await abrirApp(rota, { settings: { __v: 2 } }, undefined, { estilo });
+    await p.setViewportSize({ width: 1440, height: 900 });
+    await p.emulateMedia({ reducedMotion: 'reduce' });
+    await p.evaluate(t => { document.documentElement.setAttribute('data-theme', t); }, tema);
+    await fn(p);
+    await p.waitForTimeout(1200);
+    const r = await p.evaluate(([m, min]) => eval('(' + m + ')')(min), [medir.toString(), 4.5]);
+    for (const x of r) ruins.push(estilo + '/' + tema + ' · ' + nome + ' · "' + x.texto + '" ' + x.fg + ' sobre ' + x.bg + ' = ' + x.r + ':1');
+    await p.context().close();
+  }
+  assert.deepEqual(ruins.slice(0, 12), [], 'texto com pouco contraste (' + ruins.length + ')');
+});
+
 await navegador.close();
 console.log(falhas.length ? '\nFALHARAM: ' + falhas.join(' | ') : '\ntodos os testes de navegador passaram');
 process.exit(falhas.length ? 1 : 0);

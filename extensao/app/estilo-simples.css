@@ -277,6 +277,8 @@
 :root[data-estilo="simples"] .cal{ margin-top:8px }
 :root[data-estilo="simples"] .cal-d.n1, :root[data-estilo="simples"] .cal-d.n2, :root[data-estilo="simples"] .cal-d.n3{ background:none }
 :root[data-estilo="simples"] .cal-d.n1 .cal-pts i, :root[data-estilo="simples"] .cal-d.n2 .cal-pts i, :root[data-estilo="simples"] .cal-d.n3 .cal-pts i{ background:var(--blue-deep) }
+:root[data-estilo="simples"] .cal-d.sel, :root[data-estilo="simples"] .cal-d.sel:hover{ background:var(--blue-deep) }      /* dia escolhido com pontos (n1-n3): sem isto o número ficava branco sobre branco */
+:root[data-estilo="simples"] .cal-d.sel .cal-pts i{ background:currentColor }
 :root[data-estilo="simples"] .adiar{ display:inline-block }
 :root[data-estilo="simples"] .adiar .menu-list{ min-width:110px; left:auto; right:0 }
 :root[data-estilo="simples"] .adiar > summary{ list-style:none }
