@@ -199,7 +199,7 @@ a{color:var(--blue-deep)}
 .chip-f .ic{width:12px; height:12px}
 
 /* lista em grade (cabeçalho clicável para ordenar) */
-.list-card{background:var(--surface); border:1px solid var(--rule); border-radius:var(--r); overflow:hidden}
+.list-card{background:var(--surface); border:1px solid var(--rule); border-radius:var(--r); margin:0 0 14px; overflow:hidden}
 .lh, .lr{display:grid; grid-template-columns:var(--cols); gap:12px; align-items:center; padding:9px 16px 9px 13px}
 .lh{position:sticky; top:-18px; z-index:2; background:var(--surface-2); border-bottom:1px solid var(--rule); padding-block:8px; font-size:11px; font-weight:600; color:var(--ink-3); text-transform:uppercase; letter-spacing:.04em}
 .lh button{all:unset; cursor:pointer; white-space:nowrap}
@@ -242,9 +242,12 @@ a{color:var(--blue-deep)}
 .sc-top .pill{flex:none; margin-left:auto; white-space:nowrap}
 .sc-cli{font:700 15px/1.25 "Archivo",sans-serif; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
 .sc-sub{font-size:12.5px; color:var(--ink-2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:-4px}
-.sc-pe{display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; padding-top:8px; border-top:1px solid var(--rule); font-size:12px; color:var(--ink-3)}
+/* rodapé do cartão: a idade e o responsável à esquerda; os botões fixos no canto inferior direito (0.62.1) */
+.sc-pe{display:flex; align-items:flex-end; justify-content:space-between; gap:6px 10px; margin-top:auto; padding-top:8px; border-top:1px solid var(--rule); font-size:12px; color:var(--ink-3)}
 .sc-pe b{font:600 13px "IBM Plex Mono",monospace; color:var(--ink-2)}
-.sc-pe .resp{margin-left:auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:55%}
+.sc-info{flex:1 1 0; min-width:0; display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 10px}
+.sc-info .resp{min-width:0; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.sc-acoes{flex:none; max-width:100%; margin-left:auto; display:flex; flex-wrap:wrap; justify-content:flex-end; align-items:center; gap:6px}
 .sc .motivos{display:flex; gap:4px; flex-wrap:wrap}
 .cli-num{display:flex; gap:16px}
 .cli-num div{display:flex; flex-direction:column}
@@ -1431,7 +1434,7 @@ body.setor-fora .trilho [data-rota="equipe"], body.setor-fora .trilho [data-rota
 .btn-concluir{flex:none; margin-left:auto; border-color:var(--blue-deep); color:var(--blue-deep); background:var(--surface)}
 .btn-concluir:hover:not(:disabled){background:var(--blue-deep); color:#fff}
 .btn-concluir:disabled{opacity:.5}
-.sc-pe .btn-concluir{margin-left:8px}
+
 .btn-analise{white-space:nowrap}
 
 /* Hoje · sugestões de ação em barras recolhíveis: categoria > tipo de solicitação, com a ação em lote por tipo */
@@ -1452,7 +1455,6 @@ body.setor-fora .trilho [data-rota="equipe"], body.setor-fora .trilho [data-rota
 .lote-aviso{margin:12px 0 0}
 
 /* o botão do responsável sugerido nunca é cortado: no cartão ele pode ocupar a linha toda */
-.sc-pe .resp:has(.sug-resp){max-width:none; overflow:visible}
 .c-sub:has(> .sug-resp){overflow:visible}
 
 /* Equipe · distribuição automática */

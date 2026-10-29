@@ -1733,6 +1733,9 @@ await passo('app · Distribuir: mostra para quem vai cada sem responsável, com 
   await p.evaluate(() => { location.hash = '#/distribuir'; });
   await p.waitForSelector('.dist-l');
   assert.equal(await p.textContent('#titulo'), 'Distribuir');
+  const alin = await p.evaluate(() => ['#d-auto-host > *', '.barra', '.list-card.distrib'].map(q => { const r = document.querySelector(q).getBoundingClientRect(); return [Math.round(r.left), Math.round(r.right)]; }));
+  assert.deepEqual(alin[0], alin[2], 'a lista de sugestões fica alinhada com o cartão da distribuição automática: ' + JSON.stringify(alin));
+  assert.deepEqual(alin[1], alin[2], 'e com a barra de cima');
   assert.equal((await p.evaluate(() => window.__msgs.find(m => m.cmd === 'distribuicao'))).dias, 30);
   assert.match(await p.textContent('#subtitulo'), /nos últimos 30 dias/);
   assert.equal(await p.$('[data-dias]') === null, true, 'só 30 dias: 7 e 14 saíram');

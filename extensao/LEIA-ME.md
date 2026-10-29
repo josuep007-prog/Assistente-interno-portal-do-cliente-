@@ -45,6 +45,11 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
 
+## Novidades da v0.62.2 (alinhamento, pedido do Josué em 29/10/2026)
+
+- **Cartões das Solicitações:** os botões (Escolher responsável, Concluir, Pôr em análise) ficam fixos no **canto inferior direito** do cartão, sempre no mesmo lugar; a idade e o responsável ficam à esquerda.
+- **Retângulos alinhados:** as listas em cartão branco (Distribuir, Solicitações em lista, Busca, Lembretes) tinham 14 px de recuo herdados de um CSS antigo e não alinhavam com o cartão de cima e com a barra de ferramentas; agora ocupam a mesma largura.
+
 ## Novidades da v0.62.1 e v0.62.0 (detalhe e resposta, pedido do Josué em 29/10/2026)
 
 - **A solicitação abre nos Dados**, em largura total: destaques no topo, "Todos os dados" em cartões lado a lado (nada mais cortado) e, embaixo, Anexos, Para o cliente e Lembretes.
