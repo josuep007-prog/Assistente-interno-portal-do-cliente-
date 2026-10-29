@@ -16,6 +16,7 @@ const LARGA = 1000;      // a partir desta largura a gaveta abre ao passar o mou
 const GAV_FIXA = 'controlonvio-gaveta-fixa';
 let gavetaAberta = false;      // aberta pelo mouse, pelo clique na barra, pela tecla R ou por uma resposta/ação preparada (vale nesta visita)
 let gavetaFixa = (() => { try { return localStorage.getItem(GAV_FIXA) === '1'; } catch (e) { return false; } })();   // fixada: fica aberta e os dados abrem espaço
+let lembAberto = false;        // o menu "Lembretes" do topo está aberto (continua aberto ao salvar um lembrete)
 let saiTimer = null, fechouEu = false;   // fechouEu: a pessoa fechou a gaveta de propósito (vale até ela abrir de novo)
 const painelAbertos = new Map();   // seções do painel de dados abertas/fechadas pela pessoa (vale enquanto o app está aberto)
 let lista = null;        // lista de onde a pessoa abriu (para anterior/próxima)
@@ -108,22 +109,21 @@ function desenhar(i, r, erro, carregando) {
       (((i.motivos || []).some(m => m.legal) || i.abaProvavel) ? '<div class="motivos">' + motivosHtml(i) + '</div>' : '') +
       (i.resolvida ? '<div class="dlg-resolvida"><svg class="ic ic-sm"><use href="#i-check"/></svg><span><b>Considerada resolvida:</b> o cliente não respondeu' + (i.semRetorno != null ? ' em ' + i.semRetorno + ' dias úteis' : '') + ' e a última resposta não pedia nada. No Onvio ela continua aberta.</span></div>'
         : i.pedidoAoCliente && !simples() ? '<div class="dlg-resolvida pede"><svg class="ic ic-sm"><use href="#i-clock"/></svg><span>' + porquePendente(i.pedidoAoCliente) + '</span></div>' : '') +
-    '</div>' +
+    '</div>' + lembretesBtn(lems) +
     (p >= 0 ? '<div class="dlg-nav"><button class="icon-btn" id="g-ant" title="Anterior (←)" aria-label="Anterior"' + (p <= 0 ? ' disabled' : '') + '><svg class="ic"><use href="#i-chev-l"/></svg></button><span>' + (p + 1) + ' de ' + lista.length + '</span><button class="icon-btn" id="g-prox" title="Próxima (→)" aria-label="Próxima"' + (p >= lista.length - 1 ? ' disabled' : '') + '><svg class="ic"><use href="#i-chev-r"/></svg></button></div>' : '') +
     '<button class="icon-btn" id="g-fechar" aria-label="Fechar" title="Fechar (Esc)"><svg class="ic"><use href="#i-x"/></svg></button></div>' +
     '<div class="dp-last">' + dpLast() +
     '</div>' +
     // os dados em largura total; na borda direita, a gaveta com a conversa (trâmites) e a caixa de resposta embaixo (0.62.0)
     '<div class="dlg-cols dlg-v3' + (gavetaFixa ? ' fixa' : '') + '">' +
-    painelHtml(i, r, carregando, obs, lems, nAnexos) +
+    painelHtml(i, r, carregando, nAnexos) +
     gavetaHtml(i, r, erro, carregando, obs, p, tramites) +
     '</div>' +
     '<div class="dlg-actions">' +
       '<button class="btn btn-sm" id="g-onvio"><svg class="ic ic-sm"><use href="#i-link"/></svg> Abrir no Onvio</button>' +
       (nAnexos ? '<button class="btn btn-sm" id="g-anexos" title="Escolha quais anexos baixar"><svg class="ic ic-sm"><use href="#i-download"/></svg> Baixar anexos<span class="n-anexos">' + nAnexos + '</span></button>' : '') +
       '<span class="spacer"></span>' +
-      maisAcoes(i, obs, carregando) +
-      '<button class="btn btn-primary btn-sm" id="g-lembrete"><svg class="ic ic-sm"><use href="#i-clock"/></svg> Lembrete</button>' +
+      maisAcoes(i, carregando) +
     '</div>';
 
   $('#g-fechar').onclick = fecharDetalhe;
@@ -152,21 +152,11 @@ function desenhar(i, r, erro, carregando) {
   if ($('#g-ant')) { $('#g-ant').onclick = () => andar(-1); $('#g-prox').onclick = () => andar(1); }
   // painel: lembra quais seções a pessoa abriu ou fechou
   $$('#g-painel details[data-pn]', g).forEach(d => d.addEventListener('toggle', () => painelAbertos.set(d.dataset.pn, d.open)));
+  if ($('#g-lemb')) $('#g-lemb').addEventListener('toggle', e => { lembAberto = e.target.open; });
   $('#g-onvio').onclick = async () => {
     const x = await enviar({ cmd: 'abrir', item: { type: i.type, num: String(i.num) } });
     if (!x.ok) toast('Não foi possível abrir no Onvio: ' + (x.erro || ''), true);
   };
-  const copiarObs = async () => {
-    const marcadas = $$('#g-obs [data-obs]', g);
-    const lista = marcadas.length ? obs.filter(o => marcadas.some(c => c.dataset.obs === o.id && c.checked)) : obs.filter(o => !o.interno);
-    const txt = textoParaCliente(lista);
-    if (!txt) { toast('Marque ao menos uma observação', true); return; }
-    try { await navigator.clipboard.writeText(txt); toast('Observações copiadas: cole na resposta ao cliente'); }
-    catch (e) { toast('Não foi possível copiar: selecione o texto na aba "Para o cliente"', true); }
-  };
-  if ($('#g-copiar-obs')) $('#g-copiar-obs').onclick = copiarObs;
-  if ($('#g-copiar-obs2')) $('#g-copiar-obs2').onclick = copiarObs;
-  $$('#g-obs [data-obs]', g).forEach(c => c.onchange = () => { const pv = $('#g-obs-texto', g); if (pv) pv.textContent = textoParaCliente(obs.filter(o => $$('#g-obs [data-obs]', g).some(x => x.dataset.obs === o.id && x.checked))); });
   $$('[data-acao]', g).forEach(b => b.onclick = () => { novaAcao(b.dataset.acao); aba = 'acao'; desenhar(i, r, erro, carregando); });
   $$('[data-abrir-onvio]', g).forEach(b => b.onclick = () => $('#g-onvio').click());
   $$('[data-responder]', g).forEach(b => b.onclick = () => { abrirGaveta(); if (!focarResposta()) toast('A caixa de resposta não está disponível aqui', true); });
@@ -196,7 +186,7 @@ function desenhar(i, r, erro, carregando) {
 
 // "Responder" sempre à vista no rodapé (de qualquer aba): leva à caixa de resposta; desativado com o motivo quando não dá
 // "Mais ações": o resto fica num menu, cada item com o motivo na própria linha quando não dá para usar (OC.podeAcao)
-function maisAcoes(i, obs, carregando) {
+function maisAcoes(i, carregando) {
   const item = (rot, ic, attrs, pode) => '<button type="button" class="menu-item"' + attrs + (pode.ok ? '' : ' disabled') + '><svg class="ic ic-sm"><use href="#i-' + ic + '"/></svg><span class="mi-tx">' + rot + (pode.ok ? '' : '<small class="mi-motivo">' + esc(pode.motivo) + '</small>') + '</span></button>';
   const livre = { ok: true }, espera = { ok: false, motivo: 'lendo a solicitação…' };
   const op = carregando ? { encaminhar: espera, responsavel: espera } : opcoesPassar(i);
@@ -206,14 +196,21 @@ function maisAcoes(i, obs, carregando) {
     (OC.ACOES.expectativa(i.type) ? item('Alterar expectativa de conclusão', 'calendar', ' data-acao="expectativa"', carregando ? espera : OC.podeAcao('expectativa', i)) : '') +
     item('Nova solicitação para o cliente', 'plus', ' id="g-nova"', livre) +
     (i.lado === 'cli' ? item('Pedir ao cliente para concluir', 'check', ' id="g-concluir"', livre) : '') +
-    (!carregando && obs.some(o => !o.interno) ? item('Copiar observações para o cliente', 'copy', ' id="g-copiar-obs"', livre) : '') +
     '</div></details>';
 }
-// o menu fecha ao clicar fora
+// os menus (Mais ações e Lembretes) fecham ao clicar fora
 function fechaMais(e) {
-  const m = $('#g-mais');
-  if (!m) { document.removeEventListener('click', fechaMais); return; }
-  if (m.open && !m.contains(e.target)) m.open = false;
+  const m = $('#g-mais'), l = $('#g-lemb');
+  if (!m && !l) { document.removeEventListener('click', fechaMais); return; }
+  if (m && m.open && !m.contains(e.target)) m.open = false;
+  if (l && l.open && e.target.isConnected && !l.contains(e.target) && !(e.target.closest && e.target.closest('dialog'))) l.open = false;     // clique em outra janela (Novo lembrete) não fecha a lista
+}
+
+// Lembretes desta solicitação: um botão no topo, ao lado da navegação, com o nº de pendentes; abre a lista e "Novo lembrete" (0.62.1)
+function lembretesBtn(lems) {
+  const pend = lems.filter(l => !l.feito).length, atras = lems.some(l => !l.feito && OC.situacaoLembrete(l) === 'atrasado');
+  return '<details class="menu g-lemb" id="g-lemb"' + (lembAberto ? ' open' : '') + '><summary class="btn btn-sm" title="Lembretes desta solicitação: ver, marcar como feito e criar">' + ico('clock') + ' Lembretes' + (pend ? '<span class="g-lemb-n' + (atras ? ' late' : '') + '">' + pend + '</span>' : '') + '</summary>' +
+    '<div class="menu-list g-lemb-lista">' + lembretesHtml(lems) + '<button type="button" class="btn btn-sm btn-primary g-lemb-novo" id="g-lembrete">' + ico('plus') + ' Novo lembrete</button></div></details>';
 }
 
 // Trâmites como conversa, sempre na ordem em que aconteceram (sem filtros): cliente à esquerda, escritório à direita,
@@ -271,8 +268,8 @@ function destaquesHtml(r) {
 }
 
 // Painel de dados (0.62.0, pedido do Josué em 29/10/2026): a solicitação abre nele, em largura total (a conversa e a resposta ficam na gaveta
-// da direita). Em destaque no topo; "Todos os dados" em cartões lado a lado; Anexos, Para o cliente e Lembretes em seções que abrem e fecham.
-function painelHtml(i, r, carregando, obs, lems, nAnexos) {
+// da direita). Em destaque no topo; "Todos os dados" em cartões lado a lado; Anexos numa seção que abre e fecha.
+function painelHtml(i, r, carregando, nAnexos) {
   const sec = (id, tit, n, corpo, padrao, alerta) => {
     const ab = painelAbertos.has(id) ? painelAbertos.get(id) : padrao;
     return '<details class="pn-sec" data-pn="' + id + '"' + (ab ? ' open' : '') + '><summary><span class="pn-tit">' + tit + '</span>' + (n ? '<span class="pn-n' + (alerta ? ' late' : '') + '">' + n + '</span>' : '') + '</summary><div class="pn-corpo">' + corpo + '</div></details>';
@@ -282,14 +279,12 @@ function painelHtml(i, r, carregando, obs, lems, nAnexos) {
   const anexos = total ? (abertura.length ? '<div class="anexos">' + abertura.map(a => '<span><svg class="ic ic-sm"><use href="#i-paperclip"/></svg>' + esc(a) + '</span>').join('') + '</div>' : '') +
     (total > abertura.length ? '<p class="fraco">' + (abertura.length ? 'E mais ' + (total - abertura.length) + ' nos trâmites da conversa.' : total + (total === 1 ? ' anexo' : ' anexos') + ' nos trâmites da conversa.') + '</p>' : '') +
     (nAnexos ? '<button type="button" class="btn btn-sm" id="g-anexos2"><svg class="ic ic-sm"><use href="#i-download"/></svg> Escolher e baixar</button>' : '') : '';
-  const pend = lems.filter(l => !l.feito).length, dq = destaquesHtml(r);
+  const dq = destaquesHtml(r);
   return '<section class="dlg-dados" id="g-painel" aria-label="Dados da solicitação">' +
     dq +
     sec('dados', 'Todos os dados', '', dados(i, r, false), true) +
     '<div class="pn-extras">' +
     (total ? sec('anexos', 'Anexos', String(total), anexos, true) : '') +
-    sec('cliente', 'Para o cliente', obs.some(o => o.alerta) ? '!' : '', clienteHtml(obs, false), obs.some(o => o.alerta), true) +
-    sec('lembretes', 'Lembretes', pend ? String(pend) : '', lembretesHtml(lems), pend > 0) +
     '</div>' +
   '</section>';
 }
@@ -374,22 +369,6 @@ function dados(i, r, carregando) {
   const aviso = r && r.erroDados ? '<div class="faixa warn"><svg class="ic"><use href="#i-alert"/></svg>Não foi possível ler a solicitação completa (' + esc(r.erroDados) + '). Mostrando o que veio da lista.</div>' : '';
   return aviso + (i.assunto ? grade([['Assunto', i.assunto]]) : '') +
     (i.descricao ? '<div class="campo campo-longo"><div class="k">Descrição</div><div class="texto-longo">' + esc(textoPuro(i.descricao)) + '</div></div>' : '');
-}
-
-// Observações para o cliente: avisos calculados primeiro; os internos (só para o analista) não vão para o texto.
-function textoParaCliente(lista) {
-  const l = lista.filter(o => !o.interno).map(o => '• ' + o.texto);
-  return l.length ? 'Observações importantes:\n' + l.join('\n') : '';
-}
-function clienteHtml(obs, carregando) {
-  if (carregando) return '<div class="vazio">Lendo as datas da solicitação…</div>';
-  if (!obs.length) return '<div class="vazio"><b>Nenhuma observação para este tipo de solicitação</b>As frases ficam em Configurações (arquivo de regras do escritório).</div>';
-  const internos = obs.filter(o => o.interno), cli = obs.filter(o => !o.interno);
-  return (internos.length ? internos.map(o => '<div class="faixa warn"><svg class="ic"><use href="#i-alert"/></svg>' + esc(o.texto) + '</div>').join('') : '') +
-    '<p class="fraco">Marque o que vale para este caso. "Copiar observações" copia o texto pronto para colar na resposta ao cliente.</p>' +
-    '<div class="obs-lista" id="g-obs">' + cli.map(o => '<label class="obs' + (o.alerta ? ' alerta' : '') + '"><input type="checkbox" data-obs="' + esc(o.id) + '" checked><span>' + esc(o.texto) + '</span></label>').join('') + '</div>' +
-    '<h4 class="dados-tit">Texto que será copiado</h4><div class="texto-longo" id="g-obs-texto">' + esc(textoParaCliente(cli)) + '</div>' +
-    '<div style="margin-top:10px"><button class="btn btn-primary btn-sm" id="g-copiar-obs2"><svg class="ic ic-sm"><use href="#i-copy"/></svg> Copiar observações</button></div>';
 }
 
 function lembretesHtml(lems) {

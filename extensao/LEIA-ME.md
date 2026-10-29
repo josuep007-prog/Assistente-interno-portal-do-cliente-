@@ -45,12 +45,15 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
 
-## Novidades da v0.62.0 (detalhe e resposta, pedido do Josué em 29/10/2026)
+## Novidades da v0.62.1 e v0.62.0 (detalhe e resposta, pedido do Josué em 29/10/2026)
 
 - **A solicitação abre nos Dados**, em largura total: destaques no topo, "Todos os dados" em cartões lado a lado (nada mais cortado) e, embaixo, Anexos, Para o cliente e Lembretes.
 - **Gaveta "Conversa" na borda direita:** ao passar o mouse na barra (ou clicar nela, ou apertar **R**) abre a gaveta com os trâmites e a caixa de resposta. Ela **não fecha sozinha** enquanto você escreve, tem rascunho, o balão da Mensagem pronta está aberto, a resposta está em revisão ou há uma ação aberta. O alfinete **fixa** a gaveta aberta (os dados abrem espaço) e o **X** fecha de propósito (o rascunho fica, e a barra mostra um ponto). Em janela estreita (< 1000 px) a barra vira uma aba embaixo e abre só por clique.
 - **Caixa de resposta compacta, estilo chat:** Anexar e Mensagem pronta viram ícones ao lado do texto, que cresce ao escrever, e a situação sai da lista de botões: o botão **"Enviar como Respondido ▾"** mostra a escolhida e o ▾ abre a lista (Respondido, Em análise…). Esc fecha só a lista. "Criar/Salvar como modelo" e "Descartar" ficam numa linha abaixo.
-- **A confirmar na tela real:** se o tamanho da gaveta (até 540 px) e a barra de 40 px ficam bem em monitores pequenos.
+- **Sem "Para o cliente":** a seção e o "Copiar observações" saíram do detalhe (não tinham utilidade, pedido do Josué em 29/10/2026). As observações continuam entrando na **Mensagem pronta**, quando cabem.
+- **Lembretes virou um botão no topo**, ao lado das setas de navegação, com o número de pendentes (vermelho se houver atrasado). Abre a lista, com "Feito" e "Novo lembrete" (que saiu do rodapé); a lista continua aberta ao salvar um lembrete.
+- **A barra "Conversa" chama a atenção sem exagero:** fundo azul suave e filete azul na borda; o ponto vermelho da vez do escritório pulsa três vezes (e o texto "Conversa" esmaece três vezes) ao abrir a solicitação, e depois fica parado. Sem animação para quem pede menos movimento.
+- **A gaveta abre com 70% da tela** (pedido do Josué em 29/10/2026), para não esconder tanto os trâmites e a resposta; os dados ficam nos 30% restantes (ou ao lado dela, quando fixada). **A confirmar na tela real:** a barra de 40 px em monitores pequenos.
 
 ## Novidades da v0.61.1
 

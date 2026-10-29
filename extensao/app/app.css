@@ -1572,18 +1572,21 @@ body.setor-fora .trilho [data-rota="equipe"], body.setor-fora .trilho [data-rota
 .tr-item.esc .tr-sit-pill{background:color-mix(in srgb, var(--blue-deep) 14%, var(--surface))}
 
 /* gaveta da direita: a barra "Conversa" fica na borda; a gaveta desliza por cima dos dados (ou ao lado, fixada) */
-.g-gaveta{--gav:min(540px, 92vw); position:absolute; top:0; right:0; bottom:0; z-index:5; display:flex; width:calc(var(--gav) + 40px); transform:translateX(var(--gav)); transition:transform .16s ease; pointer-events:none}
+.g-gaveta{--gav:min(92vw, max(540px, 70vw)); position:absolute; top:0; right:0; bottom:0; z-index:5; display:flex; width:calc(var(--gav) + 40px); transform:translateX(var(--gav)); transition:transform .16s ease; pointer-events:none}
 .g-gaveta.aberta{transform:none; pointer-events:auto}
 .g-gaveta > *{pointer-events:auto}
 .g-gaveta.aberta .g-gaveta-in{box-shadow:-12px 0 28px -14px rgba(16,24,32,.35)}
 .g-gaveta.fixa{position:relative; flex:none; transform:none; box-shadow:none}
 .g-gaveta.fixa .g-gaveta-in{box-shadow:none}
-.g-barra{flex:none; width:40px; display:flex; flex-direction:column; align-items:center; gap:8px; padding:12px 0; border:0; border-left:1px solid var(--rule); background:var(--surface); color:var(--ink-2); cursor:pointer; font:600 12px "IBM Plex Sans",sans-serif}
-.g-barra:hover, .g-gaveta.aberta .g-barra{background:var(--blue-pale); color:var(--blue-deep)}
+.g-barra{flex:none; width:40px; display:flex; flex-direction:column; align-items:center; gap:8px; padding:12px 0; border:0; border-left:3px solid var(--blue-deep); background:color-mix(in srgb, var(--blue-deep) 9%, var(--surface)); color:var(--blue-deep); cursor:pointer; font:600 12px "IBM Plex Sans",sans-serif}
+.g-barra:hover, .g-gaveta.aberta .g-barra{background:color-mix(in srgb, var(--blue-deep) 18%, var(--surface))}
 .g-barra:focus-visible{outline:2px solid var(--blue-mid); outline-offset:-2px}
 .g-barra-tx{writing-mode:vertical-rl; transform:rotate(180deg); letter-spacing:.06em; text-transform:uppercase; font-size:11px}
 .g-barra-n{min-width:20px; padding:1px 5px; border-radius:10px; background:var(--surface-3); color:var(--ink); font:600 11px "IBM Plex Mono",monospace; text-align:center}
-.g-barra-pt{width:9px; height:9px; border-radius:50%; background:var(--brand-red)}
+.g-barra-pt{width:9px; height:9px; border-radius:50%; background:var(--brand-red); animation:gBarraPulso 2.2s ease-out 3}
+@keyframes gBarraPulso{0%{box-shadow:0 0 0 0 color-mix(in srgb, var(--brand-red) 55%, transparent)} 70%,100%{box-shadow:0 0 0 8px transparent}}
+.g-gaveta:not(.aberta) .g-barra-tx{animation:gBarraTx 2.2s ease-in-out 3}
+@keyframes gBarraTx{50%{opacity:.55}}
 .g-barra-rasc{width:9px; height:9px; border-radius:50%; border:2px solid var(--blue-deep); box-sizing:border-box}
 .g-gaveta-in{flex:1 1 auto; min-width:0; display:flex; flex-direction:column; border-left:1px solid var(--rule-strong); background:var(--surface)}
 .g-gaveta-cab{display:flex; align-items:center; gap:8px; padding:10px 14px; border-bottom:1px solid var(--rule); background:var(--surface-2)}
@@ -1596,14 +1599,15 @@ body.setor-fora .trilho [data-rota="equipe"], body.setor-fora .trilho [data-rota
 .g-gaveta-in .dlg-body{padding:14px 16px 16px}
 /* janela estreita: a barra vira uma aba embaixo e a gaveta sobe por cima dos dados (só ao clicar) */
 @media (max-width:999px){
+  .g-barra{border-left:0; border-top:3px solid var(--blue-deep)}
   .dlg-dados{margin-right:0; padding-bottom:56px}
   .g-gaveta{--gav:min(78%, 640px); top:auto; left:0; right:0; bottom:0; width:auto; height:var(--gav); flex-direction:column-reverse; transform:translateY(calc(100% - 40px))}
-  .g-barra{width:auto; height:40px; flex-direction:row; justify-content:center; padding:0 12px; border-left:0; border-top:1px solid var(--rule-strong)}
+  .g-barra{width:auto; height:40px; flex-direction:row; justify-content:center; padding:0 12px}
   .g-barra-tx{writing-mode:horizontal-tb; transform:none}
   .g-gaveta-in{border-left:0}
   .g-pin{display:none}
 }
-@media (prefers-reduced-motion: reduce){ .g-gaveta{transition:none} }
+@media (prefers-reduced-motion: reduce){ .g-gaveta{transition:none} .g-barra-pt, .g-gaveta:not(.aberta) .g-barra-tx{animation:none} }
 
 /* caixa de resposta compacta, estilo chat (0.62.0): ícones, texto que cresce e o botão "Enviar como ▾" */
 .cmp-chat{display:flex; align-items:flex-end; gap:4px; padding:6px}
@@ -1623,3 +1627,13 @@ body.setor-fora .trilho [data-rota="equipe"], body.setor-fora .trilho [data-rota
 .cmp-rodape{display:flex; align-items:center; gap:2px; flex-wrap:wrap}
 .cmp-rodape .cmp-efeito{flex:1 1 220px; min-width:0}
 .cmp-rodape .cmp-fer-b{flex:none}
+
+/* botão Lembretes no topo da solicitação (0.62.1): fica ao lado da navegação; a lista abre para baixo */
+.g-lemb{flex:none; align-self:flex-start}
+.g-lemb > summary{list-style:none}
+.g-lemb > summary::-webkit-details-marker{display:none}
+.g-lemb-n{margin-left:4px; min-width:18px; padding:0 5px; border-radius:9px; background:var(--blue-pale); color:var(--blue-deep); font:600 11px "IBM Plex Mono",monospace; text-align:center}
+.g-lemb-n.late{background:color-mix(in srgb, var(--brand-red) 14%, var(--surface)); color:var(--brand-red)}
+.g-lemb .menu-list{right:0; min-width:340px; max-width:min(460px, 90vw); max-height:60vh; overflow-y:auto; gap:6px; padding:10px}
+.g-lemb .item-ag{padding:8px 0}
+.g-lemb-novo{align-self:flex-start}

@@ -1237,6 +1237,10 @@ await passo('app · detalhe: janela com dados e trâmites lidos na hora; lembret
   assert.deepEqual([pedido.type, String(pedido.num)], ['geral', '102']);
   await p.click('#g-painel [data-pn="dados"] > summary');
   assert.match(await p.textContent('#g-painel'), /Segue pedido/, 'HTML do Onvio vira texto puro');
+  assert.equal(await p.$('#g-lemb') !== null && await p.$('#g-painel [data-pn="lembretes"]') === null, true, 'Lembretes é um botão no topo, não uma seção dos dados');
+  assert.match(await p.textContent('#g-lemb > summary'), /Lembretes\s*1/, 'o botão mostra quantos lembretes pendentes');
+  assert.equal(await p.$('#g-lembrete') !== null && await p.isVisible('#g-lembrete'), false, 'a lista fica fechada até clicar');
+  await p.click('#g-lemb > summary');
   await p.click('#g-lembrete');
   await p.fill('#lt', 'Ligar para o João');
   await p.selectOption('#lr', 'semanal');
@@ -1245,8 +1249,8 @@ await passo('app · detalhe: janela com dados e trâmites lidos na hora; lembret
   const l = await p.evaluate(() => JSON.parse(localStorage.getItem('__mem')).lembretes[1]);
   assert.deepEqual([l.texto, l.type, l.num, l.rep], ['Ligar para o João', 'geral', '102', 'semanal']);
   assert.equal(await p.isHidden('#dlg-lembrete'), true);
-  await p.waitForSelector('#g-painel [data-pn="lembretes"][open]');
-  await p.waitForFunction(() => /Ligar para o João/.test(document.querySelector('#g-painel').textContent) && /Cobrar o BETA/.test(document.querySelector('#g-painel').textContent));
+  await p.waitForSelector('#g-lemb[open]');                      // a lista continua aberta e mostra o novo lembrete
+  await p.waitForFunction(() => /Ligar para o João/.test(document.querySelector('#g-lemb').textContent) && /Cobrar o BETA/.test(document.querySelector('#g-lemb').textContent));
   await p.click('#g-onvio');
   assert.ok(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'abrir' && m.item.num === '102')));
   await p.keyboard.press('Escape');
@@ -1254,7 +1258,7 @@ await passo('app · detalhe: janela com dados e trâmites lidos na hora; lembret
   assert.deepEqual(p.erros, []);
 });
 
-await passo('app · detalhe: painel com a solicitação completa em grupos e anexos; "Para o cliente" com avisos e copiar com um clique', async () => {
+await passo('app · detalhe: painel com a solicitação completa em grupos e anexos; sem a seção "Para o cliente"', async () => {
   const p = await abrirApp('#/fila', {});
   await p.evaluate(() => {
     window.__copiado = null;
@@ -1266,7 +1270,7 @@ await passo('app · detalhe: painel com a solicitação completa em grupos e ane
       anexos: ['aviso-assinado.pdf'] } };
   });
   await p.click('#corpo [data-k="geral:b"]');
-  await p.waitForSelector('#g-painel [data-pn="cliente"]');
+  await p.waitForSelector('#g-painel [data-pn="anexos"]');
   await p.click('#g-painel [data-pn="dados"] > summary');
   const t = await p.textContent('#g-painel [data-pn="dados"] .pn-corpo');
   assert.match(t, /^Solicitação.*Início das férias27\/10\/2026.*Dias de férias30/, 'sem o bloco "Controle" repetindo o topo');
@@ -1278,20 +1282,7 @@ await passo('app · detalhe: painel com a solicitação completa em grupos e ane
   assert.equal(await p.$eval('#g-painel [data-pn="dados"] .campo .k', e => getComputedStyle(e).textTransform), 'none', 'rótulos em letra normal');
   assert.match(t, /Pedido do cliente/);
   assert.match(await p.textContent('#g-painel [data-pn="anexos"]'), /Anexos1.*aviso-assinado\.pdf/, 'anexos numa seção própria do painel, aberta');
-  // Para o cliente: aviso calculado (menos de 30 dias) marcado com "!" e a seção já vem aberta
-  assert.match(await p.textContent('#g-painel [data-pn="cliente"] > summary'), /Para o cliente!/);
-  await p.waitForSelector('#g-painel [data-pn="cliente"][open]');
-  const obs = await p.$$eval('#g-obs .obs', e => e.map(x => x.textContent));
-  assert.match(obs[0], /^Atenção: faltam 12 dias para o início das férias/);
-  assert.ok(obs.some(x => /O aviso precisa ser entregue ao empregado com pelo menos 30 dias/.test(x)));
-  // tira uma observação: o texto que será copiado acompanha
-  await p.click('#g-obs .obs:last-child input');
-  assert.ok(!/abono pecuniário/.test(await p.textContent('#g-obs-texto')));
-  await p.click('#g-copiar-obs2');
-  await p.waitForFunction(() => window.__copiado);
-  const cop = await p.evaluate(() => window.__copiado);
-  assert.match(cop, /^Observações importantes:\n• Atenção: faltam 12 dias/);
-  assert.ok(!/abono pecuniário/.test(cop));
+  assert.equal(await p.$('#g-painel [data-pn="cliente"]') === null && await p.$('#g-copiar-obs') === null, true, 'a seção "Para o cliente" e o copiar observações saíram (0.62.1)');
   assert.deepEqual(p.erros, []);
 });
 
@@ -1669,7 +1660,7 @@ await passo('app · detalhe: com muito conteúdo e janela baixa, a conversa (na 
   const corpo = await p.$eval('#g-corpo', e => ({ h: e.clientHeight, s: e.scrollHeight }));
   assert.ok(corpo.s > corpo.h, 'quem rola é a conversa');
   const lados = await p.evaluate(() => { const g = document.querySelector('#g-gaveta').getBoundingClientRect(), pn = document.querySelector('#g-painel').getBoundingClientRect(); return { dados: pn.width, gav: g.width, ladoDireito: Math.round(g.right) === innerWidth }; });
-  assert.ok(lados.dados >= 1100 - 60 && lados.ladoDireito && lados.gav >= 440 && lados.gav <= 600, 'dados em largura total e a gaveta na borda direita: ' + JSON.stringify(lados));
+  assert.ok(lados.dados >= 1100 - 60 && lados.ladoDireito && lados.gav >= 1100 * 0.7 && lados.gav <= 1100 * 0.8, 'dados em largura total e a gaveta com 70% da tela, na borda direita: ' + JSON.stringify(lados));
   assert.equal(await p.$eval('.tr-item.esc .tr-sit-pill', e => e.textContent), 'Em análise', 'a situação gravada aparece na bolha do escritório');
   await p.setViewportSize({ width: 900, height: 700 });
   await p.click('#g-gav-x');
@@ -1721,6 +1712,9 @@ await passo('app · capturas do detalhe (só com CAP)', async () => {
         { n: 3, id: 't3', em: '2026-10-07T10:00:00', situacao: 'Aguardando resposta', lado: 'cli', autor: 'Cliente BETA', texto: 'Confirmado, segue o período.', anexos: [], arquivos: [] }] } }; });
     await p.click('#corpo [data-k="geral:b"]');
     await p.waitForSelector('#g-barra'); await p.waitForTimeout(400);
+    await p.click('#g-lemb > summary'); await p.waitForTimeout(150);
+    await p.screenshot({ path: process.env.CAP + '/det-lemb-' + estilo + '-' + tema + '.png' });
+    await p.click('#g-lemb > summary');
     await p.screenshot({ path: process.env.CAP + '/det-dados-' + estilo + '-' + tema + '.png' });
     await p.hover('#g-barra'); await p.waitForSelector('#g-gaveta.aberta'); await p.waitForTimeout(500);
     await p.screenshot({ path: process.env.CAP + '/det-gaveta-' + estilo + '-' + tema + '.png' });
@@ -1909,12 +1903,12 @@ await passo('app · detalhe em janela larga: abre nos dados, a gaveta abre ao pa
   await p.hover('#g-barra');
   await p.waitForSelector('#g-gaveta.aberta');                   // passar o mouse na barra abre a gaveta
   await p.waitForTimeout(250);
-  await p.hover('#g-painel');
+  await p.hover('#g-painel', { position: { x: 60, y: 300 } });
   await p.waitForFunction(() => !document.querySelector('#g-gaveta.aberta'), null, { timeout: 3000 });   // e tirar o mouse fecha (nada em andamento)
   await p.hover('#g-barra'); await p.waitForSelector('#g-gaveta.aberta'); await p.waitForTimeout(250);
   await p.click('#g-pin');
   await p.waitForSelector('#g-gaveta.fixa');
-  await p.hover('#g-painel'); await p.waitForTimeout(500);
+  await p.hover('#g-painel', { position: { x: 60, y: 300 } }); await p.waitForTimeout(500);
   assert.ok(await p.$('#g-gaveta.aberta'), 'fixada: não fecha ao tirar o mouse');
   await p.click('#g-pin');
   await p.waitForSelector('#g-gaveta:not(.fixa)');
