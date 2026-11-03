@@ -1081,7 +1081,7 @@ async function textoDoPdf(url) {
   const b64 = await baixarPdfPelaAba(url);
   await garantirOffscreen();
   let r = null;
-  for (let i = 0; i < 3 && !r; i++) { r = await chrome.runtime.sendMessage({ alvo: 'offscreen', cmd: 'pdfTexto', b64 }).catch(() => null); if (!r) await new Promise(ok => setTimeout(ok, 300)); }       // o documento pode ainda estar carregando
+  for (let i = 0; i < 12 && !r; i++) { r = await chrome.runtime.sendMessage({ alvo: 'offscreen', cmd: 'pdfTexto', b64 }).catch(() => null); if (!r) await new Promise(ok => setTimeout(ok, 250)); }       // o documento pode ainda estar carregando o pdf.js (até ~3 s)
   if (!r || !r.ok) throw new Error('não consegui ler o PDF (' + ((r && r.erro) || 'sem resposta') + ')');
   return r.texto;
 }
