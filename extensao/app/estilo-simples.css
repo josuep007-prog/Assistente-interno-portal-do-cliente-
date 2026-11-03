@@ -236,13 +236,7 @@
 :root[data-estilo="simples"] .dp-mais[open] > summary::after{ content:" ▴" }
 /* caixa: sem o rótulo "Trâmite" nem a linha do efeito (cada intenção já traz o efeito na dica) e sem o "atalho R" à vista */
 :root[data-estilo="simples"] .cmp-efeito{ display:none }
-/* 0.62.0 · gaveta e caixa de resposta compacta no Simplificado: lisas, sem sombra na caixa; a barra e o botão Enviar seguem o tema */
-:root[data-estilo="simples"] .g-gaveta-in .cmp{ padding:8px 12px 10px; gap:6px }
-:root[data-estilo="simples"] .g-gaveta-cab{ background:var(--surface); padding:10px 14px }
-:root[data-estilo="simples"] .g-gaveta-cab b{ font:600 14px "IBM Plex Sans",sans-serif }
-:root[data-estilo="simples"] .g-barra-tx{ letter-spacing:.02em; text-transform:none; font-size:12px }
-:root[data-estilo="simples"] .g-gaveta.aberta .g-gaveta-in{ box-shadow:-8px 0 20px -14px rgba(16,24,32,.3) }
-:root[data-estilo="simples"] .cmp-envia .cmp-seg{ box-shadow:0 6px 18px rgba(16,24,32,.18) }
+/* 0.66.0 · caixa de resposta no Simplificado: lisa, sem sombra */
 /* conversa: balões sem sombra e linha do tempo mais leve */
 :root[data-estilo="simples"] .tr-bolha{ box-shadow:none }
 
@@ -291,8 +285,9 @@
 :root[data-estilo="simples"] .cfg-col{ gap:var(--gap) }
 
 /* 0.62.0 · dados da solicitação (largura total) no Simplificado: liso, sem sombras, títulos em letra normal */
-:root[data-estilo="simples"] .dlg-dados{ background:var(--surface-2); padding:12px 20px 18px }
-@media (max-width:999px){ :root[data-estilo="simples"] .dlg-dados{ padding-bottom:50px } }        /* a aba "Trâmites e resposta" fica por cima da borda de baixo */
+:root[data-estilo="simples"] .dlg-dados{ background:var(--surface-2); padding:12px 14px 14px }
+:root[data-estilo="simples"] .dlg-conv > .cmp{ padding:10px 20px 12px; border-top-color:var(--rule-strong) }
+@media (max-width:999px){ :root[data-estilo="simples"] .dlg-dados{ padding:8px 16px } :root[data-estilo="simples"] .dlg-conv > .cmp{ padding:8px 16px 10px } }
 :root[data-estilo="simples"] .pn-anex{ border-color:var(--rule) }
 :root[data-estilo="simples"] .pn-anex-cab{ font-weight:600; font-size:13px }
 :root[data-estilo="simples"] .pn-anex-lista li{ font-size:13px }

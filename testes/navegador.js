@@ -396,11 +396,11 @@ async function abrirApp(rota, extra, antes, o) {
   return p;
 }
 // a solicitação abre nos Dados; a conversa e a caixa de resposta ficam na gaveta da direita (0.62.0): abre pela barra, se preciso
-const abrirGav = async p => { await p.waitForSelector('#g-barra'); if (!(await p.$('#g-gaveta.aberta'))) await p.click('#g-barra'); await p.waitForSelector('#g-gaveta.aberta'); await p.waitForTimeout(220); };
-const irTramites = async p => { await p.waitForSelector('#gaveta #g-painel'); await p.waitForSelector('#gaveta #cmp'); await abrirGav(p); };
+// 0.66.0: sem gaveta; a conversa, a caixa de resposta e os dados ficam sempre à vista
+const irTramites = async p => { await p.waitForSelector('#gaveta #g-painel'); await p.waitForSelector('#gaveta #cmp'); };
 const abrirCaixa = async p => { await irTramites(p); await p.waitForSelector('#a-texto'); };
-// situação do trâmite: a lista abre sob o "Enviar como ▾"
-const sit = async (p, n) => { if (await p.$('#cmp-seg[hidden]')) await p.click('#a-sit-menu'); await p.click('.cmp-int[data-sit="' + n + '"]'); };
+// situação do trâmite: botões sempre à vista ao lado do Enviar resposta (0.66.0)
+const sit = async (p, n) => { await p.click('.cmp-int[data-sit="' + n + '"]'); };
 const linhas = (p, sel) => p.$$eval(sel || '#corpo [data-k]', e => e.map(x => x.dataset.k));
 
 await passo('app · listas que antes cortavam (Sugestões do Hoje, Sem analista da Equipe): mostram tudo e rolam por dentro, sem "Ver todas", nos dois estilos', async () => {
@@ -1313,7 +1313,7 @@ await passo('app · detalhe: sempre abre na conversa, com os dados no painel ao 
   const p = await abrirApp('#/fila?escopo=equipe');
   await p.evaluate(() => { window.__respostas = Object.assign(window.__respostas || {}, { detalhe: { ok: true, item: { assunto: 'x' }, tramites: [], grupos: [{ titulo: 'Solicitação', campos: [{ k: 'Motivo da rescisão', v: 'Rescisão por acordo entre as partes', destaque: true }] }] } }); });
   await p.click('#corpo [data-k="geral:b"]');
-  await p.waitForSelector('#g-painel .dq');
+  await p.waitForSelector('#g-painel .dq', { state: 'attached' });          // na janela larga os destaques ficam marcados nos cartões (a faixa só aparece na estreita)
   assert.match(await p.textContent('#g-corpo'), /Nenhum trâmite ainda/);
   assert.match(await p.textContent('#g-painel .dlg-destaques'), /Motivo da rescisãoRescisão por acordo entre as partes/, 'em destaque no painel, em português');
   assert.ok(await p.$('#gaveta #cmp'), 'a caixa de resposta está embaixo da conversa');
@@ -1646,25 +1646,35 @@ await passo('app · detalhe: destaques sutis; trâmites como conversa (filtro, o
   assert.deepEqual(p.erros, []);
 });
 
-await passo('app · detalhe: com muito conteúdo e janela baixa, a conversa (na gaveta) e os dados rolam cada um por dentro; os dados em largura total; estreita, a gaveta vira uma aba embaixo', async () => {
+await passo('app · detalhe: com muito conteúdo e janela baixa, a conversa, a resposta e os dados rolam cada um por dentro; conversa em cima, resposta embaixo, dados à direita (0.66.0); estreita, os dados viram uma faixa no topo', async () => {
   const p = await abrirApp('#/fila', {});
   await p.setViewportSize({ width: 1100, height: 560 });
   await p.evaluate(() => { window.__respostas = { detalhe: { ok: true, item: { assunto: 'Férias' }, tramites: Array.from({ length: 30 }, (x, n) => ({ n: n + 1, lado: n ? 'esc' : 'cli', em: '2026-10-10T10:00:00', situacao: 'Em análise', autor: 'Ana', texto: 'Texto '.repeat(40), anexos: [] })), datas: {}, grupos: [{ titulo: 'Solicitação', campos: Array.from({ length: 30 }, (x, n) => ({ k: 'Campo ' + n, v: 'valor ' + n })) }], anexos: [] } }; });
   await p.click('#corpo [data-k="geral:b"]');
   await p.waitForFunction(() => document.querySelectorAll('#g-corpo .tr-item').length === 30);
-  assert.equal(await p.$('#g-gaveta.aberta') === null, true, 'a solicitação abre nos Dados: a gaveta da conversa começa fechada');
-  await abrirGav(p);
+  await p.waitForSelector('#a-texto');
   const corpo = await p.$eval('#g-corpo', e => ({ h: e.clientHeight, s: e.scrollHeight }));
   assert.ok(corpo.s > corpo.h, 'quem rola é a conversa');
-  const lados = await p.evaluate(() => { const g = document.querySelector('#g-gaveta').getBoundingClientRect(), pn = document.querySelector('#g-painel').getBoundingClientRect(); return { dados: pn.width, gav: g.width, ladoDireito: Math.round(g.right) === innerWidth }; });
-  assert.ok(lados.dados >= 1100 - 60 && lados.ladoDireito && lados.gav >= 1100 * 0.85 && lados.gav <= 1100 * 0.92, 'dados em largura total e a gaveta com ~88% da tela, na borda direita: ' + JSON.stringify(lados));
+  const m = await p.evaluate(() => { const r = s => document.querySelector(s).getBoundingClientRect(), c = r('#g-corpo'), x = r('#cmp'), pn = r('#g-painel'), cv = r('.dlg-conv'), g = document.querySelector('#gaveta');
+    return { caixaEmbaixo: x.top >= c.bottom - 1, painelDireita: pn.left >= cv.right - 1, painelLarg: pn.width, dentro: x.bottom <= innerHeight + 1 && pn.bottom <= innerHeight + 1, paginaRola: g.scrollHeight > g.clientHeight + 1 }; });
+  assert.ok(m.caixaEmbaixo && m.painelDireita && m.painelLarg >= 290 && m.painelLarg <= 370 && m.dentro && !m.paginaRola, 'conversa em cima, resposta embaixo, dados à direita, tudo dentro da janela: ' + JSON.stringify(m));
+  assert.equal(await p.$('#g-barra, #g-gaveta, #g-pin') === null, true, 'sem a gaveta, a barra Conversa e o alfinete');
   assert.equal(await p.$eval('.tr-item.esc .tr-sit-pill', e => e.textContent), 'Em análise', 'a situação gravada aparece na bolha do escritório');
+  // passar o mouse não abre nem fecha nada
+  const antes = await p.evaluate(() => document.querySelector('.dlg-cols').innerHTML.length);
+  await p.mouse.move(1090, 300); await p.waitForTimeout(400); await p.mouse.move(400, 300); await p.waitForTimeout(400);
+  assert.equal(await p.evaluate(() => document.querySelector('.dlg-cols').innerHTML.length), antes, 'nada muda ao passar o mouse');
+  // estreita: os dados viram uma faixa no topo; o botão abre a lista por cima da conversa
   await p.setViewportSize({ width: 900, height: 700 });
-  await p.click('#g-gav-x');
-  await p.waitForFunction(() => !document.querySelector('#g-gaveta.aberta'));
   await p.waitForTimeout(250);
-  const est = await p.evaluate(() => { const b = document.querySelector('#g-barra').getBoundingClientRect(), pn = document.querySelector('#g-painel').getBoundingClientRect(); return { baixo: Math.round(b.bottom) >= 695, alt: b.height, dados: pn.width }; });
-  assert.ok(est.baixo && est.alt <= 44 && est.dados >= 840, 'estreita: a barra vira uma aba embaixo e os dados ficam inteiros: ' + JSON.stringify(est));
+  const est = await p.evaluate(() => { const pn = document.querySelector('#g-painel').getBoundingClientRect(), c = document.querySelector('#g-corpo').getBoundingClientRect(); return { faixaTopo: pn.bottom <= c.top + 1, alt: pn.height, larg: pn.width }; });
+  assert.ok(est.faixaTopo && est.alt <= 90 && est.larg >= 840, 'estreita: a faixa de dados fica no topo, baixa e larga: ' + JSON.stringify(est));
+  assert.equal(await p.isVisible('#pn-dados'), false, 'a lista completa começa fechada');
+  await p.click('#pn-abrir');
+  assert.equal(await p.isVisible('#pn-dados'), true, 'o botão abre a lista por cima da conversa');
+  assert.equal(await p.getAttribute('#pn-abrir', 'aria-expanded'), 'true');
+  await p.click('#pn-abrir');
+  assert.equal(await p.isVisible('#pn-dados'), false, 'e fecha');
   assert.deepEqual(p.erros, []);
 });
 
@@ -1721,15 +1731,13 @@ await passo('app · capturas do detalhe (só com CAP)', async () => {
         { n: 2, id: 't2', em: '2026-10-06T10:00:00', situacao: 'Respondido', lado: 'esc', autor: 'Ana Teste', texto: 'Recebemos. Pode confirmar o período?', anexos: [], arquivos: [] },
         { n: 3, id: 't3', em: '2026-10-07T10:00:00', situacao: 'Aguardando resposta', lado: 'cli', autor: 'Cliente BETA', texto: 'Confirmado, segue o período.', anexos: [], arquivos: [] }] } }; });
     await p.click('#corpo [data-k="geral:b"]');
-    await p.waitForSelector('#g-barra'); await p.waitForTimeout(400);
+    await p.waitForSelector('#a-texto'); await p.waitForTimeout(400);
     await p.click('#g-lemb > summary'); await p.waitForTimeout(150);
     await p.screenshot({ path: process.env.CAP + '/det-lemb-' + estilo + '-' + tema + '.png' });
     await p.click('#g-lemb > summary');
-    await p.screenshot({ path: process.env.CAP + '/det-dados-' + estilo + '-' + tema + '.png' });
-    await p.hover('#g-barra'); await p.waitForSelector('#g-gaveta.aberta'); await p.waitForTimeout(500);
-    await p.screenshot({ path: process.env.CAP + '/det-gaveta-' + estilo + '-' + tema + '.png' });
-    await p.fill('#a-texto', 'Pode enviar o RG do empregado?'); await p.click('#a-sit-menu'); await p.waitForTimeout(200);
-    await p.screenshot({ path: process.env.CAP + '/det-menu-' + estilo + '-' + tema + '.png' });
+    await p.screenshot({ path: process.env.CAP + '/det-' + estilo + '-' + tema + '.png' });
+    await p.fill('#a-texto', 'Pode enviar o RG do empregado?'); await p.waitForTimeout(200);
+    await p.screenshot({ path: process.env.CAP + '/det-escrevendo-' + estilo + '-' + tema + '.png' });
     await p.close();
   }
 });
@@ -1767,32 +1775,27 @@ await passo('app · Distribuir: mostra para quem vai cada sem responsável, com 
 
 await passo('app · Tramitação: caixa de resposta fixa; intenção e efeito; modelos e variáveis; avisos; rascunho na conversa; envio com anexo; erro mantém o texto; lista não mapeada', async () => {
   const p = await abrirApp('#/fila', { settings: { __v: 2, desfazerSeg: 0 } });
-  await p.setViewportSize({ width: 900, height: 860 });        // janela estreita (< 1000 px): a gaveta só abre ao clicar na barra
+  await p.setViewportSize({ width: 900, height: 860 });        // janela estreita (< 1000 px): os dados numa faixa no topo, a conversa e a caixa embaixo
   await p.evaluate(() => { window.__respostas = { acao: { ok: true, acao: 'tramite', anexos: 0, topicId: 'a1b2c3d4-0000-4000-8000-0123456789ab' }, anexar: { ok: true, nome: 'recibo.txt', status: 201 }, conferirAnexos: { ok: true, conferido: true, naoAchados: [], achados: 1 }, detalhe: { ok: true, item: { assunto: 'Férias' }, tramites: [], datas: {} } }; });
   await p.click('#corpo [data-k="geral:b"]');
-  await p.waitForSelector('#gaveta #g-painel'); await p.waitForSelector('#g-barra'); await p.waitForSelector('#cmp', { state: 'attached' });
-  assert.equal(await p.$('#g-gaveta.aberta') === null, true, 'a solicitação abre nos Dados: a gaveta da conversa e da resposta começa fechada');
-  assert.equal(await p.getAttribute('#g-barra', 'aria-expanded'), 'false');
+  await p.waitForSelector('#gaveta #g-painel'); await p.waitForSelector('#cmp', { state: 'attached' });
+  assert.equal(await p.isVisible('#a-texto'), true, 'a caixa de resposta já está à vista embaixo da conversa (0.66.0)');
   await abrirCaixa(p);
   assert.equal(await p.$eval('#cmp', c => c.closest('#g-corpo') === null), true, 'a caixa fica fora da área que rola');
   assert.deepEqual(await p.$$eval('.cmp-int', e => e.map(x => x.textContent)), ['Respondido · aguarda o cliente', 'Em análise', 'Em análise interna', 'Concluído · encerra']);
   if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/tram-fechada.png' });
-  assert.equal(await p.isVisible('#a-revisar'), true, 'o botão "Enviar como" já está à vista');
-  assert.equal(await p.isVisible('#cmp-seg'), false, 'e a lista de situações só abre pelo ▾');
-  await p.click('#a-sit-menu');
-  assert.equal(await p.isVisible('.cmp-int[data-sit="4"]'), true, 'Respondido está na lista do ▾');
-  await p.keyboard.press('Escape');
-  assert.equal(await p.isVisible('#cmp-seg'), false, 'Esc fecha a lista');
+  assert.match(await p.textContent('#a-revisar'), /Enviar resposta/, 'o botão diz que é para enviar a resposta');
+  assert.equal(await p.isVisible('.cmp-int[data-sit="4"]'), true, 'as situações ficam à vista ao lado do Enviar, sem lista escondida (0.66.0)');
+  assert.equal(await p.$('#a-sit-menu') === null, true, 'sem o ▾ da lista suspensa');
   assert.equal(await p.isVisible('#cmp-mp'), true, 'e a Mensagem pronta (um ícone ao lado do texto) também');
   assert.equal(await p.$('#cmp-ab-modelos, #cmp-ab-obs') === null, true, 'Modelos e Observações viraram um botão só');
   assert.equal(await p.$('.cmp-pe kbd') === null, true, 'sem o indicador do atalho Ctrl+Enter');
   assert.equal(await p.$('#mp-balao') === null, true, 'a mensagem pronta só aparece num balão que a pessoa abre');
-  // fechar a gaveta: o rascunho fica e a barra avisa; ao abrir de novo ele volta
+  // o rascunho fica ao ir para outra solicitação e voltar
   assert.equal(await p.$('#g-responder') === null, true, 'sem o Responder do rodapé');
   await p.fill('#a-texto', 'Rascunho que fica.');
-  await p.click('#g-gav-x');
-  await p.waitForFunction(() => !document.querySelector('#g-gaveta.aberta'));
-  assert.equal(await p.$('.g-barra-rasc') !== null, true, 'a barra mostra que há rascunho');
+  const [ida, volta] = await p.$('#g-prox:not([disabled])') ? ['#g-prox', '#g-ant'] : ['#g-ant', '#g-prox'];
+  await p.click(ida); await p.waitForTimeout(300); await p.click(volta);
   await abrirCaixa(p);
   assert.equal(await p.inputValue('#a-texto'), 'Rascunho que fica.');
   await p.click('#a-descartar');
@@ -1910,31 +1913,23 @@ await passo('app · detalhe em janela baixa: a caixa de resposta não empurra o 
   }
 });
 
-await passo('app · detalhe em janela larga: abre nos dados, a gaveta abre ao passar o mouse (e fixa); resposta compacta "Enviar como ▾"; o rascunho fica ao mudar o tamanho', async () => {
+await passo('app · detalhe em janela larga: conversa em cima, resposta embaixo e dados à direita (0.66.0); situações ao lado do Enviar resposta; o rascunho fica ao mudar o tamanho', async () => {
   const p = await abrirApp('#/fila', { settings: { __v: 2, desfazerSeg: 0 } });                       // 1360 de largura
   await p.evaluate(() => { window.__respostas = { acao: { ok: true, acao: 'tramite', anexos: 0 }, detalhe: { ok: true, item: { assunto: 'Férias' }, tramites: [], datas: {} } }; });
   await p.click('#corpo [data-k="geral:b"]');
-  await p.waitForSelector('#g-barra');
-  assert.equal(await p.$('#g-gaveta.aberta') === null, true, 'abre nos Dados, com a gaveta fechada');
-  await p.hover('#g-barra');
-  await p.waitForSelector('#g-gaveta.aberta');                   // passar o mouse na barra abre a gaveta
-  await p.waitForTimeout(250);
-  await p.hover('#g-painel', { position: { x: 60, y: 300 } });
-  await p.waitForFunction(() => !document.querySelector('#g-gaveta.aberta'), null, { timeout: 3000 });   // e tirar o mouse fecha (nada em andamento)
-  await p.hover('#g-barra'); await p.waitForSelector('#g-gaveta.aberta'); await p.waitForTimeout(250);
-  await p.click('#g-pin');
-  await p.waitForSelector('#g-gaveta.fixa');
-  await p.hover('#g-painel', { position: { x: 60, y: 300 } }); await p.waitForTimeout(500);
-  assert.ok(await p.$('#g-gaveta.aberta'), 'fixada: não fecha ao tirar o mouse');
-  await p.click('#g-pin');
-  await p.waitForSelector('#g-gaveta:not(.fixa)');
   await abrirCaixa(p);
-  const m = await p.evaluate(() => { const c = document.querySelector('#g-corpo').getBoundingClientRect(), r = document.querySelector('#cmp').getBoundingClientRect(), pn = document.querySelector('#g-painel').getBoundingClientRect(); return { c: [c.left, c.right, c.bottom], r: [r.left, r.right, r.top], pn: [pn.left] }; });
-  assert.ok(m.r[0] >= m.c[1] - 1 && m.r[1] - m.r[0] >= 330, 'a caixa de resposta fica à direita da conversa (0.65.0), com folga para escrever');
+  const m = await p.evaluate(() => { const r = s => document.querySelector(s).getBoundingClientRect(), c = r('#g-corpo'), x = r('#cmp'), pn = r('#g-painel'), env = r('#a-revisar'), seg = r('#cmp-seg');
+    return { caixaEmbaixo: x.top >= c.bottom - 1, mesmaColuna: Math.abs(x.left - c.left) < 2, painelDireita: pn.left >= x.right - 1, segAoLado: seg.right <= env.left + 1 && Math.abs(seg.top - env.top) < 14 }; });
+  assert.ok(m.caixaEmbaixo && m.mesmaColuna && m.painelDireita && m.segAoLado, 'conversa em cima, resposta embaixo, dados à direita e situações ao lado do Enviar: ' + JSON.stringify(m));
   assert.equal(await p.$$eval('#cmp-seg .cmp-int', e => e.filter(b => b.offsetParent !== null).length), 4, 'as situações do trâmite ficam sempre à vista, sem lista escondida');
-  assert.ok(m.pn[0] < m.c[0], 'os dados ocupam a janela e a gaveta fica na direita, por cima deles');
-  assert.match(await p.textContent('#a-revisar'), /Enviar como/, 'o botão diz que é para enviar e como (0.62.0)');
-  assert.equal(await p.textContent('#a-sit-rot'), '…', 'sem situação escolhida');
+  assert.match(await p.textContent('#a-revisar'), /Enviar resposta/, 'o botão diz que é para enviar a resposta');
+  assert.equal(await p.getAttribute('#a-revisar', 'title'), 'Mostra como vai ficar e pede a confirmação antes de enviar ao Onvio', 'sem situação escolhida');
+  // a caixa cresce ao clicar nela (a conversa devolve o espaço)
+  await p.mouse.click(5, 5);
+  const h0 = await p.$eval('#cmp', e => e.getBoundingClientRect().height);
+  await p.click('#a-texto'); await p.waitForTimeout(250);
+  const h1 = await p.$eval('#cmp', e => e.getBoundingClientRect().height);
+  assert.ok(h1 > h0 + 30, 'a caixa cresce ao clicar para escrever: ' + h0 + ' → ' + h1);
   assert.equal(await p.isVisible('#cmp-mp'), true);
   await p.click('#cmp-mp');
   assert.equal(await p.isVisible('#mp-balao'), true);
@@ -1945,7 +1940,7 @@ await passo('app · detalhe em janela larga: abre nos dados, a gaveta abre ao pa
   assert.equal(await p.textContent('#cmp-efeito'), 'Escolha a situação do trâmite.');
   await sit(p, '5');
   assert.match(await p.textContent('#cmp-efeito'), /^Trâmite: /);
-  assert.equal(await p.textContent('#a-sit-rot'), 'Concluído', 'o botão mostra a situação escolhida');
+  assert.match(await p.getAttribute('#a-revisar', 'title'), /^Enviar como Concluído/, 'a dica do botão mostra a situação escolhida');
   if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/detalhe-larga.png' });
   await p.fill('#a-texto', 'Rascunho que fica.');
   await p.setViewportSize({ width: 900, height: 860 });
@@ -2002,9 +1997,8 @@ await passo('app · Anexos: nada fica para trás em silêncio (limites visíveis
   const pend = await p.textContent('.cmp-pend');
   assert.match(pend, /O trâmite foi enviado, mas 2 anexos não chegaram/); assert.match(pend, /a\.txt.*HTTP 500/); assert.match(pend, /b\.txt.*HTTP 500/);
   assert.equal(await p.$('#a-texto') === null, true, 'sem caixa de texto: não dá para criar outro trâmite com os mesmos arquivos por engano');
-  assert.ok(await p.$('#g-gaveta.aberta'), 'a gaveta fica aberta com o aviso');
   await p.mouse.move(5, 300); await p.waitForTimeout(600);
-  assert.ok(await p.$('#g-gaveta.aberta') && await p.$('.cmp-pend'), 'o aviso não some ao tirar o mouse');
+  assert.ok(await p.$('.cmp-pend'), 'o aviso não some ao tirar o mouse');
   assert.equal(await p.evaluate(() => window.__msgs.filter(m => m.cmd === 'acao').length), 1, 'um trâmite só');
   // 3) tentar de novo: só os que faltam, no mesmo trâmite; chegou tudo -> o aviso sai
   await resp({ anexar: { ok: true, nome: 'x', status: 201 }, conferirAnexos: { ok: true, conferido: true, naoAchados: [] } });
@@ -2014,7 +2008,7 @@ await passo('app · Anexos: nada fica para trás em silêncio (limites visíveis
   const t2 = await p.evaluate(() => window.__msgs.filter(m => m.cmd === 'anexar' || m.cmd === 'acao').map(m => [m.cmd, m.topicId || '', (m.arquivo || {}).nome || '']));
   assert.deepEqual(t2, [['anexar', GUID, 'a.txt'], ['anexar', GUID, 'b.txt']], 'no mesmo trâmite, sem criar outro');
   // 4) o Onvio aceitou mas o trâmite não mostra um deles: conta como faltando
-  await p.click('#g-gav-x').catch(() => {}); await abrirCaixa(p);
+  await abrirCaixa(p);
   await resp({ anexar: { ok: true, nome: 'x', status: 201 }, conferirAnexos: { ok: true, conferido: false, naoAchados: ['b.txt'], achados: 1 } });
   await p.setInputFiles('#a-arquivos', [arq('a.txt'), arq('b.txt')]);
   await p.fill('#a-texto', 'Seguem.'); await sit(p, '4');
@@ -2061,8 +2055,6 @@ await passo('app · Tramitação: 5 s para desfazer; enviar e ir para a próxima
   await p.waitForFunction(n => document.querySelector('.dlg-nav span').textContent !== n, nav0);
   assert.equal(await p.evaluate(() => (document.querySelector('#a-texto') || { value: '' }).value), '', 'outra solicitação, outra caixa');
   await p.click('#g-ant');
-  await p.waitForSelector('.g-barra-rasc');
-  await p.waitForSelector('#g-gaveta.aberta');             // há rascunho: a gaveta já volta aberta
   await p.waitForFunction(() => document.querySelector('#a-texto') && /Rascunho que não/.test(document.querySelector('#a-texto').value));
   assert.equal(await p.$eval('.cmp-int.on', b => b.dataset.sit), '4', 'o rascunho volta com a escolha');
   assert.equal(await p.evaluate(() => /Rascunho que não/.test(localStorage.getItem('__mem'))), false, 'o rascunho nunca é gravado');
@@ -2097,7 +2089,7 @@ await passo('app · Tramitação: 5 s para desfazer; enviar e ir para a próxima
   assert.deepEqual(p.erros, []);
 });
 
-await passo('app · tema claro por padrão (mesmo com o sistema escuro); a gaveta fecha ao tirar o mouse, mas não com rascunho; revisando, não fecha', async () => {
+await passo('app · tema claro por padrão (mesmo com o sistema escuro); a caixa de resposta fica com o rascunho ao tirar o mouse; revisando, continua', async () => {
   const p = await pagina(URL_APP, '');
   await p.emulateMedia({ colorScheme: 'dark' });
   await p.setViewportSize({ width: 900, height: 860 });
@@ -2111,14 +2103,14 @@ await passo('app · tema claro por padrão (mesmo com o sistema escuro); a gavet
   await p.reload(); await p.waitForSelector('#vista');
   assert.equal(await p.evaluate(() => document.documentElement.getAttribute('data-theme')), 'dark', 'a escolha fica');
   await p.click('#btn-tema');
-  // gaveta da resposta: com rascunho ela fica aberta mesmo sem o mouse; sem nada em andamento, fecha; revisando, não fecha
+  // caixa de resposta: nada abre ou fecha com o mouse; o rascunho e a revisão ficam
   await p.evaluate(() => { window.__respostas = { detalhe: { ok: true, item: { assunto: 'Férias' }, datas: {}, tramites: [{ n: 1, em: '2026-10-01T10:00:00', situacao: 'Sem análise', lado: 'cli', autor: 'Cliente', texto: 'Abertura', anexos: [] }, { n: 2, em: '2026-10-02T10:00:00', situacao: 'Aguardando resposta', lado: 'cli', autor: 'Cliente', texto: 'Segue o RG', anexos: [] }] } }; });
   await p.click('#corpo [data-k="geral:b"]');
   await abrirCaixa(p);
   await p.fill('#a-texto', 'Rascunho que fica');
-  await p.mouse.move(5, 300);                                                              // o mouse sai da gaveta
+  await p.mouse.move(5, 300);                                                              // o mouse sai da caixa
   await p.waitForTimeout(600);
-  assert.ok(await p.$('#g-gaveta.aberta'), 'com rascunho a gaveta não fecha sozinha');
+  assert.equal(await p.isVisible('#a-texto'), true, 'a caixa continua à vista');
   assert.equal(await p.inputValue('#a-texto'), 'Rascunho que fica', 'o rascunho ficou');
   await sit(p, '4');
   await p.click('#a-revisar');
@@ -2128,8 +2120,7 @@ await passo('app · tema claro por padrão (mesmo com o sistema escuro); a gavet
   assert.ok(await p.$('#a-enviar'), 'revisando: não fecha');
   await p.click('#a-voltar');
   await p.click('#a-descartar');
-  await p.mouse.move(5, 300);
-  await p.waitForFunction(() => !document.querySelector('#g-gaveta.aberta'), null, { timeout: 3000 }).catch(() => {});
+  assert.equal(await p.inputValue('#a-texto'), '', 'descartar limpa a caixa');
   assert.deepEqual(p.erros, []);
 });
 
@@ -2395,31 +2386,34 @@ await passo('app · Atual intacto: grade de tipos, destaque escuro com carrossel
   assert.match(await p.textContent('#subtitulo'), /pendências lidas do Onvio, ao vivo/);
   await p.click('#corpo [data-k="geral:b"]'); await p.waitForSelector('#gaveta #g-painel');
   await irTramites(p);
-  assert.ok(await p.isVisible('#g-barra') && await p.$('#gaveta .cmp-chat'), 'a barra Conversa à vista e a caixa de resposta compacta (0.62.0)');
+  assert.ok(await p.isVisible('#a-texto') && await p.isVisible('#cmp-seg'), 'a caixa de resposta e as situações à vista (0.66.0)');
   assert.ok((await p.textContent('#gaveta .dp-last')).includes('Parada há') || true);
   assert.deepEqual(p.erros, []);
 });
 
-await passo('app · detalhe: dados e anexos à vista, lado a lado, sem rolar a página (0.65.0), nos dois estilos', async () => {
+await passo('app · detalhe: dados e anexos à vista na coluna da direita, sem rolar a janela (0.66.0), nos dois estilos e em telas pequenas', async () => {
   const campos = (pre, n) => Array.from({ length: n }, (_, k) => ({ k: pre + ' ' + (k + 1), v: 'Valor ' + (k + 1) }));
   const anexos = Array.from({ length: 15 }, (_, k) => k % 2 ? '1630_Documento_' + k + '.pdf' : '1630_Foto_' + k + '.jpg');
   const det = { ok: true, item: { assunto: 'ATIVA | 0004-37', type: 'geral' }, datas: {}, tramites: [], anexos,
     grupos: [{ titulo: 'Solicitação', campos: campos('Dado da solicitação', 8).concat([{ k: 'Descrição', v: 'Texto longo '.repeat(60), longo: true }]) },
       { titulo: 'Empregado', campos: [{ k: 'Nome', v: 'Fulano', destaque: true }].concat(campos('Dado pessoal', 14)) },
       { titulo: 'Contrato', campos: campos('Dado do contrato', 12) }] };
-  for (const estilo of ['simples', 'atual']) for (const [w, h] of [[1440, 860], [1100, 760], [900, 700]]) {
+  for (const estilo of ['simples', 'atual']) for (const [w, h] of [[1440, 860], [1366, 650], [1280, 600], [900, 700]]) {
     const p = await abrirApp('#/fila?escopo=todas', { settings: { __v: 2 } }, undefined, { estilo });
     await p.setViewportSize({ width: w, height: h });
     await p.evaluate(d => { window.__respostas = { detalhe: d }; }, det);
-    await p.click('#corpo [data-k="geral:b"]'); await p.waitForSelector('#gaveta #pn-anex'); await p.waitForTimeout(400);
-    const m = await p.evaluate(() => { const r = n => document.querySelector(n).getBoundingClientRect(), pan = document.querySelector('#g-painel'), g = r('#gaveta');
-      return { pagina: pan.scrollHeight - pan.clientHeight, anexTopo: r('#pn-anex').top, anexBase: r('#pn-anex').bottom, dadosBase: r('#pn-dados').bottom, janelaBase: g.bottom, dadosLarg: r('#pn-dados').width, anexLarg: r('#pn-anex').width, n: document.querySelectorAll('#pn-anex li').length, lado: r('#pn-anex').left >= r('#pn-dados').right - 1 }; });
+    await p.click('#corpo [data-k="geral:b"]'); await p.waitForSelector('#gaveta #pn-anex', { state: 'attached' }); await p.waitForSelector('#a-texto'); await p.waitForTimeout(400);
     const onde = estilo + ' ' + w + 'x' + h;
+    if (w < 1000) await p.click('#pn-abrir');                    // estreita: a lista abre por cima da conversa
+    const m = await p.evaluate(() => { const r = n => document.querySelector(n).getBoundingClientRect(), g = document.querySelector('#gaveta'), cv = r('.dlg-conv');
+      return { janela: g.scrollHeight - g.clientHeight, anexTopo: r('#pn-anex').top, anexBase: r('#pn-anex').bottom, dadosBase: r('#pn-dados').bottom, base: innerHeight, n: document.querySelectorAll('#pn-anex li').length,
+        abaixo: r('#pn-anex').top >= r('#pn-dados').bottom - 1, direita: r('#g-painel').left >= cv.right - 1, enviar: r('#a-revisar').bottom <= innerHeight + 1, sits: [...document.querySelectorAll('#cmp-seg .cmp-int')].every(b => { const x = b.getBoundingClientRect(); return x.height > 0 && x.bottom <= innerHeight + 1; }) }; });
     assert.equal(m.n, 15, onde + ': todos os anexos listados');
-    assert.ok(m.pagina <= 1, onde + ': o painel não rola, só cada bloco por dentro (sobra ' + m.pagina + ')');
-    assert.ok(m.anexBase <= m.janelaBase + 1 && m.dadosBase <= m.janelaBase + 1 && m.anexTopo >= 0, onde + ': anexos e dados dentro da janela');
-    if (w >= 1100) assert.equal(m.lado, true, onde + ': anexos ao lado dos dados');
-    else assert.ok(m.anexTopo > 0, onde + ': estreita, os anexos viram uma faixa embaixo dos dados');
+    assert.ok(m.janela <= 1, onde + ': a janela não rola, só cada bloco por dentro (sobra ' + m.janela + ')');
+    assert.ok(m.anexBase <= m.base + 1 && m.dadosBase <= m.base + 1 && m.anexTopo >= 0, onde + ': anexos e dados dentro da janela');
+    assert.equal(m.abaixo, true, onde + ': anexos no pé, embaixo dos dados');
+    if (w >= 1000) assert.equal(m.direita, true, onde + ': dados e anexos à direita da conversa');
+    assert.ok(m.enviar && m.sits, onde + ': o Enviar resposta e as situações ficam à vista');
     assert.deepEqual(p.erros, [], onde);
     await p.context().close();
   }

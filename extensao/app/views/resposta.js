@@ -22,9 +22,7 @@ document.addEventListener('mousedown', e => {
   if (!aoAbrir || !aoAbrir.r.mp || !e.target.closest || e.target.closest('#mp-balao, #cmp-mp')) return;
   aoAbrir.r.mp = null; aoAbrir.redesenhar();
 });
-// janela larga (a partir de 1000 px): a caixa fica ao lado da conversa e as situações do trâmite ficam sempre à vista (CSS .g-cols > .cmp); abaixo disso, lista suspensa
-const listaFixa = () => innerWidth >= 1000;
-const novoRascunho = () => ({ mp: null, guardSit: '', guardDeTexto: false, texto: '', sit: '', arquivos: [], modo: 'editar', erro: '', aoEnviar: null, antes: [], guardando: false, guardTexto: '', guardRot: '', aberto: false, menuAberto: false, fora: [], pend: null, reenviando: false, prog: '', focar: false, selMarca: '', proxima: false, fimEm: 0, segTotal: 0 });
+const novoRascunho = () => ({ mp: null, guardSit: '', guardDeTexto: false, texto: '', sit: '', arquivos: [], modo: 'editar', erro: '', aoEnviar: null, antes: [], guardando: false, guardTexto: '', guardRot: '', aberto: false, fora: [], pend: null, reenviando: false, prog: '', focar: false, selMarca: '', proxima: false, fimEm: 0, segTotal: 0 });
 const rascunho = i => { const k = chaveDe(i); if (!rascunhos.has(k)) rascunhos.set(k, novoRascunho()); return rascunhos.get(k); };
 const ic = (n, c) => '<svg class="ic' + (c ? ' ' + c : '') + '"><use href="#i-' + n + '"/></svg>';
 const tamanho = n => n < 1024 ? n + ' B' : n < 1048576 ? Math.round(n / 1024) + ' KB' : (n / 1048576).toFixed(1).replace('.', ',') + ' MB';
@@ -39,7 +37,7 @@ export function prepararResposta(i, preset) {
   r.modo = 'editar'; r.aberto = true; r.focar = true; r.erro = '';
   r.preencherPendente = /\{\w+\}/.test(r.texto);       // {variáveis} do texto sugerido são preenchidas quando o detalhe é lido (datas, empregado)
 }
-// Há algo em andamento nesta solicitação (texto, anexo, balão, modelo ou revisão/envio): a gaveta não fecha sozinha
+// Há algo em andamento nesta solicitação (texto, anexo, balão, modelo ou revisão/envio): a caixa fica maior e o aviso ao sair vale
 export const temRascunho = i => { const r = rascunhos.get(chaveDe(i)); return !!r && !!(r.texto.trim() || r.arquivos.length || r.mp || r.guardando || r.pend || r.fora.length || r.modo !== 'editar'); };
 // Trâmite enviado cujos anexos não chegaram (ou não deu para conferir): o aviso fica na caixa até a pessoa resolver
 export const anexosPendentes = i => { const r = i && rascunhos.get(chaveDe(i)); return r && r.pend ? r.pend : null; };
@@ -185,16 +183,18 @@ export function respostaHtml(i, obs, ctx) {
   const rotSit = it ? it.rot.split(' · ')[0] : '';
   return '<div class="cmp' + (aberto ? ' aberto' : '') + '" id="cmp">' + ok + erro + foraHtml(r) + arqs + guardar +
     '<div class="cmp-caixa">' +
+      // 0.66.0 (pedido do Josué em 03/11/2026): o texto ocupa a caixa e, embaixo, Anexar, Mensagem pronta, as situações do trâmite
+      // sempre à vista (sem lista suspensa) e o Enviar resposta
       '<div class="cmp-chat">' +
-        '<label class="cmp-fer-b cmp-ico" title="Anexar arquivos ao trâmite (até ' + MAX_ANEXOS + ' de 15 MB; também dá para arrastar ou colar uma imagem)" aria-label="Anexar">' + ic('paperclip') + '<input type="file" id="a-arquivos" multiple hidden></label>' +
-        '<button type="button" class="cmp-fer-b cmp-ico' + (r.mp ? ' on' : '') + '" id="cmp-mp" aria-expanded="' + !!r.mp + '" aria-label="Mensagem pronta" title="Mensagem pronta: uma mensagem completa para cada trâmite (com as observações para o cliente); você edita antes de usar">' + ic('chat') + '</button>' +
-        '<textarea id="a-texto" rows="1" placeholder="Escreva a resposta ao cliente">' + esc(r.texto) + '</textarea>' +
+        '<textarea id="a-texto" rows="3" placeholder="Escreva a resposta ao cliente">' + esc(r.texto) + '</textarea>' +
         '<div class="cmp-envia">' +
-          '<button class="btn btn-primary cmp-enviar" id="a-revisar" type="button" title="Mostra como vai ficar e pede a confirmação antes de enviar ao Onvio">Enviar como <b id="a-sit-rot">' + (it ? esc(rotSit) : '…') + '</b></button>' +
-          '<button class="btn btn-primary cmp-split" id="a-sit-menu" type="button" aria-haspopup="true" aria-expanded="' + !!r.menuAberto + '" title="Escolher a situação do trâmite" aria-label="Escolher a situação do trâmite">' + ic('chev-d', 'ic-sm') + '</button>' +
-          '<div class="cmp-seg" id="cmp-seg" role="radiogroup" aria-label="Situação do trâmite"' + (r.menuAberto || listaFixa() ? '' : ' hidden') + '>' +
-            ints.map(x => { const [t1, t2] = x.rot.split(' · '); return '<button type="button" class="cmp-int' + (String(r.sit) === String(x.sit) ? ' on' : '') + '" role="radio" aria-checked="' + (String(r.sit) === String(x.sit)) + '" data-sit="' + x.sit + '" data-tom="' + x.tom + '" data-pede="' + (x.pedeCliente ? '1' : '0') + '" title="' + esc(x.efeito) + '"><i class="cmp-pt"></i><span class="t">' + esc(t1) + '</span>' + (t2 ? '<span class="s"><span class="sep"> · </span>' + esc(t2) + '</span>' : '') + '</button>'; }).join('') +
+          '<label class="cmp-fer-b cmp-ico" title="Anexar arquivos ao trâmite (até ' + MAX_ANEXOS + ' de 15 MB; também dá para arrastar ou colar uma imagem)" aria-label="Anexar">' + ic('paperclip') + '<input type="file" id="a-arquivos" multiple hidden></label>' +
+          '<button type="button" class="cmp-fer-b cmp-ico' + (r.mp ? ' on' : '') + '" id="cmp-mp" aria-expanded="' + !!r.mp + '" aria-label="Mensagem pronta" title="Mensagem pronta: uma mensagem completa para cada trâmite (com as observações para o cliente); você edita antes de usar">' + ic('chat') + '</button>' +
+          '<span class="spacer"></span>' +
+          '<div class="cmp-seg" id="cmp-seg" role="radiogroup" aria-label="Situação do trâmite">' +
+            ints.map(x => { const [t1, t2] = x.rot.split(' · '); return '<button type="button" class="cmp-int' + (String(r.sit) === String(x.sit) ? ' on' : '') + '" role="radio" aria-checked="' + (String(r.sit) === String(x.sit)) + '" data-sit="' + x.sit + '" data-tom="' + x.tom + '" data-pede="' + (x.pedeCliente ? '1' : '0') + '" title="' + esc(x.rot.replace(' · ', ': ') + '. ' + x.efeito) + '"><i class="cmp-pt"></i><span class="t">' + esc(t1) + '</span>' + (t2 ? '<span class="s"><span class="sep"> · </span>' + esc(t2) + '</span>' : '') + '</button>'; }).join('') +
           '</div>' +
+          '<button class="btn btn-primary cmp-enviar" id="a-revisar" type="button" title="' + esc(it ? 'Enviar como ' + rotSit + ': mostra como vai ficar e pede a confirmação' : 'Mostra como vai ficar e pede a confirmação antes de enviar ao Onvio') + '">Enviar resposta ›</button>' +
         '</div>' +
       '</div>' +
       balao +
@@ -229,22 +229,19 @@ export function ligarResposta(g, i, r0, obs, cb) {
     $$('.cmp-int', g).forEach(b => { const on = String(b.dataset.sit) === String(r.sit); b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on)); });
     const x = ints.find(z => String(z.sit) === String(r.sit));
     $('#cmp-efeito', g).textContent = x ? 'Trâmite: ' + x.efeito + '.' : 'Escolha a situação do trâmite.';
-    $('#a-sit-rot', g).textContent = x ? x.rot.split(' · ')[0] : '…';
+    $('#a-revisar', g).title = x ? 'Enviar como ' + x.rot.split(' · ')[0] + ': mostra como vai ficar e pede a confirmação' : 'Mostra como vai ficar e pede a confirmação antes de enviar ao Onvio';
     const pede = !!r.texto.trim() && OC.pedeAlgoAoCliente(r.texto, estado.settings).pede;
     $$('.cmp-int', g).forEach(b => b.classList.toggle('sug', !r.sit && pede && b.dataset.pede === '1'));
-    $('#a-sit-menu', g).classList.toggle('sug', !r.sit && pede);
     $('#cmp-avisos', g).innerHTML = avisosHtml(r, i);
     $('#a-descartar', g).disabled = !(r.texto || r.arquivos.length || r.sit);
     const gt = $('#a-guardar-tx', g); if (gt) gt.textContent = r.texto.trim() ? 'Salvar como modelo' : 'Criar modelo';
     if (r.texto || r.sit || r.arquivos.length) cmp.classList.add('aberto');
   };
-  const cresce = t => { t.style.height = 'auto'; t.style.height = Math.min(220, Math.max(40, t.scrollHeight + 2)) + 'px'; };
   const limparErro = () => { if (r.erro) { r.erro = ''; const e = $('.cmp-erro', g); if (e) e.remove(); } };
 
   const t = $('#a-texto', g);
   if (t) {
-    cresce(t);
-    t.oninput = e => { r.texto = e.target.value; limparErro(); cresce(t); atualizar(); };
+    t.oninput = e => { r.texto = e.target.value; limparErro(); atualizar(); };     // a caixa tem altura própria (conversa em cima, resposta embaixo): o texto rola por dentro
     t.onkeydown = e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); e.stopPropagation(); $('#a-revisar', g).click(); } };   // só revisa: o mesmo toque nunca chega a enviar
     t.onpaste = e => { const fs = [...((e.clipboardData && e.clipboardData.files) || [])]; if (fs.length) { e.preventDefault(); adicionar(fs); } };
     if (r.focar) {
@@ -262,25 +259,7 @@ export function ligarResposta(g, i, r0, obs, cb) {
   cmp.ondragleave = e => { if (!cmp.contains(e.relatedTarget)) cmp.classList.remove('arrastando'); };
   cmp.ondrop = e => { cmp.classList.remove('arrastando'); if (r.modo === 'editar' && e.dataTransfer && e.dataTransfer.files.length) { e.preventDefault(); adicionar([...e.dataTransfer.files]); } };
 
-  // "Enviar como ▾": a lista de situações abre sob o botão e fecha ao escolher, ao clicar fora ou com Esc
-  const seg = $('#cmp-seg', g), caret = $('#a-sit-menu', g);
-  const menu = abrir => {
-    if (!seg || !caret || listaFixa()) return;
-    seg.hidden = !abrir; caret.setAttribute('aria-expanded', String(!!abrir));
-    if (abrir) {                                           // fixa por cima de tudo (a caixa rola por dentro e cortaria a lista)
-      const b = caret.getBoundingClientRect(), h = seg.offsetHeight, acima = b.top - 6 - h >= 8;
-      seg.style.right = Math.max(8, innerWidth - b.right) + 'px';
-      seg.style.top = (acima ? b.top - 6 - h : Math.min(b.bottom + 6, innerHeight - h - 8)) + 'px';
-    }
-  };
-  if (caret) caret.onclick = e => { e.stopPropagation(); menu(seg.hidden); };
-  if (seg) {
-    $('.cmp-envia', g).onkeydown = e => { if (e.key === 'Escape' && !seg.hidden && !listaFixa()) { e.preventDefault(); e.stopPropagation(); menu(false); caret.focus(); } };      // Esc fecha só a lista, não o detalhe
-    const fora = e => { if (!document.contains(seg)) { document.removeEventListener('mousedown', fora); return; } if (!seg.hidden && !e.target.closest('.cmp-envia')) menu(false); };
-    document.addEventListener('mousedown', fora);
-  }
-  r.menuAberto = false;
-  $$('.cmp-int', g).forEach(b => b.onclick = () => { if (String(r.sit) !== b.dataset.sit) r.antes = []; r.sit = b.dataset.sit; limparErro(); atualizar(); menu(false); });
+  $$('.cmp-int', g).forEach(b => b.onclick = () => { if (String(r.sit) !== b.dataset.sit) r.antes = []; r.sit = b.dataset.sit; limparErro(); atualizar(); });
 
   // Mensagem pronta: o balão abre por cima; cada trâmite tem a sua mensagem (editável aqui, só para este uso)
   const cliObs = obs.filter(o => !o.interno);
@@ -381,7 +360,6 @@ export function ligarResposta(g, i, r0, obs, cb) {
     const bloq = OC.avisosResposta(r.texto, r.sit, estado.settings, i).find(a => a.bloqueia);
     r.erro = r.fora.length ? 'Há arquivos que ficaram de fora do envio (veja o aviso acima): confirme com "Entendi" ou escolha-os de novo.' : !r.texto.trim() ? 'Escreva o texto da resposta.' : !r.sit ? 'Escolha a situação do trâmite (Respondido, Em análise, Concluído...).' : bloq ? bloq.msg : '';
     if (!r.erro) r.modo = 'revisar';
-    else if (r.texto.trim() && !r.sit) r.menuAberto = true;       // falta só a situação: a lista já abre
     else if (!r.texto.trim() || bloq) { r.focar = true; r.selMarca = bloq ? OC.marcadoresPendentes(r.texto)[0] : ''; }   // volta o cursor para onde falta escrever
     cb.redesenhar();
   };

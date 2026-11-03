@@ -2580,21 +2580,23 @@ test('rodada 3: prazo prometido pela descrição do analista (só a data), venci
   assert.equal(p('Segue o cálculo, tudo certo.'), null);
   assert.equal(p('Prazo 28/10', [tp(3, 1, 'Cliente: tudo bem até 02/10')]), '2026-10-28', 'mensagem do cliente depois não vale: vale a última do escritório');
   assert.equal(p('Entrega até 31/02'), null, 'data impossível');
-  // a leitura guarda só { l, d } e o vencimento aparece como motivo visível
+  // a leitura guarda só { l, d } e o vencimento aparece como motivo visível (data prometida daqui a 20 dias: o teste não vence com o calendário)
+  const fut = new Date(); fut.setDate(fut.getDate() + 20);
+  const dd = String(fut.getDate()).padStart(2, '0'), mm = String(fut.getMonth() + 1).padStart(2, '0'), iso = fut.getFullYear() + '-' + mm + '-' + dd;
   const itens = { calcFerias: [{ id: 'g1', identifier: 1, genericStatus: 2, created: '2026-10-05T12:00:00', lastUpdated: '2026-10-08T12:00:00' }] };
-  const topicos = { g1: [tp(5, 1, 'Pedido'), { created: '2026-10-07T12:00:00', status: 2, description: 'Estamos calculando; retornamos até 30/10.' }] };
+  const topicos = { g1: [tp(5, 1, 'Pedido'), { created: '2026-10-07T12:00:00', status: 2, description: 'Estamos calculando; retornamos até ' + dd + '/' + mm + '.' }] };
   const f = fetcherFalso({ itens, topicos });
   const s1 = await OC.collect(f, {}, null, { tramites: {} });
   const i1 = s1.items[0];
-  assert.equal(i1.prazoPrometido, '2026-10-30');
+  assert.equal(i1.prazoPrometido, iso);
   const m = i1.motivos.find(x => x.prom);
-  assert.deepEqual([m.m, m.legal], ['Prometido até 30/10', true], 'visível ao analista');
-  assert.deepEqual(plano(s1.tramites.cache[i1.k].pa), { l: i1.last, d: '2026-10-30' });
+  assert.deepEqual([m.m, m.legal], ['Prometido até ' + dd + '/' + mm, true], 'visível ao analista');
+  assert.deepEqual(plano(s1.tramites.cache[i1.k].pa), { l: i1.last, d: iso });
   assert.equal(JSON.stringify(s1.tramites.cache).includes('Estamos calculando'), false, 'o texto não é guardado');
   const lidos = f.chamadas.topicos;
   const s2 = await OC.collect(f, {}, null, { tramites: s1.tramites.cache });
   assert.equal(f.chamadas.topicos, lidos, 'cache: não relê enquanto nada mexe');
-  assert.equal(s2.items[0].prazoPrometido, '2026-10-30');
+  assert.equal(s2.items[0].prazoPrometido, iso);
   // dentro do grupo, o prometido mais perto vem primeiro (sem data, vale a regra de antes)
   const a = { k: 'g:a', type: 'geral', code: 2, status: 'Em análise', lado: 'esc', grav: 3, parado: 9 }, b = { k: 'g:b', type: 'geral', code: 2, status: 'Em análise', lado: 'esc', grav: 1, parado: 1, prazoPrometido: '2026-10-20' }, c = { k: 'g:c', type: 'geral', code: 2, status: 'Em análise', lado: 'esc', grav: 1, parado: 1, prazoPrometido: '2026-10-12' };
   assert.deepEqual(plano(OC.ordemFila([a, b, c]).map(x => x.item.k)), ['g:c', 'g:b', 'g:a']);
