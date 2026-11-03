@@ -1,7 +1,8 @@
 /* Teste das planilhas do Departamento Pessoal do Control Hub (Relatórios, Empresas e Funcionários em Excel, com o visual do Hub).
  * Abre o Hub com o banco simulado e dados FICTÍCIOS, gera cada planilha pela própria tela e confere o arquivo:
- * as quatro abas (Painel, Dados, Base dos gráficos, Sobre), gráficos nativos no Painel, filtro e congelamento na aba Dados,
- * datas como data de verdade e que os números dos gráficos batem com a tabela da base.
+ * as abas (Resumo, Dados e a Base oculta dos gráficos), até 4 indicadores e 2 gráficos nativos no Resumo, links entre Resumo e Dados,
+ * filtro e cabeçalho travado na aba Dados, datas como data de verdade, que os números dos gráficos batem com a tabela da base,
+ * o relatório "Ativos em uma data" (conferido contra os dados fictícios) e o período por datas exatas.
  *
  *   HUB_DIR=<pasta com hub.js, hub.css, tema.js, planilha.js e index.fonte.html> NODE_PATH=$(npm root -g) node testes/hub-onvio/planilhas.js
  *   SAIDA=<pasta> guarda as planilhas geradas (para abrir no Excel ou converter no LibreOffice).
@@ -80,18 +81,21 @@ function lerPlanilha(arq) {
   const py = `
 import json, sys, openpyxl
 wb = openpyxl.load_workbook(sys.argv[1])
-o = {'abas': wb.sheetnames}
+o = {'abas': wb.sheetnames, 'estado': {ws.title: ws.sheet_state for ws in wb}}
 for ws in wb:
-    o[ws.title] = {'graficos': len(ws._charts), 'filtro': ws.auto_filter.ref, 'congela': ws.freeze_panes, 'linhas': ws.max_row, 'colunas': ws.max_column}
+    o[ws.title] = {'graficos': len(ws._charts), 'filtro': ws.auto_filter.ref, 'congela': ws.freeze_panes, 'linhas': ws.max_row, 'colunas': ws.max_column,
+                   'links': [(c.coordinate, c.hyperlink.location) for r in ws.iter_rows(max_row=30) for c in r if c.hyperlink]}
 d = wb['Dados']
-o['cab'] = [c.value for c in d[7]]
-o['primeira'] = [str(c.value) if c.value is not None else None for c in d[8]]
-o['tipos'] = [type(c.value).__name__ for c in d[8]]
-p = wb['Painel']
-o['kpi'] = [p.cell(7, c).value for c in range(1, 13)]
+o['cab'] = [c.value for c in d[4]]
+o['primeira'] = [str(c.value) if c.value is not None else None for c in d[5]]
+o['tipos'] = [type(c.value).__name__ for c in d[5]]
+o['colunas'] = [[str(c.value) if c.value is not None else None for c in col] for col in d.iter_cols(min_row=5, max_row=d.max_row)]
+p = wb['Resumo']
+o['kpi'] = [p.cell(r, c).value for r in range(6, 10) for c in range(1, 13) if isinstance(p.cell(r, c).value, (int, float))]
 o['titulo'] = p['A4'].value
-b = wb['Base dos gráficos']
-o['base'] = [[c.value for c in r] for r in b.iter_rows(min_row=6, max_row=min(b.max_row, 60), max_col=4)]
+o['sub'] = p['A5'].value
+b = wb['Base'] if 'Base' in wb.sheetnames else None
+o['base'] = [[c.value for c in r] for r in b.iter_rows(min_row=1, max_row=min(b.max_row, 60), max_col=4)] if b else []
 print(json.dumps(o, default=str))`;
   return JSON.parse(execFileSync('python3', ['-c', py, arq], { encoding: 'utf8' }));
 }
@@ -121,9 +125,28 @@ print(json.dumps(o, default=str))`;
     const arq = path.join(SAIDA, b.nome); fs.writeFileSync(arq, Buffer.from(b.dados)); return arq;
   };
 
-  const tipos = ['quadro', 'movimento', 'ferias', 'contratos', 'agenda', 'carteira', 'convencoes', 'pendencias'];
+  // formato enxuto: Resumo (até 4 números e 2 gráficos, link para a lista), Dados (link de volta, cabeçalho travado e filtro) e Base oculta
+  const conferirFormato = (x) => {
+    assert.deepEqual(x.abas.slice(0, 2), ['Resumo', 'Dados']);
+    if (x.Resumo.graficos) { assert.deepEqual(x.abas, ['Resumo', 'Dados', 'Base']); assert.equal(x.estado.Base, 'hidden', 'a base dos gráficos fica oculta'); } else assert.deepEqual(x.abas, ['Resumo', 'Dados']);
+    assert.ok(x.Resumo.graficos <= 2, 'no máximo 2 gráficos: ' + x.Resumo.graficos);
+    assert.ok(x.kpi.length >= 1 && x.kpi.length <= 4, 'de 1 a 4 indicadores: ' + JSON.stringify(x.kpi));
+    assert.ok(x.titulo && x.titulo.length > 3, 'título no Resumo');
+    assert.deepEqual(x.Dados.links, [['A2', "'Resumo'!A1"]], 'link de volta ao resumo');
+    if (x.primeira.some(v => v)) {
+      assert.ok(x.Resumo.links.some(l => l[1] === "'Dados'!A1"), 'link do resumo para a lista');
+      assert.equal(x.Dados.congela, 'A5', 'cabeçalho da lista travado');
+      assert.match(String(x.Dados.filtro), /^A4:/, 'filtro no cabeçalho da lista');
+    }
+  };
+  const mudar = (sel, v) => page.evaluate(([q, val]) => { const el = document.querySelector(q); if (!el) throw new Error('não achei ' + q); el.value = val; el.dispatchEvent(new Event('change', { bubbles: true })); }, [sel, v]);
+  const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const dmy = (s) => s.split('-').reverse().join('/');
+  const diasAtras = (n) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - n); return d; };
+
+  const tipos = ['ativos', 'quadro', 'movimento', 'ferias', 'contratos', 'agenda', 'carteira', 'convencoes', 'pendencias'];
   for (const t of tipos) {
-    await passo(`Relatório "${t}" em Excel: Painel com indicadores e gráficos nativos, Dados com filtro, Base dos gráficos e Sobre`, async () => {
+    await passo(`Relatório "${t}" em Excel: Resumo com números e gráficos, Dados com a lista e filtro, links entre as duas`, async () => {
       await page.evaluate((x) => { window.__hubApi.abrirModulo('dp'); document.querySelector('.dp-tab[data-dp-view="relatorios"]')?.click(); }, t);
       await page.waitForSelector('#dp-rel-root .rel-tipos');
       await clicar(`[data-rel-tipo="${t}"]`);
@@ -131,17 +154,54 @@ print(json.dumps(o, default=str))`;
       await page.waitForSelector('#dp-rel-root .rel-res');
       const arq = await baixar(() => clicar('[data-rel-baixar="xlsx"]'));
       const x = lerPlanilha(arq);
-      assert.deepEqual(x.abas, ['Painel', 'Dados', 'Base dos gráficos', 'Sobre']);
-      assert.ok(x.Painel.graficos >= 2, 'gráficos no Painel: ' + x.Painel.graficos);
-      assert.ok(x.titulo && x.titulo.length > 3, 'título no Painel');
-      assert.ok(x.kpi.some(v => v !== null && v !== ''), 'indicadores no Painel');
-      assert.equal(x.Dados.congela, 'B8', 'cabeçalho e primeira coluna congelados');
-      if (x.Dados.linhas > 7 && x.primeira.some(v => v)) assert.match(String(x.Dados.filtro), /^A7:/, 'filtro no cabeçalho da lista');
+      conferirFormato(x);
+      assert.ok(x.Resumo.graficos >= 1, 'gráficos no Resumo: ' + x.Resumo.graficos);
+      assert.ok(!x.cab.includes('CNPJ') || ['ativos', 'carteira', 'pendencias'].includes(t), 'CNPJ só onde ajuda: ' + x.cab.join(', '));
       const datas = x.cab.map((c, i) => /^(Data|Admissão|Início das férias|Fim das férias|Fim do concessivo)$/.test(c || '') && x.primeira[i] ? x.tipos[i] : null).filter(Boolean);
       datas.forEach(tp => assert.equal(tp, 'datetime', 'datas viram data de verdade'));
       assert.ok(x.base.length > 2, 'base dos gráficos preenchida');
     });
   }
+
+  await passo('Ativos em uma data: a quantidade de cada empresa bate com as datas de admissão e rescisão', async () => {
+    await clicar('[data-rel-tipo="ativos"]');
+    const alvo = ymd(diasAtras(200));
+    await mudar('[data-rel="data"]', alvo);
+    const tela = await page.evaluate(() => [...document.querySelectorAll('#dp-rel-root .rel-tab tbody tr')].map(tr => [tr.dataset.openEmp, Number(tr.lastElementChild.textContent.replace(/\./g, ''))]));
+    const emps = new Map(empresasFicticias().map(e => [e.id, e]));
+    assert.ok(tela.length > 3, 'empresas na lista: ' + tela.length);
+    for (const [id, n] of tela) {
+      const esperado = emps.get(id).funcionarios.filter(f => f.admissao <= alvo && !(f.rescisao && f.rescisao <= alvo)).length;
+      assert.equal(n, esperado, `ativos de ${id} em ${alvo}`);
+    }
+    if (process.env.SAIDA) { await page.evaluate(() => document.querySelectorAll('dialog[open]').forEach(d => d.close())); await page.screenshot({ path: path.join(SAIDA, 'tela-ativos.png'), fullPage: false }); }
+    const arq = await baixar(() => clicar('[data-rel-baixar="xlsx"]'));
+    const x = lerPlanilha(arq);
+    conferirFormato(x);
+    assert.match(x.titulo, new RegExp('Funcionários ativos em ' + dmy(alvo)));
+    assert.deepEqual(x.cab, ['Empresa', 'CNPJ', 'Responsável', 'Ativos em ' + dmy(alvo)]);
+    const soma = tela.reduce((s, r) => s + r[1], 0);
+    assert.equal(x.kpi[0], soma, 'o primeiro número é o total de ativos na data');
+    assert.ok(path.basename(arq).includes(alvo), 'nome do arquivo leva a data: ' + path.basename(arq));
+  });
+
+  await passo('Período por datas exatas: só entram os movimentos entre as duas datas', async () => {
+    await clicar('[data-rel-tipo="movimento"]');
+    const de = ymd(diasAtras(250)), ate = ymd(diasAtras(40));
+    await mudar('[data-rel="de"]', de); await mudar('[data-rel="ate"]', ate);
+    const tipo = await page.evaluate(() => document.querySelector('[data-rel="de"]').type);
+    assert.equal(tipo, 'date', 'o período se escolhe por data, não por mês');
+    const arq = await baixar(() => clicar('[data-rel-baixar="xlsx"]'));
+    const x = lerPlanilha(arq);
+    conferirFormato(x);
+    assert.match(String(x.sub), new RegExp(dmy(de) + ' a ' + dmy(ate)), 'o período aparece no resumo');
+    const datas = x.colunas[0].filter(Boolean).map(v => v.slice(0, 10));
+    assert.ok(datas.length > 3, 'movimentos no período: ' + datas.length);
+    datas.forEach(d => assert.ok(d >= de && d <= ate, `${d} dentro de ${de} a ${ate}`));
+    // e o mesmo filtro de datas aplicado nos dados fictícios dá a mesma contagem
+    let esperado = 0; empresasFicticias().filter(e => e.situacao !== 'Inativa').forEach(e => e.funcionarios.forEach(f => { if (f.admissao >= de && f.admissao <= ate) esperado++; if (f.rescisao && f.rescisao >= de && f.rescisao <= ate) esperado++; }));
+    assert.equal(datas.length, esperado, 'mesma contagem dos dados fictícios');
+  });
 
   await passo('Quadro: os números do gráfico de admissões batem com o indicador do relatório', async () => {
     await clicar('[data-rel-tipo="quadro"]'); await clicar('[data-rel-atalho="12m"]');
@@ -149,6 +209,7 @@ print(json.dumps(o, default=str))`;
     const arq = await baixar(() => clicar('[data-rel-baixar="xlsx"]'));
     const x = lerPlanilha(arq);
     const i0 = x.base.findIndex(r => r[0] === 'Admissões × desligamentos por período'), cab = x.base[i0 + 1];
+    assert.ok(i0 >= 0, 'gráfico de admissões × desligamentos na base');
     const soma = x.base.slice(i0 + 2).filter(r => r[0] && typeof r[1] === 'number').slice(0, 12).reduce((s, r) => s + r[cab.indexOf('Admissões')], 0);
     const kAd = Number((tela.find(k => k[0] === 'admissões') || [])[1]);
     assert.equal(soma, kAd, 'admissões no gráfico = admissões no indicador');
@@ -160,13 +221,14 @@ print(json.dumps(o, default=str))`;
     await clicar('#dp-filtros-menu ~ details summary, .dp-toolbar details.menu:not(#dp-filtros-menu) > summary');
     const a1 = await baixar(() => clicar('#dp-btn-xlsx'));
     const e = lerPlanilha(a1);
-    assert.deepEqual(e.abas, ['Painel', 'Dados', 'Base dos gráficos', 'Sobre']);
-    assert.ok(e.Painel.graficos >= 4, 'gráficos das empresas: ' + e.Painel.graficos);
-    assert.equal(e.cab[1], 'Empresa'); assert.ok(e.Dados.linhas >= 7 + 14, 'todas as empresas da tela');
+    conferirFormato(e);
+    assert.equal(e.Resumo.graficos, 2, 'gráficos das empresas: ' + e.Resumo.graficos);
+    assert.deepEqual(e.cab, ['Código', 'Empresa', 'CNPJ', 'Tributação', 'Responsável', 'Situação', 'Funcionários ativos']); assert.ok(e.Dados.linhas >= 4 + 14, 'todas as empresas da tela');
     await clicar('.dp-tab[data-dp-view="funcionarios"]');
     const a2 = await baixar(() => clicar('#dp-btn-func-xlsx'));
     const f = lerPlanilha(a2);
-    assert.ok(f.Painel.graficos >= 4, 'gráficos dos funcionários: ' + f.Painel.graficos);
+    conferirFormato(f);
+    assert.equal(f.Resumo.graficos, 2, 'gráficos dos funcionários: ' + f.Resumo.graficos);
     assert.deepEqual(f.cab, ['Funcionário', 'Cargo', 'Empresa', 'Admissão', 'Situação', 'Rescisão']);
     assert.equal(f.tipos[3], 'datetime', 'admissão como data');
   });
