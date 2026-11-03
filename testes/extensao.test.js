@@ -3212,3 +3212,156 @@ test('negrito: **marcação** vira letras em negrito do Unicode no envio, e as r
   assert.match(OC.DEFAULTS.textosSugestao.feriasAnalise, /\*\*\{pagamentoFerias\}\*\*/);
   assert.match(OC.DEFAULTS.textosSugestao.rescisaoAnalise, /\*\*\{pagamentoRescisao\}\*\*/);
 });
+
+// ----- folha: Extrato Mensal do portal de documentos (0.68.0) -----
+// Texto no formato do Extrato Mensal (mapeado em 03/11/2026), com dados inventados.
+const EXTRATO_T = [
+  'Empresa: EMPRESA FICTICIA LTDA                CNPJ: 00.000.000/0001-00',
+  'Cálculo: Folha Mensal          Competência: 09/2026          Página: 1/2',
+  '12  FULANO DE TAL FICTICIO   111.222.333-44   01/02/2020',
+  'Vínculo: Celetista   Cargo: AUXILIAR   Salário: 2.000,00',
+  '8781 HORAS NORMAIS  220,00  2.000,00',
+  '15  SICRANA SOCIA FICTICIA   222.333.444-55   01/01/2015',
+  'Vínculo: Diretor   Cargo: SOCIO ADMINISTRADOR   Salário: 5.000,00',
+  '1 PRO LABORE DIAS   30,00   5.000,00',
+  'Empresa: EMPRESA FICTICIA LTDA                CNPJ: 00.000.000/0001-00',
+  'Cálculo: Folha Mensal          Competência: 09/2026          Página: 2/2',
+  '21  BELTRANO AUTONOMO FICTICIO   333.444.555-66   10/08/2026',
+  'Vínculo: Autônomo   Cargo: PEDREIRO   Departamento: AUTONOMO',
+  '9 INSS AUTONOMO   11,00   110,00',
+  '30  ESTAGIARIO SEM PROLABORE   444.555.666-77   01/03/2026',
+  'Vínculo: Estagiário   Cargo: ESTAGIO',
+  'Total de Contribuintes: 2      Total de Empregados: 2'
+].join('\n');
+
+test('Folha: o Extrato Mensal dá a competência e quem é contribuinte (vínculo ou pró-labore), sem CPF', () => {
+  const x = OC.extratoContribuintes(EXTRATO_T);
+  assert.equal(x.competencia, '2026-09');
+  assert.equal(x.pessoas.length, 4);
+  const por = Object.fromEntries(x.pessoas.map(p => [p.codigo, p]));
+  assert.equal(por['12'].contribuinte, false, 'celetista não é contribuinte');
+  assert.equal(por['15'].contribuinte, true, 'diretor com pró-labore');
+  assert.equal(por['15'].nome, 'SICRANA SOCIA FICTICIA');
+  assert.equal(por['15'].vinculo, 'Diretor');
+  assert.equal(por['21'].contribuinte, true, 'autônomo (RPA)');
+  assert.equal(por['21'].vinculo, 'Autônomo');
+  assert.equal(por['30'].contribuinte, false, 'a palavra "Contribuintes" do rodapé não marca ninguém');
+  assert.ok(!JSON.stringify(x).includes('111.222'), 'o CPF não sai do leitor');
+  assert.ok(!JSON.stringify(x).includes('5.000'), 'nem valor');
+  // pró-labore sem vínculo legível ainda conta; competência só pelo nome do arquivo
+  const y = OC.extratoContribuintes('7 FULANA PROLABORE   01/01/2010\nCargo: SOCIA\n1 PRO-LABORE 30,00');
+  assert.equal(y.pessoas[0].contribuinte, true);
+  assert.equal(y.competencia, '');
+  assert.equal(OC.competenciaDoNome('09-2026 Extrato Mensal.pdf'), '2026-09');
+  assert.equal(OC.competenciaDoNome('Extrato mensal - 9/2026.pdf'), '2026-09');
+  assert.equal(OC.competenciaDoNome('2026-10 extrato.pdf'), '2026-10');
+  assert.equal(OC.competenciaDoNome('FOLHA.pdf'), '');
+});
+
+function apiFolha(lidas) {
+  const pag = (items, hasMore) => ({ data: { items, itemsPerPage: 100, startIndex: 1, hasMore: !!hasMore } });
+  return async url => {
+    lidas.push(url);
+    const u = new URL(url), p = u.pathname.replace('/api/', '');
+    if (p === 'br-payroll-sr/v1/clients') return { items: [{ id: 'c1', code: 7, name: 'ACME' }, { id: 'c2', code: 8, name: 'BETA' }, { id: 'c9', code: 1, name: 'CONTROLTAX ASSESSORIA' }], totalItems: 3, totalPages: 1 };
+    if (p === 'storage/v1/projects') {
+      const id = u.searchParams.get('primaryAssociationId');
+      if (id === 'c9') throw new Error('o escritório próprio nunca é lido');
+      return id === 'c1' ? [{ id: 'p1', name: 'ACME' }] : id === 'k2' ? [{ id: 'p2', name: 'BETA' }] : [];
+    }
+    if (p === 'storage/v2/Projects/p1/children') return pag([{ id: 'fp', name: 'Pessoal', itemType: 'Folder' }, { id: 'fc', name: 'Contábil', itemType: 'Folder' }]);
+    if (p === 'storage/v2/Folders/fp/children') return pag([{ id: 'ff', name: 'Folha de pagamento', itemType: 'Folder' }, { id: 'fi', name: 'Impostos', itemType: 'Folder' }, { id: 'fe', name: 'Extrato Mensal', itemType: 'Folder' }]);
+    if (p === 'storage/v2/Folders/ff/children') {
+      if (u.searchParams.get('from') === '1') return pag([{ id: 'd1', name: '09-2026 Extrato Mensal.pdf', mimeType: 'application/pdf', itemType: 'Document', createdDate: '2026-10-05T10:00:00', containerId: 'ff' }, { id: 'd0', name: 'Recibo de Pagamento.pdf', mimeType: 'application/pdf', itemType: 'Document' }], true);
+      return pag([{ id: 'd2', name: '08-2026 Extrato Mensal.pdf', mimeType: 'application/pdf', itemType: 'Document', createdDate: '2026-09-05T10:00:00', containerId: 'ff' }, { id: 'dv', name: '01-2024 Extrato Mensal.pdf', mimeType: 'application/pdf', itemType: 'Document' }]);
+    }
+    if (p === 'storage/v2/Folders/fe/children') return pag([{ id: 'd3', name: 'Extrato mensal.pdf', mimeType: 'application/pdf', itemType: 'Document', createdDate: '2026-07-04T10:00:00' }]);
+    if (p === 'storage/v2/Folders/fi/children') throw new Error('Impostos não é lida');
+    if (p === 'storage/v2/Projects/p2/children') return pag([{ id: 'gp', name: 'Pessoal', itemType: 'Folder' }]);
+    if (p === 'storage/v2/Folders/gp/children') return pag([{ id: 'g1', name: '09-2026 Extrato Mensal.pdf', mimeType: 'application/pdf', itemType: 'Document', createdDate: '2026-10-06T10:00:00', containerId: 'gp' }]);
+    if (p === 'storage/v2/Folders/fc/children') throw new Error('Contábil não é lida');
+    const e = new Error('sem rota simulada: ' + p); e.status = 404; throw e;
+  };
+}
+const PDFS_T = {
+  d1: EXTRATO_T,
+  d2: EXTRATO_T.replace(/09\/2026/g, '08/2026').replace(/21  BELTRANO[\s\S]*?INSS AUTONOMO[^\n]*\n/, ''),
+  d3: EXTRATO_T.replace(/09\/2026/g, '07/2026').replace(/15  SICRANA[\s\S]*?PRO LABORE DIAS[^\n]*\n/, '').replace(/21  BELTRANO[\s\S]*?INSS AUTONOMO[^\n]*\n/, ''),
+  g1: 'Competência: 09/2026\n5  FULANA DA BETA   555.666.777-88   01/01/2019\nVínculo: Celetista'
+};
+const textoPdfT = pedidos => async url => { pedidos.push(url); const m = url.match(/\/storage\/v1\/Folders\/([^/]+)\/documents\/([^/?]+)$/); assert.ok(m, 'download só pela rota mapeada: ' + url); if (!PDFS_T[m[2]]) throw new Error('PDF inexistente'); return PDFS_T[m[2]]; };
+
+test('Folha: lê os extratos da pasta Pessoal (12 meses), manda ao Hub só código, nome, vínculo e competência, e na próxima vez só os novos', async () => {
+  const lidas = [], pedidos = [], guardado = { lidos: {}, pastas: {} };
+  const ctx = () => ({ pausa: null, snapshot: { items: [] }, hoje: new Date('2026-10-20T10:00:00'), textoPdf: textoPdfT(pedidos), folhaLidos: Object.assign({}, guardado.lidos), folhaPastas: Object.assign({}, guardado.pastas),
+    clientesVistos: new Map([['k2', { id: 'k2', codigo: 8, nome: 'BETA' }]]),
+    guardarFolha: async x => { if (x.lidos) Object.assign(guardado.lidos, x.lidos); if (x.pastas) Object.assign(guardado.pastas, x.pastas); } });
+  const por = {};
+  const enviar = async (c, p) => { por[c.tipoDado] = { c, texto: p.partes.join('\n') }; return { ok: true }; };
+  await OC.hubExecutar(apiFolha(lidas), ['pessoais'], ctx(), enviar);
+  const f = por['pessoais-folha-contribuintes'];
+  assert.ok(f, 'conjunto da folha enviado');
+  assert.equal(f.c.categoria, 'pessoais');
+  assert.equal(f.c.acumular, 'Documento', 'o Hub junta as remessas pelo documento');
+  assert.deepEqual(plano(f.c.colunas), plano(OC.FOLHA_COLUNAS));
+  const lin = f.texto.split('\n').map(l => l.split('\t')), col = n => f.c.colunas.indexOf(n);
+  const de = (doc) => lin.filter(l => l[col('Documento')] === doc);
+  assert.deepEqual(de('d1').map(l => l[col('Código')]).sort(), ['15', '21'], 'setembro: o diretor e o autônomo');
+  assert.equal(de('d1')[0][col('Competência')], '2026-09');
+  assert.equal(de('d1')[0][col('Cliente')], 'ACME');
+  assert.deepEqual(de('d2').map(l => l[col('Código')]), ['15'], 'agosto: só o diretor (o autônomo é intermitente)');
+  assert.deepEqual(de('d3').map(l => [l[col('Competência')], l[col('Código')]]), [['2026-07', '']], 'julho sem contribuinte: uma linha que diz que o mês foi conferido (competência pelo texto do PDF)');
+  assert.deepEqual(de('g1').map(l => [l[col('Cliente')], l[col('Código')]]), [['BETA', '']], 'a BETA foi achada pelo id do contato (o das solicitações)');
+  assert.ok(!f.texto.includes('111.222') && !f.texto.includes('5.000') && !f.texto.includes('FULANO DE TAL'), 'sem CPF, sem valor e sem empregado');
+  assert.ok(!pedidos.some(u => /\/dv$|\/d0$/.test(u)), 'nem extrato de mais de 12 meses nem outro relatório');
+  assert.ok(!lidas.some(u => /CONTROLTAX|=c9/.test(u)), 'empresa do escritório não é lida');
+  assert.ok(!lidas.some(u => /Folders\/(fi|fc)\//.test(u)), 'Impostos e Contábil não são abertas');
+  assert.ok(lidas.some(u => /Folders\/ff\/children\?from=3/.test(u)), 'segue a paginação (hasMore)');
+  assert.deepEqual(Object.keys(guardado.lidos).sort(), ['d1', 'd2', 'd3', 'g1'], 'guarda só os ids dos documentos lidos');
+  assert.ok(Object.values(guardado.lidos).every(v => /^\d{4}-\d{2}$/.test(v)));
+  assert.ok(!JSON.stringify(guardado).match(/ACME|BETA|FULANO|SICRANA/), 'nada de nome no armazenamento');
+  assert.deepEqual(plano(guardado.pastas.c1.pastas.map(x => x.id).sort()), ['fe', 'ff']);
+  // segunda vez: nada novo, nenhum PDF, nada enviado
+  pedidos.length = 0; delete por['pessoais-folha-contribuintes'];
+  await OC.hubExecutar(apiFolha(lidas), ['pessoais'], ctx(), enviar);
+  assert.equal(pedidos.length, 0, 'o que já foi lido não é lido de novo');
+  assert.ok(!por['pessoais-folha-contribuintes'], 'sem novidade, nada vai (o Hub continua com o que tem)');
+});
+
+test('Folha: se o Hub não aceitar, os documentos não ficam marcados como lidos; PDF que falha fica para a próxima', async () => {
+  const lidas = [], pedidos = [], guardado = { lidos: {} };
+  const ctx = { pausa: null, snapshot: { items: [] }, hoje: new Date('2026-10-20T10:00:00'), folhaLidos: {}, folhaPastas: {},
+    textoPdf: async url => { if (/d2$/.test(url)) throw new Error('HTTP 500'); return textoPdfT(pedidos)(url); },
+    guardarFolha: async x => { if (x.lidos) Object.assign(guardado.lidos, x.lidos); } };
+  const r = await OC.hubExecutar(apiFolha(lidas), ['pessoais'], ctx, async () => ({ ok: false, motivo: 'token' }));
+  assert.ok(r.some(x => x.id === 'pessoais-folha-contribuintes' && x.ok === false));
+  assert.deepEqual(guardado.lidos, {}, 'recusado pelo Hub: nada marcado');
+  const ctx2 = Object.assign({}, ctx, { folhaPastas: {} });
+  let enviado = null;
+  await OC.hubExecutar(apiFolha(lidas), ['pessoais'], ctx2, async (c, p) => { if (c.tipoDado === 'pessoais-folha-contribuintes') enviado = c; return { ok: true }; });
+  assert.equal(enviado.cortado, true, 'com um PDF que falhou, vai marcado como incompleto');
+  assert.ok(!('d2' in guardado.lidos), 'o que falhou é lido de novo na próxima');
+  assert.ok('d1' in guardado.lidos);
+});
+
+test('Folha: limite de PDFs por envio deixa o resto para o próximo', async () => {
+  const lidas = [], pedidos = [], guardado = { lidos: {} };
+  const ctx = { pausa: null, snapshot: { items: [] }, hoje: new Date('2026-10-20T10:00:00'), folhaLidos: {}, folhaPastas: {}, folhaDocsMax: 2, textoPdf: textoPdfT(pedidos), guardarFolha: async x => { if (x.lidos) Object.assign(guardado.lidos, x.lidos); } };
+  let enviado = null;
+  await OC.hubExecutar(apiFolha(lidas), ['pessoais'], ctx, async (c) => { if (c.tipoDado === 'pessoais-folha-contribuintes') enviado = c; return { ok: true }; });
+  assert.equal(pedidos.length, 2);
+  assert.equal(enviado.porTipo.pendentes, 1, 'três extratos (a BETA sem o id do contato não tem projeto): 2 agora, 1 depois');
+  assert.equal(enviado.cortado, true);
+});
+
+test('Folha: o service worker só baixa documento pela rota mapeada e o leitor de PDF junta as linhas', () => {
+  const bg = src('background.js');
+  assert.match(bg, /urlDocumentoPermitida[\s\S]*storage\\\/v1\\\/Folders/);
+  assert.ok(!/method:\s*'(POST|PUT|DELETE)'[^\n]*storage/i.test(bg), 'nada de escrita no portal de documentos');
+  const man = JSON.parse(src('manifest.json'));
+  assert.ok(man.permissions.includes('offscreen'));
+  assert.ok(fs.existsSync(path.join(EXT, 'lib/pdfjs/pdf.min.mjs')) && fs.existsSync(path.join(EXT, 'lib/pdfjs/pdf.worker.min.mjs')));
+  const off = src('offscreen.js');
+  assert.match(off, /isEvalSupported:\s*false/);
+  assert.ok(!/fetch\(/.test(off), 'o leitor de PDF não acessa a rede');
+});
