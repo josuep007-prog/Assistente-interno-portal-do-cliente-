@@ -54,6 +54,8 @@ await ctx.route('https://onvio.com.br/**', async r => {
   if (tramiteOk && /payroll-entries\/r1\/topics$/.test(u.pathname)) return r.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [{ created: iso(25), status: 1, description: 'Rubricas' }, { created: iso(25), status: 4, description: 'Aguardamos a planilha de horas extras.' }] }) });
   if (u.pathname.endsWith('/topics') && !tramiteOk) return r.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
   if (u.pathname.endsWith('/topics')) return r.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [{ created: iso(9), status: 1, description: '<p>Bom dia, segue o pedido de <b>cálculo de férias</b> do Fulano a partir de 03/11.</p>', createdByContactExpanded: { name: 'Cliente ACME' }, attachmentsExpanded: [{ name: 'aviso-ferias-fulano.pdf' }] }, { created: iso(7), status: 2, description: 'Recebido, estamos calculando.', createdByContactExpanded: { name: 'Ana Teste' } }] }) });
+  // folha (0.68.0): o Extrato Mensal FICTÍCIO (testes/fixtures) baixado pela rota mapeada do portal de documentos
+  if (/^\/api\/storage\/v1\/Folders\/[^/]+\/documents\/[^/]+$/.test(u.pathname)) return r.fulfill({ contentType: 'application/pdf', body: fs.readFileSync(path.join(__dirname, 'fixtures', 'extrato-mensal-ficticio.pdf')) });
   if (modoCliente && u.pathname.endsWith('/company-department-access')) return r.fulfill({ status: 403, contentType: 'application/json', body: '{}' });
   const k = Object.keys(itensPorRota).find(x => u.pathname.endsWith('/' + x));
   if (u.pathname.startsWith('/api/')) {
@@ -293,6 +295,18 @@ await esperar(() => appDe(nova), 20000);                                  // abr
 assert.equal(await cheia(nova), true);
 assert.ok((await pagina.evaluate(() => chrome.storage.local.get('snapshot'))).snapshot, 'e já com a primeira leitura feita');
 console.log('primeira vez: o portal abre nas Solicitações e o app aparece sozinho depois da leitura');
+
+// folha (0.68.0): o PDF vem pela aba do Onvio, o texto sai do pdf.js no documento fora da tela e o núcleo acha os contribuintes
+{
+  const txt = await sw.evaluate(() => textoDoPdf('https://onvio.com.br/api/storage/v1/Folders/F1/documents/D1'));
+  const x = await sw.evaluate(t => OC.extratoContribuintes(t), txt);
+  assert.equal(x.competencia, '2026-09', 'competência lida do PDF');
+  assert.deepEqual(x.pessoas.map(p => [p.codigo, p.vinculo, p.contribuinte]), [['12', 'Celetista', false], ['15', 'Diretor', true], ['21', 'Autônomo', true]], 'pessoas e vínculos do PDF: ' + txt.slice(0, 300));
+  assert.equal(x.pessoas[1].nome, 'SICRANA SOCIA FICTICIA');
+  await assert.rejects(sw.evaluate(() => textoDoPdf('https://onvio.com.br/api/storage/v2/search/documents')), /não permitido/, 'só a rota de download mapeada');
+  await sw.evaluate(() => fecharOffscreen());
+  console.log('folha: PDF lido pela aba + pdf.js fora da tela -> competência e contribuintes');
+}
 
 // login de cliente: a extensão para, apaga o que leu e o app mostra só o aviso
 modoCliente = true;

@@ -855,6 +855,7 @@ let casosCache = {};
 
 /* ---------- mensagens do painel ---------- */
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
+  if (msg && msg.alvo === 'offscreen') return false;                  // conversa com o documento que lê PDF, não é comando
   (async () => {
     try {
       if (msg.cmd === 'atualizar') reply({ ok: true, snap: await coletar(true) });
@@ -933,6 +934,8 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'baixarAnexos') { reply(Object.assign({ ok: true }, await baixarAnexos(msg))); }
       else if (msg.cmd === 'rotaAnexo') { reply({ ok: await guardarRotaAnexo(msg) }); }
       else if (msg.cmd === 'sondarEmpregados') { const { f } = await escolherFetcher(); reply({ ok: true, linhas: await OC.sondarEmpregados(emSegundoPlano(f), ms => new Promise(r => setTimeout(r, ms))) }); }
+      else if (msg.cmd === 'testarFolha') { const { f } = await escolherFetcher(); try { reply({ ok: true, linhas: await OC.testarFolha(emSegundoPlano(f), textoDoPdf, ms => new Promise(r => setTimeout(r, ms))) }); } finally { fecharOffscreen(); } }
+      else if (msg.cmd === 'folhaDeNovo') { await chrome.storage.local.remove(['folhaLidos', 'folhaEstado']); reply({ ok: true }); }
       else if (msg.cmd === 'testarLeitura') { reply({ ok: true, linhas: await testarLeitura() }); }
       else if (msg.cmd === 'fecharPainel') { if (sender.tab && sender.tab.id != null) await mensagemParaPainel(sender.tab.id, 'fechar').catch(() => {}); reply({ ok: true }); }
       else reply({ ok: false, erro: 'comando desconhecido' });
@@ -969,7 +972,7 @@ async function hubDesconectar() {
   try { await chrome.scripting.unregisterContentScripts({ ids: [HUB_SCRIPT_ID] }); } catch (e) { /* já não estava */ }
   try { await chrome.permissions.remove({ origins: HUB_ORIGENS }); } catch (e) { /* ignora */ }
   await hubGuardar({ token: '', envioConfirmado: false });            // o código sai do armazenamento
-  await chrome.storage.local.remove(['hubSync', 'hubSyncHash', 'hubUltimo']);
+  await chrome.storage.local.remove(['hubSync', 'hubSyncHash', 'hubUltimo', 'folhaLidos', 'folhaEstado']);       // outro Hub depois recebe a folha desde o começo
   return { ok: true };
 }
 // Prova de que uma janela é o Hub do código de pareamento: HMAC-SHA256(código, nonce) em hexadecimal, comparado sem pressa (tempo constante).
@@ -1023,6 +1026,80 @@ async function enviarAoHub(snap, manual) {
 }
 async function enviarAoHubAuto(snap) { const c = await hubCfg(); if (c.token && c.auto) return enviarAoHub(snap, false); }
 
+/* ---------- folha: PDF do portal de documentos (0.68.0) ----------
+ * Só GET em onvio.com.br/api/storage/v1/Folders/{pasta}/documents/{doc}, de dentro da aba do Onvio (a mesma sessão da leitura).
+ * O arquivo vai em base64 para um documento fora da tela da própria extensão (offscreen.html), que tira o texto com o pdf.js
+ * empacotado (sem rede). Nem o arquivo nem o texto são guardados: o núcleo tira só código, nome, vínculo e competência. */
+const PDF_MAX = 15 * 1024 * 1024;
+const FOLHA_INTERVALO = 20 * 3600e3;
+const urlDocumentoPermitida = u => { try { const x = new URL(u); return x.protocol === 'https:' && x.hostname === 'onvio.com.br' && /^\/api\/storage\/v1\/Folders\/[^/]+\/documents\/[^/]+$/i.test(x.pathname) && !x.search; } catch (e) { return false; } };
+async function baixarPdfPelaAba(url) {
+  if (!urlDocumentoPermitida(url)) throw new Error('endereço de documento não permitido');
+  const tab = await abaOnvio();
+  if (!tab) throw new AuthError('Abra o Onvio numa aba');
+  let v = null;
+  for (const mundo of ['MAIN', 'ISOLATED']) {
+    const [res] = await chrome.scripting.executeScript({
+      target: { tabId: tab.id }, world: mundo, args: [url, PDF_MAX],
+      func: async (u, max) => {
+        try {
+          let r = await fetch(u, { credentials: 'include' });
+          let ct = r.headers.get('content-type') || '';
+          if (r.ok && /json/i.test(ct)) {                         // se um dia vier { downloadUrl } em vez do arquivo
+            const j = await r.json().catch(() => null), d = j && (j.downloadUrl || j.url);
+            if (!d || !/^https:\/\/([a-z0-9-]+\.)*onvio\.com\.br\//i.test(d)) return { status: 415, ct };
+            r = await fetch(d, { credentials: 'include' }); ct = r.headers.get('content-type') || '';
+          }
+          if (!r.ok) return { status: r.status, ct };
+          const b = new Uint8Array(await r.arrayBuffer());
+          if (b.length > max) return { status: 413, ct };
+          let s = ''; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
+          return { status: r.status, ct, b64: btoa(s) };
+        } catch (e) { return { status: 0, ct: '', erro: String(e).slice(0, 80) }; }
+      }
+    }).catch(e => [{ result: { status: 0, ct: '', erro: String(e && e.message || e).slice(0, 80) } }]);
+    v = (res && res.result) || { status: 0, ct: '' };
+    if (v.b64 || [401, 403, 404, 413].includes(v.status)) break;
+  }
+  if (v.b64 && v.b64.startsWith('JVBER')) return v.b64;                // %PDF
+  if (v.status === 401 || v.status === 403) throw new AuthError('HTTP ' + v.status);
+  if (v.b64 && /html/i.test(v.ct || '')) throw new AuthError('o Onvio devolveu uma página em vez do arquivo');
+  if (v.b64) throw new Error('o arquivo não é PDF');
+  throw new Error(v.status === 413 ? 'PDF maior que 15 MB' : v.status ? 'HTTP ' + v.status : 'falha de rede (' + (v.erro || 'sem resposta') + ')');
+}
+let offscreenAberto = null;
+async function garantirOffscreen() {
+  if (offscreenAberto) return offscreenAberto;
+  offscreenAberto = (async () => {
+    try { await chrome.offscreen.createDocument({ url: 'offscreen.html', reasons: ['WORKERS'], justification: 'Ler o texto do Extrato Mensal (PDF) com o pdf.js empacotado' }); }
+    catch (e) { if (!/single|already|only one/i.test(String(e && e.message || e))) { offscreenAberto = null; throw e; } }
+  })();
+  return offscreenAberto;
+}
+function fecharOffscreen() { if (!offscreenAberto) return; offscreenAberto = null; chrome.offscreen.closeDocument().catch(() => {}); }
+async function textoDoPdf(url) {
+  const b64 = await baixarPdfPelaAba(url);
+  await garantirOffscreen();
+  let r = null;
+  for (let i = 0; i < 3 && !r; i++) { r = await chrome.runtime.sendMessage({ alvo: 'offscreen', cmd: 'pdfTexto', b64 }).catch(() => null); if (!r) await new Promise(ok => setTimeout(ok, 300)); }       // o documento pode ainda estar carregando
+  if (!r || !r.ok) throw new Error('não consegui ler o PDF (' + ((r && r.erro) || 'sem resposta') + ')');
+  return r.texto;
+}
+// Guarda só ids: documentos já lidos (com a competência) e o caminho das pastas de cada empresa. Os lidos de mais de 24 meses saem.
+async function guardarFolha(x) {
+  const { folhaLidos, folhaPastas } = await chrome.storage.local.get(['folhaLidos', 'folhaPastas']);
+  const out = {};
+  if (x.lidos) {
+    const d = new Date(), corte = new Date(d.getFullYear(), d.getMonth() - 24, 1).toISOString().slice(0, 7);
+    const l = Object.assign({}, folhaLidos, x.lidos);
+    Object.keys(l).forEach(k => { if (l[k] && l[k] < corte) delete l[k]; });
+    out.folhaLidos = l;
+  }
+  if (x.pastas) out.folhaPastas = Object.assign({}, folhaPastas, x.pastas);
+  if (x.estado) out.folhaEstado = { em: Date.now(), pendentes: Number(x.estado.pendentes) || 0 };           // só números: quando leu e quantos PDFs ficaram para o próximo envio
+  if (Object.keys(out).length) await chrome.storage.local.set(out);
+}
+
 /* ---------- Control Hub: envio completo (0.52.0) ----------
  * Listas inteiras, clientes de CND e NF-e, escritório, permissões, documentos, notícias e (só se a pessoa ligar e
  * confirmar) dados pessoais. Tudo é lido na hora pelo OC.hubExecutar e vai direto ao Hub em partes: nada fica na
@@ -1070,7 +1147,7 @@ async function hubSincronizar(manual) {
           const tabela = p.partes[i];
           const lote = { id: 'onvio-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), token: c.token, fonte: 'onvio', tipoDado: conj.tipoDado, categoria: conj.categoria, titulo: conj.titulo,
             extraidoEm: new Date().toISOString(), usuario, colunas: conj.colunas, tabela, nLinhas: tabela ? tabela.split('\n').length : 0, nLinhasTotal: p.nLinhasTotal, totalNaOrigem: conj.totalNaOrigem,
-            cortado: p.cortado, partes: p.partes.length, parte: i, ciclo, porTipo: conj.porTipo || {}, versaoExt: versao };
+            cortado: p.cortado, partes: p.partes.length, parte: i, ciclo, porTipo: conj.porTipo || {}, versaoExt: versao, acumular: conj.acumular || '' };
           let r = await entregarLote(lote);
           if (!r.ok && r.motivo === 'sem-resposta') r = await entregarLote(Object.assign({}, lote, { id: lote.id + 'r' }));
           // outro envio ao mesmo conjunto em andamento (outra pessoa com a extensão): espera a vez em vez de misturar as partes
@@ -1082,7 +1159,12 @@ async function hubSincronizar(manual) {
         status.pulso = Date.now();
         return { ok: true };
       };
-      const ctx = { snapshot, pausa: ms => new Promise(r => setTimeout(r, ms)), onItem: null };
+      const { folhaLidos, folhaPastas, folhaEstado } = await chrome.storage.local.get(['folhaLidos', 'folhaPastas', 'folhaEstado']);
+      const folhaRecente = folhaEstado && folhaEstado.em && Date.now() - folhaEstado.em < FOLHA_INTERVALO && !folhaEstado.pendentes;
+      const ctx = { snapshot, pausa: ms => new Promise(r => setTimeout(r, ms)), onItem: null, cancelado: () => hubCancelar,
+        // folha (0.68.0): no envio automático, a varredura das pastas é no máximo 1 vez por dia (os extratos saem uma vez por mês), salvo se ficou coisa para trás
+        textoPdf: (!manual && folhaRecente) ? null : textoDoPdf, folhaLidos: folhaLidos || {}, folhaPastas: folhaPastas || {},
+        guardarFolha: x => guardarFolha(x) };
       const res = await OC.hubExecutar(emSegundoPlano(leitor), cats, ctx, enviar, pr => { status.etapa = pr.etapa; status.feito = pr.feito; status.total = pr.total; grava(); });
       status.resultados = res.map(r => ({ id: r.id, rotulo: r.rotulo, categoria: r.categoria || '', ok: r.ok !== false, motivo: r.motivo || r.aviso || '', cortado: !!r.cortado, linhas: r.linhas || 0, partes: r.partes || 0 }));
       status.estado = status.resultados.every(r => r.ok) ? 'ok' : status.resultados.some(r => r.ok) ? 'parcial' : 'erro';
@@ -1092,6 +1174,7 @@ async function hubSincronizar(manual) {
       if (e && e.cliente) await bloquearVisaoCliente(e);
       status.estado = 'erro'; status.motivo = e && e.cliente ? 'visao-cliente' : String((e && e.message) || e).slice(0, 160);
     }
+    fecharOffscreen();
     status.etapa = ''; status.terminouEm = new Date().toISOString();
     await grava();
     return { ok: status.estado === 'ok' || status.estado === 'parcial', estado: status.estado, motivo: status.motivo || '' };

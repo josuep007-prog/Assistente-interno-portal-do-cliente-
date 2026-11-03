@@ -135,6 +135,26 @@
     box.textContent = r.ok ? r.linhas.join('\n') : 'Não foi possível sondar: ' + (r.erro || chrome.runtime.lastError || 'sem resposta');
   });
 
+  $('#testar-folha').addEventListener('click', async () => {
+    const box = $('#teste-leitura');
+    box.hidden = false; box.textContent = 'Procurando um Extrato Mensal no portal de documentos (só leitura)…';
+    const r = await new Promise(res => chrome.runtime.sendMessage({ cmd: 'testarFolha' }, x => res(x || {})));
+    box.textContent = r.ok ? r.linhas.join('\n') : 'Não foi possível testar: ' + (r.erro || chrome.runtime.lastError || 'sem resposta');
+  });
+  let folhaConfirma = 0;
+  $('#folha-de-novo').addEventListener('click', async () => {
+    const box = $('#teste-leitura'), b = $('#folha-de-novo');
+    if (Date.now() - folhaConfirma > 8000) {             // dois cliques: o primeiro explica
+      folhaConfirma = Date.now(); b.textContent = 'Clique de novo para confirmar';
+      box.hidden = false; box.textContent = 'No próximo envio ao Control Hub, os extratos dos últimos 12 meses de todas as empresas são lidos outra vez, um por vez (pode levar horas). Clique de novo para confirmar.';
+      setTimeout(() => { if (Date.now() - folhaConfirma >= 8000) b.textContent = 'Ler a folha de novo'; }, 8100);
+      return;
+    }
+    folhaConfirma = 0; b.textContent = 'Ler a folha de novo';
+    const r = await new Promise(res => chrome.runtime.sendMessage({ cmd: 'folhaDeNovo' }, x => res(x || {})));
+    box.textContent = r.ok ? 'Pronto: o próximo envio ao Control Hub lê a folha desde 12 meses atrás.' : 'Não foi possível: ' + (r.erro || 'sem resposta');
+  });
+
   /* ---------- aprender ações ---------- */
   const APRENDER_MAX_MS = 2 * 3600 * 1000;
   const ativo = a => !!(a && a.ligado && Date.now() - (a.desde || 0) < APRENDER_MAX_MS);
