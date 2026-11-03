@@ -1,9 +1,10 @@
 /* Configurações (rota #/config) · as regras em vigor em linguagem simples, com o efeito de cada ajuste na fila AGORA
  * (as pendências lidas são reavaliadas com os números novos antes de salvar). Abas: Prazos, Leitura e avisos,
- * Feriados, Palavras (como a extensão lê os textos) e Avançado (arquivo de regras, aprender ações, diagnóstico).
+ * Feriados, Palavras (como a extensão lê os textos) e Avançado (Control Hub, regras do escritório, testes de leitura, aprender ações e diagnóstico; views/avancado.js).
  * Grava só o que difere do padrão em vigor (__v: 2), como a página de opções. */
 import { estado, itens, enviar, aoMudar } from '../estado.js';
 import { $, $$, esc, toast } from '../util.js';
+import { avancado as avancadoTela } from './avancado.js';
 const OC = window.OC;
 
 const GRUPOS = [
@@ -76,7 +77,7 @@ export function render(el, ctx, params) {
     aba
   });
   if (aba !== 'prazos') rascunho = {};
-  ({ aparencia, prazos, leitura, feriados, palavras, avancado })[aba](el, ctx);
+  if (aba === 'avancado') avancadoTela(el, params); else ({ aparencia, prazos, leitura, feriados, palavras })[aba](el, ctx);
   // Salvou (aqui ou na aba Avançado) ou chegou leitura nova: redesenha, a não ser no meio de uma edição ou no Avançado
   if (desligar) desligar();
   desligar = aoMudar(quais => {
@@ -265,11 +266,4 @@ function palavras(el) {
     '</div></div>';
 }
 
-/* ---------- Avançado: a página de opções completa (arquivo de regras, aprender ações, diagnóstico) ---------- */
-// options.html precisa estar em web_accessible_resources: o app roda dentro da página do Onvio, e o Chrome bloqueia
-// páginas da extensão em quadros desse contexto se não estiverem liberadas. "Abrir em outra aba" fica de reserva.
-function avancado(el) {
-  el.innerHTML = '<div class="cfg-frame-barra"><span class="fraco">Arquivo de regras do escritório, aprender ações e diagnóstico.</span><button type="button" class="btn btn-sm" id="cfg-aba"><svg class="ic ic-sm"><use href="#i-link"/></svg> Abrir em outra aba</button></div>' +
-    '<iframe class="cfg-frame" src="../options.html" title="Configurações avançadas do Control Onvio"></iframe>';
-  el.querySelector('#cfg-aba').onclick = () => { try { chrome.runtime.openOptionsPage(); } catch (e) { window.open('../options.html', '_blank'); } };
-}
+/* ---------- Avançado: tela própria (views/avancado.js, 0.69.0); a página de opções continua abrindo à parte ---------- */

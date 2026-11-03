@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.68.1)
+# Control Onvio · ControlTax (v0.69.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,17 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.69.0 (Configurações → Avançado refeito, pedido do Josué em 03/11/2026: "tá mt feio e embolado, pouco dinâmico e intuitivo")
+- **A aba Avançado é uma tela do app**, com o mesmo visual das outras abas, nos dois estilos e nos dois temas. Antes era a página de opções inteira num quadro, repetindo prazos, avisos e feriados.
+- **Cinco partes, uma de cada vez**, escolhidas nos cartões do topo. Cada cartão já mostra o estado com um ponto colorido:
+  - **Control Hub** (conectado / Hub fechado / falta permitir): código e Conectar, o resumo das pendentes, o envio completo (automático e a cada quantas horas, "Enviar tudo agora" com barra de andamento), os conjuntos em cartões marcáveis (dados pessoais continuam pedindo confirmação) e o resultado do último envio, erros primeiro e a folha como nota.
+  - **Regras do escritório** (embutidas / arquivo vN): o arquivo em uso, "Salvar e atualizar", "Usar o arquivo do portal do cliente" e "Usar só as embutidas".
+  - **Testes de leitura**: testar a leitura, sondar a lista de empregados, testar a folha e ler a folha de novo, com o resultado num quadro com "Copiar". "Ler a folha de novo" pede um segundo clique.
+  - **Aprender ações** (ligado · N min): chave liga/desliga, quantas chamadas foram anotadas e o roteiro recolhido.
+  - **Diagnóstico** (sem erros / N erros): números em destaque e o texto para copiar.
+- A parte escolhida fica no endereço (`#/config?aba=avancado&sec=hub|regras|testes|aprender|diag`), e o estado se atualiza sozinho quando o service worker muda algo, por exemplo durante o envio ao Hub.
+- A página de opções continua existindo para abrir à parte ("Abrir as configurações numa aba à parte"). A lógica comum às duas fica em `opcoes-comum.js`. A `options.html` saiu dos recursos liberados para a página do Onvio, porque não abre mais em quadro.
 
 ## Novidades da v0.68.1 (a leitura da folha sempre diz o que fez, pedido do Josué em 03/11/2026: "acho que essa nova leitura não tá rodando")
 - **A folha aparece sempre no resultado do envio completo** (Configurações → Control Hub). Antes, quando não havia extrato novo, ou quando nenhum PDF pôde ser lido, ela sumia da lista e parecia não rodar. Agora sai uma linha com o que fez, por exemplo "12 empresas com extrato, 30 PDFs lidos, 4 com contribuinte", "nenhum extrato novo desde a última leitura" ou, em vermelho, "nenhum Extrato Mensal achado na pasta Pessoal de N empresas" e "PDFs não puderam ser lidos: motivo". No envio automático em que ela não roda (no máximo uma vez por dia), a linha diz quando foi a última e que "Enviar agora" lê na hora. Nunca vai nome de empresa nesse resumo (`OC.resumoFolha`).
