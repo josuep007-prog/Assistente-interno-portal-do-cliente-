@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.68.0)
+# Control Onvio · ControlTax (v0.68.1)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,12 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.68.1 (a leitura da folha sempre diz o que fez, pedido do Josué em 03/11/2026: "acho que essa nova leitura não tá rodando")
+- **A folha aparece sempre no resultado do envio completo** (Configurações → Control Hub). Antes, quando não havia extrato novo, ou quando nenhum PDF pôde ser lido, ela sumia da lista e parecia não rodar. Agora sai uma linha com o que fez, por exemplo "12 empresas com extrato, 30 PDFs lidos, 4 com contribuinte", "nenhum extrato novo desde a última leitura" ou, em vermelho, "nenhum Extrato Mensal achado na pasta Pessoal de N empresas" e "PDFs não puderam ser lidos: motivo". No envio automático em que ela não roda (no máximo uma vez por dia), a linha diz quando foi a última e que "Enviar agora" lê na hora. Nunca vai nome de empresa nesse resumo (`OC.resumoFolha`).
+- **Sem leitura boa, a hora não é marcada:** se nada pôde ser lido, o próximo envio automático tenta de novo, em vez de esperar 20 horas.
+- **Empresa sem extrato é procurada de novo no dia seguinte** (antes, 7 dias). O caminho das pastas guardado por versões anteriores (antes de tentar o id do contato das solicitações) é refeito uma vez para todas as empresas.
+- **"Ler a folha de novo"** também esquece o caminho das pastas de cada empresa.
 
 ## Novidades da v0.68.0 (folha do portal de documentos: contribuintes por mês)
 
