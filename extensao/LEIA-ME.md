@@ -45,6 +45,11 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
 
+## Novidades da v0.67.0 (contribuintes no Hub)
+
+- **Os contribuintes (sócios) agora vão ao Hub** junto com os funcionários, no conjunto `pessoais-empregados`. A extensão lia a lista de cada empresa só com `eprType=EMPLOYEE&eprType=INTERN`, o que deixava os sócios (`PARTNER`) de fora (mapeado em 27/10/2026: a YB tem 45 na lista, 44 empregados e 1 sócio). Agora lê `EMPLOYEE`, `INTERN` e `PARTNER`; a coluna **Vínculo** diz quem é quem (`EMPLOYEE`, `INTERN` ou `PARTNER`). Se o Onvio recusar os três juntos, a extensão lê os de antes e os sócios numa chamada à parte e junta sem repetir.
+- **A conferir no Hub:** quem tem Vínculo `PARTNER` deve ser tratado como contribuinte (não como funcionário).
+
 ## Novidades da v0.66.0 (solicitação aberta sem gaveta, escolha do Josué em 03/11/2026)
 
 - **Conversa em cima, resposta embaixo, dados à direita, tudo sempre à vista.** Saiu a gaveta "Conversa" que abria ao passar o mouse (o que mais incomodava): agora nada abre ou fecha sozinho. A solicitação abre direto na conversa (rolada até o último trâmite), com a caixa de resposta embaixo e, numa coluna à direita, "Todos os dados" em cartões (rolagem própria) e os **Anexos fixos no pé**, com "Baixar". A janela não rola: cada bloco rola por dentro.

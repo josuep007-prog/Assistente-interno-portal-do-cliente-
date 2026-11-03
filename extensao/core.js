@@ -3121,7 +3121,9 @@
   const ehEscritorioProprio = (...nomes) => nomes.some(n => { const t = semAcento(n).trim(); return !!t && ESCRITORIO_PROPRIO.some(r => r.test(t)); });
   const semProprio = (itens, nomes) => { const ficam = itens.filter(r => !ehEscritorioProprio(...nomes(r))); return { itens: ficam, fora: itens.length - ficam.length }; };
   const COLUNAS_EMPREGADOS = ['Id do cliente', 'Código do cliente', 'Cliente', 'Id', 'Nome', 'CPF', 'Admissão', 'Situação', 'Sexo', 'Cargo (código)', 'Carga horária', 'Código do empregado', 'Vínculo', 'Criado no Onvio em'];
-  const URL_EMPREGADOS = id => API + 'br-payroll-sr/v1/clients/' + encodeURIComponent(id) + '/employees?eprType=EMPLOYEE&eprType=INTERN&expand=clientEmployeeRelationshipExpanded';
+  // 0.67.0: os contribuintes (sócios, eprType PARTNER, mapeado em 27/10/2026) também vão; antes só EMPLOYEE e INTERN e o Hub não os recebia.
+  // Se o Onvio recusar os três juntos, lê os de antes e os sócios em separado (e junta pelo id).
+  const URL_EMPREGADOS = (id, tipos) => API + 'br-payroll-sr/v1/clients/' + encodeURIComponent(id) + '/employees?' + (tipos || ['EMPLOYEE', 'INTERN', 'PARTNER']).map(t => 'eprType=' + t).join('&') + '&expand=clientEmployeeRelationshipExpanded';
   async function lerClientesFolha(fetcher, pausa) {
     const por = new Map();
     for (let pagina = 1; pagina <= 60; pagina++) {
@@ -3142,11 +3144,17 @@
     const todos = [...clientes.values()].filter(c => !ehEscritorioProprio(c.nome)), lidos = todos.slice(0, HUB_CLIENTES_MAX), linhas = []; let falhas = 0, suspeitas = 0;
     for (const c of lidos) {
       try {
-        let resp;
-        try { resp = await fetcher(URL_EMPREGADOS(c.id)); }
-        catch (e1) { if (e1 && /429/.test(String(e1.message || '')) && ctx.pausa) { await ctx.pausa(5000); resp = await fetcher(URL_EMPREGADOS(c.id)); } else throw e1; }       // limite de chamadas: espera e tenta uma vez
-        leituraBoa();
-        const lista = listaDe(resp); if ([50, 100, 200, 250, 500, 1000].includes(lista.length)) suspeitas++;          // tamanho redondo: pode ser uma página cortada pelo Onvio
+        const ler = async u => { try { return await fetcher(u); } catch (e1) { if (e1 && /429/.test(String(e1.message || '')) && ctx.pausa) { await ctx.pausa(5000); return fetcher(u); } throw e1; } };       // limite de chamadas: espera e tenta uma vez
+        let lista;
+        try { lista = listaDe(await ler(URL_EMPREGADOS(c.id))); }
+        catch (e2) {
+          if ((e2 && e2.auth) || /\b(401|403|429)\b/.test(String(e2 && e2.message || ''))) throw e2;          // recusa de acesso não é o formato: não tenta de novo
+          lista = listaDe(await ler(URL_EMPREGADOS(c.id, ['EMPLOYEE', 'INTERN'])));
+          let socios = []; try { socios = listaDe(await ler(URL_EMPREGADOS(c.id, ['PARTNER']))); } catch (e3) { recusaIsolada(e3, 'clients/' + c.id + '/employees (sócios)'); }
+          const ja = new Set(lista.map(x => x && x.id));
+          lista = lista.concat(socios.filter(x => x && !ja.has(x.id)));
+        }
+        leituraBoa(); if ([50, 100, 200, 250, 500, 1000].includes(lista.length)) suspeitas++;          // tamanho redondo: pode ser uma página cortada pelo Onvio
         lista.forEach(x => {
           if (!x || typeof x !== 'object') return;
           linhas.push(linhaTexto([c.id, c.codigo, c.nome, x.id, x.name, x.cpf, dataIso(x.hireDate), x.status, x.gender, x.jobPosition, x.employeeWorkload, x.integrationCode, (x.clientEmployeeRelationshipExpanded || {}).eprType, dataHora(x.created)], 120));
