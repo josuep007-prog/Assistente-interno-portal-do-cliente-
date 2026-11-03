@@ -1293,7 +1293,6 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .cmp-vez.cli{background:color-mix(in srgb, var(--status-warn) 16%, transparent); color:var(--status-warn)}
 /* o texto e a barra de ferramentas formam um cartão só */
 .cmp-caixa{border:1px solid var(--rule-strong); border-radius:var(--r); background:var(--surface); transition:border-color .15s, box-shadow .15s}
-.g-gaveta-in .cmp{padding:8px 12px 10px; gap:6px; max-height:62%}
 .cmp-caixa:focus-within{border-color:var(--blue-deep); box-shadow:0 0 0 3px var(--blue-pale)}
 .cmp-fer-b{display:inline-flex; align-items:center; gap:6px; padding:4px 9px; border:0; border-radius:3px; background:none; color:var(--ink-2); font:600 12px "IBM Plex Sans",sans-serif; cursor:pointer; transition:background .15s, color .15s}
 .cmp-fer-b:hover{background:var(--surface-3); color:var(--blue-deep)}
@@ -1547,20 +1546,24 @@ body.setor-fora .trilho [data-rota="equipe"], body.setor-fora .trilho [data-rota
 .hj-prev-rola .hj-prev thead th{position:sticky; top:0; z-index:1; background:var(--surface)}
 @media (max-height:820px){ #hj-sug .sg-lista{max-height:min(360px, 50vh)} .dist{max-height:min(300px, 46vh)} .hj-prev-rola{max-height:min(300px, 46vh)} }
 
-/* 0.62.0 · solicitação aberta: abre nos dados (largura total, cartões lado a lado, nada cortado). Na borda direita fica a barra "Conversa";
-   ao passar o mouse abre a gaveta com os trâmites e a caixa de resposta (pedido do Josué em 29/10/2026). Fixada, os dados abrem espaço. */
-.dlg-cols.dlg-v3{position:relative; display:flex; min-height:0; overflow:hidden}
-.dlg-dados{flex:1 1 auto; min-width:0; min-height:0; overflow:hidden; display:flex; flex-direction:column; gap:10px; padding:12px 22px 14px 22px; margin-right:40px; background:var(--surface-2)}
-.dlg-v3.fixa .dlg-dados{margin-right:0}
-.dlg-dados .dlg-destaques{flex:none; display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); gap:8px; padding:0}
+/* 0.66.0 · solicitação aberta (pedido do Josué em 03/11/2026): sem gaveta e nada que abra com o mouse. À esquerda a conversa em cima
+   e a caixa de resposta embaixo; à direita os dados (rolagem própria) e, no pé, os anexos. A janela não rola, só cada bloco. */
+.dlg-cols.dlg-v4{display:grid; grid-template-columns:minmax(0,1fr) minmax(300px,360px); min-height:0; overflow:hidden}
+.dlg-conv{display:flex; flex-direction:column; min-width:0; min-height:0; background:var(--surface)}
+.dlg-conv > #g-corpo{flex:1 1 0; min-height:0; overflow-y:auto; padding:14px 22px}
+.dlg-conv > .cmp{flex:0 0 clamp(170px, 34%, 46%); max-height:none; min-height:0; overflow-y:auto; padding:10px 22px 12px; gap:8px; border-top:1px solid var(--rule-strong); transition:flex-basis .15s}
+.dlg-conv > .cmp:focus-within, .dlg-conv > .cmp.aberto, .dlg-conv > .cmp.revisando{flex-basis:clamp(220px, 46%, 55%)}
+.dlg-conv > .cmp.cmp-nota, .dlg-conv > .cmp.cmp-pend{flex-basis:auto}
+.dlg-conv > .cmp .cmp-caixa{position:relative; flex:1 1 auto; min-height:110px; display:flex; flex-direction:column}
+/* painel da direita */
+.dlg-dados{min-width:0; min-height:0; overflow:hidden; display:flex; flex-direction:column; gap:10px; padding:12px 14px 14px; border-left:1px solid var(--rule); background:var(--surface-2)}
+.dlg-dados > .vazio{padding:20px 4px}
+.dlg-dados > .dlg-destaques, .dlg-dados > .pn-abrir{display:none}
 .dlg-dados .dq{min-width:0; max-width:none}
 .dlg-dados .dq b{white-space:normal; overflow-wrap:anywhere}
-/* 0.65.0: dados e anexos sempre à vista; a página não rola, cada bloco rola por dentro quando não cabe */
-.pn-fluxo{flex:1 1 0; min-height:0; display:grid; grid-template-columns:minmax(0,1fr); gap:12px}
-.pn-fluxo.com-anexos{grid-template-columns:minmax(0,1fr) minmax(250px, 300px)}
-.pn-dados{min-height:0; overflow-y:auto; column-width:300px; column-gap:12px; padding:1px; outline-offset:-2px}
-.pn-dados > .vazio{column-span:all}
-.pn-anex{min-height:0; display:flex; flex-direction:column; border:1px solid var(--rule); border-radius:var(--r); background:var(--surface)}
+.pn-fluxo{flex:1 1 0; min-height:0; display:flex; flex-direction:column; gap:10px}
+.pn-dados{flex:1 1 0; min-height:0; overflow-y:auto; padding:1px; outline-offset:-2px}
+.pn-anex{flex:0 1 auto; min-height:96px; max-height:40%; display:flex; flex-direction:column; border:1px solid var(--rule); border-radius:var(--r); background:var(--surface)}
 .pn-anex-cab{flex:none; display:flex; align-items:center; gap:8px; padding:8px 10px 8px 12px; border-bottom:1px solid var(--rule); font:600 13px "IBM Plex Sans",sans-serif}
 .pn-anex-cab .btn{margin-left:auto}
 .pn-n{font:600 12px "IBM Plex Mono",monospace; color:var(--ink-2)}
@@ -1569,95 +1572,54 @@ body.setor-fora .trilho [data-rota="equipe"], body.setor-fora .trilho [data-rota
 .pn-anex-lista li + li{border-top:1px solid var(--rule)}
 .pn-anex-lista .ax-nome{min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
 .pn-anex-mais{flex:none; margin:0; padding:6px 12px 8px; border-top:1px solid var(--rule); font-size:12px}
-#g-painel .dados-g{max-width:none; margin:0 0 10px; padding:10px 12px 12px; border:1px solid var(--rule); border-radius:var(--r); background:var(--surface); break-inside:avoid}
+#g-painel .dados-g{max-width:none; margin:0 0 10px; padding:10px 12px 12px; border:1px solid var(--rule); border-radius:var(--r); background:var(--surface)}
+#g-painel .dados-g:last-child{margin-bottom:0}
 #g-painel .dados-cab{margin:0 0 8px}
-#g-painel .dados-g .campos{grid-template-columns:repeat(auto-fill, minmax(118px, 1fr)); gap:8px 12px}
+#g-painel .dados-g .campos{grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px 12px}
 #g-painel .dados-g .campo .k{font-size:12px; line-height:1.25}
 #g-painel .dados-g .campo .v{font-size:13px; line-height:1.3; overflow-wrap:anywhere}
 #g-painel .dados-g .texto-longo{max-height:6.5em; overflow-y:auto}
 #g-painel .obs-lista{margin:8px 0 12px}
 .tr-sit-pill{font:600 12px "IBM Plex Sans",sans-serif; padding:1px 7px; border-radius:3px; background:var(--surface-3); color:var(--ink-2); white-space:nowrap}
 .tr-item.esc .tr-sit-pill{background:color-mix(in srgb, var(--blue-deep) 14%, var(--surface))}
-
-/* gaveta da direita: a barra "Conversa" fica na borda; a gaveta desliza por cima dos dados (ou ao lado, fixada) */
-.g-gaveta{--gav:min(94vw, max(540px, 88vw)); position:absolute; top:0; right:0; bottom:0; z-index:5; display:flex; width:calc(var(--gav) + 40px); transform:translateX(var(--gav)); transition:transform .16s ease; pointer-events:none}
-.g-gaveta.aberta{transform:none; pointer-events:auto}
-.g-gaveta > *{pointer-events:auto}
-.g-gaveta.aberta .g-gaveta-in{box-shadow:-12px 0 28px -14px rgba(16,24,32,.35)}
-.g-gaveta.fixa{--gav:min(80vw, max(880px, 62vw)); position:relative; flex:none; transform:none; box-shadow:none}
-.g-gaveta.fixa .g-gaveta-in{box-shadow:none}
-.g-barra{flex:none; width:40px; display:flex; flex-direction:column; align-items:center; gap:8px; padding:12px 0; border:0; border-left:3px solid var(--blue-deep); background:color-mix(in srgb, var(--blue-deep) 9%, var(--surface)); color:var(--blue-deep); cursor:pointer; font:600 12px "IBM Plex Sans",sans-serif}
-.g-barra:hover, .g-gaveta.aberta .g-barra{background:color-mix(in srgb, var(--blue-deep) 18%, var(--surface))}
-.g-barra:focus-visible{outline:2px solid var(--blue-mid); outline-offset:-2px}
-.g-barra-tx{writing-mode:vertical-rl; transform:rotate(180deg); letter-spacing:.06em; text-transform:uppercase; font-size:12px}
-.g-barra-n{min-width:20px; padding:1px 5px; border-radius:10px; background:var(--surface-3); color:var(--ink); font:600 12px "IBM Plex Mono",monospace; text-align:center}
-.g-barra-pt{width:9px; height:9px; border-radius:50%; background:var(--brand-red); animation:gBarraPulso 2.2s ease-out 3}
-@keyframes gBarraPulso{0%{box-shadow:0 0 0 0 color-mix(in srgb, var(--brand-red) 55%, transparent)} 70%,100%{box-shadow:0 0 0 8px transparent}}
-.g-gaveta:not(.aberta) .g-barra-tx{animation:gBarraTx 2.2s ease-in-out 3}
-@keyframes gBarraTx{50%{opacity:.55}}
-.g-barra-rasc{width:9px; height:9px; border-radius:50%; border:2px solid var(--blue-deep); box-sizing:border-box}
-.g-gaveta-in{flex:1 1 auto; min-width:0; display:flex; flex-direction:column; border-left:1px solid var(--rule-strong); background:var(--surface)}
-.g-gaveta-cab{display:flex; align-items:center; gap:8px; padding:10px 14px; border-bottom:1px solid var(--rule); background:var(--surface-2)}
-.g-gaveta-cab b{font:700 13.5px "Archivo",sans-serif}
-.g-gaveta-n{padding:1px 7px; border-radius:10px; background:var(--surface-3); font:600 12px "IBM Plex Mono",monospace; color:var(--ink-2)}
-.g-gaveta-cab .spacer{flex:1}
-.g-gaveta-cab .icon-btn{width:28px; height:28px; color:var(--ink-3)}
-.g-gaveta-cab .icon-btn:hover{background:var(--surface-3); color:var(--ink)}
-.g-pin[aria-pressed="true"]{background:var(--blue-pale); color:var(--blue-deep)}
-.g-gaveta-in .dlg-body{padding:14px 16px 16px}
-/* 0.65.0 (pedido do Josué em 29/10/2026): trâmites ocupam mais da tela e a caixa de resposta fica À DIREITA da conversa, com as situações
-   do trâmite sempre à vista (sem lista escondida). Só em janela larga; abaixo de 1000 px continua a gaveta de baixo, com a lista suspensa. */
-.g-cols{flex:1 1 0; min-height:0; display:flex; flex-direction:column}
-@media (min-width:1000px){
-  .g-cols{flex-direction:row}
-  .g-cols > .dlg-body{flex:1 1 0; min-width:0}
-  .g-gaveta-in .g-cols > .cmp{flex:none; width:clamp(340px, 34%, 440px); max-height:none; height:auto; padding:12px 14px 14px; gap:8px; border-top:0; border-left:1px solid var(--rule); box-shadow:none; overflow-y:auto}
-  .g-cols > .cmp .cmp-caixa{display:flex; flex-direction:column; flex:1 0 auto}
-  .g-cols > .cmp .cmp-arqs{max-height:150px; overflow-y:auto}
-  .g-cols > .cmp .cmp-chat{flex:1 0 auto; flex-wrap:wrap; align-content:flex-start; gap:6px; padding:8px}
-  .g-cols > .cmp .cmp-chat .cmp-ico{order:1}
-  .g-cols > .cmp .cmp-chat textarea{order:2; flex:1 1 100%; min-height:150px; max-height:none; height:auto}
-  .g-cols > .cmp .cmp-envia{display:contents}
-  .g-cols > .cmp .cmp-envia .cmp-seg, .g-cols > .cmp .cmp-envia .cmp-seg[hidden]{order:3; position:static; display:flex; flex-direction:column; width:100%; min-width:0; max-width:none; box-shadow:none; border:1px solid var(--rule-strong); border-radius:var(--r); background:var(--surface); overflow:hidden}
-  .g-cols > .cmp .cmp-envia .cmp-int{width:100%; border-bottom:1px solid var(--rule)}
-  .g-cols > .cmp .cmp-envia .cmp-int:last-child{border-bottom:0}
-  .g-cols > .cmp .cmp-envia .cmp-enviar{order:4; flex:1 1 100%; justify-content:center; border-radius:var(--r)}
-  .g-cols > .cmp .cmp-envia .cmp-split{display:none}
+/* tela baixa e larga: cabeçalho numa linha e os botões do rodapé no topo (posicionarAcoes em detalhe.js) */
+.dlg-actions.no-topo{flex:none; order:0; padding:0; border:0; background:none; box-shadow:none; gap:6px; align-self:flex-start}
+.dlg-actions.no-topo .spacer{display:none}
+@media (max-height:720px) and (min-width:1000px){
+  #gaveta .dlg-head{padding-top:10px; padding-bottom:4px; align-items:center}
+  #gaveta .dlg-head .tt{display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 12px; min-width:0}
+  #gaveta .dlg-head h2{order:-1; margin:0; font-size:17px}
+  #gaveta .dlg-head .dlg-l3, #gaveta .dlg-head .motivos{margin:0}
+  #gaveta .dp-last{padding-top:2px; padding-bottom:6px}
+  .dlg-conv > #g-corpo{padding:10px 22px}
 }
-/* janela estreita: a barra vira uma aba embaixo e a gaveta sobe por cima dos dados (só ao clicar) */
+/* janela estreita: os destaques numa faixa no topo; "Dados e anexos" abre a lista por cima da conversa */
 @media (max-width:999px){
-  .g-barra{border-left:0; border-top:3px solid var(--blue-deep)}
-  .dlg-dados{margin-right:0; padding-bottom:50px}
-  .pn-fluxo.com-anexos{grid-template-columns:minmax(0,1fr); grid-template-rows:minmax(0,1fr) auto}
-  .pn-anex{flex-direction:row; align-items:center}
-  .pn-anex-cab{border-bottom:0; border-right:1px solid var(--rule)}
-  .pn-anex-lista{display:flex; gap:6px; overflow:auto hidden; padding:6px 8px}
-  .pn-anex-lista li{flex:none; max-width:220px; border:1px solid var(--rule); border-radius:3px}
-  .pn-anex-lista li + li{border-top:1px solid var(--rule)}
-  .pn-anex-mais{border-top:0; border-left:1px solid var(--rule)}
-  .g-gaveta{--gav:min(78%, 640px); top:auto; left:0; right:0; bottom:0; width:auto; height:var(--gav); flex-direction:column-reverse; transform:translateY(calc(100% - 40px))}
-  .g-barra{width:auto; height:40px; flex-direction:row; justify-content:center; padding:0 12px}
-  .g-barra-tx{writing-mode:horizontal-tb; transform:none}
-  .g-gaveta-in{border-left:0}
-  .g-pin{display:none}
+  .dlg-cols.dlg-v4{position:relative; grid-template-columns:minmax(0,1fr); grid-template-rows:auto minmax(0,1fr)}
+  .dlg-dados{order:-1; flex-direction:row; flex-wrap:wrap; align-items:center; gap:8px 12px; padding:8px 16px; border-left:0; border-bottom:1px solid var(--rule); overflow:visible}
+  .dlg-dados > .dlg-destaques{display:flex; flex:1 1 0; min-width:0; gap:8px; overflow:hidden}
+  .dlg-dados > .dlg-destaques .dq{flex:none; max-width:240px}
+  .dlg-dados > .pn-abrir{display:inline-flex; flex:none; margin-left:auto}
+  .dlg-dados .pn-abrir .ic{transition:transform .15s}
+  .dlg-dados.pn-aberto .pn-abrir .ic{transform:rotate(180deg)}
+  .dlg-dados > .pn-fluxo{display:none; position:absolute; z-index:6; left:0; right:0; top:100%; height:min(70vh, 520px); padding:12px 16px 14px; background:var(--surface-2); border-bottom:1px solid var(--rule-strong); box-shadow:0 14px 28px -16px rgba(16,24,32,.45)}
+  .dlg-dados.pn-aberto > .pn-fluxo{display:flex}
+  .dlg-dados{position:relative}
+  .dlg-conv > #g-corpo{padding:12px 16px}
+  .dlg-conv > .cmp{padding:8px 16px 10px}
 }
-@media (prefers-reduced-motion: reduce){ .g-gaveta{transition:none} .g-barra-pt, .g-gaveta:not(.aberta) .g-barra-tx{animation:none} }
 
-/* caixa de resposta compacta, estilo chat (0.62.0): ícones, texto que cresce e o botão "Enviar como ▾" */
-.cmp-chat{display:flex; align-items:flex-end; gap:4px; padding:6px}
+/* caixa de resposta (0.66.0): o texto ocupa a caixa; embaixo Anexar, Mensagem pronta, as situações do trâmite e Enviar resposta */
+.cmp-chat{flex:1 1 auto; min-height:0; display:flex; flex-direction:column; gap:6px; padding:6px}
 .cmp-ico{flex:none; width:32px; height:34px; padding:0; justify-content:center}
 .cmp-ico .ic{width:17px; height:17px}
-.cmp-chat textarea, .cmp-chat textarea:focus{flex:1 1 auto; min-width:0; min-height:40px; max-height:220px; resize:none; border:0; outline:0; box-shadow:none; background:transparent; font:inherit; font-size:13.5px; line-height:1.5; color:var(--ink); padding:8px 6px}
-.cmp-envia{position:relative; flex:none; display:flex; align-items:stretch}
-.cmp-enviar{border-radius:var(--r) 0 0 var(--r); white-space:nowrap}
-.cmp-enviar b{font-weight:700}
-.cmp-split{width:30px; padding:0; justify-content:center; border-radius:0 var(--r) var(--r) 0; border-left:1px solid rgba(255,255,255,.35)}
-.cmp-split.sug{box-shadow:inset 0 0 0 2px var(--blue-pale)}
-.cmp-envia .cmp-seg{position:fixed; z-index:60; display:flex; flex-direction:column; width:max-content; min-width:230px; max-width:min(340px, 80vw); border:1px solid var(--rule-strong); box-shadow:0 10px 28px rgba(16,24,32,.25)}
-.cmp-envia .cmp-seg[hidden]{display:none}
-.cmp-envia .cmp-int{border-right:0; border-bottom:1px solid var(--rule); padding:9px 14px; justify-content:flex-start; text-align:left}
-.cmp-envia .cmp-int:last-child{border-bottom:0}
-.cmp-envia .cmp-int.on{box-shadow:inset 3px 0 0 var(--c)}
+.cmp-chat textarea, .cmp-chat textarea:focus{flex:1 1 auto; min-width:0; min-height:56px; resize:none; border:0; outline:0; box-shadow:none; background:transparent; font:inherit; font-size:13.5px; line-height:1.5; color:var(--ink); padding:4px 6px; overflow-y:auto}
+.cmp-envia{flex:none; display:flex; align-items:center; flex-wrap:wrap; gap:6px}
+.cmp-envia .spacer{flex:1 1 0}
+.cmp-envia .cmp-seg{flex:none}
+.cmp-envia .cmp-int{padding:7px 12px}
+.cmp-envia .cmp-int .s{display:none}          /* o efeito (aguarda o cliente, encerra) fica na dica do botão e na linha de baixo */
+.cmp-enviar{flex:none; white-space:nowrap}
 .cmp-rodape{display:flex; align-items:center; gap:2px; flex-wrap:wrap}
 .cmp-rodape .cmp-efeito{flex:1 1 220px; min-width:0}
 .cmp-rodape .cmp-fer-b{flex:none}

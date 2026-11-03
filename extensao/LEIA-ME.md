@@ -45,6 +45,14 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
 
+## Novidades da v0.66.0 (solicitação aberta sem gaveta, escolha do Josué em 03/11/2026)
+
+- **Conversa em cima, resposta embaixo, dados à direita, tudo sempre à vista.** Saiu a gaveta "Conversa" que abria ao passar o mouse (o que mais incomodava): agora nada abre ou fecha sozinho. A solicitação abre direto na conversa (rolada até o último trâmite), com a caixa de resposta embaixo e, numa coluna à direita, "Todos os dados" em cartões (rolagem própria) e os **Anexos fixos no pé**, com "Baixar". A janela não rola: cada bloco rola por dentro.
+- **Caixa de resposta:** o texto ocupa a caixa e, na linha de baixo, ficam Anexar, Mensagem pronta, **as situações do trâmite em botões** (Respondido, Em análise, Em análise interna, Concluído; o efeito de cada uma na dica) e **Enviar resposta ›**. Sem a lista suspensa "Enviar como ▾". A caixa começa com ~34% da altura e cresce para ~46% ao clicar para escrever (ou com rascunho/revisão).
+- **Telas pequenas** (notebook, conferido em 1366×650 e 1280×600): com até 720 px de altura o cabeçalho vira uma linha e os botões do rodapé ("Abrir no Onvio", "Baixar anexos", "Mais ações") sobem para o topo, ao lado de Lembretes. Em janela estreita (< 1000 px) os destaques viram uma faixa no topo, com o botão **"Dados e N anexos"** que abre a lista completa por cima da conversa.
+- Os destaques continuam marcados nos cartões de dados (fundo azul); a faixa de destaques só aparece na janela estreita.
+- A preferência "fixar a gaveta" guardada no navegador é apagada sozinha.
+
 ## Novidades da v0.65.0 (dados e anexos à vista; conversa maior com a resposta ao lado, pedidos do Josué em 29/10/2026)
 
 - **A solicitação abre sem rolar a página:** em cima os campos em destaque; embaixo, os **dados em colunas compactas** (cada grupo num cartão, 2 a 4 colunas conforme a largura) e, **ao lado, o painel de Anexos** com a lista inteira (tipo, nome, "Baixar"). Antes os Anexos ficavam depois dos dados e exigiam rolar. Quando algo não cabe, rola o próprio bloco por dentro (dados ou lista de anexos), nunca a página; textos longos (Descrição) viram caixa com rolagem. Em janela estreita (< 1000 px) os anexos viram uma faixa de uma linha embaixo dos dados. "Todos os dados" deixou de ser uma seção que abre e fecha: os dados estão sempre à vista.

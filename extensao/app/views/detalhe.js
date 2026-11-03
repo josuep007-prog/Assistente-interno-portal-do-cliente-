@@ -11,13 +11,11 @@ import { abrirAnexos, anexosAbertos, contarAnexos, tipoArquivo } from './anexos-
 const OC = window.OC;
 
 let atual = null;        // { type, num }
-let aba = 'tramites';     // 'tramites' (a conversa) ou 'acao' (formulário de uma ação no lugar da conversa), dentro da gaveta da direita
-const LARGA = 1000;      // a partir desta largura a gaveta abre ao passar o mouse; abaixo, só ao clicar (vira uma aba embaixo)
-const GAV_FIXA = 'controlonvio-gaveta-fixa';
-let gavetaAberta = false;      // aberta pelo mouse, pelo clique na barra, pela tecla R ou por uma resposta/ação preparada (vale nesta visita)
-let gavetaFixa = (() => { try { return localStorage.getItem(GAV_FIXA) === '1'; } catch (e) { return false; } })();   // fixada: fica aberta e os dados abrem espaço
+let aba = 'tramites';     // 'tramites' (a conversa) ou 'acao' (formulário de uma ação no lugar da conversa)
 let lembAberto = false;        // o menu "Lembretes" do topo está aberto (continua aberto ao salvar um lembrete)
-let saiTimer = null, fechouEu = false;   // fechouEu: a pessoa fechou a gaveta de propósito (vale até ela abrir de novo)
+let dadosAbertos = false;      // janela estreita: a lista de dados e anexos aberta por cima da conversa
+try { localStorage.removeItem('controlonvio-gaveta-fixa'); } catch (e) {}      // a gaveta (0.62.0 a 0.65.0) saiu na 0.66.0
+const CURTA = '(max-height: 720px) and (min-width: 1000px)';     // tela baixa: os botões do rodapé sobem para o cabeçalho
 let lista = null;        // lista de onde a pessoa abriu (para anterior/próxima)
 let ultimo = null;       // { i, r, erro, carregando } para redesenhar ao trocar de aba ou ao mudar lembretes
 let rolada = null;       // solicitação cuja conversa já foi levada ao fim (uma vez por abertura)
@@ -27,7 +25,7 @@ export const detalheAberto = () => !$('#gaveta').hidden;
 export function fecharDetalhe() {
   const estava = detalheAberto();
   avisarAnexos();
-  cancelarPendente(); fecharAcao(); gavetaAberta = false;
+  cancelarPendente(); fecharAcao(); dadosAbertos = false;
   ultimaChave = ''; ultimaAba = '';
   $('#gaveta').hidden = true; $('#fundo').hidden = true;
   $('#gaveta').innerHTML = '';
@@ -48,11 +46,11 @@ export async function abrirDetalhe(ref, fonte, opcoes) {
   if (fonte !== undefined) lista = Array.isArray(fonte) && fonte.length > 1 ? fonte : null;
   const mesma = !!atual && atual.type === ref.type && atual.num === String(ref.num);
   if (!mesma) avisarAnexos();
-  if (!mesma) { cancelarPendente(); fecharAcao(); gavetaAberta = false; fechouEu = false; if (aba === 'acao') aba = 'tramites'; }
+  if (!mesma) { cancelarPendente(); fecharAcao(); dadosAbertos = false; if (aba === 'acao') aba = 'tramites'; }
   atual = { type: ref.type, num: String(ref.num) };
   if (aba === 'acao' && !ultimo) aba = 'tramites';
-  if (opcoes && opcoes.acao === 'tramite') { prepararResposta({ type: ref.type, num: String(ref.num) }, opcoes.preset); aba = 'tramites'; gavetaAberta = true; }
-  else if (opcoes && opcoes.acao) { novaAcao(opcoes.acao, opcoes.preset); aba = 'acao'; gavetaAberta = true; }
+  if (opcoes && opcoes.acao === 'tramite') { prepararResposta({ type: ref.type, num: String(ref.num) }, opcoes.preset); aba = 'tramites'; }
+  else if (opcoes && opcoes.acao) { novaAcao(opcoes.acao, opcoes.preset); aba = 'acao'; }
   const doResumo = itens().find(i => i.type === ref.type && String(i.num) === String(ref.num));
   const base = doResumo || (ref.status ? ref : { type: ref.type, typeLabel: t.label, num: ref.num, status: 'Carregando…', lado: 'desc', apelido: ref.cliente || '' });
   const g = $('#gaveta');
@@ -63,7 +61,7 @@ export async function abrirDetalhe(ref, fonte, opcoes) {
   const r = await enviar({ cmd: 'detalhe', type: ref.type, num: String(ref.num) });
   if (atual !== meu) return;                                        // a pessoa já abriu outra
   if (!r.ok) { desenhar(base, null, 'Não foi possível ler a solicitação no Onvio: ' + (r.erro || ''), false); return; }
-  // sempre abre nos dados; a conversa e a resposta ficam na gaveta da direita, que abre ao passar o mouse (0.62.0)
+  // sempre abre na conversa, com a resposta embaixo e os dados à direita (0.66.0)
   if (!mesma && !(opcoes && opcoes.acao)) aba = 'tramites';
   desenhar(Object.assign({}, base, r.item), r, null, false);
 }
@@ -119,10 +117,15 @@ function desenhar(i, r, erro, carregando) {
     '<button class="icon-btn" id="g-fechar" aria-label="Fechar" title="Fechar (Esc)"><svg class="ic"><use href="#i-x"/></svg></button></div>' +
     '<div class="dp-last">' + dpLast() +
     '</div>' +
-    // os dados em largura total; na borda direita, a gaveta com a conversa (trâmites) e a caixa de resposta embaixo (0.62.0)
-    '<div class="dlg-cols dlg-v3' + (gavetaFixa ? ' fixa' : '') + '">' +
-    painelHtml(i, r, carregando, nAnexos) +
-    gavetaHtml(i, r, erro, carregando, obs, p, tramites) +
+    // 0.66.0 (pedido do Josué em 03/11/2026): sem gaveta e nada que abra com o mouse. À esquerda a conversa em cima e a caixa
+    // de resposta embaixo; à direita os dados e os anexos. A janela não rola: cada bloco rola por dentro.
+    '<div class="dlg-cols dlg-v4">' +
+      '<div class="dlg-conv">' +
+        '<div class="dlg-body" id="g-corpo">' + (erro ? '<div class="faixa"><svg class="ic"><use href="#i-alert"/></svg>' + esc(erro) + '</div>' : '') +
+          (aba === 'acao' && acaoAberta() ? formAcao(i) : tramitesHtml(r, carregando, i)) + '</div>' +
+        (aba === 'tramites' && !carregando && r && !erro ? respostaHtml(i, obs, { datas: r.datas, proxima: p >= 0 && p < lista.length - 1 }) : '') +
+      '</div>' +
+      painelHtml(i, r, carregando, nAnexos) +
     '</div>' +
     '<div class="dlg-actions">' +
       '<button class="btn btn-sm" id="g-onvio"><svg class="ic ic-sm"><use href="#i-link"/></svg> Abrir no Onvio</button>' +
@@ -132,7 +135,7 @@ function desenhar(i, r, erro, carregando) {
     '</div>';
 
   $('#g-fechar').onclick = fecharDetalhe;
-  ligarGaveta(g, i);
+  ligarPainel(g);
   // conversa: ao chegar, mostra o fim (o trâmite mais recente), uma vez por solicitação aberta
   const chave = atual ? atual.type + ':' + atual.num : '';
   const primeira = aba === 'tramites' && !carregando && tramites && tramites.length && rolada !== chave;
@@ -162,7 +165,7 @@ function desenhar(i, r, erro, carregando) {
   };
   $$('[data-acao]', g).forEach(b => b.onclick = () => { novaAcao(b.dataset.acao); aba = 'acao'; desenhar(i, r, erro, carregando); });
   $$('[data-abrir-onvio]', g).forEach(b => b.onclick = () => $('#g-onvio').click());
-  $$('[data-responder]', g).forEach(b => b.onclick = () => { abrirGaveta(); if (!focarResposta()) toast('A caixa de resposta não está disponível aqui', true); });
+  $$('[data-responder]', g).forEach(b => b.onclick = () => { if (!focarResposta()) toast('A caixa de resposta não está disponível aqui', true); });
   $$('.g-mais .menu-item', g).forEach(b => b.addEventListener('click', () => { const m = b.closest('details'); if (m) m.open = false; }));
   document.addEventListener('click', fechaMais);
   const mesma = () => !!atual && atual.type === i.type && atual.num === String(i.num);
@@ -270,9 +273,8 @@ function destaquesHtml(r) {
   return '<div class="dlg-destaques" aria-label="Em destaque">' + l.map(c => '<span class="dq"><small>' + esc(c.k) + '</small><b>' + esc(c.v) + '</b></span>').join('') + '</div>';
 }
 
-// Painel de dados (0.62.0; 0.65.0, pedido do Josué em 29/10/2026: dados e anexos à vista, sem rolar a página): a solicitação abre nele, em
-// largura total (a conversa e a resposta ficam na gaveta da direita). Em destaque no topo; embaixo, os dados em colunas compactas e, ao lado,
-// o painel de Anexos (em janela estreita, uma faixa de uma linha). Quem rola é cada bloco por dentro, nunca a página.
+// Painel de dados (0.66.0, à direita da conversa): "Todos os dados" em cartões com rolagem própria e, no pé, os Anexos, sempre à vista.
+// Os destaques só aparecem na janela estreita, numa faixa no topo com o botão que abre a lista completa por cima da conversa.
 function painelHtml(i, r, carregando, nAnexos) {
   if (carregando) return '<section class="dlg-dados" id="g-painel" aria-label="Dados da solicitação"><div class="vazio">Lendo a solicitação completa no Onvio…</div></section>';
   const abertura = (r && r.anexos) || [], total = Math.max(nAnexos, abertura.length);
@@ -281,77 +283,33 @@ function painelHtml(i, r, carregando, nAnexos) {
       (nAnexos ? '<button type="button" class="btn btn-sm" id="g-anexos2" title="Escolha quais anexos baixar"><svg class="ic ic-sm"><use href="#i-download"/></svg> Baixar</button>' : '') + '</header>' +
     '<ul class="pn-anex-lista">' + abertura.map(arq).join('') + '</ul>' +
     (total > abertura.length ? '<p class="fraco pn-anex-mais">' + (abertura.length ? 'E mais ' + (total - abertura.length) + ' nos trâmites da conversa.' : total + (total === 1 ? ' anexo' : ' anexos') + ' nos trâmites da conversa.') + '</p>' : '') + '</aside>' : '';
-  return '<section class="dlg-dados" id="g-painel" aria-label="Dados da solicitação">' +
+  return '<section class="dlg-dados' + (dadosAbertos ? ' pn-aberto' : '') + '" id="g-painel" aria-label="Dados da solicitação">' +
     destaquesHtml(r) +
-    '<div class="pn-fluxo' + (total ? ' com-anexos' : '') + '">' +
+    // janela estreita: os destaques numa faixa no topo e a lista completa abre por cima da conversa
+    '<button type="button" class="btn btn-sm pn-abrir" id="pn-abrir" aria-expanded="' + dadosAbertos + '" aria-controls="pn-fluxo">' + 'Dados' + (total ? ' e ' + total + (total === 1 ? ' anexo' : ' anexos') : '') + ' ' + ico('chev-d') + '</button>' +
+    '<div class="pn-fluxo' + (total ? ' com-anexos' : '') + '" id="pn-fluxo">' +
       '<div class="pn-dados" id="pn-dados" data-pn="dados" tabindex="0" aria-label="Todos os dados">' + dados(i, r, false) + '</div>' +
       anexos +
     '</div>' +
   '</section>';
 }
 
-// Gaveta da direita (0.62.0): a conversa (trâmites) e a caixa de resposta. Fechada, só a barra aparece na borda; abre ao passar o mouse
-// (janela larga) ou ao clicar na barra; fica aberta enquanto há algo em andamento (foco, rascunho, balão, ação) ou se estiver fixada.
 const ico = n => '<svg class="ic ic-sm"><use href="#i-' + n + '"/></svg>';
-const gavetaFixaAtiva = () => gavetaFixa && innerWidth >= LARGA;
-function gavetaHtml(i, r, erro, carregando, obs, p, tramites) {
-  const nTr = tramites ? tramites.length : 0, rasc = temRascunho(i);
-  const aberta = !fechouEu && (gavetaAberta || gavetaFixaAtiva() || aba === 'acao' || rasc);
-  return '<aside class="g-gaveta' + (aberta ? ' aberta' : '') + (gavetaFixaAtiva() ? ' fixa' : '') + '" id="g-gaveta" aria-label="Trâmites e resposta">' +
-    '<button type="button" class="g-barra" id="g-barra" aria-expanded="' + aberta + '" aria-controls="g-gaveta-in" title="Trâmites e resposta (tecla R)">' + ico('chat') + '<span class="g-barra-tx">Conversa</span>' +
-      (nTr ? '<span class="g-barra-n" title="' + nTr + ' trâmite(s)">' + nTr + '</span>' : '') +
-      (i.lado === 'esc' ? '<i class="g-barra-pt" title="Vez do escritório"></i>' : '') + (rasc ? '<i class="g-barra-rasc" title="Rascunho guardado"></i>' : '') + '</button>' +
-    '<div class="g-gaveta-in" id="g-gaveta-in">' +
-      '<div class="g-gaveta-cab"><b>Trâmites e resposta</b>' + (nTr ? '<span class="g-gaveta-n">' + nTr + '</span>' : '') + '<span class="spacer"></span>' +
-        '<button type="button" class="icon-btn g-pin" id="g-pin" aria-pressed="' + gavetaFixa + '" title="' + (gavetaFixa ? 'Soltar: volta a abrir só ao passar o mouse' : 'Fixar aberta: os dados passam para o lado') + '" aria-label="Fixar a conversa aberta">' + ico('pin') + '</button>' +
-        '<button type="button" class="icon-btn" id="g-gav-x" title="Fechar a conversa" aria-label="Fechar a conversa">' + ico('chev-r') + '</button></div>' +
-      '<div class="g-cols">' +
-      '<div class="dlg-body" id="g-corpo">' + (erro ? '<div class="faixa"><svg class="ic"><use href="#i-alert"/></svg>' + esc(erro) + '</div>' : '') +
-        (aba === 'acao' && acaoAberta() ? formAcao(i) : tramitesHtml(r, carregando, i)) + '</div>' +
-      (aba === 'tramites' && !carregando && r && !erro ? respostaHtml(i, obs, { datas: r.datas, proxima: p >= 0 && p < lista.length - 1 }) : '') +
-      '</div>' +
-    '</div></aside>';
+// Janela estreita: "Dados e anexos" abre e fecha a lista por cima da conversa. Tela baixa e larga: os botões do rodapé sobem para o
+// cabeçalho, ao lado de Lembretes (o rodapé some), e a conversa ganha a altura.
+function ligarPainel(g) {
+  const b = $('#pn-abrir', g), pn = $('#g-painel', g);
+  if (b && pn) b.onclick = () => { dadosAbertos = !dadosAbertos; pn.classList.toggle('pn-aberto', dadosAbertos); b.setAttribute('aria-expanded', String(dadosAbertos)); };
+  posicionarAcoes(g);
 }
-function abrirGaveta() {
-  gavetaAberta = true; fechouEu = false; clearTimeout(saiTimer);
-  const gav = $('#g-gaveta'); if (!gav) return;
-  gav.classList.add('aberta'); const b = $('#g-barra'); if (b) b.setAttribute('aria-expanded', 'true');
+function posicionarAcoes(g) {
+  const ac = $('.dlg-actions', g), head = $('.dlg-head', g), lemb = $('#g-lemb', g);
+  if (!ac || !head) return;
+  const curta = matchMedia(CURTA).matches;
+  if (curta && ac.parentElement !== head) { ac.classList.add('no-topo'); head.insertBefore(ac, lemb || $('.dlg-nav', g) || null); }
+  else if (!curta && ac.parentElement === head) { ac.classList.remove('no-topo'); g.appendChild(ac); }
 }
-function ligarGaveta(g, i) {
-  const gav = $('#g-gaveta', g), barra = $('#g-barra', g);
-  if (!gav || !barra) return;
-  const larga = () => innerWidth >= LARGA && matchMedia('(hover: hover)').matches;
-  const marca = on => { gav.classList.toggle('aberta', on); barra.setAttribute('aria-expanded', String(on)); };
-  // o que está em andamento (foco na conversa/resposta, rascunho, balão, ação) segura a gaveta aberta
-  const segura = () => gavetaFixaAtiva() || aba === 'acao' || temRascunho(i) || (document.activeElement !== barra && !!$('#g-gaveta-in', g) && $('#g-gaveta-in', g).contains(document.activeElement));
-  gav.onmouseenter = () => {
-    clearTimeout(saiTimer);
-    if (!larga()) return;
-    saiTimer = setTimeout(() => { fechouEu = false; gavetaAberta = true; marca(true); }, 120);
-  };
-  gav.onmouseleave = () => {
-    clearTimeout(saiTimer);
-    if (!larga()) return;
-    saiTimer = setTimeout(() => { if (!document.contains(gav) || segura()) return; gavetaAberta = false; marca(false); }, 280);
-  };
-  // o ponto "rascunho" da barra acompanha o que está sendo escrito (sem redesenhar a janela)
-  const pontoRasc = () => { const d = $('.g-barra-rasc', barra), t = temRascunho(i); if (t && !d) barra.insertAdjacentHTML('beforeend', '<i class="g-barra-rasc" title="Rascunho guardado"></i>'); else if (!t && d) d.remove(); };
-  gav.addEventListener('input', pontoRasc);
-  const fecha = () => {                                   // fechar de propósito: vence o rascunho e a fixação
-    clearTimeout(saiTimer);
-    const eraFixa = gavetaFixaAtiva();
-    gavetaAberta = false; fechouEu = true; pontoRasc();
-    if (eraFixa) { gavetaFixa = false; try { localStorage.setItem(GAV_FIXA, '0'); } catch (e) {} if (ultimo) desenhar(ultimo.i, ultimo.r, ultimo.erro, ultimo.carregando); }
-    else marca(false);
-  };
-  barra.onclick = () => { if (gav.classList.contains('aberta')) fecha(); else { abrirGaveta(); } };
-  $('#g-gav-x', g).onclick = fecha;
-  $('#g-pin', g).onclick = () => {
-    gavetaFixa = !gavetaFixa; try { localStorage.setItem(GAV_FIXA, gavetaFixa ? '1' : '0'); } catch (e) {}
-    if (gavetaFixa) { gavetaAberta = true; fechouEu = false; }
-    if (ultimo) desenhar(ultimo.i, ultimo.r, ultimo.erro, ultimo.carregando);
-  };
-}
+matchMedia(CURTA).addEventListener('change', () => { if (detalheAberto()) posicionarAcoes($('#gaveta')); });
 
 // Todos os dados (seção do painel): só o que serve para atender. Responsável, datas, solicitante e prazos já estão no topo da janela.
 function dados(i, r, carregando) {
@@ -390,7 +348,6 @@ addEventListener('keydown', e => {
   if (e.key === 'ArrowLeft') andar(-1);
   else if (e.key === 'ArrowRight') andar(1);
   else if ((e.key === 'r' || e.key === 'R') && !e.ctrlKey && !e.metaKey && !e.altKey) {
-    abrirGaveta();
     if (focarResposta()) e.preventDefault();
     else if (ultimo && ultimo.r && aba !== 'tramites') { aba = 'tramites'; fecharAcao(); desenhar(ultimo.i, ultimo.r, ultimo.erro, ultimo.carregando); if (focarResposta()) e.preventDefault(); }
   }
