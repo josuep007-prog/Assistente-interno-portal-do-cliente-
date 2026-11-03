@@ -141,7 +141,7 @@ CPF, salário, nomes de empregados, assunto e descrição de todas as solicitaç
 - **`pessoais-rubricas`** · Dados pessoais · Lançamento de rubricas
   Colunas (5): Id · Nº · Assunto · Descrição · Solicitante
 - **`pessoais-empregados`** · Dados pessoais · empregados de cada empresa (0.53.0)
-  Colunas (13): Id do cliente · Código do cliente · Cliente · Id · Nome · CPF · Admissão · Situação · Sexo · Cargo (código) · Carga horária · Código do empregado · Vínculo
+  Colunas (13): Id do cliente · Código do cliente · Cliente · Id · Nome · CPF · Admissão · Situação · Sexo · Cargo (código) · Carga horária · Código do empregado · Vínculo (EMPLOYEE, INTERN ou PARTNER = contribuinte/sócio, desde a 0.67.0)
 - **`pessoais-comunicacoes`** · Dados pessoais · comunicações
   Colunas (11): Id · Assunto · Cliente · Tipo · Situação · Situação da comunicação · Enviada em · Expira em · Visualizada · Destinatários · Criada por
 - **`pessoais-pendentes-dados`** · Dados pessoais · dados completos das pendentes

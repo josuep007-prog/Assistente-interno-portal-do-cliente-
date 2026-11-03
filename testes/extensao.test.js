@@ -2842,8 +2842,13 @@ function apiHub() {
     if (p === 'br-payroll-sr/v1/clients/c1/employees') return [
       { id: 'x1', name: NOME_T, cpf: CPF_T, hireDate: '2020-01-01T00:00:00', status: 'ACTIVE', gender: 'F', jobPosition: 12, employeeWorkload: 220, integrationCode: 55, clientEmployeeRelationshipExpanded: { eprType: 'EMPLOYEE', name: 'Empregado' } },
       { id: 'x2', name: 'Sem Solicitacao Nenhuma', cpf: '987.654.321-00', hireDate: '2023-05-02', status: 'ACTIVE', integrationCode: 77, clientEmployeeRelationshipExpanded: { eprType: 'INTERN' } },
-      { id: 'x3', name: 'Quem Saiu', hireDate: '2019-03-01', status: 'INACTIVE' }];
-    if (p === 'br-payroll-sr/v1/clients/c2/employees') return { items: [{ id: 'y1', name: 'Beltrano da Beta', hireDate: '2024-02-01', status: 'ACTIVE', integrationCode: 9 }] };
+      { id: 'x3', name: 'Quem Saiu', hireDate: '2019-03-01', status: 'INACTIVE' }].concat(u.searchParams.getAll('eprType').includes('PARTNER') ? [{ id: 'x4', name: 'Socio da Acme', hireDate: '2018-01-01', status: 'ACTIVE', clientEmployeeRelationshipExpanded: { eprType: 'PARTNER' } }] : []);
+    if (p === 'br-payroll-sr/v1/clients/c2/employees') {       // a BETA recusa os três tipos juntos: a extensão lê os de antes e os sócios em separado
+      const tp = u.searchParams.getAll('eprType');
+      if (tp.length > 2) { const e = new Error('HTTP 500'); e.status = 500; throw e; }
+      if (tp.join() === 'PARTNER') return { items: [{ id: 'y2', name: 'Socia da Beta', hireDate: '2017-01-01', status: 'ACTIVE', clientEmployeeRelationshipExpanded: { eprType: 'PARTNER' } }] };
+      return { items: [{ id: 'y1', name: 'Beltrano da Beta', hireDate: '2024-02-01', status: 'ACTIVE', integrationCode: 9 }] };
+    }
     if (p === 'cnd/v1/clients') return pagina([{ id: 'n1', clientName: 'ACME', code: 7, clientStatus: 'ACTIVE', nationalIdentity: '11222333000144', municipalInscription: 123, stateInscription: 456, stateInitials: 'SP', cityIbgeIdentifier: 3550308, documentType: 'CNPJ', isOnvio: true }], u);
     if (p === 'manifesto/v1/clients') return pagina([{ id: 'm1', name: 'ACME', nickname: 'AC', code: 7, active: true, clientStatus: 'ACTIVE', nationalIdentity: '11222333000144', uf: 'SP', certificateExpanded: { validTo: '2027-03-01T00:00:00' } }], u);
     if (p === 'security/v1/session-and-bindings') return { UdsSession: { SeamlessAuthenticationToken: TOKEN_T, LongToken: 'LONG-SEGREDO', EmailAddress: 'a@b.c', FirstName: 'Ana', LastName: 'Teste' }, UdsSessionBindings: { RoutingTable: { 'br-payroll-sr': 'https://payroll.onvio.com.br/x?token=SEGREDO' }, FeatureResourcePermissions: { FeatureResourcePermissionsMap: { BRAtendimento: { ServiceRequestGeneric: 'Granted' } } }, ApplicationConfiguration: { CompanyId: 'emp1' }, InfrastructureAccessControls: ['BR_ShowOnvioMessenger'] } };
@@ -2932,7 +2937,7 @@ test('Hub: a folha inteira de cada empresa vem pela lista de clientes, com quem 
   const e = por['pessoais-empregados'];
   assert.ok(e, 'conjunto novo');
   assert.equal(e.c.categoria, 'pessoais');
-  assert.equal(e.p.nLinhasTotal, 4, '3 de ACME + 1 de BETA');
+  assert.equal(e.p.nLinhasTotal, 6, '3 empregados e 1 sócio da ACME + 1 empregado e 1 sócia da BETA');
   assert.equal(e.c.totalNaOrigem, 2, 'dois clientes lidos');
   assert.equal(e.c.cortado, false);
   assert.deepEqual(plano(e.c.colunas.slice(0, 5)), ['Id do cliente', 'Código do cliente', 'Cliente', 'Id', 'Nome']);
@@ -2948,7 +2953,10 @@ test('Hub: a folha inteira de cada empresa vem pela lista de clientes, com quem 
   assert.equal(de('Sem Solicitacao Nenhuma')[col('Vínculo')], 'INTERN', 'quem nunca teve solicitação também vem');
   assert.equal(de('Quem Saiu')[col('Situação')], 'INACTIVE');
   assert.equal(de('Beltrano da Beta')[col('Cliente')], 'BETA', 'resposta em { items }');
-  assert.ok(lidas.filter(u => /\/clients\/c\d\/employees\?eprType=EMPLOYEE&eprType=INTERN/.test(u)).length === 2, 'uma leitura por cliente');
+  assert.equal(de('Socio da Acme')[col('Vínculo')], 'PARTNER', 'os contribuintes (sócios) também vão (0.67.0)');
+  assert.equal(de('Socia da Beta')[col('Vínculo')], 'PARTNER', 'e, se o Onvio recusar os três tipos juntos, vêm numa leitura à parte');
+  assert.equal(lin.filter(l => l[col('Nome')] === 'Beltrano da Beta').length, 1, 'sem repetir quem já veio');
+  assert.equal(lidas.filter(u => /\/clients\/c1\/employees\?eprType=EMPLOYEE&eprType=INTERN&eprType=PARTNER/.test(u)).length, 1, 'uma leitura por cliente quando o Onvio aceita');
   const sem = {};
   await OC.hubExecutar(f, todasCategorias().filter(c => c !== 'pessoais'), { pausa: null, snapshot: { items: [] } }, async c => { sem[c.tipoDado] = 1; return { ok: true }; });
   assert.ok(!sem['pessoais-empregados'] && !Object.keys(sem).some(k => /^pessoais/.test(k)), 'sem a categoria pessoal nada disso é lido');
@@ -2981,7 +2989,7 @@ test('Hub: se a lista de clientes da folha falhar, vale o que as solicitações 
   const base = apiHub(), f = async url => { if (/br-payroll-sr\/v1\/clients\?/.test(url)) { const e = new Error('Erro 404'); e.status = 404; throw e; } return base(url); };
   const por = {};
   await OC.hubExecutar(f, ['pessoais'], { pausa: null, snapshot: { items: [] } }, async (c, p) => { por[c.tipoDado] = { c, p }; return { ok: true }; });
-  assert.equal(por['pessoais-empregados'].p.nLinhasTotal, 3, 'só o cliente que apareceu nas solicitações (c1)');
+  assert.equal(por['pessoais-empregados'].p.nLinhasTotal, 4, 'só o cliente que apareceu nas solicitações (c1), com o sócio');
   assert.equal(por['pessoais-empregados'].c.cortado, true);
 });
 
@@ -2989,7 +2997,7 @@ test('Hub: falha em um cliente não derruba os outros (e marca incompleto)', asy
   const base = apiHub(), f = async url => { if (/clients\/c2\/employees/.test(url)) { const e = new Error('Erro 500'); e.status = 500; throw e; } return base(url); };
   const por = {};
   await OC.hubExecutar(f, ['pessoais'], { pausa: null, snapshot: { items: [] } }, async (c, p) => { por[c.tipoDado] = { c, p }; return { ok: true }; });
-  assert.equal(por['pessoais-empregados'].p.nLinhasTotal, 3);
+  assert.equal(por['pessoais-empregados'].p.nLinhasTotal, 4, 'os 4 da ACME (com o sócio)');
   assert.equal(por['pessoais-empregados'].c.cortado, true);
 });
 
@@ -3011,7 +3019,7 @@ test('Hub: recusa de um cliente isolado não derruba a leitura dos empregados; r
   const um = async url => { if (/clients\/c2\/employees/.test(url)) throw recusa(); return base(url); };
   const por = {};
   await OC.hubExecutar(um, ['pessoais'], { pausa: null, snapshot: { items: [] } }, async (c, p) => { por[c.tipoDado] = { c, p }; return { ok: true }; });
-  assert.equal(por['pessoais-empregados'].p.nLinhasTotal, 3, 'os de ACME vieram');
+  assert.equal(por['pessoais-empregados'].p.nLinhasTotal, 4, 'os de ACME (com o sócio) vieram');
   assert.equal(por['pessoais-empregados'].c.cortado, true, 'e o conjunto avisa que ficou incompleto');
   const muitos = Array.from({ length: 12 }, (_, i) => ({ id: 'z' + i, code: 100 + i, name: 'Z' + i }));
   const f = async url => { const u = new URL(url); if (/br-payroll-sr\/v1\/clients$/.test(u.pathname)) return { items: muitos, totalItems: 12, totalPages: 1 }; if (/\/employees$/.test(u.pathname)) throw recusa(); return base(url); };
@@ -3058,7 +3066,7 @@ test('Hub: limite de chamadas (429) espera e tenta de novo; página de tamanho r
   const por = {};
   await OC.hubExecutar(f, ['pessoais'], { pausa: ms => { esperas.push(ms); return Promise.resolve(); }, snapshot: { items: [] } }, async (c, p) => { por[c.tipoDado] = { c, p }; return { ok: true }; });
   assert.ok(esperas.includes(5000), 'esperou 5 s');
-  assert.equal(por['pessoais-empregados'].p.nLinhasTotal, 4, 'depois da espera trouxe os dois clientes');
+  assert.equal(por['pessoais-empregados'].p.nLinhasTotal, 6, 'depois da espera trouxe os dois clientes');
   assert.equal(por['pessoais-empregados'].c.cortado, false);
   const cem = Array.from({ length: 100 }, (_, i) => ({ id: 'z' + i, name: 'Z' + i, hireDate: '2020-01-01', status: 'ACTIVE' }));
   const g = async url => /clients\/c1\/employees/.test(url) ? cem : base(url);
