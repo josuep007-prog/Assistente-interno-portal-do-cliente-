@@ -19,6 +19,11 @@ A aba "Sobre" saiu: o período e os filtros estão no Resumo.
 - No relatório por períodos, o primeiro e o último mês (ou trimestre, ou ano) são cortados nas datas escolhidas (`evPeriodos` aceita mês ou data).
 - Relatório novo **Ativos em uma data**: a quantidade de funcionários ativos em cada empresa no dia escolhido (`funcAtivoEm`: admitido até o dia e sem saída até o dia). Mostra o total, as empresas com ativos, ordem por nome, maiores primeiro ou por responsável, e a linha de total. Desligado sem data de saída não conta na data (aviso no relatório).
 
+## Tela dos relatórios (versão 318)
+- Filtros em três blocos lado a lado: Empresas, Período (ou Data) e Opções. Em janela estreita, eles descem.
+- Os atalhos de período são botões, e o que está em uso fica marcado.
+- **Data digitada:** o campo de data avisa a cada número digitado (no meio da digitação o ano passa por 0002, 0020…). Antes, cada aviso redesenhava o formulário, e o campo perdia o foco. Agora a data só vale quando está completa (ano de 1900 a 2100), e só o resultado é refeito, sem mexer no formulário (`relAtualizarResultado`). Ao sair do campo com a data incompleta, volta a data em uso. Enter confirma.
+
 ## Teste
 `SAIDA=<pasta> HUB_DIR=<cópia do Hub> NODE_PATH=$(npm root -g) node testes/hub-onvio/planilhas.js`
 (Playwright + Python `openpyxl`; empresas e funcionários fictícios, banco simulado). Confere as abas (Base oculta), no máximo 4 números e 2 gráficos, os links entre Resumo e Dados, filtro, cabeçalho travado, datas, a soma do quadro, os ativos de cada empresa numa data (contra os dados fictícios) e o período por datas exatas.

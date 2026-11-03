@@ -102,7 +102,7 @@ print(json.dumps(o, default=str))`;
 
 (async () => {
   await new Promise(r => servidor.listen(0, r));
-  const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined });
+  const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined, args: ['--lang=pt-BR'] });
   const ctx = await browser.newContext({ viewport: { width: 1360, height: 900 }, locale: 'pt-BR' });
   await ctx.route('**/fonts.googleapis.com/**', r => r.fulfill({ status: 200, contentType: 'text/css', body: '' }));
   const page = await ctx.newPage();
@@ -201,6 +201,34 @@ print(json.dumps(o, default=str))`;
     // e o mesmo filtro de datas aplicado nos dados fictícios dá a mesma contagem
     let esperado = 0; empresasFicticias().filter(e => e.situacao !== 'Inativa').forEach(e => e.funcionarios.forEach(f => { if (f.admissao >= de && f.admissao <= ate) esperado++; if (f.rescisao && f.rescisao >= de && f.rescisao <= ate) esperado++; }));
     assert.equal(datas.length, esperado, 'mesma contagem dos dados fictícios');
+  });
+
+  await passo('Data digitada à mão: o campo não se redesenha nem perde o foco no meio da digitação, e a data só vale completa', async () => {
+    await clicar('[data-rel-tipo="quadro"]'); await clicar('[data-rel-atalho="12m"]');
+    await page.evaluate(() => { document.querySelectorAll('dialog[open]').forEach(d => d.close()); document.querySelector('[data-rel="de"]').__marca = 1; });
+    const antes = await page.evaluate(() => document.querySelector('#dp-rel-res h3').textContent);
+    await page.click('[data-rel="de"]', { position: { x: 14, y: 12 } });   // clica no primeiro pedaço da data, como a pessoa
+    for (const ch of '15032025') {
+      await page.keyboard.type(ch);
+      const [ok, sub] = await page.evaluate(() => { const el = document.querySelector('[data-rel="de"]'); return [el.__marca === 1 && document.activeElement === el, (document.querySelector('#dp-rel-res .dp-cell-sub') || {}).textContent || '']; });
+      assert.ok(ok, 'o campo continua o mesmo e com o foco depois de digitar ' + ch);
+      assert.ok(!/\/0\d{3}\b/.test(sub), 'ano incompleto não vira relatório: ' + sub);
+    }
+    const v = await page.evaluate(() => document.querySelector('[data-rel="de"]').value);
+    assert.match(v, /^2025-\d{2}-\d{2}$/, 'data completa no campo: ' + v);
+    await page.waitForFunction((d) => (document.querySelector('#dp-rel-res .dp-cell-sub') || {}).textContent.startsWith(d), v.split('-').reverse().join('/'));
+    assert.ok(antes, 'relatório na tela antes');
+    const atalhoOn = await page.evaluate(() => [...document.querySelectorAll('.rel-chip.on')].map(b => b.dataset.relAtalho));
+    assert.deepEqual(atalhoOn, [], 'com a data digitada, nenhum atalho fica marcado');
+    await page.keyboard.press('Enter');
+    await clicar('[data-rel-atalho="ano"]');
+    const on = await page.evaluate(() => [...document.querySelectorAll('.rel-chip.on')].map(b => b.dataset.relAtalho));
+    assert.deepEqual(on, ['ano'], 'o atalho em uso fica marcado');
+    if (process.env.SAIDA) for (const tema of ['light', 'dark']) {
+      await page.evaluate((t) => document.documentElement.setAttribute('data-theme', t), tema);
+      const f = await page.$('#dp-rel-root .rel-form'); await f.screenshot({ path: path.join(SAIDA, `form-${tema}.png`) });
+    }
+    await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'));
   });
 
   await passo('Quadro: os números do gráfico de admissões batem com o indicador do relatório', async () => {
