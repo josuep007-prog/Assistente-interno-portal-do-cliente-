@@ -67,7 +67,7 @@ function montarBanco() {
 }
 
 let falhas = 0;
-async function passo(nome, fn) { try { await fn(); console.log('ok   ' + nome); } catch (e) { falhas++; console.log('FALHA ' + nome + '\n     ' + String(e && e.message || e).split('\n').slice(0, 6).join('\n     ')); } }
+async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.env.SO) && nome !== 'sem erros de página') return; try { await fn(); console.log('ok   ' + nome); } catch (e) { falhas++; console.log('FALHA ' + nome + '\n     ' + String(e && e.message || e).split('\n').slice(0, 6).join('\n     ')); } }
 const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
 
 (async () => {
@@ -536,7 +536,8 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     assert.match(socia.t, /Ativo em/); assert.match(socia.t, /Diretor/);
     assert.equal(aut.on, 2, 'o autônomo é intermitente: 2 de 4'); assert.match(aut.t, /Ativo em/); assert.match(aut.t, /intermitente/);
     assert.match(await page.textContent('#dp-section-onvio .ov-socios-cab'), /2 ativo\(s\) em .*ativo só nos meses em que aparece na folha/);
-    if (CAP) await page.locator('#dp-section-onvio .ov-socios').screenshot({ path: path.join(CAP, 'folha-contribuintes-claro.png') });
+    if (CAP) { await page.waitForTimeout(600); for (let i = 0; i < 3; i++) { try { await page.locator('#dp-section-onvio .ov-socios').screenshot({ path: path.join(CAP, 'folha-contribuintes-claro.png') }); break; } catch (e) { await page.waitForTimeout(400); } } }      // a ficha pode se redesenhar quando chega um conjunto
+    if (CAP) { await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark')); await page.waitForTimeout(500); for (let i = 0; i < 3; i++) { try { await page.locator('#dp-section-onvio .ov-socios').screenshot({ path: path.join(CAP, 'folha-contribuintes-escuro.png') }); break; } catch (e) { await page.waitForTimeout(400); } } await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light')); }
   });
 
   await passo('Folha inteira de cada empresa: quem nunca teve solicitação vira cadastro novo; desligado sem solicitação não; cliente só da folha aparece para cadastrar', async () => {
