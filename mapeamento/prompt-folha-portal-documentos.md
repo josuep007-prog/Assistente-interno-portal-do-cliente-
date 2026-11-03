@@ -1,5 +1,7 @@
 # Roteiro: relatórios da folha no portal de documentos do Onvio (só leitura)
 
+**Regra do Josué (03/11/2026):** o contribuinte (sócio com pró-labore, autônomo/RPA) é **ativo só nos meses em que aparece na folha**, e pode aparecer de forma intermitente (ativo em agosto, fora em setembro, ativo em outubro). A lista de contribuintes do Onvio não é confiável para isso: tem contribuintes sem atividade que não foram desligados no Domínio. Ela continua dizendo só **quem é** contribuinte de cada empresa; a folha diz em **quais competências** ele esteve ativo. Todos os relatórios da folha vão para o portal e devem ser lidos (também servirão, depois, para conferir a folha com os impostos). Vale para todas as empresas.
+
 Cole o texto abaixo no Claude com acesso ao Chrome, já logado no Onvio com o **usuário do escritório**, e devolva o relatório. Serve para a extensão ler os relatórios da folha que o escritório publica no portal de documentos (Onvio Drive): primeiro para conferir os contribuintes (quem teve pró-labore ou RPA na folha), depois para conferir a folha com os impostos.
 
 ---
