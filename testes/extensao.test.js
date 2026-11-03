@@ -3280,6 +3280,7 @@ function apiFolha(lidas) {
     if (p === 'storage/v2/Projects/p2/children') return pag([{ id: 'gp', name: 'Pessoal', itemType: 'Folder' }]);
     if (p === 'storage/v2/Folders/gp/children') return pag([{ id: 'g1', name: '09-2026 Extrato Mensal.pdf', mimeType: 'application/pdf', itemType: 'Document', createdDate: '2026-10-06T10:00:00', containerId: 'gp' }]);
     if (p === 'storage/v2/Folders/fc/children') throw new Error('Contábil não é lida');
+    if (p === 'service-requesting/v1/tickets/generic') return { items: [{ id: 'g1', clientExpanded: { id: 'k2', code: 8, name: 'BETA' } }], totalItems: 1 };
     const e = new Error('sem rota simulada: ' + p); e.status = 404; throw e;
   };
 }
@@ -3350,7 +3351,7 @@ test('Folha: limite de PDFs por envio deixa o resto para o próximo', async () =
   let enviado = null;
   await OC.hubExecutar(apiFolha(lidas), ['pessoais'], ctx, async (c) => { if (c.tipoDado === 'pessoais-folha-contribuintes') enviado = c; return { ok: true }; });
   assert.equal(pedidos.length, 2);
-  assert.equal(enviado.porTipo.pendentes, 1, 'três extratos (a BETA sem o id do contato não tem projeto): 2 agora, 1 depois');
+  assert.equal(enviado.porTipo.pendentes, 2, 'quatro extratos (a BETA achada pelo id do contato das solicitações): 2 agora, 2 depois');
   assert.equal(enviado.cortado, true);
 });
 
@@ -3364,4 +3365,15 @@ test('Folha: o service worker só baixa documento pela rota mapeada e o leitor d
   const off = src('offscreen.js');
   assert.match(off, /isEvalSupported:\s*false/);
   assert.ok(!/fetch\(/.test(off), 'o leitor de PDF não acessa a rede');
+});
+
+test('Folha: "Testar a leitura da folha" mostra só o formato (sem nome, CPF, valor nem empresa)', async () => {
+  const lidas = [], linhas = await OC.testarFolha(apiFolha(lidas), textoPdfT([]), null);
+  const t = linhas.join('\n');
+  assert.match(t, /Empresa 1: projeto pelo id da folha, 2 pasta\(s\) com extrato/);
+  assert.match(t, /Extratos: 4 · nomes: 99-9999 Extrato Mensal.pdf ×3/);
+  assert.match(t, /competência lida \(2026-09\)/);
+  assert.match(t, /Pessoas: 4 · contribuintes: 2 · vínculos: Celetista ×1, Diretor ×1, Autônomo ×1, Estagiário ×1/);
+  assert.ok(!/ACME|BETA|FULANO|SICRANA|111\.222|5\.000/.test(t), 'nada que identifique: ' + t);
+  assert.ok(lidas.some(u => /tickets\/generic/.test(u)), 'lê uma página da Geral para ter também o id do contato');
 });

@@ -3317,6 +3317,11 @@
     try { clientes = [...(await lerClientesFolha(fetcher, pausa)).values()].filter(c => !ehEscritorioProprio(c.nome)); }
     catch (e) { return ['Não consegui ler a lista de clientes da folha: ' + celulaHub(e && e.message || e, 80)]; }
     linhas.push('Clientes da folha: ' + clientes.length);
+    // o portal de documentos pode usar o id do contato (o das solicitações): pega os da 1ª página da Geral, pelo código do cliente
+    if (!clientesVistos) {
+      clientesVistos = new Map();
+      try { const d = await fetcher(listUrl(TYPE_BY_KEY.geral, { per: 200, page: 1 })); ((d && d.items) || []).forEach(r => { const c = r && r.clientExpanded; if (c && c.id != null && c.code != null) clientesVistos.set(String(c.id), { id: String(c.id), codigo: c.code, nome: '' }); }); } catch (e) { /* segue só com o id da folha */ }
+    }
     let tentadas = 0;
     for (const c of clientes.slice(0, 15)) {
       tentadas++;
