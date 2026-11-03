@@ -1197,8 +1197,84 @@ await passo('app · Configurações: prazos com efeito na fila antes de salvar, 
   await p.waitForSelector('.cfg-chips');
   assert.match(await p.textContent('#vista'), /aguardamos.*favor/s);
   await p.click('#abas .aba:has-text("Avançado")');
-  await p.waitForSelector('iframe.cfg-frame');
+  await p.waitForSelector('.adv-nav .adv-tab');
+  assert.equal(await p.$('iframe.cfg-frame'), null, 'o Avançado é tela do app, não a página de opções num quadro');
   assert.deepEqual(p.erros, []);
+});
+
+// dados do Avançado: Hub conectado com um envio completo que teve a folha só informativa, um erro e um conjunto aceito
+const AV_ESTADO = {
+  hubCfg: { token: 'ABCDEF123456ABCDEF123456', auto: true, syncAuto: true, syncHoras: 6, envio: { listas: true } },
+  hubSync: { estado: 'parcial', terminouEm: new Date().toISOString(), resultados: [
+    { id: 'lista-geral', rotulo: 'Solicitações · Geral (todas)', ok: true, linhas: 120 },
+    { id: 'pessoais-folha-contribuintes', rotulo: 'Dados pessoais · contribuintes na folha (Extrato Mensal)', ok: true, nota: true, motivo: '12 empresas com extrato, nenhum extrato novo desde a última leitura' },
+    { id: 'clientes-cnd', rotulo: 'Clientes de CND', ok: false, motivo: 'sem-resposta' }] },
+  regrasEscritorio: { url: 'https://exemplo.com/r.json', versao: 't7', atualizadoEm: new Date().toISOString(), regras: { versao: 't7' } },
+  aprendizado: [{ metodo: 'POST', caminho: '/api/x/{id}', status: 200, vezes: 2, rotas: ['/x'] }],
+  settings: { __v: 2, regrasUrl: 'https://exemplo.com/r.json' }
+};
+const AV_RESP = { hubStatus: { ok: true, permitido: true, hubAberto: true, hubSegundoPlano: false, ultimo: { ok: true, em: new Date().toISOString(), linhas: 4, total: 4 } },
+  testarFolha: { ok: true, linhas: ['Clientes da folha: 3', 'Empresa 1: projeto pelo id do contato, 1 pasta(s) com extrato'] }, folhaDeNovo: { ok: true } };
+
+await passo('app · Configurações → Avançado (0.69.0): cinco partes com o estado no cartão, Hub, regras, testes, aprender e diagnóstico, sem repetir prazos e feriados, nos dois estilos', async () => {
+  for (const estilo of ['simples', 'atual']) {
+    const p = await abrirApp('#/config?aba=avancado', AV_ESTADO, 'window.__respostas = ' + JSON.stringify(AV_RESP), { estilo });
+    await p.waitForSelector('.adv-tab[data-parte="hub"].on');
+    await p.waitForFunction(() => /conectado/.test(document.querySelector('.adv-tab[data-parte="hub"]').textContent));
+    const cartoes = await p.$$eval('.adv-tab', e => e.map(x => x.dataset.parte + ':' + x.querySelector('small').textContent));
+    assert.deepEqual(cartoes.map(c => c.split(':')[0]), ['hub', 'regras', 'testes', 'aprender', 'diag']);
+    assert.ok(cartoes.includes('regras:arquivo vt7'), 'regras em uso no cartão: ' + cartoes);
+    assert.ok(cartoes.includes('aprender:1 chamadas anotadas'), cartoes.join(' | '));
+    assert.doesNotMatch(await p.textContent('#vista'), /Primeiro trâmite|Feriados|Verificação ao vivo/, 'prazos, feriados e leitura ficam nas outras abas');
+    // Hub: estado da ponte, conjuntos e o resultado do envio (erro primeiro, a folha como nota)
+    await p.waitForSelector('#adv-hub-pils .adv-pil.adv-ok');
+    assert.match(await p.textContent('#adv-hub-pils'), /Hub aberto e respondendo/);
+    assert.equal(await p.inputValue('#adv-hubCodigo'), 'ABCDEF123456ABCDEF123456');
+    const res = await p.$$eval('.adv-res li', e => e.map(x => x.className + '|' + x.textContent));
+    assert.match(res[0], /adv-erro.*Clientes de CND.*não respondeu/, 'erro primeiro: ' + res[0]);
+    assert.ok(res.some(r => /adv-nota.*Extrato Mensal.*nenhum extrato novo/.test(r)), 'a folha aparece como nota');
+    // dados pessoais pedem confirmação antes de ligar
+    await p.click('.adv-cat input[data-cat="pessoais"]');
+    await p.waitForSelector('#adv-pessoais-aviso:not([hidden])');
+    assert.equal(await p.isChecked('.adv-cat input[data-cat="pessoais"]'), false, 'não liga sem confirmar');
+    await p.click('#adv-pessoais-sim');
+    await p.waitForFunction(() => JSON.parse(localStorage.getItem('__mem')).hubCfg.envio.pessoais === true);
+    // automático e horas gravam na hora
+    await p.fill('#adv-syncHoras', '12'); await p.press('#adv-syncHoras', 'Tab');
+    await p.waitForFunction(() => JSON.parse(localStorage.getItem('__mem')).hubCfg.syncHoras === 12);
+    if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/avancado-hub-' + estilo + '.png', fullPage: true });
+    // Regras
+    await p.click('.adv-tab[data-parte="regras"]');
+    await p.waitForSelector('#adv-regrasUrl');
+    assert.match(await p.evaluate(() => location.hash), /sec=regras/);
+    assert.match(await p.textContent('#adv-regras-pils'), /Em uso: versão t7/);
+    // Testes: resultado no console; "Ler a folha de novo" pede um segundo clique
+    await p.click('.adv-tab[data-parte="testes"]');
+    await p.click('[data-teste="testarFolha"]');
+    await p.waitForFunction(() => /Clientes da folha: 3/.test(document.querySelector('#adv-saida').textContent));
+    await p.click('[data-teste="folhaDeNovo"]');
+    assert.match(await p.textContent('[data-teste="folhaDeNovo"]'), /Clique de novo/);
+    assert.ok(!(await p.evaluate(() => (window.__msgs || []).some(m => m.cmd === 'folhaDeNovo'))), 'o primeiro clique só pede confirmação');
+    await p.click('[data-teste="folhaDeNovo"]');
+    await p.waitForFunction(() => (window.__msgs || []).some(m => m.cmd === 'folhaDeNovo'));
+    if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/avancado-testes-' + estilo + '.png', fullPage: true });
+    // Aprender: a chave liga e mostra quanto falta
+    await p.click('.adv-tab[data-parte="aprender"]');
+    await p.click('.adv-chave');
+    await p.waitForFunction(() => JSON.parse(localStorage.getItem('__mem')).aprender.ligado === true);
+    await p.waitForFunction(() => /desliga em 1(19|20) min/.test(document.querySelector('#adv-aprender-pils').textContent));
+    // Diagnóstico
+    await p.click('.adv-tab[data-parte="diag"]');
+    await p.waitForSelector('#adv-diag');
+    assert.match(await p.textContent('#adv-diag'), /Pendências por lista/);
+    assert.equal(await p.$$eval('.adv-num', e => e.length), 5);
+    if (process.env.CAP) for (const tema of ['light', 'dark']) {
+      await p.evaluate(t => document.documentElement.setAttribute('data-theme', t), tema);
+      for (const parte of ['hub', 'testes', 'diag']) { await p.click('.adv-tab[data-parte="' + parte + '"]'); await p.waitForTimeout(250); await p.screenshot({ path: process.env.CAP + '/avancado-' + parte + '-' + estilo + '-' + tema + '.png', fullPage: true }); }
+    }
+    assert.deepEqual(p.erros, []);
+    await p.close();
+  }
 });
 
 await passo('app · o analista não vê prazo interno nem gravidade (só o prazo legal); cantos quadrados em botões, etiquetas e janelas', async () => {
@@ -2436,12 +2512,13 @@ await passo('app · contraste: nenhum texto abaixo de 4,5:1 (WCAG AA) nas telas 
     ['Configurações · Aparência', '#/config', async () => {}],
     ['Configurações · Prazos', '#/config?aba=prazos', async () => {}],
     ['Configurações · Feriados', '#/config?aba=feriados', async () => {}],
+    ...['hub', 'regras', 'testes', 'aprender', 'diag'].map(sec => ['Configurações · Avançado · ' + sec, '#/config?aba=avancado&sec=' + sec, async p => { await p.evaluate(r => { window.__respostas = r; }, AV_RESP); await p.waitForSelector('.adv-tab.on'); if (sec === 'testes') { await p.click('[data-teste="testarFolha"]'); await p.waitForSelector('#adv-saida'); } await p.waitForTimeout(250); }]),
     ['Detalhe', '#/fila?escopo=todas', abrirDet],
     ['Detalhe com a resposta aberta', '#/fila?escopo=todas', async p => { await abrirDet(p); await p.keyboard.press('r'); await p.waitForSelector('#a-texto'); await p.click('#cmp-mp'); await p.waitForSelector('#mp-balao'); }],
   ];
   const ruins = [];
   for (const estilo of ['simples', 'atual']) for (const tema of ['light', 'dark']) for (const [nome, rota, fn] of telas) {
-    const p = await abrirApp(rota, { settings: { __v: 2 } }, undefined, { estilo });
+    const p = await abrirApp(rota, /avancado/.test(rota) ? AV_ESTADO : { settings: { __v: 2 } }, /avancado/.test(rota) ? 'window.__respostas = ' + JSON.stringify(AV_RESP) : undefined, { estilo });
     await p.setViewportSize({ width: 1440, height: 900 });
     await p.emulateMedia({ reducedMotion: 'reduce' });
     await p.evaluate(t => { document.documentElement.setAttribute('data-theme', t); }, tema);

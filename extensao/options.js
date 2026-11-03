@@ -4,7 +4,6 @@
   const $ = s => document.querySelector(s);
   const NUM = ['tempoRealSeg', 'intervalo', 'primeiroTramite', 'conclusaoSimples', 'conclusaoCalculo', 'clienteSemRetorno', 'resolvidaClienteDias', 'parada', 'foraDoPortalDias', 'concluirClienteDias', 'desfazerSeg', 'prescricaoDias'];
   const BOOL = ['abrirAoEntrar', 'notificar', 'modoGestor'];
-  const URL_CLIENTE = 'https://raw.githubusercontent.com/josuep007-prog/assistente-portal-regras/main/regras.json';
   let regras = null;          // regras do escritório guardadas (arquivo)
 
   // O que vale sem ajustes pessoais: padrões do código + regras do escritório.
@@ -51,43 +50,8 @@
       : (regras.erro || 'Ainda não baixado.');
   }
 
-  function linhasPerfil(p, status) {
-    const rot = { escritorio: 'escritório', cliente: 'CLIENTE (o Control Onvio fica bloqueado)' };
-    if (!p) return [];
-    return ['Perfil da sessão: ' + (rot[p.perfil] || 'não confirmado') + ' · ' + (p.motivo || '') + ' · ' + (p.em || ''),
-      'Formato da sessão (só nomes de campos): ' + ((p.formato || []).join(', ') || '—')];
-  }
-  // Trâmites por lista: resultado da última leitura (o caminho é fixo por lista) ou ainda sem dados.
-  function linhasTramites(snap) {
-    const est = (snap && snap.tramites && snap.tramites.porTipo) || {};
-    return ['Trâmites por lista:'].concat(OC.TYPES.map(t => {
-      const e = est[t.key];
-      return '  ' + t.label + ' (' + t.tramites + '): ' + (e || 'sem leitura ainda');
-    }));
-  }
-  function diagnostico(snap, perfil, status, rotasAnexo) {
-    if (status && status.estado === 'visao_cliente') return ['O Onvio está aberto com um acesso de cliente: nada é lido nem guardado.'].concat(linhasPerfil(perfil)).join('\n');
-    if (!snap) return ['Ainda sem leitura do Onvio.'].concat(linhasPerfil(perfil)).join('\n');
-    const l = ['Versão: ' + (snap.versao || chrome.runtime.getManifest().version) + ' · leitura: ' + snap.fetchedAt + ' · via ' + (snap.via || '?'),
-      'Leitura: ' + ((snap && snap.via) || '?') + ' · ao vivo a cada ' + (OC.combinarSettings(regras, {}).tempoRealSeg || 0) + ' s',
-      'Regras do escritório: ' + (regras && regras.regras ? 'arquivo versão ' + (regras.versao || '?') : 'embutidas') + (regras && regras.erro ? ' (falha na última atualização)' : ''),
-      'Pendências por lista:'];
-    OC.TYPES.forEach(t => l.push('  ' + t.label + ': ' + (snap.porTipo && snap.porTipo[t.key] != null ? snap.porTipo[t.key] : '—')));
-    const desc = snap.desconhecidos || {};
-    l.push('Códigos de situação desconhecidos: ' + (Object.keys(desc).length ? Object.entries(desc).map(([k, v]) => OC.TYPE_BY_KEY[k].label + ' ' + Object.entries(v).map(([c, n]) => 'código ' + c + ' (' + n + ')').join(', ')).join(' | ') : 'nenhum'));
-    l.push('Filtro por lista (Rubricas): ' + (snap.filtroAlternativo && snap.filtroAlternativo.length ? 'o Onvio recusou o filtro por exclusão e a extensão usou a lista de códigos (' + snap.filtroAlternativo.join(', ') + ')' : 'por exclusão (tudo menos Concluído e Prescrita)'));
-    const t = snap.tramites || {};
-    l.push('Trâmites lidos neste ciclo: ' + (t.lidos || 0) + ' · falhas: ' + (t.falhas || 0) + ' · com 1º trâmite conhecido: ' + (snap.items || []).filter(i => i.ptUteis != null).length + ' de ' + (snap.items || []).length);
-    linhasTramites(snap).forEach(x => l.push(x));
-    l.push('Consideradas resolvidas (vez do cliente sem retorno e sem pedido do analista): ' + ((snap.resolvidas || []).length));
-    const ra = Array.isArray(rotasAnexo) ? rotasAnexo : [];
-    l.push('Baixar anexos: ' + (ra.length ? ra.length + ' caminho(s) aprendido(s) do Onvio' : 'nenhum caminho aprendido ainda (baixe um anexo pelo Onvio uma vez)'));
-    ra.slice(0, 6).forEach(r => l.push('  ' + r.molde + (r.campo ? ' (endereço no campo ' + r.campo + ')' : '')));
-    l.push('Possível aba errada (Geral): ' + (snap.items || []).filter(i => i.abaProvavel).length);
-    l.push('Com você como responsável (filtro "atribuídas a mim" do Onvio): ' + (snap.items || []).filter(i => i.mine).length + ' de ' + (snap.items || []).length + (snap.user && snap.user.nome ? ' · usuário: ' + snap.user.nome : ''));
-    if (snap.erros && snap.erros.length) l.push('Erros: ' + snap.erros.join(' | '));
-    return l.concat(linhasPerfil(perfil)).join('\n');
-  }
+  const OP = window.OCOpcoes;
+  const diagnostico = (snap, perfil, status, rotasAnexo) => OP.diagnostico(snap, perfil, status, rotasAnexo, regras);
 
   async function carregar() {
     const d = await chrome.storage.local.get(['settings', 'snapshot', 'regrasEscritorio', 'perfilSessao', 'status', 'rotasAnexo']);
@@ -110,7 +74,7 @@
     estado('Padrão do escritório carregado; clique em Salvar para aplicar.');
   });
 
-  $('#regras-cliente').addEventListener('click', () => { $('#regrasUrl').value = URL_CLIENTE; estado('Endereço preenchido; clique em Salvar e depois em Atualizar agora.'); });
+  $('#regras-cliente').addEventListener('click', () => { $('#regrasUrl').value = window.OCOpcoes.URL_REGRAS_CLIENTE; estado('Endereço preenchido; clique em Salvar e depois em Atualizar agora.'); });
   $('#regras-agora').addEventListener('click', async () => {
     const url = $('#regrasUrl').value.trim();
     if (url && !(await permitirOrigem(url))) { estado('Sem permissão para acessar o endereço das regras.'); return; }
@@ -156,21 +120,7 @@
   });
 
   /* ---------- aprender ações ---------- */
-  const APRENDER_MAX_MS = 2 * 3600 * 1000;
-  const ativo = a => !!(a && a.ligado && Date.now() - (a.desde || 0) < APRENDER_MAX_MS);
-  const compacto = v => { const s = JSON.stringify(v); return s && s.length > 1500 ? s.slice(0, 1500) + '…' : s; };
-  function textoAprendido(lista) {
-    const l = ['Control Onvio · ações aprendidas · versão ' + chrome.runtime.getManifest().version + ' · ' + new Date().toLocaleString('pt-BR'), ''];
-    (lista || []).forEach((r, i) => {
-      l.push((i + 1) + '. ' + r.metodo + ' ' + r.caminho + ' → ' + r.status + (r.vezes > 1 ? ' (' + r.vezes + 'x)' : '') + ' · telas: ' + (r.rotas || []).join(', '));
-      if (r.query && Object.keys(r.query).length) l.push('   query: ' + compacto(r.query));
-      if (r.contentTypePedido) l.push('   envia: ' + r.contentTypePedido);
-      if (r.corpo) l.push('   corpo: ' + compacto(r.corpo));
-      if (r.resposta) l.push('   resposta: ' + compacto(r.resposta));
-    });
-    if (!(lista || []).length) l.push('(nada registrado ainda)');
-    return l.join('\n');
-  }
+  const { APRENDER_MAX_MS, textoAprendido } = OP, ativo = OP.aprenderAtivo;
   async function mostrarAprender() {
     const { aprender, aprendizado } = await chrome.storage.local.get(['aprender', 'aprendizado']);
     const ligado = ativo(aprender);
@@ -195,20 +145,7 @@
   setInterval(mostrarAprender, 30000);
 
   /* ---------- Control Hub (opcional) ---------- */
-  const HUB_ORIGENS = ['https://claude.ai/*'];
-  const MOTIVOS_HUB = {
-    'sem-codigo': 'Cole o código de pareamento do Hub.', 'sem-permissao': 'Falta permitir o claude.ai: clique em “Conectar ao Control Hub”.',
-    'sem-leitura': 'Ainda não há leitura do Onvio para enviar. Abra o Control Onvio e aguarde a primeira leitura.',
-    'sem-hub': 'O Control Hub não está aberto numa aba do claude.ai. Abra o Hub; a aba pode ficar em segundo plano, mas precisa estar aberta.', 'sem-resposta': 'O Hub não respondeu a tempo.',
-    'token': 'O código de pareamento não confere com o do Hub.', 'tamanho': 'O resumo passou do limite do Hub.',
-    'somente-leitura': 'Sua conta só lê o Hub: peça a quem tem permissão de edição para conectar.', 'sem-config': 'O Hub ainda não criou o código de pareamento (abra “Entrada de dados”).',
-    'sem-mudanca': 'Nada mudou desde o último envio.'
-  };
-  MOTIVOS_HUB['sem-categoria'] = 'Marque pelo menos um conjunto para enviar.';
-  MOTIVOS_HUB['incompleto'] = 'O Hub não recebeu todas as partes.'; MOTIVOS_HUB['ciclo-perdido'] = 'O Hub foi recarregado no meio do envio: tente de novo.';
-  MOTIVOS_HUB['partes'] = 'O Hub recusou as partes (versão antiga do Hub?).'; MOTIVOS_HUB['categoria'] = 'O Hub não conhece esta categoria (publique a versão nova do Hub).'; MOTIVOS_HUB['fonte-desconhecida'] = 'O Hub não conhece este tipo de dado (publique a versão nova do Hub).';
-  MOTIVOS_HUB['visao-cliente'] = 'O Onvio está com um acesso de cliente: o envio é só da visão do escritório.';
-  const msgHub = r => r.mensagem || MOTIVOS_HUB[r.motivo] || r.motivo || 'Não foi possível enviar.';
+  const { HUB_ORIGENS, MOTIVOS_HUB, msgHub } = OP;
   async function mostrarHub() {
     const { hubCfg } = await chrome.storage.local.get('hubCfg');
     const c = Object.assign({ token: '', auto: true }, hubCfg || {});
