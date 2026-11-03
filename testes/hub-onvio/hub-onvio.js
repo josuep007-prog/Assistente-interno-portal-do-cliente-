@@ -67,7 +67,7 @@ function montarBanco() {
 }
 
 let falhas = 0;
-async function passo(nome, fn) { try { await fn(); console.log('ok   ' + nome); } catch (e) { falhas++; console.log('FALHA ' + nome + '\n     ' + String(e && e.message || e).split('\n').slice(0, 6).join('\n     ')); } }
+async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.env.SO) && nome !== 'sem erros de página') return; try { await fn(); console.log('ok   ' + nome); } catch (e) { falhas++; console.log('FALHA ' + nome + '\n     ' + String(e && e.message || e).split('\n').slice(0, 6).join('\n     ')); } }
 const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
 
 (async () => {
@@ -510,6 +510,34 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
       const l = { ...lote('cat-' + c.id, 'cK', 0), tipoDado: (c.id === 'analise' ? 'analise-solicitacoes' : 'categoria-' + c.id), categoria: c.id, partes: 1, nLinhasTotal: 1, totalNaOrigem: 1 };
       const r = await envia(l); assert.equal(r.ok, true, 'categoria ' + c.id + ' aceita (' + (r.motivo || '') + ')');
     }
+  });
+
+  await passo('Folha (Extrato Mensal, extensão 0.68.0): as remessas se acumulam pelo documento e a ficha mostra os meses de cada contribuinte (ativo só nos meses em que aparece)', async () => {
+    const cfg = await page.evaluate(() => window.__db.ler('ing_config/cfg'));
+    await page.evaluate(() => { window.__msgs = window.__msgs || []; if (!window.__ouveAck) { window.__ouveAck = 1; window.addEventListener('message', (e) => { if (e.data && e.data.ctlhub === 1 && e.data.de === 'hub') window.__msgs.push(e.data); }); } });
+    const envia = async (l) => { await page.evaluate((l) => { window.__msgs.length = 0; window.postMessage(l, '*'); }, l); await page.waitForFunction((id) => window.__msgs.some(m => m.tipo === 'ack' && m.id === id), l.id, { timeout: 5000 }); return page.evaluate((id) => window.__msgs.find(m => m.tipo === 'ack' && m.id === id), l.id); };
+    const COL = D.OC.FOLHA_COLUNAS, mes = (n) => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); };
+    const lin = (doc, comp, cod, nome, vinc) => [doc, 'c-orion', '900', 'ORION COMERCIO LTDA', comp, comp + '-05', cod, nome, vinc].join('\t');
+    const lote = (id, ciclo, linhas) => ({ ctlhub: 1, de: 'ext', tipo: 'lote', id, token: cfg.token, fonte: 'onvio', tipoDado: 'pessoais-folha-contribuintes', categoria: 'pessoais', titulo: 'Folha', colunas: COL, tabela: linhas.join('\n'), nLinhas: linhas.length, nLinhasTotal: linhas.length, totalNaOrigem: 1, cortado: false, partes: 1, parte: 0, ciclo, porTipo: {}, versaoExt: '0.68.0', acumular: 'Documento' });
+    // 1ª remessa: 3 meses; 2ª remessa: só o mês novo (e a correção de um documento já lido)
+    assert.equal((await envia(lote('f1', 'cF1', [lin('d3', mes(3), '15', 'SOCIA FICTICIA', 'Diretor'), lin('d3', mes(3), '21', 'AUTONOMO FICTICIO', 'Autônomo'), lin('d2', mes(2), '15', 'SOCIA FICTICIA', 'Diretor'), lin('d1', mes(1), '', '', '')]))).ok, true);
+    assert.equal((await envia(lote('f2', 'cF2', [lin('d0', mes(0), '15', 'SOCIA FICTICIA', 'Diretor'), lin('d0', mes(0), '21', 'AUTONOMO FICTICIO', 'Autônomo'), lin('d1', mes(1), '15', 'SOCIA FICTICIA', 'Diretor')]))).ok, true);
+    const man = await page.evaluate(() => window.__db.ler('ing_dados/onvio~pessoais-folha-contribuintes'));
+    assert.equal(man.nLinhas, 6, 'acumulou: 3 novas + d3 (2) + d2 (1); a linha vazia antiga do d1 foi trocada');
+    assert.equal(man.acumular, 'Documento');
+    const cerr = lote('f3', 'cF3', [lin('d9', mes(0), '1', 'X', 'Diretor')]); cerr.acumular = 'Coluna que não existe';
+    assert.equal((await envia(cerr)).motivo, 'acumular', 'chave fora das colunas é recusada');
+    await page.waitForFunction(() => (window.__hubApi.api('onvio').manifestos()['pessoais-folha-contribuintes'] || {}).ciclo === 'cF2', null, { timeout: 8000 });
+    await page.evaluate(() => window.__hubApi.api('dp').abrirEmpresa('e-orion', 'onvio'));
+    await page.waitForFunction(() => /SOCIA FICTICIA/.test((document.querySelector('#dp-section-onvio .ov-socios') || {}).textContent || ''), null, { timeout: 8000 });
+    const linhas = await page.$$eval('#dp-section-onvio .ov-socios-tab tbody tr', tr => tr.map(t => ({ t: t.textContent.replace(/\s+/g, ' ').trim(), on: t.querySelectorAll('.ov-mes.on').length, n: t.querySelectorAll('.ov-mes').length })));
+    const socia = linhas.find(l => /SOCIA FICTICIA/.test(l.t)), aut = linhas.find(l => /AUTONOMO FICTICIO/.test(l.t));
+    assert.equal(socia.on, 4, 'a sócia aparece nos 4 meses'); assert.equal(socia.n, 4);
+    assert.match(socia.t, /Ativo em/); assert.match(socia.t, /Diretor/);
+    assert.equal(aut.on, 2, 'o autônomo é intermitente: 2 de 4'); assert.match(aut.t, /Ativo em/); assert.match(aut.t, /intermitente/);
+    assert.match(await page.textContent('#dp-section-onvio .ov-socios-cab'), /2 ativo\(s\) em .*ativo só nos meses em que aparece na folha/);
+    if (CAP) { await page.waitForTimeout(600); for (let i = 0; i < 3; i++) { try { await page.locator('#dp-section-onvio .ov-socios').screenshot({ path: path.join(CAP, 'folha-contribuintes-claro.png') }); break; } catch (e) { await page.waitForTimeout(400); } } }      // a ficha pode se redesenhar quando chega um conjunto
+    if (CAP) { await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark')); await page.waitForTimeout(500); for (let i = 0; i < 3; i++) { try { await page.locator('#dp-section-onvio .ov-socios').screenshot({ path: path.join(CAP, 'folha-contribuintes-escuro.png') }); break; } catch (e) { await page.waitForTimeout(400); } } await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light')); }
   });
 
   await passo('Folha inteira de cada empresa: quem nunca teve solicitação vira cadastro novo; desligado sem solicitação não; cliente só da folha aparece para cadastrar', async () => {
