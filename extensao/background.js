@@ -935,7 +935,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'rotaAnexo') { reply({ ok: await guardarRotaAnexo(msg) }); }
       else if (msg.cmd === 'sondarEmpregados') { const { f } = await escolherFetcher(); reply({ ok: true, linhas: await OC.sondarEmpregados(emSegundoPlano(f), ms => new Promise(r => setTimeout(r, ms))) }); }
       else if (msg.cmd === 'testarFolha') { const { f } = await escolherFetcher(); try { reply({ ok: true, linhas: await OC.testarFolha(emSegundoPlano(f), textoDoPdf, ms => new Promise(r => setTimeout(r, ms))) }); } finally { fecharOffscreen(); } }
-      else if (msg.cmd === 'folhaDeNovo') { await chrome.storage.local.remove(['folhaLidos', 'folhaEstado']); reply({ ok: true }); }
+      else if (msg.cmd === 'folhaDeNovo') { await chrome.storage.local.remove(['folhaLidos', 'folhaEstado', 'folhaPastas']); reply({ ok: true }); }      // refaz também o caminho das pastas de cada empresa
       else if (msg.cmd === 'testarLeitura') { reply({ ok: true, linhas: await testarLeitura() }); }
       else if (msg.cmd === 'fecharPainel') { if (sender.tab && sender.tab.id != null) await mensagemParaPainel(sender.tab.id, 'fechar').catch(() => {}); reply({ ok: true }); }
       else reply({ ok: false, erro: 'comando desconhecido' });
@@ -1163,10 +1163,10 @@ async function hubSincronizar(manual) {
       const folhaRecente = folhaEstado && folhaEstado.em && Date.now() - folhaEstado.em < FOLHA_INTERVALO && !folhaEstado.pendentes;
       const ctx = { snapshot, pausa: ms => new Promise(r => setTimeout(r, ms)), onItem: null, cancelado: () => hubCancelar,
         // folha (0.68.0): no envio automático, a varredura das pastas é no máximo 1 vez por dia (os extratos saem uma vez por mês), salvo se ficou coisa para trás
-        textoPdf: (!manual && folhaRecente) ? null : textoDoPdf, folhaLidos: folhaLidos || {}, folhaPastas: folhaPastas || {},
+        textoPdf: (!manual && folhaRecente) ? null : textoDoPdf, folhaEm: folhaEstado && folhaEstado.em, folhaLidos: folhaLidos || {}, folhaPastas: folhaPastas || {},
         guardarFolha: x => guardarFolha(x) };
       const res = await OC.hubExecutar(emSegundoPlano(leitor), cats, ctx, enviar, pr => { status.etapa = pr.etapa; status.feito = pr.feito; status.total = pr.total; grava(); });
-      status.resultados = res.map(r => ({ id: r.id, rotulo: r.rotulo, categoria: r.categoria || '', ok: r.ok !== false, motivo: r.motivo || r.aviso || '', cortado: !!r.cortado, linhas: r.linhas || 0, partes: r.partes || 0 }));
+      status.resultados = res.map(r => ({ id: r.id, rotulo: r.rotulo, categoria: r.categoria || '', ok: r.ok !== false, motivo: (r.nota && r.ok !== false ? r.aviso || r.motivo : r.motivo || r.aviso) || '', nota: !!r.nota && r.ok !== false, cortado: !!r.cortado, linhas: r.linhas || 0, partes: r.partes || 0 }));
       status.estado = status.resultados.every(r => r.ok) ? 'ok' : status.resultados.some(r => r.ok) ? 'parcial' : 'erro';
       if (fatal) status.motivo = fatal;
       await chrome.storage.local.set({ hubSyncHash: hashes });

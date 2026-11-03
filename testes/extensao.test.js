@@ -3329,6 +3329,62 @@ test('Folha: lê os extratos da pasta Pessoal (12 meses), manda ao Hub só códi
   assert.ok(!por['pessoais-folha-contribuintes'], 'sem novidade, nada vai (o Hub continua com o que tem)');
 });
 
+test('Folha (0.68.1): sempre diz o que fez no resultado do envio, mesmo sem nada novo para o Hub', async () => {
+  const lidas = [], pedidos = [], guardado = { lidos: {}, pastas: {}, estado: null };
+  const ctx = () => ({ pausa: null, snapshot: { items: [] }, hoje: new Date('2026-10-20T10:00:00'), textoPdf: textoPdfT(pedidos), folhaLidos: Object.assign({}, guardado.lidos), folhaPastas: Object.assign({}, guardado.pastas),
+    clientesVistos: new Map([['k2', { id: 'k2', codigo: 8, nome: 'BETA' }]]),
+    guardarFolha: async x => { if (x.lidos) Object.assign(guardado.lidos, x.lidos); if (x.pastas) Object.assign(guardado.pastas, x.pastas); if (x.estado) guardado.estado = x.estado; } });
+  const folhaDe = r => r.find(x => x.id === 'pessoais-folha-contribuintes');
+  let r = await OC.hubExecutar(apiFolha(lidas), ['pessoais'], ctx(), async () => ({ ok: true }));
+  let f = folhaDe(r);
+  assert.ok(f && f.ok && f.nota, 'leu e mandou: resultado com a nota');
+  assert.match(f.aviso, /2 empresas com extrato, 4 PDFs lidos/);
+  assert.ok(!/ACME|BETA/.test(f.aviso), 'sem nome de empresa no resumo');
+  r = await OC.hubExecutar(apiFolha(lidas), ['pessoais'], ctx(), async () => ({ ok: true }));
+  f = folhaDe(r);
+  assert.ok(f, 'sem nada novo, a folha continua aparecendo no resultado');
+  assert.equal(f.ok, true); assert.equal(f.linhas, 0);
+  assert.match(f.motivo, /nenhum extrato novo/);
+  // envio automático que pula a folha (lida há pouco): diz quando foi e como ler na hora
+  r = await OC.hubExecutar(apiFolha(lidas), ['pessoais'], Object.assign(ctx(), { textoPdf: null, folhaEm: Date.parse('2026-10-20T08:00:00') }), async () => ({ ok: true }));
+  f = folhaDe(r);
+  assert.ok(f && f.ok); assert.match(f.motivo, /não lida neste envio automático[\s\S]*Enviar agora/);
+});
+
+test('Folha (0.68.1): sem extrato achado, o resultado mostra o problema e a hora não é marcada (o próximo envio tenta de novo)', async () => {
+  const guardado = { estado: null, lidos: null };
+  const api = async url => { const p = new URL(url).pathname.replace('/api/', ''); if (p === 'br-payroll-sr/v1/clients') return { items: [{ id: 'c1', code: 7, name: 'ACME' }, { id: 'c2', code: 8, name: 'BETA' }], totalItems: 2, totalPages: 1 }; if (p === 'storage/v1/projects') return []; const e = new Error('sem rota: ' + p); e.status = 404; throw e; };
+  const r = await OC.hubExecutar(api, ['pessoais'], { pausa: null, snapshot: { items: [] }, hoje: new Date('2026-10-20T10:00:00'), textoPdf: async () => '', folhaLidos: {}, folhaPastas: {},
+    guardarFolha: async x => { if (x.estado) guardado.estado = x.estado; if (x.lidos) guardado.lidos = x.lidos; } }, async () => ({ ok: true }));
+  const f = r.find(x => x.id === 'pessoais-folha-contribuintes');
+  assert.ok(f && f.ok === false, 'aparece como problema');
+  assert.match(f.motivo, /nenhum Extrato Mensal achado na pasta Pessoal de 2 empresas[\s\S]*Testar a leitura da folha/);
+  assert.equal(guardado.estado, null, 'sem leitura boa, a hora da folha não é marcada');
+  // todos os PDFs falhando também é problema
+  const r2 = await OC.hubExecutar(apiFolha([]), ['pessoais'], { pausa: null, snapshot: { items: [] }, hoje: new Date('2026-10-20T10:00:00'), folhaLidos: {}, folhaPastas: {},
+    textoPdf: async () => { throw new Error('não consegui ler o PDF (sem resposta)'); }, guardarFolha: async x => { if (x.estado) guardado.estado = x.estado; } }, async () => ({ ok: true }));
+  const f2 = r2.find(x => x.id === 'pessoais-folha-contribuintes');
+  assert.ok(f2 && f2.ok === false);
+  assert.match(f2.motivo, /PDFs não puderam ser lidos: não consegui ler o PDF/);
+  assert.equal(guardado.estado, null);
+});
+
+test('Folha (0.68.1): empresa sem extrato é procurada de novo no dia seguinte; caminho de versão anterior é refeito; com extrato vale 7 dias', async () => {
+  const hoje = new Date('2026-10-20T10:00:00'), h = hoje.getTime(), d = 864e5;
+  const rodar = async (pastas) => { const lidas = []; await OC.hubExecutar(apiFolha(lidas), ['pessoais'], { pausa: null, snapshot: { items: [] }, hoje, folhaLidos: {}, folhaPastas: pastas, textoPdf: textoPdfT([]), guardarFolha: async () => {} }, async () => ({ ok: true })); return lidas.filter(u => /storage\/v1\/projects\?primaryAssociationId=c1/.test(u)).length; };
+  assert.equal(await rodar({ c1: { em: h - 2 * d, pastas: [], via: '', v: 2 } }), 1, 'sem pasta há 2 dias: procura de novo');
+  assert.equal(await rodar({ c1: { em: h - 3600e3, pastas: [], via: '', v: 2 } }), 0, 'sem pasta há 1 hora: espera');
+  assert.equal(await rodar({ c1: { em: h - 3 * d, pastas: [{ id: 'ff', tipo: 'Folders' }], via: 'c1' } }), 1, 'guardado por versão anterior (sem v): refaz uma vez');
+  assert.equal(await rodar({ c1: { em: h - 3 * d, pastas: [{ id: 'ff', tipo: 'Folders' }], via: 'c1', v: 2 } }), 0, 'com extrato, o caminho vale 7 dias');
+});
+
+test('Folha (0.68.1): "Ler a folha de novo" também esquece o caminho das pastas, e o resultado da folha aparece como nota', () => {
+  const bg = src('background.js'), op = src('options.js');
+  assert.match(bg, /folhaDeNovo[^\n]*remove\(\[[^\]]*'folhaPastas'/);
+  assert.match(bg, /nota: !!r\.nota && r\.ok !== false/);
+  assert.match(op, /r\.nota \? '• ' : '⚠ '/);
+});
+
 test('Folha: se o Hub não aceitar, os documentos não ficam marcados como lidos; PDF que falha fica para a próxima', async () => {
   const lidas = [], pedidos = [], guardado = { lidos: {} };
   const ctx = { pausa: null, snapshot: { items: [] }, hoje: new Date('2026-10-20T10:00:00'), folhaLidos: {}, folhaPastas: {},

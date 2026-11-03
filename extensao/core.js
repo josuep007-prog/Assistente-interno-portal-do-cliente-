@@ -3176,6 +3176,8 @@
   const FOLHA_MESES = 12;                 // a primeira leitura volta 12 meses; depois, só o que for novo
   const FOLHA_DOCS_MAX = 300;             // PDFs por envio: o resto fica para o próximo (o que já foi lido não é lido de novo)
   const FOLHA_PASTAS_DIAS = 7;            // o caminho até os extratos de cada empresa é refeito a cada 7 dias
+  const FOLHA_SEM_PASTA_DIAS = 1;         // empresa onde não se achou extrato: procura de novo no dia seguinte (o escritório pode ter publicado)
+  const FOLHA_PASTAS_V = 2;               // caminhos guardados por versões anteriores (antes de tentar o id do contato) são refeitos uma vez
   const FOLHA_FORA = /impost|guia|fgts|inss|darf|dctf|e-?social|rescis|f[eé]rias|admiss|afast|ponto|contrato|exame|aso\b|atestad/i;   // pastas que não têm o extrato
   const URL_PROJETOS = id => API + 'storage/v1/projects?primaryAssociationId=' + encodeURIComponent(id) + '&primaryAssociationType=Client&getScheduleItems=true';
   const URL_FILHOS = (tipo, id, de) => API + 'storage/v2/' + tipo + '/' + encodeURIComponent(id) + '/children?from=' + de + '&pageSize=100&sort=name:asc&containersOnly=false&trashed=false&countDocuments=false&calculateLocks=true';
@@ -3266,15 +3268,16 @@
     // o portal de documentos pode usar o id do contato (o das solicitações): junta os dois pelo código do cliente
     if (ctx.clientesVistos) ctx.clientesVistos.forEach((c, id) => { const mesmo = [...clientes.values()].find(x => c.codigo !== '' && String(x.codigo) === String(c.codigo)); if (mesmo) { if (!mesmo.ids.includes(id)) mesmo.ids.push(id); } else if (!clientes.has(id)) clientes.set(id, Object.assign({ ids: [id] }, c)); });
     const todos = [...clientes.values()].filter(c => !ehEscritorioProprio(c.nome));
-    let docs = 0, semCompetencia = 0, falhas = 0, pendentes = 0, empresas = 0, comContribuinte = 0;
+    let docs = 0, semCompetencia = 0, falhas = 0, pendentes = 0, empresas = 0, comContribuinte = 0, erro = '';
     const limiteDocs = ctx.folhaDocsMax || FOLHA_DOCS_MAX, agora = hoje.getTime();
     for (const c of todos) {
       if (ctx.cancelado && ctx.cancelado()) break;
       try {
         let pc = pastasCache[c.id];
-        if (!pc || !(agora - (pc.em || 0) < FOLHA_PASTAS_DIAS * 864e5)) {
+        const validade = (pc && pc.pastas && pc.pastas.length ? FOLHA_PASTAS_DIAS : FOLHA_SEM_PASTA_DIAS) * 864e5;
+        if (!pc || pc.v !== FOLHA_PASTAS_V || !(agora - (pc.em || 0) < validade)) {
           const r = await pastasDaFolha(fetcher, c.ids, ctx.pausa); leituraBoa();
-          pc = pastasCache[c.id] = { em: agora, pastas: r.pastas, via: r.usado };
+          pc = pastasCache[c.id] = { em: agora, pastas: r.pastas, via: r.usado, v: FOLHA_PASTAS_V };
         }
         if (!pc.pastas.length) continue;
         empresas++;
@@ -3292,7 +3295,7 @@
             if (ctx.pausa) await ctx.pausa(300);
             let texto;
             try { texto = await ctx.textoPdf(URL_DOCUMENTO(x.containerId || x.parentId || pa.id, x.id)); leituraBoa(); }
-            catch (e) { recusaIsolada(e, 'documento da folha'); falhas++; continue; }
+            catch (e) { recusaIsolada(e, 'documento da folha'); falhas++; if (!erro) erro = celulaHub(e && e.message || e, 90); continue; }
             docs++;
             const r = extratoContribuintes(texto), comp = r.competencia || competenciaDoNome(x.name);
             novosLidos[x.id] = comp || '';
@@ -3304,10 +3307,19 @@
             else { comContribuinte++; contrib.forEach(p => linhas.push(linhaTexto(base.concat([p.codigo, p.nome, p.vinculo]), 120))); }
           }
         }
-      } catch (e) { if (e && e.cliente) throw e; recusaIsolada(e, 'documentos do cliente ' + c.id); falhas++; }
+      } catch (e) { if (e && e.cliente) throw e; recusaIsolada(e, 'documentos do cliente ' + c.id); falhas++; if (!erro) erro = celulaHub(e && e.message || e, 90); }
       if (ctx.pausa) await ctx.pausa(200);
     }
-    return { colunas: FOLHA_COLUNAS.slice(), linhas, novosLidos, pastas: pastasCache, docs, pendentes, semCompetencia, falhas, empresas, comContribuinte, clientes: todos.length, cortado: listaFalhou || pendentes > 0 || falhas > 0 };
+    return { colunas: FOLHA_COLUNAS.slice(), linhas, novosLidos, pastas: pastasCache, docs, pendentes, semCompetencia, falhas, empresas, comContribuinte, clientes: todos.length, erro, cortado: listaFalhou || pendentes > 0 || falhas > 0 };
+  }
+  // O que a leitura da folha fez, em uma frase para o resultado do envio (Configurações → Control Hub). Sem nome de empresa.
+  function resumoFolha(x) {
+    const n = (v, s, p) => v.toLocaleString('pt-BR') + ' ' + (v === 1 ? s : p);
+    if (!x.empresas) return { ok: false, texto: 'nenhum Extrato Mensal achado na pasta Pessoal de ' + n(x.clientes, 'empresa', 'empresas') + (x.falhas ? ' (' + n(x.falhas, 'falha', 'falhas') + ': ' + x.erro + ')' : '') + '. Configurações → Avançado → "Testar a leitura da folha" mostra o porquê' };
+    const base = n(x.empresas, 'empresa', 'empresas') + ' com extrato, ' + n(x.docs, 'PDF lido', 'PDFs lidos') + (x.comContribuinte ? ', ' + n(x.comContribuinte, 'com contribuinte', 'com contribuinte') : '');
+    if (x.falhas && !x.docs) return { ok: false, texto: base + '; ' + n(x.falhas, 'PDF não pôde', 'PDFs não puderam') + ' ser lido' + (x.falhas === 1 ? '' : 's') + ': ' + x.erro };
+    const extra = [x.falhas ? n(x.falhas, 'falha', 'falhas') + ' (' + x.erro + ')' : '', x.pendentes ? n(x.pendentes, 'PDF fica', 'PDFs ficam') + ' para o próximo envio' : '', x.semCompetencia ? n(x.semCompetencia, 'sem competência', 'sem competência') : ''].filter(Boolean);
+    return { ok: true, texto: (x.docs ? base : n(x.empresas, 'empresa', 'empresas') + ' com extrato, nenhum extrato novo desde a última leitura') + (extra.length ? '; ' + extra.join('; ') : '') };
   }
   // Diagnóstico (Configurações → Avançado): acha uma empresa com extrato e mostra só o FORMATO (contagens, vínculos, competência),
   // nunca nome, CPF, valor nem nome de empresa.
@@ -3619,11 +3631,17 @@
         async executar(f, ctx) { const x = await lerEmpregadosDosClientes(f, ctx); return [{ tipoDado: 'pessoais-empregados', categoria: 'pessoais', titulo: 'Dados pessoais · empregados de cada empresa', colunas: x.colunas, linhas: x.linhas, totalNaOrigem: x.clientes, cortado: x.cortado, porTipo: {} }]; } });
       tarefas.push({ id: 'pessoais:folha', rotulo: 'Folha: contribuintes por competência',
         async executar(f, ctx) {
-          if (!ctx.textoPdf) return [];
-          const x = await lerFolhaContribuintes(f, ctx);
+          const id = 'pessoais-folha-contribuintes', titulo = 'Dados pessoais · contribuintes na folha (Extrato Mensal)';
+          // a folha sempre diz o que fez no resultado do envio (antes, sem nada novo ela sumia da lista e parecia não rodar)
+          if (!ctx.textoPdf) return [{ tipoDado: id, categoria: 'pessoais', titulo, info: 'não lida neste envio automático: a última varredura foi ' + (ctx.folhaEm ? 'em ' + new Date(ctx.folhaEm).toLocaleString('pt-BR') : 'há pouco') + ' e ela roda no máximo uma vez por dia ("Enviar agora" lê na hora)' }];
+          const x = await lerFolhaContribuintes(f, ctx), resumo = resumoFolha(x);
           if (ctx.guardarFolha) await ctx.guardarFolha({ pastas: x.pastas });          // o caminho das pastas (só ids) vale mesmo sem envio
-          if (!x.linhas.length) { if (ctx.guardarFolha) await ctx.guardarFolha({ lidos: x.novosLidos, estado: { pendentes: x.pendentes } }); return []; }   // nada novo para o Hub: continua com o que tem
-          return [{ tipoDado: 'pessoais-folha-contribuintes', categoria: 'pessoais', titulo: 'Dados pessoais · contribuintes na folha (Extrato Mensal)', colunas: x.colunas, linhas: x.linhas, totalNaOrigem: x.docs, cortado: x.cortado, porTipo: { documentos: x.docs, empresas: x.empresas, pendentes: x.pendentes },
+          if (!x.linhas.length) {
+            // nada novo para o Hub: continua com o que tem. Se nada pôde ser lido, não marca a hora (o próximo envio automático tenta de novo)
+            if (ctx.guardarFolha) await ctx.guardarFolha(resumo.ok ? { lidos: x.novosLidos, estado: { pendentes: x.pendentes } } : { lidos: x.novosLidos });
+            return [{ tipoDado: id, categoria: 'pessoais', titulo, info: resumo.texto, ok: resumo.ok }];
+          }
+          return [{ tipoDado: id, categoria: 'pessoais', titulo, info: resumo.texto, colunas: x.colunas, linhas: x.linhas, totalNaOrigem: x.docs, cortado: x.cortado, porTipo: { documentos: x.docs, empresas: x.empresas, pendentes: x.pendentes },
             acumular: 'Documento', aoEntregar: () => ctx.guardarFolha && ctx.guardarFolha({ lidos: x.novosLidos, estado: { pendentes: x.pendentes } }) }];
         } });
       tarefas.push({ id: 'pessoais:comunicacoes', rotulo: 'Comunicações', async executar(f) { const x = await lerDocumentos(f, 'comunicacoes'); return [{ tipoDado: 'pessoais-comunicacoes', categoria: 'pessoais', titulo: 'Dados pessoais · comunicações', colunas: x.colunas, linhas: x.linhas, totalNaOrigem: x.linhas.length, cortado: false, porTipo: {} }]; } });
@@ -3660,6 +3678,7 @@
       catch (e) { if (e && e.auth) throw e; resultados.push({ id: tarefa.id, rotulo: tarefa.rotulo, ok: false, motivo: 'leitura: ' + celulaHub(e && e.message || e, 120) }); continue; }
       const recusadas = RUN.recusadas.slice(), erros = RUN.erros.slice();
       for (const c of conjuntos) {
+        if (c.info && !c.linhas) { resultados.push({ id: c.tipoDado, rotulo: c.titulo, categoria: c.categoria, ok: c.ok !== false, motivo: c.info, linhas: 0, nota: c.ok !== false }); continue; }
         // leitura que falhou e não trouxe nada: não manda (um conjunto vazio trocaria o bom que já está no Hub)
         if (erros.length && !c.linhas.length) { resultados.push({ id: c.tipoDado, rotulo: c.titulo, categoria: c.categoria, ok: false, motivo: 'leitura falhou: ' + [...new Set(erros)].slice(0, 3).join(', ') }); continue; }
         if (erros.length) c.cortado = true;
@@ -3667,7 +3686,7 @@
         try {
           const r = await enviar(c, p);
           resultados.push(Object.assign({ id: c.tipoDado, rotulo: c.titulo, categoria: c.categoria, linhas: p.nLinhasTotal, partes: p.partes.length, cortado: !!p.cortado },
-            recusadas.length ? { aviso: 'o Onvio recusou: ' + [...new Set(recusadas)].slice(0, 4).join(', ') } : erros.length ? { aviso: 'incompleto, falhou: ' + [...new Set(erros)].slice(0, 4).join(', ') } : {}, r));
+            c.info ? { aviso: c.info, nota: !recusadas.length && !erros.length } : {}, recusadas.length ? { aviso: 'o Onvio recusou: ' + [...new Set(recusadas)].slice(0, 4).join(', ') } : erros.length ? { aviso: 'incompleto, falhou: ' + [...new Set(erros)].slice(0, 4).join(', ') } : {}, r));
           if (r && r.ok !== false && c.aoEntregar) await c.aoEntregar();          // só depois de o Hub aceitar (folha: marca os documentos como lidos)
           if (r && r.parar) { parar = true; break; }          // erro que vale para o envio todo (código errado, Hub sumiu): não adianta ler o resto
         }
@@ -3678,5 +3697,5 @@
     return resultados;
   }
 
-  g.OC = { extratoContribuintes, lerFolhaContribuintes, testarFolha, competenciaDoNome, FOLHA_COLUNAS, negritoUnicode, aplicarDestaques, ehEscritorioProprio, sondarEmpregados, montarLoteHub, HUB_CATEGORIAS, tabelaAnaliseSolicitacoes, tabelaAnaliseEquipe, hubPlano, hubExecutar, hubPartesDe, partirTabela, tabelaLista, tabelaPessoais, tabelaCnd, tabelaNfe, lerEscritorio, lerDocumentos, lerNoticias, slugHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, dentroDoHorario, planoDistribuicaoAuto, acaoConcluir, agruparSugestoes, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, acaoAnalise, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, mensagensProntas, marcadoresPendentes, observacoesFaltantes, avisosResposta, situacaoEquivalente, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { extratoContribuintes, lerFolhaContribuintes, resumoFolha, testarFolha, competenciaDoNome, FOLHA_COLUNAS, negritoUnicode, aplicarDestaques, ehEscritorioProprio, sondarEmpregados, montarLoteHub, HUB_CATEGORIAS, tabelaAnaliseSolicitacoes, tabelaAnaliseEquipe, hubPlano, hubExecutar, hubPartesDe, partirTabela, tabelaLista, tabelaPessoais, tabelaCnd, tabelaNfe, lerEscritorio, lerDocumentos, lerNoticias, slugHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, dentroDoHorario, planoDistribuicaoAuto, acaoConcluir, agruparSugestoes, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, acaoAnalise, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, mensagensProntas, marcadoresPendentes, observacoesFaltantes, avisosResposta, situacaoEquivalente, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);
