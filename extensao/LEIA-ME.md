@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.70.4)
+# Control Onvio · ControlTax (v0.70.5)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,12 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.70.5 e do Hub 309 (só a extensão mais recente envia, pedido do Josué em 04/11/2026)
+
+- **O Hub só aceita dados da versão mais recente da extensão.** Ele exige pelo menos a 0.70.4 e, acima disso, a **maior versão que já recebeu**: quando alguém envia com uma versão nova, as anteriores passam a ser recusadas, sem precisar mexer no Hub. Remessa de versão antiga (ou sem versão) não grava nada.
+- **Na extensão:** a recusa (`versao-antiga`) para o envio na hora e o resultado diz para atualizar ("baixe de novo e clique em Recarregar em chrome://extensions"). Na Entrada de dados do Hub, o cartão da ponte mostra qual versão é aceita.
+- **Atenção:** quem testar uma versão nova da extensão e enviar ao Hub sobe a régua para todos; os outros só voltam a enviar depois de atualizar.
 
 ## Novidades da v0.70.4 e dos Hubs 307 e 308 (pró-labore, RPA e funcionário separados, 04/11/2026)
 
