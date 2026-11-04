@@ -3185,7 +3185,7 @@
   // Regra do Josué em 04/11/2026: a folha é a fonte de quem está ativo. Por isso os últimos FOLHA_MESES_QUADRO meses vão com TODAS as pessoas; os mais antigos, só os contribuintes.
   const FOLHA_COLUNAS = ['Documento', 'Id do cliente', 'Código do cliente', 'Cliente', 'Competência', 'Publicado em', 'Código', 'Nome', 'Vínculo', 'Cálculo', 'Quadro', 'Contribuinte'];
   const FOLHA_MESES_QUADRO = 3;
-  const FOLHA_V = 2;                      // versão do que a leitura manda; subiu de 1 para 2 na 0.70.0 (os extratos recentes são lidos de novo uma vez)
+  const FOLHA_V = 3;                      // versão do que a leitura manda; 2 na 0.70.0 (todas as pessoas), 3 na 0.70.4 (pró-labore × RPA): os extratos recentes são lidos de novo uma vez
   const tipoCalculo = t => { const m = String(t || '').match(/c[aá]lculo\s*:\s*([A-Za-zÀ-ÿ0-9ºª°\.][A-Za-zÀ-ÿ0-9ºª°\. \-]{1,40}?)(?=\s{2,}|\s+compet|\s*$)/im); return m ? m[1].trim() : ''; };
   const FOLHA_MESES = 12;                 // a primeira leitura volta 12 meses; depois, só o que for novo
   const FOLHA_DOCS_MAX = 300;             // PDFs por envio: o resto fica para o próximo (o que já foi lido não é lido de novo)
@@ -3270,6 +3270,18 @@
   const FOLHA_VINCULO = /v[ií]nculo\s*:?\s*([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ .\/-]*?)(?=\s{2,}|\s+(?:cargo|sal[aá]rio|depto|departamento|admiss|situa|c\.?\s?b\.?\s?o|horas?)\b|\s*$)/i;
   const FOLHA_CONTRIB_VINC = /aut[oô]nom|diretor|s[oó]cio|contribuinte|pr[oó][\s-]?labore|empres[aá]rio|titular/i;
   const FOLHA_CONTRIB_EVT = /pr[oó][\s-]?labore|inss\s+aut[oô]nom|\brpa\b/i;
+  // 0.70.4 (Josué, 04/11/2026: "não está separando quem é RPA, pró-labore ou funcionário"): no Domínio os dois vêm como "Contr.:"; quem separa são os eventos
+  // do bloco da pessoa. O vínculo enviado ao Hub passa a ser "Pró-labore" ou "Autônomo (RPA)" (só o nome do evento decide, nunca o valor).
+  const FOLHA_PROLABORE = /pr[oó][\s.-]?labore|retirada\s+(?:de\s+)?s[oó]cio|honor[aá]rios?\s+(?:de\s+)?diretor/i;
+  const FOLHA_RPA = /aut[oô]nom|\brpa\b|servi[cç]os?\s+prestados|carreteiro|frete|sest\s*\/?\s*senat|contribuinte\s+individual/i;
+  function vinculoContribuinte(vinc, bloco) {
+    const v = String(vinc || ''), b = String(bloco || '');
+    if (/pr[oó][\s.-]?labore|diretor|s[oó]cio|titular|empres[aá]rio/i.test(v)) return 'Pró-labore';
+    if (/aut[oô]nom|\brpa\b/i.test(v)) return 'Autônomo (RPA)';
+    if (FOLHA_PROLABORE.test(b)) return 'Pró-labore';
+    if (FOLHA_RPA.test(b)) return 'Autônomo (RPA)';
+    return v || 'Contribuinte';
+  }
   // Formato do Extrato Mensal do Domínio (visto na Torre Hotéis em 04/11/2026): "Empr.: 000123 NOME DA PESSOA  Situação: … CPF: … Adm: dd/mm/aaaa".
   // O contribuinte pode vir como "Contr.:"/"Contribuinte:" no lugar de "Empr.:"; aí ele já é contribuinte pelo próprio rótulo.
   const FOLHA_PESSOA_ROT = /^\s*(empr(?:egado)?|contr(?:ib(?:uinte)?)?|c[oó]d(?:igo)?|func(?:ion[aá]rio)?)\.?\s*:\s*(\d{1,7})\s*[-–]?\s+([A-ZÀ-ÖØ-Þ][A-ZÀ-ÖØ-Þa-zß-öø-ÿ'´`^~.\- ]{1,80}?)(?=\s{2,}|\s+[A-Za-zÀ-ÿ.]{2,20}\s*:|\s+\d{3}\.?\d{3}\.?\d{3}-?\d{2}|\s*$)/i;
@@ -3278,7 +3290,7 @@
     const cm = String(texto || '').match(/compet[eê]ncia\s*:?\s*(0?[1-9]|1[0-2])\s*\/\s*(\d{4})/i);
     const competencia = cm ? cm[2] + '-' + String(cm[1]).padStart(2, '0') : '';
     const pessoas = [], porCodigo = new Map(); let atual = null;
-    const fechar = () => { if (!atual) return; atual.contribuinte = FOLHA_CONTRIB_VINC.test(atual.vinculo) || FOLHA_CONTRIB_EVT.test(atual.bloco); delete atual.bloco; atual = null; };
+    const fechar = () => { if (!atual) return; atual.contribuinte = FOLHA_CONTRIB_VINC.test(atual.vinculo) || FOLHA_CONTRIB_EVT.test(atual.bloco); if (atual.contribuinte) atual.vinculo = vinculoContribuinte(atual.vinculo, atual.bloco); delete atual.bloco; atual = null; };
     for (const l of linhas) {
       let m = l.match(FOLHA_PESSOA), rot = '';
       if (m && /^\s*\d{1,7}\s+(cnpj|cpf|p[aá]gina|compet)/i.test(l)) m = null;
@@ -3297,7 +3309,7 @@
       if (atual.bloco.length < 4000) atual.bloco += '\n' + l;
     }
     fechar();
-    pessoas.forEach(p => { if (p.bloco != null) { p.contribuinte = FOLHA_CONTRIB_VINC.test(p.vinculo) || FOLHA_CONTRIB_EVT.test(p.bloco); delete p.bloco; } });
+    pessoas.forEach(p => { if (p.bloco != null) { p.contribuinte = FOLHA_CONTRIB_VINC.test(p.vinculo) || FOLHA_CONTRIB_EVT.test(p.bloco); if (p.contribuinte) p.vinculo = vinculoContribuinte(p.vinculo, p.bloco); delete p.bloco; } });
     return { competencia, pessoas };
   }
   // Lê os extratos novos de todas as empresas. ctx: { pausa, textoPdf(url) -> texto, folhaLidos {docId: competência}, folhaPastas {clienteId: {...}}, hoje }.

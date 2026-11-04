@@ -303,7 +303,7 @@ console.log('primeira vez: o portal abre nas Solicitações e o app aparece sozi
   const txt = await sw.evaluate(() => textoDoPdf('https://onvio.com.br/api/storage/v1/Folders/F1/documents/D1'));
   const x = await sw.evaluate(t => OC.extratoContribuintes(t), txt);
   assert.equal(x.competencia, '2026-09', 'competência lida do PDF');
-  assert.deepEqual(x.pessoas.map(p => [p.codigo, p.vinculo, p.contribuinte]), [['12', 'Celetista', false], ['15', 'Diretor', true], ['21', 'Autônomo', true]], 'pessoas e vínculos do PDF: ' + txt.slice(0, 300));
+  assert.deepEqual(x.pessoas.map(p => [p.codigo, p.vinculo, p.contribuinte]), [['12', 'Celetista', false], ['15', 'Pró-labore', true], ['21', 'Autônomo (RPA)', true]], 'pessoas e vínculos do PDF: ' + txt.slice(0, 300));
   assert.equal(x.pessoas[1].nome, 'SICRANA SOCIA FICTICIA');
   await assert.rejects(sw.evaluate(() => textoDoPdf('https://onvio.com.br/api/storage/v2/search/documents')), /não permitido/, 'só a rota de download mapeada');
   await sw.evaluate(() => fecharOffscreen());
