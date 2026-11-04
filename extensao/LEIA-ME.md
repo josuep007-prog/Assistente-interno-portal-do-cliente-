@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.70.2)
+# Control Onvio · ControlTax (v0.70.3)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,18 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.70.3 e do Hub 306 (lista de funcionários fiel à folha, pedido do Josué em 04/11/2026)
+
+- **Por que a lista não mudava:** a aplicação automática do Hub parava sempre que um conjunto chegava "cortado". O conjunto de empregados vinha cortado quase sempre por um alarme falso da extensão: empresa com 50, 100, 200… pessoas na lista do Onvio era tratada como lista cortada. Isso não acontece (a Torre Hotéis veio com 223), então:
+  - **Extensão 0.70.3:** lista de tamanho redondo não marca mais o conjunto como incompleto.
+  - **Hub 306:** conjunto cortado não para mais o automático. Desligar alguém por **ausência** numa lista que veio incompleta vai para conferir à mão; o resto é aplicado.
+- **Inativo, que pode voltar (Hub 306):** quem não aparece na folha da última competência fica **Inativo** (não Desligado) e volta a **Ativo** sozinho quando reaparece numa folha seguinte. Vale para empregados, estagiários, pró-labore e RPA. Desligado continua sendo saída de vez (rescisão, ou o Onvio dizendo inativo). Férias, afastamento e admissão depois do mês da folha seguram como ativo, como antes.
+- **Três grupos à parte:** o cadastro ganha o campo **Vínculo** (Empregado, Estagiário, Pró-labore, RPA/autônomo), preenchido pela folha (Celetista, Diretor, Autônomo…) ou pela lista do Onvio. Na tela Funcionários e na ficha da empresa, só empregados e estagiários contam como "funcionários ativos"; **pró-labore** e **RPA** aparecem à parte, com contagem própria. Os filtros passam a ser Ativos, Inativos e Desligados.
+- **A folha também traz quem falta:** pró-labore, RPA e empregados que estão na folha mais recente e em nenhum outro lugar viram cadastro novo; pró-labore e RPA que não vieram na folha do mês ficam Inativos (nunca Desligados).
+- **Data em que saiu:** o campo que guarda desde quando a pessoa está fora (`saidaEm`) era descartado na próxima vez que a empresa carregava. Agora fica gravado.
+- **Para a lista se atualizar sozinha**, a aplicação automática precisa estar ligada na Entrada de dados (é a coordenação quem liga). Desligada, as mudanças aparecem na Entrada de dados para aplicar à mão.
+- **A conferir com os dados reais:** o nome do vínculo nos extratos do Domínio (a extensão só manda o texto que está no PDF; o que não for reconhecido como estágio, pró-labore ou RPA vira Empregado, e contribuinte sem vínculo legível vira RPA); empresas com dois códigos no Onvio e uma só no DP.
 
 ## Novidades da v0.70.2 (o "incompleto" diz o porquê)
 
