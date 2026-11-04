@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.69.1)
+# Control Onvio · ControlTax (v0.69.2)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,14 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.69.2 (a folha passa a achar os extratos de verdade; diagnóstico do Josué na Torre Hotéis em 04/11/2026)
+O teste de uma empresa mostrou "9 projetos" e nenhuma pasta. No portal de documentos, **cada departamento do cliente é um projeto** (Administrativo, Contábil, Fiscal, Pessoal…), e dentro de Pessoal há **uma pasta por tipo de documento** ("Extrato Mensal", "Recibo de Pagamento"…) com os PDFs soltos ou em subpastas `MM-AAAA`. A extensão supunha um projeto só, com a pasta Pessoal dentro (e olhava só os 3 primeiros), e exigia "extrato" no nome do arquivo.
+- Agora ela abre **só o projeto Pessoal**. Nele entra na pasta "Extrato Mensal" e nas pastas de mês dela, e pula as outras pastas de tipo (recibo, líquidos, férias, guias, sindicato) e os meses de mais de 12 meses atrás.
+- **Todo PDF dentro da pasta de extrato conta**, com qualquer nome. A competência vem do texto do PDF.
+- Se a empresa usar o desenho antigo (um projeto do cliente com a pasta Pessoal dentro), ele continua valendo.
+- Os caminhos guardados antes são refeitos uma vez para todas as empresas (`FOLHA_PASTAS_V` = 3).
+- O teste de uma empresa mostra os nomes dos projetos, com ✓ no que vale como Pessoal.
 
 ## Novidades da v0.69.1 (folha que não lia e envio "interrompido", pedidos do Josué em 04/11/2026)
 - **Teste da folha de uma empresa** (Configurações → Avançado → Testes de leitura): digite o código ou parte do nome e veja, passo a passo, onde a leitura para. Mostra os ids tentados, o projeto no portal de documentos, as pastas da raiz (✓ na que vale como Pessoal), cada pasta percorrida com quantos PDFs e extratos tem, os extratos dos últimos 12 meses e os já lidos, e a leitura do mais recente (competência, quantas pessoas, contribuintes e vínculos). Termina com o diagnóstico em uma linha: sem projeto, sem extrato, PDF sem texto, ninguém reconhecido (com o formato das linhas, letras viram A e números 9) ou "a leitura funciona nesta empresa". Nunca mostra nome nem CPF de pessoa (`OC.testarFolhaEmpresa`, cmd `testarFolhaEmpresa`).

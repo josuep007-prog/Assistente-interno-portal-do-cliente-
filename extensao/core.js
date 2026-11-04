@@ -3179,17 +3179,16 @@
   const FOLHA_DOCS_MAX = 300;             // PDFs por envio: o resto fica para o próximo (o que já foi lido não é lido de novo)
   const FOLHA_PASTAS_DIAS = 7;            // o caminho até os extratos de cada empresa é refeito a cada 7 dias
   const FOLHA_SEM_PASTA_DIAS = 1;         // empresa onde não se achou extrato: procura de novo no dia seguinte (o escritório pode ter publicado)
-  const FOLHA_PASTAS_V = 2;               // caminhos guardados por versões anteriores (antes de tentar o id do contato) são refeitos uma vez
+  const FOLHA_PASTAS_V = 3;               // 3 (0.69.2): o projeto é o departamento e a pasta diz o que é extrato; os caminhos guardados antes são refeitos               // caminhos guardados por versões anteriores (antes de tentar o id do contato) são refeitos uma vez
   const FOLHA_PROF = 4;                   // níveis abaixo da raiz do cliente (Pessoal › Folha › 2026 › 10-Outubro); era 3 até a 0.69.0
   // pasta de um ano antigo (só o ano no nome, ex. "2023"): fora da janela de 12 meses, não entra
   const anoAntigo = (nome, hoje) => { const m = /^\s*(20\d{2})\s*$/.exec(String(nome || '')); return !!m && Number(m[1]) < (hoje || new Date()).getFullYear() - 1; };
-  const FOLHA_FORA = /impost|guia|fgts|inss|darf|dctf|e-?social|rescis|f[eé]rias|admiss|afast|ponto|contrato|exame|aso\b|atestad/i;   // pastas que não têm o extrato
+  const FOLHA_FORA = /impost|guia|fgts|inss|darf|dctf|e-?social|rescis|f[eé]rias|admiss|afast|ponto|contrato|exame|aso\b|atestad|recibo|liquido|sindica|contribuicao|programac|holerite|vale/i;   // pastas que não têm o extrato
   const URL_PROJETOS = id => API + 'storage/v1/projects?primaryAssociationId=' + encodeURIComponent(id) + '&primaryAssociationType=Client&getScheduleItems=true';
   const URL_FILHOS = (tipo, id, de) => API + 'storage/v2/' + tipo + '/' + encodeURIComponent(id) + '/children?from=' + de + '&pageSize=100&sort=name:asc&containersOnly=false&trashed=false&countDocuments=false&calculateLocks=true';
   const URL_DOCUMENTO = (pasta, doc) => API + 'storage/v1/Folders/' + encodeURIComponent(pasta) + '/documents/' + encodeURIComponent(doc);
   const ehPasta = x => !!x && (/folder|container|project/i.test(String(x.itemType || x.type || '')) || (x.itemType == null && x.type == null && !x.mimeType && !x.documentType && x.originalItemSize == null));
   const ehPdf = x => /pdf/i.test(String(x.mimeType || '')) || /\.pdf$/i.test(String(x.name || ''));
-  const ehExtrato = x => !!x && !ehPasta(x) && ehPdf(x) && /extrato/i.test(semAcento(x.name));
   // competência pelo nome do arquivo (MM-AAAA, MM/AAAA, MM.AAAA ou AAAA-MM); o texto do PDF tem a palavra final
   function competenciaDoNome(nome) {
     const t = String(nome || '');
@@ -3214,32 +3213,41 @@
   // (0.69.1: antes só valia o nome começando por "Pessoal", e pastas numeradas ou abreviadas ficavam de fora)
   const PASTA_PESSOAL = /(^|[^a-z])(pessoal|dp|folha|departamento pessoal|depto\.? pessoal)([^a-z]|$)/;
   const ehPastaPessoal = x => ehPasta(x) && PASTA_PESSOAL.test(semAcento(x.name).trim());
-  // Caminho até os extratos de uma empresa: Cliente > Pessoal > (até 3 níveis), entrando só em pastas que podem ter a folha.
+  // Caminho até os extratos de uma empresa. Estrutura real (skill do escritório "organizar pasta Pessoal por competência", 04/11/2026):
+  // cada DEPARTAMENTO do cliente é um projeto (Administrativo, Contábil, Fiscal, Pessoal…); dentro de Pessoal há uma pasta por tipo de
+  // documento ("Extrato Mensal", "Recibo de Pagamento"…) com os PDFs soltos ou em subpastas MM-AAAA. Quem diz que o PDF é extrato é a
+  // PASTA (o arquivo pode ter qualquer nome). Reserva: o desenho antigo (um projeto do cliente com a pasta Pessoal dentro).
   // log (opcional, só no diagnóstico de uma empresa): recebe cada passo em texto, sem nome de pessoa.
+  const nomePasta = x => String((x && (x.name || x.title || x.displayName)) || '');
+  const extratoNaPasta = (x, emExtrato) => !!x && !ehPasta(x) && ehPdf(x) && (emExtrato || /extrato/i.test(semAcento(x.name)));
   async function pastasDaFolha(fetcher, ids, pausa, log) {
     let projetos = [], usado = '';
     for (const id of ids) {
       const d = await fetcher(URL_PROJETOS(id)); projetos = listaDe(d).filter(p => p && p.id != null);
-      if (log) log('Projeto no portal de documentos pelo id ' + (ids.indexOf(id) === 0 ? 'da folha' : 'do contato') + ': ' + (projetos.length ? projetos.length + ' achado(s)' : 'nenhum'));
+      if (log) log('Projetos no portal de documentos pelo id ' + (ids.indexOf(id) === 0 ? 'da folha' : 'do contato') + ': ' + (projetos.length ? projetos.length + ' (' + projetos.map(p => (PASTA_PESSOAL.test(semAcento(nomePasta(p))) ? '✓ ' : '') + (nomePasta(p).slice(0, 30) || '(sem nome: campos ' + Object.keys(p).slice(0, 8).join(', ') + ')')).join(' · ') + ')' : 'nenhum'));
       if (projetos.length) { usado = String(id); break; }
       if (pausa) await pausa(200);
     }
-    const pastas = [];
-    for (const p of projetos.slice(0, 3)) {
+    const pastas = [], minima = competenciaMinima(new Date(), FOLHA_MESES + 1);
+    const velho = nome => { const m = /^\s*(0?[1-9]|1[0-2])\s*[-\/._]\s*(20\d{2})\s*$/.exec(String(nome || '')); return anoAntigo(nome) || (!!m && m[2] + '-' + String(m[1]).padStart(2, '0') < minima); };
+    // pontos de partida: o projeto Pessoal (desenho real) ou, na falta, a pasta Pessoal dentro de cada projeto (desenho antigo)
+    const fila = projetos.filter(p => PASTA_PESSOAL.test(semAcento(nomePasta(p)))).map(p => ({ id: String(p.id), tipo: 'Projects', prof: 0, nome: nomePasta(p), ext: false }));
+    if (!fila.length) for (const p of projetos.slice(0, 12)) {
+      if (pausa) await pausa(200);
       const raiz = await filhosDe(fetcher, 'Projects', p.id, pausa);
-      const pessoal = raiz.filter(ehPastaPessoal);
-      if (log) log('Pastas na raiz (' + raiz.filter(ehPasta).length + '): ' + (raiz.filter(ehPasta).map(x => (ehPastaPessoal(x) ? '✓ ' : '') + String(x.name || '?').slice(0, 40)).join(' · ') || 'nenhuma') + (raiz.some(ehExtrato) ? ' · e extrato solto na raiz' : ''));
-      if (raiz.some(ehExtrato)) pastas.push({ id: String(p.id), tipo: 'Projects' });
-      const fila = pessoal.map(x => ({ id: String(x.id), prof: 1, nome: String(x.name || '') }));
-      for (let i = 0; i < fila.length && i < 80; i++) {
-        const f = fila[i]; if (pausa) await pausa(200);
-        const filhos = await filhosDe(fetcher, 'Folders', f.id, pausa);
-        const nEx = filhos.filter(ehExtrato).length, subs = filhos.filter(ehPasta);
-        if (nEx) pastas.push({ id: f.id, tipo: 'Folders' });
-        if (log) log('  ' + '  '.repeat(f.prof - 1) + (f.prof <= 2 ? '"' + f.nome.slice(0, 40) + '"' : '(subpasta nível ' + f.prof + ')') + ': ' + filhos.length + ' itens, ' + filhos.filter(ehPdf).length + ' PDF, ' + nEx + ' com "extrato" no nome, ' + subs.length + ' subpastas' + (f.prof < FOLHA_PROF ? '' : ' (não desce mais)') +
-          (subs.some(x => FOLHA_FORA.test(semAcento(x.name))) ? ' · pula: ' + subs.filter(x => FOLHA_FORA.test(semAcento(x.name))).map(x => String(x.name).slice(0, 25)).join(', ') : ''));
-        if (f.prof < FOLHA_PROF) subs.filter(x => !FOLHA_FORA.test(semAcento(x.name)) && !anoAntigo(x.name)).forEach(x => fila.push({ id: String(x.id), prof: f.prof + 1, nome: String(x.name || '') }));
-      }
+      if (log) log('Projeto "' + nomePasta(p).slice(0, 30) + '": ' + raiz.length + ' itens, pastas: ' + (raiz.filter(ehPasta).map(x => (ehPastaPessoal(x) ? '✓ ' : '') + nomePasta(x).slice(0, 30)).join(' · ') || 'nenhuma'));
+      if (raiz.some(x => extratoNaPasta(x, false))) pastas.push({ id: String(p.id), tipo: 'Projects', ext: false });
+      raiz.filter(ehPastaPessoal).forEach(x => fila.push({ id: String(x.id), tipo: 'Folders', prof: 1, nome: nomePasta(x), ext: false }));
+    }
+    for (let i = 0; i < fila.length && i < 80; i++) {
+      const f = fila[i]; if (pausa) await pausa(200);
+      const filhos = await filhosDe(fetcher, f.tipo, f.id, pausa);
+      const nEx = filhos.filter(x => extratoNaPasta(x, f.ext)).length, subs = filhos.filter(ehPasta);
+      if (nEx) pastas.push({ id: f.id, tipo: f.tipo, ext: f.ext });
+      const entra = subs.filter(x => !FOLHA_FORA.test(semAcento(nomePasta(x))) && !velho(nomePasta(x)));
+      if (log) log('  ' + '  '.repeat(f.prof) + (f.prof <= 2 || /extrato/i.test(semAcento(f.nome)) ? '"' + f.nome.slice(0, 40) + '"' : '(subpasta nível ' + f.prof + ')') + ': ' + filhos.length + ' itens, ' + filhos.filter(ehPdf).length + ' PDF, ' + nEx + ' extrato(s), ' + subs.length + ' subpastas' +
+        (f.prof < FOLHA_PROF ? (subs.length > entra.length ? ' · pula ' + (subs.length - entra.length) + (f.prof <= 1 ? ': ' + subs.filter(x => !entra.includes(x)).slice(0, 8).map(x => nomePasta(x).slice(0, 25)).join(', ') : '') : '') : ' (não desce mais)'));
+      if (f.prof < FOLHA_PROF) entra.forEach(x => fila.push({ id: String(x.id), tipo: 'Folders', prof: f.prof + 1, nome: nomePasta(x), ext: f.ext || /extrato/i.test(semAcento(nomePasta(x))) }));
     }
     return { usado, pastas };
   }
@@ -3302,7 +3310,7 @@
           let itens;
           try { itens = await filhosDe(fetcher, pa.tipo, pa.id, ctx.pausa); leituraBoa(); }
           catch (e) { if (e && e.auth) throw e; delete pastasCache[c.id]; throw e; }               // a pasta mudou: refaz o caminho na próxima
-          const extratos = itens.filter(ehExtrato).filter(x => {
+          const extratos = itens.filter(x => extratoNaPasta(x, pa.ext)).filter(x => {
             if (x.id == null || lidos[x.id] != null || novosLidos[x.id] != null) return false;
             const cn = competenciaDoNome(x.name); if (cn) return cn >= minima;
             const cd = dataIso(String(x.createdDate || '')); return !cd || cd.slice(0, 7) >= minima;
@@ -3361,7 +3369,7 @@
       if (!r.pastas.length) { linhas.push('Empresa ' + tentadas + ': projeto achado (pelo ' + (r.usado === c.id ? 'id da folha' : 'id do contato') + '), mas nenhuma pasta com "Extrato" em Pessoal'); continue; }
       linhas.push('Empresa ' + tentadas + ': projeto pelo ' + (r.usado === c.id ? 'id da folha' : 'id do contato') + ', ' + r.pastas.length + ' pasta(s) com extrato');
       const itens = []; for (const pa of r.pastas) itens.push(...(await filhosDe(fetcher, pa.tipo, pa.id, pausa)).map(x => Object.assign({ pasta: pa.id }, x)));
-      const ex = itens.filter(ehExtrato);
+      const ex = itens.filter(x => extratoNaPasta(x, (r.pastas.find(p => p.id === x.pasta) || {}).ext));
       const padroes = new Map(); ex.forEach(x => { const p = String(x.name || '').replace(/\d/g, '9'); padroes.set(p, (padroes.get(p) || 0) + 1); });
       linhas.push('Extratos: ' + ex.length + ' · nomes: ' + [...padroes.entries()].slice(0, 6).map(([p, n]) => p + ' ×' + n).join(', '));
       linhas.push('Campos de um item: ' + Object.keys(ex[0] || {}).filter(k => k !== 'pasta').slice(0, 30).join(', '));
@@ -3407,7 +3415,7 @@
     if (!r.usado) { log('➜ A empresa não tem projeto no portal de documentos com nenhum dos ids: a folha dela não pode ser lida.'); return linhas; }
     if (!r.pastas.length) { log('➜ Nenhuma pasta com PDF que tenha "extrato" no nome. Se o extrato tem outro nome ou fica em outra pasta, me mande estas linhas.'); return linhas; }
     const itens = []; for (const pa of r.pastas) itens.push(...(await filhosDe(fetcher, pa.tipo, pa.id, pausa)).map(x => Object.assign({ pasta: pa.id }, x)));
-    const ex = itens.filter(ehExtrato), minima = competenciaMinima(hoje || new Date(), FOLHA_MESES), lidos = g.folhaLidos || {};
+    const ex = itens.filter(x => extratoNaPasta(x, (r.pastas.find(p => p.id === x.pasta) || {}).ext)), minima = competenciaMinima(hoje || new Date(), FOLHA_MESES), lidos = g.folhaLidos || {};
     const padroes = new Map(); ex.forEach(x => { const p = String(x.name || '').replace(/\d/g, '9'); padroes.set(p, (padroes.get(p) || 0) + 1); });
     const noPrazo = ex.filter(x => { const cn = competenciaDoNome(x.name); if (cn) return cn >= minima; const cd = dataIso(String(x.createdDate || '')); return !cd || cd.slice(0, 7) >= minima; });
     log('Extratos: ' + ex.length + ' · dos últimos 12 meses: ' + noPrazo.length + ' · já lidos antes: ' + noPrazo.filter(x => lidos[x.id] != null).length + ' · nomes: ' + [...padroes.entries()].slice(0, 6).map(([p, n]) => p + ' ×' + n).join(', '));
