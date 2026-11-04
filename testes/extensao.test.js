@@ -3575,6 +3575,25 @@ test('Folha: limite de PDFs por envio deixa o resto para o próximo', async () =
   assert.equal(pedidos.length, 2);
   assert.equal(enviado.porTipo.pendentes, 2, 'quatro extratos (a BETA achada pelo id do contato das solicitações): 2 agora, 2 depois');
   assert.equal(enviado.cortado, true);
+  const r = await OC.hubExecutar(apiFolha([]), ['pessoais'], Object.assign({}, ctx, { folhaLidos: {}, folhaPastas: {} }), async () => ({ ok: true }));
+  const fr = r.find(x => x.id === 'pessoais-folha-contribuintes');
+  assert.equal(fr.cortado, true); assert.match(fr.porque, /2 PDFs ficam para o próximo envio/, 'o resultado diz por que veio incompleto');
+});
+
+test('Hub: conjunto incompleto diz o porquê (empresa que falhou, lista de tamanho redondo) e a tela mostra', async () => {
+  const base = apiHub();
+  const f = async url => { const u = new URL(url); if (/clients\/c2\/employees/.test(u.pathname)) { const e = new Error('HTTP 500'); e.status = 500; throw e; }
+    if (/clients\/c1\/employees/.test(u.pathname)) return Array.from({ length: 50 }, (_, i) => ({ id: 'z' + i, name: 'Pessoa ' + i, status: 'ACTIVE' }));
+    return base(url); };
+  const r = await OC.hubExecutar(f, ['pessoais'], { pausa: null, snapshot: { items: [] } }, async () => ({ ok: true }));
+  const e = r.find(x => x.id === 'pessoais-empregados');
+  assert.equal(e.cortado, true);
+  assert.match(e.porque, /1 empresa não pôde ser lida \(HTTP 500\)/);
+  assert.match(e.porque, /1 empresa veio com a lista num tamanho redondo/);
+  const sb = { self: {} }; vm.runInNewContext(src('opcoes-comum.js'), sb);
+  const tela = sb.self.OCOpcoes.linhasEnvio({ estado: 'ok', terminouEm: new Date().toISOString(), resultados: [{ rotulo: 'Dados pessoais · empregados de cada empresa', ok: true, cortado: true, porque: e.porque, linhas: 50 }] });
+  assert.match(tela.linhas[0].texto, /^veio incompleto: 1 empresa não pôde ser lida/);
+  assert.match(tela.linhas[0].texto, /50 linhas enviadas/);
 });
 
 test('Folha: o service worker só baixa documento pela rota mapeada e o leitor de PDF junta as linhas', () => {

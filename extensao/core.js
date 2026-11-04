@@ -3141,7 +3141,7 @@
     try { (await lerClientesFolha(fetcher, ctx.pausa)).forEach((c, id) => clientes.set(id, c)); leituraBoa(); }
     catch (e) { recusaIsolada(e, 'br-payroll-sr/v1/clients'); listaFalhou = true; }
     if (ctx.clientesVistos) ctx.clientesVistos.forEach((c, id) => { if (!clientes.has(id)) clientes.set(id, c); });
-    const todos = [...clientes.values()].filter(c => !ehEscritorioProprio(c.nome)), lidos = todos.slice(0, HUB_CLIENTES_MAX), linhas = []; let falhas = 0, suspeitas = 0;
+    const todos = [...clientes.values()].filter(c => !ehEscritorioProprio(c.nome)), lidos = todos.slice(0, HUB_CLIENTES_MAX), linhas = []; let falhas = 0, suspeitas = 0, erro1 = '';
     let nLidos = 0;
     for (const c of lidos) {
       nLidos++; if (ctx.andamento) ctx.andamento('empresa ' + nLidos + ' de ' + lidos.length);
@@ -3161,10 +3161,16 @@
           if (!x || typeof x !== 'object') return;
           linhas.push(linhaTexto([c.id, c.codigo, c.nome, x.id, x.name, x.cpf, dataIso(x.hireDate), x.status, x.gender, x.jobPosition, x.employeeWorkload, x.integrationCode, (x.clientEmployeeRelationshipExpanded || {}).eprType, dataHora(x.created)], 120));
         });
-      } catch (e) { recusaIsolada(e, 'clients/' + c.id + '/employees'); falhas++; }
+      } catch (e) { recusaIsolada(e, 'clients/' + c.id + '/employees'); falhas++; if (!erro1) erro1 = celulaHub(e && e.message || e, 60); }
       if (ctx.pausa) await ctx.pausa(250);
     }
-    return { colunas: COLUNAS_EMPREGADOS, linhas, clientes: todos.length, falhas, cortado: listaFalhou || falhas > 0 || suspeitas > 0 || todos.length > lidos.length };
+    // o porquê do "incompleto" vai junto, para a tela dizer o que faltou (antes só dizia "cortado")
+    const qt = (v, s1, s2) => v.toLocaleString('pt-BR') + ' ' + (v === 1 ? s1 : s2);
+    const porque = [listaFalhou ? 'a lista de clientes da folha não pôde ser lida (usei só os clientes das solicitações)' : '',
+      falhas ? qt(falhas, 'empresa não pôde ser lida', 'empresas não puderam ser lidas') + (erro1 ? ' (' + erro1 + ')' : '') : '',
+      suspeitas ? qt(suspeitas, 'empresa veio', 'empresas vieram') + ' com a lista num tamanho redondo (50, 100, 200…), que pode ter sido cortada pelo Onvio' : '',
+      todos.length > lidos.length ? 'só as primeiras ' + qt(lidos.length, 'empresa', 'empresas') + ' de ' + todos.length.toLocaleString('pt-BR') : ''].filter(Boolean).join('; ');
+    return { colunas: COLUNAS_EMPREGADOS, linhas, clientes: todos.length, falhas, suspeitas, porque, cortado: listaFalhou || falhas > 0 || suspeitas > 0 || todos.length > lidos.length };
   }
 
   /* ----- folha de pagamento no portal de documentos (0.68.0, pedido do Josué em 03/11/2026) -----
@@ -3358,7 +3364,7 @@
     const base = n(x.empresas, 'empresa', 'empresas') + ' com extrato, ' + n(x.docs, 'PDF lido', 'PDFs lidos') + (x.pessoasQuadro ? ', ' + n(x.pessoasQuadro, 'pessoa', 'pessoas') + ' nos últimos meses' : '') + (x.comContribuinte ? ', ' + n(x.comContribuinte, 'extrato com contribuinte', 'extratos com contribuinte') : '');
     if (x.falhas && !x.docs) return { ok: false, texto: base + '; ' + n(x.falhas, 'PDF não pôde', 'PDFs não puderam') + ' ser lido' + (x.falhas === 1 ? '' : 's') + ': ' + x.erro };
     const extra = [x.falhas ? n(x.falhas, 'falha', 'falhas') + ' (' + x.erro + ')' : '', x.pendentes ? n(x.pendentes, 'PDF fica', 'PDFs ficam') + ' para o próximo envio' : '', x.semCompetencia ? n(x.semCompetencia, 'sem competência', 'sem competência') : ''].filter(Boolean);
-    return { ok: true, texto: (x.docs ? base : n(x.empresas, 'empresa', 'empresas') + ' com extrato, nenhum extrato novo desde a última leitura') + (extra.length ? '; ' + extra.join('; ') : '') };
+    return { ok: true, texto: (x.docs ? base : n(x.empresas, 'empresa', 'empresas') + ' com extrato, nenhum extrato novo desde a última leitura') + (extra.length ? '; ' + extra.join('; ') : ''), porque: extra.join('; ') };
   }
   // Diagnóstico (Configurações → Avançado): acha uma empresa com extrato e mostra só o FORMATO (contagens, vínculos, competência),
   // nunca nome, CPF, valor nem nome de empresa.
@@ -3735,7 +3741,7 @@
     if (quer('noticias')) tarefas.push({ id: 'noticias:artigos', rotulo: 'Notícias', async executar(f) { const x = await lerNoticias(f); return [{ tipoDado: 'noticias-artigos', categoria: 'noticias', titulo: 'Notícias compartilhadas', colunas: x.colunas, linhas: x.linhas, totalNaOrigem: x.linhas.length, cortado: false, porTipo: {} }]; } });
     if (P) {
       tarefas.push({ id: 'pessoais:empregados', rotulo: 'Empregados de cada empresa',
-        async executar(f, ctx) { const x = await lerEmpregadosDosClientes(f, ctx); return [{ tipoDado: 'pessoais-empregados', categoria: 'pessoais', titulo: 'Dados pessoais · empregados de cada empresa', colunas: x.colunas, linhas: x.linhas, totalNaOrigem: x.clientes, cortado: x.cortado, porTipo: {} }]; } });
+        async executar(f, ctx) { const x = await lerEmpregadosDosClientes(f, ctx); return [{ tipoDado: 'pessoais-empregados', categoria: 'pessoais', titulo: 'Dados pessoais · empregados de cada empresa', colunas: x.colunas, linhas: x.linhas, totalNaOrigem: x.clientes, cortado: x.cortado, porque: x.porque, porTipo: {} }]; } });
       tarefas.push({ id: 'pessoais:folha', rotulo: 'Folha: contribuintes por competência',
         async executar(f, ctx) {
           const id = 'pessoais-folha-contribuintes', titulo = 'Dados pessoais · contribuintes na folha (Extrato Mensal)';
@@ -3748,7 +3754,7 @@
             if (ctx.guardarFolha) await ctx.guardarFolha(resumo.ok ? { lidos: x.novosLidos, estado: { pendentes: x.pendentes } } : { lidos: x.novosLidos });
             return [{ tipoDado: id, categoria: 'pessoais', titulo, info: resumo.texto, ok: resumo.ok }];
           }
-          return [{ tipoDado: id, categoria: 'pessoais', titulo, info: resumo.texto, colunas: x.colunas, linhas: x.linhas, totalNaOrigem: x.docs, cortado: x.cortado, porTipo: { documentos: x.docs, empresas: x.empresas, pendentes: x.pendentes },
+          return [{ tipoDado: id, categoria: 'pessoais', titulo, info: resumo.texto, colunas: x.colunas, linhas: x.linhas, totalNaOrigem: x.docs, cortado: x.cortado, porque: resumo.porque || (x.cortado ? 'a lista de clientes da folha não pôde ser lida' : ''), porTipo: { documentos: x.docs, empresas: x.empresas, pendentes: x.pendentes },
             acumular: 'Documento', aoEntregar: () => ctx.guardarFolha && ctx.guardarFolha({ lidos: x.novosLidos, estado: { pendentes: x.pendentes } }) }];
         } });
       tarefas.push({ id: 'pessoais:comunicacoes', rotulo: 'Comunicações', async executar(f) { const x = await lerDocumentos(f, 'comunicacoes'); return [{ tipoDado: 'pessoais-comunicacoes', categoria: 'pessoais', titulo: 'Dados pessoais · comunicações', colunas: x.colunas, linhas: x.linhas, totalNaOrigem: x.linhas.length, cortado: false, porTipo: {} }]; } });
@@ -3768,7 +3774,8 @@
   function hubPartesDe(c) {
     const partes = partirTabela(c.linhas, HUB_PARTE_CHARS);
     const cortadoPorTamanho = partes.length > HUB_PARTES_MAX;
-    return { partes: partes.slice(0, HUB_PARTES_MAX), cortado: !!c.cortado || cortadoPorTamanho, nLinhasTotal: c.linhas.length };
+    return { partes: partes.slice(0, HUB_PARTES_MAX), cortado: !!c.cortado || cortadoPorTamanho, nLinhasTotal: c.linhas.length,
+      porque: [c.porque || '', cortadoPorTamanho ? 'grande demais para o Hub: foram ' + HUB_PARTES_MAX + ' de ' + partes.length + ' partes' : ''].filter(Boolean).join('; ') };
   }
   // Executa o plano: lê cada tarefa, partilha cada conjunto e entrega pelo callback enviar(conjunto, partes).
   async function hubExecutar(fetcher, escolhidas, ctx, enviar, aoProgredir) {
@@ -3788,11 +3795,11 @@
         if (c.info && !c.linhas) { resultados.push({ id: c.tipoDado, rotulo: c.titulo, categoria: c.categoria, ok: c.ok !== false, motivo: c.info, linhas: 0, nota: c.ok !== false }); continue; }
         // leitura que falhou e não trouxe nada: não manda (um conjunto vazio trocaria o bom que já está no Hub)
         if (erros.length && !c.linhas.length) { resultados.push({ id: c.tipoDado, rotulo: c.titulo, categoria: c.categoria, ok: false, motivo: 'leitura falhou: ' + [...new Set(erros)].slice(0, 3).join(', ') }); continue; }
-        if (erros.length) c.cortado = true;
+        if (erros.length) { c.cortado = true; c.porque = [c.porque || '', 'falhou: ' + [...new Set(erros)].slice(0, 3).join(', ')].filter(Boolean).join('; '); }
         const p = hubPartesDe(c);
         try {
           const r = await enviar(c, p);
-          resultados.push(Object.assign({ id: c.tipoDado, rotulo: c.titulo, categoria: c.categoria, linhas: p.nLinhasTotal, partes: p.partes.length, cortado: !!p.cortado },
+          resultados.push(Object.assign({ id: c.tipoDado, rotulo: c.titulo, categoria: c.categoria, linhas: p.nLinhasTotal, partes: p.partes.length, cortado: !!p.cortado, porque: p.cortado ? (p.porque || '') : '' },
             c.info ? { aviso: c.info, nota: !recusadas.length && !erros.length } : {}, recusadas.length ? { aviso: 'o Onvio recusou: ' + [...new Set(recusadas)].slice(0, 4).join(', ') } : erros.length ? { aviso: 'incompleto, falhou: ' + [...new Set(erros)].slice(0, 4).join(', ') } : {}, r));
           if (r && r.ok !== false && c.aoEntregar) await c.aoEntregar();          // só depois de o Hub aceitar (folha: marca os documentos como lidos)
           if (r && r.parar) { parar = true; break; }          // erro que vale para o envio todo (código errado, Hub sumiu): não adianta ler o resto

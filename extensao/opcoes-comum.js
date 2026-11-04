@@ -84,7 +84,7 @@
         ' · ' + ok.length + ' conjuntos enviados, ' + ok.reduce((n, r) => n + (r.linhas || 0), 0).toLocaleString('pt-BR') + ' linhas';
     const linhas = [];
     mal.forEach(r => linhas.push({ tom: 'erro', rotulo: r.rotulo, texto: MOTIVOS_HUB[r.motivo] || r.motivo }));
-    ok.filter(x => x.cortado).forEach(r => linhas.push({ tom: 'aviso', rotulo: r.rotulo, texto: 'veio incompleto (cortado)' }));
+    ok.filter(x => x.cortado).forEach(r => linhas.push({ tom: 'aviso', rotulo: r.rotulo, texto: 'veio incompleto' + (r.porque ? ': ' + r.porque : ' (cortado)') + (r.linhas ? ' · ' + r.linhas.toLocaleString('pt-BR') + ' linhas enviadas' : '') }));
     ok.filter(x => x.motivo && !x.cortado).forEach(r => linhas.push({ tom: r.nota ? 'nota' : 'aviso', rotulo: r.rotulo, texto: MOTIVOS_HUB[r.motivo] || r.motivo }));
     ok.filter(x => !x.motivo && !x.cortado).forEach(r => linhas.push({ tom: 'ok', rotulo: r.rotulo, texto: (r.linhas || 0).toLocaleString('pt-BR') + ' linhas' }));
     return { cab, estado: est, linhas, feito: hubSync.feito, total: hubSync.total };
