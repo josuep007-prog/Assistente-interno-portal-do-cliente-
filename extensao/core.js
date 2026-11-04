@@ -3464,7 +3464,7 @@
       (cnd || nfe ? ' · ' + (r.listas ? 'está' : 'NÃO está') + ' nos clientes de CND/NF-e' : '')));
     const com = res.filter(r => r.n > 0), atuais = res.filter(r => r.listas), nomes = new Set(res.map(r => chaveEmpresa(r.c.nome)));
     if (res.some(r => r.erro)) log('➜ A leitura falhou em algum código: o envio completo também falha nele e o conjunto vai marcado como incompleto. Tente de novo; se repetir, me mande estas linhas.');
-    else if (!com.length) log('➜ O Onvio não tem nenhuma pessoa para ' + (res.length > 1 ? 'estes códigos' : 'este código') + ' (é a mesma lista que o Onvio mostra ao escolher o empregado numa solicitação). A extensão envia ao Hub o que o Onvio tem; a lista vem do Domínio. Se a empresa tem folha publicada, o Hub ainda pode usar o Extrato Mensal (teste "Testar a folha" com o mesmo código).');
+    else if (!com.length) log('➜ O Onvio não tem nenhuma pessoa para ' + (res.length > 1 ? 'estes códigos' : 'este código') + ' (é a mesma lista que o Onvio mostra ao escolher o empregado numa solicitação). A lista vem do Domínio. Desde o Hub 312, com folha publicada o Hub usa o Extrato Mensal mesmo assim (quem está na folha é ativo; confira com "Testar a folha" no mesmo código e, no Hub, a ficha da empresa, aba Onvio).');
     else {
       const antigos = com.filter(r => (cnd || nfe) && !r.listas && atuais.some(a => chaveEmpresa(a.c.nome) === chaveEmpresa(r.c.nome)));
       if (antigos.length) log('➜ ' + antigos.map(r => r.c.codigo).join(', ') + ': tem pessoas, mas o código não está nos clientes de CND/NF-e e outro código com o mesmo nome está. O Hub trata esse código como cadastro antigo e descarta os empregados dele.');

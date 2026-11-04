@@ -683,6 +683,39 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     assert.ok(!(await page.evaluate(() => window.__hubApi.api('onvio').difs().some(d => /Fora da folha/.test(d.txt)))), 'sem quadro completo, nada sai da folha');
   });
 
+  await passo('Folha sem a lista do Onvio (Hub 312, Josué 04/11/2026: "mesmo não puxando do Onvio a leitura deveria ter pego"): a folha decide sozinha, conferida pelo cadastro do DP', async () => {
+    const cfg = await page.evaluate(() => window.__db.ler('ing_config/cfg'));
+    await page.evaluate(() => { window.__msgs = window.__msgs || []; if (!window.__ouveAck) { window.__ouveAck = 1; window.addEventListener('message', (e) => { if (e.data && e.data.ctlhub === 1 && e.data.de === 'hub') window.__msgs.push(e.data); }); } });
+    const envia = async (l) => { await page.evaluate((l) => { window.__msgs.length = 0; window.postMessage(l, '*'); }, l); await page.waitForFunction((id) => window.__msgs.some(m => m.tipo === 'ack' && m.id === id), l.id, { timeout: 5000 }); return page.evaluate((id) => window.__msgs.find(m => m.tipo === 'ack' && m.id === id), l.id); };
+    const COL = D.OC.FOLHA_COLUNAS, mes = (n) => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); };
+    // a lista de empregados do Onvio chega sem nenhuma pessoa da ORION (como a Clear)
+    const rost = await D.empregados(); rost.linhas = rost.linhas.filter(l => !/ORION/.test(l));
+    await semearConjunto('pessoais-empregados', rost, 'cSL');
+    const antes = await page.evaluate(() => JSON.parse(JSON.stringify(window.__db.ler('dp_empresas/e-orion'))));
+    await page.evaluate(() => { const d = window.__db.ler('dp_empresas/e-orion'); ['Maria Souza', 'Beltrano Silva', 'Carlos Sem Pedido'].forEach((n, i) => { if (!d.funcionarios.some(f => f.nome === n)) d.funcionarios.push({ id: 'f-sl' + i, nome: n, cargo: '', codigo: '', admissao: '2020-01-01', status: 'Ativo', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '', salario: '', obs: '' }); }); d.funcionarios.forEach(f => { if (['Maria Souza', 'Beltrano Silva', 'Carlos Sem Pedido'].includes(f.nome)) { f.status = 'Ativo'; f.saidaEm = ''; } }); window.__db.semear('dp_empresas/e-orion', d); });
+    const lq = (doc, comp, cod, nome, vinc) => [doc, 'c-orion', '900', 'ORION COMERCIO LTDA', comp, comp + '-05', cod, nome, vinc, 'Folha Mensal', 'completo', 'não'].join('\t');
+    const lote = (id, ciclo, linhas) => ({ ctlhub: 1, de: 'ext', tipo: 'lote', id, token: cfg.token, fonte: 'onvio', tipoDado: 'pessoais-folha-contribuintes', categoria: 'pessoais', titulo: 'Folha', colunas: COL, tabela: linhas.join('\n'), nLinhas: linhas.length, nLinhasTotal: linhas.length, totalNaOrigem: 1, cortado: false, partes: 1, parte: 0, ciclo, porTipo: {}, versaoExt: VEXT, acumular: 'Documento' });
+    const r1 = await envia(lote('s0', 'cS0', [lq('s0', mes(0), '101', 'MARIA SOUZA', 'Celetista'), lq('s0', mes(0), '202', 'BELTRANO SILVA', 'Celetista'), lq('s0', mes(0), '303', 'NOVA FICTICIA', 'Celetista')]));
+    assert.equal(r1.ok, true, JSON.stringify(r1));
+    await page.waitForFunction(() => window.__hubApi.api('onvio').difs().some(d => d.nome === 'Carlos Sem Pedido' && /Fora da folha/.test(d.txt)), null, { timeout: 8000 });
+    const ds = await page.evaluate(() => window.__hubApi.api('onvio').difs().filter(d => d.empId === 'e-orion').map(d => ({ nome: d.nome, acao: d.acao, tipo: d.tipo, txt: d.txt, depois: d.depois, confirmar: d.confirmar })));
+    const car = ds.find(d => d.nome === 'Carlos Sem Pedido' && d.tipo === 'situacao');
+    assert.equal(car.depois, 'Inativo'); assert.equal(car.confirmar, false, 'a folha é absoluta: o automático aplica');
+    assert.ok(ds.some(d => d.nome === 'Nova Ficticia' && d.acao === 'novo' && /Está na folha de/.test(d.txt)), 'quem está só na folha vira cadastro novo');
+    assert.ok(!ds.some(d => d.nome === 'Maria Souza' && d.tipo === 'situacao'), 'Maria está na folha: continua ativa');
+    await page.evaluate(() => window.__hubApi.api('dp').abrirEmpresa('e-orion', 'onvio'));
+    await page.waitForFunction(() => /decide quem é ativo/.test((document.querySelector('#dp-section-onvio .ov-folha-q') || {}).textContent || ''), null, { timeout: 8000 });
+    // trava de ligação pelo cadastro: folha de gente que não está no cadastro (3 ativos) não decide
+    assert.equal((await envia(lote('s1', 'cS1', [lq('s0', mes(0), '901', 'PESSOA ESTRANHA UM', 'Celetista'), lq('s0', mes(0), '902', 'PESSOA ESTRANHA DOIS', 'Celetista')]))).ok, true);
+    await page.waitForFunction(() => /veio vazia e só 0 dos 2/.test((document.querySelector('#dp-section-onvio .ov-folha-q') || {}).textContent || ''), null, { timeout: 8000 });
+    assert.ok(!(await page.evaluate(() => window.__hubApi.api('onvio').difs().some(d => d.empId === 'e-orion' && /Fora da folha/.test(d.txt)))), 'ligação suspeita: nada sai pela folha');
+    // restaura
+    assert.equal((await envia(lote('s2', 'cS2', [lq('s0', mes(0), '', '', '')].map(l => l.replace(/\tcompleto\tnão$/, '\tcontribuintes\t'))))).ok, true);
+    await semearConjunto('pessoais-empregados', await D.empregados(), 'cSLr');
+    await page.evaluate((d) => window.__db.semear('dp_empresas/e-orion', d), antes);
+    await page.waitForTimeout(400);
+  });
+
   await passo('Folha · lista fiel (Hub 306): vínculo pela folha, pró-labore e RPA em grupos à parte (entram e saem pela folha), Inativo fora da contagem, e o automático não para por conjunto cortado', async () => {
     const cfg = await page.evaluate(() => window.__db.ler('ing_config/cfg'));
     await page.evaluate(() => { window.__msgs = window.__msgs || []; if (!window.__ouveAck) { window.__ouveAck = 1; window.addEventListener('message', (e) => { if (e.data && e.data.ctlhub === 1 && e.data.de === 'hub') window.__msgs.push(e.data); }); } });
