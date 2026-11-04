@@ -1182,7 +1182,7 @@ async function hubSincronizar(manual, soFolha) {
         guardarFolha: x => guardarFolha(x), soTarefas: soFolha ? ['pessoais:folha'] : null, folhaDocsMax: soFolha ? FOLHA_DOCS_SO_FOLHA : undefined, andamento: t => { status.detalhe = String(t || '').slice(0, 120); } };
       ctx.onItem = (feitos, total) => { status.detalhe = 'solicitação ' + feitos + ' de ' + total; };
       const res = await OC.hubExecutar(emSegundoPlano(leitor), cats, ctx, enviar, pr => { status.etapa = pr.etapa; status.detalhe = ''; status.feito = pr.feito; status.total = pr.total; grava(); });
-      status.resultados = res.map(r => ({ id: r.id, rotulo: r.rotulo, categoria: r.categoria || '', ok: r.ok !== false, motivo: (r.nota && r.ok !== false ? r.aviso || r.motivo : r.motivo || r.aviso) || '', nota: !!r.nota && r.ok !== false, cortado: !!r.cortado, linhas: r.linhas || 0, partes: r.partes || 0 }));
+      status.resultados = res.map(r => ({ id: r.id, rotulo: r.rotulo, categoria: r.categoria || '', ok: r.ok !== false, motivo: (r.nota && r.ok !== false ? r.aviso || r.motivo : r.motivo || r.aviso) || '', nota: !!r.nota && r.ok !== false, cortado: !!r.cortado, porque: String(r.porque || '').slice(0, 300), linhas: r.linhas || 0, partes: r.partes || 0 }));
       status.estado = status.resultados.every(r => r.ok) ? 'ok' : status.resultados.some(r => r.ok) ? 'parcial' : 'erro';
       if (fatal) status.motivo = fatal;
       await chrome.storage.local.set({ hubSyncHash: hashes });

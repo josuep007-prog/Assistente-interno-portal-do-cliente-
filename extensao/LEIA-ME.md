@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.70.1)
+# Control Onvio · ControlTax (v0.70.2)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,14 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.70.2 (o "incompleto" diz o porquê)
+
+- No resultado do envio ao Control Hub, um conjunto incompleto agora diz **o que faltou**, em vez de só "veio incompleto (cortado)":
+  - **Empregados de cada empresa:** quantas empresas não puderam ser lidas (com o erro), quantas vieram com a lista num tamanho redondo (50, 100, 200…), que pode ter sido cortada pelo Onvio, e se a lista de clientes da folha falhou.
+  - **Folha (Extrato Mensal):** quantos PDFs ficaram para o próximo envio (até 300 por envio; o resto vem nos seguintes, sem reler o que já foi), falhas e extratos sem competência.
+  - Conjunto grande demais para o Hub: quantas partes foram de quantas.
+- A linha também mostra quantas linhas foram enviadas mesmo assim: o que veio vai ao Hub; incompleto quer dizer que falta algo, não que nada chegou.
 
 ## Novidades da v0.70.1 (botão "Enviar só a folha", pedido do Josué em 04/11/2026)
 - Em Configurações → Avançado → Control Hub, no cartão "Envio completo", o botão **Enviar só a folha** lê e manda ao Hub **só o Extrato Mensal**, sem as listas, a lista de empregados nem as comunicações. Por isso é bem mais rápido, e cada rodada lê até **1.500 PDFs** (o envio completo lê até 300).
