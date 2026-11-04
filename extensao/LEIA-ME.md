@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.69.4)
+# Control Onvio · ControlTax (v0.70.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,13 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.70.0 (a folha decide quem é ativo, regra do Josué em 04/11/2026)
+O Hub mostrava a Torre Hotéis com 223 ativos, e a folha de 10/2026 tinha 29 pessoas: a lista de empregados do Onvio traz todo mundo como ativo, inclusive quem já saiu. Regra nova: **a folha é absoluta**. Quem some da folha por férias ou afastamento continua ativo, e empresa sem folha publicada mantém o Onvio.
+- A leitura da folha manda ao Hub **todas as pessoas** dos extratos dos últimos 3 meses (`FOLHA_MESES_QUADRO`), com código, nome e vínculo. Os mais antigos continuam só com os contribuintes.
+- Cada linha leva 3 colunas novas: **Cálculo** (o tipo do extrato, por exemplo "Folha Mensal e Complementar", `OC.tipoCalculo`), **Quadro** ("completo" ou "contribuintes") e **Contribuinte** (sim/não). CPF e valores continuam fora.
+- Como as leituras anteriores só tinham os contribuintes, os extratos dos últimos 3 meses já lidos são **lidos de novo uma vez** (`FOLHA_V` = 2). Até isso acontecer, o envio automático não pula a folha.
+- No Hub (versão 305), quem está na lista do Onvio e fora da folha mais recente vira Desligado, com a saída no último mês em que apareceu. Férias, afastamento e admissão depois do mês da folha seguram a pessoa como ativa. Se a folha não casa com a lista do Onvio (menos de 60%), ela não decide nada. Detalhes em `mapeamento/hub-fase1-dp-2026-10-26.md`.
 
 ## Novidades da v0.69.4 (teste de uma empresa lê todos os extratos do período)
 Com a 0.69.3, a Torre Hotéis (código 394) foi lida inteira: 29 pessoas no extrato mais recente (Folha Mensal de 10/2026), todas celetistas. O pró-labore costuma sair num cálculo à parte, com extrato próprio. Por isso o teste de uma empresa agora lê **os 6 extratos mais recentes**, com uma linha para cada: competência, tipo de cálculo (Folha Mensal, Pró-labore…), pessoas, contribuintes e vínculos.

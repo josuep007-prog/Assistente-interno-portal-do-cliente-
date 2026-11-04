@@ -3292,7 +3292,7 @@ const PDFS_T = {
 };
 const textoPdfT = pedidos => async url => { pedidos.push(url); const m = url.match(/\/storage\/v1\/Folders\/([^/]+)\/documents\/([^/?]+)$/); assert.ok(m, 'download só pela rota mapeada: ' + url); if (!PDFS_T[m[2]]) throw new Error('PDF inexistente'); return PDFS_T[m[2]]; };
 
-test('Folha: lê os extratos da pasta Pessoal (12 meses), manda ao Hub só código, nome, vínculo e competência, e na próxima vez só os novos', async () => {
+test('Folha: lê os extratos da pasta Pessoal (12 meses), manda ao Hub código, nome, vínculo, cálculo e competência (todas as pessoas nos últimos 3 meses), e na próxima vez só os novos', async () => {
   const lidas = [], pedidos = [], guardado = { lidos: {}, pastas: {} };
   const ctx = () => ({ pausa: null, snapshot: { items: [] }, hoje: new Date('2026-10-20T10:00:00'), textoPdf: textoPdfT(pedidos), folhaLidos: Object.assign({}, guardado.lidos), folhaPastas: Object.assign({}, guardado.pastas),
     clientesVistos: new Map([['k2', { id: 'k2', codigo: 8, nome: 'BETA' }]]),
@@ -3307,13 +3307,17 @@ test('Folha: lê os extratos da pasta Pessoal (12 meses), manda ao Hub só códi
   assert.deepEqual(plano(f.c.colunas), plano(OC.FOLHA_COLUNAS));
   const lin = f.texto.split('\n').map(l => l.split('\t')), col = n => f.c.colunas.indexOf(n);
   const de = (doc) => lin.filter(l => l[col('Documento')] === doc);
-  assert.deepEqual(de('d1').map(l => l[col('Código')]).sort(), ['15', '21'], 'setembro: o diretor e o autônomo');
+  // hoje = 20/10/2026: os últimos 3 meses (jul, ago e set) vão com TODAS as pessoas, e cada linha diz se é contribuinte
+  assert.deepEqual(de('d1').map(l => l[col('Código')]).sort(), ['12', '15', '21', '30'], 'setembro: o quadro inteiro');
+  assert.deepEqual(de('d1').filter(l => l[col('Contribuinte')] === 'sim').map(l => l[col('Código')]).sort(), ['15', '21'], 'o diretor e o autônomo são os contribuintes');
+  assert.ok(de('d1').every(l => l[col('Quadro')] === 'completo' && l[col('Cálculo')] === 'Folha Mensal'), 'cálculo e quadro em cada linha');
   assert.equal(de('d1')[0][col('Competência')], '2026-09');
   assert.equal(de('d1')[0][col('Cliente')], 'ACME');
-  assert.deepEqual(de('d2').map(l => l[col('Código')]), ['15'], 'agosto: só o diretor (o autônomo é intermitente)');
-  assert.deepEqual(de('d3').map(l => [l[col('Competência')], l[col('Código')]]), [['2026-07', '']], 'julho sem contribuinte: uma linha que diz que o mês foi conferido (competência pelo texto do PDF)');
-  assert.deepEqual(de('g1').map(l => [l[col('Cliente')], l[col('Código')]]), [['BETA', '']], 'a BETA foi achada pelo id do contato (o das solicitações)');
-  assert.ok(!f.texto.includes('111.222') && !f.texto.includes('5.000') && !f.texto.includes('FULANO DE TAL'), 'sem CPF, sem valor e sem empregado');
+  assert.deepEqual(de('d2').map(l => l[col('Código')]).sort(), ['12', '15', '30'], 'agosto: sem o autônomo (intermitente)');
+  assert.deepEqual(de('d3').map(l => l[col('Código')]).sort(), ['12', '30'], 'julho: só os empregados (competência pelo texto do PDF)');
+  assert.deepEqual(de('d3').map(l => l[col('Competência')]).filter((v, i, a) => a.indexOf(v) === i), ['2026-07']);
+  assert.deepEqual(de('g1').map(l => [l[col('Cliente')], l[col('Código')]]), [['BETA', '5']], 'a BETA foi achada pelo id do contato (o das solicitações)');
+  assert.ok(!f.texto.includes('111.222') && !f.texto.includes('5.000'), 'sem CPF e sem valor');
   assert.ok(!pedidos.some(u => /\/dv$|\/d0$/.test(u)), 'nem extrato de mais de 12 meses nem outro relatório');
   assert.ok(!lidas.some(u => /CONTROLTAX|=c9/.test(u)), 'empresa do escritório não é lida');
   assert.ok(!lidas.some(u => /Folders\/(fi|fc)\//.test(u)), 'Impostos e Contábil não são abertas');
@@ -3511,6 +3515,27 @@ test('Hub (0.69.1): o envio dá sinal de vida a cada 20 s e diz o andamento dent
   assert.match(bg, /clearInterval\(batida\)/);
   assert.match(bg, /andamento: t => \{ status\.detalhe/);
   assert.match(op, /hubSync\.detalhe \? ': ' \+ hubSync\.detalhe/);
+});
+
+test('Folha (0.70.0): fora dos últimos 3 meses vão só os contribuintes; extrato sem ninguém marca o mês como conferido; a leitura antiga é refeita uma vez', async () => {
+  const lidas = [], por = {};
+  // hoje = 20/02/2027: setembro, agosto e julho de 2026 já estão fora dos 3 meses do quadro (mas dentro dos 12 meses da leitura)
+  const ctx = { pausa: null, snapshot: { items: [] }, hoje: new Date('2027-02-20T10:00:00'), textoPdf: textoPdfT([]), folhaLidos: {}, folhaPastas: {}, clientesVistos: new Map([['k2', { id: 'k2', codigo: 8, nome: 'BETA' }]]), guardarFolha: async () => {} };
+  await OC.hubExecutar(apiFolha(lidas), ['pessoais'], ctx, async (c, p) => { por[c.tipoDado] = { c, texto: p.partes.join('\n') }; return { ok: true }; });
+  const f = por['pessoais-folha-contribuintes'], lin = f.texto.split('\n').map(l => l.split('\t')), col = n => f.c.colunas.indexOf(n);
+  assert.deepEqual(lin.filter(l => l[col('Documento')] === 'd1').map(l => [l[col('Código')], l[col('Quadro')], l[col('Contribuinte')]]).sort(), [['15', 'contribuintes', 'sim'], ['21', 'contribuintes', 'sim']], 'antigo: só os contribuintes');
+  assert.deepEqual(lin.filter(l => l[col('Documento')] === 'd3').map(l => [l[col('Código')], l[col('Quadro')], l[col('Cálculo')]]), [['', 'contribuintes', 'Folha Mensal']], 'antigo e sem contribuinte: uma linha que diz que o mês foi conferido');
+  assert.equal(OC.FOLHA_V, 2); assert.equal(OC.FOLHA_MESES_QUADRO, 3);
+  assert.equal(OC.competenciaMinima(new Date('2026-11-04T10:00:00'), OC.FOLHA_MESES_QUADRO), '2026-08');
+  assert.equal(OC.tipoCalculo('Empresa: X\nCálculo: Folha Mensal e Complementar   Competência: 10/2026'), 'Folha Mensal e Complementar');
+  assert.equal(OC.tipoCalculo('Cálculo: 13º Salário - 1ª parcela    Competência: 11/2026'), '13º Salário - 1ª parcela');
+  assert.equal(OC.tipoCalculo('sem o rótulo'), '');
+  // background: a versão antiga manda refazer só os extratos recentes e não deixa o envio automático pular a folha
+  const bg = src('background.js');
+  assert.match(bg, /const folhaAntiga = !folhaEstado \|\| folhaEstado\.v !== OC\.FOLHA_V/);
+  assert.match(bg, /!\(comp && comp >= corte\)/);
+  assert.match(bg, /folhaRecente = !folhaAntiga &&/);
+  assert.match(bg, /v: OC\.FOLHA_V/);
 });
 
 test('Folha: se o Hub não aceitar, os documentos não ficam marcados como lidos; PDF que falha fica para a próxima', async () => {
