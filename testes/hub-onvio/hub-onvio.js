@@ -697,12 +697,14 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     const lote = (id, ciclo, linhas) => ({ ctlhub: 1, de: 'ext', tipo: 'lote', id, token: cfg.token, fonte: 'onvio', tipoDado: 'pessoais-folha-contribuintes', categoria: 'pessoais', titulo: 'Folha', colunas: COL, tabela: linhas.join('\n'), nLinhas: linhas.length, nLinhasTotal: linhas.length, totalNaOrigem: 1, cortado: false, partes: 1, parte: 0, ciclo, porTipo: {}, versaoExt: VEXT, acumular: 'Documento' });
     const r1 = await envia(lote('s0', 'cS0', [lq('s0', mes(0), '101', 'MARIA SOUZA', 'Celetista'), lq('s0', mes(0), '202', 'BELTRANO SILVA', 'Celetista'), lq('s0', mes(0), '303', 'NOVA FICTICIA', 'Celetista')]));
     assert.equal(r1.ok, true, JSON.stringify(r1));
-    await page.waitForFunction(() => window.__hubApi.api('onvio').difs().some(d => d.nome === 'Carlos Sem Pedido' && /Fora da folha/.test(d.txt)), null, { timeout: 8000 });
+    // com o automático ligado (passos anteriores) a diferença pode ser aplicada antes de a lermos: vale a diferença OU o cadastro já mudado
+    await page.waitForFunction(() => { const f = (n) => (window.__db.ler('dp_empresas/e-orion').funcionarios || []).find(x => x.nome === n), ds = window.__hubApi.api('onvio').difs();
+      return (ds.some(d => d.nome === 'Carlos Sem Pedido' && /Fora da folha/.test(d.txt)) || (f('Carlos Sem Pedido') || {}).status === 'Inativo') && (ds.some(d => d.nome === 'Nova Ficticia' && d.acao === 'novo') || !!f('Nova Ficticia')); }, null, { timeout: 8000 });
     const ds = await page.evaluate(() => window.__hubApi.api('onvio').difs().filter(d => d.empId === 'e-orion').map(d => ({ nome: d.nome, acao: d.acao, tipo: d.tipo, txt: d.txt, depois: d.depois, confirmar: d.confirmar })));
     const car = ds.find(d => d.nome === 'Carlos Sem Pedido' && d.tipo === 'situacao');
-    assert.equal(car.depois, 'Inativo'); assert.equal(car.confirmar, false, 'a folha é absoluta: o automático aplica');
-    assert.ok(ds.some(d => d.nome === 'Nova Ficticia' && d.acao === 'novo' && /Está na folha de/.test(d.txt)), 'quem está só na folha vira cadastro novo');
-    assert.ok(!ds.some(d => d.nome === 'Maria Souza' && d.tipo === 'situacao'), 'Maria está na folha: continua ativa');
+    if (car) { assert.equal(car.depois, 'Inativo'); assert.equal(car.confirmar, false, 'a folha é absoluta: o automático aplica'); }
+    const nova = ds.find(d => d.nome === 'Nova Ficticia' && d.acao === 'novo'); if (nova) assert.match(nova.txt, /Está na folha de/);
+    assert.ok(!ds.some(d => d.nome === 'Maria Souza' && d.tipo === 'situacao') && (await page.evaluate(() => ((window.__db.ler('dp_empresas/e-orion').funcionarios || []).find(f => f.nome === 'Maria Souza') || {}).status)) === 'Ativo', 'Maria está na folha: continua ativa');
     await page.evaluate(() => window.__hubApi.api('dp').abrirEmpresa('e-orion', 'onvio'));
     await page.waitForFunction(() => /decide quem é ativo/.test((document.querySelector('#dp-section-onvio .ov-folha-q') || {}).textContent || ''), null, { timeout: 8000 });
     // trava de ligação pelo cadastro: folha de gente que não está no cadastro (3 ativos) não decide
@@ -728,7 +730,8 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     const ds = await page.evaluate(() => window.__hubApi.api('onvio').difs().filter(d => d.empId === 'e-orion' && d.tipo === 'duplicado').map(d => ({ chave: d.chave, nome: d.nome, txt: d.txt, confirmar: d.confirmar, depois: d.depois })));
     assert.equal(ds.length, 1, 'só a Julia (o Pedro tem admissões diferentes): ' + JSON.stringify(ds));
     assert.match(ds[0].txt, /cadastrada duas vezes .*mesma admissão/); assert.equal(ds[0].confirmar, false, 'mesma admissão: o automático unifica');
-    assert.equal((await page.evaluate((ch) => window.__hubApi.api('onvio').aplicar('e-orion', ch), ds[0].chave)).ok, true);
+    const ap = await page.evaluate((ch) => window.__hubApi.api('onvio').aplicar('e-orion', ch), ds[0].chave);
+    assert.ok(ap.ok || /já não existe/.test(ap.erro || ''), JSON.stringify(ap));          // com o automático ligado (passo anterior), ele pode unificar antes do clique
     await page.waitForFunction(() => !(window.__db.ler('dp_empresas/e-orion').funcionarios || []).some(f => f.id === 'f-d2'), null, { timeout: 8000 });
     const ju = await page.evaluate(() => window.__db.ler('dp_empresas/e-orion').funcionarios.filter(f => /^Julia Ficticia/.test(f.nome)));
     assert.equal(ju.length, 1); assert.equal(ju[0].id, 'f-d1', 'fica o que tem o código Domínio'); assert.equal(ju[0].codigo, '31');

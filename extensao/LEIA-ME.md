@@ -55,6 +55,7 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 - Só contagens, códigos e nomes de empresa; nunca nome de empregado nem CPF. Só leitura (GET).
 - O último envio completo (04/11, 0.70.5) leu as 1.049 empresas **sem nenhuma falha**: empresa sem empregados no Hub não é erro de leitura do envio.
 - **Hub 312:** empresa com a lista de empregados do Onvio vazia e folha publicada (o caso da Clear): antes o Hub ignorava a folha (só deixava a folha decidir quando 60% da folha estava na lista do Onvio). Agora a folha decide sozinha, conferida pelo cadastro do DP (com 3 ou mais ativos no cadastro, pelo menos 30% têm de estar na folha). Quem só está na folha vira cadastro novo.
+- **Hub 312, duplicados:** a mesma pessoa com sobrenome a mais ou a menos (ex.: com e sem o sobrenome de casada, mesma admissão) não vira mais outro cadastro, e as duplicatas que já existem aparecem na Entrada de dados para unificar (o automático unifica quando a admissão é a mesma).
 
 ## Novidades da v0.70.5 e do Hub 309 (só a extensão mais recente envia, pedido do Josué em 04/11/2026)
 
