@@ -3772,7 +3772,7 @@
   }
   // Executa o plano: lê cada tarefa, partilha cada conjunto e entrega pelo callback enviar(conjunto, partes).
   async function hubExecutar(fetcher, escolhidas, ctx, enviar, aoProgredir) {
-    const tarefas = hubPlano(escolhidas), resultados = [];
+    const tarefas = hubPlano(escolhidas).filter(t => !ctx.soTarefas || ctx.soTarefas.includes(t.id)), resultados = [];          // soTarefas: "Enviar só a folha" (0.70.1)
     let i = 0, parar = false;
     RUN.seguidas = 0; RUN.recusadas = []; RUN.erros = [];
     for (const tarefa of tarefas) {

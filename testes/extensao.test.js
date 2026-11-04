@@ -3538,6 +3538,19 @@ test('Folha (0.70.0): fora dos últimos 3 meses vão só os contribuintes; extra
   assert.match(bg, /v: OC\.FOLHA_V/);
 });
 
+test('Folha (0.70.1): "Enviar só a folha" roda só a tarefa da folha, com mais PDFs, e não conta como envio completo', async () => {
+  const lidas = [], por = {};
+  const ctx = { pausa: null, snapshot: { items: [] }, hoje: new Date('2026-10-20T10:00:00'), textoPdf: textoPdfT([]), folhaLidos: {}, folhaPastas: {}, guardarFolha: async () => {}, soTarefas: ['pessoais:folha'] };
+  const r = await OC.hubExecutar(apiFolha(lidas), ['pessoais'], ctx, async (c, p) => { por[c.tipoDado] = c; return { ok: true }; });
+  assert.deepEqual(plano(r.map(x => x.id)), ['pessoais-folha-contribuintes'], 'só a folha');
+  assert.ok(!lidas.some(u => /employees|tickets|communications/.test(u)), 'nem empregados, nem solicitações, nem comunicações');
+  const bg = src('background.js'), avc = src('app/views/avancado.js');
+  assert.match(bg, /soTarefas: soFolha \? \['pessoais:folha'\] : null, folhaDocsMax: soFolha \? FOLHA_DOCS_SO_FOLHA : undefined/);
+  assert.match(bg, /hubSync\.soFolha \? Date\.parse\(hubSync\.completoAnterior/, 'o automático conta a partir do último envio completo');
+  assert.match(bg, /msg\.soFolha && !\(await hubEnvioCats\(\)\)\.includes\('pessoais'\)\) reply\(\{ ok: false, motivo: 'sem-pessoais' \}\)/);
+  assert.match(avc, /id="adv-so-folha"/);
+});
+
 test('Folha: se o Hub não aceitar, os documentos não ficam marcados como lidos; PDF que falha fica para a próxima', async () => {
   const lidas = [], pedidos = [], guardado = { lidos: {} };
   const ctx = { pausa: null, snapshot: { items: [] }, hoje: new Date('2026-10-20T10:00:00'), folhaLidos: {}, folhaPastas: {},

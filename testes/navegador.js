@@ -1240,6 +1240,9 @@ await passo('app · Configurações → Avançado (0.69.0): cinco partes com o e
     assert.equal(await p.isChecked('.adv-cat input[data-cat="pessoais"]'), false, 'não liga sem confirmar');
     await p.click('#adv-pessoais-sim');
     await p.waitForFunction(() => JSON.parse(localStorage.getItem('__mem')).hubCfg.envio.pessoais === true);
+    // "Enviar só a folha" manda o pedido com soFolha
+    await p.click('#adv-so-folha');
+    await p.waitForFunction(() => (window.__msgs || []).some(m => m.cmd === 'hubSincronizar' && m.soFolha === true));
     // automático e horas gravam na hora
     await p.fill('#adv-syncHoras', '12'); await p.press('#adv-syncHoras', 'Tab');
     await p.waitForFunction(() => JSON.parse(localStorage.getItem('__mem')).hubCfg.syncHoras === 12);
