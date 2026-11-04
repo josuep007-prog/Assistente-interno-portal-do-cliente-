@@ -1097,7 +1097,7 @@ async function guardarFolha(x) {
     out.folhaLidos = l;
   }
   if (x.pastas) out.folhaPastas = Object.assign({}, folhaPastas, x.pastas);
-  if (x.estado) out.folhaEstado = { em: Date.now(), pendentes: Number(x.estado.pendentes) || 0 };           // só números: quando leu e quantos PDFs ficaram para o próximo envio
+  if (x.estado) out.folhaEstado = { em: Date.now(), pendentes: Number(x.estado.pendentes) || 0, v: OC.FOLHA_V };           // só números: quando leu e quantos PDFs ficaram para o próximo envio
   if (Object.keys(out).length) await chrome.storage.local.set(out);
 }
 
@@ -1164,10 +1164,15 @@ async function hubSincronizar(manual) {
         return { ok: true };
       };
       const { folhaLidos, folhaPastas, folhaEstado } = await chrome.storage.local.get(['folhaLidos', 'folhaPastas', 'folhaEstado']);
-      const folhaRecente = folhaEstado && folhaEstado.em && Date.now() - folhaEstado.em < FOLHA_INTERVALO && !folhaEstado.pendentes;
+      // 0.70.0: a leitura passou a mandar todas as pessoas dos últimos meses (a folha decide quem é ativo). O que foi lido antes só tinha os contribuintes:
+      // uma vez, os extratos dos últimos meses saem da lista de "já lidos" e são lidos de novo (só eles; os mais antigos continuam valendo).
+      const folhaAntiga = !folhaEstado || folhaEstado.v !== OC.FOLHA_V;
+      let lidosFolha = folhaLidos || {};
+      if (folhaAntiga) { const corte = OC.competenciaMinima(new Date(), OC.FOLHA_MESES_QUADRO); lidosFolha = Object.fromEntries(Object.entries(lidosFolha).filter(([, comp]) => !(comp && comp >= corte))); }
+      const folhaRecente = !folhaAntiga && folhaEstado.em && Date.now() - folhaEstado.em < FOLHA_INTERVALO && !folhaEstado.pendentes;
       const ctx = { snapshot, pausa: ms => new Promise(r => setTimeout(r, ms)), onItem: null, cancelado: () => hubCancelar,
         // folha (0.68.0): no envio automático, a varredura das pastas é no máximo 1 vez por dia (os extratos saem uma vez por mês), salvo se ficou coisa para trás
-        textoPdf: (!manual && folhaRecente) ? null : textoDoPdf, folhaEm: folhaEstado && folhaEstado.em, folhaLidos: folhaLidos || {}, folhaPastas: folhaPastas || {},
+        textoPdf: (!manual && folhaRecente) ? null : textoDoPdf, folhaEm: folhaEstado && folhaEstado.em, folhaLidos: lidosFolha, folhaPastas: folhaPastas || {},
         guardarFolha: x => guardarFolha(x), andamento: t => { status.detalhe = String(t || '').slice(0, 120); } };
       ctx.onItem = (feitos, total) => { status.detalhe = 'solicitação ' + feitos + ' de ' + total; };
       const res = await OC.hubExecutar(emSegundoPlano(leitor), cats, ctx, enviar, pr => { status.etapa = pr.etapa; status.detalhe = ''; status.feito = pr.feito; status.total = pr.total; grava(); });
