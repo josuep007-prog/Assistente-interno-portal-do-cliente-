@@ -718,6 +718,32 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await page.waitForTimeout(400);
   });
 
+  await passo('Folha só com pró-labore (Hub 312, Clear 04/11/2026): sem lista do Onvio e sem empregados no cadastro, o sócio da folha entra como cadastro novo', async () => {
+    const cfg = await page.evaluate(() => window.__db.ler('ing_config/cfg'));
+    await page.evaluate(() => { window.__msgs = window.__msgs || []; if (!window.__ouveAck) { window.__ouveAck = 1; window.addEventListener('message', (e) => { if (e.data && e.data.ctlhub === 1 && e.data.de === 'hub') window.__msgs.push(e.data); }); } });
+    const envia = async (l) => { await page.evaluate((l) => { window.__msgs.length = 0; window.postMessage(l, '*'); }, l); await page.waitForFunction((id) => window.__msgs.some(m => m.tipo === 'ack' && m.id === id), l.id, { timeout: 5000 }); return page.evaluate((id) => window.__msgs.find(m => m.tipo === 'ack' && m.id === id), l.id); };
+    const COL = D.OC.FOLHA_COLUNAS, mes = (n) => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); };
+    const rost = await D.empregados(); rost.linhas = rost.linhas.filter(l => !/ORION/.test(l));
+    await semearConjunto('pessoais-empregados', rost, 'cPL');
+    const antes = await page.evaluate(() => JSON.parse(JSON.stringify(window.__db.ler('dp_empresas/e-orion'))));
+    await page.evaluate(() => { const d = window.__db.ler('dp_empresas/e-orion'); d.funcionarios = []; window.__db.semear('dp_empresas/e-orion', d); });
+    const lq = (doc, comp, cod, nome, vinc, quadro, contrib) => [doc, 'c-orion', '900', 'ORION COMERCIO LTDA', comp, comp + '-05', cod, nome, vinc, 'Folha Mensal e Complementar', quadro, contrib].join('\t');
+    const lote = (id, ciclo, linhas) => ({ ctlhub: 1, de: 'ext', tipo: 'lote', id, token: cfg.token, fonte: 'onvio', tipoDado: 'pessoais-folha-contribuintes', categoria: 'pessoais', titulo: 'Folha', colunas: COL, tabela: linhas.join('\n'), nLinhas: linhas.length, nLinhasTotal: linhas.length, totalNaOrigem: 1, cortado: false, partes: 1, parte: 0, ciclo, porTipo: {}, versaoExt: VEXT, acumular: 'Documento' });
+    assert.equal((await envia(lote('p0', 'cP0', [lq('s0', mes(0), '15', 'SOCIA FICTICIA', 'Pró-labore', 'completo', 'sim')]))).ok, true);
+    await page.waitForFunction(() => window.__hubApi.api('onvio').difs().some(d => d.nome === 'Socia Ficticia' && d.acao === 'novo') || (window.__db.ler('dp_empresas/e-orion').funcionarios || []).some(f => f.nome === 'Socia Ficticia'), null, { timeout: 8000 });
+    const nova = await page.evaluate(() => window.__hubApi.api('onvio').difs().find(d => d.nome === 'Socia Ficticia' && d.acao === 'novo'));
+    if (nova) { assert.match(nova.txt, /Está na folha de .*Pró-labore/); assert.equal(nova.depois, 'Pró-labore'); }
+    // com empregado ativo no cadastro, a folha só de contribuintes não decide
+    await page.evaluate(() => { const d = window.__db.ler('dp_empresas/e-orion'); d.funcionarios = [{ id: 'f-pl1', nome: 'Empregado Ficticio', cargo: '', codigo: '7', admissao: '2020-01-01', status: 'Ativo', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '', salario: '', obs: '' }]; window.__db.semear('dp_empresas/e-orion', d); });
+    await page.evaluate(() => window.__hubApi.api('dp').abrirEmpresa('e-orion', 'onvio'));
+    await page.waitForFunction(() => /só tem contribuintes/.test((document.querySelector('#dp-section-onvio .ov-folha-q') || {}).textContent || ''), null, { timeout: 8000 });
+    assert.ok(!(await page.evaluate(() => window.__hubApi.api('onvio').difs().some(d => d.nome === 'Empregado Ficticio' && /Fora da folha/.test(d.txt)))), 'não desliga empregado por folha só de sócios');
+    assert.equal((await envia(lote('p1', 'cP1', [lq('s0', mes(0), '', '', '', 'contribuintes', '')]))).ok, true);
+    await semearConjunto('pessoais-empregados', await D.empregados(), 'cPLr');
+    await page.evaluate((d) => window.__db.semear('dp_empresas/e-orion', d), antes);
+    await page.waitForTimeout(400);
+  });
+
   await passo('Duplicados (Hub 312, Josué 04/11/2026: a mesma pessoa com sobrenome a mais): não cria outro registro e unifica os que já existem', async () => {
     const antes = await page.evaluate(() => JSON.parse(JSON.stringify(window.__db.ler('dp_empresas/e-orion'))));
     // a mesma pessoa duas vezes (uma com o código Domínio, outra com o sobrenome de casada), mesma admissão; e um homônimo parcial com admissão diferente, que não é a mesma pessoa
