@@ -542,7 +542,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await page.evaluate(() => { const d = window.__db.ler('dp_empresas/e-orion'); d.funcionarios.push({ id: 'f-socio', nome: 'Socio Parado', cargo: 'Sócio', codigo: '30', admissao: '2015-01-01', status: 'Ativo', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '', salario: '', obs: '' }); window.__db.semear('dp_empresas/e-orion', d); });
     await page.waitForFunction(() => (window.__db.ler('dp_empresas/e-orion').funcionarios || []).some(f => f.id === 'f-socio'));
     await page.waitForTimeout(400);
-    const difSocio = await page.evaluate(() => window.__hubApi.api('onvio').difs().filter(d => /socio parado/i.test(d.nome)).map(d => d.depois));
+    const difSocio = await page.evaluate(() => window.__hubApi.api('onvio').difs().filter(d => /socio parado/i.test(d.nome) && d.tipo !== 'vinculo').map(d => d.depois));      // o vínculo (Pró-labore) pode vir; desligar, nunca
     assert.deepEqual(difSocio, [], 'nenhuma sugestão de desligar o sócio');
     if (CAP) { await page.waitForTimeout(600); for (let i = 0; i < 3; i++) { try { await page.locator('#dp-section-onvio .ov-socios').screenshot({ path: path.join(CAP, 'folha-contribuintes-claro.png') }); break; } catch (e) { await page.waitForTimeout(400); } } }      // a ficha pode se redesenhar quando chega um conjunto
     if (CAP) { await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark')); await page.waitForTimeout(500); for (let i = 0; i < 3; i++) { try { await page.locator('#dp-section-onvio .ov-socios').screenshot({ path: path.join(CAP, 'folha-contribuintes-escuro.png') }); break; } catch (e) { await page.waitForTimeout(400); } } await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light')); }
@@ -751,6 +751,25 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     assert.equal((await envia(lote('l0r', 'cL0r', [lq('l0', mes(0), '', '', '', false), lq('l1', mes(1), '', '', '', false)]))).ok, true);
     await semearConjunto('pessoais-empregados', await D.empregados(), 'cLr');
     await page.waitForTimeout(400);
+  });
+
+  await passo('Folha · vínculo (Hub 308): o contribuinte da folha dá o vínculo (Pró-labore ou RPA) mesmo quando a folha ainda não decide quem é ativo', async () => {
+    const cfg = await page.evaluate(() => window.__db.ler('ing_config/cfg'));
+    await page.evaluate(() => { window.__msgs = window.__msgs || []; if (!window.__ouveAck) { window.__ouveAck = 1; window.addEventListener('message', (e) => { if (e.data && e.data.ctlhub === 1 && e.data.de === 'hub') window.__msgs.push(e.data); }); } });
+    const envia = async (l) => { await page.evaluate((l) => { window.__msgs.length = 0; window.postMessage(l, '*'); }, l); await page.waitForFunction((id) => window.__msgs.some(m => m.tipo === 'ack' && m.id === id), l.id, { timeout: 5000 }); return page.evaluate((id) => window.__msgs.find(m => m.tipo === 'ack' && m.id === id), l.id); };
+    const COL = D.OC.FOLHA_COLUNAS, mes = (n) => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); };
+    // só os contribuintes (quadro "contribuintes"): a folha não decide quem é ativo, mas diz quem é RPA e quem é pró-labore
+    const lq = (cod, nome, vinc) => ['v1', 'c-lira', '903', 'LIRA PADARIA LTDA', mes(0), mes(0) + '-05', cod, nome, vinc, 'Folha Mensal', 'contribuintes', 'sim'].join('\t');
+    const l = { ctlhub: 1, de: 'ext', tipo: 'lote', id: 'v1', token: cfg.token, fonte: 'onvio', tipoDado: 'pessoais-folha-contribuintes', categoria: 'pessoais', titulo: 'Folha', colunas: COL, tabela: [lq('40', 'NURCIA FICTICIA', 'Autônomo (RPA)'), lq('41', 'SOCIO DA LIRA', 'Pró-labore')].join('\n'), nLinhas: 2, nLinhasTotal: 2, totalNaOrigem: 1, cortado: false, partes: 1, parte: 0, ciclo: 'cV1', porTipo: {}, versaoExt: '0.70.4', acumular: 'Documento' };
+    const antes = await page.evaluate(() => JSON.parse(JSON.stringify(window.__db.ler('dp_empresas/e-lira'))));
+    await page.evaluate(() => { const d = window.__db.ler('dp_empresas/e-lira'); d.funcionarios.push({ id: 'f-nurcia', nome: 'Nurcia Ficticia', cargo: '', codigo: '40', vinculo: 'Empregado', admissao: '2024-01-01', status: 'Ativo', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '', salario: '', obs: '' }, { id: 'f-socio-lira', nome: 'Socio da Lira', cargo: '', codigo: '41', admissao: '2010-01-01', status: 'Ativo', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '', salario: '', obs: '' }); window.__db.semear('dp_empresas/e-lira', d); });
+    assert.equal((await envia(l)).ok, true);
+    await page.waitForFunction(() => window.__hubApi.api('onvio').difs().some(d => /nurcia/i.test(d.nome) && d.tipo === 'vinculo'), null, { timeout: 8000 });
+    const ds = await page.evaluate(() => window.__hubApi.api('onvio').difs().filter(d => d.empId === 'e-lira' && d.tipo === 'vinculo').map(d => [d.nome, d.acao, d.depois]));
+    assert.deepEqual(ds.find(d => /nurcia/i.test(d[0])), ['Nurcia Ficticia', 'corrigir', 'RPA/autônomo'], 'estava como Empregado; a folha diz RPA');
+    assert.deepEqual(ds.find(d => /socio da lira/i.test(d[0])), ['Socio da Lira', 'complementar', 'Pró-labore']);
+    await page.evaluate((d) => window.__db.semear('dp_empresas/e-lira', d), antes);
+    assert.equal((await envia(Object.assign({}, l, { id: 'v1r', ciclo: 'cV1r', tabela: ['v1', 'c-lira', '903', 'LIRA PADARIA LTDA', mes(0), mes(0) + '-05', '', '', '', 'Folha Mensal', 'contribuintes', ''].join('\t'), nLinhas: 1, nLinhasTotal: 1 }))).ok, true);
   });
 
   await passo('Cache por ciclo: reabrir o Hub não baixa de novo as partes (só dos conjuntos sem dados pessoais)', async () => {

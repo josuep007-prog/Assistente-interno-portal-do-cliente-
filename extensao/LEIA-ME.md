@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.70.3)
+# Control Onvio · ControlTax (v0.70.4)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,12 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.70.4 e dos Hubs 307 e 308 (pró-labore, RPA e funcionário separados, 04/11/2026)
+
+- **Pró-labore × RPA na leitura da folha:** no Extrato do Domínio, sócio e autônomo vêm como "Contr.:" e a extensão mandava só "Contribuinte". Agora o vínculo enviado ao Hub é **Pró-labore** (vínculo Diretor/Sócio ou evento de pró-labore no bloco da pessoa) ou **Autônomo (RPA)** (vínculo Autônomo ou eventos como serviços prestados, INSS autônomo, RPA, frete). Só o nome do evento decide, nunca o valor. Sem nenhum sinal, continua "Contribuinte". Os extratos dos últimos 3 meses são lidos de novo uma vez (`FOLHA_V` = 3).
+- **Hub 307:** a folha também decide sobre quem está no cadastro e não casa com a lista do Onvio (antes ficava preso na regra de ausência); a ficha (aba Onvio) diz por que a folha não decide, ou o que falta aplicar e se o automático vai aplicar.
+- **Hub 308:** o vínculo de quem é contribuinte na folha vale mesmo quando a folha da empresa ainda não decide quem é ativo, e sempre o do mês mais recente. Na ficha, **pró-labore e RPA aparecem primeiro**, depois os funcionários.
 
 ## Novidades da v0.70.3 e do Hub 306 (lista de funcionários fiel à folha, pedido do Josué em 04/11/2026)
 

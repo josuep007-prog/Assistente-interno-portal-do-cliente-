@@ -3242,9 +3242,9 @@ test('Folha: o Extrato Mensal dá a competência e quem é contribuinte (víncul
   assert.equal(por['12'].contribuinte, false, 'celetista não é contribuinte');
   assert.equal(por['15'].contribuinte, true, 'diretor com pró-labore');
   assert.equal(por['15'].nome, 'SICRANA SOCIA FICTICIA');
-  assert.equal(por['15'].vinculo, 'Diretor');
+  assert.equal(por['15'].vinculo, 'Pró-labore', '0.70.4: diretor com pró-labore vai como Pró-labore');
   assert.equal(por['21'].contribuinte, true, 'autônomo (RPA)');
-  assert.equal(por['21'].vinculo, 'Autônomo');
+  assert.equal(por['21'].vinculo, 'Autônomo (RPA)', '0.70.4: autônomo vai como RPA');
   assert.equal(por['30'].contribuinte, false, 'a palavra "Contribuintes" do rodapé não marca ninguém');
   assert.ok(!JSON.stringify(x).includes('111.222'), 'o CPF não sai do leitor');
   assert.ok(!JSON.stringify(x).includes('5.000'), 'nem valor');
@@ -3433,7 +3433,12 @@ test('Folha (0.69.3): formato do Extrato Mensal do Domínio ("Empr.: código NOM
   assert.equal(x.competencia, '2026-10');
   assert.deepEqual(plano(x.pessoas.map(p => [p.codigo, p.nome, p.contribuinte])), [['15', 'FULANO FICTICIO DA SILVA', false], ['21', 'SICRANA FICTICIA', true], ['30', 'BELTRANO FICTICIO', true]]);
   assert.equal(x.pessoas[0].vinculo, 'Celetista');
-  assert.equal(x.pessoas[2].vinculo, 'Contribuinte', '"Contr.:" já diz que é contribuinte');
+  assert.equal(x.pessoas[2].vinculo, 'Autônomo (RPA)', '"Contr.:" com serviços prestados = RPA (0.70.4)');
+  assert.equal(x.pessoas[1].vinculo, 'Pró-labore', 'sem vínculo legível, o evento de pró-labore decide (0.70.4)');
+  // "Contr.:" sem nenhum evento que diga: continua só "Contribuinte" (o Hub não chuta)
+  assert.equal(OC.extratoContribuintes('Contr.: 000031 OUTRO FICTICIO  Situação: Ativo  Adm:  10/03/2021\n070 EVENTO QUALQUER 10,00').pessoas[0].vinculo, 'Contribuinte');
+  // sócio que aparece como "Contr.:" com pró-labore = Pró-labore
+  assert.equal(OC.extratoContribuintes('Contr.: 000032 SOCIO FICTICIO  Situação: Ativo  Adm:  10/03/2010\n001 PRO-LABORE 3.000,00').pessoas[0].vinculo, 'Pró-labore');
   assert.ok(!JSON.stringify(x).includes('111.222'), 'sem CPF');
   // o diagnóstico mostra os rótulos e, sem contribuinte, o bloco da 1ª pessoa no formato, sem nome nem CPF
   const api = async url => { const p = new URL(url).pathname.replace('/api/', ''); if (p === 'br-payroll-sr/v1/clients') return { items: [{ id: 'c1', code: 394, name: 'HOTEL FICTICIO S/A' }], totalItems: 1, totalPages: 1 };
@@ -3449,8 +3454,8 @@ test('Folha (0.69.3): formato do Extrato Mensal do Domínio ("Empr.: código NOM
   assert.ok(!/FULANO|SICRANA|111\.222|555\.666|RECEPCIONISTA/.test(t), 'nem nome, nem CPF, nem cargo');
   const t2 = (await OC.testarFolhaEmpresa(api, async () => T, null, '394', {}, new Date('2026-11-05T10:00:00'))).join('\n');
   assert.match(t2, /Pessoas: 3 · contribuintes: 2/);
-  assert.match(t2, /Extratos lidos neste teste \(os 1 mais recentes\):\n  • competência 2026-10 · cálculo: Folha Mensal · 3 pessoas, 2 contribuintes · Celetista ×1, \(sem vínculo\) ×1, Contribuinte ×1/);
-  assert.match(t2, /Contribuintes por vínculo: \(pelo evento\), Contribuinte\. ➜ A leitura funciona/);
+  assert.match(t2, /Extratos lidos neste teste \(os 1 mais recentes\):\n  • competência 2026-10 · cálculo: Folha Mensal · 3 pessoas, 2 contribuintes · Celetista ×1, Pró-labore ×1, Autônomo \(RPA\) ×1/);
+  assert.match(t2, /Contribuintes por vínculo: Pró-labore, Autônomo \(RPA\)\. ➜ A leitura funciona/);
 });
 
 test('Folha (0.69.2): estrutura real do portal: cada departamento é um projeto e a pasta "Extrato Mensal" diz o que é extrato (o arquivo tem qualquer nome)', async () => {
@@ -3525,7 +3530,7 @@ test('Folha (0.70.0): fora dos últimos 3 meses vão só os contribuintes; extra
   const f = por['pessoais-folha-contribuintes'], lin = f.texto.split('\n').map(l => l.split('\t')), col = n => f.c.colunas.indexOf(n);
   assert.deepEqual(lin.filter(l => l[col('Documento')] === 'd1').map(l => [l[col('Código')], l[col('Quadro')], l[col('Contribuinte')]]).sort(), [['15', 'contribuintes', 'sim'], ['21', 'contribuintes', 'sim']], 'antigo: só os contribuintes');
   assert.deepEqual(lin.filter(l => l[col('Documento')] === 'd3').map(l => [l[col('Código')], l[col('Quadro')], l[col('Cálculo')]]), [['', 'contribuintes', 'Folha Mensal']], 'antigo e sem contribuinte: uma linha que diz que o mês foi conferido');
-  assert.equal(OC.FOLHA_V, 2); assert.equal(OC.FOLHA_MESES_QUADRO, 3);
+  assert.equal(OC.FOLHA_V, 3, '0.70.4: pró-labore × RPA, os extratos recentes são relidos uma vez'); assert.equal(OC.FOLHA_MESES_QUADRO, 3);
   assert.equal(OC.competenciaMinima(new Date('2026-11-04T10:00:00'), OC.FOLHA_MESES_QUADRO), '2026-08');
   assert.equal(OC.tipoCalculo('Empresa: X\nCálculo: Folha Mensal e Complementar   Competência: 10/2026'), 'Folha Mensal e Complementar');
   assert.equal(OC.tipoCalculo('Cálculo: 13º Salário - 1ª parcela    Competência: 11/2026'), '13º Salário - 1ª parcela');
@@ -3614,7 +3619,7 @@ test('Folha: "Testar a leitura da folha" mostra só o formato (sem nome, CPF, va
   assert.match(t, /Empresa 1: projeto pelo id da folha, 2 pasta\(s\) com extrato/);
   assert.match(t, /Extratos: 4 · nomes: 99-9999 Extrato Mensal.pdf ×3/);
   assert.match(t, /competência lida \(2026-09\)/);
-  assert.match(t, /Pessoas: 4 · contribuintes: 2 · vínculos: Celetista ×1, Diretor ×1, Autônomo ×1, Estagiário ×1/);
+  assert.match(t, /Pessoas: 4 · contribuintes: 2 · vínculos: Celetista ×1, Pró-labore ×1, Autônomo \(RPA\) ×1, Estagiário ×1/);
   assert.ok(!/ACME|BETA|FULANO|SICRANA|111\.222|5\.000/.test(t), 'nada que identifique: ' + t);
   assert.ok(lidas.some(u => /tickets\/generic/.test(u)), 'lê uma página da Geral para ter também o id do contato');
 });
