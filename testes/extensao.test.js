@@ -3623,3 +3623,24 @@ test('Folha: "Testar a leitura da folha" mostra só o formato (sem nome, CPF, va
   assert.ok(!/ACME|BETA|FULANO|SICRANA|111\.222|5\.000/.test(t), 'nada que identifique: ' + t);
   assert.ok(lidas.some(u => /tickets\/generic/.test(u)), 'lê uma página da Geral para ter também o id do contato');
 });
+
+test('Empregados de uma empresa (0.70.6): contagem por código, código antigo descartado pelo Hub, lista vazia do Onvio e nada pessoal', async () => {
+  const cli = [{ id: 'a1', code: 501, name: 'EMPRESA FICTICIA LTDA' }, { id: 'a2', code: 502, name: 'EMPRESA FICTICIA LTDA' }, { id: 'b1', code: 600, name: 'OUTRA FICTICIA ME' }];
+  const emp = { a1: [], a2: [{ id: 'e1', name: 'FULANO FICTICIO', cpf: '111.222.333-44', status: 'ACTIVE', clientEmployeeRelationshipExpanded: { eprType: 'EMPLOYEE' } }, { id: 'e2', name: 'SICRANA FICTICIA', cpf: '555.666.777-88', status: 'ACTIVE', clientEmployeeRelationshipExpanded: { eprType: 'PARTNER' } }], b1: [] };
+  const api = async url => {
+    const u = new URL(url), p = u.pathname.replace('/api/', '');
+    if (p === 'br-payroll-sr/v1/clients') return { items: cli, totalItems: cli.length, totalPages: 1 };
+    if (p === 'cnd/v1/clients' || p === 'manifesto/v1/clients') return { items: [{ code: 501, clientName: 'EMPRESA FICTICIA LTDA' }], totalItems: 1 };
+    const m = /^br-payroll-sr\/v1\/clients\/([^/]+)\/employees$/.exec(p); if (m) return { items: emp[m[1]] };
+    throw new Error('sem rota: ' + p);
+  };
+  const t = (await OC.testarEmpregadosEmpresa(api, null, '501')).join('\n');
+  assert.match(t, /• 501 EMPRESA FICTICIA LTDA · 0 pessoas · está nos clientes de CND\/NF-e/);
+  assert.match(t, /• 502 EMPRESA FICTICIA LTDA \(mesmo nome\) · 2 pessoas \(EMPLOYEE ×1, PARTNER ×1 · situação: ACTIVE ×2\) · NÃO está/);
+  assert.match(t, /➜ 502: tem pessoas, mas o código não está nos clientes de CND\/NF-e[\s\S]*cadastro antigo/);
+  assert.ok(!/FULANO|SICRANA|111\.222|555\.666/.test(t), 'nem nome nem CPF');
+  const t2 = (await OC.testarEmpregadosEmpresa(api, null, 'outra')).join('\n');
+  assert.match(t2, /• 600 OUTRA FICTICIA ME · 0 pessoas/);
+  assert.match(t2, /➜ O Onvio não tem nenhuma pessoa para este código/);
+  assert.match((await OC.testarEmpregadosEmpresa(api, null, 'nao existe')).join('\n'), /Nenhum cliente da folha/);
+});
