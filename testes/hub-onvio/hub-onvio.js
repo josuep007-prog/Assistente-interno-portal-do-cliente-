@@ -716,6 +716,28 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await page.waitForTimeout(400);
   });
 
+  await passo('Duplicados (Hub 312, Josué 04/11/2026: a mesma pessoa com sobrenome a mais): não cria outro registro e unifica os que já existem', async () => {
+    const antes = await page.evaluate(() => JSON.parse(JSON.stringify(window.__db.ler('dp_empresas/e-orion'))));
+    // a mesma pessoa duas vezes (uma com o código Domínio, outra com o sobrenome de casada), mesma admissão; e um homônimo parcial com admissão diferente, que não é a mesma pessoa
+    await page.evaluate(() => { const d = window.__db.ler('dp_empresas/e-orion'); d.funcionarios.push(
+      { id: 'f-d1', nome: 'Julia Ficticia Cabral', cargo: '', codigo: '31', admissao: '2024-02-02', status: 'Ativo', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '', salario: '', obs: '' },
+      { id: 'f-d2', nome: 'Julia Ficticia Cabral Galvao', cargo: 'Vendedora', codigo: '', admissao: '2024-02-02', status: 'Ativo', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '', salario: '', obs: '' },
+      { id: 'f-d3', nome: 'Pedro Ficticio', cargo: '', codigo: '', admissao: '2020-01-01', status: 'Ativo', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '', salario: '', obs: '' },
+      { id: 'f-d4', nome: 'Pedro Ficticio Lima', cargo: '', codigo: '', admissao: '2023-05-05', status: 'Ativo', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '', salario: '', obs: '' }); window.__db.semear('dp_empresas/e-orion', d); });
+    await page.waitForFunction(() => window.__hubApi.api('onvio').difs().some(d => d.tipo === 'duplicado'), null, { timeout: 8000 });
+    const ds = await page.evaluate(() => window.__hubApi.api('onvio').difs().filter(d => d.empId === 'e-orion' && d.tipo === 'duplicado').map(d => ({ chave: d.chave, nome: d.nome, txt: d.txt, confirmar: d.confirmar, depois: d.depois })));
+    assert.equal(ds.length, 1, 'só a Julia (o Pedro tem admissões diferentes): ' + JSON.stringify(ds));
+    assert.match(ds[0].txt, /cadastrada duas vezes .*mesma admissão/); assert.equal(ds[0].confirmar, false, 'mesma admissão: o automático unifica');
+    assert.equal((await page.evaluate((ch) => window.__hubApi.api('onvio').aplicar('e-orion', ch), ds[0].chave)).ok, true);
+    await page.waitForFunction(() => !(window.__db.ler('dp_empresas/e-orion').funcionarios || []).some(f => f.id === 'f-d2'), null, { timeout: 8000 });
+    const ju = await page.evaluate(() => window.__db.ler('dp_empresas/e-orion').funcionarios.filter(f => /^Julia Ficticia/.test(f.nome)));
+    assert.equal(ju.length, 1); assert.equal(ju[0].id, 'f-d1', 'fica o que tem o código Domínio'); assert.equal(ju[0].codigo, '31');
+    assert.equal(ju[0].nome, 'Julia Ficticia Cabral Galvao', 'com o nome mais longo'); assert.equal(ju[0].cargo, 'Vendedora', 'completado com o que só o outro tinha');
+    assert.equal((await page.evaluate(() => window.__db.ler('dp_empresas/e-orion').funcionarios.filter(f => /^Pedro Ficticio/.test(f.nome)).length)), 2, 'o Pedro continua com dois registros');
+    await page.evaluate((d) => window.__db.semear('dp_empresas/e-orion', d), antes);
+    await page.waitForTimeout(400);
+  });
+
   await passo('Folha · lista fiel (Hub 306): vínculo pela folha, pró-labore e RPA em grupos à parte (entram e saem pela folha), Inativo fora da contagem, e o automático não para por conjunto cortado', async () => {
     const cfg = await page.evaluate(() => window.__db.ler('ing_config/cfg'));
     await page.evaluate(() => { window.__msgs = window.__msgs || []; if (!window.__ouveAck) { window.__ouveAck = 1; window.addEventListener('message', (e) => { if (e.data && e.data.ctlhub === 1 && e.data.de === 'hub') window.__msgs.push(e.data); }); } });
