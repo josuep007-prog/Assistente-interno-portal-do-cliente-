@@ -1683,6 +1683,7 @@ body.setor-fora .trilho [data-rota="equipe"], body.setor-fora .trilho [data-rota
 .adv-res li b{font-weight:600; color:var(--ink)}
 .adv-res li.adv-ok > span:first-child{color:var(--ok)} .adv-res li.adv-erro > span:first-child, .adv-res li.adv-erro > span:last-child{color:var(--late)} .adv-res li.adv-aviso > span:first-child{color:var(--today)}
 .adv-barra{height:6px; margin:8px 0 0; border-radius:3px; background:var(--surface-3); overflow:hidden} .adv-barra i{display:block; height:100%; background:var(--blue-deep); transition:width .3s}
+.adv-empresa{display:flex; align-items:flex-end; gap:8px; flex-wrap:wrap; margin:0 0 4px} .adv-empresa .btn{height:34px}
 .adv-testes{display:grid; grid-template-columns:repeat(auto-fill, minmax(240px, 1fr)); gap:8px}
 .adv-teste{display:flex; gap:10px; align-items:flex-start; padding:12px; text-align:left; border:1px solid var(--rule); border-radius:var(--r); background:var(--surface-2); color:var(--ink); font:inherit; cursor:pointer}
 .adv-teste:hover{border-color:var(--blue-deep)}

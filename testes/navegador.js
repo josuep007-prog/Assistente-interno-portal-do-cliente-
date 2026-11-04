@@ -1214,7 +1214,8 @@ const AV_ESTADO = {
   settings: { __v: 2, regrasUrl: 'https://exemplo.com/r.json' }
 };
 const AV_RESP = { hubStatus: { ok: true, permitido: true, hubAberto: true, hubSegundoPlano: false, ultimo: { ok: true, em: new Date().toISOString(), linhas: 4, total: 4 } },
-  testarFolha: { ok: true, linhas: ['Clientes da folha: 3', 'Empresa 1: projeto pelo id do contato, 1 pasta(s) com extrato'] }, folhaDeNovo: { ok: true } };
+  testarFolha: { ok: true, linhas: ['Clientes da folha: 3', 'Empresa 1: projeto pelo id do contato, 1 pasta(s) com extrato'] }, folhaDeNovo: { ok: true },
+  testarFolhaEmpresa: { ok: true, linhas: ['Empresa: 7 EMPRESA FICTICIA', 'Pastas na raiz (2): ✓ Pessoal · Contábil', '➜ A leitura funciona nesta empresa.'] } };
 
 await passo('app · Configurações → Avançado (0.69.0): cinco partes com o estado no cartão, Hub, regras, testes, aprender e diagnóstico, sem repetir prazos e feriados, nos dois estilos', async () => {
   for (const estilo of ['simples', 'atual']) {
@@ -1252,6 +1253,10 @@ await passo('app · Configurações → Avançado (0.69.0): cinco partes com o e
     await p.click('.adv-tab[data-parte="testes"]');
     await p.click('[data-teste="testarFolha"]');
     await p.waitForFunction(() => /Clientes da folha: 3/.test(document.querySelector('#adv-saida').textContent));
+    // folha de uma empresa: busca pelo código ou nome e mostra os passos
+    await p.fill('#adv-folha-busca', 'ficticia'); await p.press('#adv-folha-busca', 'Enter');
+    await p.waitForFunction(() => /A leitura funciona nesta empresa/.test(document.querySelector('#adv-saida').textContent));
+    assert.ok(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'testarFolhaEmpresa' && m.busca === 'ficticia')), 'manda a busca ao service worker');
     await p.click('[data-teste="folhaDeNovo"]');
     assert.match(await p.textContent('[data-teste="folhaDeNovo"]'), /Clique de novo/);
     assert.ok(!(await p.evaluate(() => (window.__msgs || []).some(m => m.cmd === 'folhaDeNovo'))), 'o primeiro clique só pede confirmação');
