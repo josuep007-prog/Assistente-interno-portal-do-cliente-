@@ -12,6 +12,7 @@ const http = require('node:http');
 const path = require('node:path');
 const { chromium } = require('playwright');
 const D = require('./dados.js');
+const VEXT = require(path.join(__dirname, '..', '..', 'extensao', 'manifest.json')).version;     // o Hub 309 só aceita a extensão mais recente
 
 const HUB = process.env.HUB_DIR;
 if (!HUB || !fs.existsSync(path.join(HUB, 'hub.js'))) { console.log('HUB_DIR não definido (pasta com hub.js, hub.css, tema.js, fontes.html e index.fonte.html): teste do Hub pulado.'); process.exit(0); }
@@ -496,7 +497,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await page.waitForFunction(() => window.__msgs.some(m => m.tipo === 'ola'), null, { timeout: 5000 });
     assert.equal(await page.evaluate(() => window.__msgs.find(m => m.tipo === 'ola').prova), undefined, 'sem desafio, sem prova');
     // dois emissores no mesmo conjunto: o segundo espera
-    const lote = (id, ciclo, parte) => ({ ctlhub: 1, de: 'ext', tipo: 'lote', id, token: cfg.token, fonte: 'onvio', tipoDado: 'noticias-artigos', categoria: 'noticias', titulo: 't', colunas: ['Id'], tabela: 'x' + parte, nLinhas: 1, nLinhasTotal: 2, totalNaOrigem: 2, cortado: false, partes: 2, parte, ciclo, porTipo: {}, versaoExt: '0.54.0' });
+    const lote = (id, ciclo, parte) => ({ ctlhub: 1, de: 'ext', tipo: 'lote', id, token: cfg.token, fonte: 'onvio', tipoDado: 'noticias-artigos', categoria: 'noticias', titulo: 't', colunas: ['Id'], tabela: 'x' + parte, nLinhas: 1, nLinhasTotal: 2, totalNaOrigem: 2, cortado: false, partes: 2, parte, ciclo, porTipo: {}, versaoExt: VEXT });
     const envia = async (l) => { await page.evaluate((l) => { window.__msgs.length = 0; window.postMessage(l, '*'); }, l); await page.waitForFunction((id) => window.__msgs.some(m => m.tipo === 'ack' && m.id === id), l.id, { timeout: 5000 }); return page.evaluate((id) => window.__msgs.find(m => m.tipo === 'ack' && m.id === id), l.id); };
     assert.equal((await envia(lote('a0', 'cA', 0))).ok, true);
     const b = await envia(lote('b0', 'cB', 0)); assert.equal(b.ok, false); assert.equal(b.motivo, 'ocupado');
@@ -518,7 +519,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     const envia = async (l) => { await page.evaluate((l) => { window.__msgs.length = 0; window.postMessage(l, '*'); }, l); await page.waitForFunction((id) => window.__msgs.some(m => m.tipo === 'ack' && m.id === id), l.id, { timeout: 5000 }); return page.evaluate((id) => window.__msgs.find(m => m.tipo === 'ack' && m.id === id), l.id); };
     const COL = D.OC.FOLHA_COLUNAS, mes = (n) => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); };
     const lin = (doc, comp, cod, nome, vinc) => [doc, 'c-orion', '900', 'ORION COMERCIO LTDA', comp, comp + '-05', cod, nome, vinc].join('\t');
-    const lote = (id, ciclo, linhas) => ({ ctlhub: 1, de: 'ext', tipo: 'lote', id, token: cfg.token, fonte: 'onvio', tipoDado: 'pessoais-folha-contribuintes', categoria: 'pessoais', titulo: 'Folha', colunas: COL, tabela: linhas.join('\n'), nLinhas: linhas.length, nLinhasTotal: linhas.length, totalNaOrigem: 1, cortado: false, partes: 1, parte: 0, ciclo, porTipo: {}, versaoExt: '0.68.0', acumular: 'Documento' });
+    const lote = (id, ciclo, linhas) => ({ ctlhub: 1, de: 'ext', tipo: 'lote', id, token: cfg.token, fonte: 'onvio', tipoDado: 'pessoais-folha-contribuintes', categoria: 'pessoais', titulo: 'Folha', colunas: COL, tabela: linhas.join('\n'), nLinhas: linhas.length, nLinhasTotal: linhas.length, totalNaOrigem: 1, cortado: false, partes: 1, parte: 0, ciclo, porTipo: {}, versaoExt: VEXT, acumular: 'Documento' });
     // 1ª remessa: 3 meses; 2ª remessa: só o mês novo (e a correção de um documento já lido)
     assert.equal((await envia(lote('f1', 'cF1', [lin('d3', mes(3), '15', 'SOCIA FICTICIA', 'Diretor'), lin('d3', mes(3), '21', 'AUTONOMO FICTICIO', 'Autônomo'), lin('d3', mes(3), '30', 'SOCIO PARADO', 'Diretor'), lin('d2', mes(2), '15', 'SOCIA FICTICIA', 'Diretor'), lin('d1', mes(1), '', '', '')]))).ok, true);
     assert.equal((await envia(lote('f2', 'cF2', [lin('d0', mes(0), '15', 'SOCIA FICTICIA', 'Diretor'), lin('d0', mes(0), '21', 'AUTONOMO FICTICIO', 'Autônomo'), lin('d1', mes(1), '15', 'SOCIA FICTICIA', 'Diretor')]))).ok, true);
@@ -628,7 +629,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     assert.equal(JSON.stringify(COL.slice(-3)), JSON.stringify(['Cálculo', 'Quadro', 'Contribuinte']), 'colunas da extensão 0.70.0');
     await semearConjunto('pessoais-empregados', await D.empregados(), 'cQe');               // a lista de empregados do Onvio (o passo pode rodar sozinho com SO=)
     const lq = (doc, comp, cod, nome, vinc, contrib, quadro) => [doc, 'c-orion', '900', 'ORION COMERCIO LTDA', comp, comp + '-05', cod, nome, vinc, 'Folha Mensal', quadro || 'completo', cod ? (contrib ? 'sim' : 'não') : ''].join('\t');
-    const lote = (id, ciclo, linhas) => ({ ctlhub: 1, de: 'ext', tipo: 'lote', id, token: cfg.token, fonte: 'onvio', tipoDado: 'pessoais-folha-contribuintes', categoria: 'pessoais', titulo: 'Folha', colunas: COL, tabela: linhas.join('\n'), nLinhas: linhas.length, nLinhasTotal: linhas.length, totalNaOrigem: 1, cortado: false, partes: 1, parte: 0, ciclo, porTipo: {}, versaoExt: '0.70.0', acumular: 'Documento' });
+    const lote = (id, ciclo, linhas) => ({ ctlhub: 1, de: 'ext', tipo: 'lote', id, token: cfg.token, fonte: 'onvio', tipoDado: 'pessoais-folha-contribuintes', categoria: 'pessoais', titulo: 'Folha', colunas: COL, tabela: linhas.join('\n'), nLinhas: linhas.length, nLinhasTotal: linhas.length, totalNaOrigem: 1, cortado: false, partes: 1, parte: 0, ciclo, porTipo: {}, versaoExt: VEXT, acumular: 'Documento' });
     const antes = await page.evaluate(() => JSON.parse(JSON.stringify(window.__db.ler('dp_empresas/e-orion'))));
     // mês passado: Maria e Beltrano; este mês: só Maria (Beltrano saiu) e uma sócia (contribuinte não conta para o quadro)
     assert.equal((await envia(lote('q1', 'cQ1', [lq('q1', mes(1), '101', 'MARIA SOUZA', 'Celetista'), lq('q1', mes(1), '202', 'BELTRANO SILVA', 'Celetista')]))).ok, true);
@@ -691,7 +692,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await semearConjunto('pessoais-empregados', rost, 'cLf');
     await page.evaluate(() => { const m = window.__db.ler('ing_dados/onvio~pessoais-empregados'); m.cortado = true; window.__db.semear('ing_dados/onvio~pessoais-empregados', m); });   // a lista veio incompleta neste envio
     const lq = (doc, comp, cod, nome, vinc, contrib) => [doc, 'c-orion', '900', 'ORION COMERCIO LTDA', comp, comp + '-05', cod, nome, vinc, 'Folha Mensal', 'completo', contrib ? 'sim' : 'não'].join('\t');
-    const lote = (id, ciclo, linhas) => ({ ctlhub: 1, de: 'ext', tipo: 'lote', id, token: cfg.token, fonte: 'onvio', tipoDado: 'pessoais-folha-contribuintes', categoria: 'pessoais', titulo: 'Folha', colunas: COL, tabela: linhas.join('\n'), nLinhas: linhas.length, nLinhasTotal: linhas.length, totalNaOrigem: 1, cortado: false, partes: 1, parte: 0, ciclo, porTipo: {}, versaoExt: '0.70.3', acumular: 'Documento' });
+    const lote = (id, ciclo, linhas) => ({ ctlhub: 1, de: 'ext', tipo: 'lote', id, token: cfg.token, fonte: 'onvio', tipoDado: 'pessoais-folha-contribuintes', categoria: 'pessoais', titulo: 'Folha', colunas: COL, tabela: linhas.join('\n'), nLinhas: linhas.length, nLinhasTotal: linhas.length, totalNaOrigem: 1, cortado: false, partes: 1, parte: 0, ciclo, porTipo: {}, versaoExt: VEXT, acumular: 'Documento' });
     const antes = await page.evaluate(() => JSON.parse(JSON.stringify(window.__db.ler('dp_empresas/e-orion'))));
     // a sócia (pró-labore) já estava no cadastro como funcionária "Ativo"; o RPA do mês passado não veio neste mês
     await page.evaluate(() => { const d = window.__db.ler('dp_empresas/e-orion'); d.funcionarios.push({ id: 'f-socia', nome: 'Socia Ficticia', cargo: '', codigo: '15', admissao: '2015-01-01', status: 'Ativo', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '', salario: '', obs: '' }, { id: 'f-rpa', nome: 'Pedreiro Avulso', cargo: '', codigo: '31', vinculo: 'RPA/autônomo', admissao: '', status: 'Ativo', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '', salario: '', obs: '' }, { id: 'f-antigo', nome: 'Ex Garcom Antigo', cargo: '', codigo: '777', admissao: '2019-01-01', status: 'Ativo', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '', salario: '', obs: '' }); window.__db.semear('dp_empresas/e-orion', d); });
@@ -760,11 +761,17 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     const COL = D.OC.FOLHA_COLUNAS, mes = (n) => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); };
     // só os contribuintes (quadro "contribuintes"): a folha não decide quem é ativo, mas diz quem é RPA e quem é pró-labore
     const lq = (cod, nome, vinc) => ['v1', 'c-lira', '903', 'LIRA PADARIA LTDA', mes(0), mes(0) + '-05', cod, nome, vinc, 'Folha Mensal', 'contribuintes', 'sim'].join('\t');
-    const l = { ctlhub: 1, de: 'ext', tipo: 'lote', id: 'v1', token: cfg.token, fonte: 'onvio', tipoDado: 'pessoais-folha-contribuintes', categoria: 'pessoais', titulo: 'Folha', colunas: COL, tabela: [lq('40', 'NURCIA FICTICIA', 'Autônomo (RPA)'), lq('41', 'SOCIO DA LIRA', 'Pró-labore')].join('\n'), nLinhas: 2, nLinhasTotal: 2, totalNaOrigem: 1, cortado: false, partes: 1, parte: 0, ciclo: 'cV1', porTipo: {}, versaoExt: '0.70.4', acumular: 'Documento' };
+    const l = { ctlhub: 1, de: 'ext', tipo: 'lote', id: 'v1', token: cfg.token, fonte: 'onvio', tipoDado: 'pessoais-folha-contribuintes', categoria: 'pessoais', titulo: 'Folha', colunas: COL, tabela: [lq('40', 'NURCIA FICTICIA', 'Autônomo (RPA)'), lq('41', 'SOCIO DA LIRA', 'Pró-labore')].join('\n'), nLinhas: 2, nLinhasTotal: 2, totalNaOrigem: 1, cortado: false, partes: 1, parte: 0, ciclo: 'cV1', porTipo: {}, versaoExt: VEXT, acumular: 'Documento' };
+    // Hub 309: só a extensão mais recente entrega dados
+    const velha = await envia(Object.assign({}, l, { id: 'v0', ciclo: 'cV0', versaoExt: '0.70.3' }));
+    assert.equal(velha.ok, false); assert.equal(velha.motivo, 'versao-antiga'); assert.match(velha.mensagem, /0\.70\.3 .*mais recente/);
+    assert.equal((await envia(Object.assign({}, l, { id: 'v0b', ciclo: 'cV0b', versaoExt: '' }))).motivo, 'versao-antiga', 'sem versão também é recusado');
+    assert.equal(await page.evaluate(() => (window.__hubApi.api('onvio').manifestos()['pessoais-folha-contribuintes'] || {}).ciclo === 'cV0'), false, 'nada gravado');
     const antes = await page.evaluate(() => JSON.parse(JSON.stringify(window.__db.ler('dp_empresas/e-lira'))));
     await page.evaluate(() => { const d = window.__db.ler('dp_empresas/e-lira'); d.funcionarios.push({ id: 'f-nurcia', nome: 'Nurcia Ficticia', cargo: '', codigo: '40', vinculo: 'Empregado', admissao: '2024-01-01', status: 'Ativo', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '', salario: '', obs: '' }, { id: 'f-socio-lira', nome: 'Socio da Lira', cargo: '', codigo: '41', admissao: '2010-01-01', status: 'Ativo', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '', salario: '', obs: '' }); window.__db.semear('dp_empresas/e-lira', d); });
     assert.equal((await envia(l)).ok, true);
     await page.waitForFunction(() => window.__hubApi.api('onvio').difs().some(d => /nurcia/i.test(d.nome) && d.tipo === 'vinculo'), null, { timeout: 8000 });
+    assert.equal(await page.evaluate(() => window.__db.ler('ing_config/cfg').versaoExtMax || ''), VEXT, 'a versão que chegou, mais nova que o piso, passa a ser a exigida');
     const ds = await page.evaluate(() => window.__hubApi.api('onvio').difs().filter(d => d.empId === 'e-lira' && d.tipo === 'vinculo').map(d => [d.nome, d.acao, d.depois]));
     assert.deepEqual(ds.find(d => /nurcia/i.test(d[0])), ['Nurcia Ficticia', 'corrigir', 'RPA/autônomo'], 'estava como Empregado; a folha diz RPA');
     assert.deepEqual(ds.find(d => /socio da lira/i.test(d[0])), ['Socio da Lira', 'complementar', 'Pró-labore']);

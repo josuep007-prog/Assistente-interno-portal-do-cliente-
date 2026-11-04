@@ -1109,7 +1109,7 @@ async function guardarFolha(x) {
 const ALARME_HUBSYNC = 'controlOnvio.hubsync';
 let hubSincRodando = null, hubCancelar = false;
 const hashTexto = t => { let h = 0; for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) | 0; return String(h) + ':' + t.length; };
-const ERROS_FATAIS_HUB = ['token', 'sem-hub', 'somente-leitura', 'sem-config', 'fonte-desconhecida', 'categoria'];
+const ERROS_FATAIS_HUB = ['token', 'sem-hub', 'somente-leitura', 'sem-config', 'fonte-desconhecida', 'categoria', 'versao-antiga'];      // versão antiga: o Hub recusa tudo, não adianta ler o resto
 async function hubEnvioCats() {
   const c = await hubCfg();
   return OC.HUB_CATEGORIAS.filter(k => (c.envio && c.envio[k.id] != null) ? !!c.envio[k.id] : k.padrao).map(k => k.id);

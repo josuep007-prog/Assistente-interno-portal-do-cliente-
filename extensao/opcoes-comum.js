@@ -9,6 +9,7 @@
     'sem-hub': 'O Control Hub não está aberto numa aba do claude.ai. Abra o Hub; a aba pode ficar em segundo plano, mas precisa estar aberta.', 'sem-resposta': 'O Hub não respondeu a tempo.',
     'token': 'O código de pareamento não confere com o do Hub.', 'tamanho': 'O resumo passou do limite do Hub.',
     'somente-leitura': 'Sua conta só lê o Hub: peça a quem tem permissão de edição para conectar.', 'sem-config': 'O Hub ainda não criou o código de pareamento (abra “Entrada de dados”).',
+    'versao-antiga': 'O Hub só aceita a versão mais recente do Control Onvio. Atualize a extensão (baixe de novo e clique em Recarregar em chrome://extensions) e envie outra vez.',
     'sem-mudanca': 'Nada mudou desde o último envio.', 'sem-categoria': 'Marque pelo menos um conjunto para enviar.',
     'incompleto': 'O Hub não recebeu todas as partes.', 'ciclo-perdido': 'O Hub foi recarregado no meio do envio: tente de novo.',
     'partes': 'O Hub recusou as partes (versão antiga do Hub?).', 'categoria': 'O Hub não conhece esta categoria (publique a versão nova do Hub).', 'fonte-desconhecida': 'O Hub não conhece este tipo de dado (publique a versão nova do Hub).',
