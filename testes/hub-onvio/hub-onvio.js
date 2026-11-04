@@ -1220,6 +1220,71 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await page.keyboard.press('Escape');
   });
 
+  await passo('Módulo Empresas (Hub 314, Josué 04/11/2026: "a empresa deve sumir de vez"): lista do cadastro único, excluir de todos os módulos com backup e restaurar', async () => {
+    const C14 = '55666777000105', CN = '55.666.777/0001-05';
+    await page.evaluate(() => { document.querySelectorAll('dialog[open]').forEach(d => d.close()); window.__hubApi.inicio(); });     // nenhuma janela de outro passo por cima
+    await page.evaluate(() => { delete window.__auth; });          // coordenação (um passo anterior que falhe no meio pode ter deixado o perfil de analista)
+    // a OMEGA (cliente do Onvio) ganha cadastro em todos os módulos: DP, Portal (com frente, contato e uma filial), Contábil e Fiscal
+    await page.evaluate(([cn]) => {
+      const s = window.__db.semear;
+      s('dp_empresas/e-omega', { cod: '904', nome: 'OMEGA SERVICOS LTDA', cnpj: cn, codigoDominio: '904', tributacao: 'Simples Nacional', responsavel: 'Ana Teste', situacao: 'Ativa', funcionarios: [{ id: 'f-om1', nome: 'Pessoa Omega', situacao: 'Ativo' }], historico: [], lembretes: [], prazos: [] });
+      s('empresas/p-omega', { nome: 'OMEGA SERVICOS', cnpj: cn });
+      s('empresas/p-omega-fil', { nome: 'OMEGA FILIAL', cnpj: '55.666.777/0002-88', matrizId: 'p-omega' });
+      s('empresaSetores/s-omega', { empresaId: 'p-omega', empresaNome: 'OMEGA SERVICOS', setor: 'DP' });
+      s('contatos/k-omega', { empresaId: 'p-omega', empresaNome: 'OMEGA SERVICOS', nome: 'Contato Ficticio' });
+      s('ctb_emp/b0', { 'c55666777000105': { id: 'c55666777000105', nome: 'OMEGA SERVICOS LTDA', cnpj: cn }, 'c-outra': { id: 'c-outra', nome: 'OUTRA LTDA', cnpj: '66.777.888/0001-06' } });
+      s('fis_emp/b0', { 'f-omega': { id: 'f-omega', nome: 'OMEGA', cnpj: cn } });
+    }, [CN]);
+    const r0 = await page.evaluate(async () => { const a = window.__hubApi.api('cadastro'); const b = await a.backup(); const g = await a.gerar(); return { b: b.ok, g: g.ok }; });
+    assert.deepEqual(r0, { b: true, g: true }, 'backup e cadastro gerados');
+    // a tela do módulo: abre pelo Hub e lista a empresa com os quatro módulos
+    await page.evaluate(() => window.__hubApi.abrirModulo('empresas'));
+    const fr = page.frameLocator('#empresas-frame');
+    await fr.locator('#lista tr[data-emp="' + C14 + '"]').waitFor({ timeout: 8000 });
+    assert.match(await fr.locator('#lista tr[data-emp="' + C14 + '"]').textContent(), /DP.*Contábil.*Portal.*Fiscal/);
+    await fr.locator('#busca').fill('omega');
+    assert.equal(await fr.locator('#lista tbody tr').count(), 2, 'a busca pelo nome acha a OMEGA e a filial (fora do Onvio)');
+    await fr.locator('#busca').fill('0001-05');
+    assert.equal(await fr.locator('#lista tbody tr').count(), 1, 'pelo CNPJ, só a matriz');
+    if (CAP) await page.screenshot({ path: path.join(CAP, 'empresas-lista.png') });
+    // ficha → Excluir de todos os módulos: mostra o que sai de cada módulo e só libera com o nome digitado
+    await fr.locator('#lista tr[data-emp="' + C14 + '"]').click();
+    await fr.locator('#empExcluir').click();
+    await fr.locator('#excNome').waitFor();
+    const txt = (await fr.locator('#excCorpo').textContent()).replace(/\s+/g, ' ');
+    assert.match(txt, /1 funcionário/); assert.match(txt, /1 frente e 1 contato/); assert.match(txt, /1 filial volta a ser empresa separada: OMEGA FILIAL/); assert.match(txt, /sai da carteira/);
+    if (CAP) await page.screenshot({ path: path.join(CAP, 'empresas-excluir.png') });
+    assert.equal(await fr.locator('#excOk').isDisabled(), true, 'sem o nome, o botão fica desligado');
+    const nome = (await fr.locator('#excCorpo .exc-conf b').textContent()).trim();
+    await fr.locator('#excNome').fill(nome);
+    // sem o nome certo pela API, nada é excluído
+    assert.equal((await page.evaluate((c) => window.__hubApi.api('cadastro').excluir(c, 'outro nome'), C14)).ok, false);
+    await fr.locator('#excOk').click();
+    await fr.locator('#excCorpo .res-ok').waitFor({ timeout: 8000 });
+    const depois = await page.evaluate((c) => {
+      const L = (x) => window.__db.listar(x), a = window.__hubApi.api('cadastro'), ov = window.__hubApi.api('onvio');
+      const ctb = L('ctb_emp')[0], fis = L('fis_emp')[0];
+      return { dp: L('dp_empresas').some(e => e.id === 'e-omega'), portal: L('empresas').map(e => e.id).filter(i => /omega/.test(i)), set: L('empresaSetores').some(e => e.id === 's-omega'), cont: L('contatos').some(e => e.id === 'k-omega'),
+        fil: L('empresas').find(e => e.id === 'p-omega-fil').matrizId, ctb: ctb['c55666777000105'].excluida, outra: !!ctb['c-outra'].excluida, fis: fis['f-omega'].excluida,
+        noCad: !!a.get(c), lista: a.excluidas().map(x => x.cnpj14), cliOnvio: [...ov.clientes().values()].some(x => String(x.cnpj).replace(/\D/g, '') === c), backups: L('cad_excluidas').filter(x => x.id !== '_idx').length };
+    }, C14);
+    assert.deepEqual(depois, { dp: false, portal: ['p-omega-fil'], set: false, cont: false, fil: '', ctb: true, outra: false, fis: true, noCad: false, lista: [C14], cliOnvio: false, backups: 1 });
+    // atualizar o cadastro único não a recria
+    await page.evaluate(() => window.__hubApi.api('cadastro').gerar());
+    assert.equal(await page.evaluate((c) => !!window.__hubApi.api('cadastro').get(c), C14), false, 'excluída não volta pela atualização do cadastro');
+    // aba Excluídas → Restaurar: tudo volta
+    await fr.locator('#excX').click();
+    await fr.locator('[data-aba-btn="excluidas"]').click();
+    await fr.locator('[data-restaurar="' + C14 + '"]').waitFor();
+    if (CAP) { await page.waitForTimeout(400); await page.screenshot({ path: path.join(CAP, 'empresas-excluidas.png') }); await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark')); await fr.locator('html').evaluate(h => h.setAttribute('data-theme', 'dark')); await page.waitForTimeout(200); await page.screenshot({ path: path.join(CAP, 'empresas-excluidas-escuro.png') }); await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light')); await fr.locator('html').evaluate(h => h.setAttribute('data-theme', 'light')); }
+    await fr.locator('[data-restaurar="' + C14 + '"]').click();
+    await fr.locator('#confSim').click();
+    await page.waitForFunction((c) => !window.__hubApi.api('cadastro').excluidas().length && !!window.__hubApi.api('cadastro').get(c), C14, { timeout: 8000 });
+    const volta = await page.evaluate(() => { const L = (x) => window.__db.listar(x); return { dp: L('dp_empresas').some(e => e.id === 'e-omega'), portal: L('empresas').map(e => e.id).filter(i => /omega/.test(i)).sort(), set: L('empresaSetores').filter(e => e.id === 's-omega').length, cont: L('contatos').filter(e => e.id === 'k-omega').length, fil: L('empresas').find(e => e.id === 'p-omega-fil').matrizId, ctb: !!L('ctb_emp')[0]['c55666777000105'].excluida, fis: !!L('fis_emp')[0]['f-omega'].excluida }; });
+    assert.deepEqual(volta, { dp: true, portal: ['p-omega', 'p-omega-fil'], set: 1, cont: 1, fil: 'p-omega', ctb: false, fis: false });
+    await page.evaluate(() => window.__hubApi.inicio());
+  });
+
   await passo('sem erros de página', async () => { assert.deepEqual(erros, []); });
 
   await browser.close(); servidor.close();
