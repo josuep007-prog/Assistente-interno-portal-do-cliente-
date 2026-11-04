@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.70.5)
+# Control Onvio · ControlTax (v0.70.6)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,18 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.70.6 (por que uma empresa ficou sem empregados, 04/11/2026)
+
+- **Configurações → Avançado → Testes de leitura → "Testar os empregados":** digite o código ou parte do nome (ex.: a Clear) e a extensão mostra, para cada código da empresa e os outros códigos com o mesmo nome (filiais, cadastro antigo), **quantas pessoas o Onvio devolve** (por tipo e situação) e se o código está nos clientes de CND/NF-e. O resultado diz o porquê:
+  - **o Onvio não tem ninguém** naquele código (a lista vem do Domínio; a extensão envia o que o Onvio tem);
+  - **o Hub descarta** os empregados porque o código não está nos clientes de CND/NF-e e outro código com o mesmo nome está ("cadastro antigo");
+  - **filiais com o mesmo nome**: o Hub só liga cada código pelo CNPJ ou pelo vínculo feito na Entrada de dados;
+  - ou a leitura funciona e falta a ligação com a empresa do DP.
+- Só contagens, códigos e nomes de empresa; nunca nome de empregado nem CPF. Só leitura (GET).
+- O último envio completo (04/11, 0.70.5) leu as 1.049 empresas **sem nenhuma falha**: empresa sem empregados no Hub não é erro de leitura do envio.
+- **Hub 312:** empresa com a lista de empregados do Onvio vazia e folha publicada (o caso da Clear): antes o Hub ignorava a folha (só deixava a folha decidir quando 60% da folha estava na lista do Onvio). Agora a folha decide sozinha, conferida pelo cadastro do DP (com 3 ou mais ativos no cadastro, pelo menos 30% têm de estar na folha). Quem só está na folha vira cadastro novo.
+- **Hub 312, duplicados:** a mesma pessoa com sobrenome a mais ou a menos (ex.: com e sem o sobrenome de casada, mesma admissão) não vira mais outro cadastro, e as duplicatas que já existem aparecem na Entrada de dados para unificar (o automático unifica quando a admissão é a mesma).
 
 ## Novidades da v0.70.5 e do Hub 309 (só a extensão mais recente envia, pedido do Josué em 04/11/2026)
 

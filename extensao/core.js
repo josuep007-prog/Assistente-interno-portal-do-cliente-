@@ -3423,6 +3423,57 @@
   // Diagnóstico de UMA empresa (0.69.1, pedido do Josué em 04/11/2026: "a leitura da folha não funciona na Torre Hotéis"). A pessoa digita o
   // código ou parte do nome; mostra cada passo (ids, pastas, extratos, leitura do mais recente) e o que a extensão já guardou dela.
   // Nomes de pessoas nunca aparecem: do PDF só contagens, vínculos e competência; das pastas, só a raiz e o 1º nível (departamentos).
+  // Empregados de uma empresa, passo a passo (0.70.6, pedido do Josué em 04/11/2026: "empresas como a Clear não tiveram os empregados lidos").
+  // Mostra só contagens, códigos e nomes de empresa: o que o Onvio devolve em cada código da empresa e, com as listas de CND e NF-e,
+  // se o Hub descartaria esses empregados (código fora das listas de clientes com o mesmo nome de um código atual = "cadastro antigo";
+  // vários códigos com o mesmo nome = o Hub só liga pelo CNPJ ou pelo vínculo feito na Entrada de dados).
+  const chaveEmpresa = n => semAcento(n).replace(/\b(ltda|me|epp|eireli|s\/?a|sa|ss|filial|matriz)\b/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim();
+  async function testarEmpregadosEmpresa(fetcher, pausa, busca) {
+    const linhas = [], log = t => linhas.push(t), q = semAcento(String(busca || '')).trim();
+    if (!q) return ['Digite o código ou parte do nome da empresa.'];
+    let clientes;
+    try { clientes = [...(await lerClientesFolha(fetcher, pausa)).values()]; } catch (e) { return ['Não consegui ler a lista de clientes da folha: ' + celulaHub(e && e.message || e, 80)]; }
+    const exato = clientes.filter(c => String(c.codigo) === q), achados = exato.length ? exato : clientes.filter(c => semAcento(c.nome).includes(q));
+    log('Clientes da folha no Onvio: ' + clientes.length);
+    if (!achados.length) { log('➜ Nenhum cliente da folha com o código ou o nome "' + busca + '". Sem estar nessa lista, a extensão só lê a empresa se ela aparecer numa solicitação.'); return linhas; }
+    // a empresa e todos os códigos com o mesmo nome (filiais, cadastro antigo)
+    const chaves = new Set(achados.map(c => chaveEmpresa(c.nome)).filter(Boolean));
+    const grupo = clientes.filter(c => achados.includes(c) || chaves.has(chaveEmpresa(c.nome))).slice(0, 12);
+    if (achados.length > 1) log('Achei ' + achados.length + ' clientes com "' + busca + '"' + (achados.length > 12 ? ' (mostro os 12 primeiros; digite o código para escolher)' : '') + '.');
+    let cnd = null, nfe = null;
+    try { cnd = new Set((await lerClientes(fetcher, 'cnd/v1/clients', pausa)).itens.map(c => String(c && c.code != null ? c.code : ''))); } catch (e) { log('Clientes de CND: não consegui ler (' + celulaHub(e && e.message || e, 60) + ')'); }
+    try { nfe = new Set((await lerClientes(fetcher, 'manifesto/v1/clients', pausa)).itens.map(c => String(c && c.code != null ? c.code : ''))); } catch (e) { log('Clientes de NF-e: não consegui ler (' + celulaHub(e && e.message || e, 60) + ')'); }
+    const nasListas = c => (cnd && cnd.has(String(c.codigo))) || (nfe && nfe.has(String(c.codigo)));
+    const conta = l => { const m = new Map(); l.forEach(v => m.set(v, (m.get(v) || 0) + 1)); return [...m.entries()].map(([v, n]) => v + ' ×' + n).join(', ') || '—'; };
+    const res = [];
+    for (const c of grupo) {
+      const r = { c, n: 0, erro: '', bruto: null, proprio: ehEscritorioProprio(c.nome), listas: nasListas(c) };
+      if (r.proprio) { res.push(r); continue; }
+      try {
+        const l = listaDe(await fetcher(URL_EMPREGADOS(c.id)));
+        r.n = l.length; r.tipos = conta(l.map(x => ((x && x.clientEmployeeRelationshipExpanded) || {}).eprType || '(sem tipo)')); r.sit = conta(l.map(x => String(x && x.status)));
+        if (!l.length) { if (pausa) await pausa(250); try { r.bruto = listaDe(await fetcher(API + 'br-payroll-sr/v1/clients/' + encodeURIComponent(c.id) + '/employees')).length; } catch (e) { r.bruto = null; } }
+      } catch (e) { r.erro = celulaHub(e && e.message || e, 80); }
+      res.push(r);
+      if (pausa) await pausa(250);
+    }
+    res.forEach(r => log('• ' + r.c.codigo + ' ' + r.c.nome + (achados.includes(r.c) ? '' : ' (mesmo nome)') + ' · ' +
+      (r.proprio ? 'empresa do próprio escritório: nunca vai ao Hub'
+        : r.erro ? 'a leitura falhou: ' + r.erro
+        : r.n + (r.n === 1 ? ' pessoa' : ' pessoas') + (r.n ? ' (' + r.tipos + ' · situação: ' + r.sit + ')' : r.bruto ? ' (sem filtro de tipo o Onvio devolve ' + r.bruto + ')' : '')) +
+      (cnd || nfe ? ' · ' + (r.listas ? 'está' : 'NÃO está') + ' nos clientes de CND/NF-e' : '')));
+    const com = res.filter(r => r.n > 0), atuais = res.filter(r => r.listas), nomes = new Set(res.map(r => chaveEmpresa(r.c.nome)));
+    if (res.some(r => r.erro)) log('➜ A leitura falhou em algum código: o envio completo também falha nele e o conjunto vai marcado como incompleto. Tente de novo; se repetir, me mande estas linhas.');
+    else if (!com.length) log('➜ O Onvio não tem nenhuma pessoa para ' + (res.length > 1 ? 'estes códigos' : 'este código') + ' (é a mesma lista que o Onvio mostra ao escolher o empregado numa solicitação). A lista vem do Domínio. Desde o Hub 312, com folha publicada o Hub usa o Extrato Mensal mesmo assim (quem está na folha é ativo; confira com "Testar a folha" no mesmo código e, no Hub, a ficha da empresa, aba Onvio).');
+    else {
+      const antigos = com.filter(r => (cnd || nfe) && !r.listas && atuais.some(a => chaveEmpresa(a.c.nome) === chaveEmpresa(r.c.nome)));
+      if (antigos.length) log('➜ ' + antigos.map(r => r.c.codigo).join(', ') + ': tem pessoas, mas o código não está nos clientes de CND/NF-e e outro código com o mesmo nome está. O Hub trata esse código como cadastro antigo e descarta os empregados dele.');
+      const varios = [...nomes].filter(k => res.filter(r => chaveEmpresa(r.c.nome) === k && r.listas).length > 1);
+      if (varios.length) log('➜ Há mais de um código atual com o mesmo nome (filiais): o Hub só liga cada código à empresa do DP pelo CNPJ ou pelo vínculo feito na Entrada de dados (Onvio → clientes sem empresa). Sem isso, os empregados ficam sem empresa.');
+      if (!antigos.length && !varios.length) log('➜ O Onvio tem ' + com.reduce((n, r) => n + r.n, 0) + ' pessoa(s) e a leitura funciona. Se o Hub não mostra, falta o envio completo com "Dados pessoais" ou a ligação desta empresa com a do cadastro do DP (Entrada de dados → Onvio → clientes sem empresa).');
+    }
+    return linhas;
+  }
   async function testarFolhaEmpresa(fetcher, textoPdf, pausa, busca, guardado, hoje) {
     const linhas = [], log = t => linhas.push(t), q = semAcento(String(busca || '')).trim();
     if (!q) return ['Digite o código ou parte do nome da empresa.'];
@@ -3824,5 +3875,5 @@
     return resultados;
   }
 
-  g.OC = { extratoContribuintes, lerFolhaContribuintes, resumoFolha, tipoCalculo, competenciaMinima, FOLHA_V, FOLHA_MESES_QUADRO, testarFolhaEmpresa, PASTA_PESSOAL, testarFolha, competenciaDoNome, FOLHA_COLUNAS, negritoUnicode, aplicarDestaques, ehEscritorioProprio, sondarEmpregados, montarLoteHub, HUB_CATEGORIAS, tabelaAnaliseSolicitacoes, tabelaAnaliseEquipe, hubPlano, hubExecutar, hubPartesDe, partirTabela, tabelaLista, tabelaPessoais, tabelaCnd, tabelaNfe, lerEscritorio, lerDocumentos, lerNoticias, slugHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, dentroDoHorario, planoDistribuicaoAuto, acaoConcluir, agruparSugestoes, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, acaoAnalise, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, mensagensProntas, marcadoresPendentes, observacoesFaltantes, avisosResposta, situacaoEquivalente, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { testarEmpregadosEmpresa, extratoContribuintes, lerFolhaContribuintes, resumoFolha, tipoCalculo, competenciaMinima, FOLHA_V, FOLHA_MESES_QUADRO, testarFolhaEmpresa, PASTA_PESSOAL, testarFolha, competenciaDoNome, FOLHA_COLUNAS, negritoUnicode, aplicarDestaques, ehEscritorioProprio, sondarEmpregados, montarLoteHub, HUB_CATEGORIAS, tabelaAnaliseSolicitacoes, tabelaAnaliseEquipe, hubPlano, hubExecutar, hubPartesDe, partirTabela, tabelaLista, tabelaPessoais, tabelaCnd, tabelaNfe, lerEscritorio, lerDocumentos, lerNoticias, slugHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, dentroDoHorario, planoDistribuicaoAuto, acaoConcluir, agruparSugestoes, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, acaoAnalise, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, mensagensProntas, marcadoresPendentes, observacoesFaltantes, avisosResposta, situacaoEquivalente, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);

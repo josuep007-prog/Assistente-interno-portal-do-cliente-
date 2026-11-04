@@ -683,6 +683,64 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     assert.ok(!(await page.evaluate(() => window.__hubApi.api('onvio').difs().some(d => /Fora da folha/.test(d.txt)))), 'sem quadro completo, nada sai da folha');
   });
 
+  await passo('Folha sem a lista do Onvio (Hub 312, Josué 04/11/2026: "mesmo não puxando do Onvio a leitura deveria ter pego"): a folha decide sozinha, conferida pelo cadastro do DP', async () => {
+    const cfg = await page.evaluate(() => window.__db.ler('ing_config/cfg'));
+    await page.evaluate(() => { window.__msgs = window.__msgs || []; if (!window.__ouveAck) { window.__ouveAck = 1; window.addEventListener('message', (e) => { if (e.data && e.data.ctlhub === 1 && e.data.de === 'hub') window.__msgs.push(e.data); }); } });
+    const envia = async (l) => { await page.evaluate((l) => { window.__msgs.length = 0; window.postMessage(l, '*'); }, l); await page.waitForFunction((id) => window.__msgs.some(m => m.tipo === 'ack' && m.id === id), l.id, { timeout: 5000 }); return page.evaluate((id) => window.__msgs.find(m => m.tipo === 'ack' && m.id === id), l.id); };
+    const COL = D.OC.FOLHA_COLUNAS, mes = (n) => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); };
+    // a lista de empregados do Onvio chega sem nenhuma pessoa da ORION (como a Clear)
+    const rost = await D.empregados(); rost.linhas = rost.linhas.filter(l => !/ORION/.test(l));
+    await semearConjunto('pessoais-empregados', rost, 'cSL');
+    const antes = await page.evaluate(() => JSON.parse(JSON.stringify(window.__db.ler('dp_empresas/e-orion'))));
+    await page.evaluate(() => { const d = window.__db.ler('dp_empresas/e-orion'); ['Maria Souza', 'Beltrano Silva', 'Carlos Sem Pedido'].forEach((n, i) => { if (!d.funcionarios.some(f => f.nome === n)) d.funcionarios.push({ id: 'f-sl' + i, nome: n, cargo: '', codigo: '', admissao: '2020-01-01', status: 'Ativo', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '', salario: '', obs: '' }); }); d.funcionarios.forEach(f => { if (['Maria Souza', 'Beltrano Silva', 'Carlos Sem Pedido'].includes(f.nome)) { f.status = 'Ativo'; f.saidaEm = ''; } }); window.__db.semear('dp_empresas/e-orion', d); });
+    const lq = (doc, comp, cod, nome, vinc) => [doc, 'c-orion', '900', 'ORION COMERCIO LTDA', comp, comp + '-05', cod, nome, vinc, 'Folha Mensal', 'completo', 'não'].join('\t');
+    const lote = (id, ciclo, linhas) => ({ ctlhub: 1, de: 'ext', tipo: 'lote', id, token: cfg.token, fonte: 'onvio', tipoDado: 'pessoais-folha-contribuintes', categoria: 'pessoais', titulo: 'Folha', colunas: COL, tabela: linhas.join('\n'), nLinhas: linhas.length, nLinhasTotal: linhas.length, totalNaOrigem: 1, cortado: false, partes: 1, parte: 0, ciclo, porTipo: {}, versaoExt: VEXT, acumular: 'Documento' });
+    const r1 = await envia(lote('s0', 'cS0', [lq('s0', mes(0), '101', 'MARIA SOUZA', 'Celetista'), lq('s0', mes(0), '202', 'BELTRANO SILVA', 'Celetista'), lq('s0', mes(0), '303', 'NOVA FICTICIA', 'Celetista')]));
+    assert.equal(r1.ok, true, JSON.stringify(r1));
+    // com o automático ligado (passos anteriores) a diferença pode ser aplicada antes de a lermos: vale a diferença OU o cadastro já mudado
+    await page.waitForFunction(() => { const f = (n) => (window.__db.ler('dp_empresas/e-orion').funcionarios || []).find(x => x.nome === n), ds = window.__hubApi.api('onvio').difs();
+      return (ds.some(d => d.nome === 'Carlos Sem Pedido' && /Fora da folha/.test(d.txt)) || (f('Carlos Sem Pedido') || {}).status === 'Inativo') && (ds.some(d => d.nome === 'Nova Ficticia' && d.acao === 'novo') || !!f('Nova Ficticia')); }, null, { timeout: 8000 });
+    const ds = await page.evaluate(() => window.__hubApi.api('onvio').difs().filter(d => d.empId === 'e-orion').map(d => ({ nome: d.nome, acao: d.acao, tipo: d.tipo, txt: d.txt, depois: d.depois, confirmar: d.confirmar })));
+    const car = ds.find(d => d.nome === 'Carlos Sem Pedido' && d.tipo === 'situacao');
+    if (car) { assert.equal(car.depois, 'Inativo'); assert.equal(car.confirmar, false, 'a folha é absoluta: o automático aplica'); }
+    const nova = ds.find(d => d.nome === 'Nova Ficticia' && d.acao === 'novo'); if (nova) assert.match(nova.txt, /Está na folha de/);
+    assert.ok(!ds.some(d => d.nome === 'Maria Souza' && d.tipo === 'situacao') && (await page.evaluate(() => ((window.__db.ler('dp_empresas/e-orion').funcionarios || []).find(f => f.nome === 'Maria Souza') || {}).status)) === 'Ativo', 'Maria está na folha: continua ativa');
+    await page.evaluate(() => window.__hubApi.api('dp').abrirEmpresa('e-orion', 'onvio'));
+    await page.waitForFunction(() => /decide quem é ativo/.test((document.querySelector('#dp-section-onvio .ov-folha-q') || {}).textContent || ''), null, { timeout: 8000 });
+    // trava de ligação pelo cadastro: folha de gente que não está no cadastro (3 ativos) não decide
+    assert.equal((await envia(lote('s1', 'cS1', [lq('s0', mes(0), '901', 'PESSOA ESTRANHA UM', 'Celetista'), lq('s0', mes(0), '902', 'PESSOA ESTRANHA DOIS', 'Celetista')]))).ok, true);
+    await page.waitForFunction(() => /veio vazia e só 0 dos 2/.test((document.querySelector('#dp-section-onvio .ov-folha-q') || {}).textContent || ''), null, { timeout: 8000 });
+    assert.ok(!(await page.evaluate(() => window.__hubApi.api('onvio').difs().some(d => d.empId === 'e-orion' && /Fora da folha/.test(d.txt)))), 'ligação suspeita: nada sai pela folha');
+    // restaura
+    assert.equal((await envia(lote('s2', 'cS2', [lq('s0', mes(0), '', '', '')].map(l => l.replace(/\tcompleto\tnão$/, '\tcontribuintes\t'))))).ok, true);
+    await semearConjunto('pessoais-empregados', await D.empregados(), 'cSLr');
+    await page.evaluate((d) => window.__db.semear('dp_empresas/e-orion', d), antes);
+    await page.waitForTimeout(400);
+  });
+
+  await passo('Duplicados (Hub 312, Josué 04/11/2026: a mesma pessoa com sobrenome a mais): não cria outro registro e unifica os que já existem', async () => {
+    const antes = await page.evaluate(() => JSON.parse(JSON.stringify(window.__db.ler('dp_empresas/e-orion'))));
+    // a mesma pessoa duas vezes (uma com o código Domínio, outra com o sobrenome de casada), mesma admissão; e um homônimo parcial com admissão diferente, que não é a mesma pessoa
+    await page.evaluate(() => { const d = window.__db.ler('dp_empresas/e-orion'); d.funcionarios.push(
+      { id: 'f-d1', nome: 'Julia Ficticia Cabral', cargo: '', codigo: '31', admissao: '2024-02-02', status: 'Ativo', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '', salario: '', obs: '' },
+      { id: 'f-d2', nome: 'Julia Ficticia Cabral Galvao', cargo: 'Vendedora', codigo: '', admissao: '2024-02-02', status: 'Ativo', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '', salario: '', obs: '' },
+      { id: 'f-d3', nome: 'Pedro Ficticio', cargo: '', codigo: '', admissao: '2020-01-01', status: 'Ativo', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '', salario: '', obs: '' },
+      { id: 'f-d4', nome: 'Pedro Ficticio Lima', cargo: '', codigo: '', admissao: '2023-05-05', status: 'Ativo', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '', salario: '', obs: '' }); window.__db.semear('dp_empresas/e-orion', d); });
+    await page.waitForFunction(() => window.__hubApi.api('onvio').difs().some(d => d.tipo === 'duplicado'), null, { timeout: 8000 });
+    const ds = await page.evaluate(() => window.__hubApi.api('onvio').difs().filter(d => d.empId === 'e-orion' && d.tipo === 'duplicado').map(d => ({ chave: d.chave, nome: d.nome, txt: d.txt, confirmar: d.confirmar, depois: d.depois })));
+    assert.equal(ds.length, 1, 'só a Julia (o Pedro tem admissões diferentes): ' + JSON.stringify(ds));
+    assert.match(ds[0].txt, /cadastrada duas vezes .*mesma admissão/); assert.equal(ds[0].confirmar, false, 'mesma admissão: o automático unifica');
+    const ap = await page.evaluate((ch) => window.__hubApi.api('onvio').aplicar('e-orion', ch), ds[0].chave);
+    assert.ok(ap.ok || /já não existe/.test(ap.erro || ''), JSON.stringify(ap));          // com o automático ligado (passo anterior), ele pode unificar antes do clique
+    await page.waitForFunction(() => !(window.__db.ler('dp_empresas/e-orion').funcionarios || []).some(f => f.id === 'f-d2'), null, { timeout: 8000 });
+    const ju = await page.evaluate(() => window.__db.ler('dp_empresas/e-orion').funcionarios.filter(f => /^Julia Ficticia/.test(f.nome)));
+    assert.equal(ju.length, 1); assert.equal(ju[0].id, 'f-d1', 'fica o que tem o código Domínio'); assert.equal(ju[0].codigo, '31');
+    assert.equal(ju[0].nome, 'Julia Ficticia Cabral Galvao', 'com o nome mais longo'); assert.equal(ju[0].cargo, 'Vendedora', 'completado com o que só o outro tinha');
+    assert.equal((await page.evaluate(() => window.__db.ler('dp_empresas/e-orion').funcionarios.filter(f => /^Pedro Ficticio/.test(f.nome)).length)), 2, 'o Pedro continua com dois registros');
+    await page.evaluate((d) => window.__db.semear('dp_empresas/e-orion', d), antes);
+    await page.waitForTimeout(400);
+  });
+
   await passo('Folha · lista fiel (Hub 306): vínculo pela folha, pró-labore e RPA em grupos à parte (entram e saem pela folha), Inativo fora da contagem, e o automático não para por conjunto cortado', async () => {
     const cfg = await page.evaluate(() => window.__db.ler('ing_config/cfg'));
     await page.evaluate(() => { window.__msgs = window.__msgs || []; if (!window.__ouveAck) { window.__ouveAck = 1; window.addEventListener('message', (e) => { if (e.data && e.data.ctlhub === 1 && e.data.de === 'hub') window.__msgs.push(e.data); }); } });

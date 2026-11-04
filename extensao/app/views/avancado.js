@@ -221,9 +221,9 @@ function parteTestes(corpo, d) {
   const fe = d.folhaEstado;
   corpo.innerHTML = '<section class="cfg-card adv-card"><h3><svg class="ic"><use href="#i-pulso"/></svg>Testes de leitura</h3>' +
     '<p class="fraco ajuda">Só leitura no Onvio. O resultado mostra formatos e contagens, nunca dado de cliente.' + (fe && fe.em ? ' Última varredura da folha: ' + esc(OP.quando(fe.em)) + (fe.pendentes ? ' (' + fe.pendentes + ' PDFs ficaram para o próximo envio)' : '') + '.' : '') + '</p>' +
-    '<form class="adv-empresa" id="adv-folha-emp"><label class="adv-campo adv-cresce"><span>Folha de uma empresa: código ou parte do nome</span><input type="text" id="adv-folha-busca" autocomplete="off" placeholder="ex.: 123 ou torre"></label>' +
-      '<button type="submit" class="btn btn-primary btn-sm" id="adv-folha-testar">Testar a folha desta empresa</button></form>' +
-      '<p class="fraco ajuda">Mostra passo a passo onde a leitura da folha para nessa empresa: projeto no portal de documentos, pastas, extratos e a leitura do mais recente (só contagens, vínculos e competência).</p>' +
+    '<form class="adv-empresa" id="adv-folha-emp"><label class="adv-campo adv-cresce"><span>Uma empresa: código ou parte do nome</span><input type="text" id="adv-folha-busca" autocomplete="off" placeholder="ex.: 123 ou torre"></label>' +
+      '<button type="submit" class="btn btn-primary btn-sm" id="adv-folha-testar">Testar a folha</button><button type="button" class="btn btn-sm" id="adv-emp-testar">Testar os empregados</button></form>' +
+      '<p class="fraco ajuda">Folha: onde a leitura do Extrato Mensal para nessa empresa (projeto, pastas, extratos e o mais recente). Empregados: quantas pessoas o Onvio devolve em cada código da empresa e se o Hub as descartaria (código antigo, filiais com o mesmo nome). Só contagens, nunca nome nem CPF.</p>' +
     '<div class="adv-testes">' + TESTES.map(t => '<button type="button" class="adv-teste" data-teste="' + t.id + '"><svg class="ic"><use href="#' + t.ic + '"/></svg><span class="cfg-tx"><b>' + esc(t.rot) + '</b><small>' + esc(t.desc) + '</small></span></button>').join('') + '</div>' +
     '</section><section class="cfg-card adv-card adv-console-card"' + (saida.texto ? '' : ' hidden') + '><h3><svg class="ic"><use href="#i-list"/></svg><span id="adv-saida-t">' + esc(saida.titulo) + '</span><span class="adv-espaco"></span>' +
       '<button type="button" class="btn btn-sm" id="adv-saida-copiar"><svg class="ic"><use href="#i-copy"/></svg>Copiar</button></h3><pre class="adv-console" id="adv-saida">' + esc(saida.texto) + '</pre></section>';
@@ -249,6 +249,14 @@ function parteTestes(corpo, d) {
     const r = await enviar({ cmd: 'testarFolhaEmpresa', busca });
     btn.disabled = false;
     mostrar('Folha de "' + busca + '"', r && r.ok ? (r.linhas || []).join('\n') : 'Não foi possível: ' + ((r && r.erro) || 'sem resposta'));
+  };
+  $('#adv-emp-testar', corpo).onclick = async () => {
+    const busca = $('#adv-folha-busca', corpo).value.trim(), btn = $('#adv-emp-testar', corpo);
+    if (!busca) { $('#adv-folha-busca', corpo).focus(); return; }
+    btn.disabled = true; mostrar('Empregados de "' + busca + '"', 'Procurando a empresa e lendo a lista de empregados de cada código dela (só leitura)…');
+    const r = await enviar({ cmd: 'testarEmpregadosEmpresa', busca });
+    btn.disabled = false;
+    mostrar('Empregados de "' + busca + '"', r && r.ok ? (r.linhas || []).join('\n') : 'Não foi possível: ' + ((r && r.erro) || 'sem resposta'));
   };
   $('#adv-saida-copiar', corpo).onclick = async () => { try { await navigator.clipboard.writeText(saida.texto); toast('Copiado'); } catch (e) { toast('Não consegui copiar: selecione o texto', true); } };
 }
