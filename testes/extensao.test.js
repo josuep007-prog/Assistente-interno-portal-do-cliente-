@@ -3439,11 +3439,13 @@ test('Folha (0.69.3): formato do Extrato Mensal do Domínio ("Empr.: código NOM
   const semContrib = T.split('\n').filter(l => !/PRO LABORE|Contr\.|SERVIÇOS/.test(l)).join('\n');
   const t = (await OC.testarFolhaEmpresa(api, async () => semContrib, null, '394', {}, new Date('2026-11-05T10:00:00'))).join('\n');
   assert.match(t, /Pessoas: 2 · contribuintes: 0/);
+  assert.match(t, /nenhuma é contribuinte em nenhum dos extratos lidos[\s\S]*teste o outro código/);
   assert.match(t, /Rótulos no extrato \(vezes\): .*Empr\.: ×2/);
   assert.match(t, /Bloco da primeira pessoa \(formato\): Empr\.: 9 A A A A  Situação: Trabalhando CPF: 9\.9\.9-9  Adm:  9\/9\/9 \| Cargo: A  Vínculo: Celetista \| 9 SALARIO/);
   assert.ok(!/FULANO|SICRANA|111\.222|555\.666|RECEPCIONISTA/.test(t), 'nem nome, nem CPF, nem cargo');
   const t2 = (await OC.testarFolhaEmpresa(api, async () => T, null, '394', {}, new Date('2026-11-05T10:00:00'))).join('\n');
   assert.match(t2, /Pessoas: 3 · contribuintes: 2/);
+  assert.match(t2, /Extratos lidos neste teste \(os 1 mais recentes\):\n  • competência 2026-10 · cálculo: Folha Mensal · 3 pessoas, 2 contribuintes · Celetista ×1, \(sem vínculo\) ×1, Contribuinte ×1/);
   assert.match(t2, /Contribuintes por vínculo: \(pelo evento\), Contribuinte\. ➜ A leitura funciona/);
 });
 

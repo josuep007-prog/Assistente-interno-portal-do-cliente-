@@ -3426,9 +3426,22 @@
     const padroes = new Map(); ex.forEach(x => { const p = String(x.name || '').replace(/\d/g, '9'); padroes.set(p, (padroes.get(p) || 0) + 1); });
     const noPrazo = ex.filter(x => { const cn = competenciaDoNome(x.name); if (cn) return cn >= minima; const cd = dataIso(String(x.createdDate || '')); return !cd || cd.slice(0, 7) >= minima; });
     log('Extratos: ' + ex.length + ' · dos últimos 12 meses: ' + noPrazo.length + ' · já lidos antes: ' + noPrazo.filter(x => lidos[x.id] != null).length + ' · nomes: ' + [...padroes.entries()].slice(0, 6).map(([p, n]) => p + ' ×' + n).join(', '));
-    const alvo = (noPrazo.length ? noPrazo : ex).slice().sort((a, b) => String(b.createdDate || '').localeCompare(String(a.createdDate || '')))[0];
+    const ordem = (noPrazo.length ? noPrazo : ex).slice().sort((a, b) => String(b.createdDate || '').localeCompare(String(a.createdDate || ''))), alvo = ordem[0];
+    // um resumo por extrato (0.69.4): o pró-labore costuma sair num cálculo à parte, com extrato próprio
+    const textos = new Map(); let contribOutros = 0;
+    const tipoCalculo = t => { const m = String(t || '').match(/c[aá]lculo\s*:\s*([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ \-]{1,30}?)(?=\s{2,}|\s+compet|\s*$)/im); return m ? m[1].trim() : '?'; };
+    log('Extratos lidos neste teste (os ' + Math.min(6, ordem.length) + ' mais recentes):');
+    for (const d of ordem.slice(0, 6)) {
+      try {
+        const t = await textoPdf(URL_DOCUMENTO(d.containerId || d.parentId || d.pasta, d.id)); textos.set(d.id, t);
+        const y = extratoContribuintes(t), vs = new Map(); y.pessoas.forEach(p => vs.set(p.vinculo || '(sem vínculo)', (vs.get(p.vinculo || '(sem vínculo)') || 0) + 1));
+        const nC = y.pessoas.filter(p => p.contribuinte).length; if (d !== alvo) contribOutros += nC;
+        log('  • competência ' + (y.competencia || competenciaDoNome(d.name) || '?') + ' · cálculo: ' + tipoCalculo(t) + ' · ' + y.pessoas.length + ' pessoas, ' + nC + ' contribuintes · ' + ([...vs.entries()].map(([v, n]) => v + ' ×' + n).join(', ') || 'sem vínculos'));
+      } catch (e) { log('  • não consegui ler: ' + celulaHub(e && e.message || e, 80)); }
+      if (pausa) await pausa(300);
+    }
     try {
-      const texto = await textoPdf(URL_DOCUMENTO(alvo.containerId || alvo.parentId || alvo.pasta, alvo.id)), x = extratoContribuintes(texto), vinc = new Map();
+      const texto = textos.has(alvo.id) ? textos.get(alvo.id) : await textoPdf(URL_DOCUMENTO(alvo.containerId || alvo.parentId || alvo.pasta, alvo.id)), x = extratoContribuintes(texto), vinc = new Map();
       x.pessoas.forEach(p => vinc.set(p.vinculo || '(sem vínculo)', (vinc.get(p.vinculo || '(sem vínculo)') || 0) + 1));
       log('Extrato mais recente: ' + String(texto || '').length + ' caracteres, ' + String(texto || '').split('\n').length + ' linhas · competência ' + (x.competencia ? x.competencia : 'NÃO achada no texto') + ' · pelo nome: ' + (competenciaDoNome(alvo.name) || '—'));
       log('Pessoas: ' + x.pessoas.length + ' · contribuintes: ' + x.pessoas.filter(p => p.contribuinte).length + ' · vínculos: ' + ([...vinc.entries()].map(([v, n]) => v + ' ×' + n).join(', ') || '—'));
@@ -3439,9 +3452,10 @@
       log('Rótulos no extrato (vezes): ' + [...rotulos.entries()].sort((a, b) => b[1] - a[1]).slice(0, 30).map(([k, n]) => k + ': ×' + n).join(', '));
       if (!String(texto || '').trim()) log('➜ O PDF não tem texto (é imagem escaneada?): não dá para ler sem OCR.');
       else if (!x.pessoas.length) log('➜ Não reconheci ninguém no texto. Formato das linhas com CPF ou data (letras viram A, números 9): ' + String(texto).split('\n').filter(l => /\d{3}\.?\d{3}\.?\d{3}-?\d{2}|\d{2}\/\d{2}\/\d{4}/.test(l)).slice(0, 4).map(forma).join(' | '));
+      else if (!x.pessoas.some(p => p.contribuinte) && contribOutros) log('➜ O extrato mais recente não tem contribuinte, mas os outros têm ' + contribOutros + ': a leitura funciona nesta empresa (o pró-labore sai em outro cálculo).');
       else if (!x.pessoas.some(p => p.contribuinte)) {
         const ls = String(texto).split('\n'), i0 = ls.findIndex(l => FOLHA_PESSOA.test(l) || FOLHA_PESSOA_ROT.test(l));
-        log('➜ Li ' + x.pessoas.length + ' pessoas, mas nenhuma foi reconhecida como contribuinte. Linhas com "vínculo", "pró-labore", "autônomo", "sócio" ou "contribuinte" (formato): ' + (ls.filter(l => /v[ií]nculo|pr[oó][\s-]?labore|aut[oô]nom|s[oó]cio|diretor|contribuinte|contr\.?:/i.test(l)).slice(0, 6).map(forma).join(' | ') || 'nenhuma'));
+        log('➜ Li ' + x.pessoas.length + ' pessoas e nenhuma é contribuinte em nenhum dos extratos lidos. Se a empresa tem sócio com pró-labore, ele deve estar em outro código da mesma empresa (teste o outro código) ou num extrato que não está na pasta "Extrato Mensal". Linhas com "vínculo", "pró-labore", "autônomo", "sócio" ou "contribuinte" (formato): ' + (ls.filter(l => /v[ií]nculo|pr[oó][\s-]?labore|aut[oô]nom|s[oó]cio|diretor|contribuinte|contr\.?:/i.test(l)).slice(0, 6).map(forma).join(' | ') || 'nenhuma'));
         if (i0 >= 0) log('Bloco da primeira pessoa (formato): ' + ls.slice(i0, i0 + 6).map(forma).join(' | '));
       }
       else log('Contribuintes por vínculo: ' + [...new Set(x.pessoas.filter(p => p.contribuinte).map(p => p.vinculo || '(pelo evento)'))].join(', ') + '. ➜ A leitura funciona nesta empresa. Se o Hub não mostra, falta o envio (Control Hub → Enviar tudo agora, com Dados pessoais ligado) ou a ligação desta empresa com a do cadastro do DP.');
