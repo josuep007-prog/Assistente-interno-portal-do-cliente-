@@ -1413,6 +1413,29 @@ await passo('app · detalhe: sempre abre na conversa, com os dados no painel ao 
   assert.deepEqual(p.erros, []);
 });
 
+await passo('app · detalhe: abertura sem texto mostra a descrição da solicitação na bolha e o painel não a repete (0.70.7)', async () => {
+  const p = await abrirApp('#/fila?escopo=equipe');
+  const grupos = [{ titulo: 'Solicitação', campos: [{ k: 'Tipo de rescisão', v: 'Trabalhado', destaque: true }, { k: 'Descrição', v: 'Pedido do cliente pelo portal', longo: true }] }];
+  await p.evaluate(g => { window.__respostas = Object.assign(window.__respostas || {}, { detalhe: { ok: true, item: { assunto: 'x' }, grupos: g,
+    tramites: [{ n: 1, id: 't1', em: '2026-10-07T19:03:00', situacao: 'Sem análise', lado: 'cli', autor: 'Cliente BETA', texto: '', anexos: [], arquivos: [] }] } }); }, grupos);
+  await p.click('#corpo [data-k="geral:b"]');
+  await p.waitForSelector('#g-corpo .tr-item');
+  const bolha = await p.textContent('#g-corpo .tr-item');
+  assert.match(bolha, /Descrição da solicitação/);
+  assert.match(bolha, /Pedido do cliente pelo portal/);
+  assert.doesNotMatch(bolha, /Sem texto/);
+  assert.doesNotMatch(await p.textContent('#pn-dados'), /Pedido do cliente pelo portal/, 'o painel não repete a descrição');
+  assert.match(await p.textContent('#pn-dados'), /Trabalhado/, 'os outros dados continuam no painel');
+  await p.keyboard.press('Escape');
+  // abertura com texto próprio: a descrição continua no painel
+  await p.evaluate(() => { window.__respostas.detalhe.tramites[0].texto = 'Bom dia, segue'; });
+  await p.click('#corpo [data-k="geral:b"]');
+  await p.waitForSelector('#g-corpo .tr-item');
+  assert.doesNotMatch(await p.textContent('#g-corpo .tr-item'), /Descrição da solicitação/);
+  assert.match(await p.textContent('#pn-dados'), /Pedido do cliente pelo portal/);
+  assert.deepEqual(p.erros, []);
+});
+
 await passo('app · Solicitações: Pôr em análise em cada uma (cálculo de rescisão com o texto curto) e em lote, uma confirmação e um trâmite por vez', async () => {
   const base = { nivel: 0, grav: 0, parado: 1, motivos: [], resp: 'Ana Teste', mine: true, lado: 'esc', code: 1, status: 'Sem análise', created: agoraIso(2), last: agoraIso(1) };
   const itens = [

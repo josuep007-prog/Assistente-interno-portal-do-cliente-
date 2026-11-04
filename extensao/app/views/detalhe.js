@@ -239,6 +239,8 @@ function tramitesHtml(r, carregando, i) {
   let acum = r.arquivos && r.arquivos.length ? 1 : 0;
   const gis = new Map();
   for (const t of todos) { gis.set(t, acum); if (t.arquivos && t.arquivos.length) acum++; }
+  // abertura sem texto: a mensagem do cliente está na descrição da solicitação; ela vai para a bolha (e sai do painel)
+  const desc = descricaoDe(i, r), descTr = descNaConversa(i, r);
   let ant = null;
   const corpo = todos.map(x => {
     // tempo entre este trâmite e o anterior na leitura (só quando passou ao menos 1 dia)
@@ -256,11 +258,25 @@ function tramitesHtml(r, carregando, i) {
       '<div class="tr-bolha">' +
         '<div class="tr-meta"><b>' + esc(quem) + '</b><span class="tr-lado">' + (x.n === 1 ? 'abertura' : lado === 'esc' ? 'escritório' : 'cliente') + '</span>' +
           (x.situacao && x.n !== 1 ? '<span class="tr-sit-pill" title="Situação gravada por este trâmite">' + esc(x.situacao) + '</span>' : '') + '<span class="tr-quando" title="' + esc(fmtDataHora(x.em)) + '">#' + String(x.n).padStart(2, '0') + ' · ' + esc(simples() ? relativo(x.em) : relativo(x.em) !== fmtDataHora(x.em) ? relativo(x.em) + ' · ' + fmtDataHora(x.em) : fmtDataHora(x.em)) + '</span></div>' +
-        (x.texto ? '<div class="tr-texto">' + esc(textoPuro(x.texto)) + '</div><button type="button" class="tr-mais">Ver tudo</button>' : '<div class="tr-texto fraco">Sem texto' + (anexos.length ? ' (só anexo)' : '') + '</div>') +
+        (x.texto ? '<div class="tr-texto">' + esc(textoPuro(x.texto)) + '</div><button type="button" class="tr-mais">Ver tudo</button>'
+          : x === descTr ? '<div class="tr-origem">Descrição da solicitação</div><div class="tr-texto tr-desc">' + esc(textoPuro(desc)) + '</div><button type="button" class="tr-mais">Ver tudo</button>'
+          : '<div class="tr-texto fraco">Sem texto' + (anexos.length ? ' (só anexo)' : '') + '</div>') +
         (anexos.length ? '<div class="tr-anexos">' + anexos.map((a, ai) => { const tp = tipoArquivo(a.nome); return '<button type="button" class="tr-arq"' + (a.id || a.direto ? ' data-ax-abrir="' + gi + ':' + ai + '"' : ' disabled') + ' title="Baixar ' + esc(a.nome) + '"><span class="ax-ic ' + tp.cls + '">' + tp.rot + '</span><span class="ax-nome">' + esc(a.nome) + '</span></button>'; }).join('') + '</div>' : '') +
       '</div>' + (x === ultCli && x.n !== 1 ? responder : '') + '</div>' + sit;
   }).join('');
   return '<div class="tr-lista" id="tr-lista">' + corpo + rasc + '</div>';
+}
+
+// Descrição da solicitação (o texto que o cliente escreveu ao abrir): do detalhe completo ou, na falta, do resumo.
+function descricaoDe(i, r) {
+  for (const g of (r && r.grupos) || []) for (const c of g.campos) if (c.longo && c.k === 'Descrição' && String(c.v || '').trim()) return c.v;
+  return (i && String(i.descricao || '').trim()) ? i.descricao : '';
+}
+// O trâmite de abertura (#01) que veio sem texto e recebe a descrição; nulo quando não há o que mover.
+function descNaConversa(i, r) {
+  if (!r || r.erroTramites || !descricaoDe(i, r)) return null;
+  const ab = (r.tramites || []).find(t => t.n === 1);
+  return ab && !String(ab.texto || '').trim() ? ab : null;
 }
 
 // Em destaque: as datas e os dados que definem o atendimento, tirados da solicitação completa (no painel, sempre à vista).
@@ -317,9 +333,11 @@ function dados(i, r, carregando) {
   if (carregando) return '<div class="vazio">Lendo a solicitação completa no Onvio…</div>';
   if (r && r.grupos) {
     // cada grupo num cartão; o nome (do empregado, por exemplo) vai para o título do cartão em vez de ser mais um campo
+    const semDesc = !!descNaConversa(i, r);
     let html = r.grupos.map(gr => {
       const nome = gr.titulo !== 'Solicitação' && gr.campos.find(c => c.k === 'Nome' && !c.longo);
-      const campos = gr.campos.filter(c => c !== nome);
+      const campos = gr.campos.filter(c => c !== nome && !(semDesc && c.longo && c.k === 'Descrição'));
+      if (!campos.length && !nome) return '';
       const curtos = campos.filter(c => !c.longo), longos = campos.filter(c => c.longo);
       return '<section class="dados-g"><header class="dados-cab"><h4 class="dados-tit">' + esc(gr.titulo) + '</h4>' + (nome ? '<span class="dados-nome">' + esc(nome.v) + '</span>' : '') + '</header>' +
         (curtos.length ? grade(curtos.map(c => [c.k, c.v, c.destaque])) : '') +
@@ -329,7 +347,7 @@ function dados(i, r, carregando) {
   }
   const aviso = r && r.erroDados ? '<div class="faixa warn"><svg class="ic"><use href="#i-alert"/></svg>Não foi possível ler a solicitação completa (' + esc(r.erroDados) + '). Mostrando o que veio da lista.</div>' : '';
   return aviso + (i.assunto ? grade([['Assunto', i.assunto]]) : '') +
-    (i.descricao ? '<div class="campo campo-longo"><div class="k">Descrição</div><div class="texto-longo">' + esc(textoPuro(i.descricao)) + '</div></div>' : '');
+    (i.descricao && !descNaConversa(i, r) ? '<div class="campo campo-longo"><div class="k">Descrição</div><div class="texto-longo">' + esc(textoPuro(i.descricao)) + '</div></div>' : '');
 }
 
 function lembretesHtml(lems) {
