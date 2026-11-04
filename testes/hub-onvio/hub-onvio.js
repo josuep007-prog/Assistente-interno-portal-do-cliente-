@@ -268,7 +268,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     assert.equal(await card.count(), 1);
     assert.match(await card.textContent(), /2\s*ativos/); assert.doesNotMatch(await card.textContent(), /alerta|desligad|férias/i, 'o cartão só mostra a quantidade de ativos');
     assert.equal(await card.locator('.fn-bar').count(), 0, 'sem barra de situações');
-    assert.match(await page.locator('#dp-func-resumo').textContent(), /funcionários ativos em/); assert.doesNotMatch(await page.locator('#dp-func-resumo').textContent(), /alerta|desligad|férias|afastad/i);
+    assert.match(await page.locator('#dp-func-resumo').textContent(), /\bativos em\b/); assert.doesNotMatch(await page.locator('#dp-func-resumo').textContent(), /alerta|desligad|férias|afastad/i);
     assert.equal(await page.locator('#dp-badge-func').isVisible(), false, 'sem selo de alertas na aba Funcionários');
     assert.deepEqual((await page.locator('#dp-func-chips .dp-chip').allTextContents()).map(t => t.replace(/\s+\d+$/, '').trim()), ['Ativos', 'Inativos', 'Desligados'], 'ativos, inativos e desligados (sem filtro de alerta; Inativo desde o Hub 306)');
     assert.equal(await page.locator('[data-func-modo="lista"]').count(), 0, 'sem o modo Lista');
@@ -734,15 +734,17 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     const cabs = await page.$$eval('#dp-section-funcionarios .fn-grupo-cab', e => e.map(x => x.textContent.replace(/\s+/g, ' ').trim()));
     assert.ok(cabs.some(t => /^Pró-labore 1/.test(t)), cabs.join(' | ')); assert.ok(cabs.some(t => /^RPA \(autônomos\) 1/.test(t)), 'RPA ativo: só o novo (o inativo fica atrás do botão)');
     assert.match(await page.textContent('#dp-section-funcionarios [data-ficha-desl]'), /Inativos e desligados \(\d+\)/);
-    const esperado = parseInt(await page.textContent('#dp-section-funcionarios .fn-cab em'), 10);      // a ficha e o cartão contam igual (só funcionários)
+    const esperado = parseInt(await page.textContent('#dp-section-funcionarios .fn-cab em'), 10);      // a ficha e o cartão contam igual
     if (CAP) await page.locator('#dp-section-funcionarios').screenshot({ path: path.join(CAP, 'ficha-grupos-claro.png') }).catch(() => {});
     await page.keyboard.press('Escape'); await page.evaluate(() => { const d = document.querySelector('dialog[open]'); if (d) d.close(); });
     await page.evaluate(() => window.__hubApi.abrirModulo('dp'));
     await page.evaluate(() => window.__hubApi.api('dp').irPara('funcionarios'));
     await page.waitForSelector('#dp-func-cards .fn-card', { timeout: 8000 });
     const card = await page.evaluate(() => { const c = [...document.querySelectorAll('#dp-func-cards .fn-card')].find(x => /ORION/i.test(x.textContent)); return c ? c.textContent.replace(/\s+/g, ' ') : ''; });
-    assert.match(card, new RegExp('\\b' + esperado + '\\s*ativos\\s*\\+ 1 pró-labore · 1 RPA'), 'ORION: só os funcionários contam; pró-labore e RPA à parte: ' + card);
-    assert.match(await page.textContent('#dp-func-resumo'), /à parte: \d+ pró-labore · \d+ RPA \(autônomos\)/);
+    // Hub 310: pró-labore e RPA com folha no mês CONTAM nos ativos (o número do cartão inclui os dois) e o cartão diz quantos são
+    assert.match(card, new RegExp('\\b' + esperado + '\\s*ativos\\s*inclui 1 pró-labore · 1 RPA'), 'ORION: os ativos incluem pró-labore e RPA: ' + card);
+    assert.match(await page.textContent('#dp-func-resumo'), /inclui \d+ pró-labore · \d+ RPA \(autônomos\)/);
+    assert.ok(esperado >= 2, 'os dois (pró-labore e RPA) estão dentro dos ativos: ' + esperado);
     const chips = await page.evaluate(() => [...document.querySelectorAll('#dp-func-chips [data-f]')].map(b => b.textContent.replace(/\s+/g, ' ').trim()));
     assert.deepEqual(chips.map(c => c.replace(/\s*\d+$/, '')), ['Ativos', 'Inativos', 'Desligados']);
     if (CAP) { await page.mouse.move(900, 500); await page.waitForTimeout(1500); await page.screenshot({ path: path.join(CAP, 'funcionarios-grupos-claro.png') }).catch(() => {});
