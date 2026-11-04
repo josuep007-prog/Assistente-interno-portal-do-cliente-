@@ -64,6 +64,8 @@ function empresasFicticias() {
       if ((k + i) % 6 === 0) f.rescisao = dia(Math.min(-1, adm + 40 + (k * 13) % 300));
       else if ((k + i) % 9 === 0) { f.feriasInicio = dia(-3); f.feriasFim = dia(20); }
       else if ((k + i) % 11 === 0) { f.feriasInicio = dia(25 + k); f.feriasFim = dia(54 + k); }
+      if (k === 0) f.vinculo = 'Pró-labore';                                  // Hub 313: um sócio com pró-labore e, em algumas, um RPA
+      else if (k === 1 && i % 3 === 0) f.vinculo = 'RPA/autônomo';
       funcionarios.push(f);
     }
     out.push({ id: `e-fic-${i}`, cod: String(100 + i), nome: `EMPRESA FICTICIA ${String.fromCharCode(65 + i)} LTDA`, cnpj: i % 5 === 4 ? '' : `${String(10 + i).padStart(2, '0')}.111.222/0001-${String(10 + i).padStart(2, '0')}`, codigoDominio: i % 4 === 3 ? '' : String(100 + i),
@@ -178,11 +180,43 @@ print(json.dumps(o, default=str))`;
     const arq = await baixar(() => clicar('[data-rel-baixar="xlsx"]'));
     const x = lerPlanilha(arq);
     conferirFormato(x);
-    assert.match(x.titulo, new RegExp('Funcionários ativos em ' + dmy(alvo)));
-    assert.deepEqual(x.cab, ['Empresa', 'CNPJ', 'Responsável', 'Ativos em ' + dmy(alvo)]);
+    assert.match(x.titulo, new RegExp('Ativos em ' + dmy(alvo)));
+    assert.deepEqual(x.cab, ['Empresa', 'CNPJ', 'Responsável', 'Funcionários', 'Pró-labore', 'RPA', 'Total em ' + dmy(alvo)]);
     const soma = tela.reduce((s, r) => s + r[1], 0);
     assert.equal(x.kpi[0], soma, 'o primeiro número é o total de ativos na data');
     assert.ok(path.basename(arq).includes(alvo), 'nome do arquivo leva a data: ' + path.basename(arq));
+  });
+
+  await passo('Funcionários, pró-labore e RPA separados (Hub 313): colunas, indicadores e o filtro "Quem conta"', async () => {
+    await clicar('[data-rel-tipo="ativos"]');
+    const alvo = ymd(diasAtras(0)); await mudar('[data-rel="data"]', alvo);
+    const ativo = (f) => f.admissao <= alvo && !(f.rescisao && f.rescisao <= alvo), grupo = (f) => /pró-labore/i.test(f.vinculo || '') ? 'pl' : /rpa/i.test(f.vinculo || '') ? 'rpa' : 'func';
+    const emps = new Map(empresasFicticias().map(e => [e.id, e]));
+    const tela = await page.evaluate(() => [...document.querySelectorAll('#dp-rel-root .rel-tab tbody tr')].map(tr => [tr.dataset.openEmp, ...[...tr.children].slice(3).map(td => Number(td.textContent.replace(/\./g, '')))]));
+    let tot = { func: 0, pl: 0, rpa: 0 };
+    for (const [id, nf, npl, nrpa, ntot] of tela) {
+      const fs = emps.get(id).funcionarios.filter(ativo), c = (g) => fs.filter(f => grupo(f) === g).length;
+      assert.deepEqual([nf, npl, nrpa, ntot], [c('func'), c('pl'), c('rpa'), fs.length], 'grupos de ' + id);
+      tot.func += nf; tot.pl += npl; tot.rpa += nrpa;
+    }
+    assert.ok(tot.pl > 0 && tot.rpa > 0, 'os dados fictícios têm pró-labore e RPA');
+    const kpis = await page.evaluate(() => [...document.querySelectorAll('#dp-rel-root .ev-kpi')].map(k => k.textContent));
+    assert.ok(kpis.some(k => k.startsWith(String(tot.pl)) && /pró-labore/.test(k)) && kpis.some(k => k.startsWith(String(tot.rpa)) && /RPA/.test(k)), JSON.stringify(kpis));
+    // "Quem conta: Pró-labore": só os sócios
+    await clicar('[data-rel-set="vinc"][data-v="prolabore"]');
+    const soPl = await page.evaluate(() => [...document.querySelectorAll('#dp-rel-root .rel-tab tbody tr')].map(tr => [...tr.children].slice(3).map(td => Number(td.textContent.replace(/\./g, '')))));
+    assert.equal(soPl.reduce((s, r) => s + r[3], 0), tot.pl); assert.ok(soPl.every(r => r[0] === 0 && r[2] === 0), 'só pró-labore');
+    assert.match(await page.textContent('#dp-rel-root .rel-res h3'), /só pró-labore/);
+    await clicar('[data-rel-set="vinc"][data-v="todos"]');
+    // carteira também separa; férias só de funcionários
+    await clicar('[data-rel-tipo="carteira"]');
+    const cab = await page.evaluate(() => [...document.querySelectorAll('#dp-rel-root .rel-tab thead th')].map(th => th.textContent));
+    assert.deepEqual(cab.slice(-4), ['Funcionários', 'Pró-labore', 'RPA', 'Total de ativos']);
+    await clicar('[data-rel-tipo="ferias"]');
+    const nomes = await page.evaluate(() => [...document.querySelectorAll('#dp-rel-root .rel-tab tbody tr')].map(tr => tr.children[0].textContent));
+    const plNomes = new Set(empresasFicticias().flatMap(e => e.funcionarios.filter(f => grupo(f) !== 'func').map(f => f.nome)));
+    assert.ok(!nomes.some(n => plNomes.has(n)), 'pró-labore e RPA fora do relatório de férias');
+    await clicar('[data-rel-tipo="ativos"]');
   });
 
   await passo('Período por datas exatas: só entram os movimentos entre as duas datas', async () => {
