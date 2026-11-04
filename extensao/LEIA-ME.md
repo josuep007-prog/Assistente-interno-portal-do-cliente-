@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.69.3)
+# Control Onvio · ControlTax (v0.69.4)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,12 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.69.4 (teste de uma empresa lê todos os extratos do período)
+Com a 0.69.3, a Torre Hotéis (código 394) foi lida inteira: 29 pessoas no extrato mais recente (Folha Mensal de 10/2026), todas celetistas. O pró-labore costuma sair num cálculo à parte, com extrato próprio. Por isso o teste de uma empresa agora lê **os 6 extratos mais recentes**, com uma linha para cada: competência, tipo de cálculo (Folha Mensal, Pró-labore…), pessoas, contribuintes e vínculos.
+- Quando os contribuintes estão em outro extrato, a conclusão diz que a leitura funciona.
+- Quando não há contribuinte em nenhum extrato, sugere testar o outro código da mesma empresa.
+- A leitura do envio já lia todos os extratos; o que muda é só o diagnóstico.
 
 ## Novidades da v0.69.3 (o leitor entende o Extrato Mensal do Domínio; Torre Hotéis, 04/11/2026)
 Na Torre Hotéis a 0.69.2 achou os 3 extratos (competência 10/2026), mas não reconheceu ninguém. No Domínio, cada pessoa abre com o rótulo **"Empr.: 000123 NOME  Situação: … CPF: … Adm: dd/mm/aaaa"**, e o leitor esperava o código no começo da linha.
