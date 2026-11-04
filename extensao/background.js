@@ -872,7 +872,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'hubRegistrar') reply(await hubRegistrar());
       else if (msg.cmd === 'hubDesconectar') reply(await hubDesconectar());
       else if (msg.cmd === 'hubEnviar') reply(await enviarAoHub(null, true));
-      else if (msg.cmd === 'hubSincronizar') { if (hubSincRodando) reply({ ok: true, jaRodando: true }); else { hubSincronizar(true).catch(() => {}); reply({ ok: true, iniciado: true }); } }      // longo: a tela acompanha pelo hubSync
+      else if (msg.cmd === 'hubSincronizar') { if (hubSincRodando) reply({ ok: true, jaRodando: true }); else if (msg.soFolha && !(await hubEnvioCats()).includes('pessoais')) reply({ ok: false, motivo: 'sem-pessoais' }); else { hubSincronizar(true, !!msg.soFolha).catch(() => {}); reply({ ok: true, iniciado: true }); } }      // longo: a tela acompanha pelo hubSync
       else if (msg.cmd === 'hubLote') {                  // caminho de reserva: o resumo para colar no Hub (sem o código de pareamento)
         const { snapshot } = await chrome.storage.local.get('snapshot');
         reply(snapshot ? { ok: true, lote: OC.montarLoteHub(snapshot, { versao: chrome.runtime.getManifest().version }) } : { ok: false, motivo: 'sem-leitura' });
@@ -1114,7 +1114,10 @@ async function hubEnvioCats() {
   const c = await hubCfg();
   return OC.HUB_CATEGORIAS.filter(k => (c.envio && c.envio[k.id] != null) ? !!c.envio[k.id] : k.padrao).map(k => k.id);
 }
-async function hubSincronizar(manual) {
+// soFolha (0.70.1, pedido do Josué em 04/11/2026): só a leitura da folha (Extrato Mensal), sem listas nem lista de empregados, com mais PDFs por rodada.
+// Não conta como envio completo: o automático continua contando a partir do último envio completo (completoAnterior).
+const FOLHA_DOCS_SO_FOLHA = 1500;
+async function hubSincronizar(manual, soFolha) {
   if (hubSincRodando) return hubSincRodando;
   hubSincRodando = (async () => {
     hubCancelar = false;
@@ -1124,9 +1127,12 @@ async function hubSincronizar(manual) {
     if (!(await hubPermitido())) return { ok: false, motivo: 'sem-permissao' };
     if (!(await hubAbas()).length) return { ok: false, motivo: 'sem-hub' };
     if (!(await hubStatus()).hubAberto) return { ok: false, motivo: 'sem-hub' };          // sondar o Hub antes de ler o Onvio: sem Hub não há por que gastar as chamadas
-    const cats = await hubEnvioCats();
+    let cats = await hubEnvioCats();
+    if (soFolha) { if (!cats.includes('pessoais')) return { ok: false, motivo: 'sem-pessoais' }; cats = ['pessoais']; }
     if (!cats.length) return { ok: false, motivo: 'sem-categoria' };
-    const status = { estado: 'enviando', manual: !!manual, iniciouEm: new Date().toISOString(), pulso: Date.now(), etapa: 'preparando', feito: 0, total: 0, categorias: cats, resultados: [] };
+    const { hubSync: anterior } = await chrome.storage.local.get('hubSync');
+    const completoAnterior = anterior ? (anterior.soFolha ? anterior.completoAnterior || '' : (['ok', 'parcial'].includes(anterior.estado) ? anterior.terminouEm || '' : anterior.completoAnterior || '')) : '';
+    const status = { estado: 'enviando', manual: !!manual, soFolha: !!soFolha, completoAnterior, iniciouEm: new Date().toISOString(), pulso: Date.now(), etapa: 'preparando', feito: 0, total: 0, categorias: cats, resultados: [] };
     const grava = () => { status.pulso = Date.now(); return chrome.storage.local.set({ hubSync: status }).catch(() => {}); };
     await grava();
     // sinal de vida a cada 20 s, mesmo no meio de uma etapa longa (folha, empregados: uma leitura por empresa). Antes só havia sinal
@@ -1173,7 +1179,7 @@ async function hubSincronizar(manual) {
       const ctx = { snapshot, pausa: ms => new Promise(r => setTimeout(r, ms)), onItem: null, cancelado: () => hubCancelar,
         // folha (0.68.0): no envio automático, a varredura das pastas é no máximo 1 vez por dia (os extratos saem uma vez por mês), salvo se ficou coisa para trás
         textoPdf: (!manual && folhaRecente) ? null : textoDoPdf, folhaEm: folhaEstado && folhaEstado.em, folhaLidos: lidosFolha, folhaPastas: folhaPastas || {},
-        guardarFolha: x => guardarFolha(x), andamento: t => { status.detalhe = String(t || '').slice(0, 120); } };
+        guardarFolha: x => guardarFolha(x), soTarefas: soFolha ? ['pessoais:folha'] : null, folhaDocsMax: soFolha ? FOLHA_DOCS_SO_FOLHA : undefined, andamento: t => { status.detalhe = String(t || '').slice(0, 120); } };
       ctx.onItem = (feitos, total) => { status.detalhe = 'solicitação ' + feitos + ' de ' + total; };
       const res = await OC.hubExecutar(emSegundoPlano(leitor), cats, ctx, enviar, pr => { status.etapa = pr.etapa; status.detalhe = ''; status.feito = pr.feito; status.total = pr.total; grava(); });
       status.resultados = res.map(r => ({ id: r.id, rotulo: r.rotulo, categoria: r.categoria || '', ok: r.ok !== false, motivo: (r.nota && r.ok !== false ? r.aviso || r.motivo : r.motivo || r.aviso) || '', nota: !!r.nota && r.ok !== false, cortado: !!r.cortado, linhas: r.linhas || 0, partes: r.partes || 0 }));
@@ -1197,7 +1203,7 @@ async function hubSincAuto() {
   const c = await hubCfg();
   if (!c.token || !c.auto || c.syncAuto === false || !c.envioConfirmado || hubSincRodando) return;          // sem a confirmação da pessoa (quem conectou na 0.36 só tinha o resumo) não há envio completo sozinho
   const { hubSync } = await chrome.storage.local.get('hubSync');
-  const ult = hubSync && hubSync.terminouEm && (hubSync.estado === 'ok' || hubSync.estado === 'parcial') ? Date.parse(hubSync.terminouEm) : 0;
+  const ult = !hubSync ? 0 : hubSync.soFolha ? Date.parse(hubSync.completoAnterior || '') || 0 : hubSync.terminouEm && (hubSync.estado === 'ok' || hubSync.estado === 'parcial') ? Date.parse(hubSync.terminouEm) : (Date.parse(hubSync.completoAnterior || '') || 0);       // o envio só da folha não conta como envio completo
   if (ult && Date.now() - ult < Math.max(1, Number(c.syncHoras) || 6) * 3600e3) return;
   if (!(await hubPermitido()) || !(await hubAbas()).length) return;
   hubSincronizar(false).catch(() => {});

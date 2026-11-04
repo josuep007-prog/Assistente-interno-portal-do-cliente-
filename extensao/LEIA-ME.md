@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.70.0)
+# Control Onvio · ControlTax (v0.70.1)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,11 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.70.1 (botão "Enviar só a folha", pedido do Josué em 04/11/2026)
+- Em Configurações → Avançado → Control Hub, no cartão "Envio completo", o botão **Enviar só a folha** lê e manda ao Hub **só o Extrato Mensal**, sem as listas, a lista de empregados nem as comunicações. Por isso é bem mais rápido, e cada rodada lê até **1.500 PDFs** (o envio completo lê até 300).
+- **Precisa de "Dados pessoais" ligado**, porque a folha faz parte desse conjunto. Sem ele, o botão avisa.
+- **Não conta como envio completo:** o automático continua contando as 6 horas a partir do último envio completo (`completoAnterior` no `hubSync`). O resultado aparece como "Último envio só da folha", e o andamento como "Lendo só a folha… empresa N de M".
 
 ## Novidades da v0.70.0 (a folha decide quem é ativo, regra do Josué em 04/11/2026)
 O Hub mostrava a Torre Hotéis com 223 ativos, e a folha de 10/2026 tinha 29 pessoas: a lista de empregados do Onvio traz todo mundo como ativo, inclusive quem já saiu. Regra nova: **a folha é absoluta**. Quem some da folha por férias ou afastamento continua ativo, e empresa sem folha publicada mantém o Onvio.

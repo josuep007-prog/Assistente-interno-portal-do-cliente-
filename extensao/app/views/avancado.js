@@ -101,13 +101,14 @@ function parteHub(corpo, d, el) {
       '<section class="cfg-card adv-card"><h3><svg class="ic"><use href="#i-download"/></svg>Envio completo</h3>' +
         '<label class="cfg-sw"><input type="checkbox" id="adv-syncAuto"' + (c.syncAuto !== false ? ' checked' : '') + '><span class="cfg-tx"><b>Automático</b><small class="ajuda">Só com o Hub aberto numa aba.</small></span></label>' +
         '<div class="adv-linha"><span class="adv-rot">A cada</span><div class="cfg-num"><input type="number" id="adv-syncHoras" min="1" max="48" step="1" value="' + (c.syncHoras || 6) + '"></div><span class="cfg-un">horas</span><span class="adv-espaco"></span><button type="button" class="btn btn-primary btn-sm" id="adv-sincronizar">Enviar tudo agora</button></div>' +
+        '<div class="adv-linha"><span class="adv-rot" style="flex:1">Só a folha (Extrato Mensal): bem mais rápido, sem as listas nem a lista de empregados.</span><button type="button" class="btn btn-sm" id="adv-so-folha" title="Lê só os extratos novos ou que faltam (até 1.500 PDFs por vez) e manda ao Hub. Não conta como envio completo.">Enviar só a folha</button></div>' +
       '</section>' +
     '</div>' +
     '<section class="cfg-card adv-card"><h3><svg class="ic"><use href="#i-layers"/></svg>O que vai no envio completo</h3><div class="adv-cats" id="adv-cats"></div>' +
       '<div class="adv-alerta" id="adv-pessoais-aviso" hidden><b>Dados pessoais no Hub.</b> Com esta opção vão para o banco do Hub (no claude.ai) CPF, salário, nomes de empregados, assunto e descrição de todas as solicitações, dados completos e trâmites das pendentes, a folha (contribuintes por competência) e comunicações. Quem acessa o Hub passa a poder ver. Só ligue se o escritório decidiu isso.' +
         '<div class="adv-acoes"><button type="button" class="btn btn-primary btn-sm" id="adv-pessoais-sim">Entendi, enviar dados pessoais</button><button type="button" class="btn btn-sm" id="adv-pessoais-nao">Cancelar</button></div></div>' +
     '</section>' +
-    '<section class="cfg-card adv-card"><h3><svg class="ic"><use href="#i-clock"/></svg>Último envio completo</h3><div id="adv-envio"></div></section>';
+    '<section class="cfg-card adv-card"><h3><svg class="ic"><use href="#i-clock"/></svg>Último envio</h3><div id="adv-envio"></div></section>';
   // conjuntos: cartões com chave
   const cats = $('#adv-cats', corpo);
   cats.innerHTML = OC.HUB_CATEGORIAS.map(k => { const on = c.envio && c.envio[k.id] != null ? !!c.envio[k.id] : !!k.padrao;
@@ -145,12 +146,15 @@ function parteHub(corpo, d, el) {
     if (!r || !r.ok) { msg(OP.MOTIVOS_HUB[(r && r.motivo) || 'sem-leitura'], true); return; }
     try { await navigator.clipboard.writeText(JSON.stringify(r.lote)); msg('Resumo copiado (' + r.lote.nLinhas + ' solicitações). Cole em “Entrada de dados” no Hub.'); } catch (e) { msg('Não consegui copiar.', true); }
   };
-  $('#adv-sincronizar', corpo).onclick = async () => {
+  const sincronizar = async (soFolha) => {
     await salvar();
     $('#adv-envio', corpo).innerHTML = '<p class="adv-msg">Iniciando…</p>';
-    const r = await enviar({ cmd: 'hubSincronizar' });
+    const r = await enviar({ cmd: 'hubSincronizar', soFolha });
     if (r && r.ok === false) { $('#adv-envio', corpo).innerHTML = '<p class="adv-msg adv-msg-erro">' + esc(OP.msgHub(r)) + '</p>'; return; }
+    if (r && r.jaRodando) toast('Já há um envio em andamento: acompanhe em "Último envio"');
   };
+  $('#adv-sincronizar', corpo).onclick = () => sincronizar(false);
+  $('#adv-so-folha', corpo).onclick = () => sincronizar(true);
   estadoHub(el);
 }
 async function estadoHub(el) {

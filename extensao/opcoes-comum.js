@@ -12,7 +12,8 @@
     'sem-mudanca': 'Nada mudou desde o último envio.', 'sem-categoria': 'Marque pelo menos um conjunto para enviar.',
     'incompleto': 'O Hub não recebeu todas as partes.', 'ciclo-perdido': 'O Hub foi recarregado no meio do envio: tente de novo.',
     'partes': 'O Hub recusou as partes (versão antiga do Hub?).', 'categoria': 'O Hub não conhece esta categoria (publique a versão nova do Hub).', 'fonte-desconhecida': 'O Hub não conhece este tipo de dado (publique a versão nova do Hub).',
-    'visao-cliente': 'O Onvio está com um acesso de cliente: o envio é só da visão do escritório.'
+    'visao-cliente': 'O Onvio está com um acesso de cliente: o envio é só da visão do escritório.',
+    'sem-pessoais': 'A folha vai junto com "Dados pessoais": ligue esse conjunto em "O que vai no envio completo".'
   };
   const msgHub = r => (r && (r.mensagem || MOTIVOS_HUB[r.motivo] || r.motivo)) || 'Não foi possível enviar.';
   const quando = d => (d ? new Date(d).toLocaleString('pt-BR') : '—');
@@ -77,8 +78,9 @@
     const preso = hubSync.estado === 'enviando' && hubSync.pulso && Date.now() - hubSync.pulso > 240000;        // sem sinal há 4 min: o envio morreu no meio
     const est = preso ? 'interrompido' : hubSync.estado;
     const cab = est === 'interrompido' ? 'Último envio interrompido. O envio automático continua de onde parou, sem reenviar o que o Hub já aceitou.'
+      : est === 'enviando' && hubSync.soFolha ? 'Lendo só a folha… ' + (hubSync.detalhe || '')
       : est === 'enviando' ? 'Enviando… ' + (hubSync.etapa || '') + (hubSync.detalhe ? ': ' + hubSync.detalhe : '') + ' (etapa ' + (hubSync.feito + 1) + ' de ' + hubSync.total + ')'
-      : 'Último envio completo: ' + ({ ok: 'tudo aceito', parcial: 'parte aceita', erro: 'não concluído' }[est] || est) + ' em ' + quando(hubSync.terminouEm) + (hubSync.motivo ? ' · ' + (MOTIVOS_HUB[hubSync.motivo] || hubSync.motivo) : '') +
+      : (hubSync.soFolha ? 'Último envio só da folha: ' : 'Último envio completo: ') + ({ ok: 'tudo aceito', parcial: 'parte aceita', erro: 'não concluído' }[est] || est) + ' em ' + quando(hubSync.terminouEm) + (hubSync.motivo ? ' · ' + (MOTIVOS_HUB[hubSync.motivo] || hubSync.motivo) : '') +
         ' · ' + ok.length + ' conjuntos enviados, ' + ok.reduce((n, r) => n + (r.linhas || 0), 0).toLocaleString('pt-BR') + ' linhas';
     const linhas = [];
     mal.forEach(r => linhas.push({ tom: 'erro', rotulo: r.rotulo, texto: MOTIVOS_HUB[r.motivo] || r.motivo }));
