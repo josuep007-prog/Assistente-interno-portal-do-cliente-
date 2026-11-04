@@ -29,3 +29,15 @@ A aba "Sobre" saiu: o período e os filtros estão no Resumo.
 (Playwright + Python `openpyxl`; empresas e funcionários fictícios, banco simulado). Confere as abas (Base oculta), no máximo 4 números e 2 gráficos, os links entre Resumo e Dados, filtro, cabeçalho travado, datas, a soma do quadro, os ativos de cada empresa numa data (contra os dados fictícios) e o período por datas exatas.
 
 A conferir: abrir no Excel do escritório (testado só no LibreOffice e no openpyxl).
+
+## Funcionários, pró-labore e RPA nos relatórios (Hub 313, 04/11/2026)
+
+Pedido do Josué: os relatórios precisam deixar claro, nas quantidades, o que é funcionário, pró-labore e RPA (desde o Hub 310 os três contam nos ativos).
+
+- **Ativos em uma data:** colunas Funcionários, Pró-labore, RPA e Total; os indicadores trazem o total e cada grupo; o gráfico das maiores empresas vem em barras empilhadas por grupo e, quando há pró-labore ou RPA, uma rosca por vínculo.
+- **Quadro de funcionários (resumo):** ao lado dos ativos no fim, as colunas Funcionários, Pró-labore e RPA; o indicador "ativos no fim" diz a divisão.
+- **Carteira de empresas:** Funcionários, Pró-labore, RPA e Total de ativos por empresa e no total.
+- **Admissões e desligamentos:** coluna Vínculo; quem ficou Inativo (fora da folha) aparece como "Saiu da folha (inativo)".
+- **Filtro "Quem conta"** (Todos, Funcionários, Pró-labore, RPA) nos relatórios Ativos, Quadro, Admissões e desligamentos e Carteira; o título diz "só pró-labore" etc.
+- **Ajustes depois das mudanças da folha:** pró-labore e RPA fora da folha num mês (Inativo) **não contam como desligamento** nem na rotatividade (funcionário Inativo continua contando, porque saiu da folha); **Férias** e **Experiência e rescisões** só olham funcionários; o **Cadastro incompleto** não acusa pró-labore ou RPA sem data de admissão (os que vêm da folha não têm).
+- Teste: `testes/hub-onvio/planilhas.js`, passo "Funcionários, pró-labore e RPA separados (Hub 313)".
