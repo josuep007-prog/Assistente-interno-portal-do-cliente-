@@ -45,6 +45,10 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
 
+## Hub 314: módulo Empresas (04/11/2026)
+
+- No Control Hub (não muda a extensão), o cadastro único virou o módulo **Empresas**: todas as empresas do Hub, com busca e filtros, a ficha de cada uma e **Excluir de todos os módulos** (só a coordenação, com o nome digitado para confirmar). A empresa excluída some do DP, Portal, Contábil, Fiscal e do cadastro único, com backup de tudo, e não volta pelo Onvio; a aba Excluídas permite restaurar. Detalhes em `mapeamento/cadastro-unico-2026-10-28.md`.
+
 ## Novidades da v0.70.7 (descrição na abertura da conversa, 04/11/2026)
 
 - Quando o cliente abre a solicitação do zero, o trâmite de abertura (#01) vem sem texto e a mensagem dele fica na **Descrição**. Agora a descrição aparece **dentro da bolha da abertura**, com a etiqueta "Descrição da solicitação", no lugar de "Sem texto", e sai do painel de dados à direita, que era apertado (pedido do Josué). Se a abertura já tem texto próprio, nada muda: a descrição continua no painel.
