@@ -935,6 +935,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'rotaAnexo') { reply({ ok: await guardarRotaAnexo(msg) }); }
       else if (msg.cmd === 'sondarEmpregados') { const { f } = await escolherFetcher(); reply({ ok: true, linhas: await OC.sondarEmpregados(emSegundoPlano(f), ms => new Promise(r => setTimeout(r, ms))) }); }
       else if (msg.cmd === 'testarFolha') { const { f } = await escolherFetcher(); try { reply({ ok: true, linhas: await OC.testarFolha(emSegundoPlano(f), textoDoPdf, ms => new Promise(r => setTimeout(r, ms))) }); } finally { fecharOffscreen(); } }
+      else if (msg.cmd === 'testarFolhaEmpresa') { const { f } = await escolherFetcher(); const guardado = await chrome.storage.local.get(['folhaPastas', 'folhaLidos', 'folhaEstado']); try { reply({ ok: true, linhas: await OC.testarFolhaEmpresa(emSegundoPlano(f), textoDoPdf, ms => new Promise(r => setTimeout(r, ms)), String(msg.busca || '').slice(0, 80), guardado) }); } finally { fecharOffscreen(); } }
       else if (msg.cmd === 'folhaDeNovo') { await chrome.storage.local.remove(['folhaLidos', 'folhaEstado', 'folhaPastas']); reply({ ok: true }); }      // refaz também o caminho das pastas de cada empresa
       else if (msg.cmd === 'testarLeitura') { reply({ ok: true, linhas: await testarLeitura() }); }
       else if (msg.cmd === 'fecharPainel') { if (sender.tab && sender.tab.id != null) await mensagemParaPainel(sender.tab.id, 'fechar').catch(() => {}); reply({ ok: true }); }
@@ -1128,6 +1129,9 @@ async function hubSincronizar(manual) {
     const status = { estado: 'enviando', manual: !!manual, iniciouEm: new Date().toISOString(), pulso: Date.now(), etapa: 'preparando', feito: 0, total: 0, categorias: cats, resultados: [] };
     const grava = () => { status.pulso = Date.now(); return chrome.storage.local.set({ hubSync: status }).catch(() => {}); };
     await grava();
+    // sinal de vida a cada 20 s, mesmo no meio de uma etapa longa (folha, empregados: uma leitura por empresa). Antes só havia sinal
+    // entre etapas e a tela dava "interrompido" depois de 4 min com o envio rodando; gravar também mantém o service worker acordado.
+    const batida = setInterval(grava, 20000);
     try {
       let { f } = await escolherFetcher(false), trocas = 0;
       // se a aba do Onvio sumir no meio, escolhe o leitor de novo (até 3 vezes) em vez de falhar cliente por cliente
@@ -1164,8 +1168,9 @@ async function hubSincronizar(manual) {
       const ctx = { snapshot, pausa: ms => new Promise(r => setTimeout(r, ms)), onItem: null, cancelado: () => hubCancelar,
         // folha (0.68.0): no envio automático, a varredura das pastas é no máximo 1 vez por dia (os extratos saem uma vez por mês), salvo se ficou coisa para trás
         textoPdf: (!manual && folhaRecente) ? null : textoDoPdf, folhaEm: folhaEstado && folhaEstado.em, folhaLidos: folhaLidos || {}, folhaPastas: folhaPastas || {},
-        guardarFolha: x => guardarFolha(x) };
-      const res = await OC.hubExecutar(emSegundoPlano(leitor), cats, ctx, enviar, pr => { status.etapa = pr.etapa; status.feito = pr.feito; status.total = pr.total; grava(); });
+        guardarFolha: x => guardarFolha(x), andamento: t => { status.detalhe = String(t || '').slice(0, 120); } };
+      ctx.onItem = (feitos, total) => { status.detalhe = 'solicitação ' + feitos + ' de ' + total; };
+      const res = await OC.hubExecutar(emSegundoPlano(leitor), cats, ctx, enviar, pr => { status.etapa = pr.etapa; status.detalhe = ''; status.feito = pr.feito; status.total = pr.total; grava(); });
       status.resultados = res.map(r => ({ id: r.id, rotulo: r.rotulo, categoria: r.categoria || '', ok: r.ok !== false, motivo: (r.nota && r.ok !== false ? r.aviso || r.motivo : r.motivo || r.aviso) || '', nota: !!r.nota && r.ok !== false, cortado: !!r.cortado, linhas: r.linhas || 0, partes: r.partes || 0 }));
       status.estado = status.resultados.every(r => r.ok) ? 'ok' : status.resultados.some(r => r.ok) ? 'parcial' : 'erro';
       if (fatal) status.motivo = fatal;
@@ -1174,8 +1179,9 @@ async function hubSincronizar(manual) {
       if (e && e.cliente) await bloquearVisaoCliente(e);
       status.estado = 'erro'; status.motivo = e && e.cliente ? 'visao-cliente' : String((e && e.message) || e).slice(0, 160);
     }
+    clearInterval(batida);
     fecharOffscreen();
-    status.etapa = ''; status.terminouEm = new Date().toISOString();
+    status.etapa = ''; status.detalhe = ''; status.terminouEm = new Date().toISOString();
     await grava();
     return { ok: status.estado === 'ok' || status.estado === 'parcial', estado: status.estado, motivo: status.motivo || '' };
   })().finally(() => { hubSincRodando = null; });

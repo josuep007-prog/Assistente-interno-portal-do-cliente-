@@ -77,7 +77,7 @@
     const preso = hubSync.estado === 'enviando' && hubSync.pulso && Date.now() - hubSync.pulso > 240000;        // sem sinal há 4 min: o envio morreu no meio
     const est = preso ? 'interrompido' : hubSync.estado;
     const cab = est === 'interrompido' ? 'Último envio interrompido. O envio automático continua de onde parou, sem reenviar o que o Hub já aceitou.'
-      : est === 'enviando' ? 'Enviando… ' + (hubSync.etapa || '') + ' (' + hubSync.feito + '/' + hubSync.total + ')'
+      : est === 'enviando' ? 'Enviando… ' + (hubSync.etapa || '') + (hubSync.detalhe ? ': ' + hubSync.detalhe : '') + ' (etapa ' + (hubSync.feito + 1) + ' de ' + hubSync.total + ')'
       : 'Último envio completo: ' + ({ ok: 'tudo aceito', parcial: 'parte aceita', erro: 'não concluído' }[est] || est) + ' em ' + quando(hubSync.terminouEm) + (hubSync.motivo ? ' · ' + (MOTIVOS_HUB[hubSync.motivo] || hubSync.motivo) : '') +
         ' · ' + ok.length + ' conjuntos enviados, ' + ok.reduce((n, r) => n + (r.linhas || 0), 0).toLocaleString('pt-BR') + ' linhas';
     const linhas = [];

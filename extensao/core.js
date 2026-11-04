@@ -3142,7 +3142,9 @@
     catch (e) { recusaIsolada(e, 'br-payroll-sr/v1/clients'); listaFalhou = true; }
     if (ctx.clientesVistos) ctx.clientesVistos.forEach((c, id) => { if (!clientes.has(id)) clientes.set(id, c); });
     const todos = [...clientes.values()].filter(c => !ehEscritorioProprio(c.nome)), lidos = todos.slice(0, HUB_CLIENTES_MAX), linhas = []; let falhas = 0, suspeitas = 0;
+    let nLidos = 0;
     for (const c of lidos) {
+      nLidos++; if (ctx.andamento) ctx.andamento('empresa ' + nLidos + ' de ' + lidos.length);
       try {
         const ler = async u => { try { return await fetcher(u); } catch (e1) { if (e1 && /429/.test(String(e1.message || '')) && ctx.pausa) { await ctx.pausa(5000); return fetcher(u); } throw e1; } };       // limite de chamadas: espera e tenta uma vez
         let lista;
@@ -3178,6 +3180,9 @@
   const FOLHA_PASTAS_DIAS = 7;            // o caminho até os extratos de cada empresa é refeito a cada 7 dias
   const FOLHA_SEM_PASTA_DIAS = 1;         // empresa onde não se achou extrato: procura de novo no dia seguinte (o escritório pode ter publicado)
   const FOLHA_PASTAS_V = 2;               // caminhos guardados por versões anteriores (antes de tentar o id do contato) são refeitos uma vez
+  const FOLHA_PROF = 4;                   // níveis abaixo da raiz do cliente (Pessoal › Folha › 2026 › 10-Outubro); era 3 até a 0.69.0
+  // pasta de um ano antigo (só o ano no nome, ex. "2023"): fora da janela de 12 meses, não entra
+  const anoAntigo = (nome, hoje) => { const m = /^\s*(20\d{2})\s*$/.exec(String(nome || '')); return !!m && Number(m[1]) < (hoje || new Date()).getFullYear() - 1; };
   const FOLHA_FORA = /impost|guia|fgts|inss|darf|dctf|e-?social|rescis|f[eé]rias|admiss|afast|ponto|contrato|exame|aso\b|atestad/i;   // pastas que não têm o extrato
   const URL_PROJETOS = id => API + 'storage/v1/projects?primaryAssociationId=' + encodeURIComponent(id) + '&primaryAssociationType=Client&getScheduleItems=true';
   const URL_FILHOS = (tipo, id, de) => API + 'storage/v2/' + tipo + '/' + encodeURIComponent(id) + '/children?from=' + de + '&pageSize=100&sort=name:asc&containersOnly=false&trashed=false&countDocuments=false&calculateLocks=true';
@@ -3205,25 +3210,35 @@
     }
     return out;
   }
+  // Pasta do Departamento Pessoal na raiz do cliente: "Pessoal", "Departamento Pessoal", "01 - Pessoal", "Depto. Pessoal", "DP", "Folha"…
+  // (0.69.1: antes só valia o nome começando por "Pessoal", e pastas numeradas ou abreviadas ficavam de fora)
+  const PASTA_PESSOAL = /(^|[^a-z])(pessoal|dp|folha|departamento pessoal|depto\.? pessoal)([^a-z]|$)/;
+  const ehPastaPessoal = x => ehPasta(x) && PASTA_PESSOAL.test(semAcento(x.name).trim());
   // Caminho até os extratos de uma empresa: Cliente > Pessoal > (até 3 níveis), entrando só em pastas que podem ter a folha.
-  async function pastasDaFolha(fetcher, ids, pausa) {
+  // log (opcional, só no diagnóstico de uma empresa): recebe cada passo em texto, sem nome de pessoa.
+  async function pastasDaFolha(fetcher, ids, pausa, log) {
     let projetos = [], usado = '';
     for (const id of ids) {
       const d = await fetcher(URL_PROJETOS(id)); projetos = listaDe(d).filter(p => p && p.id != null);
+      if (log) log('Projeto no portal de documentos pelo id ' + (ids.indexOf(id) === 0 ? 'da folha' : 'do contato') + ': ' + (projetos.length ? projetos.length + ' achado(s)' : 'nenhum'));
       if (projetos.length) { usado = String(id); break; }
       if (pausa) await pausa(200);
     }
     const pastas = [];
     for (const p of projetos.slice(0, 3)) {
       const raiz = await filhosDe(fetcher, 'Projects', p.id, pausa);
-      const pessoal = raiz.filter(x => ehPasta(x) && /^(departamento\s+)?pessoal\b|^dp\b|folha/i.test(semAcento(x.name).trim()));
+      const pessoal = raiz.filter(ehPastaPessoal);
+      if (log) log('Pastas na raiz (' + raiz.filter(ehPasta).length + '): ' + (raiz.filter(ehPasta).map(x => (ehPastaPessoal(x) ? '✓ ' : '') + String(x.name || '?').slice(0, 40)).join(' · ') || 'nenhuma') + (raiz.some(ehExtrato) ? ' · e extrato solto na raiz' : ''));
       if (raiz.some(ehExtrato)) pastas.push({ id: String(p.id), tipo: 'Projects' });
-      const fila = pessoal.map(x => ({ id: String(x.id), prof: 1 }));
-      for (let i = 0; i < fila.length && i < 40; i++) {
+      const fila = pessoal.map(x => ({ id: String(x.id), prof: 1, nome: String(x.name || '') }));
+      for (let i = 0; i < fila.length && i < 80; i++) {
         const f = fila[i]; if (pausa) await pausa(200);
         const filhos = await filhosDe(fetcher, 'Folders', f.id, pausa);
-        if (filhos.some(ehExtrato)) pastas.push({ id: f.id, tipo: 'Folders' });
-        if (f.prof < 3) filhos.filter(x => ehPasta(x) && !FOLHA_FORA.test(semAcento(x.name))).forEach(x => fila.push({ id: String(x.id), prof: f.prof + 1 }));
+        const nEx = filhos.filter(ehExtrato).length, subs = filhos.filter(ehPasta);
+        if (nEx) pastas.push({ id: f.id, tipo: 'Folders' });
+        if (log) log('  ' + '  '.repeat(f.prof - 1) + (f.prof <= 2 ? '"' + f.nome.slice(0, 40) + '"' : '(subpasta nível ' + f.prof + ')') + ': ' + filhos.length + ' itens, ' + filhos.filter(ehPdf).length + ' PDF, ' + nEx + ' com "extrato" no nome, ' + subs.length + ' subpastas' + (f.prof < FOLHA_PROF ? '' : ' (não desce mais)') +
+          (subs.some(x => FOLHA_FORA.test(semAcento(x.name))) ? ' · pula: ' + subs.filter(x => FOLHA_FORA.test(semAcento(x.name))).map(x => String(x.name).slice(0, 25)).join(', ') : ''));
+        if (f.prof < FOLHA_PROF) subs.filter(x => !FOLHA_FORA.test(semAcento(x.name)) && !anoAntigo(x.name)).forEach(x => fila.push({ id: String(x.id), prof: f.prof + 1, nome: String(x.name || '') }));
       }
     }
     return { usado, pastas };
@@ -3270,8 +3285,10 @@
     const todos = [...clientes.values()].filter(c => !ehEscritorioProprio(c.nome));
     let docs = 0, semCompetencia = 0, falhas = 0, pendentes = 0, empresas = 0, comContribuinte = 0, erro = '';
     const limiteDocs = ctx.folhaDocsMax || FOLHA_DOCS_MAX, agora = hoje.getTime();
+    let nEmp = 0;
     for (const c of todos) {
       if (ctx.cancelado && ctx.cancelado()) break;
+      nEmp++; if (ctx.andamento) ctx.andamento('empresa ' + nEmp + ' de ' + todos.length + ' · ' + docs + (docs === 1 ? ' PDF lido' : ' PDFs lidos'));
       try {
         let pc = pastasCache[c.id];
         const validade = (pc && pc.pastas && pc.pastas.length ? FOLHA_PASTAS_DIAS : FOLHA_SEM_PASTA_DIAS) * 864e5;
@@ -3359,6 +3376,53 @@
       return linhas;
     }
     linhas.push('Nenhuma das ' + tentadas + ' primeiras empresas tem extrato no portal de documentos.');
+    return linhas;
+  }
+
+  // Diagnóstico de UMA empresa (0.69.1, pedido do Josué em 04/11/2026: "a leitura da folha não funciona na Torre Hotéis"). A pessoa digita o
+  // código ou parte do nome; mostra cada passo (ids, pastas, extratos, leitura do mais recente) e o que a extensão já guardou dela.
+  // Nomes de pessoas nunca aparecem: do PDF só contagens, vínculos e competência; das pastas, só a raiz e o 1º nível (departamentos).
+  async function testarFolhaEmpresa(fetcher, textoPdf, pausa, busca, guardado, hoje) {
+    const linhas = [], log = t => linhas.push(t), q = semAcento(String(busca || '')).trim();
+    if (!q) return ['Digite o código ou parte do nome da empresa.'];
+    let clientes;
+    try { clientes = [...(await lerClientesFolha(fetcher, pausa)).values()]; } catch (e) { return ['Não consegui ler a lista de clientes da folha: ' + celulaHub(e && e.message || e, 80)]; }
+    const vistos = new Map();
+    try { const d = await fetcher(listUrl(TYPE_BY_KEY.geral, { per: 200, page: 1 })); ((d && d.items) || []).forEach(r => { const c = r && r.clientExpanded; if (c && c.id != null) vistos.set(String(c.id), { id: String(c.id), codigo: c.code == null ? '' : String(c.code), nome: c.name || '' }); }); } catch (e) { /* segue só com o id da folha */ }
+    const todos = clientes.map(c => Object.assign({ origem: 'folha' }, c));
+    vistos.forEach(v => { if (!todos.some(c => String(c.codigo) !== '' && String(c.codigo) === String(v.codigo))) todos.push(Object.assign({ origem: 'solicitações' }, v)); });
+    const exato = todos.filter(c => String(c.codigo) === q), parecidos = todos.filter(c => semAcento(c.nome).includes(q));
+    const achados = exato.length ? exato : parecidos;
+    log('Clientes da folha: ' + clientes.length + ' · vistos nas solicitações (1ª página da Geral): ' + vistos.size);
+    if (!achados.length) { log('Nenhum cliente com o código ou o nome "' + busca + '" na lista da folha nem nas solicitações.'); return linhas; }
+    if (achados.length > 1) log('Achei ' + achados.length + ': ' + achados.slice(0, 8).map(c => c.codigo + ' ' + c.nome).join(' · ') + (achados.length > 8 ? '…' : '') + '. Testando a primeira; digite o código para escolher.');
+    const c = achados[0];
+    if (ehEscritorioProprio(c.nome)) { log('"' + c.nome + '" é empresa do próprio escritório: nunca vai ao Hub.'); return linhas; }
+    const ids = [String(c.id)]; vistos.forEach((v, id) => { if (String(v.codigo) === String(c.codigo) && String(c.codigo) !== '' && !ids.includes(id)) ids.push(id); });
+    log('Empresa: ' + c.codigo + ' ' + c.nome + ' (da lista ' + (c.origem === 'folha' ? 'da folha' : 'das solicitações, fora da lista da folha') + ') · ids a tentar: ' + ids.length);
+    const g = guardado || {}, pc = (g.folhaPastas || {})[c.id];
+    log('Guardado pela extensão: ' + (pc ? 'caminho de ' + new Date(pc.em).toLocaleString('pt-BR') + ', ' + (pc.pastas || []).length + ' pasta(s) com extrato' + (pc.v ? '' : ' (versão antiga, será refeito)') : 'nenhum caminho ainda') + ' · última varredura: ' + (g.folhaEstado && g.folhaEstado.em ? new Date(g.folhaEstado.em).toLocaleString('pt-BR') : 'nunca'));
+    let r;
+    try { r = await pastasDaFolha(fetcher, ids, pausa, log); } catch (e) { log('Falhou ao abrir as pastas: ' + celulaHub(e && e.message || e, 100)); return linhas; }
+    if (!r.usado) { log('➜ A empresa não tem projeto no portal de documentos com nenhum dos ids: a folha dela não pode ser lida.'); return linhas; }
+    if (!r.pastas.length) { log('➜ Nenhuma pasta com PDF que tenha "extrato" no nome. Se o extrato tem outro nome ou fica em outra pasta, me mande estas linhas.'); return linhas; }
+    const itens = []; for (const pa of r.pastas) itens.push(...(await filhosDe(fetcher, pa.tipo, pa.id, pausa)).map(x => Object.assign({ pasta: pa.id }, x)));
+    const ex = itens.filter(ehExtrato), minima = competenciaMinima(hoje || new Date(), FOLHA_MESES), lidos = g.folhaLidos || {};
+    const padroes = new Map(); ex.forEach(x => { const p = String(x.name || '').replace(/\d/g, '9'); padroes.set(p, (padroes.get(p) || 0) + 1); });
+    const noPrazo = ex.filter(x => { const cn = competenciaDoNome(x.name); if (cn) return cn >= minima; const cd = dataIso(String(x.createdDate || '')); return !cd || cd.slice(0, 7) >= minima; });
+    log('Extratos: ' + ex.length + ' · dos últimos 12 meses: ' + noPrazo.length + ' · já lidos antes: ' + noPrazo.filter(x => lidos[x.id] != null).length + ' · nomes: ' + [...padroes.entries()].slice(0, 6).map(([p, n]) => p + ' ×' + n).join(', '));
+    const alvo = (noPrazo.length ? noPrazo : ex).slice().sort((a, b) => String(b.createdDate || '').localeCompare(String(a.createdDate || '')))[0];
+    try {
+      const texto = await textoPdf(URL_DOCUMENTO(alvo.containerId || alvo.parentId || alvo.pasta, alvo.id)), x = extratoContribuintes(texto), vinc = new Map();
+      x.pessoas.forEach(p => vinc.set(p.vinculo || '(sem vínculo)', (vinc.get(p.vinculo || '(sem vínculo)') || 0) + 1));
+      log('Extrato mais recente: ' + String(texto || '').length + ' caracteres, ' + String(texto || '').split('\n').length + ' linhas · competência ' + (x.competencia ? x.competencia : 'NÃO achada no texto') + ' · pelo nome: ' + (competenciaDoNome(alvo.name) || '—'));
+      log('Pessoas: ' + x.pessoas.length + ' · contribuintes: ' + x.pessoas.filter(p => p.contribuinte).length + ' · vínculos: ' + ([...vinc.entries()].map(([v, n]) => v + ' ×' + n).join(', ') || '—'));
+      const forma = l => l.replace(/[A-Za-zÀ-ÿ]/g, 'A').replace(/\d/g, '9').replace(/A{2,}/g, 'AA').slice(0, 100);
+      if (!String(texto || '').trim()) log('➜ O PDF não tem texto (é imagem escaneada?): não dá para ler sem OCR.');
+      else if (!x.pessoas.length) log('➜ Não reconheci ninguém no texto. Formato das linhas com CPF ou data (letras viram A, números 9): ' + String(texto).split('\n').filter(l => /\d{3}\.?\d{3}\.?\d{3}-?\d{2}|\d{2}\/\d{2}\/\d{4}/.test(l)).slice(0, 4).map(forma).join(' | '));
+      else if (!x.pessoas.some(p => p.contribuinte)) log('➜ Li as pessoas, mas nenhuma foi reconhecida como contribuinte. Linhas com "vínculo", "pró-labore" ou "autônomo" (formato): ' + String(texto).split('\n').filter(l => /v[ií]nculo|pr[oó][\s-]?labore|aut[oô]nom|s[oó]cio|diretor/i.test(l)).slice(0, 4).map(forma).join(' | '));
+      else log('➜ A leitura funciona nesta empresa. Se o Hub não mostra, falta o envio (Control Hub → Enviar tudo agora, com Dados pessoais ligado) ou a ligação desta empresa com a do cadastro do DP.');
+    } catch (e) { log('Não consegui ler o PDF: ' + celulaHub(e && e.message || e, 100)); }
     return linhas;
   }
 
@@ -3697,5 +3761,5 @@
     return resultados;
   }
 
-  g.OC = { extratoContribuintes, lerFolhaContribuintes, resumoFolha, testarFolha, competenciaDoNome, FOLHA_COLUNAS, negritoUnicode, aplicarDestaques, ehEscritorioProprio, sondarEmpregados, montarLoteHub, HUB_CATEGORIAS, tabelaAnaliseSolicitacoes, tabelaAnaliseEquipe, hubPlano, hubExecutar, hubPartesDe, partirTabela, tabelaLista, tabelaPessoais, tabelaCnd, tabelaNfe, lerEscritorio, lerDocumentos, lerNoticias, slugHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, dentroDoHorario, planoDistribuicaoAuto, acaoConcluir, agruparSugestoes, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, acaoAnalise, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, mensagensProntas, marcadoresPendentes, observacoesFaltantes, avisosResposta, situacaoEquivalente, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { extratoContribuintes, lerFolhaContribuintes, resumoFolha, testarFolhaEmpresa, PASTA_PESSOAL, testarFolha, competenciaDoNome, FOLHA_COLUNAS, negritoUnicode, aplicarDestaques, ehEscritorioProprio, sondarEmpregados, montarLoteHub, HUB_CATEGORIAS, tabelaAnaliseSolicitacoes, tabelaAnaliseEquipe, hubPlano, hubExecutar, hubPartesDe, partirTabela, tabelaLista, tabelaPessoais, tabelaCnd, tabelaNfe, lerEscritorio, lerDocumentos, lerNoticias, slugHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, dentroDoHorario, planoDistribuicaoAuto, acaoConcluir, agruparSugestoes, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, acaoAnalise, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, mensagensProntas, marcadoresPendentes, observacoesFaltantes, avisosResposta, situacaoEquivalente, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);

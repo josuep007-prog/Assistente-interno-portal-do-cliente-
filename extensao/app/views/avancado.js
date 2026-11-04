@@ -217,6 +217,9 @@ function parteTestes(corpo, d) {
   const fe = d.folhaEstado;
   corpo.innerHTML = '<section class="cfg-card adv-card"><h3><svg class="ic"><use href="#i-pulso"/></svg>Testes de leitura</h3>' +
     '<p class="fraco ajuda">Só leitura no Onvio. O resultado mostra formatos e contagens, nunca dado de cliente.' + (fe && fe.em ? ' Última varredura da folha: ' + esc(OP.quando(fe.em)) + (fe.pendentes ? ' (' + fe.pendentes + ' PDFs ficaram para o próximo envio)' : '') + '.' : '') + '</p>' +
+    '<form class="adv-empresa" id="adv-folha-emp"><label class="adv-campo adv-cresce"><span>Folha de uma empresa: código ou parte do nome</span><input type="text" id="adv-folha-busca" autocomplete="off" placeholder="ex.: 123 ou torre"></label>' +
+      '<button type="submit" class="btn btn-primary btn-sm" id="adv-folha-testar">Testar a folha desta empresa</button></form>' +
+      '<p class="fraco ajuda">Mostra passo a passo onde a leitura da folha para nessa empresa: projeto no portal de documentos, pastas, extratos e a leitura do mais recente (só contagens, vínculos e competência).</p>' +
     '<div class="adv-testes">' + TESTES.map(t => '<button type="button" class="adv-teste" data-teste="' + t.id + '"><svg class="ic"><use href="#' + t.ic + '"/></svg><span class="cfg-tx"><b>' + esc(t.rot) + '</b><small>' + esc(t.desc) + '</small></span></button>').join('') + '</div>' +
     '</section><section class="cfg-card adv-card adv-console-card"' + (saida.texto ? '' : ' hidden') + '><h3><svg class="ic"><use href="#i-list"/></svg><span id="adv-saida-t">' + esc(saida.titulo) + '</span><span class="adv-espaco"></span>' +
       '<button type="button" class="btn btn-sm" id="adv-saida-copiar"><svg class="ic"><use href="#i-copy"/></svg>Copiar</button></h3><pre class="adv-console" id="adv-saida">' + esc(saida.texto) + '</pre></section>';
@@ -233,6 +236,15 @@ function parteTestes(corpo, d) {
     b.classList.remove('rodando'); b.removeAttribute('aria-busy');
     if (t.id === 'folhaDeNovo') { mostrar(t.rot, r && r.ok ? 'Pronto: o próximo envio ao Control Hub procura de novo as pastas de cada empresa e lê a folha desde 12 meses atrás.' : 'Não foi possível: ' + ((r && r.erro) || 'sem resposta')); return; }
     mostrar(t.rot, r && r.ok ? (r.linhas || []).join('\n') : 'Não foi possível: ' + ((r && r.erro) || 'sem resposta'));
+  };
+  $('#adv-folha-emp', corpo).onsubmit = async e => {
+    e.preventDefault();
+    const busca = $('#adv-folha-busca', corpo).value.trim(), btn = $('#adv-folha-testar', corpo);
+    if (!busca) { $('#adv-folha-busca', corpo).focus(); return; }
+    btn.disabled = true; mostrar('Folha de "' + busca + '"', 'Procurando a empresa e o Extrato Mensal dela (só leitura; pode levar um minuto)…');
+    const r = await enviar({ cmd: 'testarFolhaEmpresa', busca });
+    btn.disabled = false;
+    mostrar('Folha de "' + busca + '"', r && r.ok ? (r.linhas || []).join('\n') : 'Não foi possível: ' + ((r && r.erro) || 'sem resposta'));
   };
   $('#adv-saida-copiar', corpo).onclick = async () => { try { await navigator.clipboard.writeText(saida.texto); toast('Copiado'); } catch (e) { toast('Não consegui copiar: selecione o texto', true); } };
 }

@@ -3385,6 +3385,71 @@ test('Folha (0.68.1): "Ler a folha de novo" também esquece o caminho das pastas
   assert.match(op, /r\.nota \? '• ' : '⚠ '/);
 });
 
+test('Folha (0.69.1): a pasta Pessoal é achada com número ou abreviação, e o extrato no 4º nível (anos antigos ficam de fora)', async () => {
+  const re = OC.PASTA_PESSOAL, ok = n => re.test(n.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase());
+  ['Pessoal', '01 - Pessoal', 'Departamento Pessoal', 'Depto. Pessoal', 'DP', '2 - DP', 'Folha de Pagamento', 'PESSOAL - ACME'].forEach(n => assert.ok(ok(n), n));
+  ['Contábil', 'Fiscal', 'Pessoas jurídicas', 'Departamento Fiscal', 'Societário'].forEach(n => assert.ok(!ok(n), n));
+  const pag = items => ({ data: { items, hasMore: false } }), lidas = [], pedidos = [];
+  const ano = new Date().getFullYear();
+  const api = async url => {
+    lidas.push(url); const u = new URL(url), p = u.pathname.replace('/api/', '');
+    if (p === 'br-payroll-sr/v1/clients') return { items: [{ id: 'c1', code: 7, name: 'ACME' }], totalItems: 1, totalPages: 1 };
+    if (p === 'storage/v1/projects') return [{ id: 'p1' }];
+    if (p === 'storage/v2/Projects/p1/children') return pag([{ id: 'f1', name: '02 - Pessoal', itemType: 'Folder' }, { id: 'fx', name: 'Fiscal', itemType: 'Folder' }]);
+    if (p === 'storage/v2/Folders/f1/children') return pag([{ id: 'f2', name: 'Folha de pagamento', itemType: 'Folder' }]);
+    if (p === 'storage/v2/Folders/f2/children') return pag([{ id: 'f3', name: String(ano), itemType: 'Folder' }, { id: 'fv', name: String(ano - 3), itemType: 'Folder' }]);
+    if (p === 'storage/v2/Folders/f3/children') return pag([{ id: 'f4', name: '09 - Setembro', itemType: 'Folder' }]);
+    if (p === 'storage/v2/Folders/f4/children') return pag([{ id: 'd1', name: '09-' + ano + ' Extrato Mensal.pdf', mimeType: 'application/pdf', itemType: 'Document', containerId: 'f4' }]);
+    if (p === 'storage/v2/Folders/fv/children') throw new Error('ano antigo não é aberto');
+    if (p === 'storage/v2/Folders/fx/children') throw new Error('Fiscal não é aberta');
+    const e = new Error('sem rota: ' + p); e.status = 404; throw e;
+  };
+  const andamento = [];
+  const x = await OC.lerFolhaContribuintes(api, { pausa: null, hoje: new Date(ano, 9, 20), folhaLidos: {}, folhaPastas: {}, textoPdf: async u => { pedidos.push(u); return PDFS_T.d1.replace(/09\/2026/g, '09/' + ano); }, andamento: t => andamento.push(t) });
+  assert.equal(x.empresas, 1, 'achou a pasta no 4º nível');
+  assert.equal(x.docs, 1);
+  assert.ok(!lidas.some(u => /Folders\/(fv|fx)\//.test(u)), 'nem o ano antigo nem o Fiscal');
+  assert.deepEqual(andamento, ['empresa 1 de 1 · 0 PDFs lidos'], 'diz em que empresa está (para a tela não achar que parou)');
+});
+
+test('Folha (0.69.1): teste de uma empresa mostra cada passo e onde para, sem nome de pessoa', async () => {
+  const pedidos = [];
+  const guardado = { folhaPastas: { c1: { em: Date.now() - 3600e3, pastas: [], v: 2 } }, folhaLidos: { d2: '2026-08' }, folhaEstado: { em: Date.now() - 7200e3 } };
+  let l = await OC.testarFolhaEmpresa(apiFolha([]), textoPdfT(pedidos), null, 'acme', guardado, new Date('2026-10-20T10:00:00'));
+  let t = l.join('\n');
+  assert.match(t, /Empresa: 7 ACME/);
+  assert.match(t, /Guardado pela extensão: caminho de .*0 pasta\(s\) com extrato/);
+  assert.match(t, /Pastas na raiz \(2\): ✓ Pessoal · Contábil/);
+  assert.match(t, /"Folha de pagamento": .*com "extrato" no nome/);
+  assert.match(t, /pula: Impostos/);
+  assert.match(t, /Extratos: 4 · dos últimos 12 meses: 3 · já lidos antes: 1/);
+  assert.match(t, /Pessoas: \d+ · contribuintes: 2/);
+  assert.match(t, /A leitura funciona nesta empresa/);
+  assert.ok(!/FULANO|SICRANA|BELTRANO|111\.222/.test(t), 'nenhum nome nem CPF de pessoa');
+  // pelo id do contato (o das solicitações)
+  t = (await OC.testarFolhaEmpresa(apiFolha([]), textoPdfT([]), null, '8', {})).join('\n');
+  assert.match(t, /Empresa: 8 BETA/);
+  assert.match(t, /pelo id da folha: nenhum[\s\S]*pelo id do contato: 1 achado/);
+  // não achou
+  t = (await OC.testarFolhaEmpresa(apiFolha([]), textoPdfT([]), null, 'xyz', {})).join('\n');
+  assert.match(t, /Nenhum cliente com o código ou o nome "xyz"/);
+  // escritório próprio
+  t = (await OC.testarFolhaEmpresa(apiFolha([]), textoPdfT([]), null, 'controltax', {})).join('\n');
+  assert.match(t, /empresa do próprio escritório/);
+  // PDF sem pessoas reconhecidas: mostra o formato das linhas
+  t = (await OC.testarFolhaEmpresa(apiFolha([]), async () => 'Competência: 09/2026\nXX 999.888.777-66 coisa', null, 'acme', {})).join('\n');
+  assert.match(t, /Não reconheci ninguém no texto/);
+  assert.ok(!/999\.888/.test(t), 'o formato troca os números');
+});
+
+test('Hub (0.69.1): o envio dá sinal de vida a cada 20 s e diz o andamento dentro da etapa', () => {
+  const bg = src('background.js'), op = src('opcoes-comum.js');
+  assert.match(bg, /const batida = setInterval\(grava, 20000\)/);
+  assert.match(bg, /clearInterval\(batida\)/);
+  assert.match(bg, /andamento: t => \{ status\.detalhe/);
+  assert.match(op, /hubSync\.detalhe \? ': ' \+ hubSync\.detalhe/);
+});
+
 test('Folha: se o Hub não aceitar, os documentos não ficam marcados como lidos; PDF que falha fica para a próxima', async () => {
   const lidas = [], pedidos = [], guardado = { lidos: {} };
   const ctx = { pausa: null, snapshot: { items: [] }, hoje: new Date('2026-10-20T10:00:00'), folhaLidos: {}, folhaPastas: {},
