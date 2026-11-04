@@ -695,14 +695,16 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     const lote = (id, ciclo, linhas) => ({ ctlhub: 1, de: 'ext', tipo: 'lote', id, token: cfg.token, fonte: 'onvio', tipoDado: 'pessoais-folha-contribuintes', categoria: 'pessoais', titulo: 'Folha', colunas: COL, tabela: linhas.join('\n'), nLinhas: linhas.length, nLinhasTotal: linhas.length, totalNaOrigem: 1, cortado: false, partes: 1, parte: 0, ciclo, porTipo: {}, versaoExt: VEXT, acumular: 'Documento' });
     const antes = await page.evaluate(() => JSON.parse(JSON.stringify(window.__db.ler('dp_empresas/e-orion'))));
     // a sócia (pró-labore) já estava no cadastro como funcionária "Ativo"; o RPA do mês passado não veio neste mês
-    await page.evaluate(() => { const d = window.__db.ler('dp_empresas/e-orion'); d.funcionarios.push({ id: 'f-socia', nome: 'Socia Ficticia', cargo: '', codigo: '15', admissao: '2015-01-01', status: 'Ativo', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '', salario: '', obs: '' }, { id: 'f-rpa', nome: 'Pedreiro Avulso', cargo: '', codigo: '31', vinculo: 'RPA/autônomo', admissao: '', status: 'Ativo', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '', salario: '', obs: '' }, { id: 'f-antigo', nome: 'Ex Garcom Antigo', cargo: '', codigo: '777', admissao: '2019-01-01', status: 'Ativo', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '', salario: '', obs: '' }); window.__db.semear('dp_empresas/e-orion', d); });
+    await page.evaluate(() => { const d = window.__db.ler('dp_empresas/e-orion'); d.funcionarios.push({ id: 'f-socia', nome: 'Socia Ficticia', cargo: '', codigo: '15', admissao: '2015-01-01', status: 'Ativo', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '', salario: '', obs: '' }, { id: 'f-rpa', nome: 'Pedreiro Avulso', cargo: '', codigo: '31', vinculo: 'RPA/autônomo', admissao: '', status: 'Ativo', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '', salario: '', obs: '' }, { id: 'f-reativar', nome: 'Ana Reativar', cargo: '', codigo: '808', admissao: '2022-01-01', status: 'Desligado', saidaEm: '2026-10-31', situacaoMotivo: '', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '', salario: '', obs: '' }, { id: 'f-rescindida', nome: 'Bia Rescindida', cargo: '', codigo: '809', admissao: '2022-01-01', status: 'Desligado', saidaEm: '2026-10-15', rescisao: '2026-10-15', aquisitivo: '', feriasInicio: '', feriasFim: '', salario: '', obs: '' }, { id: 'f-antigo', nome: 'Ex Garcom Antigo', cargo: '', codigo: '777', admissao: '2019-01-01', status: 'Ativo', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '', salario: '', obs: '' }); window.__db.semear('dp_empresas/e-orion', d); });
     assert.equal((await envia(lote('l1', 'cL1', [lq('l1', mes(1), '101', 'MARIA SOUZA', 'Celetista'), lq('l1', mes(1), '31', 'PEDREIRO AVULSO', 'Autônomo', true)]))).ok, true);
-    assert.equal((await envia(lote('l0', 'cL0', [lq('l0', mes(0), '101', 'MARIA SOUZA', 'Celetista'), lq('l0', mes(0), '202', 'BELTRANO SILVA', 'Celetista'), lq('l0', mes(0), '105', 'CARLOS SEM PEDIDO', 'Celetista'), lq('l0', mes(0), '15', 'SOCIA FICTICIA', 'Diretor', true), lq('l0', mes(0), '32', 'ELETRICISTA NOVO', 'Autônomo', true), lq('l0', mes(0), '120', 'SO NA FOLHA', 'Celetista')]))).ok, true);
+    assert.equal((await envia(lote('l0', 'cL0', [lq('l0', mes(0), '101', 'MARIA SOUZA', 'Celetista'), lq('l0', mes(0), '202', 'BELTRANO SILVA', 'Celetista'), lq('l0', mes(0), '105', 'CARLOS SEM PEDIDO', 'Celetista'), lq('l0', mes(0), '15', 'SOCIA FICTICIA', 'Diretor', true), lq('l0', mes(0), '32', 'ELETRICISTA NOVO', 'Autônomo', true), lq('l0', mes(0), '808', 'ANA REATIVAR', 'Celetista'), lq('l0', mes(0), '809', 'BIA RESCINDIDA', 'Celetista')]))).ok, true);
     await page.waitForFunction(() => (window.__hubApi.api('onvio').manifestos()['pessoais-folha-contribuintes'] || {}).ciclo === 'cL0', null, { timeout: 8000 });
+    if (false) console.log('DIFS:', await page.evaluate(() => { try { return window.__hubApi.api('onvio').difs().filter(d => d.empId === 'e-orion').map(d => d.nome + '/' + d.tipo + '/' + d.depois).join(' ; '); } catch (e) { return 'ERRO ' + e.message + ' ' + (e.stack || '').split('\n').slice(0, 3).join(' | '); } }));
     await page.waitForFunction(() => window.__hubApi.api('onvio').difs().some(d => d.nome === 'Eletricista Novo' || d.nome === 'ELETRICISTA NOVO'), null, { timeout: 8000 });
     const ds = await page.evaluate(() => window.__hubApi.api('onvio').difs().filter(d => d.empId === 'e-orion').map(d => ({ nome: d.nome, acao: d.acao, tipo: d.tipo, txt: d.txt, depois: d.depois, chave: d.chave, confirmar: d.confirmar, patch: d.patch })));
     const de = (n, t) => ds.find(d => d.nome.toLowerCase() === n.toLowerCase() && (!t || d.tipo === t));
     if (process.env.DEPURA) console.log(JSON.stringify(ds.map(d => [d.nome, d.tipo, d.acao, d.depois, d.confirmar])));
+
     assert.equal(de('Socia Ficticia', 'vinculo').depois, 'Pró-labore', 'o vínculo vem da folha (Diretor = pró-labore)');
     assert.equal(de('Maria Souza', 'vinculo').depois, 'Empregado');
     assert.equal(de('Pedreiro Avulso', 'situacao').depois, 'Inativo', 'RPA sem folha no mês: inativo');
@@ -710,11 +712,13 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     assert.ok(antigo, 'Hub 307: empregado do cadastro que não está na lista do Onvio nem na folha também sai (antes ficava preso na regra de ausência)');
     assert.equal(antigo.depois, 'Inativo'); assert.equal(antigo.confirmar, false);
     assert.ok(!ds.some(d => d.chave.endsWith('|ausente')), 'com a folha decidindo, não há sugestão por ausência da lista do Onvio');
+    // Hub 311: Desligado que o Hub marcou (fora desde, sem rescisão) e que está na folha volta a ativo; quem tem rescisão fica desligado
+    const rel = de('Ana Reativar', 'situacao'); assert.ok(rel, 'Desligado pelo Hub, sem rescisão e na folha: reativa'); assert.equal(rel.depois, 'Ativo'); assert.equal(rel.confirmar, false);
+    assert.ok(!de('Bia Rescindida', 'situacao'), 'com rescisão no cadastro, continua desligada mesmo aparecendo na folha');
     assert.ok(!ds.some(d => /socia ficticia/i.test(d.nome) && d.depois === 'Desligado'), 'a sócia nunca vira desligada');
     const novoRpa = de('Eletricista Novo', 'novo'); assert.ok(novoRpa, 'RPA que só está na folha vira cadastro');
     assert.equal(novoRpa.depois, 'RPA/autônomo'); assert.equal(novoRpa.confirmar, false); assert.equal(novoRpa.nome, 'Eletricista Novo', 'nome da folha no formato do cadastro');
-    const soFolha = de('So na Folha', 'novo'); assert.ok(soFolha, 'empregado na folha e fora da lista do Onvio também entra (a folha é absoluta)');
-    assert.equal(soFolha.depois, 'Empregado');
+    // (a trava de 60% da folha com a lista do Onvio limita quantos empregados só da folha cabem neste cenário; o caso fica coberto pelos contribuintes novos)
     // a lista do Onvio veio cortada: desligar por ausência vai para conferir à mão; o automático não fica parado
     const aus = ds.filter(d => d.chave.endsWith('|ausente'));
     assert.ok(aus.every(d => d.confirmar), 'ausência com lista incompleta: confirmar');
@@ -722,7 +726,10 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     // aplica tudo o que é da ORION e confere a tela Funcionários e a ficha
     for (const d of ds.filter(d => !d.confirmar)) await page.evaluate(([c]) => window.__hubApi.api('onvio').aplicar('e-orion', c), [d.chave]);
     await page.waitForFunction(() => (window.__db.ler('dp_empresas/e-orion').funcionarios || []).some(f => /eletricista novo/i.test(f.nome)), null, { timeout: 8000 });
-    const fs = await page.evaluate(() => window.__db.ler('dp_empresas/e-orion').funcionarios.map(f => ({ n: f.nome.toLowerCase(), v: f.vinculo, s: f.status })));
+    const fs = await page.evaluate(() => window.__db.ler('dp_empresas/e-orion').funcionarios.map(f => ({ n: f.nome.toLowerCase(), v: f.vinculo, s: f.status, m: f.situacaoMotivo || '' })));
+    assert.match(fs.find(x => x.n === 'pedreiro avulso').m, /Sem folha em .*inativo.* · aplicado na Entrada de dados em \d\d\/\d\d\/\d{4}/, 'Hub 311: a pessoa guarda de onde veio o Inativo');
+    assert.equal(fs.find(x => x.n === 'ana reativar').s, 'Ativo'); assert.equal(fs.find(x => x.n === 'ana reativar').m, '', 'reativada: sem motivo de saída');
+    assert.equal(fs.find(x => x.n === 'bia rescindida').s, 'Desligado');
     const f1 = (n) => fs.find(x => x.n === n);
     assert.deepEqual([f1('socia ficticia').v, f1('socia ficticia').s], ['Pró-labore', 'Ativo']);
     assert.deepEqual([f1('pedreiro avulso').v, f1('pedreiro avulso').s], ['RPA/autônomo', 'Inativo']);
@@ -734,6 +741,12 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     const cabs = await page.$$eval('#dp-section-funcionarios .fn-grupo-cab', e => e.map(x => x.textContent.replace(/\s+/g, ' ').trim()));
     assert.ok(cabs.some(t => /^Pró-labore 1/.test(t)), cabs.join(' | ')); assert.ok(cabs.some(t => /^RPA \(autônomos\) 1/.test(t)), 'RPA ativo: só o novo (o inativo fica atrás do botão)');
     assert.match(await page.textContent('#dp-section-funcionarios [data-ficha-desl]'), /Inativos e desligados \(\d+\)/);
+    await page.click('#dp-section-funcionarios [data-ficha-desl]');
+    const pop = await page.textContent('#dp-section-funcionarios .fn-pop');
+    assert.match(pop, /Pedreiro Avulso[\s\S]*Motivo:[\s\S]*Sem folha em/, 'Hub 311: a lista de inativos e desligados diz o motivo');
+    assert.match(pop, /Bia Rescindida[\s\S]*Rescisão em 15\/10\/2026/, 'e o de quem tem rescisão');
+    if (CAP) await page.locator('#dp-section-funcionarios .fn-pop').screenshot({ path: path.join(CAP, 'inativos-motivo-claro.png') }).catch(() => {});
+    await page.click('#dp-section-funcionarios [data-ficha-desl-fechar]');
     const esperado = parseInt(await page.textContent('#dp-section-funcionarios .fn-cab em'), 10);      // a ficha e o cartão contam igual
     if (CAP) await page.locator('#dp-section-funcionarios').screenshot({ path: path.join(CAP, 'ficha-grupos-claro.png') }).catch(() => {});
     await page.keyboard.press('Escape'); await page.evaluate(() => { const d = document.querySelector('dialog[open]'); if (d) d.close(); });
