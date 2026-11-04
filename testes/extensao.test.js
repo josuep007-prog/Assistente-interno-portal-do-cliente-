@@ -3412,6 +3412,41 @@ test('Folha (0.69.1): a pasta Pessoal é achada com número ou abreviação, e o
   assert.deepEqual(andamento, ['empresa 1 de 1 · 0 PDFs lidos'], 'diz em que empresa está (para a tela não achar que parou)');
 });
 
+test('Folha (0.69.3): formato do Extrato Mensal do Domínio ("Empr.: código NOME  Situação: … CPF: … Adm: …"), sem CPF na saída', async () => {
+  const T = [
+    'Empresa: HOTEL FICTICIO S/A   CNPJ:  11.222.333/0001-44  Emissão: 05/11/2026',
+    'Cálculo: Folha Mensal   Competência: 10/2026',
+    'Empr.: 000015 FULANO FICTICIO DA SILVA  Situação: Trabalhando CPF: 111.222.333-44  Adm:  01/02/2020',
+    'Cargo: RECEPCIONISTA   Vínculo: Celetista',
+    '001 SALARIO   2.000,00',
+    'Empr.: 000021 SICRANA FICTICIA  Situação: Trabalhando CPF: 555.666.777-88  Adm:  01/01/2015',
+    'Cargo: DIRETORA',
+    '050 PRO LABORE   5.000,00',
+    'Contr.: 000030 BELTRANO FICTICIO  Situação: Ativo CPF: 999.888.777-66  Adm:  10/03/2021',
+    '060 SERVIÇOS PRESTADOS   1.500,00'
+  ].join('\n');
+  const x = OC.extratoContribuintes(T);
+  assert.equal(x.competencia, '2026-10');
+  assert.deepEqual(plano(x.pessoas.map(p => [p.codigo, p.nome, p.contribuinte])), [['15', 'FULANO FICTICIO DA SILVA', false], ['21', 'SICRANA FICTICIA', true], ['30', 'BELTRANO FICTICIO', true]]);
+  assert.equal(x.pessoas[0].vinculo, 'Celetista');
+  assert.equal(x.pessoas[2].vinculo, 'Contribuinte', '"Contr.:" já diz que é contribuinte');
+  assert.ok(!JSON.stringify(x).includes('111.222'), 'sem CPF');
+  // o diagnóstico mostra os rótulos e, sem contribuinte, o bloco da 1ª pessoa no formato, sem nome nem CPF
+  const api = async url => { const p = new URL(url).pathname.replace('/api/', ''); if (p === 'br-payroll-sr/v1/clients') return { items: [{ id: 'c1', code: 394, name: 'HOTEL FICTICIO S/A' }], totalItems: 1, totalPages: 1 };
+    if (p === 'storage/v1/projects') return [{ id: 'p6', name: 'Pessoal' }]; if (p === 'storage/v2/Projects/p6/children') return { data: { items: [{ id: 'tp0', name: 'Extrato Mensal', itemType: 'Folder' }] } };
+    if (p === 'storage/v2/Folders/tp0/children') return { data: { items: [{ id: 'x1', name: 'Extrato Mensal.pdf', mimeType: 'application/pdf', itemType: 'Document', containerId: 'tp0', createdDate: '2026-11-05T10:00:00' }] } };
+    const e = new Error('sem rota: ' + p); e.status = 404; throw e; };
+  const semContrib = T.split('\n').filter(l => !/PRO LABORE|Contr\.|SERVIÇOS/.test(l)).join('\n');
+  const t = (await OC.testarFolhaEmpresa(api, async () => semContrib, null, '394', {}, new Date('2026-11-05T10:00:00'))).join('\n');
+  assert.match(t, /Pessoas: 2 · contribuintes: 0/);
+  assert.match(t, /Rótulos no extrato \(vezes\): .*Empr\.: ×2/);
+  assert.match(t, /Bloco da primeira pessoa \(formato\): Empr\.: 9 A A A A  Situação: Trabalhando CPF: 9\.9\.9-9  Adm:  9\/9\/9 \| Cargo: A  Vínculo: Celetista \| 9 SALARIO/);
+  assert.ok(!/FULANO|SICRANA|111\.222|555\.666|RECEPCIONISTA/.test(t), 'nem nome, nem CPF, nem cargo');
+  const t2 = (await OC.testarFolhaEmpresa(api, async () => T, null, '394', {}, new Date('2026-11-05T10:00:00'))).join('\n');
+  assert.match(t2, /Pessoas: 3 · contribuintes: 2/);
+  assert.match(t2, /Contribuintes por vínculo: \(pelo evento\), Contribuinte\. ➜ A leitura funciona/);
+});
+
 test('Folha (0.69.2): estrutura real do portal: cada departamento é um projeto e a pasta "Extrato Mensal" diz o que é extrato (o arquivo tem qualquer nome)', async () => {
   const pag = items => ({ data: { items, hasMore: false } }), lidas = [];
   const api = async url => {
