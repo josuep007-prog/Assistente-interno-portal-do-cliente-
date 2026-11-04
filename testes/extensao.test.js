@@ -3060,7 +3060,7 @@ test('Hub: erro que vale para o envio todo (código errado, Hub sumiu) interromp
   assert.ok(r2.find(r => r.id === 'pessoais-pendentes-dados').cortado === true && /incompleto/.test(r2.find(r => r.id === 'pessoais-pendentes-dados').aviso));
 });
 
-test('Hub: limite de chamadas (429) espera e tenta de novo; página de tamanho redondo marca incompleto', async () => {
+test('Hub: limite de chamadas (429) espera e tenta de novo; lista de tamanho redondo não marca mais incompleto (0.70.3)', async () => {
   const base = apiHub(); let primeira = true; const esperas = [];
   const f = async url => { if (/clients\/c1\/employees/.test(url) && primeira) { primeira = false; const e = new Error('Erro 429'); e.status = 429; throw e; } return base(url); };
   const por = {};
@@ -3072,7 +3072,7 @@ test('Hub: limite de chamadas (429) espera e tenta de novo; página de tamanho r
   const g = async url => /clients\/c1\/employees/.test(url) ? cem : base(url);
   const por2 = {};
   await OC.hubExecutar(g, ['pessoais'], { pausa: null, snapshot: { items: [] } }, async (c, p) => { por2[c.tipoDado] = c; return { ok: true }; });
-  assert.equal(por2['pessoais-empregados'].cortado, true, '100 linhas de um cliente: pode ser página cortada');
+  assert.equal(por2['pessoais-empregados'].cortado, false, '100 linhas de um cliente: o Onvio devolve a lista inteira (a Torre veio com 223), e o corte falso parava o automático do Hub');
 });
 
 test('Hub: clientes de CND e NF-e trazem CNPJ, inscrições e a validade do certificado', async () => {
@@ -3589,7 +3589,7 @@ test('Hub: conjunto incompleto diz o porquê (empresa que falhou, lista de taman
   const e = r.find(x => x.id === 'pessoais-empregados');
   assert.equal(e.cortado, true);
   assert.match(e.porque, /1 empresa não pôde ser lida \(HTTP 500\)/);
-  assert.match(e.porque, /1 empresa veio com a lista num tamanho redondo/);
+  assert.ok(!/tamanho redondo/.test(e.porque), 'lista de tamanho redondo não conta mais como corte (0.70.3)');
   const sb = { self: {} }; vm.runInNewContext(src('opcoes-comum.js'), sb);
   const tela = sb.self.OCOpcoes.linhasEnvio({ estado: 'ok', terminouEm: new Date().toISOString(), resultados: [{ rotulo: 'Dados pessoais · empregados de cada empresa', ok: true, cortado: true, porque: e.porque, linhas: 50 }] });
   assert.match(tela.linhas[0].texto, /^veio incompleto: 1 empresa não pôde ser lida/);

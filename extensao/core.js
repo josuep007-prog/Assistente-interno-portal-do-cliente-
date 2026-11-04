@@ -3168,9 +3168,10 @@
     const qt = (v, s1, s2) => v.toLocaleString('pt-BR') + ' ' + (v === 1 ? s1 : s2);
     const porque = [listaFalhou ? 'a lista de clientes da folha não pôde ser lida (usei só os clientes das solicitações)' : '',
       falhas ? qt(falhas, 'empresa não pôde ser lida', 'empresas não puderam ser lidas') + (erro1 ? ' (' + erro1 + ')' : '') : '',
-      suspeitas ? qt(suspeitas, 'empresa veio', 'empresas vieram') + ' com a lista num tamanho redondo (50, 100, 200…), que pode ter sido cortada pelo Onvio' : '',
       todos.length > lidos.length ? 'só as primeiras ' + qt(lidos.length, 'empresa', 'empresas') + ' de ' + todos.length.toLocaleString('pt-BR') : ''].filter(Boolean).join('; ');
-    return { colunas: COLUNAS_EMPREGADOS, linhas, clientes: todos.length, falhas, suspeitas, porque, cortado: listaFalhou || falhas > 0 || suspeitas > 0 || todos.length > lidos.length };
+    // Tamanho redondo (50, 100…) não corta mais o conjunto (0.70.3): o Onvio devolve a lista inteira (a Torre Hotéis veio com 223 em 04/11/2026),
+    // e o "cortado" falso parava a aplicação automática no Hub. Fica só como número no resultado.
+    return { colunas: COLUNAS_EMPREGADOS, linhas, clientes: todos.length, falhas, suspeitas, porque, cortado: listaFalhou || falhas > 0 || todos.length > lidos.length };
   }
 
   /* ----- folha de pagamento no portal de documentos (0.68.0, pedido do Josué em 03/11/2026) -----
