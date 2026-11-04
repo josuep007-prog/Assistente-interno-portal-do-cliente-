@@ -3258,6 +3258,9 @@
   const FOLHA_VINCULO = /v[ií]nculo\s*:?\s*([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ .\/-]*?)(?=\s{2,}|\s+(?:cargo|sal[aá]rio|depto|departamento|admiss|situa|c\.?\s?b\.?\s?o|horas?)\b|\s*$)/i;
   const FOLHA_CONTRIB_VINC = /aut[oô]nom|diretor|s[oó]cio|contribuinte|pr[oó][\s-]?labore|empres[aá]rio|titular/i;
   const FOLHA_CONTRIB_EVT = /pr[oó][\s-]?labore|inss\s+aut[oô]nom|\brpa\b/i;
+  // Formato do Extrato Mensal do Domínio (visto na Torre Hotéis em 04/11/2026): "Empr.: 000123 NOME DA PESSOA  Situação: … CPF: … Adm: dd/mm/aaaa".
+  // O contribuinte pode vir como "Contr.:"/"Contribuinte:" no lugar de "Empr.:"; aí ele já é contribuinte pelo próprio rótulo.
+  const FOLHA_PESSOA_ROT = /^\s*(empr(?:egado)?|contr(?:ib(?:uinte)?)?|c[oó]d(?:igo)?|func(?:ion[aá]rio)?)\.?\s*:\s*(\d{1,7})\s*[-–]?\s+([A-ZÀ-ÖØ-Þ][A-ZÀ-ÖØ-Þa-zß-öø-ÿ'´`^~.\- ]{1,80}?)(?=\s{2,}|\s+[A-Za-zÀ-ÿ.]{2,20}\s*:|\s+\d{3}\.?\d{3}\.?\d{3}-?\d{2}|\s*$)/i;
   function extratoContribuintes(texto) {
     const linhas = String(texto || '').split(/\r?\n/);
     const cm = String(texto || '').match(/compet[eê]ncia\s*:?\s*(0?[1-9]|1[0-2])\s*\/\s*(\d{4})/i);
@@ -3265,12 +3268,16 @@
     const pessoas = [], porCodigo = new Map(); let atual = null;
     const fechar = () => { if (!atual) return; atual.contribuinte = FOLHA_CONTRIB_VINC.test(atual.vinculo) || FOLHA_CONTRIB_EVT.test(atual.bloco); delete atual.bloco; atual = null; };
     for (const l of linhas) {
-      const m = l.match(FOLHA_PESSOA);
-      if (m && !/^\s*\d{1,7}\s+(cnpj|cpf|p[aá]gina|compet)/i.test(l)) {
+      let m = l.match(FOLHA_PESSOA), rot = '';
+      if (m && /^\s*\d{1,7}\s+(cnpj|cpf|p[aá]gina|compet)/i.test(l)) m = null;
+      if (!m) { const r = l.match(FOLHA_PESSOA_ROT); if (r) { m = [r[0], r[2], r[3]]; rot = r[1].toLowerCase(); } }
+      if (m) {
         fechar();
         const codigo = String(Number(m[1])), nome = m[2].replace(/\s{2,}/g, ' ').trim();
         if (porCodigo.has(codigo)) { atual = porCodigo.get(codigo); atual.bloco = atual.bloco || ''; continue; }        // a mesma pessoa continuando noutra página
-        atual = { codigo, nome, vinculo: '', bloco: '' }; porCodigo.set(codigo, atual); pessoas.push(atual);
+        atual = { codigo, nome, vinculo: /^contr/.test(rot) ? 'Contribuinte' : '', bloco: '' }; porCodigo.set(codigo, atual); pessoas.push(atual);
+        if (!atual.vinculo) { const v = l.match(FOLHA_VINCULO); if (v) atual.vinculo = v[1].trim().replace(/\s{2,}/g, ' ').slice(0, 40); }
+        atual.bloco += '\n' + l.slice(m[0].length);
         continue;
       }
       if (!atual) continue;
@@ -3425,11 +3432,19 @@
       x.pessoas.forEach(p => vinc.set(p.vinculo || '(sem vínculo)', (vinc.get(p.vinculo || '(sem vínculo)') || 0) + 1));
       log('Extrato mais recente: ' + String(texto || '').length + ' caracteres, ' + String(texto || '').split('\n').length + ' linhas · competência ' + (x.competencia ? x.competencia : 'NÃO achada no texto') + ' · pelo nome: ' + (competenciaDoNome(alvo.name) || '—'));
       log('Pessoas: ' + x.pessoas.length + ' · contribuintes: ' + x.pessoas.filter(p => p.contribuinte).length + ' · vínculos: ' + ([...vinc.entries()].map(([v, n]) => v + ' ×' + n).join(', ') || '—'));
-      const forma = l => l.replace(/[A-Za-zÀ-ÿ]/g, 'A').replace(/\d/g, '9').replace(/A{2,}/g, 'AA').slice(0, 100);
+      // formato sem dado pessoal: rótulos ("Situação:", "Vínculo:") e palavras de vínculo ou evento ficam; o resto vira A e 9
+      const CONHECIDAS = /^(pr[oó]-?labore|pro|labore|aut[oô]nomos?|s[oó]cios?|diretor(es)?|contribuintes?|empregados?|celetistas?|estagi[aá]rios?|aprendiz|inss|irrf|fgts|sal[aá]rio|horas|f[eé]rias|trabalhando|afastad[oa]|demitid[oa]|rpa|base|total|proventos|descontos|l[ií]quido|evento|categoria|v[ií]nculo|cargo)$/i;
+      const forma = l => l.split(/(\s+)/).map(tk => /^\s+$/.test(tk) ? (tk.length > 1 ? '  ' : ' ') : /^[A-Za-zÀ-ÿ.\/]{1,20}:$/.test(tk) || CONHECIDAS.test(tk.replace(/[.,:]$/, '')) ? tk : tk.replace(/[A-Za-zÀ-ÿ]+/g, 'A').replace(/\d+/g, '9')).join('').slice(0, 140);
+      const rotulos = new Map(); for (const mm of String(texto || '').matchAll(/(?:^|\s)([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ.\/]{0,20}):/g)) rotulos.set(mm[1], (rotulos.get(mm[1]) || 0) + 1);
+      log('Rótulos no extrato (vezes): ' + [...rotulos.entries()].sort((a, b) => b[1] - a[1]).slice(0, 30).map(([k, n]) => k + ': ×' + n).join(', '));
       if (!String(texto || '').trim()) log('➜ O PDF não tem texto (é imagem escaneada?): não dá para ler sem OCR.');
       else if (!x.pessoas.length) log('➜ Não reconheci ninguém no texto. Formato das linhas com CPF ou data (letras viram A, números 9): ' + String(texto).split('\n').filter(l => /\d{3}\.?\d{3}\.?\d{3}-?\d{2}|\d{2}\/\d{2}\/\d{4}/.test(l)).slice(0, 4).map(forma).join(' | '));
-      else if (!x.pessoas.some(p => p.contribuinte)) log('➜ Li as pessoas, mas nenhuma foi reconhecida como contribuinte. Linhas com "vínculo", "pró-labore" ou "autônomo" (formato): ' + String(texto).split('\n').filter(l => /v[ií]nculo|pr[oó][\s-]?labore|aut[oô]nom|s[oó]cio|diretor/i.test(l)).slice(0, 4).map(forma).join(' | '));
-      else log('➜ A leitura funciona nesta empresa. Se o Hub não mostra, falta o envio (Control Hub → Enviar tudo agora, com Dados pessoais ligado) ou a ligação desta empresa com a do cadastro do DP.');
+      else if (!x.pessoas.some(p => p.contribuinte)) {
+        const ls = String(texto).split('\n'), i0 = ls.findIndex(l => FOLHA_PESSOA.test(l) || FOLHA_PESSOA_ROT.test(l));
+        log('➜ Li ' + x.pessoas.length + ' pessoas, mas nenhuma foi reconhecida como contribuinte. Linhas com "vínculo", "pró-labore", "autônomo", "sócio" ou "contribuinte" (formato): ' + (ls.filter(l => /v[ií]nculo|pr[oó][\s-]?labore|aut[oô]nom|s[oó]cio|diretor|contribuinte|contr\.?:/i.test(l)).slice(0, 6).map(forma).join(' | ') || 'nenhuma'));
+        if (i0 >= 0) log('Bloco da primeira pessoa (formato): ' + ls.slice(i0, i0 + 6).map(forma).join(' | '));
+      }
+      else log('Contribuintes por vínculo: ' + [...new Set(x.pessoas.filter(p => p.contribuinte).map(p => p.vinculo || '(pelo evento)'))].join(', ') + '. ➜ A leitura funciona nesta empresa. Se o Hub não mostra, falta o envio (Control Hub → Enviar tudo agora, com Dados pessoais ligado) ou a ligação desta empresa com a do cadastro do DP.');
     } catch (e) { log('Não consegui ler o PDF: ' + celulaHub(e && e.message || e, 100)); }
     return linhas;
   }

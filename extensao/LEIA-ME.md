@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.69.2)
+# Control Onvio · ControlTax (v0.69.3)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,11 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.69.3 (o leitor entende o Extrato Mensal do Domínio; Torre Hotéis, 04/11/2026)
+Na Torre Hotéis a 0.69.2 achou os 3 extratos (competência 10/2026), mas não reconheceu ninguém. No Domínio, cada pessoa abre com o rótulo **"Empr.: 000123 NOME  Situação: … CPF: … Adm: dd/mm/aaaa"**, e o leitor esperava o código no começo da linha.
+- Agora ele reconhece esse formato (`FOLHA_PESSOA_ROT`). Também aceita "Contr.:"/"Contribuinte:", e quem vem com esse rótulo já conta como contribuinte. O formato antigo continua valendo.
+- O teste de uma empresa mostra os **rótulos** do extrato com quantas vezes aparecem (Empr.:, Situação:, Vínculo:…). Quando ninguém é reconhecido como contribuinte, mostra também o **bloco da primeira pessoa** no formato: rótulos e palavras de vínculo ou evento (PRO LABORE, AUTÔNOMO, SÓCIO…) ficam, e nomes, CPF e valores viram A e 9. Quando funciona, diz por qual vínculo os contribuintes foram reconhecidos.
 
 ## Novidades da v0.69.2 (a folha passa a achar os extratos de verdade; diagnóstico do Josué na Torre Hotéis em 04/11/2026)
 O teste de uma empresa mostrou "9 projetos" e nenhuma pasta. No portal de documentos, **cada departamento do cliente é um projeto** (Administrativo, Contábil, Fiscal, Pessoal…), e dentro de Pessoal há **uma pasta por tipo de documento** ("Extrato Mensal", "Recibo de Pagamento"…) com os PDFs soltos ou em subpastas `MM-AAAA`. A extensão supunha um projeto só, com a pasta Pessoal dentro (e olhava só os 3 primeiros), e exigia "extrato" no nome do arquivo.
