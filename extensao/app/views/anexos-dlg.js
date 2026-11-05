@@ -1,6 +1,6 @@
 /* Janela "Anexos": todos os anexos da solicitação (abertura e trâmites) num lugar só; o analista marca quais quer e
- * baixa de uma vez. O download é um GET feito pela aba do Onvio (cmd baixarAnexos) e o arquivo vai para a pasta de
- * downloads do Chrome. A extensão não guarda anexos nem nomes de arquivo. */
+ * baixa de uma vez, ou vê um deles sem baixar (abrirVisualizador). O download é um GET feito pela aba do Onvio (cmd baixarAnexos), com a
+ * autorização do Onvio, e o arquivo vai para a pasta de downloads do Chrome. A extensão não guarda anexos nem nomes de arquivo. */
 import { enviar } from '../estado.js';
 import { $, $$, esc, toast, fmtDataHora } from '../util.js';
 
@@ -43,11 +43,11 @@ export function abrirAnexos(o) {
   d.hidden = false;
   const marcada = c => (o.marcar ? c === o.marcar : true);
   d.innerHTML =
-    '<div class="dlg-head"><div class="tt"><h2 class="pq">Anexos da solicitação #' + esc(o.item.num) + '</h2><div class="dlg-l3">' + lista.length + (lista.length === 1 ? ' arquivo' : ' arquivos') + ' · marque os que quer baixar</div></div><button class="icon-btn" id="ax-fechar" aria-label="Fechar"><svg class="ic"><use href="#i-x"/></svg></button></div>' +
+    '<div class="dlg-head"><div class="tt"><h2 class="pq">Anexos da solicitação #' + esc(o.item.num) + '</h2><div class="dlg-l3">' + lista.length + (lista.length === 1 ? ' arquivo' : ' arquivos') + ' · marque os que quer baixar ou clique no olho para ver sem baixar</div></div><button class="icon-btn" id="ax-fechar" aria-label="Fechar"><svg class="ic"><use href="#i-x"/></svg></button></div>' +
     '<div class="dlg-body">' +
       (lista.length ? '<label class="ax-todos"><input type="checkbox" id="ax-todos"' + (o.marcar ? '' : ' checked') + '> <b>Marcar todos</b></label>' +
         grupos.map((g, gi) => '<section class="ax-grupo"><h4 class="dados-tit">' + esc(g.titulo) + (g.sub ? '<small>' + esc(g.sub) + '</small>' : '') + '</h4>' +
-          g.arquivos.map((a, ai) => { const c = gi + ':' + ai, tp = tipoArquivo(a.nome); return '<label class="ax-arq"><input type="checkbox" data-ax="' + c + '"' + (marcada(c) ? ' checked' : '') + (a.id || a.direto ? '' : ' disabled') + '><span class="ax-ic ' + tp.cls + '">' + tp.rot + '</span><span class="ax-nome" title="' + esc(a.nome) + '">' + esc(a.nome) + '</span>' + (a.id ? '' : '<small class="fraco">sem identificação: baixe pelo Onvio</small>') + '</label>'; }).join('') +
+          g.arquivos.map((a, ai) => { const c = gi + ':' + ai, tp = tipoArquivo(a.nome); return '<label class="ax-arq"><input type="checkbox" data-ax="' + c + '"' + (marcada(c) ? ' checked' : '') + (a.id || a.direto ? '' : ' disabled') + '><span class="ax-ic ' + tp.cls + '">' + tp.rot + '</span><span class="ax-nome" title="' + esc(a.nome) + '">' + esc(a.nome) + '</span>' + (a.id || a.direto ? '<button type="button" class="icon-btn ax-ver" data-ax-ver="' + c + '" aria-label="Ver ' + esc(a.nome) + '" title="Ver sem baixar"><svg class="ic ic-sm"><use href="#i-eye"/></svg></button>' : '<small class="fraco">sem identificação: baixe pelo Onvio</small>') + '</label>'; }).join('') +
           '</section>').join('')
         : '<div class="vazio"><b>Nenhum anexo nesta solicitação</b>Os anexos da abertura e dos trâmites aparecem aqui.</div>') +
       '<div id="ax-msg"></div>' +
@@ -62,6 +62,7 @@ export function abrirAnexos(o) {
     const t = $('#ax-todos'); if (t) { t.checked = n === total && total > 0; t.indeterminate = n > 0 && n < total; }
   };
   $$('[data-ax]', d).forEach(c => c.onchange = contar);
+  $$('[data-ax-ver]', d).forEach(b => b.onclick = e => { e.preventDefault(); e.stopPropagation(); abrirVisualizador({ item: o.item, r: o.r, chave: b.dataset.axVer }); });
   if ($('#ax-todos')) $('#ax-todos').onchange = e => { $$('[data-ax]:not([disabled])', d).forEach(c => { c.checked = e.target.checked; }); contar(); };
   $('#ax-fechar').onclick = fecharAnexos;
   $('#ax-cancelar').onclick = fecharAnexos;
@@ -91,4 +92,75 @@ async function baixar(lista) {
     (r.falhas && r.falhas.length ? '<ul class="ax-falhas">' + r.falhas.slice(0, 8).map(f => '<li>' + esc(f) + '</li>').join('') + '</ul>' : '') +
     (r.semRota ? '<div style="margin-top:8px"><button type="button" class="btn btn-sm" id="ax-onvio"><svg class="ic ic-sm"><use href="#i-link"/></svg> Abrir no Onvio</button></div>' : '') + '</div></div>';
   if ($('#ax-onvio')) $('#ax-onvio').onclick = async () => { const x = await enviar({ cmd: 'abrir', item: { type: ctx.item.type, num: String(ctx.item.num) } }); if (!x.ok) toast('Não foi possível abrir no Onvio: ' + (x.erro || ''), true); };
+}
+
+/* ---------- Visualizar um anexo sem baixar (0.73.0, pedido do Josué em 05/11/2026) ----------
+ * O arquivo é lido na hora pela aba do Onvio (cmd verAnexo, com a autorização do Onvio) e mostrado aqui: PDF no leitor do Chrome,
+ * imagem e texto direto na janela. Fica só na memória desta janela (endereço blob:, liberado ao trocar ou fechar); nada é gravado.
+ * Os outros tipos (Word, Excel, zip…) não abrem no navegador: a janela oferece Baixar. Setas (← →) passam pelos anexos da solicitação. */
+let ver = null;                                  // { item, lista, pos, url, blob, pedido }
+export const verAberto = () => !!ver;
+const MIME_EXT = [[/\.pdf$/i, 'application/pdf'], [/\.png$/i, 'image/png'], [/\.jpe?g$/i, 'image/jpeg'], [/\.gif$/i, 'image/gif'], [/\.webp$/i, 'image/webp'], [/\.bmp$/i, 'image/bmp'], [/\.(txt|csv|xml|json)$/i, 'text/plain']];
+const mimeDe = (nome, tipo) => { const t = String(tipo || '').split(';')[0].trim().toLowerCase(); if (t && t !== 'application/octet-stream' && t !== 'binary/octet-stream') return t; const e = MIME_EXT.find(([re]) => re.test(nome || '')); return e ? e[1] : t || 'application/octet-stream'; };
+const modoDe = mime => mime === 'application/pdf' ? 'pdf' : /^image\/(png|jpe?g|gif|webp|bmp|svg\+xml)$/.test(mime) ? 'img' : /^text\//.test(mime) ? 'txt' : '';
+function liberar() { if (ver && ver.url) { URL.revokeObjectURL(ver.url); ver.url = null; ver.blob = null; } }
+export function fecharVer() {
+  if (!ver) return;
+  liberar(); ver = null;
+  const d = $('#dlg-ver'); if (d) { d.hidden = true; d.innerHTML = ''; }
+  const f = $('#fundo-ver'); if (f) f.remove();
+}
+// o: { item, r, chave: 'gi:ai' } — a chave é a mesma da janela Anexos (grupo e posição)
+export function abrirVisualizador(o) {
+  const lista = [];
+  gruposDeAnexos(o.r).forEach((g, gi) => g.arquivos.forEach((a, ai) => { if (a.id || a.direto) lista.push(Object.assign({ chave: gi + ':' + ai, onde: g.titulo }, a)); }));
+  const pos = Math.max(0, lista.findIndex(a => a.chave === o.chave));
+  if (!lista.length) { toast('Este anexo não tem identificação: veja pelo Onvio', true); return; }
+  liberar();
+  ver = { item: o.item, lista, pos, url: null, blob: null, pedido: 0 };
+  let d = $('#dlg-ver');
+  if (!d) { d = document.createElement('section'); d.id = 'dlg-ver'; d.className = 'dlg'; d.setAttribute('role', 'dialog'); d.setAttribute('aria-modal', 'true'); d.setAttribute('aria-label', 'Ver anexo'); d.tabIndex = -1; document.body.appendChild(d); }
+  if (!$('#fundo-ver')) { const f = document.createElement('div'); f.className = 'fundo'; f.id = 'fundo-ver'; f.style.zIndex = 56; f.onclick = fecharVer; document.body.appendChild(f); }
+  d.style.zIndex = 57; d.hidden = false;
+  carregar();
+}
+export function andarVer(passo) { if (!ver || ver.lista.length < 2) return; ver.pos = (ver.pos + passo + ver.lista.length) % ver.lista.length; liberar(); carregar(); }
+function cabVer(a) {
+  const n = ver.lista.length, tp = tipoArquivo(a.nome);
+  return '<div class="dlg-head ver-cab"><span class="ax-ic ' + tp.cls + '">' + tp.rot + '</span><div class="tt"><h2 class="pq ver-nome" title="' + esc(a.nome) + '">' + esc(a.nome) + '</h2><div class="dlg-l3">' + esc(a.onde) + ' · solicitação #' + esc(ver.item.num) + '</div></div>' +
+    (n > 1 ? '<div class="ver-nav"><button type="button" class="icon-btn" id="ver-ant" aria-label="Anexo anterior" title="Anterior (←)"><svg class="ic"><use href="#i-chev-l"/></svg></button><span class="fraco">' + (ver.pos + 1) + ' de ' + n + '</span><button type="button" class="icon-btn" id="ver-prox" aria-label="Próximo anexo" title="Próximo (→)"><svg class="ic"><use href="#i-chev-r"/></svg></button></div>' : '') +
+    '<button type="button" class="btn btn-sm" id="ver-baixar"><svg class="ic ic-sm"><use href="#i-download"/></svg> Baixar</button>' +
+    '<button type="button" class="icon-btn" id="ver-fechar" aria-label="Fechar"><svg class="ic"><use href="#i-x"/></svg></button></div>';
+}
+function ligarCab(a) {
+  const d = $('#dlg-ver');
+  $('#ver-fechar', d).onclick = fecharVer;
+  if ($('#ver-ant', d)) { $('#ver-ant', d).onclick = () => andarVer(-1); $('#ver-prox', d).onclick = () => andarVer(1); }
+  $('#ver-baixar', d).onclick = () => baixarVisto(a);
+}
+async function carregar() {
+  const d = $('#dlg-ver'), a = ver.lista[ver.pos], meu = ++ver.pedido;
+  d.innerHTML = cabVer(a) + '<div class="ver-corpo"><div class="vazio"><b>Abrindo o arquivo pelo Onvio…</b>Ele não é guardado: fica só nesta janela.</div></div>';
+  ligarCab(a); d.focus();
+  const r = await enviar({ cmd: 'verAnexo', type: ver.item.type, num: String(ver.item.num), anexo: { id: a.id || null, topico: a.topico || null, nome: a.nome, direto: a.direto || null } });
+  if (!ver || ver.pedido !== meu) return;                       // trocou de anexo ou fechou enquanto lia
+  const corpo = $('.ver-corpo', d);
+  if (!r || !r.ok) { corpo.innerHTML = '<div class="vazio"><b>Não foi possível abrir este anexo</b>' + esc((r && r.erro) || 'sem resposta') + '</div>'; return; }
+  const bin = atob(r.b64), b = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) b[i] = bin.charCodeAt(i);
+  const mime = mimeDe(a.nome, r.tipo), modo = modoDe(mime);
+  ver.blob = new Blob([b], { type: mime }); ver.url = URL.createObjectURL(ver.blob);
+  if (modo === 'pdf') corpo.innerHTML = '<iframe class="ver-pdf" title="' + esc(a.nome) + '" src="' + ver.url + '#view=FitH"></iframe>';
+  else if (modo === 'img') corpo.innerHTML = '<div class="ver-img"><img alt="' + esc(a.nome) + '" src="' + ver.url + '"></div>';
+  else if (modo === 'txt') corpo.innerHTML = '<pre class="ver-txt">' + esc(new TextDecoder().decode(b.subarray(0, 400000))) + '</pre>';
+  else corpo.innerHTML = '<div class="vazio"><b>Este tipo de arquivo não abre no navegador</b>' + esc(tipoArquivo(a.nome).rot === 'ARQ' ? 'Baixe para abrir no programa certo.' : 'Arquivos ' + tipoArquivo(a.nome).rot + ' (Word, Excel, zip…) precisam ser baixados para abrir.') + '<div style="margin-top:10px"><button type="button" class="btn btn-primary btn-sm" id="ver-baixar2"><svg class="ic ic-sm"><use href="#i-download"/></svg> Baixar</button></div></div>';
+  if ($('#ver-baixar2', d)) $('#ver-baixar2', d).onclick = () => baixarVisto(a);
+}
+async function baixarVisto(a) {
+  if (ver && ver.url && ver.lista[ver.pos] === a) {                // já lido: salva daqui mesmo, sem ler de novo
+    const l = document.createElement('a'); l.href = ver.url; l.download = a.nome; l.rel = 'noopener'; l.style.display = 'none'; document.body.appendChild(l); l.click(); l.remove();
+    toast('Baixado: veja a pasta de downloads do Chrome'); return;
+  }
+  const r = await enviar({ cmd: 'baixarAnexos', type: ver.item.type, num: String(ver.item.num), anexos: [{ id: a.id || null, topico: a.topico || null, nome: a.nome, direto: a.direto || null }] });
+  if (r && r.ok && r.baixados) toast('Baixado: veja a pasta de downloads do Chrome');
+  else toast('Não foi possível baixar: ' + ((r && (r.erro || (r.falhas || [])[0])) || 'sem resposta'), true);
 }

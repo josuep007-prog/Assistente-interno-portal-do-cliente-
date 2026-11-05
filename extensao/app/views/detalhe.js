@@ -7,7 +7,7 @@ import { respostaHtml, ligarResposta, prepararResposta, bolhaRascunho, recemEnvi
 import { esc, pillSituacao, motivosHtml, fmtDataHora, fmtData, textoPuro, toast, ladoTexto, relativo, iniciais, simples, $, $$ } from '../util.js';
 import { abrirLembrete, lembreteAberto } from './lembrete-dlg.js';
 import { abrirNova, novaAberta } from './nova-dlg.js';
-import { abrirAnexos, anexosAbertos, contarAnexos, tipoArquivo } from './anexos-dlg.js';
+import { abrirAnexos, anexosAbertos, contarAnexos, tipoArquivo, abrirVisualizador, verAberto } from './anexos-dlg.js';
 const OC = window.OC;
 
 let atual = null;        // { type, num }
@@ -148,7 +148,8 @@ function desenhar(i, r, erro, carregando) {
   const anexos = marcar => abrirAnexos({ item: i, r, marcar });
   if ($('#g-anexos')) $('#g-anexos').onclick = () => anexos();
   if ($('#g-anexos2')) $('#g-anexos2').onclick = () => anexos();
-  $$('[data-ax-abrir]', g).forEach(b => b.onclick = e => { e.stopPropagation(); anexos(b.dataset.axAbrir); });
+  // clicar num anexo (conversa ou painel) abre o arquivo aqui mesmo, sem baixar (0.73.0); a janela Anexos continua para baixar vários
+  $$('[data-ax-abrir]', g).forEach(b => b.onclick = e => { e.stopPropagation(); abrirVisualizador({ item: i, r, chave: b.dataset.axAbrir }); });
   $$('.tr-mais', g).forEach(b => b.onclick = () => { const c = b.closest('.tr-bolha'); const ab = c.classList.toggle('aberto'); b.textContent = ab ? 'Ver menos' : 'Ver tudo'; });
   // texto longo ganha "Ver tudo" na hora (medido já na montagem, sem piscar); se a conversa acabou de ser levada ao fim, continua no fim
   $$('.tr-texto', g).forEach(t => { if (t.scrollHeight > t.clientHeight + 4) t.closest('.tr-bolha').classList.add('longo'); });
@@ -261,7 +262,7 @@ function tramitesHtml(r, carregando, i) {
         (x.texto ? '<div class="tr-texto">' + esc(textoPuro(x.texto)) + '</div><button type="button" class="tr-mais">Ver tudo</button>'
           : x === descTr ? '<div class="tr-origem">' + esc(desc.k) + ' da solicitação</div><div class="tr-texto tr-desc">' + esc(textoPuro(desc.v)) + '</div><button type="button" class="tr-mais">Ver tudo</button>'
           : '<div class="tr-texto fraco">Sem texto' + (anexos.length ? ' (só anexo)' : '') + '</div>') +
-        (anexos.length ? '<div class="tr-anexos">' + anexos.map((a, ai) => { const tp = tipoArquivo(a.nome); return '<button type="button" class="tr-arq"' + (a.id || a.direto ? ' data-ax-abrir="' + gi + ':' + ai + '"' : ' disabled') + ' title="Baixar ' + esc(a.nome) + '"><span class="ax-ic ' + tp.cls + '">' + tp.rot + '</span><span class="ax-nome">' + esc(a.nome) + '</span></button>'; }).join('') + '</div>' : '') +
+        (anexos.length ? '<div class="tr-anexos">' + anexos.map((a, ai) => { const tp = tipoArquivo(a.nome); return '<button type="button" class="tr-arq"' + (a.id || a.direto ? ' data-ax-abrir="' + gi + ':' + ai + '"' : ' disabled') + ' title="Ver ' + esc(a.nome) + ' sem baixar"><span class="ax-ic ' + tp.cls + '">' + tp.rot + '</span><span class="ax-nome">' + esc(a.nome) + '</span></button>'; }).join('') + '</div>' : '') +
       '</div>' + (x === ultCli && x.n !== 1 ? responder : '') + '</div>' + sit;
   }).join('');
   return '<div class="tr-lista" id="tr-lista">' + corpo + rasc + '</div>';
@@ -296,7 +297,10 @@ function destaquesHtml(r) {
 function painelHtml(i, r, carregando, nAnexos) {
   if (carregando) return '<section class="dlg-dados" id="g-painel" aria-label="Dados da solicitação"><div class="vazio">Lendo a solicitação completa no Onvio…</div></section>';
   const abertura = (r && r.anexos) || [], total = Math.max(nAnexos, abertura.length);
-  const arq = nome => { const tp = tipoArquivo(nome); return '<li title="' + esc(nome) + '"><span class="ax-ic ' + tp.cls + '">' + tp.rot + '</span><span class="ax-nome">' + esc(nome) + '</span></li>'; };
+  // cada anexo da abertura vira um botão que abre o arquivo aqui (a chave é a da janela Anexos: grupo 0 = abertura)
+  const comId = (r && r.arquivos) || [];
+  const arq = nome => { const tp = tipoArquivo(nome), k = comId.findIndex(a => a.nome === nome && (a.id || a.direto)), dentro = '<span class="ax-ic ' + tp.cls + '">' + tp.rot + '</span><span class="ax-nome">' + esc(nome) + '</span>';
+    return '<li title="' + esc(nome) + '">' + (k >= 0 ? '<button type="button" class="pn-arq" data-ax-abrir="0:' + k + '" title="Ver ' + esc(nome) + ' sem baixar">' + dentro + '<svg class="ic ic-sm pn-arq-ver" aria-hidden="true"><use href="#i-eye"/></svg></button>' : dentro) + '</li>'; };
   const anexos = total ? '<aside class="pn-anex" id="pn-anex" data-pn="anexos" aria-label="Anexos"><header class="pn-anex-cab"><b>Anexos</b><span class="pn-n">' + total + '</span>' +
       (nAnexos ? '<button type="button" class="btn btn-sm" id="g-anexos2" title="Escolha quais anexos baixar"><svg class="ic ic-sm"><use href="#i-download"/></svg> Baixar</button>' : '') + '</header>' +
     '<ul class="pn-anex-lista">' + abertura.map(arq).join('') + '</ul>' +
@@ -364,7 +368,7 @@ function lembretesHtml(lems) {
 
 // Setas ← → andam na lista; lembretes mudaram com a janela aberta: redesenha a aba.
 addEventListener('keydown', e => {
-  if (!detalheAberto() || lembreteAberto() || novaAberta() || anexosAbertos() || e.target.matches('input, select, textarea')) return;
+  if (!detalheAberto() || lembreteAberto() || novaAberta() || anexosAbertos() || verAberto() || e.target.matches('input, select, textarea')) return;
   if (e.key === 'ArrowLeft') andar(-1);
   else if (e.key === 'ArrowRight') andar(1);
   else if ((e.key === 'r' || e.key === 'R') && !e.ctrlKey && !e.metaKey && !e.altKey) {

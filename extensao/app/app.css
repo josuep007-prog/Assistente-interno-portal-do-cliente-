@@ -1713,3 +1713,21 @@ body.setor-fora .trilho [data-rota="equipe"], body.setor-fora .trilho [data-rota
 .adv-linha > .btn{height:34px}
 @media (max-width:1100px){ .adv-nav{grid-template-columns:repeat(3, minmax(0, 1fr))} .adv-duas{grid-template-columns:1fr} }
 @media (max-width:700px){ .adv-nav{grid-template-columns:1fr 1fr} .adv-res li{grid-template-columns:18px 1fr} .adv-res li > span:last-child{grid-column:2} }
+
+/* Ver anexo sem baixar (0.73.0): janela grande por cima do detalhe, nos dois estilos */
+#dlg-ver{width:min(1180px, calc(100vw - 32px)); height:calc(100vh - 40px); max-height:none; display:flex; flex-direction:column}
+#dlg-ver .ver-cab{display:flex; align-items:center; gap:10px}
+#dlg-ver .ver-cab .tt{flex:1 1 auto; min-width:0}
+#dlg-ver .ver-nome{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+#dlg-ver .ver-nav{display:flex; align-items:center; gap:4px; font-size:12.5px}
+#dlg-ver .ver-corpo{flex:1 1 auto; min-height:0; display:flex; background:var(--surface-2); border-top:1px solid var(--rule)}
+#dlg-ver .ver-corpo > .vazio{margin:auto}
+#dlg-ver .ver-pdf{flex:1 1 auto; width:100%; height:100%; border:0; background:#525659}
+#dlg-ver .ver-img{flex:1 1 auto; overflow:auto; display:flex; align-items:flex-start; justify-content:center; padding:16px}
+#dlg-ver .ver-img img{max-width:100%; height:auto; box-shadow:0 1px 4px rgba(0,0,0,.25); background:#fff}
+#dlg-ver .ver-txt{flex:1 1 auto; margin:0; padding:16px; overflow:auto; font:12.5px/1.5 "IBM Plex Mono", monospace; color:var(--ink); white-space:pre-wrap; overflow-wrap:anywhere}
+.ax-arq .ax-ver{margin-left:auto; flex:none}
+.pn-anex-lista .pn-arq{display:flex; align-items:center; gap:8px; width:100%; min-width:0; padding:0; border:0; background:none; color:inherit; font:inherit; text-align:left; cursor:pointer}
+.pn-anex-lista li:has(.pn-arq):hover{background:var(--surface-2)}
+.pn-anex-lista .pn-arq-ver{margin-left:auto; flex:none; color:var(--ink-2)}
+.tr-arq{cursor:pointer}
