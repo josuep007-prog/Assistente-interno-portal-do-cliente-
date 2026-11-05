@@ -3932,3 +3932,16 @@ test('Gestta (0.77.0): linha do tempo da tarefa em palavras (sem email_log), qua
   assert.deepEqual(plano(OCG.ordenarEmpresas(emps, 'proxima').map(e => e.nome)), ['ALFA', 'BETA'], 'ALFA tem a meta aberta mais cedo (01/11)');
   assert.deepEqual(plano(OCG.ordenarEmpresas(emps, 'nome').map(e => e.nome)), ['ALFA', 'BETA']);
 });
+
+test('0.78.0: escolha de setor — todos os setores do login, com o nome do departamento do Onvio; um setor só filtra a Geral e a folha só no Pessoal', () => {
+  const DP = '2CDE919421384918A2BF510E5D5F4FD6', DP2 = '79E62D04049C4E698394178A9E7A0D87', FIS = '8D6AF452F46D454C849B6C96F8CCF306', CTB = '26CE2C34F6F44CD99501CEAA43B93F0F', PORTAL = 'abcdef0123456789abcdef0123456789';
+  const g = (k, dep) => ({ k, type: 'geral', departmentId: dep });
+  const snap = { items: [g('g1', DP), g('g2', DP2), g('g3', FIS), g('g4', CTB), g('g5', PORTAL), { k: 'f1', type: 'avisoFerias' }], resolvidas: [g('g6', FIS)], departamentos: [{ id: PORTAL.toUpperCase(), nome: 'Portal do Cliente' }] };
+  const vs = OC.setoresVistos(snap, {});
+  assert.deepEqual(plano(vs.map(x => [x.chave, x.nome, x.n])), [['dp', 'Pessoal', 3], ['contabil', 'Contábil', 1], ['fiscal', 'Fiscal', 2], ['d:' + PORTAL.toUpperCase(), 'Portal do Cliente', 1]], 'o Pessoal junta a duplicata e a folha');
+  assert.equal(OC.filtrarVisao(snap.items, '', {}).length, 6, 'sem escolha: tudo o que o Onvio entregou');
+  assert.deepEqual(plano(OC.filtrarVisao(snap.items, 'dp', {}).map(x => x.k)), ['g1', 'g2', 'f1']);
+  assert.deepEqual(plano(OC.filtrarVisao(snap.items, 'fiscal', {}).map(x => x.k)), ['g3'], 'fora do Pessoal, nenhuma lista da folha');
+  assert.deepEqual(plano(OC.filtrarVisao(snap.items, 'd:' + PORTAL.toUpperCase(), {}).map(x => x.k)), ['g5']);
+  assert.equal(OC.setoresVistos({ items: [g('x', 'DESCONHECIDO')] }, {})[0].nome, 'Outro departamento', 'sem o nome do Onvio, um nome neutro');
+});

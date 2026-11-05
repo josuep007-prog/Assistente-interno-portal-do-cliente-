@@ -680,6 +680,8 @@
     const now = new Date();
     const out = { items: [], erros: [], porTipo: {}, desconhecidos: {}, filtroAlternativo: [], semAcesso: [], fetchedAt: now.toISOString(), user: null, tramites: { lidos: 0, falhas: 0, cache: {} } };
     out.user = await usuario(fetcher);
+    // 0.78.0: nomes dos departamentos do escritório (só id e nome), para a escolha de setor na tela
+    try { const d = await fetcher(URL_DEPARTAMENTOS); out.departamentos = ((d && d.content) || []).filter(x => x && x.departmentId).slice(0, 60).map(x => ({ id: String(x.departmentId).toUpperCase(), nome: String(x.name || '').slice(0, 60) })); } catch (e) { if (e && e.cliente) throw e; out.departamentos = []; }
     let i = 0;
     for (const t of TYPES) {
       i++;
@@ -1103,6 +1105,31 @@
     if (!perfil || !perfil.ativo) return items || [];
     const deps = perfil.deps || (perfil.dep ? [perfil.dep] : []);
     return (items || []).filter(i => i.mine || (i.type === 'geral' ? !(deps.length && i.departmentId && !deps.includes(String(i.departmentId).toUpperCase())) : !perfil.soGeral));
+  }
+
+  /* ---------- escolha de setor na tela (0.78.0, Josué 05/11/2026: "meu usuário tem acesso a Pessoal, Contábil, Fiscal e Portal do Cliente,
+   * mas só vejo o Pessoal") ----------
+   * O Onvio já entrega só o que o login pode ver; a tela mostra de fábrica TODOS os setores do login e deixa escolher um. Pessoal, Fiscal e
+   * Contábil juntam o departamento do sistema e a duplicata; outro departamento (ex.: Portal do Cliente) vira uma opção própria, com o nome
+   * lido do Onvio. A distribuição automática não usa isto: continua só na Geral do Pessoal (perfilSetor/filtrarPorSetor). */
+  function chaveVisao(mapa, dep) { const d = String(dep || '').toUpperCase(); if (!d) return ''; return setorDoDepartamento(mapa, d) || ('d:' + d); }
+  function setoresVistos(snap, settings) {
+    const s = Object.assign({}, DEFAULTS, settings || {}), mapa = mapaSetores(s), nomes = new Map(((snap && snap.departamentos) || []).map(d => [String(d.id).toUpperCase(), d.nome]));
+    const cont = new Map(), soma = (k, nome) => { const x = cont.get(k) || { chave: k, nome, n: 0 }; x.n++; cont.set(k, x); };
+    [].concat((snap && snap.items) || [], (snap && snap.resolvidas) || []).forEach(i => {
+      if (!i) return;
+      if (i.type !== 'geral') { soma('dp', SETOR_NOMES.dp); return; }                 // as listas da folha são do Pessoal
+      const k = chaveVisao(mapa, i.departmentId); if (!k) return;
+      soma(k, SETOR_NOMES[k] || nomes.get(k.slice(2)) || 'Outro departamento');
+    });
+    const ordem = ['dp', 'contabil', 'fiscal'];
+    return [...cont.values()].sort((a, b) => ((ordem.indexOf(a.chave) + 1 || 9) - (ordem.indexOf(b.chave) + 1 || 9)) || a.nome.localeCompare(b.nome, 'pt-BR'));
+  }
+  // chave '' = todos os setores do login (nada muda); 'dp' | 'fiscal' | 'contabil' | 'd:<id>' = só esse setor (a folha só no Pessoal)
+  function filtrarVisao(items, chave, settings) {
+    if (!chave) return items || [];
+    const mapa = mapaSetores(Object.assign({}, DEFAULTS, settings || {}));
+    return (items || []).filter(i => i && (i.type === 'geral' ? chaveVisao(mapa, i.departmentId) === chave : chave === 'dp'));
   }
 
   /* ---------- distribuição automática de responsáveis (liga o gestor; roda no service worker a cada N minutos) ----------
@@ -3929,5 +3956,5 @@
     return resultados;
   }
 
-  g.OC = { testarEmpregadosEmpresa, extratoContribuintes, lerFolhaContribuintes, resumoFolha, tipoCalculo, competenciaMinima, FOLHA_V, FOLHA_MESES_QUADRO, testarFolhaEmpresa, PASTA_PESSOAL, testarFolha, competenciaDoNome, FOLHA_COLUNAS, negritoUnicode, aplicarDestaques, ehEscritorioProprio, sondarEmpregados, montarLoteHub, HUB_CATEGORIAS, tabelaAnaliseSolicitacoes, tabelaAnaliseEquipe, hubPlano, hubExecutar, hubPartesDe, partirTabela, tabelaLista, tabelaPessoais, tabelaCnd, tabelaNfe, lerEscritorio, lerDocumentos, lerNoticias, slugHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, SETOR_NOMES, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, dentroDoHorario, planoDistribuicaoAuto, acaoConcluir, agruparSugestoes, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, acaoAnalise, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, mensagensProntas, marcadoresPendentes, observacoesFaltantes, avisosResposta, situacaoEquivalente, despersonalizar, previsaoPorEmpresa, lerMovimentadas, soConcluidas, grupoConclusao, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { testarEmpregadosEmpresa, extratoContribuintes, lerFolhaContribuintes, resumoFolha, tipoCalculo, competenciaMinima, FOLHA_V, FOLHA_MESES_QUADRO, testarFolhaEmpresa, PASTA_PESSOAL, testarFolha, competenciaDoNome, FOLHA_COLUNAS, negritoUnicode, aplicarDestaques, ehEscritorioProprio, sondarEmpregados, montarLoteHub, HUB_CATEGORIAS, tabelaAnaliseSolicitacoes, tabelaAnaliseEquipe, hubPlano, hubExecutar, hubPartesDe, partirTabela, tabelaLista, tabelaPessoais, tabelaCnd, tabelaNfe, lerEscritorio, lerDocumentos, lerNoticias, slugHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, SETOR_NOMES, setoresVistos, filtrarVisao, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, dentroDoHorario, planoDistribuicaoAuto, acaoConcluir, agruparSugestoes, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, acaoAnalise, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, mensagensProntas, marcadoresPendentes, observacoesFaltantes, avisosResposta, situacaoEquivalente, despersonalizar, previsaoPorEmpresa, lerMovimentadas, soConcluidas, grupoConclusao, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);
