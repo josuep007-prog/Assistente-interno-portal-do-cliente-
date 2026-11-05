@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.70.7)
+# Control Onvio · ControlTax (v0.71.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,14 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.71.0 (Gestta, Fase 1, item 1: leitura e perfil, 05/11/2026)
+
+- A extensão passa a ler o **Gestta**, só leitura, de dentro da aba do Gestta: o token do Gestta é usado só na página e nunca vai ao service worker, ao armazenamento, ao Hub nem a log. Só GET em `api.gestta.com.br`, a busca de tarefas e o relatório de tarefas do mês (`CUSTOMER_TASK`, autorizado pelo Josué em 05/11/2026); qualquer outra chamada é recusada antes de sair.
+- **Configurações › Avançado › Testar a leitura do Gestta:** com o Gestta aberto e logado numa aba, mostra em que tela ele está, até quando vale a sessão, o perfil (coordenação ou analista e os setores) e uma leitura de prova de cada fonte, só com contagens: setores, equipe, clientes, cartela de um cliente, tarefas abertas do mês, multas, fila de envio ao Onvio com erro e templates sem pasta no portal.
+- Com acesso de analista, o teste avisa que o envio ao Hub não vai sair (só a coordenação enxerga todos os setores); leitura que o acesso não alcança aparece como "seu acesso não inclui esta leitura".
+- Permissão nova: `https://app.gestta.com.br/*` (o Chrome pede para confirmar ao atualizar). Nada aparece por cima do Gestta ainda: o painel vem no item 2.
+- **A conferir no Chrome do Josué:** o "Testar a leitura do Gestta" no Gestta real (perfil, contagens) e, com um login de analista, quais leituras ele alcança.
 
 ## Hub 314: módulo Empresas (04/11/2026)
 
