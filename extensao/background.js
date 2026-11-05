@@ -307,6 +307,18 @@ async function gesttaTarefa(msg, sender) {
   if (!x || x.status !== 200 || !x.dados) return { ok: false, erro: x && x.status === 403 ? 'Seu acesso não inclui esta tarefa.' : x && x.status === 404 ? 'A tarefa não foi encontrada no Gestta.' : 'Não consegui ler a tarefa (' + ((x && (x.erro || x.status)) || 'sem resposta') + ').' };
   return { ok: true, tarefa: x.dados };
 }
+// Linha do tempo da tarefa (0.77.0): a 1ª página do histórico, só tipo, situação, data, quem e nome do documento; nada é guardado.
+async function gesttaHistorico(msg, sender) {
+  const id = String(msg.id || '');
+  if (!/^[0-9a-f]{24}$/i.test(id)) return { ok: false, erro: 'tarefa inválida' };
+  const tab = await tabDoGestta(sender);
+  if (!tab) return { ok: false, erro: 'Abra o Gestta numa aba, já logado.' };
+  const { r } = await lerGestta([OCG.PEDIDOS.historico({ id })], { tab });
+  const x = r && r.resultados && r.resultados[0];
+  if (!r || !r.ok) return { ok: false, erro: (r && r.motivo) || 'A aba do Gestta não respondeu.' };
+  if (!x || x.status !== 200 || !x.dados) return { ok: false, erro: x && x.status === 403 ? 'Seu acesso não inclui o histórico desta tarefa.' : 'Não consegui ler o histórico (' + ((x && (x.erro || x.status)) || 'sem resposta') + ').' };
+  return { ok: true, eventos: OCG.eventosDaTarefa(x.dados.itens || []), total: x.dados.total, paginas: x.dados.paginas };
+}
 // Para a coordenação escolher de quem ver as tarefas: só id e nome da equipe ativa.
 async function gesttaEquipe(msg, sender) {
   const tab = await tabDoGestta(sender);
@@ -1111,6 +1123,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'gesttaEquipe') { reply(await gesttaEquipe(msg, sender)); }
       else if (msg.cmd === 'gesttaFechamento') { reply(await gesttaFechamento(msg, sender)); }
       else if (msg.cmd === 'gesttaTarefa') { reply(await gesttaTarefa(msg, sender)); }
+      else if (msg.cmd === 'gesttaHistorico') { reply(await gesttaHistorico(msg, sender)); }
       else if (msg.cmd === 'fecharPainel') { if (sender.tab && sender.tab.id != null) await mensagemParaPainel(sender.tab.id, 'fechar').catch(() => {}); reply({ ok: true }); }
       else reply({ ok: false, erro: 'comando desconhecido' });
     } catch (e) {

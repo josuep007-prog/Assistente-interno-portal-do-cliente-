@@ -364,6 +364,9 @@ assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br
       customer_task_steps: [{ name: 'Conferir', order: 1, required: true, done: true, done_by: { email: 'x@exemplo.com' } }],
       company_documents: [{ name: 'Recibo', disconsidered: false, validation_required: true, file: { url: 'https://arquivo.exemplo/segredo.pdf' } }],
       document_request: { active: true, requested_documents: [{ name: 'Extrato', disconsidered: false, file: 'x' }] } });
+    if (p === '/core/customer/task/' + ID + '/history') return json({ docs: [
+      { _id: 'h1', type: 'DOCUMENT', status: 'NOT_SENT_TO_PORTAL', reason: 'NO_FOLDER_CONFIGURED', accomplished_at: new Date().toISOString(), company_document: { name: 'Recibo' }, upload: { url: 'https://arquivo.exemplo/up.pdf' } },
+      { _id: 'h2', type: 'EMAIL', status: 'SENT', accomplished_at: new Date().toISOString(), email_log: { to: ['destino@exemplo.com'], server: 'smtp.exemplo' } }], totalDocs: 2, totalPages: 1, page: 1 });
     if (p === '/core/dashboard/attention/fine/all') return json({ fine: 7 });
     if (p === '/es/file/onvio') return json({ docs: [], totalDocs: 4 });
     if (p === '/admin/company/document') return json({ docs: [{ _id: ID, name: 'DAS' }], totalDocs: 1008, documents_without_destination: 31 });
@@ -435,6 +438,15 @@ assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br
   assert.equal(d1.tarefa.customer_task_steps[0].name, 'Conferir'); assert.equal(d1.tarefa.company_documents[0].validation_required, true);
   assert.equal(d1.tarefa.document_request.requested_documents[0].name, 'Extrato');
   for (const s of ['segredo.pdf', 'x@exemplo', '"value"', 'timesheet', 'approvers', '"file"']) assert.ok(!JSON.stringify(d1).includes(s), 'detalhe vazou: ' + s);
+  // linha do tempo da tarefa (0.77.0): um GET do histórico, sem email_log nem arquivo
+  const antesH = gChamadas.length;
+  const h1 = await tt({ cmd: 'gesttaHistorico', id: ID });
+  assert.ok(h1.ok, 'gesttaHistorico: ' + (h1.erro || ''));
+  assert.deepEqual(gChamadas.slice(antesH), ['GET /core/customer/task/' + ID + '/history']);
+  assert.deepEqual(h1.eventos.map(e => e.rot).sort(), ['Documento não foi ao portal', 'E-mail enviado ao cliente']);
+  for (const s of ['destino@exemplo', 'smtp.exemplo', 'up.pdf']) assert.ok(!JSON.stringify(h1).includes(s), 'histórico vazou: ' + s);
+  const antesHi = gChamadas.length;
+  assert.equal((await tt({ cmd: 'gesttaHistorico', id: 'x' })).ok, false); assert.equal(gChamadas.length, antesHi, 'id inválido não pede nada');
   const antesInv = gChamadas.length;
   const d2 = await tt({ cmd: 'gesttaTarefa', id: '../admin/company' });
   assert.equal(d2.ok, false); assert.equal(gChamadas.length, antesInv, 'id inválido não pede nada');
