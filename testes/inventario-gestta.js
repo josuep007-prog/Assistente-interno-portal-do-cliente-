@@ -7,7 +7,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 
 const TOKEN = 'JWT eyJ-SEGREDO-GESTTA-789';
-const SEGREDOS = [TOKEN, 'SEGREDO-GESTTA', 'Fulana de Tal', 'fulana@exemplo.com', '12.345.678/0001-90', 'EMPRESA SIGILO LTDA', 'senha-do-cliente', '(27) 99999-0000'];
+const SEGREDOS = ['ABCDEF0123456789ABCDEF0123456789', 'SIGILOSA', TOKEN, 'SEGREDO-GESTTA', 'Fulana de Tal', 'fulana@exemplo.com', '12.345.678/0001-90', 'EMPRESA SIGILO LTDA', 'senha-do-cliente', '(27) 99999-0000'];
 const ID = '5f1e2d3c4b5a69788796a5b4', ID2 = '6a5b4c3d2e1f00112233aabb';
 const CORS = { 'access-control-allow-origin': 'https://app.gestta.com.br', 'access-control-allow-headers': 'authorization,content-type,accept', 'access-control-allow-methods': 'GET,POST,OPTIONS' };
 
@@ -25,7 +25,7 @@ const CORS = { 'access-control-allow-origin': 'https://app.gestta.com.br', 'acce
     const json = (o, status) => r.fulfill({ status: status || 200, headers: Object.assign({ 'content-type': 'application/json' }, CORS), body: JSON.stringify(o) });
     const p = u.pathname;
     if (/password/.test(p)) return json([{ value: 'senha-do-cliente' }]);
-    if (p === '/admin/customer') return json({ docs: [{ _id: ID, code: '9999', name: 'EMPRESA SIGILO LTDA', cnpj: '12.345.678/0001-90', active: true, federal_regime: { _id: ID2, name: 'Simples Nacional' } }], totalDocs: 512, totalPages: 512, limit: 1 });
+    if (p === '/admin/customer') return json({ docs: [{ _id: ID, code: '9999', name: 'EMPRESA SIGILO LTDA', cnpj: '12.345.678/0001-90', active: true, external_id: 'ABCDEF0123456789ABCDEF0123456789', trading_name: 'SIGILOSA', complement: 'SALA9', federal_regime: { _id: ID2, name: 'Simples Nacional' } }], totalDocs: 512, totalPages: 512, limit: 1 });
     if (p === '/admin/customer/' + ID + '/responsible') return json([{ _id: ID2, company_department: { _id: ID2, name: 'Pessoal' }, company_user: { _id: ID2, name: 'Fulana de Tal', email: 'fulana@exemplo.com', phone_number: '(27) 99999-0000' } }]);
     if (p === '/admin/customer/user') return json({ docs: [{ _id: ID2, name: 'Fulana de Tal', email: 'fulana@exemplo.com', customers: ['EMPRESA SIGILO LTDA'] }], totalDocs: 2100 });
     if (p === '/core/customer/task/search') {
@@ -64,6 +64,10 @@ const CORS = { 'access-control-allow-origin': 'https://app.gestta.com.br', 'acce
   // formato sem valores, contagens e opções
   assert.equal(inv.recursos.clientes.totalDocs, 512);
   assert.equal(inv.recursos.clientes.item.cnpj, 'texto');
+  assert.equal(inv.recursos.clientes.item.external_id, 'texto:guid', 'id do Onvio vira só o tipo');
+  assert.ok(!inv.recursos.clientes.opcoes || !inv.recursos.clientes.opcoes.external_id, 'id do Onvio nunca entra nas opções');
+  assert.ok(chamadas.some(c => c === 'GET /admin/tag'), 'etiquetas lidas');
+  assert.ok(chamadas.includes('GET /core/dashboard/attention/fine/all'), 'contagens do painel por GET');
   assert.equal(inv.recursos.clientes.item._id, 'texto:id');
   assert.equal(inv.recursos.cartela.item.company_user.email, 'texto');
   assert.equal(inv.recursos.buscaTarefas.total, 1288);

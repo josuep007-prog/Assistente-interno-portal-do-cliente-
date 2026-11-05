@@ -54,12 +54,19 @@
     if (v && typeof v === 'object') { const o = {}; for (const k of Object.keys(v).slice(0, 120)) o[k] = formato(v[k], prof + 1); return o; }
     return tipoDe(v);
   }
-  // valores de opção (enum) são configuração, não dado pessoal: guarda os distintos, no máximo 12 por campo
+  // valores de opção (enum) são configuração, não dado pessoal: guarda os distintos, no máximo 12 por campo.
+  // Nunca de campos que podem trazer dado (nome, código, endereço, identificador externo) e nunca um GUID: o Gestta
+  // guarda o id do Onvio (external_id) em 32 letras/números maiúsculos, que pareceria um nome de opção.
+  const CAMPO_DE_DADO = /name|nome|code|cnpj|cpf|email|trading|city|street|neighborhood|complement|number|postal|description|title|file|text|comment|phone|subject|message|filter|password|token|value|external|inscription|ccm|observation|justification/i;
+  const PARECE_ID = /^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$|^[0-9a-f]{24}$/i;
   function enums(lista, out) {
     out = out || {};
     for (const it of (lista || []).slice(0, 200)) {
       if (!it || typeof it !== 'object') continue;
-      for (const [k, v] of Object.entries(it)) if (typeof v === 'string' && /^[A-Z][A-Z0-9_]{1,40}$/.test(v)) { const s = (out[k] ||= []); if (!s.includes(v) && s.length < 12) s.push(v); }
+      for (const [k, v] of Object.entries(it)) {
+        if (CAMPO_DE_DADO.test(k) || typeof v !== 'string' || PARECE_ID.test(v) || !/^[A-Z][A-Z0-9_]{1,40}$/.test(v)) continue;
+        const s = (out[k] ||= []); if (!s.includes(v) && s.length < 12) s.push(v);
+      }
     }
     return out;
   }
@@ -150,7 +157,7 @@
     await registrar('equipeInativaComTarefas', '/admin/company/user/pending-transfer');
     await registrar('regimes', '/admin/company/regime');
     await registrar('agrupadores', '/admin/company/grouper');
-    await registrar('etiquetas', '/admin/tag?type=CUSTOMER');
+    await registrar('etiquetas', '/admin/tag?type=TASK_GROUPER');      // valor conferido na tela em 05/11/2026
     await registrar('feriados', '/admin/company/holiday');
     await registrar('fluxos', '/admin/company/workflow');
     await registrar('templatesTarefa', '/admin/company/task?type=RECURRENT');
@@ -174,6 +181,12 @@
     const idUsu = idDe(usu);
     if (idUsu) await registrar('setoresDoUsuarioDeCliente', '/admin/customer/user/' + idUsu + '/accountable');
 
+    // contagens do painel novo (GET; só números)
+    const per = '?start_date=' + encodeURIComponent(m.ini) + '&end_date=' + encodeURIComponent(m.fim);
+    await registrar('painelMulta', '/core/dashboard/attention/fine/all' + per);
+    await registrar('painelAprovacao', '/core/dashboard/attention/approve/all' + per);
+    await registrar('painelEmailNaoEnviado', '/core/dashboard/attention/email-not-sent/all' + per);
+
     // integração com o Onvio e o Domínio
     await registrar('pendentesIntegracao', '/es/file/count-pending');
     await registrar('pendentesDominio', '/es/file/count-pending/dominio');
@@ -182,7 +195,7 @@
     await registrar('notificacoes', '/nf/notification/count');
 
     // tarefas: calendário, busca (o único POST) e o detalhe da primeira
-    await registrar('calendario', '/core/dashboard/calendar?start_date=' + encodeURIComponent(m.ini) + '&end_date=' + encodeURIComponent(m.fim) + '&no_owner=true&type=DUE_DATE');
+    await registrar('calendario', '/core/dashboard/calendar' + per + '&no_owner=true&type=DUE_DATE');   // type conferido na tela em 05/11/2026
     const busca = await registrar('buscaTarefas', POST_PERMITIDO, { page: 1, limit: 5, type: ['RECURRENT', 'SERVICE_ORDER', 'ACCOUNTING'], status: ['OPEN', 'IMPEDIMENT'], start_date: m.ini, end_date: m.fim, date_type: 'DUE_DATE', os_workflow: true });
     const idTar = idDe(busca);
     if (idTar) {
