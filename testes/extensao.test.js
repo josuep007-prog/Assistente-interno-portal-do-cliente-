@@ -2523,23 +2523,31 @@ test('rodada 3: setores (equipe do DP e Geral por departamento) e regras novas',
   assert.equal(OC.normalizarRegras({ departamentoDP: 'com espaço' }), null);
   const s = OC.combinarSettings({ regras: r }, { equipeDP: ['Hacker'], departamentoDP: 'x' });
   assert.deepEqual(plano([s.equipeDP, s.departamentoDP]), [['Ana Teste', 'Bia'], 'dep-dp'], 'o ajuste da pessoa não muda quem é do DP');
-  const DP_ID = '2CDE919421384918A2BF510E5D5F4FD6';
+  const DP_ID = '2CDE919421384918A2BF510E5D5F4FD6', FIS_ID = '8D6AF452F46D454C849B6C96F8CCF306', CTB_ID = '26CE2C34F6F44CD99501CEAA43B93F0F';
   const sem = OC.perfilSetor({}, 'Ana');
-  assert.deepEqual(plano([sem.ativo, sem.fora, sem.deps.length]), [true, false, 2], 'de fábrica: ids do Pessoal; acesso desconhecido não esconde nada');
-  assert.equal(OC.perfilSetor({}, 'Ana', DP_ID).fora, false, 'acesso ao Pessoal: é do DP');
-  assert.equal(OC.perfilSetor({}, 'Ana', DP_ID.toLowerCase()).fora, false, 'sem diferença de caixa');
-  assert.equal(OC.perfilSetor({}, 'Carlos', '8D6AF452F46D454C849B6C96F8CCF306').fora, true, 'acesso ao Fiscal: só as suas');
-  assert.equal(OC.perfilSetor({ equipeDP: ['Carlos'] }, 'Carlos', '8D6AF452F46D454C849B6C96F8CCF306').fora, false, 'a equipe das regras vale mais que o acesso');
+  assert.equal(sem.ativo, false, 'sem nada que diga o setor, não esconde nada');
+  const pdp = OC.perfilSetor({}, 'Ana', DP_ID);
+  assert.deepEqual(plano([pdp.setor, pdp.soGeral, pdp.fora]), ['dp', false, false], 'acesso ao Pessoal');
+  assert.equal(OC.perfilSetor({}, 'Ana', DP_ID.toLowerCase()).setor, 'dp', 'sem diferença de caixa');
+  // 0.74.0: Fiscal e Contábil têm a sua visão (antes ficavam "de fora", só com as suas)
+  const pf = OC.perfilSetor({}, 'Carlos', FIS_ID);
+  assert.deepEqual(plano([pf.setor, pf.nome, pf.soGeral, pf.fora, pf.deps.includes(FIS_ID)]), ['fiscal', 'Fiscal', true, false, true]);
+  assert.equal(OC.perfilSetor({}, 'Dani', '  '.trim() || CTB_ID).nome, 'Contábil');
+  assert.equal(OC.perfilSetor({ equipeDP: ['Carlos'] }, 'Carlos', FIS_ID).setor, 'dp', 'a equipe das regras vale mais que o acesso');
+  const outro = OC.perfilSetor({}, 'Eva', 'DEPTO-ADMINISTRATIVO');
+  assert.deepEqual(plano([outro.setor, outro.soGeral]), ['outro', true], 'departamento fora dos três: só a Geral dele');
+  // sem o acesso (o Onvio recusou, comum fora do Pessoal): o setor sai das solicitações Geral lidas
+  const lidas = { items: [{ type: 'geral', departmentId: FIS_ID }, { type: 'geral', departmentId: FIS_ID }, { type: 'geral', departmentId: DP_ID }], semAcesso: OC.TYPES.filter(t => t.key !== 'geral').map(t => t.key) };
+  const inf = OC.perfilSetor({}, 'Carlos', '', lidas);
+  assert.deepEqual(plano([inf.setor, inf.soGeral, inf.por]), ['fiscal', true, 'solicitações lidas']);
   const it = (k, o) => Object.assign({ k, type: 'geral', mine: false, resp: 'Bia', departmentId: 'dep-dp' }, o);
-  const todos = [it('g:1'), it('g:2', { departmentId: 'dep-fiscal' }), it('g:3', { departmentId: '' }), it('g:4', { type: 'cadEmpregado', departmentId: 'dep-fiscal' }), it('g:5', { mine: true, departmentId: 'dep-fiscal' })];
+  const todos = [it('g:1'), it('g:2', { departmentId: FIS_ID }), it('g:3', { departmentId: '' }), it('g:4', { type: 'cadEmpregado', departmentId: '' }), it('g:5', { mine: true, departmentId: FIS_ID })];
   const dp = OC.perfilSetor(s, 'ANA Teste');                                       // sem acento nem caixa
-  assert.deepEqual(plano([dp.ativo, dp.fora, dp.deps.includes('DEP-DP')]), [true, false, true]);
-  assert.deepEqual(plano(OC.filtrarPorSetor(todos, dp).map(x => x.k)), ['g:1', 'g:3', 'g:4', 'g:5'], 'Geral: só o do DP (ou sem departamento); os outros tipos ficam; a Geral do Fiscal some, menos a que é sua');
-  const fora = OC.perfilSetor(s, 'Carlos Fiscal');
-  assert.equal(fora.fora, true);
-  assert.deepEqual(plano(OC.filtrarPorSetor(todos, fora).map(x => x.k)), ['g:5'], 'fora do DP: só as suas, de qualquer departamento');
-  assert.equal(OC.perfilSetor({ departamentoDP: 'dep-dp' }, 'Qualquer').fora, false, 'só o departamento: ninguém fica de fora');
-  assert.equal(OC.perfilSetor(s, '').fora, false, 'nome desconhecido não esconde nada');
+  assert.deepEqual(plano([dp.ativo, dp.setor, dp.deps.includes('DEP-DP')]), [true, 'dp', true]);
+  assert.deepEqual(plano(OC.filtrarPorSetor(todos, dp).map(x => x.k)), ['g:1', 'g:3', 'g:4', 'g:5'], 'Geral: só o do DP (ou sem departamento); a folha fica; a Geral do Fiscal some, menos a que é sua');
+  const fis = OC.perfilSetor(s, 'Carlos Fiscal', FIS_ID);
+  assert.deepEqual(plano(OC.filtrarPorSetor(todos, fis).map(x => x.k)), ['g:2', 'g:3', 'g:5'], 'Fiscal: a Geral do Fiscal (e sem departamento), nunca a folha');
+  assert.equal(OC.perfilSetor({ departamentoDP: 'dep-dp' }, 'Qualquer').ativo, false, 'só o departamento, sem saber o do usuário: não esconde nada');
   // o departmentId da Geral é lido da lista
   const n = OC.normalize(OC.TYPE_BY_KEY.geral, { id: 'a', identifier: 1, genericStatus: 1, departmentId: 'dep-x', created: '2026-10-01T10:00:00' }, null, []);
   assert.equal(n.departmentId, 'dep-x');
@@ -3790,4 +3798,44 @@ test('Gestta · tarefas: grupos pelo que pesa (multa, atraso, impedimento, hoje,
   assert.equal(OCG.urlTarefa('../x'), null, 'só id do Gestta');
   const p = OCG.PEDIDOS.buscaTarefas({ ano: 2026, mes: 11, semDono: true, limit: 1000 });
   assert.equal(p.corpo.no_owner, true); assert.equal(p.corpo.company_user, undefined); assert.equal(OCG.leituraPermitida(p.metodo, p.url, p.corpo).ok, true);
+});
+
+test('0.74.0: login do Fiscal — as listas da folha recusam e a leitura segue com a Geral do setor; a Geral recusada ainda derruba', async () => {
+  const FIS = '8D6AF452F46D454C849B6C96F8CCF306', recusa = () => { const e = new Error('HTTP 403'); e.auth = true; return e; };
+  const agora = new Date(Date.now() - 864e5).toISOString().slice(0, 19);
+  const fetcher = async url => {
+    const u = new URL(url), p = u.pathname;
+    if (p.startsWith('/api/br-payroll-sr/')) throw recusa();               // folha e acesso por departamento: fechados fora do Pessoal
+    if (p === '/api/security/v1/session-and-bindings') return { UdsSession: { FirstName: 'Carlos', LastName: 'Ficticio' } };
+    if (p.endsWith('/tickets/generic')) return { items: [{ id: 'g1', identifier: 7, genericStatus: 1, departmentId: FIS, created: agora, lastUpdated: agora }], totalItems: 1, totalPages: 1 };
+    if (p.startsWith('/api/service-requesting/')) return { items: [], totalItems: 0, totalPages: 1 };
+    throw new Error('sem rota: ' + p);
+  };
+  const out = await OC.collect(fetcher, {});
+  assert.equal(out.items.length, 1, 'a Geral do setor foi lida');
+  assert.deepEqual(plano(out.semAcesso.sort()), plano(OC.TYPES.filter(t => t.key !== 'geral' && !/^service-requesting\//.test(t.path)).map(t => t.key).sort()));
+  assert.equal(out.erros.length, 0, 'sem acesso não é erro');
+  assert.equal(out.user.departmentId, '', 'o acesso por departamento foi recusado');
+  const perfil = OC.perfilSetor({}, out.user.nome, out.user.departmentId, out);
+  assert.deepEqual(plano([perfil.setor, perfil.soGeral]), ['fiscal', true]);
+  // a verificação ao vivo também não cai
+  const ass = await OC.assinaturas(fetcher);
+  assert.ok(ass.geral && OC.TYPES.filter(t => t.key !== 'geral' && out.semAcesso.includes(t.key)).every(t => ass[t.key] === null));
+  // a Geral recusada continua sendo sessão perdida
+  const semGeral = async url => { if (/tickets\/generic/.test(url)) throw recusa(); return fetcher(url); };
+  await assert.rejects(OC.collect(semGeral, {}), e => e.auth);
+  await assert.rejects(OC.assinaturas(semGeral), e => e.auth);
+});
+
+test('0.74.0: perfil do acesso — escritório de outro setor não vira "cliente" porque o acesso da folha foi recusado', async () => {
+  const recusa = () => { const e = new Error('HTTP 403'); e.auth = true; return e; };
+  const base = deps => async url => {
+    const p = new URL(url).pathname;
+    if (p === '/api/security/v1/session-and-bindings') return { UdsSession: { FirstName: 'X' } };
+    if (p.startsWith('/api/br-payroll-sr/')) throw recusa();
+    if (p === '/api/br-default-department/v1/department') { if (deps) return { content: [{ departmentId: 'd1', name: 'Fiscal' }] }; throw recusa(); }
+    throw new Error('sem rota');
+  };
+  assert.equal((await OC.perfilDoAcesso(base(true))).perfil, 'escritorio', 'a lista de departamentos do escritório responde');
+  assert.equal((await OC.perfilDoAcesso(base(false))).perfil, 'cliente', 'nada de escritório responde: cliente, como antes');
 });

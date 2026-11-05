@@ -120,6 +120,8 @@
     // Ids do departamento Pessoal (mapeados em 22/10/2026): o do sistema (DP06) e o personalizado PESSOAL. Quem tem acesso a
     // outro departamento (company-department-access) vê só as suas solicitações; na Geral, o que é de outro departamento sai.
     departamentosDP: ['2CDE919421384918A2BF510E5D5F4FD6', '79E62D04049C4E698394178A9E7A0D87'],
+    // 0.74.0: os três setores que usam o portal (ids mapeados em 22/10/2026: o do sistema e a duplicata personalizada de cada um)
+    departamentosSetor: { dp: ['2CDE919421384918A2BF510E5D5F4FD6', '79E62D04049C4E698394178A9E7A0D87'], fiscal: ['8D6AF452F46D454C849B6C96F8CCF306', '4D1D8C0C8840430B814A2B72FB3F8A7F'], contabil: ['26CE2C34F6F44CD99501CEAA43B93F0F', 'A0B4B8D7E3324369BC52869A28943B50'] },
     // Tipos de afastamento (employeeLeaveTypeId, que vem na lista) que são acidente de trabalho; os com CAT: 3, 10 e 17.
     acidenteTipoIds: [3, 10, 14, 17, 42, 44],
     acidenteCatIds: [3, 10, 17],
@@ -564,7 +566,7 @@
     const out = {};
     await Promise.all(TYPES.map(async t => {
       try { out[t.key] = await assinaturaDe(fetcher, t); }
-      catch (e) { if (e && e.auth) throw e; out[t.key] = null; }                       // lista que não respondeu: não conta como mudança
+      catch (e) { if (e && e.auth && (t.key === 'geral' || e.cliente)) throw e; out[t.key] = null; }   // lista que não respondeu (ou sem acesso por setor): não conta como mudança
     }));
     return out;
   }
@@ -595,6 +597,7 @@
    * Sem nenhum sinal claro, não bloqueia (para não travar o escritório por uma mudança do Onvio) e o
    * Diagnóstico mostra "perfil não confirmado" com o formato da sessão (só nomes de campos, sem valores). */
   const URL_SO_ESCRITORIO = () => API + 'br-payroll-sr/v1/company-department-access';
+  const URL_DEPARTAMENTOS = API + 'br-default-department/v1/department?itemsPerPage=100&pageIndex=1';      // lista de departamentos do escritório (mapeada em 22/10/2026)
   const CHAVE_TIPO = /^(user)?(type|kind|role|roles|profile|perfil|tipo|audience|usertype|accounttype|persona|context|product|application|app)$/i;
   const EH_CLIENTE = /\b(client|cliente|clientes|customer|contact|clientcenter|client_?user|portal_?client)\b/i;
   const EH_ESCRITORIO = /\b(staff|firm|escrit[oó]rio|employee|accountant|contador|professional|onvio_?staff|staffcenter)\b/i;
@@ -647,7 +650,12 @@
     if (o.abaCliente) return { perfil: 'cliente', motivo: 'aba do Onvio na visão do cliente (clientcenter)', formato };
     try { await fetcher(URL_SO_ESCRITORIO()); return { perfil: 'escritorio', motivo: 'acesso de escritório', formato }; }
     catch (e) {
-      if (e && e.auth && sessao) return { perfil: 'cliente', motivo: 'o Onvio recusou um acesso que só o escritório tem', formato };
+      // 0.74.0: o acesso por departamento é da folha; quem é do Fiscal ou do Contábil pode não alcançá-lo. Antes de dizer "cliente",
+      // confere a lista de departamentos do escritório (fora da folha), que nenhum cliente enxerga.
+      if (e && e.auth && sessao) {
+        try { const d = await fetcher(URL_DEPARTAMENTOS); if (d && Array.isArray(d.content)) return { perfil: 'escritorio', motivo: 'acesso de escritório (lista de departamentos)', formato }; } catch (e2) { /* segue */ }
+        return { perfil: 'cliente', motivo: 'o Onvio recusou um acesso que só o escritório tem', formato };
+      }
       return { perfil: null, motivo: 'não confirmado (' + (e && e.message ? e.message : e) + ')', formato };
     }
   }
@@ -670,7 +678,7 @@
   async function collect(fetcher, settings, onProgress, extra) {
     const s = Object.assign({}, DEFAULTS, settings || {});
     const now = new Date();
-    const out = { items: [], erros: [], porTipo: {}, desconhecidos: {}, filtroAlternativo: [], fetchedAt: now.toISOString(), user: null, tramites: { lidos: 0, falhas: 0, cache: {} } };
+    const out = { items: [], erros: [], porTipo: {}, desconhecidos: {}, filtroAlternativo: [], semAcesso: [], fetchedAt: now.toISOString(), user: null, tramites: { lidos: 0, falhas: 0, cache: {} } };
     out.user = await usuario(fetcher);
     let i = 0;
     for (const t of TYPES) {
@@ -685,6 +693,9 @@
         out.items = out.items.concat(norm);
         out.porTipo[t.key] = norm.length;
       } catch (e) {
+        // 0.74.0: quem não é do Pessoal só enxerga a Geral do próprio setor; as listas da folha respondem 401/403. Isso não é sessão perdida:
+        // a lista fica "sem acesso" e a leitura segue. Só a recusa da Geral (a mesma da sonda) continua derrubando a leitura.
+        if (e && e.auth && t.key !== 'geral' && !e.cliente) { out.semAcesso.push(t.key); continue; }
         if (e && e.auth) throw e;
         out.erros.push(t.label + ': ' + (e && e.message ? e.message : e));
       }
@@ -875,7 +886,7 @@
       try {
         const d = await fetcher(listUrl(t, { search: q, per: 20 }));
         return ((d && d.items) || []).map(r => { const x = normalize(t, r, null, s.abaErrada); Object.assign(x, evaluate(x, s, now)); return x; });
-      } catch (e) { if (e && e.auth) throw e; return []; }
+      } catch (e) { if (e && e.auth && (t.key === 'geral' || e.cliente)) throw e; return []; }        // lista da folha fechada para o setor: só fica de fora
     }));
     return [].concat(...res).sort((a, b) => String(b.last).localeCompare(String(a.last)));
   }
@@ -953,6 +964,10 @@
     }
     if (Array.isArray(raw.equipeDP)) { const l = [...new Set(raw.equipeDP.filter(x => typeof x === 'string' && x.trim() && x.length <= 80).map(x => x.trim()))].slice(0, 200); if (l.length) out.equipeDP = l; }
     if (typeof raw.departamentoDP === 'string' && /^[A-Za-z0-9_.-]{1,80}$/.test(raw.departamentoDP)) out.departamentoDP = raw.departamentoDP;
+    if (raw.departamentosSetor && typeof raw.departamentosSetor === 'object' && !Array.isArray(raw.departamentosSetor)) {
+      const m = {}; for (const k of ['dp', 'fiscal', 'contabil']) { const l = Array.isArray(raw.departamentosSetor[k]) ? [...new Set(raw.departamentosSetor[k].filter(x => typeof x === 'string' && /^[A-Za-z0-9_.-]{1,80}$/.test(x)))].slice(0, 20) : []; if (l.length) m[k] = l; }
+      if (Object.keys(m).length) out.departamentosSetor = m;
+    }
     if (Array.isArray(raw.departamentosDP)) { const l = [...new Set(raw.departamentosDP.filter(x => typeof x === 'string' && /^[A-Za-z0-9_.-]{1,80}$/.test(x)))].slice(0, 20); if (l.length) out.departamentosDP = l; }
     for (const k of ['acidenteTipoIds', 'acidenteCatIds']) if (Array.isArray(raw[k])) { const l = [...new Set(raw[k].filter(x => Number.isInteger(x) && x > 0 && x < 1000))].slice(0, 60); if (l.length) out[k] = l; }
     for (const k of ['avisoTrabalhadoPalavras', 'acidentePalavras', 'prazoAnalistaPalavras']) {
@@ -1009,7 +1024,7 @@
         if (t && t.key !== 'geral' && palavras.length) out.abaErrada.push({ tipo: t.key, palavras });
       }
     }
-    const util = Object.keys(out.config).length || out.feriados.length || out.abaErrada.length || (out.observacoes && Object.keys(out.observacoes).length) || out.pedirConcluirAssunto || out.pedirConcluirTexto || out.tramiteCriacao || out.criacao || out.sugestoes || out.modelosCriacao || out.equipeDP || out.departamentoDP || out.departamentosDP || out.acidenteTipoIds || out.acidenteCatIds || out.prazoAnalistaPalavras || out.avisoTrabalhadoPalavras || out.acidentePalavras || out.senhaGestorSha256 || out.avaliacao || out.pedidoAoCliente || out.cortesiaCliente || out.foraDoPortal || out.anexoCitado || out.textosSugestao || out.modelosTramite || out.distribuicaoAuto;
+    const util = Object.keys(out.config).length || out.feriados.length || out.abaErrada.length || (out.observacoes && Object.keys(out.observacoes).length) || out.pedirConcluirAssunto || out.pedirConcluirTexto || out.tramiteCriacao || out.criacao || out.sugestoes || out.modelosCriacao || out.equipeDP || out.departamentoDP || out.departamentosDP || out.departamentosSetor || out.acidenteTipoIds || out.acidenteCatIds || out.prazoAnalistaPalavras || out.avisoTrabalhadoPalavras || out.acidentePalavras || out.senhaGestorSha256 || out.avaliacao || out.pedidoAoCliente || out.cortesiaCliente || out.foraDoPortal || out.anexoCitado || out.textosSugestao || out.modelosTramite || out.distribuicaoAuto;
     return util ? out : null;
   }
 
@@ -1031,6 +1046,7 @@
       if (r.equipeDP) base.equipeDP = r.equipeDP;
       if (r.departamentoDP) base.departamentoDP = r.departamentoDP;
       if (r.departamentosDP) base.departamentosDP = r.departamentosDP;
+      if (r.departamentosSetor) base.departamentosSetor = Object.assign({}, DEFAULTS.departamentosSetor, r.departamentosSetor);
       if (r.acidenteTipoIds) base.acidenteTipoIds = r.acidenteTipoIds;
       if (r.acidenteCatIds) base.acidenteCatIds = r.acidenteCatIds;
       if (r.prazoAnalistaPalavras) base.prazoAnalistaPalavras = r.prazoAnalistaPalavras;
@@ -1048,28 +1064,45 @@
       if (r.distribuicaoAuto) base.distribuicaoAuto = Object.assign({}, DEFAULTS.distribuicaoAuto, r.distribuicaoAuto);
     }
     // a senha da área do gestor vem só do código ou das regras do escritório, nunca dos ajustes da pessoa
-    return Object.assign(base, usuario || {}, { distribuicaoAuto: base.distribuicaoAuto, senhaGestorSha256: base.senhaGestorSha256, pesosNota: base.pesosNota, avaliacaoMinEntregas: base.avaliacaoMinEntregas, equipeDP: base.equipeDP, departamentoDP: base.departamentoDP, departamentosDP: base.departamentosDP, acidenteTipoIds: base.acidenteTipoIds, acidenteCatIds: base.acidenteCatIds });
+    return Object.assign(base, usuario || {}, { distribuicaoAuto: base.distribuicaoAuto, senhaGestorSha256: base.senhaGestorSha256, pesosNota: base.pesosNota, avaliacaoMinEntregas: base.avaliacaoMinEntregas, equipeDP: base.equipeDP, departamentoDP: base.departamentoDP, departamentosDP: base.departamentosDP, departamentosSetor: base.departamentosSetor, acidenteTipoIds: base.acidenteTipoIds, acidenteCatIds: base.acidenteCatIds });
   }
 
-  /* ---------- setores (DP × outros departamentos) ----------
-   * Com equipeDP e/ou departamentoDP nas regras: a lista Geral mostra só o que é do DP (departmentId) e quem não é da
-   * equipe do DP vê só as suas solicitações (sem Todas, Equipe e Distribuir). Sem regras, nada muda. */
-  function perfilSetor(settings, nome, deptoAcesso) {
-    const s = Object.assign({}, DEFAULTS, settings || {});
-    const eq = (s.equipeDP || []).map(x => semAcento(x).trim());
-    const deps = [...new Set((s.departamentosDP || []).concat(s.departamentoDP || []).filter(Boolean).map(x => String(x).toUpperCase()))];
-    if (!eq.length && !deps.length) return { ativo: false, fora: false, dep: '', deps: [] };
-    const n = semAcento(nome || '').trim();
-    // quem é do DP: pelo nome, se as regras trazem a equipe; senão pelo departamento do próprio acesso no Onvio
-    let fora = false;
-    if (eq.length && n) fora = !eq.includes(n);
-    else if (deptoAcesso && deps.length) fora = !deps.includes(String(deptoAcesso).toUpperCase());
-    return { ativo: true, fora, dep: deps[0] || '', deps };
+  /* ---------- setores: Pessoal, Fiscal e Contábil (0.74.0, pedido do Josué em 05/11/2026) ----------
+   * Antes só o Pessoal existia: a Geral era filtrada para o DP e quem era de outro setor via só as suas. Agora cada um vê o próprio setor:
+   * o setor vem da equipe do DP nas regras (equipeDP), do departamento do acesso (company-department-access, quando o Onvio responde) ou,
+   * na falta, do departamento mais frequente nas solicitações Geral lidas (fora do Pessoal o Onvio só entrega a Geral do próprio setor).
+   * soGeral: o setor não é o Pessoal (ou o Onvio fechou as listas da folha para este login), então só a lista Geral existe. */
+  const SETOR_NOMES = { dp: 'Pessoal', fiscal: 'Fiscal', contabil: 'Contábil' };
+  function mapaSetores(s) {
+    const base = Object.assign({}, DEFAULTS.departamentosSetor, (s && s.departamentosSetor) || {});
+    const up = l => [...new Set((l || []).filter(Boolean).map(x => String(x).toUpperCase()))];
+    return { dp: up([].concat(base.dp || [], (s && s.departamentosDP) || [], (s && s.departamentoDP) || [])), fiscal: up(base.fiscal), contabil: up(base.contabil) };
   }
+  const setorDoDepartamento = (mapa, dep) => { const d = String(dep || '').toUpperCase(); return d ? (Object.keys(mapa).find(k => mapa[k].includes(d)) || '') : ''; };
+  function perfilSetor(settings, nome, deptoAcesso, snap) {
+    const s = Object.assign({}, DEFAULTS, settings || {});
+    const mapa = mapaSetores(s), eq = (s.equipeDP || []).map(x => semAcento(x).trim()), n = semAcento(nome || '').trim();
+    let setor = '', por = '';
+    if (eq.length && n && eq.includes(n)) { setor = 'dp'; por = 'equipe do DP'; }
+    if (!setor && deptoAcesso) {
+      setor = setorDoDepartamento(mapa, deptoAcesso); if (setor) por = 'acesso no Onvio';
+      // departamento que não é nenhum dos três (Administrativo, Financeiro…): a Geral dele, sem as listas da folha
+      else return { ativo: true, fora: false, setor: 'outro', nome: 'Outro setor', dep: String(deptoAcesso).toUpperCase(), deps: [String(deptoAcesso).toUpperCase()], soGeral: true, por: 'acesso no Onvio' };
+    }
+    if (!setor && snap) {
+      const cont = {}; [].concat(snap.items || [], snap.resolvidas || []).forEach(i => { if (i && i.type === 'geral' && i.departmentId) { const k = setorDoDepartamento(mapa, i.departmentId); if (k) cont[k] = (cont[k] || 0) + 1; } });
+      const melhor = Object.keys(cont).sort((a, b) => cont[b] - cont[a])[0];
+      if (melhor) { setor = melhor; por = 'solicitações lidas'; }
+    }
+    const semFolha = !!(snap && Array.isArray(snap.semAcesso) && snap.semAcesso.length && TYPES.filter(t => t.key !== 'geral').every(t => snap.semAcesso.includes(t.key)));
+    if (!setor) return { ativo: false, fora: false, setor: '', nome: '', dep: '', deps: [], soGeral: semFolha, por: '' };
+    return { ativo: true, fora: false, setor, nome: SETOR_NOMES[setor], dep: mapa[setor][0] || '', deps: mapa[setor], soGeral: setor !== 'dp' || semFolha, por };
+  }
+  // Na Geral, só o que é do departamento do setor (as suas ficam sempre); as outras listas são da folha e só existem para o Pessoal.
   function filtrarPorSetor(items, perfil) {
     if (!perfil || !perfil.ativo) return items || [];
     const deps = perfil.deps || (perfil.dep ? [perfil.dep] : []);
-    return (items || []).filter(i => perfil.fora ? !!i.mine : i.mine || !(deps.length && i.type === 'geral' && i.departmentId && !deps.includes(String(i.departmentId).toUpperCase())));
+    return (items || []).filter(i => i.mine || (i.type === 'geral' ? !(deps.length && i.departmentId && !deps.includes(String(i.departmentId).toUpperCase())) : !perfil.soGeral));
   }
 
   /* ---------- distribuição automática de responsáveis (liga o gestor; roda no service worker a cada N minutos) ----------
@@ -1084,7 +1117,8 @@
   }
   // pendencias: o que está no snapshot; sugestoes: OC.distribuirPorCliente; perfil: OC.perfilSetor (Geral só do DP). { atribuir, puladas }
   function planoDistribuicaoAuto(pendencias, sugestoes, perfil) {
-    const visiveis = new Set(filtrarPorSetor(pendencias, perfil).map(i => i.k));
+    // a distribuição automática é só do Pessoal (autorizada para a Geral do DP): em outro setor, nada é atribuído sozinho
+    const visiveis = new Set(perfil && perfil.ativo && perfil.setor !== 'dp' ? [] : filtrarPorSetor(pendencias, perfil).map(i => i.k));
     const puladas = { semHistorico: 0, semId: 0, naoPode: 0, outroSetor: 0, jaTemResponsavel: 0 };
     const atribuir = [];
     for (const x of sugestoes || []) {
@@ -2160,7 +2194,7 @@
           }
           if (parou || rs.length < 200 || page >= ((d && d.totalPages) || 1)) break;
         }
-      } catch (e) { if (e && e.auth) throw e; erros.push(t.label + ': ' + (e && e.message ? e.message : e)); }
+      } catch (e) { if (e && e.auth && (t.key === 'geral' || e.cliente)) throw e; if (!(e && e.auth)) erros.push(t.label + ': ' + (e && e.message ? e.message : e)); }   // sem acesso pelo setor: fica de fora sem erro
     }));
     return { itens: out, erros };
   }
@@ -3875,5 +3909,5 @@
     return resultados;
   }
 
-  g.OC = { testarEmpregadosEmpresa, extratoContribuintes, lerFolhaContribuintes, resumoFolha, tipoCalculo, competenciaMinima, FOLHA_V, FOLHA_MESES_QUADRO, testarFolhaEmpresa, PASTA_PESSOAL, testarFolha, competenciaDoNome, FOLHA_COLUNAS, negritoUnicode, aplicarDestaques, ehEscritorioProprio, sondarEmpregados, montarLoteHub, HUB_CATEGORIAS, tabelaAnaliseSolicitacoes, tabelaAnaliseEquipe, hubPlano, hubExecutar, hubPartesDe, partirTabela, tabelaLista, tabelaPessoais, tabelaCnd, tabelaNfe, lerEscritorio, lerDocumentos, lerNoticias, slugHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, dentroDoHorario, planoDistribuicaoAuto, acaoConcluir, agruparSugestoes, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, acaoAnalise, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, mensagensProntas, marcadoresPendentes, observacoesFaltantes, avisosResposta, situacaoEquivalente, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { testarEmpregadosEmpresa, extratoContribuintes, lerFolhaContribuintes, resumoFolha, tipoCalculo, competenciaMinima, FOLHA_V, FOLHA_MESES_QUADRO, testarFolhaEmpresa, PASTA_PESSOAL, testarFolha, competenciaDoNome, FOLHA_COLUNAS, negritoUnicode, aplicarDestaques, ehEscritorioProprio, sondarEmpregados, montarLoteHub, HUB_CATEGORIAS, tabelaAnaliseSolicitacoes, tabelaAnaliseEquipe, hubPlano, hubExecutar, hubPartesDe, partirTabela, tabelaLista, tabelaPessoais, tabelaCnd, tabelaNfe, lerEscritorio, lerDocumentos, lerNoticias, slugHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, SETOR_NOMES, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, dentroDoHorario, planoDistribuicaoAuto, acaoConcluir, agruparSugestoes, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, acaoAnalise, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, mensagensProntas, marcadoresPendentes, observacoesFaltantes, avisosResposta, situacaoEquivalente, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);
