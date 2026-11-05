@@ -2366,7 +2366,7 @@ test('Pôr em análise: só na vez do escritório, onde o Onvio oferece Em anál
 
 test('rodada 2: férias nova em análise, aviso trabalhado com lembrete, acidente de trabalho e modelos de texto', () => {
   const it = (k, o) => Object.assign({ k, type: 'avisoFerias', typeLabel: 'Aviso de férias', id: 'x' + k, num: Number(k.split(':')[1]), code: 1, status: 'Sem análise', lado: 'esc', parado: 1, apelido: 'ACME', cliente: 'ACME LTDA', detalhe: 'Fulano', resp: 'Ana', last: '2026-10-20T10:00:00' }, o);
-  const casos = OC.casosSugeridos([it('avisoFerias:1'), it('calcFerias:2', { type: 'calcFerias', code: 2, status: 'Em análise' }), it('avisoRescisao:3', { type: 'avisoRescisao', typeLabel: 'Aviso de rescisão', code: 2, status: 'Em análise', detalhe: 'Fulano · aviso trabalhado', avisoEm: '2026-11-05' }),
+  const casos = OC.casosSugeridos([it('avisoFerias:1'), it('calcFerias:2', { type: 'calcFerias', code: 2, status: 'Em análise' }), it('avisoRescisao:3', { type: 'avisoRescisao', typeLabel: 'Aviso de rescisão', code: 2, status: 'Em análise', detalhe: 'Fulano · aviso trabalhado', avisoEm: '2099-11-05' }),
     it('avisoRescisao:4', { type: 'avisoRescisao', typeLabel: 'Aviso de rescisão' }), it('calcRescisao:5', { type: 'calcRescisao', typeLabel: 'Cálculo de rescisão' }), it('calcRescisao:6', { type: 'calcRescisao', typeLabel: 'Cálculo de rescisão', detalhe: 'Beltrano', code: 4, status: 'Respondido', lado: 'cli' })], {}, OC.DEFAULTS);
   assert.deepEqual(plano(casos.map(c => c.k + '=' + c.tipo).sort()), ['avisoFerias:1=feriasNova', 'avisoRescisao:3=avisoTrabalhado', 'avisoRescisao:4=rescisaoNova'], 'o cálculo de rescisão não entra na Rescisão nova');
   // rescisão nova (qualquer tipo): põe em análise e avisa do pagamento, dos documentos, do exame demissional e do eSocial/FGTS
@@ -2387,7 +2387,7 @@ test('rodada 2: férias nova em análise, aviso trabalhado com lembrete, acident
   const at = casos.find(c => c.tipo === 'avisoTrabalhado');
   assert.equal(at.botao, 'Criar lembrete');
   assert.match(at.acao.lembrete.texto, /^Emitir o aviso prévio trabalhado \(sem cálculo\) · #3 ACME · Fulano/);
-  assert.equal(new Date(at.acao.lembrete.quando).getDate(), 4, 'dia útil antes do aviso (05/11/2026)');
+  assert.equal(new Date(at.acao.lembrete.quando).getDate(), 4, 'dia útil antes do aviso (05/11/2099, uma quinta: o lembrete nunca cai no passado, por isso a data fica no futuro)');
   assert.equal(new Date(at.acao.lembrete.quando).getHours(), 9);
   assert.doesNotThrow(() => OC.novoLembrete({ texto: at.acao.lembrete.texto, quando: at.acao.lembrete.quando, k: at.k, type: 'avisoRescisao', num: 3 }, new Date()));
   assert.equal(OC.casosSugeridos([it('avisoFerias:1')], {}, Object.assign({}, OC.DEFAULTS, { sugestoes: { feriasNova: false } })).length, 0, 'as regras desligam o caso');
@@ -2540,7 +2540,7 @@ test('mapeamento de 22/10: acidente pelo tipo do afastamento (vem na lista), avi
   assert.equal(!!i7.acidente, true);
   // aviso trabalhado: cálculo de rescisão com WORKED (e só na vez do escritório) sugere o lembrete, com a data do início do aviso
   const calc = (k, o) => Object.assign({ k, id: 'y' + k, type: 'calcRescisao', typeLabel: 'Cálculo de rescisão', num: Number(k.split(':')[1]), code: 2, status: 'Em análise', lado: 'esc', parado: 1, apelido: 'ACME', cliente: 'ACME LTDA', detalhe: 'Fulano', resp: 'Ana', mine: true, tipoAviso: 'WORKED' }, o);
-  const casos = OC.casosSugeridos([calc('calcRescisao:1', { avisoEm: '2026-11-05', detalhe: 'Empregado 1' }), calc('calcRescisao:2', { tipoAviso: 'INDEMNIFIED', detalhe: 'Empregado 2' }), calc('calcRescisao:3', { tipoAviso: 'ABSENSE_DISPENSATION', detalhe: 'Empregado 3' }), calc('calcRescisao:4', { lado: 'cli', code: 4, detalhe: 'Empregado 4' })], {}, OC.DEFAULTS);
+  const casos = OC.casosSugeridos([calc('calcRescisao:1', { avisoEm: '2099-11-05', detalhe: 'Empregado 1' }), calc('calcRescisao:2', { tipoAviso: 'INDEMNIFIED', detalhe: 'Empregado 2' }), calc('calcRescisao:3', { tipoAviso: 'ABSENSE_DISPENSATION', detalhe: 'Empregado 3' }), calc('calcRescisao:4', { lado: 'cli', code: 4, detalhe: 'Empregado 4' })], {}, OC.DEFAULTS);
   assert.deepEqual(plano(casos.map(c => c.k + '=' + c.tipo)), ['calcRescisao:1=avisoTrabalhado']);
   assert.match(casos[0].porque, /lembrete para 04\/11/, 'um dia útil antes do início do aviso');
   // a data do aviso do cálculo é lida uma vez no detalhe e só a data fica
