@@ -51,7 +51,8 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 - **Configurações › Avançado › Testar a leitura do Gestta:** com o Gestta aberto e logado numa aba, mostra em que tela ele está, até quando vale a sessão, o perfil (coordenação ou analista e os setores) e uma leitura de prova de cada fonte, só com contagens: setores, equipe, clientes, cartela de um cliente, tarefas abertas do mês, multas, fila de envio ao Onvio com erro e templates sem pasta no portal.
 - Com acesso de analista, o teste avisa que o envio ao Hub não vai sair (só a coordenação enxerga todos os setores); leitura que o acesso não alcança aparece como "seu acesso não inclui esta leitura".
 - Permissão nova: `https://app.gestta.com.br/*` (o Chrome pede para confirmar ao atualizar). Nada aparece por cima do Gestta ainda: o painel vem no item 2.
-- **A conferir no Chrome do Josué:** o "Testar a leitura do Gestta" no Gestta real (perfil, contagens) e, com um login de analista, quais leituras ele alcança.
+- **Conferido no Gestta real em 05/11/2026** (Chrome do Josué, perfil Administrador): todas as leituras responderam; 20 setores, 123 na equipe, 1.385 clientes ativos, cartela de um cliente com 4 setores, 16 multas no mês, 1 envio ao Onvio com erro e **609 templates de documento sem pasta no portal**. Sessão do Gestta vale cerca de 24 horas.
+- **A conferir:** as 5.250 tarefas abertas ou com impedimento no mês contra a contagem da própria lista do Gestta (novembro, data de meta, todos os usuários) e, com um login de analista, quais leituras ele alcança.
 
 ## Hub 314: módulo Empresas (04/11/2026)
 
