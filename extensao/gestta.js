@@ -112,7 +112,11 @@
     filaOnvio: { _id: true, status: true, error: true, retry_count: true, created_at: true, updated_at: true,
       customer_task: { _id: true, name: true, customer: { _id: true, name: true, cnpj: true }, company_department: SETOR, owner: REF, _due_date: true, _competence_date: true },
       customer_task_file: { company_document: REF } },
-    contagem: { fine: true, approve: true, email_not_sent: true, count: true }
+    contagem: { fine: true, approve: true, email_not_sent: true, count: true },
+    // 0.77.0: o histórico da tarefa para a linha do tempo do painel (lido na hora, nunca guardado). Fora o email_log
+    // (destinatários e servidores), o arquivo e o upload: só o tipo, a situação, o motivo, a data, quem fez e o nome do documento.
+    historico: { _id: true, type: true, status: true, reason: true, accomplished_at: true, created_at: true, accomplished_by: { name: true },
+      accomplished_by_customer_user: { name: true }, company_document: { name: true }, file_name: true, comment: true, is_auto_respond: true }
   };
   // Colunas do relatório CUSTOMER_TASK que saem da página (das 34): fora valor, pontuação e mensalidade (decisão pendente).
   const COLUNAS_RELATORIO = ['id', 'name', 'type', 'subtype', 'status', 'company_department.name', 'owner.name', 'owner.role', 'notify_customer', 'fine', '_due_date', 'legal_date', 'downloaded',
@@ -210,6 +214,7 @@
     buscaTarefas: (o) => ({ id: 'buscaTarefas', tipo: 'tarefa', metodo: 'POST', url: url('/core/customer/task/search'),
       corpo: Object.assign({ page: o.page || 1, limit: o.limit || 100, type: o.type || ['RECURRENT', 'SERVICE_ORDER', 'ACCOUNTING'], status: o.status || ['OPEN', 'IMPEDIMENT'], date_type: 'DUE_DATE' }, janelaDoMes(o.ano, o.mes), o.companyUser ? { company_user: [o.companyUser] } : {}, o.semDono ? { no_owner: true } : {}) }),
     tarefa: (o) => ({ id: 'tarefa', tipo: 'tarefaDetalhe', metodo: 'GET', url: url('/core/customer/task/' + encodeURIComponent(o.id)) }),
+    historico: (o) => ({ id: 'historico', tipo: 'historico', metodo: 'GET', url: url('/core/customer/task/' + encodeURIComponent(o.id) + '/history', { page: o.page || 1 }) }),
     relatorio: (o) => { const j = janelaDoMes(o.ano, o.mes); return { id: 'relatorio', tipo: 'relatorio', metodo: 'POST', url: url('/core/customer/task/report'), corpo: { type: 'CUSTOMER_TASK', filter: '', dates: { startDate: j.start_date, endDate: j.end_date } } }; },
     fechamento: (o) => Object.assign(PEDIDOS.relatorio(o), { id: 'fechamento', tipo: 'fechamento' }),
     filaOnvioErro: (o) => ({ id: 'filaOnvioErro', tipo: 'filaOnvio', metodo: 'GET', url: url('/es/file/onvio', { status: 'ERROR', limit: (o && o.limit) || 50, skip: 0 }) }),
@@ -445,10 +450,82 @@
   }
   // A tarefa no Gestta (só navegação; nada é feito nela)
   const urlTarefa = id => /^[0-9a-f]{24}$/i.test(String(id || '')) ? APP + '/#/sidebar/task/overview/dashboard/' + id : null;
+  /* ---------- 0.77.0: linha do tempo da tarefa, quadro de obrigações, Meu dia e ordem das empresas ---------- */
+  // Um evento do histórico em palavras. tom: ok (andou), alerta (algo não saiu), cliente (o cliente fez), neutro.
+  const MOTIVO_DOC = { NO_FOLDER_CONFIGURED: 'a pasta do portal não está configurada', NOT_SENT_NO_CUSTOMER_ACCOUNTABLE: 'o cliente não tem usuário neste setor' };
+  const EVENTO = {
+    TASK: { DONE: ['Concluiu a tarefa', 'ok'], IMPEDIMENT: ['Marcou impedimento', 'alerta'], DISCONSIDERED: ['Desconsiderou a tarefa', 'neutro'], TRANSFER_OWNERSHIP: ['Transferiu a tarefa', 'neutro'], OPEN: ['Reabriu a tarefa', 'neutro'] },
+    STEP: { DONE: ['Concluiu uma etapa', 'ok'], OPEN: ['Reabriu uma etapa', 'neutro'] },
+    DOCUMENT: { SENT_TO_PORTAL: ['Documento enviado ao portal', 'ok'], NOT_SENT_TO_PORTAL: ['Documento não foi ao portal', 'alerta'], DOWNLOADED: ['O cliente baixou o documento', 'cliente'], VIEWED: ['O cliente viu o documento', 'cliente'], ADDED: ['Documento anexado', 'neutro'], ADD: ['Documento anexado', 'neutro'] },
+    REQUESTED_DOCUMENT: { _: ['Documento pedido ao cliente', 'neutro'], DONE: ['O cliente mandou o documento pedido', 'cliente'], SENT: ['Pedido de documento enviado ao cliente', 'neutro'] },
+    EMAIL: { SENT: ['E-mail enviado ao cliente', 'ok'], DELIVERY: ['E-mail entregue ao cliente', 'ok'], NOT_SENT: ['E-mail ao cliente não saiu', 'alerta'] },
+    WHATSAPP: { _: ['Mensagem de WhatsApp', 'neutro'] },
+    COMMENT: { _: ['Comentário', 'neutro'] },
+    AUTOMATION: { _: ['Automação do Gestta', 'neutro'] },
+    TASK_BATCH: { _: ['Alteração em lote', 'neutro'] },
+    OUTCOMING_CALL: { _: ['Ligação', 'neutro'] },
+    PROCESS: { _: ['Processo', 'neutro'] },
+    MESSENGER: { _: ['Mensageiro', 'neutro'] }
+  };
+  function eventosDaTarefa(itens) {
+    return (itens || []).filter(x => x && x.type !== 'TIMESHEET').map(x => {
+      const tab = EVENTO[x.type], r = tab ? (tab[x.status] || tab._) : null;
+      const rot = r ? r[0] : 'Evento do Gestta (' + String(x.type || '?').toLowerCase() + (x.status ? ', ' + String(x.status).toLowerCase() : '') + ')';
+      const doc = (x.company_document && x.company_document.name) || x.file_name || '';
+      const quem = (x.accomplished_by_customer_user && x.accomplished_by_customer_user.name) ? { nome: x.accomplished_by_customer_user.name, cliente: true } : (x.accomplished_by && x.accomplished_by.name) ? { nome: x.accomplished_by.name, cliente: false } : null;
+      return { quando: x.accomplished_at || x.created_at || '', tipo: x.type || '', rot, tom: r ? r[1] : 'neutro', doc: String(doc || ''), motivo: MOTIVO_DOC[x.reason] || '', quem,
+        texto: typeof x.comment === 'string' ? x.comment : '', auto: !!x.is_auto_respond, desconhecido: !r };
+    }).sort((a, b) => String(b.quando).localeCompare(String(a.quando)));
+  }
+  // Quadro de obrigações: empresas nas linhas e as tarefas do mês (pelo nome) nas colunas, das que mais se repetem às que menos.
+  const nomeObrigacao = n => String(n || 'Sem nome').replace(/\s+/g, ' ').trim().toUpperCase();
+  function obrigacoes(tarefas, hoje) {
+    const cols = new Map(), emps = porEmpresa(tarefas, hoje);
+    for (const t of tarefas || []) {
+      const g = grupoTarefa(t, hoje); if (!g) continue;
+      const k = nomeObrigacao(t.name);
+      if (!cols.has(k)) cols.set(k, { nome: k, total: 0, feitas: 0, alerta: 0 });
+      const c = cols.get(k); c.total++; if (g === 'feita') c.feitas++; else if (g === 'multa' || g === 'atrasada') c.alerta++;
+    }
+    const colunas = [...cols.values()].sort((a, b) => b.total - a.total || a.nome.localeCompare(b.nome, 'pt-BR'));
+    const linhas = emps.map(e => {
+      const cel = new Map();
+      trilhaDaEmpresa(e.tarefas, hoje).etapas.forEach(x => { const k = nomeObrigacao(x.t.name); if (!cel.has(k)) cel.set(k, []); cel.get(k).push(x); });
+      return { empresa: e, celulas: cel };
+    });
+    return { colunas, linhas };
+  }
+  // Meu dia: o que resolver agora (multa e atraso), o que está parado, o que vence hoje e os próximos dias úteis.
+  function meuDia(tarefas, hoje, diasProximos) {
+    const h = diaLocal(hoje || new Date()), n = diasProximos || 3, out = { agora: [], impedimento: [], hoje: [], proximos: [], feitasHoje: 0, totalHoje: 0 };
+    for (const t of tarefas || []) {
+      const g = grupoTarefa(t, h); if (!g) continue;
+      const d = diaLocal(t.due_date), ehHoje = d && +d === +h;
+      if (ehHoje) { out.totalHoje++; if (g === 'feita') out.feitasHoje++; }
+      if (g === 'multa' || g === 'atrasada') out.agora.push(t);
+      else if (g === 'impedimento') out.impedimento.push(t);
+      else if (g === 'hoje') out.hoje.push(t);
+      else if (g !== 'feita' && d && diasUteis(h, d) <= n) out.proximos.push(t);
+    }
+    const porMeta = (a, b) => String(a.due_date || '').localeCompare(String(b.due_date || '')) || String((a.customer || {}).name || '').localeCompare(String((b.customer || {}).name || ''), 'pt-BR');
+    out.agora.sort((a, b) => (b.fine ? 1 : 0) - (a.fine ? 1 : 0) || porMeta(a, b)); out.impedimento.sort(porMeta); out.hoje.sort(porMeta); out.proximos.sort(porMeta);
+    out.fila = out.agora.concat(out.hoje, out.impedimento, out.proximos);
+    return out;
+  }
+  // Ordem das empresas: risco (o que pesa primeiro, como porEmpresa), progresso (menos concluída primeiro), próxima meta ou nome.
+  const ORDENS_EMPRESA = { risco: 'Risco', progresso: 'Progresso', proxima: 'Próxima meta', nome: 'Nome' };
+  function ordenarEmpresas(emps, criterio) {
+    const l = (emps || []).slice();
+    if (criterio === 'progresso') return l.sort((a, b) => (a.pctFeitas - b.pctFeitas) || (b.abertas - a.abertas) || a.nome.localeCompare(b.nome, 'pt-BR'));
+    if (criterio === 'proxima') return l.sort((a, b) => String(a.proxima || '9').localeCompare(String(b.proxima || '9')) || a.nome.localeCompare(b.nome, 'pt-BR'));
+    if (criterio === 'nome') return l.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+    return l;
+  }
   const MAX_PAGINAS_TAREFAS = 15;      // 15 × 1000: bem acima do que uma pessoa tem num mês; passou disso, a tela avisa que cortou
 
   g.OCG = { API, APP, PAUSA_MS, LIMITE_BUSCA, JANELA_MAX_DIAS, POST_LEITURA, RELATORIO_TIPOS, COLUNAS_RELATORIO, MOLDES, APPS,
     caminhoDe, leituraPermitida, appDe, escolher, limpar, limparRelatorio, perfil, expiraEm, janelaDoMes, PEDIDOS, lerNaPagina, linhasDoTeste,
     GRUPOS, TIPOS_TAREFA, SITUACOES_TAREFA, MAX_PAGINAS_TAREFAS, diasUteis, grupoTarefa, prazoTexto, contarGrupos, porEmpresa, porDia, filtrarTarefas, urlTarefa, ymd, diaLocal,
-    COLUNAS_FECHAMENTO, linhasDoRelatorio, tarefasDoRelatorio, trilhaDaEmpresa, fechamento, ESTADOS, setorDe, respDe, ehEscritorioProprio };
+    COLUNAS_FECHAMENTO, linhasDoRelatorio, tarefasDoRelatorio, trilhaDaEmpresa, fechamento, ESTADOS, setorDe, respDe, ehEscritorioProprio,
+    eventosDaTarefa, obrigacoes, nomeObrigacao, meuDia, ORDENS_EMPRESA, ordenarEmpresas };
 })(typeof self !== 'undefined' ? self : this);
