@@ -2566,6 +2566,116 @@ await passo('app · contraste: nenhum texto abaixo de 4,5:1 (WCAG AA) nas telas 
   assert.deepEqual(ruins.slice(0, 12), [], 'texto com pouco contraste (' + ruins.length + ')');
 });
 
+/* ---------- Tarefas do Gestta (0.72.0): camada por cima do Gestta ---------- */
+const GT_EU = 'aaaaaaaaaaaaaaaaaaaaaaaa', GT_B = 'bbbbbbbbbbbbbbbbbbbbbbbb';
+function gtTarefas() {
+  const dia = n => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + n); return new Date(d.getTime() + 3 * 36e5).toISOString(); };
+  const util = n => { const d = new Date(); d.setHours(0, 0, 0, 0); let k = 0; while (k < n) { d.setDate(d.getDate() + 1); if (d.getDay() % 6) k++; } return new Date(d.getTime() + 3 * 36e5).toISOString(); };
+  const C = (id, name, code) => ({ _id: id, name, code });
+  const A = C('c00000000000000000000001', 'CLIENTE ALFA LTDA', '101'), B = C('c00000000000000000000002', 'CLIENTE BETA ME', '102'), Cc = C('c00000000000000000000003', 'CLIENTE GAMA SA', '103');
+  const t = (n, o) => Object.assign({ _id: 'f0000000000000000000000' + n, type: 'RECURRENT', status: 'OPEN', fine: false, overdue: false, total_step: 0, done_step: 0 }, o);
+  return [
+    t(1, { name: 'DCTF WEB', customer: A, fine: true, overdue: true, due_date: dia(-5) }),
+    t(2, { name: 'FOLHA DE PAGAMENTO', customer: A, overdue: true, due_date: dia(-2) }),
+    t(3, { name: 'APURAÇÃO DO ICMS', customer: B, status: 'IMPEDIMENT', due_date: util(3) }),
+    t(4, { name: 'GUIA DO FGTS', customer: B, due_date: dia(0), total_step: 4, done_step: 1 }),
+    t(5, { name: 'DAS DO SIMPLES', customer: Cc, due_date: util(2), type: 'SERVICE_ORDER' }),
+    t(6, { name: 'BALANCETE', customer: Cc, due_date: util(9), type: 'ACCOUNTING' }),
+    t(7, { name: 'ESOCIAL MENSAL', customer: A, status: 'DONE', due_date: dia(-1) }),
+    t(8, { name: 'IGNORADA', customer: A, status: 'IGNORED', due_date: dia(1) })
+  ];
+}
+const gtResp = (total, itens) => ({ gesttaTarefas: { ok: true, ano: new Date().getFullYear(), mes: new Date().getMonth() + 1, quem: 'eu', perfil: { id: GT_EU, papelNome: total ? 'Administrador' : 'Analista', total, setores: [{ id: 's1', nome: 'Fiscal' }] }, itens: itens || gtTarefas(), total: 8, cortado: false, lidoEm: new Date().toISOString() },
+  gesttaEquipe: { ok: true, pessoas: [{ id: GT_EU, nome: 'Eu Mesmo' }, { id: GT_B, nome: 'Pessoa Beta' }] } });
+async function abrirGestta(resp, o) {
+  const p = await pagina('https://app.gestta.com.br/', '<!doctype html><title>Gestta</title><body><h1>Gestta simulado</h1></body>');
+  await p.setViewportSize({ width: (o && o.largura) || 1440, height: 900 });
+  await p.addInitScript(e => { try { localStorage.setItem('controlonvio-estilo', e); } catch (x) {} }, (o && o.estilo) || 'simples');
+  await p.addInitScript('window.__respostas = ' + JSON.stringify(resp) + ';');
+  await p.goto('https://app.gestta.com.br/');
+  await p.addScriptTag({ content: lerExt('shell-gestta.js') });
+  await p.waitForFunction(() => (window.__ouvintes || []).length > 0);
+  await p.evaluate(() => window.__ouvintes.forEach(f => f({ controlGestta: 'alternar' })));        // o mesmo que o ícone ou Alt+Shift+O
+  let fr = null;
+  for (let i = 0; i < 60 && !fr; i++) { fr = p.frames().find(f => /gestta\.html/.test(f.url())); if (!fr) await p.waitForTimeout(100); }
+  await fr.waitForSelector('.gt-kpi, .faixa');
+  return { p, fr };
+}
+await passo('Gestta · Tarefas: camada pelo botão, grupos por prazo, busca e filtros, por empresa, calendário e abrir a tarefa no Gestta (0.72.0)', async () => {
+  const { p, fr } = await abrirGestta(gtResp(true));
+  const kpi = k => fr.$eval('.gt-kpi[data-grupo="' + k + '"] b', e => e.textContent);
+  for (const k of ['multa', 'atrasada', 'impedimento', 'hoje', 'proximas', 'depois', 'feita']) assert.equal(await kpi(k), '1', 'um em ' + k);
+  assert.match(await fr.textContent('.gt-prog-tx'), /14%\s*1 de 7 concluídas/, 'a ignorada não conta');
+  // por prazo: a ordem do que pesa, sem as concluídas (botão "Mostrar concluídas" desligado)
+  assert.deepEqual(await fr.$$eval('.gt-grupo-cab', l => l.map(h => h.childNodes[1].textContent)), ['Gerando multa', 'Atrasadas', 'Com impedimento', 'Vencem hoje', 'Próximos 5 dias úteis', 'Mais adiante']);
+  assert.equal(await fr.locator('.gt-t').count(), 6);
+  assert.match(await fr.textContent('.gt-c-multa .gt-t'), /DCTF WEB.*101.*CLIENTE ALFA.*Venceu há 5 dias.*Multa/s);
+  assert.match(await fr.textContent('.gt-c-hoje .gt-t'), /Vence hoje.*1\/4/s, 'etapas da tarefa');
+  // busca instantânea (sem acento) e filtro pela situação no destaque
+  await fr.fill('#gt-q', 'gama'); assert.equal(await fr.locator('.gt-t').count(), 2, 'busca pelo cliente');
+  await fr.fill('#gt-q', 'apuracao'); assert.equal(await fr.locator('.gt-t').count(), 1, 'busca sem acento');
+  await fr.click('#gt-limpar'); assert.equal(await fr.locator('.gt-t').count(), 6);
+  await fr.click('.gt-kpi[data-grupo="multa"]'); await fr.click('.gt-kpi[data-grupo="atrasada"]');
+  assert.equal(await fr.locator('.gt-t').count(), 2, 'multa + atrasadas');
+  await fr.click('#gt-limpar');
+  await fr.click('.gt-chip[data-tipo="ACCOUNTING"]'); assert.equal(await fr.locator('.gt-t').count(), 1, 'só contábil');
+  await fr.click('#gt-limpar');
+  await fr.check('#gt-feitas'); assert.equal(await fr.locator('.gt-t').count(), 7, 'com as concluídas');
+  await fr.uncheck('#gt-feitas');
+  // por empresa: a que pesa mais primeiro (multa), e abre para ver as tarefas dela
+  await fr.click('[data-modo="empresa"]');
+  assert.deepEqual(await fr.$$eval('.gt-emp-nome b', l => l.map(e => e.textContent)), ['CLIENTE ALFA LTDA', 'CLIENTE BETA ME', 'CLIENTE GAMA SA']);
+  assert.match(await fr.textContent('.gt-emp'), /1 com multa.*1 atrasada/s);
+  await fr.click('.gt-emp-cab'); assert.equal(await fr.locator('.gt-emp.aberta .gt-t').count(), 2);
+  if (process.env.CAP) await p.screenshot({ path: path.join(process.env.CAP, 'gestta-empresa.png') });
+  // calendário: o dia de hoje tem a tarefa que vence hoje; clicar mostra a lista do dia
+  await fr.click('[data-modo="calendario"]');
+  await fr.click('.gt-dia.hoje');
+  assert.match(await fr.textContent('.gt-conteudo'), /GUIA DO FGTS/);
+  if (process.env.CAP) await p.screenshot({ path: path.join(process.env.CAP, 'gestta-calendario.png') });
+  await fr.click('[data-modo="prazo"]');
+  if (process.env.CAP) await p.screenshot({ path: path.join(process.env.CAP, 'gestta-prazo.png') });
+  // coordenação: escolhe de quem ver (a equipe vem só para quem tem acesso total)
+  await fr.waitForSelector('#gt-quem-wrap:not([hidden])');
+  assert.deepEqual(await fr.$$eval('#gt-quem option', o => o.map(x => x.textContent)), ['Minhas', 'Sem responsável', 'Pessoa Beta'], 'a própria pessoa não se repete na equipe');
+  await fr.selectOption('#gt-quem', GT_B);
+  await fr.waitForFunction(b => (window.__msgs || []).some(m => m.cmd === 'gesttaTarefas' && m.quem === b), GT_B);
+  await fr.selectOption('#gt-quem', 'sem');
+  await fr.waitForFunction(() => (window.__msgs || []).some(m => m.cmd === 'gesttaTarefas' && m.quem === 'sem'));
+  // nada das tarefas vai ao armazenamento da extensão
+  assert.ok(!JSON.stringify(await fr.evaluate(() => localStorage.getItem('__mem') || '')).includes('CLIENTE ALFA'), 'tarefas fora do armazenamento');
+  // abrir: a camada fecha e o próprio Gestta vai para a tarefa
+  await fr.selectOption('#gt-quem', 'eu');
+  await fr.waitForSelector('.gt-c-multa [data-abrir]');
+  await fr.click('.gt-c-multa [data-abrir]');
+  await p.waitForFunction(() => location.hash === '#/sidebar/task/overview/dashboard/f00000000000000000000001');
+  assert.deepEqual(p.erros, []);
+});
+await passo('Gestta · Tarefas: o analista não escolhe outra pessoa; sem sessão aparece o aviso; contraste nos dois estilos e temas', async () => {
+  const a = await abrirGestta(gtResp(false));
+  await a.fr.waitForTimeout(300);
+  assert.equal(await a.fr.$eval('#gt-quem-wrap', e => e.hidden), true, 'analista só vê as dele');
+  assert.ok(!(await a.fr.evaluate(() => (window.__msgs || []).some(m => m.cmd === 'gesttaEquipe'))), 'a equipe nem é pedida');
+  const s = await abrirGestta({ gesttaTarefas: { ok: false, semSessao: true, erro: 'sem sessão do Gestta nesta aba (faça login)' } });
+  assert.match(await s.fr.textContent('.faixa'), /Sem sessão no Gestta\..*faça login/s);
+  const medir = require('./contraste-lib.js'), ruins = [];
+  for (const estilo of ['simples', 'atual']) for (const tema of ['light', 'dark']) for (const modo of ['prazo', 'empresa', 'calendario']) {
+    const { p, fr } = await abrirGestta(gtResp(true), { estilo });
+    await p.emulateMedia({ reducedMotion: 'reduce' });
+    await fr.evaluate(t => document.documentElement.setAttribute('data-theme', t), tema);
+    await fr.click('[data-modo="' + modo + '"]');
+    if (modo === 'empresa') await fr.click('.gt-emp-cab');
+    if (modo === 'calendario') await fr.click('.gt-dia.hoje');
+    await fr.check('#gt-feitas');
+    await fr.waitForTimeout(400);
+    if (process.env.CAP && modo === 'prazo') await p.screenshot({ path: path.join(process.env.CAP, 'gestta-' + estilo + '-' + tema + '.png') });
+    const r = await fr.evaluate(([m, min]) => eval('(' + m + ')')(min), [medir.toString(), 4.5]);
+    for (const x of r) ruins.push(estilo + '/' + tema + ' · ' + modo + ' · "' + x.texto + '" ' + x.fg + ' sobre ' + x.bg + ' = ' + x.r + ':1');
+    await p.context().close();
+  }
+  assert.deepEqual(ruins.slice(0, 12), [], 'texto com pouco contraste (' + ruins.length + ')');
+});
+
 await navegador.close();
 console.log(falhas.length ? '\nFALHARAM: ' + falhas.join(' | ') : '\ntodos os testes de navegador passaram');
 process.exit(falhas.length ? 1 : 0);

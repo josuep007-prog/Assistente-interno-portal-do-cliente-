@@ -335,7 +335,7 @@ assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br
   const TOKEN = 'JWT eyJhbGciOiJIUzI1NiJ9.' + Buffer.from(JSON.stringify({ exp: 1893456000 })).toString('base64url') + '.SEGREDO-ASSINATURA';
   const ID = '5f1e2d3c4b5a69788796a5b4', ID2 = '6a5b4c3d2e1f00112233aabb';
   const CORS = { 'access-control-allow-origin': 'https://app.gestta.com.br', 'access-control-allow-headers': 'authorization,content-type,accept', 'access-control-allow-methods': 'GET,POST,OPTIONS' };
-  const gChamadas = [], gCab = [];
+  const gChamadas = [], gCab = [], gBuscas = [];
   let papel = 'ROLE_ADMIN', adminProibido = false;
   await ctx.route('https://app.gestta.com.br/**', r => r.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Gestta</title><body>Tarefas</body>' }));
   await ctx.route('https://api.gestta.com.br/**', async r => {
@@ -350,7 +350,11 @@ assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br
     if (p === '/admin/company/user') return json({ docs: [{ _id: ID2, name: 'Pessoa Ficticia', phone_number: '(27) 90000-0000' }], totalDocs: 123 });
     if (p === '/admin/customer') return json({ docs: [{ _id: ID, code: '9999', name: 'EMPRESA FICTICIA LTDA', cnpj: '12.345.678/0001-90', monthly_payment: 999 }], totalDocs: 1385 });
     if (p === '/admin/customer/' + ID + '/responsible') return json([{ company_department: { _id: ID, name: 'Pessoal' }, company_user: { _id: ID2, name: 'Pessoa Ficticia', phone_number: '(27) 90000-0000' } }]);
-    if (p === '/core/customer/task/search') return json({ docs: [{ _id: ID, name: 'TAREFA', status: 'OPEN' }], total: 6833, pages: 6833, page: 1, limit: 1 });
+    if (p === '/core/customer/task/search') {
+      const c = JSON.parse(q.postData() || '{}'); gBuscas.push(c);
+      if (c.limit === 1) return json({ docs: [{ _id: ID, name: 'TAREFA', status: 'OPEN' }], total: 6833, pages: 6833, page: 1, limit: 1 });
+      return json({ docs: [{ _id: c.page === 1 ? ID : ID2, name: 'TAREFA ' + c.page, status: 'OPEN', due_date: new Date().toISOString(), customer: { _id: ID, name: 'EMPRESA FICTICIA LTDA', code: '9999' }, value: 999, owner: { phone_number: '9' } }], total: 2, pages: 2, page: c.page, limit: 1000 });
+    }
     if (p === '/core/dashboard/attention/fine/all') return json({ fine: 7 });
     if (p === '/es/file/onvio') return json({ docs: [], totalDocs: 4 });
     if (p === '/admin/company/document') return json({ docs: [{ _id: ID, name: 'DAS' }], totalDocs: 1008, documents_without_destination: 31 });
@@ -378,12 +382,32 @@ assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br
   // o token não chega ao armazenamento da extensão
   const tudo = await pagina.evaluate(() => chrome.storage.local.get(null));
   assert.ok(!JSON.stringify(tudo).includes('SEGREDO') && !JSON.stringify(tudo).includes('eyJ'), 'token fora do armazenamento');
+  // Tarefas do Gestta (0.72.0): as da própria pessoa, de 1000 em 1000, todas as páginas, abertas, com impedimento e concluídas
+  const tt = m => pagina.evaluate(x => new Promise(res => chrome.runtime.sendMessage(x, res)), m);
+  gBuscas.length = 0;
+  const t1 = await tt({ cmd: 'gesttaTarefas' });
+  assert.ok(t1.ok, 'gesttaTarefas: ' + (t1.erro || ''));
+  assert.equal(t1.itens.length, 2, 'as duas páginas'); assert.equal(t1.quem, 'eu'); assert.equal(t1.perfil.total, true);
+  assert.deepEqual(gBuscas.map(c => c.page), [1, 2]);
+  assert.ok(gBuscas.every(c => c.limit === 1000 && JSON.stringify(c.company_user) === JSON.stringify([ID2]) && c.status.includes('DONE') && !c.status.includes('IGNORED')), 'só as da pessoa logada, um mês');
+  assert.equal(t1.itens[0].value, undefined, 'valor da tarefa não sai da página'); assert.equal(t1.itens[0].owner, undefined);
+  gBuscas.length = 0;
+  const t2 = await tt({ cmd: 'gesttaTarefas', quem: 'sem' });
+  assert.equal(t2.quem, 'sem'); assert.ok(gBuscas.every(c => c.no_owner === true && !c.company_user), 'sem responsável');
+  const eq = await tt({ cmd: 'gesttaEquipe' });
+  assert.ok(eq.ok && eq.pessoas.length === 1 && eq.pessoas[0].nome === 'Pessoa Ficticia' && !JSON.stringify(eq).includes('(27)'), 'equipe só com id e nome');
+  for (const s of ['SEGREDO', 'eyJ']) assert.ok(!JSON.stringify([t1, t2, eq]).includes(s), 'token fora: ' + s);
+  // o shell entra no Gestta pelo manifesto (o botão fica num Shadow DOM fechado)
+  assert.equal(await gAba.evaluate(() => !!document.getElementById('controlgestta-host')), true, 'botão do Control no Gestta');
   // analista: avisa que o envio ao Hub não sai; admin proibido vira "seu acesso não inclui"
   papel = 'ROLE_USER'; adminProibido = true;
   const g2 = (await tg()).linhas.join('\n');
   assert.match(g2, /Perfil: Analista · acesso ao\(s\) setor\(es\) dele/);
   assert.match(g2, /o envio ao Hub não sai/);
   assert.match(g2, /clientes ativos: seu acesso não inclui esta leitura \(403\)/);
+  gBuscas.length = 0;
+  const t3 = await tt({ cmd: 'gesttaTarefas', quem: '6a5b4c3d2e1f00112233aabc' });
+  assert.equal(t3.quem, 'eu', 'o analista não vê as tarefas de outra pessoa'); assert.ok(gBuscas.every(c => JSON.stringify(c.company_user) === JSON.stringify([ID2])));
   // sem sessão: não pede nada e diz o que fazer
   const antes = gChamadas.length;
   await gAba.evaluate(() => localStorage.removeItem('ngStorage-jwt'));

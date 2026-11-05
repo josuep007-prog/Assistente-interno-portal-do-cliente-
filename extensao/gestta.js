@@ -171,7 +171,7 @@
     clientes: (o) => ({ id: 'clientes', tipo: 'cliente', metodo: 'GET', url: url('/admin/customer', { active: true, limit: (o && o.limit) || 200, page: (o && o.page) || 1 }) }),
     cartela: (o) => ({ id: 'cartela', tipo: 'cartela', metodo: 'GET', url: url('/admin/customer/' + encodeURIComponent(o.cliente) + '/responsible') }),
     buscaTarefas: (o) => ({ id: 'buscaTarefas', tipo: 'tarefa', metodo: 'POST', url: url('/core/customer/task/search'),
-      corpo: Object.assign({ page: o.page || 1, limit: o.limit || 100, type: o.type || ['RECURRENT', 'SERVICE_ORDER', 'ACCOUNTING'], status: o.status || ['OPEN', 'IMPEDIMENT'], date_type: 'DUE_DATE' }, janelaDoMes(o.ano, o.mes), o.companyUser ? { company_user: [o.companyUser] } : {}) }),
+      corpo: Object.assign({ page: o.page || 1, limit: o.limit || 100, type: o.type || ['RECURRENT', 'SERVICE_ORDER', 'ACCOUNTING'], status: o.status || ['OPEN', 'IMPEDIMENT'], date_type: 'DUE_DATE' }, janelaDoMes(o.ano, o.mes), o.companyUser ? { company_user: [o.companyUser] } : {}, o.semDono ? { no_owner: true } : {}) }),
     tarefa: (o) => ({ id: 'tarefa', tipo: 'tarefaDetalhe', metodo: 'GET', url: url('/core/customer/task/' + encodeURIComponent(o.id)) }),
     relatorio: (o) => { const j = janelaDoMes(o.ano, o.mes); return { id: 'relatorio', tipo: 'relatorio', metodo: 'POST', url: url('/core/customer/task/report'), corpo: { type: 'CUSTOMER_TASK', filter: '', dates: { startDate: j.start_date, endDate: j.end_date } } }; },
     filaOnvioErro: (o) => ({ id: 'filaOnvioErro', tipo: 'filaOnvio', metodo: 'GET', url: url('/es/file/onvio', { status: 'ERROR', limit: (o && o.limit) || 50, skip: 0 }) }),
@@ -251,6 +251,116 @@
     return L;
   }
 
+  /* ---------- tarefas: grupos, prazos e visões da tela "Tarefas do Gestta" (0.72.0) ---------- */
+  const diaLocal = d => { const x = d instanceof Date ? d : new Date(d); return isNaN(x) ? null : new Date(x.getFullYear(), x.getMonth(), x.getDate()); };
+  const p2 = n => String(n).padStart(2, '0');
+  const ymd = d => d ? d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()) : '';
+  const ddmm = d => d ? p2(d.getDate()) + '/' + p2(d.getMonth() + 1) : '';
+  const util = d => d.getDay() !== 0 && d.getDay() !== 6;
+  // dias úteis (seg a sex) de hoje (exclusive) até o alvo (inclusive); negativo para trás
+  function diasUteis(hoje, alvo) {
+    const a = diaLocal(hoje), b = diaLocal(alvo); if (!a || !b) return null;
+    if (+a === +b) return 0;
+    const passo = b > a ? 1 : -1; let n = 0;
+    for (let d = new Date(a); +d !== +b;) { d.setDate(d.getDate() + passo); if (util(d)) n += passo; }
+    return n;
+  }
+  const diasCorridos = (hoje, alvo) => { const a = diaLocal(hoje), b = diaLocal(alvo); return a && b ? Math.round((b - a) / 864e5) : null; };
+  // Ordem na tela: do que mais pesa ao que pode esperar
+  const GRUPOS = [
+    { k: 'multa', rot: 'Gerando multa', dica: 'passaram da data legal: estão gerando multa' },
+    { k: 'atrasada', rot: 'Atrasadas', dica: 'passaram da meta e ainda estão abertas' },
+    { k: 'impedimento', rot: 'Com impedimento', dica: 'paradas por um impedimento (falta algo do cliente ou de outro setor)' },
+    { k: 'hoje', rot: 'Vencem hoje', dica: 'a meta é hoje' },
+    { k: 'proximas', rot: 'Próximos 5 dias úteis', dica: 'a meta chega nos próximos 5 dias úteis' },
+    { k: 'depois', rot: 'Mais adiante', dica: 'a meta está a mais de 5 dias úteis' },
+    { k: 'feita', rot: 'Concluídas', dica: 'concluídas no mês' }
+  ];
+  const ABERTA = new Set(['OPEN', 'IMPEDIMENT']);
+  function grupoTarefa(t, hoje) {
+    const st = String(t && t.status || '');
+    if (st === 'DONE') return 'feita';
+    if (!ABERTA.has(st)) return null;                     // ignorada, desconsiderada ou situação nova: fora da tela
+    if (t.fine) return 'multa';
+    if (st === 'IMPEDIMENT') return 'impedimento';
+    const d = diaLocal(t.due_date), h = diaLocal(hoje || new Date());
+    if (t.overdue || (d && d < h)) return 'atrasada';
+    if (!d) return 'depois';
+    if (+d === +h) return 'hoje';
+    return diasUteis(h, d) <= 5 ? 'proximas' : 'depois';
+  }
+  function prazoTexto(t, hoje) {
+    const d = diaLocal(t && t.due_date), h = diaLocal(hoje || new Date());
+    if (String(t && t.status) === 'DONE') return 'Concluída';
+    if (!d) return 'Sem meta';
+    const c = diasCorridos(h, d);
+    if (c < 0) return 'Venceu há ' + (-c) + (c === -1 ? ' dia' : ' dias') + ' (' + ddmm(d) + ')';
+    if (c === 0) return 'Vence hoje';
+    if (c === 1) return 'Vence amanhã';
+    const u = diasUteis(h, d);
+    return 'Vence em ' + u + (u === 1 ? ' dia útil' : ' dias úteis') + ' (' + ddmm(d) + ')';
+  }
+  const TIPOS_TAREFA = { RECURRENT: 'Recorrente', SERVICE_ORDER: 'Ordem de serviço', ACCOUNTING: 'Contábil' };
+  const SITUACOES_TAREFA = { OPEN: 'Aberta', IMPEDIMENT: 'Impedimento', DONE: 'Concluída', IGNORED: 'Ignorada', DISCONSIDERED: 'Desconsiderada' };
+  function contarGrupos(lista, hoje) {
+    const n = {}; GRUPOS.forEach(gr => { n[gr.k] = 0; });
+    let ignoradas = 0;
+    (lista || []).forEach(t => { const k = grupoTarefa(t, hoje); if (k) n[k]++; else ignoradas++; });
+    const total = GRUPOS.reduce((s, gr) => s + n[gr.k], 0);
+    return { n, total, abertas: total - n.feita, feitas: n.feita, ignoradas, pctFeitas: total ? Math.round(n.feita / total * 100) : 0 };
+  }
+  // Uma linha por empresa, com o que pesa primeiro (multa, atraso, impedimento, hoje) e a próxima meta.
+  function porEmpresa(lista, hoje) {
+    const m = new Map();
+    (lista || []).forEach(t => {
+      const k = grupoTarefa(t, hoje); if (!k) return;
+      const c = t.customer || {}, id = c._id || c.code || c.name || '?';
+      let e = m.get(id);
+      if (!e) { e = { id, nome: String(c.name || 'Sem cliente'), codigo: c.code != null ? String(c.code) : '', n: 0, abertas: 0, feitas: 0, multa: 0, atrasada: 0, impedimento: 0, hoje: 0, proximas: 0, proxima: null, tarefas: [] }; m.set(id, e); }
+      e.n++; e.tarefas.push(t);
+      if (k === 'feita') e.feitas++; else { e.abertas++; if (e[k] != null) e[k]++; const d = diaLocal(t.due_date); if (d && (!e.proxima || d < e.proxima)) e.proxima = d; }
+    });
+    const peso = e => [e.multa, e.atrasada, e.impedimento, e.hoje, e.proximas];
+    return [...m.values()].map(e => Object.assign(e, { pctFeitas: e.n ? Math.round(e.feitas / e.n * 100) : 0, proxima: e.proxima ? ymd(e.proxima) : '' }))
+      .sort((a, b) => { const pa = peso(a), pb = peso(b); for (let i = 0; i < pa.length; i++) if (pa[i] !== pb[i]) return pb[i] - pa[i]; return (a.abertas ? 0 : 1) - (b.abertas ? 0 : 1) || String(a.proxima || '9').localeCompare(String(b.proxima || '9')) || a.nome.localeCompare(b.nome, 'pt-BR'); });
+  }
+  // Calendário: por dia da meta, quantas abertas, atrasadas (com multa) e concluídas.
+  function porDia(lista, hoje) {
+    const m = {};
+    (lista || []).forEach(t => {
+      const k = grupoTarefa(t, hoje); if (!k) return;
+      const d = ymd(diaLocal(t.due_date)); if (!d) return;
+      const x = m[d] || (m[d] = { total: 0, abertas: 0, atrasadas: 0, feitas: 0 });
+      x.total++; if (k === 'feita') x.feitas++; else { x.abertas++; if (k === 'multa' || k === 'atrasada') x.atrasadas++; }
+    });
+    return m;
+  }
+  const semAcento = s => String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  // f: { q, grupos: [k], tipos: [type], dia: 'aaaa-mm-dd', cliente: id, feitas: bool }
+  function filtrarTarefas(lista, f, hoje) {
+    f = f || {};
+    const termos = semAcento(f.q || '').split(/\s+/).filter(Boolean);
+    const grupos = f.grupos && f.grupos.length ? new Set(f.grupos) : null, tipos = f.tipos && f.tipos.length ? new Set(f.tipos) : null;
+    return (lista || []).filter(t => {
+      const k = grupoTarefa(t, hoje); if (!k) return false;
+      if (k === 'feita' && !f.feitas && !(grupos && grupos.has('feita'))) return false;
+      if (grupos && !grupos.has(k)) return false;
+      if (tipos && !tipos.has(t.type)) return false;
+      if (f.dia && ymd(diaLocal(t.due_date)) !== f.dia) return false;
+      if (f.cliente && (t.customer || {})._id !== f.cliente) return false;
+      if (!termos.length) return true;
+      const c = t.customer || {}, alvo = semAcento([t.name, c.name, c.code, TIPOS_TAREFA[t.type]].join(' '));
+      return termos.every(x => alvo.includes(x));
+    }).sort((a, b) => {
+      const ga = GRUPOS.findIndex(x => x.k === grupoTarefa(a, hoje)), gb = GRUPOS.findIndex(x => x.k === grupoTarefa(b, hoje));
+      return ga - gb || String(a.due_date || '').localeCompare(String(b.due_date || '')) || String((a.customer || {}).name || '').localeCompare(String((b.customer || {}).name || ''), 'pt-BR');
+    });
+  }
+  // A tarefa no Gestta (só navegação; nada é feito nela)
+  const urlTarefa = id => /^[0-9a-f]{24}$/i.test(String(id || '')) ? APP + '/#/sidebar/task/overview/dashboard/' + id : null;
+  const MAX_PAGINAS_TAREFAS = 15;      // 15 × 1000: bem acima do que uma pessoa tem num mês; passou disso, a tela avisa que cortou
+
   g.OCG = { API, APP, PAUSA_MS, LIMITE_BUSCA, JANELA_MAX_DIAS, POST_LEITURA, RELATORIO_TIPOS, COLUNAS_RELATORIO, MOLDES, APPS,
-    caminhoDe, leituraPermitida, appDe, escolher, limpar, limparRelatorio, perfil, expiraEm, janelaDoMes, PEDIDOS, lerNaPagina, linhasDoTeste };
+    caminhoDe, leituraPermitida, appDe, escolher, limpar, limparRelatorio, perfil, expiraEm, janelaDoMes, PEDIDOS, lerNaPagina, linhasDoTeste,
+    GRUPOS, TIPOS_TAREFA, SITUACOES_TAREFA, MAX_PAGINAS_TAREFAS, diasUteis, grupoTarefa, prazoTexto, contarGrupos, porEmpresa, porDia, filtrarTarefas, urlTarefa, ymd, diaLocal };
 })(typeof self !== 'undefined' ? self : this);
