@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.75.0)
+# Control Onvio · ControlTax (v0.76.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,14 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.76.0 (aba Concluídas nas Solicitações, 05/11/2026)
+
+- **Nova aba Concluídas** nas Solicitações, ao lado de Minhas, Todas e Respondidas (pedido do Josué). Mostra as solicitações **concluídas nos últimos 30 dias**, agrupadas pela data da conclusão: Hoje, Ontem, Nesta semana, Neste mês e Antes.
+- **As minhas** (padrão) ou **Da equipe** (para quem vê a equipe toda; na equipe aparece a coluna do responsável, com o crédito para quem concluiu quando a avaliação já leu os trâmites).
+- Valem os cartões de tipo ("N concluídas"), a busca, os filtros, a lista ou os cartões e o Exportar CSV. Cada uma mostra "Concluída em dd/mm"; clique para abrir o detalhe. A prescrita fica de fora (encerra sem entrega).
+- A leitura é **sob demanda**: só ao abrir a aba, no máximo a cada 5 minutos ou no botão Atualizar. Nada fica guardado; as suas são filtradas pelo próprio Onvio. Se a leitura falhar, a tela diz o motivo; se alguma lista não responder, aparece o aviso de lista incompleta.
+- **A conferir no Onvio real:** se "As minhas" bate com o que o Onvio mostra como suas e quanto tempo leva "Da equipe".
 
 ## Novidades da v0.75.0 (Tarefas do Gestta: trilha por empresa e Fechamento do mês, 05/11/2026)
 
