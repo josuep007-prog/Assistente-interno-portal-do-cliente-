@@ -211,6 +211,12 @@ Arquivos previstos: `manifest.json`, `background.js` (coleta e regras), `onvio-a
 - **Leitura:** `admissionDate` vem na lista dos 3 Cadastros; `searchText` é no servidor (mas `totalItems` pode vir maior que os itens quando há busca: não confiar nele); `assignedtome=true` funciona. `genericStatus` tem significado próprio por módulo.
 - **Em análise:** trâmite com `status = 2` em Geral, férias e afastamento; 8 é "Em análise interna". O que o cliente vê não foi conferido (sem login de cliente).
 
+## Acesso por setor (05/11/2026, relato do Josué)
+
+- Quem não é do Pessoal (Fiscal, Contábil) vê no Portal do Cliente **só as solicitações Gerais e os documentos do próprio setor**. As listas da folha (`br-payroll-sr/...`: cadastros, férias, rescisão, afastamento, rubricas) não aparecem para esses logins; a extensão trata a recusa (401/403) como "sem acesso" daquela lista desde a 0.74.0.
+- O endereço `br-payroll-sr/v1/company-department-access` (departamento do acesso) é da folha: provavelmente também recusado fora do Pessoal; o setor sai então dos `departmentId` das Gerais visíveis.
+- **A confirmar** com um login do Fiscal ou do Contábil: o código exato da recusa de cada lista, se `company-department-access` responde, se `security/v1/session-and-bindings` traz `OnvioStaffAccess` e se `br-default-department/v1/department` responde.
+
 ## Pontos a validar e riscos
 
 - [ ] **API não oficial.** São as chamadas internas do Onvio (versão do app em produção: 2025.09.18.1). Podem mudar sem aviso; isolar todas as URLs num único arquivo de configuração.
