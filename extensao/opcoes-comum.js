@@ -33,7 +33,7 @@
       'Leitura: ' + ((snap && snap.via) || '?') + ' · ao vivo a cada ' + (OC.combinarSettings(regras, {}).tempoRealSeg || 0) + ' s',
       'Regras do escritório: ' + (regras && regras.regras ? 'arquivo versão ' + (regras.versao || '?') : 'embutidas') + (regras && regras.erro ? ' (falha na última atualização)' : ''),
       'Pendências por lista:'];
-    OC.TYPES.forEach(t => l.push('  ' + t.label + ': ' + (snap.porTipo && snap.porTipo[t.key] != null ? snap.porTipo[t.key] : '—')));
+    OC.TYPES.forEach(t => l.push('  ' + t.label + ': ' + (snap.porTipo && snap.porTipo[t.key] != null ? snap.porTipo[t.key] : (snap.semAcesso || []).includes(t.key) ? 'sem acesso por este login (lista do Pessoal)' : '—')));
     const desc = snap.desconhecidos || {};
     l.push('Códigos de situação desconhecidos: ' + (Object.keys(desc).length ? Object.entries(desc).map(([k, v]) => OC.TYPE_BY_KEY[k].label + ' ' + Object.entries(v).map(([c, n]) => 'código ' + c + ' (' + n + ')').join(', ')).join(' | ') : 'nenhum'));
     l.push('Filtro por lista (Rubricas): ' + (snap.filtroAlternativo && snap.filtroAlternativo.length ? 'o Onvio recusou o filtro por exclusão e a extensão usou a lista de códigos (' + snap.filtroAlternativo.join(', ') + ')' : 'por exclusão (tudo menos Concluído e Prescrita)'));

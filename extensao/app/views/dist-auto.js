@@ -18,11 +18,13 @@ export function montarDistAuto(host, ctx) {
   if (!ouvindo) {                                                    // as mudanças do service worker redesenham só este bloco
     ouvindo = true;
     aoMudar(quais => {
-      if (!(quais.includes('distAuto') || quais.includes('distLog')) || !ultimoHost || !ultimoHost.isConnected) return;
+      if (!(quais.includes('distAuto') || quais.includes('distLog') || quais.includes('snap')) || !ultimoHost || !ultimoHost.isConnected) return;   // snap: o setor do usuário chega com a leitura
       if (ultimoHost.contains(document.activeElement) && document.activeElement.matches('input')) return;   // não apaga a senha que está sendo digitada
       montarDistAuto(ultimoHost, ultimoCtx);
     });
   }
+  // a distribuição automática foi autorizada só para a Geral do Pessoal (23/10/2026): nos outros setores fica só a manual, abaixo
+  if (estado.setor && estado.setor.ativo && estado.setor.setor !== 'dp') { host.innerHTML = '<div class="aviso-linha"><svg class="ic"><use href="#i-users"/></svg><span>A distribuição automática é só do Pessoal. No ' + esc(estado.setor.nome || 'seu setor') + ', defina os responsáveis pela lista abaixo.</span></div>'; return; }
   const d = estado.distAuto || { ligada: false }, u = d.ultima, log = estado.distLog || [];
   const cfg = Object.assign({ minutos: 15, inicio: 8, fim: 18 }, estado.settings.distribuicaoAuto || {});
   const pul = u && u.puladas ? [['semHistorico', 'sem histórico da empresa (decisão manual)'], ['semId', 'sem o identificador do responsável'], ['naoPode', 'lista em que a extensão não define responsável'], ['outroSetor', 'Geral de outro departamento'], ['jaTemResponsavel', 'já tinham responsável']].filter(([k]) => u.puladas[k]).map(([k, t]) => u.puladas[k] + ' ' + t) : [];

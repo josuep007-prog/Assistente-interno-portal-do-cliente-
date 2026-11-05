@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.73.0)
+# Control Onvio · ControlTax (v0.74.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,15 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.74.0 (Fiscal e Contábil, 05/11/2026)
+
+- **A leitura não cai mais para quem não é do Pessoal.** Com login do Fiscal ou do Contábil o Onvio só libera a lista **Geral** (e os documentos) do próprio setor; as listas da folha (cadastros, férias, rescisão, afastamento, rubricas) respondem "sem permissão". Antes, essa recusa era tratada como sessão perdida e derrubava a leitura inteira. Agora essas listas ficam como **"sem acesso por este login"** (Configurações › Avançado › Diagnóstico) e o resto segue. Só a recusa da própria Geral continua sendo sessão perdida. O mesmo vale para a verificação ao vivo, a busca e a leitura das movimentadas (Distribuir, Equipe).
+- **Cada setor vê o seu.** A extensão reconhece o setor (Pessoal, Fiscal ou Contábil) pelo acesso no Onvio ou, quando o Onvio não diz, pelas solicitações Gerais que o login enxerga. Quem é do Fiscal ou do Contábil passa a ter **Minhas, Todas, Respondidas, Equipe e Distribuir** com a Geral do seu setor (antes via só as suas), com uma linha discreta no topo "Visão do setor Fiscal". Os cartões e filtros das listas da folha somem; a "Nova solicitação" já vem no departamento do setor.
+- A **distribuição automática** continua só do Pessoal (como autorizado em 23/10); nos outros setores a tela Distribuir explica e a atribuição é manual.
+- O perfil "acesso de cliente" não é mais decidido só pelo endereço da folha: se ele recusar, a extensão confere a lista de departamentos do escritório antes (quem é do Fiscal não é confundido com cliente).
+- Regras do escritório: `departamentosSetor` (`dp`, `fiscal`, `contabil`) troca os ids dos departamentos de cada setor; de fábrica, os mapeados em 22/10/2026.
+- **A confirmar no Onvio real** (com um login do Fiscal ou do Contábil): quais listas o Onvio recusa e com que código, se o acesso por departamento responde e se a sessão traz a marca de escritório.
 
 ## Novidades da v0.73.0 (ver anexos sem baixar, 05/11/2026)
 
