@@ -140,3 +140,115 @@
 :root[data-estilo="simples"] .gt-barra{background:var(--page)}
 :root[data-estilo="simples"] .gt-dia{min-height:62px}
 :root[data-estilo="simples"] .gt-emp-cab{padding:10px 12px}
+
+/* ---------- 0.73.0: trilha de etapas, linha do tempo, Fechamento e painel de detalhe ---------- */
+:root{ --gt-mk-feita:#0B7050; --gt-mk-feita-tx:#fff; --gt-mk-alerta:#C2000C; --gt-mk-alerta-tx:#fff; }
+:root[data-theme="dark"]{ --gt-mk-feita:#4ECC8B; --gt-mk-feita-tx:#0B1015; --gt-mk-alerta:#F57372; --gt-mk-alerta-tx:#0B1015; }
+.sr-only{position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap}
+.gt-so-minhas{display:none!important}
+.gt-sel{display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:var(--ink-2)}
+.gt-sel select{font-size:12.5px; padding:6px 8px; max-width:220px; border:1px solid var(--rule-strong); border-radius:var(--r); background:var(--surface); color:var(--ink)}
+.gt-tr-barra{display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin:4px 0 10px}
+.gt-leg{display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin:0 0 10px; font-size:12px; color:var(--ink-2)}
+.gt-leg > span{display:inline-flex; align-items:center; gap:6px}
+.gt-leg .gt-et{width:18px; height:18px; cursor:default; font-size:11.5px}
+.gt-leg .gt-et.gt-e-impedimento .gt-et-mk{width:9px; height:9px}
+
+/* lista de empresas com a trilha */
+.gt-trs{display:flex; flex-direction:column; gap:6px}
+.gt-trs-corpo{display:flex; flex-direction:column; gap:6px}
+.gt-tr{display:grid; grid-template-columns:minmax(170px,240px) minmax(0,1fr) minmax(170px,230px); align-items:center; gap:16px; padding:10px 14px; border:1px solid var(--rule); border-radius:var(--r); background:var(--surface); box-shadow:var(--shadow-card); animation:gtAbre .22s ease both}
+.gt-tr.tem-atraso{border-left:4px solid var(--gt-atraso); padding-left:11px}
+.gt-tr.fechada{background:var(--surface-2)}
+.gt-tr-cab{position:sticky; top:40px; z-index:2; padding-top:6px; padding-bottom:6px; box-shadow:none; background:var(--surface-2); animation:none}
+.gt-tr-cab small{font-size:12px; font-weight:600; color:var(--ink-2)}
+.gt-tr-nome{min-width:0; display:flex; flex-direction:column; gap:1px}
+.gt-tr-nome b{font-size:13.5px; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.gt-tr-nome small{font-size:12px; color:var(--ink-2)}
+.gt-tr-trilha{min-width:0; position:relative}
+.gt-tr-res{display:flex; flex-wrap:wrap; gap:6px; align-items:center; justify-content:flex-end}
+.gt-tr-num{font-size:12.5px; color:var(--ink-2); white-space:nowrap; font-variant-numeric:tabular-nums} .gt-tr-num b{font-size:14px; color:var(--ink)}
+.gt-tr-setores{flex-basis:100%; text-align:right; font-size:12px; color:var(--ink-2)}
+.gt-trs-fim{height:1px}
+
+/* trilha em sequência: etapas ligadas por um traço, cheio até onde está concluído */
+.gt-trilha{list-style:none; margin:0; padding:4px 2px 2px; display:flex; align-items:flex-start; overflow-x:auto; scrollbar-width:thin; scroll-behavior:smooth}
+.gt-et-li{position:relative; flex:0 0 auto; width:48px; display:flex; flex-direction:column; align-items:center}
+.gt-et-li::after{content:""; position:absolute; top:12px; left:calc(50% + 14px); right:calc(-50% + 14px); height:3px; border-radius:2px; background:var(--rule-strong)}
+.gt-et-li.cheia::after{background:var(--gt-feita)}
+.gt-et-li:last-child::after{display:none}
+.gt-et-dia{margin-top:3px; font-size:11.5px; color:var(--ink-2); font-variant-numeric:tabular-nums}
+.gt-et{all:unset; box-sizing:border-box; cursor:pointer; position:relative; width:26px; height:26px; border-radius:50%; display:grid; place-items:center; border:2px solid var(--ink-3); background:var(--surface); font:700 13px/1 Archivo, sans-serif; transition:transform .12s ease, box-shadow .12s ease}
+.gt-et:hover{transform:scale(1.15)}
+.gt-et:focus-visible{outline:2px solid var(--blue-deep); outline-offset:2px}
+.gt-et.gt-e-feita{background:var(--gt-mk-feita); border-color:var(--gt-mk-feita); color:var(--gt-mk-feita-tx)}
+.gt-et.gt-e-multa, .gt-et.gt-e-atrasada{background:var(--gt-mk-alerta); border-color:var(--gt-mk-alerta); color:var(--gt-mk-alerta-tx)}
+.gt-et.gt-e-multa{box-shadow:0 0 0 3px color-mix(in srgb, var(--gt-mk-alerta) 30%, transparent)}
+.gt-et.gt-e-hoje{border:3px solid var(--gt-hoje)}
+.gt-et.gt-e-afazer{border-color:var(--gt-prox)}
+.gt-et.gt-e-impedimento{border:0; background:none}
+.gt-et.gt-e-impedimento .gt-et-mk{width:15px; height:15px; transform:rotate(45deg); border:2px solid var(--gt-imped); background:color-mix(in srgb, var(--gt-imped) 25%, var(--surface)); border-radius:2px}
+
+/* linha do tempo: as mesmas etapas no dia da meta, com a linha do hoje */
+.gt-tl, .gt-tl-dias{display:grid; grid-template-columns:repeat(var(--dias), minmax(0,1fr))}
+.gt-tl{min-height:34px; align-items:center; background-image:linear-gradient(to right, var(--rule) 1px, transparent 1px); background-size:calc(100% / var(--dias)) 100%}
+.gt-tl-c{justify-self:center; position:relative; grid-row:1}
+.gt-tl .gt-et{width:20px; height:20px; font-size:11.5px}
+.gt-tl .gt-et.gt-e-impedimento .gt-et-mk{width:11px; height:11px}
+.gt-tl-mais{position:absolute; top:-8px; right:-12px; min-width:16px; padding:0 4px; border-radius:8px; background:var(--ink); color:var(--surface); font:700 11.5px/16px 'IBM Plex Sans', sans-serif; text-align:center; pointer-events:none}
+.gt-tl-dias span{text-align:center; font-size:11.5px; color:var(--ink-2); font-variant-numeric:tabular-nums}
+.gt-tl-dias span.fds{background:var(--surface-3); border-radius:2px}
+.gt-tl-dias span.hoje{color:var(--blue-deep); font-weight:700}
+.gt-tl-hoje{position:absolute; top:-6px; bottom:-6px; left:var(--pos); width:2px; margin-left:-1px; background:var(--blue-deep); border-radius:1px; pointer-events:none}
+.gt-tl-fora{font-size:12px}
+
+/* Fechamento: barras por setor e analista */
+.gt-paineis{display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%,380px),1fr)); gap:14px; margin-bottom:12px}
+.gt-pn{padding:14px 16px}
+.gt-pn-tit{display:flex; align-items:baseline; gap:8px; margin:0 0 8px; font:700 14px Archivo, sans-serif; color:var(--ink)} .gt-pn-tit small{font:400 12px 'IBM Plex Sans', sans-serif}
+.gt-barras{list-style:none; margin:0; padding:0; max-height:300px; overflow-y:auto; scrollbar-width:thin}
+.gt-bar{all:unset; box-sizing:border-box; cursor:pointer; width:100%; display:grid; grid-template-columns:minmax(100px,1.1fr) minmax(80px,2fr) auto 36px; align-items:center; gap:10px; padding:6px 8px; border-radius:var(--r)}
+.gt-bar:hover{background:var(--surface-2)}
+.gt-bar.on{background:color-mix(in srgb, var(--blue-deep) 10%, var(--surface)); box-shadow:inset 0 0 0 1px var(--blue-deep)}
+.gt-bar:focus-visible{outline:2px solid var(--blue-deep); outline-offset:1px}
+.gt-bar-nome{font-size:12.5px; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.gt-bar-trilho{height:10px; border-radius:5px; background:var(--surface-3); overflow:hidden} .gt-bar-trilho i{display:block; height:100%; border-radius:5px; background:var(--gt-feita); transition:width .4s ease}
+.gt-bar-num{font-size:12px; color:var(--ink-2); white-space:nowrap; font-variant-numeric:tabular-nums} .gt-bar-num b{color:var(--ink)}
+.gt-kpi-est{cursor:default} .gt-kpi-est:hover{transform:none; border-color:var(--rule)}
+.faixa.gt-faixa-info{border-color:var(--blue-deep); background:color-mix(in srgb, var(--blue-deep) 9%, var(--surface))}
+
+/* painel lateral: detalhe da tarefa */
+.gt-painel-fundo{position:fixed; inset:0; z-index:40; background:rgba(8,13,17,.38); opacity:0; transition:opacity .18s ease}
+.gt-painel-fundo.aberto{opacity:1}
+.gt-painel{position:fixed; top:0; right:0; bottom:0; z-index:41; width:min(460px, 100vw); display:flex; flex-direction:column; background:var(--surface); color:var(--ink); border-left:1px solid var(--rule); box-shadow:-12px 0 32px rgba(16,24,32,.18); transform:translateX(100%); transition:transform .2s ease; outline:none}
+.gt-painel.aberto{transform:none}
+.gp-cab{display:flex; align-items:center; justify-content:space-between; padding:10px 12px; border-bottom:1px solid var(--rule)}
+.gp-nav{display:flex; align-items:center; gap:4px; font-size:12px}
+.gp-corpo{flex:1; overflow-y:auto; padding:16px 18px; display:flex; flex-direction:column; gap:10px}
+.gp-tit{margin:2px 0 0; font:700 17px/1.3 Archivo, sans-serif; color:var(--ink)}
+.gp-cli{margin:0; font-size:13px; color:var(--ink-2)}
+.gp-dl{display:grid; grid-template-columns:1fr 1fr; gap:10px 16px; margin:6px 0}
+.gp-dl dt{font-size:11.5px; font-weight:600; color:var(--ink-2)} .gp-dl dd{margin:2px 0 0; font-size:13px; color:var(--ink)}
+.gp-sec h3{display:flex; align-items:center; gap:8px; margin:6px 0 8px; font:700 13.5px Archivo, sans-serif; color:var(--ink)}
+.gp-passos, .gp-docs{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px}
+.gp-passos li{display:flex; align-items:center; gap:10px; padding:7px 10px; border:1px solid var(--rule); border-radius:var(--r); font-size:13px; color:var(--ink)}
+.gp-ck{width:18px; height:18px; flex:none; border-radius:4px; border:2px solid var(--ink-3); display:grid; place-items:center; font:700 12px/1 Archivo, sans-serif}
+.gp-passos li.ok .gp-ck{background:var(--gt-mk-feita); border-color:var(--gt-mk-feita); color:var(--gt-mk-feita-tx)}
+.gp-docs li{font-size:13px; color:var(--ink); padding-left:14px; position:relative} .gp-docs li::before{content:""; position:absolute; left:2px; top:8px; width:5px; height:5px; border-radius:50%; background:var(--ink-3)}
+.gp-pe{display:flex; gap:8px; padding:12px 18px; border-top:1px solid var(--rule)}
+.gt-esq{display:flex; flex-direction:column; gap:8px} .gt-esq i{display:block; height:14px; border-radius:3px; background:linear-gradient(90deg, var(--surface-3), var(--surface-2), var(--surface-3)); background-size:200% 100%; animation:gtEsq 1.2s linear infinite}
+.gt-esq i:nth-child(2){width:80%} .gt-esq i:nth-child(3){width:60%} .gt-esq i:nth-child(4){width:70%}
+@keyframes gtEsq{to{background-position:-200% 0}}
+.gt-t-main{cursor:pointer} .gt-t-main:focus-visible{outline:2px solid var(--blue-deep); outline-offset:2px; border-radius:3px}
+@media (prefers-reduced-motion: reduce){ .gt-tr{animation:none} .gt-painel, .gt-painel-fundo, .gt-bar-trilho i, .gt-et{transition:none} .gt-esq i{animation:none} .gt-trilha{scroll-behavior:auto} }
+@media (max-width:900px){ .gt-tr{grid-template-columns:minmax(0,1fr)} .gt-tr-res{justify-content:flex-start} .gt-tr-setores{text-align:left} .gt-tr-cab{display:none} .gt-bar{grid-template-columns:minmax(90px,1fr) minmax(60px,1.4fr) auto 32px} }
+
+/* Simplificado: marcas menores, sem sombra e sem animação de entrada */
+:root[data-estilo="simples"] .gt-tr{box-shadow:none; animation:none; padding:8px 12px}
+:root[data-estilo="simples"] .gt-et{width:22px; height:22px; font-size:12px}
+:root[data-estilo="simples"] .gt-et-li{width:42px}
+:root[data-estilo="simples"] .gt-et-li::after{top:10px; left:calc(50% + 12px); right:calc(-50% + 12px)}
+:root[data-estilo="simples"] .gt-et:hover{transform:none}
+:root[data-estilo="simples"] .gt-et.gt-e-multa{box-shadow:none}
+:root[data-estilo="simples"] .gt-painel{box-shadow:none}
+:root[data-estilo="simples"] .gt-pn{box-shadow:none}
