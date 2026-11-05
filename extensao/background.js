@@ -1073,6 +1073,16 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         const d = await calcularDistribuicao(f, (snapshot && snapshot.items) || []);
         reply({ ok: true, dias: d.dias, movimentadas: d.movimentadas, erros: d.erros, sugestoes: d.sugestoes });
       }
+      else if (msg.cmd === 'concluidas') {          // aba Concluídas (0.76.0): as concluídas dos últimos 30 dias, sob demanda; nada é guardado
+        const dias = 30, equipe = !!msg.equipe;
+        const { f } = await escolherFetcher();
+        // as suas: o próprio Onvio filtra (assignedtome); da equipe: todas as movimentadas, com o crédito a quem concluiu quando a avaliação já leu
+        const mov = await OC.lerMovimentadas(emSegundoPlano(f), dias, new Date(), equipe ? 5 : 3, { mine: !equipe });
+        let itens = OC.soConcluidas(mov.itens);
+        if (equipe) { const { desempenhoCache } = await chrome.storage.local.get('desempenhoCache'); itens = OC.creditarQuemConcluiu(itens, desempenhoCache || {}); }
+        else itens = itens.map(x => Object.assign(x, { mine: true }));
+        reply({ ok: true, dias, equipe, itens, erros: mov.erros, lidoEm: new Date().toISOString() });
+      }
       else if (msg.cmd === 'distribuicaoAuto') {     // interruptor da distribuição automática (Equipe, gestor): liga, desliga ou só devolve o estado
         if (typeof msg.ligar === 'boolean') {
           await gravarDistAuto(msg.ligar ? { ligada: true, ligadaEm: new Date().toISOString() } : { ligada: false });

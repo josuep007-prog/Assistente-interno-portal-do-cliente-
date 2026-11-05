@@ -3871,3 +3871,21 @@ test('0.74.0: perfil do acesso — escritório de outro setor não vira "cliente
   assert.equal((await OC.perfilDoAcesso(base(true))).perfil, 'escritorio', 'a lista de departamentos do escritório responde');
   assert.equal((await OC.perfilDoAcesso(base(false))).perfil, 'cliente', 'nada de escritório responde: cliente, como antes');
 });
+
+test('0.76.0: aba Concluídas — só as concluídas (prescrita fora), da mais recente, agrupadas pela data; as suas pelo próprio Onvio (assignedtome)', async () => {
+  const agora = new Date(2026, 10, 5, 15);                     // quinta-feira
+  const it = (k, status, lado, last) => ({ k, status, lado, last });
+  const l = OC.soConcluidas([it('a', 'Concluído', 'fim', '2026-11-03T10:00:00'), it('b', 'Prescrita', 'fim', '2026-11-05T10:00:00'), it('c', 'Em análise', 'esc', '2026-11-05T10:00:00'), it('d', 'Concluído', 'fim', '2026-11-05T09:00:00')]);
+  assert.deepEqual(l.map(x => x.k), ['d', 'a']);
+  const g = d => OC.grupoConclusao({ last: d }, agora);
+  assert.equal(g('2026-11-05T08:00:00'), 'Hoje'); assert.equal(g('2026-11-04T18:00:00'), 'Ontem');
+  assert.equal(g('2026-11-03T08:00:00'), 'Nesta semana'); assert.equal(g('2026-11-01T08:00:00'), 'Neste mês');
+  assert.equal(g('2026-10-20T08:00:00'), 'Antes'); assert.equal(OC.grupoConclusao({}, agora), 'Sem data');
+  assert.equal(OC.grupoSituacao({ type: 'geral', code: 5, lado: 'fim' }).k, 'fim', 'encerrada fora dos cartões de situação');
+  const urls = [];
+  await OC.lerMovimentadas(async u => { urls.push(u); return { items: [], totalPages: 1 }; }, 30, agora, 2, { mine: true });
+  assert.ok(urls.length && urls.every(u => /assignedtome=true/.test(u)), 'as suas: o Onvio filtra');
+  urls.length = 0;
+  await OC.lerMovimentadas(async u => { urls.push(u); return { items: [], totalPages: 1 }; }, 30, agora);
+  assert.ok(urls.every(u => /assignedtome=false/.test(u)), 'sem a opção, como antes');
+});
