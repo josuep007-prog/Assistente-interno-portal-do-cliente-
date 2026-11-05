@@ -268,6 +268,45 @@ async function gesttaTarefas(msg, sender) {
   if (paginas > OCG.MAX_PAGINAS_TAREFAS) cortado = true;
   return { ok: true, ano, mes, quem, perfil: { id: pf.id, papelNome: pf.papelNome, total: pf.total, setores: pf.setores }, itens, total: total != null ? total : itens.length, cortado, validade: r1.validade || null, lidoEm: new Date().toISOString() };
 }
+// Fechamento do mês (0.73.0): o relatório CUSTOMER_TASK do mês, lido sob demanda e guardado SÓ na memória do Chrome
+// (chrome.storage.session: some ao fechar o navegador, nunca vai ao disco), com no máximo uma leitura por hora
+// (decisão do Josué em 05/11/2026). Com acesso parcial, a resposta vai marcada "parcial" e a tela avisa.
+const FECH_INTERVALO_MS = 60 * 60e3;
+async function gesttaFechamento(msg, sender) {
+  const ano = Number(msg.ano) || new Date().getFullYear(), mes = Number(msg.mes) || new Date().getMonth() + 1;
+  const chave = 'gtFech-' + ano + '-' + String(mes).padStart(2, '0');
+  const guardado = (await chrome.storage.session.get(chave).catch(() => ({})))[chave];
+  const idade = guardado ? Date.now() - new Date(guardado.lidoEm).getTime() : Infinity;
+  if (guardado && (!msg.forcar || idade < FECH_INTERVALO_MS)) return Object.assign({ ok: true, daMemoria: true, podeEm: Math.max(0, Math.ceil((FECH_INTERVALO_MS - idade) / 60e3)) }, guardado);
+  const tab = await tabDoGestta(sender);
+  if (!tab) return { ok: false, semAba: true, erro: 'Abra o Gestta numa aba, já logado.' };
+  const { r: r1 } = await lerGestta([OCG.PEDIDOS.me()], { tab });
+  if (!r1 || !r1.ok) return { ok: false, semSessao: !!(r1 && r1.semSessao), erro: (r1 && r1.motivo) || 'A aba do Gestta não respondeu (recarregue com F5).' };
+  const pf = r1.resultados[0] && r1.resultados[0].dados ? OCG.perfil(r1.resultados[0].dados) : null;
+  if (!pf || !pf.ok) return { ok: false, erro: 'Não consegui saber quem está logado no Gestta.' };
+  const t0 = Date.now();
+  const { r } = await lerGestta([OCG.PEDIDOS.fechamento({ ano, mes })], { tab });
+  const x = r && r.resultados && r.resultados[0];
+  if (!x) return { ok: false, erro: 'A aba do Gestta não respondeu ao relatório.' };
+  if (x.status !== 200 || !x.dados) return { ok: false, erro: x.status === 403 ? 'Seu acesso do Gestta não inclui o relatório de tarefas.' : x.status === 401 ? 'A sessão do Gestta acabou: faça login de novo na aba.' : 'O relatório do Gestta não veio (' + (x.erro || x.recusado || x.status) + ').' };
+  const dados = { ano, mes, lidoEm: new Date().toISOString(), segundos: Math.round((Date.now() - t0) / 1000), parcial: !pf.total,
+    perfil: { papelNome: pf.papelNome, total: pf.total, setores: pf.setores }, colunas: x.dados.colunas, linhas: x.dados.linhas, total: x.dados.total, formato: x.dados.formato };
+  let naMemoria = true;
+  try { await chrome.storage.session.set({ [chave]: dados }); } catch (e) { naMemoria = false; }       // grande demais para a memória: vale só nesta resposta
+  return Object.assign({ ok: true, naMemoria, podeEm: 60 }, dados);
+}
+// Detalhe de uma tarefa para o painel lateral: um GET, id conferido; nada é guardado.
+async function gesttaTarefa(msg, sender) {
+  const id = String(msg.id || '');
+  if (!/^[0-9a-f]{24}$/i.test(id)) return { ok: false, erro: 'tarefa inválida' };
+  const tab = await tabDoGestta(sender);
+  if (!tab) return { ok: false, erro: 'Abra o Gestta numa aba, já logado.' };
+  const { r } = await lerGestta([OCG.PEDIDOS.tarefa({ id })], { tab });
+  const x = r && r.resultados && r.resultados[0];
+  if (!r || !r.ok) return { ok: false, erro: (r && r.motivo) || 'A aba do Gestta não respondeu.' };
+  if (!x || x.status !== 200 || !x.dados) return { ok: false, erro: x && x.status === 403 ? 'Seu acesso não inclui esta tarefa.' : x && x.status === 404 ? 'A tarefa não foi encontrada no Gestta.' : 'Não consegui ler a tarefa (' + ((x && (x.erro || x.status)) || 'sem resposta') + ').' };
+  return { ok: true, tarefa: x.dados };
+}
 // Para a coordenação escolher de quem ver as tarefas: só id e nome da equipe ativa.
 async function gesttaEquipe(msg, sender) {
   const tab = await tabDoGestta(sender);
@@ -1029,6 +1068,8 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'testarGestta') { reply({ ok: true, linhas: await testarGestta() }); }
       else if (msg.cmd === 'gesttaTarefas') { reply(await gesttaTarefas(msg, sender)); }
       else if (msg.cmd === 'gesttaEquipe') { reply(await gesttaEquipe(msg, sender)); }
+      else if (msg.cmd === 'gesttaFechamento') { reply(await gesttaFechamento(msg, sender)); }
+      else if (msg.cmd === 'gesttaTarefa') { reply(await gesttaTarefa(msg, sender)); }
       else if (msg.cmd === 'fecharPainel') { if (sender.tab && sender.tab.id != null) await mensagemParaPainel(sender.tab.id, 'fechar').catch(() => {}); reply({ ok: true }); }
       else reply({ ok: false, erro: 'comando desconhecido' });
     } catch (e) {
