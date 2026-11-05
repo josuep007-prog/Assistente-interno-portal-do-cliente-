@@ -330,6 +330,73 @@ assert.equal(man.commands['alternar-painel'].suggested_key.default, 'Alt+Shift+O
 assert.ok(!man.permissions.includes('sidePanel') && !man.side_panel, 'sem painel lateral do Chrome: o painel só existe no Portal do Cliente');
 assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br/*']);
 
+// ---------- Gestta (0.71.0): leitura de dentro da aba, só GET e a busca, o token nunca sai da página ----------
+{
+  const TOKEN = 'JWT eyJhbGciOiJIUzI1NiJ9.' + Buffer.from(JSON.stringify({ exp: 1893456000 })).toString('base64url') + '.SEGREDO-ASSINATURA';
+  const ID = '5f1e2d3c4b5a69788796a5b4', ID2 = '6a5b4c3d2e1f00112233aabb';
+  const CORS = { 'access-control-allow-origin': 'https://app.gestta.com.br', 'access-control-allow-headers': 'authorization,content-type,accept', 'access-control-allow-methods': 'GET,POST,OPTIONS' };
+  const gChamadas = [], gCab = [];
+  let papel = 'ROLE_ADMIN', adminProibido = false;
+  await ctx.route('https://app.gestta.com.br/**', r => r.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Gestta</title><body>Tarefas</body>' }));
+  await ctx.route('https://api.gestta.com.br/**', async r => {
+    const q = r.request(), u = new URL(q.url());
+    if (q.method() === 'OPTIONS') return r.fulfill({ status: 204, headers: CORS });
+    gChamadas.push(q.method() + ' ' + u.pathname); gCab.push(q.headers()['authorization']);
+    const json = (o, status) => r.fulfill({ status: status || 200, headers: Object.assign({ 'content-type': 'application/json' }, CORS), body: JSON.stringify(o) });
+    const p = u.pathname;
+    if (p === '/core/company/user/me') return json({ _id: ID2, name: 'Pessoa Ficticia', role: papel, active: true, email: 'pessoa@exemplo.com', permissions: ['X'], last_login: '2026-11-05T10:00:00Z', company_departments: [{ _id: ID, name: 'Pessoal' }] });
+    if (adminProibido && p.startsWith('/admin/')) return json({ message: 'forbidden' }, 403);
+    if (p === '/admin/company/department') return json([{ _id: ID, name: 'Pessoal' }, { _id: ID2, name: 'Fiscal' }]);
+    if (p === '/admin/company/user') return json({ docs: [{ _id: ID2, name: 'Pessoa Ficticia', phone_number: '(27) 90000-0000' }], totalDocs: 123 });
+    if (p === '/admin/customer') return json({ docs: [{ _id: ID, code: '9999', name: 'EMPRESA FICTICIA LTDA', cnpj: '12.345.678/0001-90', monthly_payment: 999 }], totalDocs: 1385 });
+    if (p === '/admin/customer/' + ID + '/responsible') return json([{ company_department: { _id: ID, name: 'Pessoal' }, company_user: { _id: ID2, name: 'Pessoa Ficticia', phone_number: '(27) 90000-0000' } }]);
+    if (p === '/core/customer/task/search') return json({ docs: [{ _id: ID, name: 'TAREFA', status: 'OPEN' }], total: 6833, pages: 6833, page: 1, limit: 1 });
+    if (p === '/core/dashboard/attention/fine/all') return json({ fine: 7 });
+    if (p === '/es/file/onvio') return json({ docs: [], totalDocs: 4 });
+    if (p === '/admin/company/document') return json({ docs: [{ _id: ID, name: 'DAS' }], totalDocs: 1008, documents_without_destination: 31 });
+    return json({ message: 'não simulado' }, 404);
+  });
+  const gAba = await ctx.newPage();
+  await gAba.goto('https://app.gestta.com.br/admin/#/sidebar/customer/list');
+  await gAba.evaluate(t => localStorage.setItem('ngStorage-jwt', JSON.stringify(t)), TOKEN);
+  const tg = () => pagina.evaluate(() => new Promise(res => chrome.runtime.sendMessage({ cmd: 'testarGestta' }, res)));
+  const g1 = await tg();
+  assert.ok(g1 && g1.ok, 'testarGestta respondeu');
+  const txt = g1.linhas.join('\n');
+  console.log('Testar a leitura do Gestta ->\n  ' + g1.linhas.join('\n  '));
+  assert.match(txt, /Aba do Gestta: Cadastros \(admin\)/);
+  assert.match(txt, /Sessão válida até/);
+  assert.match(txt, /Perfil: Administrador · acesso a todos os setores · 1 setor: Pessoal/);
+  assert.match(txt, /clientes ativos: 1\.385/); assert.match(txt, /equipe ativa: 123/); assert.match(txt, /setores: 2/);
+  assert.match(txt, /tarefas abertas ou com impedimento no mês: 6\.833/); assert.match(txt, /multas no mês \(painel\): 7/);
+  assert.match(txt, /fila de envio ao Onvio com erro: 4/); assert.match(txt, /sem pasta no portal: 31/); assert.match(txt, /cartela de 1 cliente: 1 setor/);
+  for (const s of ['SEGREDO', 'eyJ', 'EMPRESA FICTICIA', '12.345.678', '9999', '(27)', 'pessoa@exemplo', 'Pessoa Ficticia']) assert.ok(!JSON.stringify(g1).includes(s), 'vazou no resultado: ' + s);
+  // só leitura: GET em tudo e o único POST é a busca; o token vai só no cabeçalho, exatamente como o Gestta guarda
+  const naoGet = gChamadas.filter(c => !c.startsWith('GET '));
+  assert.deepEqual(naoGet, ['POST /core/customer/task/search']);
+  assert.ok(gCab.every(h => h === TOKEN), 'Authorization exatamente como o Gestta guarda (sem Bearer)');
+  // o token não chega ao armazenamento da extensão
+  const tudo = await pagina.evaluate(() => chrome.storage.local.get(null));
+  assert.ok(!JSON.stringify(tudo).includes('SEGREDO') && !JSON.stringify(tudo).includes('eyJ'), 'token fora do armazenamento');
+  // analista: avisa que o envio ao Hub não sai; admin proibido vira "seu acesso não inclui"
+  papel = 'ROLE_USER'; adminProibido = true;
+  const g2 = (await tg()).linhas.join('\n');
+  assert.match(g2, /Perfil: Analista · acesso ao\(s\) setor\(es\) dele/);
+  assert.match(g2, /o envio ao Hub não sai/);
+  assert.match(g2, /clientes ativos: seu acesso não inclui esta leitura \(403\)/);
+  // sem sessão: não pede nada e diz o que fazer
+  const antes = gChamadas.length;
+  await gAba.evaluate(() => localStorage.removeItem('ngStorage-jwt'));
+  const g3 = (await tg()).linhas.join('\n');
+  assert.match(g3, /Sem sessão do Gestta: faça login/);
+  assert.equal(gChamadas.length, antes, 'sem sessão, nenhum pedido sai');
+  // sem aba do Gestta
+  await gAba.close();
+  assert.match((await tg()).linhas.join('\n'), /Nenhuma aba do Gestta aberta/);
+  assert.ok(man.host_permissions.includes('https://app.gestta.com.br/*'), 'permissão do Gestta no manifesto');
+  console.log('Gestta: leitura pela aba, só GET e a busca, token só na página');
+}
+
 console.log('\ntudo certo com a extensão carregada de verdade');
 await ctx.close();
 fs.rmSync(perfil, { recursive: true, force: true });

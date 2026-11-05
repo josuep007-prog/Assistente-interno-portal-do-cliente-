@@ -2,7 +2,7 @@
  * Lê o Onvio de tempos em tempos, guarda um resumo e avisa o usuário.
  * Fase 1: somente leitura. Nada é gravado no Onvio.
  */
-importScripts('core.js');
+importScripts('core.js', 'gestta.js');
 
 const ALARME = 'controlOnvio.coleta';
 const ALARME_DIST = 'controlOnvio.distribuicao';
@@ -215,6 +215,46 @@ async function bloquearVisaoCliente(e) {
 }
 
 // Para o botão "Testar a leitura" das configurações: mostra o que cada jeito recebeu (sem dados de clientes).
+/* ---------- Gestta (só leitura; regras na seção Gestta do CLAUDE.md) ----------
+ * Toda leitura é feita de dentro da aba do Gestta, no mundo da página: o núcleo (gestta.js) é injetado na hora,
+ * confere cada pedido de novo, usa o token só lá e devolve só os dados já limpos. O service worker nunca vê o token. */
+async function abaGestta() {
+  const abas = await chrome.tabs.query({ url: 'https://app.gestta.com.br/*' });
+  const boas = abas.filter(t => OCG.appDe(t.url || '') && OCG.appDe(t.url || '') !== 'login');
+  return boas.find(t => t.active) || boas[0] || abas[0] || null;
+}
+async function lerGestta(pedidos, opcoes) {
+  const lista = (pedidos || []).filter(p => p && OCG.leituraPermitida(p.metodo, p.url, p.corpo == null ? null : p.corpo).ok);
+  if (lista.length !== (pedidos || []).length) throw new Error('pedido ao Gestta fora da lista permitida');
+  const tab = (opcoes && opcoes.tab) || await abaGestta();
+  if (!tab) return { aba: null, r: null };
+  await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', files: ['gestta.js'] });
+  const [res] = await chrome.scripting.executeScript({
+    target: { tabId: tab.id }, world: 'MAIN',
+    func: (ps, pausa) => (self.OCG ? self.OCG.lerNaPagina(ps, { pausa }) : { ok: false, motivo: 'núcleo do Gestta não carregou na aba' }),
+    args: [lista, opcoes && opcoes.pausa != null ? opcoes.pausa : OCG.PAUSA_MS]
+  });
+  return { aba: tab, r: (res && res.result) || null };
+}
+// Configurações › Avançado: quem está logado, o perfil e uma leitura de prova de cada fonte (só contagens).
+async function testarGestta() {
+  const tab = await abaGestta();
+  if (!tab) return OCG.linhasDoTeste(null, null);
+  const agora = new Date(), ano = agora.getFullYear(), mes = agora.getMonth() + 1;
+  const { r: r1 } = await lerGestta([OCG.PEDIDOS.me()], { tab });
+  if (!r1 || !r1.ok) return OCG.linhasDoTeste(r1, tab);
+  const me = (r1.resultados || [])[0], pf = me && me.dados ? OCG.perfil(me.dados) : null;
+  if (!pf || !pf.ok) return OCG.linhasDoTeste(r1, tab);
+  const pedidos = [OCG.PEDIDOS.setores(), OCG.PEDIDOS.equipe({ limit: 1 }), OCG.PEDIDOS.clientes({ limit: 1 }),
+    OCG.PEDIDOS.buscaTarefas({ ano, mes, limit: 1 }), OCG.PEDIDOS.multas({ ano, mes }), OCG.PEDIDOS.filaOnvioErro({ limit: 1 }), OCG.PEDIDOS.templatesDocumento()];
+  const { r: r2 } = await lerGestta(pedidos, { tab });
+  const resultados = [me].concat((r2 && r2.resultados) || []);
+  // cartela de um cliente (o primeiro da lista), para provar a leitura sem mostrar quem é
+  const cli = resultados.find(x => x.id === 'clientes'), um = cli && cli.dados && (cli.dados.itens || [])[0];
+  if (um && um._id) { const { r: r3 } = await lerGestta([OCG.PEDIDOS.cartela({ cliente: um._id })], { tab }); if (r3 && r3.resultados) resultados.push(...r3.resultados); }
+  return OCG.linhasDoTeste(Object.assign({}, r2 || r1, { resultados }), tab);
+}
+
 async function testarLeitura() {
   const { tab, lista } = await candidatosDeLeitura();
   const linhas = ['Aba do Onvio: ' + (tab ? 'sim (' + new URL(tab.url).pathname.slice(0, 60) + ')' : 'não')];
@@ -939,6 +979,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'testarFolhaEmpresa') { const { f } = await escolherFetcher(); const guardado = await chrome.storage.local.get(['folhaPastas', 'folhaLidos', 'folhaEstado']); try { reply({ ok: true, linhas: await OC.testarFolhaEmpresa(emSegundoPlano(f), textoDoPdf, ms => new Promise(r => setTimeout(r, ms)), String(msg.busca || '').slice(0, 80), guardado) }); } finally { fecharOffscreen(); } }
       else if (msg.cmd === 'folhaDeNovo') { await chrome.storage.local.remove(['folhaLidos', 'folhaEstado', 'folhaPastas']); reply({ ok: true }); }      // refaz também o caminho das pastas de cada empresa
       else if (msg.cmd === 'testarLeitura') { reply({ ok: true, linhas: await testarLeitura() }); }
+      else if (msg.cmd === 'testarGestta') { reply({ ok: true, linhas: await testarGestta() }); }
       else if (msg.cmd === 'fecharPainel') { if (sender.tab && sender.tab.id != null) await mensagemParaPainel(sender.tab.id, 'fechar').catch(() => {}); reply({ ok: true }); }
       else reply({ ok: false, erro: 'comando desconhecido' });
     } catch (e) {

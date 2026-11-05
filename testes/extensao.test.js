@@ -3644,3 +3644,78 @@ test('Empregados de uma empresa (0.70.6): contagem por código, código antigo d
   assert.match(t2, /➜ O Onvio não tem nenhuma pessoa para este código/);
   assert.match((await OC.testarEmpregadosEmpresa(api, null, 'nao existe')).join('\n'), /Nenhum cliente da folha/);
 });
+
+/* ---------- Gestta (0.71.0): núcleo só de leitura ---------- */
+function carregarGestta() {
+  const ctx = { console, URL, URLSearchParams, atob: s => Buffer.from(s, 'base64').toString('binary'), escape, decodeURIComponent };
+  ctx.self = ctx; vm.createContext(ctx); vm.runInContext(src('gestta.js'), ctx); return ctx.OCG;
+}
+const OCG = carregarGestta();
+test('Gestta: só GET em api.gestta.com.br, a busca e o relatório CUSTOMER_TASK; o resto é recusado antes de sair', () => {
+  const P = OCG.leituraPermitida, mes = OCG.janelaDoMes(2026, 11);
+  assert.equal(P('GET', 'https://api.gestta.com.br/admin/customer?active=true').ok, true);
+  assert.equal(P('GET', 'https://outro.com/admin/customer').ok, false, 'outro site');
+  assert.equal(P('GET', 'https://user:x@api.gestta.com.br/admin/customer').ok, false, 'com credencial no endereço');
+  for (const p of ['/admin/customer/abc/passwords', '/admin/password', '/admin/company', '/admin/company/smtp', '/admin/customer/abc/certificate', '/core/customer/task/search/export', '/core/company/user/timesheet', '/admin/company/document/integration/documents/batch', '/auth/login'])
+    assert.equal(P('GET', 'https://api.gestta.com.br' + p).ok, false, 'proibido: ' + p);
+  for (const m of ['PUT', 'PATCH', 'DELETE']) assert.equal(P(m, 'https://api.gestta.com.br/admin/customer/abc').ok, false, m);
+  assert.equal(P('POST', 'https://api.gestta.com.br/core/dashboard/my-filter', { nome: 'x' }).ok, false, 'POST que grava');
+  assert.equal(P('POST', 'https://api.gestta.com.br/nf/notification', {}).ok, false, 'POST não autorizado');
+  assert.equal(P('POST', 'https://api.gestta.com.br/core/customer/task/search', Object.assign({ limit: 100 }, mes)).ok, true, 'busca de um mês');
+  assert.equal(P('POST', 'https://api.gestta.com.br/core/customer/task/search', Object.assign({ limit: 1001 }, mes)).ok, false, 'limit acima de 1000');
+  assert.equal(P('POST', 'https://api.gestta.com.br/core/customer/task/search', { limit: 100, start_date: '2026-01-01T03:00:00Z', end_date: '2026-12-31T03:00:00Z' }).ok, false, 'doze meses de uma vez');
+  const rel = t => ({ type: t, filter: '', dates: { startDate: mes.start_date, endDate: mes.end_date } });
+  assert.equal(P('POST', 'https://api.gestta.com.br/core/customer/task/report', rel('CUSTOMER_TASK')).ok, true, 'relatório de tarefas (autorizado em 05/11/2026)');
+  assert.equal(P('POST', 'https://api.gestta.com.br/core/customer/task/report', rel('CUSTOMER_CERTIFICATE')).ok, false, 'certificados: senha de revogação');
+  assert.equal(P('POST', 'https://api.gestta.com.br/core/customer/task/report', rel('CUSTOMER_TASK_DOCUMENT')).ok, false, 'documentos: binários');
+  assert.equal(P('POST', 'https://api.gestta.com.br/core/customer/task/report?x=1', rel('CUSTOMER_TASK')).ok, false, 'POST sem querystring');
+  // todos os pedidos montados pelo núcleo passam na própria regra
+  for (const [k, f] of Object.entries(OCG.PEDIDOS)) { const p = f({ ano: 2026, mes: 11, cliente: 'abc', id: 'abc' }); assert.equal(P(p.metodo, p.url, p.corpo == null ? null : p.corpo).ok, true, 'pedido do núcleo: ' + k); }
+});
+test('Gestta: a limpeza só deixa sair os campos permitidos (sem telefone, permissões, login, mensalidade, valor nem pontuação)', () => {
+  const me = OCG.limpar('me', { _id: 'u1', name: 'Pessoa', role: 'ROLE_USER', email: 'x@y', permissions: ['A'], attempt: 2, last_login: 'h', phone_number: '9', company_departments: [{ _id: 's1', name: 'Pessoal', extra: 1 }] });
+  assert.deepEqual(plano(me), { _id: 'u1', name: 'Pessoa', role: 'ROLE_USER', company_departments: [{ _id: 's1', name: 'Pessoal' }] });
+  const cart = OCG.limpar('cartela', [{ company_department: { _id: 's1', name: 'Pessoal' }, company_user: { _id: 'u1', name: 'Pessoa', email: 'x@y', phone_number: '9' } }]);
+  assert.deepEqual(plano(cart.itens[0]), { company_department: { _id: 's1', name: 'Pessoal' }, company_user: { _id: 'u1', name: 'Pessoa' } });
+  const cli = OCG.limpar('cliente', { docs: [{ _id: 'c1', cnpj: '1', monthly_payment: 500, due_day: 5, external_id: 'ABC', partner_config: { has_onvio_portal: true, origin: 'x' } }], totalDocs: 10, totalPages: 1 });
+  assert.equal(cli.total, 10); assert.equal(cli.itens[0].monthly_payment, undefined); assert.equal(cli.itens[0].external_id, 'ABC'); assert.deepEqual(plano(cli.itens[0].partner_config), { has_onvio_portal: true });
+  const det = OCG.limpar('tarefaDetalhe', { _id: 't1', value: 99, timesheet: [1], approvers: [{}], owner: { _id: 'u1', name: 'P', email: 'e' }, document_request: { requested_documents: [] } });
+  assert.deepEqual(plano(det), { _id: 't1', owner: { _id: 'u1', name: 'P' } });
+  const rel = OCG.limparRelatorio([{ id: 't1', 'customer.cnpj': '1', 'customer.monthly_payment': 500, value: 9, 'company_task.score': 3, 'owner.name': 'P', 'customer.company_groupers': [{ x: 1 }] }]);
+  for (const c of ['value', 'customer.monthly_payment', 'company_task.score', 'customer.company_groupers', 'concluded_by.role']) assert.ok(!rel.colunas.includes(c), 'coluna fora: ' + c);
+  assert.equal(rel.linhas[0][rel.colunas.indexOf('owner.name')], 'P');
+  assert.equal(rel.linhas[0][rel.colunas.indexOf('customer.cnpj')], '1');
+  assert.equal(OCG.limpar('desconhecido', {}), null, 'tipo sem molde não sai');
+});
+test('Gestta: perfil (coordenação vê tudo, analista só o setor dele), app da aba e validade do token sem o token', () => {
+  const adm = OCG.perfil({ _id: 'u', role: 'ROLE_ADMIN', company_departments: [] }), ana = OCG.perfil({ _id: 'u', role: 'ROLE_USER', company_departments: [{ _id: 's', name: 'Fiscal' }] });
+  assert.equal(adm.total, true); assert.equal(ana.total, false); assert.deepEqual(plano(ana.setores), [{ id: 's', nome: 'Fiscal' }]);
+  assert.equal(OCG.perfil({ _id: 'u', role: 'ROLE_MANAGER' }).total, true);
+  assert.equal(OCG.perfil({ _id: 'u', role: 'ROLE_NOVO' }).total, false, 'papel desconhecido nunca vira acesso total');
+  assert.equal(OCG.perfil(null).ok, false);
+  assert.equal(OCG.appDe('https://app.gestta.com.br/#/sidebar/task/overview/dashboard'), 'classico');
+  assert.equal(OCG.appDe('https://app.gestta.com.br/admin/#/sidebar/customer/list'), 'admin');
+  assert.equal(OCG.appDe('https://app.gestta.com.br/dashboard-v2/#/'), 'painel');
+  assert.equal(OCG.appDe('https://app.gestta.com.br/dominio-integration/#/error-status'), 'integracao');
+  assert.equal(OCG.appDe('https://app.gestta.com.br/express/#/upload'), 'express');
+  assert.equal(OCG.appDe('https://app.gestta.com.br/#/login/auth'), 'login');
+  assert.equal(OCG.appDe('https://onvio.com.br/'), null);
+  const tok = 'JWT a.' + Buffer.from(JSON.stringify({ exp: 1893456000 })).toString('base64url') + '.b';
+  assert.equal(OCG.expiraEm(tok), '2030-01-01T00:00:00.000Z');
+  assert.equal(OCG.expiraEm('lixo'), null);
+  const j = OCG.janelaDoMes(2026, 2); assert.ok(Date.parse(j.end_date) - Date.parse(j.start_date) < 29 * 864e5, 'fevereiro inteiro, sem passar de um mês');
+});
+test('Gestta: o texto do teste traz só contagens e situação, e o analista é avisado de que o envio ao Hub não sai', () => {
+  const r = { ok: true, app: 'admin', validade: '2030-01-01T00:00:00Z', resultados: [
+    { id: 'me', status: 200, dados: { _id: 'u', role: 'ROLE_USER', company_departments: [{ _id: 's', name: 'Fiscal' }] } },
+    { id: 'clientes', status: 403, erro: 'forbidden' }, { id: 'buscaTarefas', status: 200, dados: { itens: [{ name: 'EMPRESA SIGILO' }], total: 42 } },
+    { id: 'setores', status: 0, recusado: 'endereço proibido para a extensão' }, { id: 'multas', status: 500, erro: 'falha' }] };
+  const t = OCG.linhasDoTeste(r, { id: 1 }).join('\n');
+  assert.match(t, /Perfil: Analista/); assert.match(t, /o envio ao Hub não sai/);
+  assert.match(t, /clientes ativos: seu acesso não inclui esta leitura \(403\)/);
+  assert.match(t, /tarefas abertas ou com impedimento no mês: 42/);
+  assert.match(t, /setores: recusado pela extensão/); assert.match(t, /multas no mês \(painel\): falhou \(falha\)/);
+  assert.ok(!t.includes('SIGILO'), 'nome de cliente nunca aparece');
+  assert.match(OCG.linhasDoTeste(null, null).join(''), /Nenhuma aba do Gestta aberta/);
+  assert.match(OCG.linhasDoTeste({ ok: false, semSessao: true, app: 'classico' }, { id: 1 }).join(''), /faça login/);
+});
