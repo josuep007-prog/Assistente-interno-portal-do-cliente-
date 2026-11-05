@@ -1445,6 +1445,48 @@ await passo('app · detalhe: abertura sem texto mostra a descrição (ou, nos Ca
   assert.deepEqual(p.erros, []);
 });
 
+await passo('app · detalhe: clicar num anexo abre o arquivo dentro da extensão, sem baixar (0.73.0): PDF, imagem, tipo que não abre, setas e Baixar', async () => {
+  const p = await abrirApp('#/fila?escopo=equipe');
+  const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+  await p.evaluate(png => { window.__respostas = Object.assign(window.__respostas || {}, {
+    detalhe: { ok: true, item: { assunto: 'x' }, anexos: ['aso ficticio.pdf'], arquivos: [{ id: 'a1', nome: 'aso ficticio.pdf', direto: 'https://onvio.com.br/api/storage/v1/files/x/aso.pdf' }], grupos: [{ titulo: 'Solicitação', campos: [{ k: 'Categoria', v: 'Estagiário' }] }],
+      tramites: [{ n: 1, id: 't1', em: '2026-10-07T19:03:00', situacao: 'Sem análise', lado: 'cli', autor: 'Cliente BETA', texto: 'segue', anexos: ['foto.png', 'contrato.docx'], arquivos: [{ id: 'a2', nome: 'foto.png' }, { id: 'a3', nome: 'contrato.docx' }] }] },
+    verAnexo: { ok: true, nome: 'aso ficticio.pdf', tipo: 'application/pdf', b64: 'JVBERi0xLjQKJWZpY3RpY2lv', tamanho: 18 } }); }, PNG);
+  await p.click('#corpo [data-k="geral:b"]');
+  await p.waitForSelector('#pn-anex .pn-arq');
+  // no painel: o anexo da abertura abre aqui, em PDF
+  await p.click('#pn-anex .pn-arq');
+  await p.waitForSelector('#dlg-ver .ver-pdf');
+  assert.match(await p.$eval('#dlg-ver .ver-pdf', f => f.getAttribute('src')), /^blob:/, 'o PDF vem da memória (blob), nada gravado');
+  assert.match(await p.textContent('#dlg-ver .ver-cab'), /aso ficticio\.pdf[\s\S]*1 de 3/);
+  const m1 = await p.evaluate(() => window.__msgs.filter(m => m.cmd === 'verAnexo').pop());
+  assert.deepEqual([m1.anexo.id, m1.anexo.direto, m1.num], ['a1', 'https://onvio.com.br/api/storage/v1/files/x/aso.pdf', 'b'.replace('b', m1.num)]);
+  // seta para a direita: a imagem do trâmite
+  await p.evaluate(png => { window.__respostas.verAnexo = { ok: true, nome: 'foto.png', tipo: '', b64: png, tamanho: 68 }; }, PNG);
+  await p.keyboard.press('ArrowRight');
+  await p.waitForSelector('#dlg-ver .ver-img img');
+  assert.match(await p.textContent('#dlg-ver .ver-cab'), /foto\.png[\s\S]*2 de 3/);
+  // Word não abre no navegador: oferece Baixar
+  await p.evaluate(() => { window.__respostas.verAnexo = { ok: true, nome: 'contrato.docx', tipo: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', b64: 'UEsDBA==', tamanho: 4 }; });
+  await p.click('#ver-prox');
+  await p.waitForFunction(() => /não abre no navegador/.test(document.querySelector('#dlg-ver .ver-corpo').textContent));
+  // erro do Onvio aparece na janela
+  await p.evaluate(() => { window.__respostas.verAnexo = { ok: false, erro: 'HTTP 401' }; });
+  await p.keyboard.press('ArrowRight');
+  await p.waitForFunction(() => /Não foi possível abrir este anexo[\s\S]*HTTP 401/.test(document.querySelector('#dlg-ver .ver-corpo').textContent));
+  // Esc fecha só o visualizador; o detalhe continua aberto
+  await p.keyboard.press('Escape');
+  assert.equal(await p.$('#dlg-ver:not([hidden])'), null);
+  assert.ok(await p.$('#g-painel'), 'o detalhe continua aberto');
+  // na conversa: o anexo do trâmite também abre aqui
+  await p.evaluate(png => { window.__respostas.verAnexo = { ok: true, nome: 'foto.png', tipo: 'image/png', b64: png, tamanho: 68 }; }, PNG);
+  await p.click('#g-corpo .tr-arq');
+  await p.waitForSelector('#dlg-ver .ver-img img');
+  if (process.env.CAP) { await p.waitForTimeout(400); await p.screenshot({ path: process.env.CAP + '/ver-anexo.png' }); }
+  await p.keyboard.press('Escape');
+  assert.deepEqual(p.erros, []);
+});
+
 await passo('app · Solicitações: Pôr em análise em cada uma (cálculo de rescisão com o texto curto) e em lote, uma confirmação e um trâmite por vez', async () => {
   const base = { nivel: 0, grav: 0, parado: 1, motivos: [], resp: 'Ana Teste', mine: true, lado: 'esc', code: 1, status: 'Sem análise', created: agoraIso(2), last: agoraIso(1) };
   const itens = [
@@ -1735,8 +1777,8 @@ await passo('app · detalhe: destaques sutis; trâmites como conversa (filtro, o
   assert.match(await p.textContent('#dlg-anexos'), /Na abertura da solicitação.*Trâmite #01 · cliente.*Trâmite #02 · escritório/s);
   await p.click('#ax-todos');
   assert.equal(await p.isDisabled('#ax-baixar'), true, 'nada marcado, nada a baixar');
-  await p.click('#dlg-anexos .ax-arq:has-text("aviso.pdf")');
-  await p.click('#dlg-anexos .ax-arq:has-text("pedido.pdf")');
+  await p.click('#dlg-anexos .ax-arq:has-text("aviso.pdf") input');
+  await p.click('#dlg-anexos .ax-arq:has-text("pedido.pdf") input');
   assert.match(await p.textContent('#ax-cont'), /2 de 4/);
   if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/anexos.png' });
   assert.equal(await p.$eval('#ax-todos', e => e.indeterminate), true);
@@ -1745,11 +1787,20 @@ await passo('app · detalhe: destaques sutis; trâmites como conversa (filtro, o
   const m = await p.evaluate(() => window.__msgs.find(x => x.cmd === 'baixarAnexos'));
   assert.deepEqual([m.type, m.num, JSON.stringify(m.anexos)], ['geral', '102', JSON.stringify([{ id: 'a0', topico: null, nome: 'pedido.pdf', direto: null }, { id: 'a2', topico: 't2', nome: 'aviso.pdf', direto: null }])]);
   assert.equal(await p.isHidden('#gaveta'), false, 'o detalhe continua aberto');
-  // clicar num anexo do trâmite abre a escolha só com ele marcado; sem caminho conhecido, explica como ensinar
-  await p.evaluate(() => { window.__respostas.baixarAnexos = { ok: true, baixados: 0, falhas: [], semRota: 1 }; });
+  // clicar num anexo do trâmite abre o arquivo aqui mesmo (0.73.0), sem a janela de escolha
+  await p.evaluate(() => { window.__respostas.verAnexo = { ok: false, erro: 'ainda não sei como o Onvio entrega este anexo: baixe um anexo pelo Onvio uma vez' }; });
   await p.click('#g-corpo .tr-arq:has-text("recibo.pdf")');
+  await p.waitForSelector('#dlg-ver .ver-corpo');
+  assert.match(await p.textContent('#dlg-ver .ver-cab'), /recibo\.pdf/);
+  assert.equal(await p.isHidden('#dlg-anexos'), true);
+  await p.keyboard.press('Escape');
+  // na janela Anexos, só ele marcado; sem caminho conhecido, explica como ensinar
+  await p.evaluate(() => { window.__respostas.baixarAnexos = { ok: true, baixados: 0, falhas: [], semRota: 1 }; });
+  await p.click('#g-anexos');
   await p.waitForSelector('#dlg-anexos [data-ax]');
-  assert.deepEqual(await p.$$eval('#dlg-anexos [data-ax]:checked', e => e.map(x => x.closest('label').textContent)), ['PDFrecibo.pdf']);
+  await p.click('#ax-todos');
+  await p.click('#dlg-anexos .ax-arq:has-text("recibo.pdf") input');
+  assert.deepEqual(await p.$$eval('#dlg-anexos [data-ax]:checked', e => e.map(x => x.closest('label').querySelector('.ax-nome').textContent)), ['recibo.pdf']);
   await p.click('#ax-baixar');
   await p.waitForSelector('#ax-onvio');
   assert.match(await p.textContent('#ax-msg'), /Ainda não sei como o Onvio baixa/);

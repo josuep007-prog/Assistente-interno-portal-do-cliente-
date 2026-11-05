@@ -468,7 +468,9 @@ async function guardarRotaAnexo(msg) {
   return true;
 }
 const MAX_DOWNLOADS = 50;
-async function baixarAnexos(msg) {
+const ANEXO_VER_MAX = 15 * 1024 * 1024;
+// Confere o pedido (só o escritório, só onvio.com.br, só GET) e monta o endereço de cada anexo. Comum ao baixar e ao visualizar.
+async function prepararAnexos(msg) {
   const t = OC.TYPE_BY_KEY[msg.type];
   if (!t) throw new Error('tipo desconhecido');
   const pedidos = Array.isArray(msg.anexos) ? msg.anexos : [];
@@ -479,55 +481,83 @@ async function baixarAnexos(msg) {
   if (pedidos.some(a => !a || !(ok(a.id) || direto(a.direto)) || (a.id != null && !ok(a.id)) || (a.topico != null && !ok(a.topico)) || (a.direto != null && !direto(a.direto)))) throw new Error('anexo inválido');
   const { f } = await escolherFetcher(true);                     // confere de novo que é o escritório
   const tab = await abaOnvio();
-  if (!tab) throw new Error('Abra o Onvio numa aba para baixar.');
-  const d = await f(OC.urlConsulta(t, { numero: msg.num, per: 5 }));
-  const r = ((d && d.items) || []).find(x => String(x.identifier) === String(msg.num));
-  if (!r) throw new Error('solicitação #' + msg.num + ' não encontrada em ' + t.label);
+  if (!tab) throw new Error('Abra o Onvio numa aba para ver ou baixar anexos.');
   const { rotasAnexo } = await chrome.storage.local.get('rotasAnexo');
   const nomeSeguro = n => String(n || 'anexo').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '_').slice(0, 180) || 'anexo';
   const itens = [], semRota = [];
+  let r = null;
   for (const a of pedidos) {
     const nome = nomeSeguro(a.nome);
-    if (a.direto) { itens.push({ url: a.direto, campo: null, direto: true, nome }); continue; }      // staticFilePath: o próprio arquivo
+    if (a.direto) { itens.push({ url: a.direto, campo: null, nome }); continue; }      // staticFilePath: o próprio arquivo (também precisa da autorização)
+    if (!r) {
+      const d = await f(OC.urlConsulta(t, { numero: msg.num, per: 5 }));
+      r = ((d && d.items) || []).find(x => String(x.identifier) === String(msg.num));
+      if (!r) throw new Error('solicitação #' + msg.num + ' não encontrada em ' + t.label);
+    }
     const u = OC.urlAnexo(t, { sol: r.id, topico: a.topico || null, anexo: a.id, nome }, rotasAnexo || []);
     if (u && OC.leituraAnexoPermitida(u.url)) itens.push({ url: u.url, campo: u.campo, nome }); else semRota.push(nome);
   }
-  if (!itens.length) return { baixados: 0, falhas: [], semRota: semRota.length, rotas: (rotasAnexo || []).length };
-  const [res] = await chrome.scripting.executeScript({
-    target: { tabId: tab.id }, world: 'MAIN',
-    func: async lista => {
-      const auth = typeof window.__controlOnvioAutorizacao === 'function' ? window.__controlOnvioAutorizacao() : null;
-      const out = [];
-      for (const it of lista) {
-        try {
-          const doOnvio = h => { try { const u = new URL(h); return u.protocol === 'https:' && /(^|\.)onvio\.com\.br$/i.test(u.hostname) && !u.username; } catch (e) { return false; } };
-          let href, blob = null;
-          if (it.direto) href = it.url;                         // staticFilePath: o arquivo já está nesse endereço
-          else {
-            const headers = { Accept: '*/*' };
-            if (auth) headers.Authorization = auth;
-            const r = await fetch(it.url, { method: 'GET', headers, credentials: 'include' });
-            if (!r.ok) { out.push({ nome: it.nome, erro: 'HTTP ' + r.status }); continue; }
-            if (it.campo) {
-              const j = await r.json();
-              href = j && j[it.campo];
-              if (typeof href !== 'string' || !doOnvio(href)) { out.push({ nome: it.nome, erro: 'o Onvio não devolveu o endereço do arquivo' }); continue; }
-            } else { blob = await r.blob(); href = URL.createObjectURL(blob); }
-          }
-          const a = document.createElement('a');
-          a.href = href; a.download = it.nome; a.rel = 'noopener'; a.style.display = 'none';
-          document.body.appendChild(a); a.click(); a.remove();
-          if (blob) setTimeout(() => URL.revokeObjectURL(href), 60000);
-          out.push({ nome: it.nome, ok: true });
-          await new Promise(res => setTimeout(res, 400));
-        } catch (e) { out.push({ nome: it.nome, erro: String(e && e.message || e).slice(0, 120) }); }
-      }
-      return out;
-    },
-    args: [itens]
-  });
+  return { tab, itens, semRota, rotas: (rotasAnexo || []).length };
+}
+// Roda na aba do Onvio: busca cada arquivo COM a autorização do Onvio (antes, o endereço direto ia para o Chrome baixar sem ela e o Onvio
+// recusava: "O arquivo não estava disponível no site", 05/11/2026) e salva pelo Chrome ('baixar') ou devolve o conteúdo ('ver', só o 1º).
+function anexosNaPagina(lista, modo, max) {
+  return (async () => {
+    const auth = typeof window.__controlOnvioAutorizacao === 'function' ? window.__controlOnvioAutorizacao() : null;
+    const doOnvio = h => { try { const u = new URL(h); return u.protocol === 'https:' && /(^|\.)onvio\.com\.br$/i.test(u.hostname) && !u.username; } catch (e) { return false; } };
+    const mesmoSite = h => { try { return new URL(h).origin === location.origin; } catch (e) { return false; } };
+    const pegar = async (u) => { const headers = { Accept: '*/*' }; if (auth && mesmoSite(u)) headers.Authorization = auth; return fetch(u, { method: 'GET', headers, credentials: mesmoSite(u) ? 'include' : 'omit' }); };
+    const out = [];
+    for (const it of lista) {
+      try {
+        let r = await pegar(it.url);
+        if (!r.ok) { out.push({ nome: it.nome, erro: 'HTTP ' + r.status }); continue; }
+        let href = null;
+        if (it.campo || /json/i.test(r.headers.get('content-type') || '')) {          // o Onvio devolve { downloadUrl } em vez do arquivo
+          const j = await r.json().catch(() => null), d = j && (j[it.campo || 'downloadUrl'] || j.downloadUrl || j.url);
+          if (typeof d !== 'string' || !doOnvio(d)) { out.push({ nome: it.nome, erro: 'o Onvio não devolveu o endereço do arquivo' }); continue; }
+          href = d;
+          try { r = await pegar(d); } catch (e) { r = null; }
+          if (r && !r.ok) { out.push({ nome: it.nome, erro: 'HTTP ' + r.status }); continue; }
+        }
+        let blob = null;
+        if (r) { try { blob = await r.blob(); } catch (e) { blob = null; } }
+        if (blob && /text\/html/i.test(blob.type)) { out.push({ nome: it.nome, erro: 'o Onvio devolveu uma página em vez do arquivo (sessão expirada?)' }); continue; }
+        if (modo === 'ver') {
+          if (!blob) { out.push({ nome: it.nome, erro: 'não foi possível ler o arquivo' }); break; }
+          if (blob.size > max) { out.push({ nome: it.nome, erro: 'arquivo grande demais para visualizar (' + Math.round(blob.size / 1048576) + ' MB): baixe' }); break; }
+          const b = new Uint8Array(await blob.arrayBuffer()); let s = ''; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
+          out.push({ nome: it.nome, ok: true, tipo: blob.type || '', b64: btoa(s), tamanho: b.length });
+          break;
+        }
+        const alvo = blob ? URL.createObjectURL(blob) : href;          // sem conseguir ler (outro site sem CORS): o Chrome baixa o endereço assinado
+        if (!alvo) { out.push({ nome: it.nome, erro: 'não foi possível ler o arquivo' }); continue; }
+        const a = document.createElement('a');
+        a.href = alvo; a.download = it.nome; a.rel = 'noopener'; a.style.display = 'none';
+        document.body.appendChild(a); a.click(); a.remove();
+        if (blob) setTimeout(() => URL.revokeObjectURL(alvo), 60000);
+        out.push({ nome: it.nome, ok: true });
+        await new Promise(res => setTimeout(res, 400));
+      } catch (e) { out.push({ nome: it.nome, erro: String(e && e.message || e).slice(0, 120) }); if (modo === 'ver') break; }
+    }
+    return out;
+  })();
+}
+async function baixarAnexos(msg) {
+  const { tab, itens, semRota, rotas } = await prepararAnexos(msg);
+  if (!itens.length) return { baixados: 0, falhas: [], semRota: semRota.length, rotas };
+  const [res] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', func: anexosNaPagina, args: [itens, 'baixar', 0] });
   const lista = (res && res.result) || [];
-  return { baixados: lista.filter(x => x.ok).length, falhas: lista.filter(x => !x.ok).map(x => x.nome + ': ' + x.erro), semRota: semRota.length, rotas: (rotasAnexo || []).length };
+  return { baixados: lista.filter(x => x.ok).length, falhas: lista.filter(x => !x.ok).map(x => x.nome + ': ' + x.erro), semRota: semRota.length, rotas };
+}
+// Visualizar um anexo dentro da extensão (05/11/2026, pedido do Josué): o conteúdo vem da aba do Onvio e vai direto para a tela, sem ser guardado.
+async function verAnexo(msg) {
+  const { tab, itens, semRota } = await prepararAnexos(Object.assign({}, msg, { anexos: [msg.anexo] }));
+  if (!itens.length) return { ok: false, semRota: semRota.length > 0, erro: 'ainda não sei como o Onvio entrega este anexo: baixe um anexo pelo Onvio uma vez' };
+  const [res] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', func: anexosNaPagina, args: [itens.slice(0, 1), 'ver', ANEXO_VER_MAX] });
+  const v = ((res && res.result) || [])[0];
+  if (!v || !v.ok) return { ok: false, erro: (v && v.erro) || 'sem resposta da aba do Onvio' };
+  return { ok: true, nome: v.nome, tipo: v.tipo, b64: v.b64, tamanho: v.tamanho };
 }
 /* ---------- anexos de um trâmite: nunca ficam para trás em silêncio (0.63.0) ----------
  * O arquivo sobe num pedido só (um por vez), cada um com o seu resultado, e o que o Onvio diz ter aceitado é CONFERIDO lendo o
@@ -1019,6 +1049,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'criar') { reply(Object.assign({ ok: true }, await criarSolicitacao(msg))); }
       else if (msg.cmd === 'detalhe') { reply(Object.assign({ ok: true }, await detalhe(msg))); }
       else if (msg.cmd === 'baixarAnexos') { reply(Object.assign({ ok: true }, await baixarAnexos(msg))); }
+      else if (msg.cmd === 'verAnexo') { reply(await verAnexo(msg)); }
       else if (msg.cmd === 'rotaAnexo') { reply({ ok: await guardarRotaAnexo(msg) }); }
       else if (msg.cmd === 'sondarEmpregados') { const { f } = await escolherFetcher(); reply({ ok: true, linhas: await OC.sondarEmpregados(emSegundoPlano(f), ms => new Promise(r => setTimeout(r, ms))) }); }
       else if (msg.cmd === 'testarFolha') { const { f } = await escolherFetcher(); try { reply({ ok: true, linhas: await OC.testarFolha(emSegundoPlano(f), textoDoPdf, ms => new Promise(r => setTimeout(r, ms))) }); } finally { fecharOffscreen(); } }

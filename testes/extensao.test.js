@@ -1068,6 +1068,40 @@ test('anexos: rotas mapeadas em 22/10/2026 (GET devolve downloadUrl) e staticFil
   assert.deepEqual(plano(r.map(x => [x.id, x.direto || null])), [['a1', ok], ['a2', null], ['a3', null]]);
 });
 
+test('background: ver anexo sem baixar (0.73.0): o endereço direto vai COM a autorização do Onvio e o arquivo volta só para a tela', async () => {
+  const api = apiSimulada({ itens: { cadEmpregado: [pend('c1', 41)] } });
+  const PDF = Buffer.from('%PDF-1.4 ficticio');
+  const pedidos = [];
+  const pagina = async (url, init) => {
+    const u = new URL(url);
+    if (u.pathname.startsWith('/api/storage/')) {
+      pedidos.push({ url, auth: init && init.headers && init.headers.Authorization });
+      if (!(init && init.headers && init.headers.Authorization)) return { ok: false, status: 401, headers: { get: () => 'application/json' } };   // como o Onvio real: sem a autorização, recusa
+      return { ok: true, status: 200, headers: { get: () => 'application/pdf' }, blob: async () => new Blob([PDF], { type: 'application/pdf' }) };
+    }
+    return api(url, init);
+  };
+  const { ouvintes, ctx } = carregarBackground({ abas: [aba(5, ONVIO_PORTAL)], fetchPorMundo: { MAIN: pagina }, fetch: api });
+  ctx.location = { origin: 'https://onvio.com.br' }; ctx.__controlOnvioAutorizacao = () => 'Bearer ficticio'; ctx.btoa = s => Buffer.from(s, 'binary').toString('base64');
+  const pedir = m => new Promise(res => ouvintes[0](m, { tab: { id: 5 } }, res));
+  const dir = 'https://onvio.com.br/api/storage/v1/files/Company/application/x/file/aso.pdf';
+  const v = await pedir({ cmd: 'verAnexo', type: 'cadEmpregado', num: '41', anexo: { id: 'a2', nome: 'aso.pdf', direto: dir } });
+  assert.equal(v.ok, true, JSON.stringify(v));
+  assert.equal(Buffer.from(v.b64, 'base64').toString(), '%PDF-1.4 ficticio');
+  assert.equal(v.tipo, 'application/pdf');
+  assert.deepEqual(pedidos.map(x => x.auth), ['Bearer ficticio'], 'o arquivo direto é pedido com a autorização (antes ia sem e o Onvio recusava)');
+  // endereço de fora do Onvio ou sem rota: recusa sem ler nada
+  assert.equal((await pedir({ cmd: 'verAnexo', type: 'cadEmpregado', num: '41', anexo: { id: 'a3', nome: 'x', direto: 'https://evil.com/api/storage/x' } })).ok, false);
+  const sem = await pedir({ cmd: 'verAnexo', type: 'cadEmpregado', num: '41', anexo: { id: 'a1', topico: 't1', nome: 'aviso.pdf' } });
+  assert.equal(sem.ok, false); assert.match(sem.erro, /baixe um anexo pelo Onvio uma vez/);
+  // arquivo grande demais: avisa para baixar
+  const grande = async (url, init) => new URL(url).pathname.startsWith('/api/storage/') ? { ok: true, status: 200, headers: { get: () => 'application/pdf' }, blob: async () => ({ size: 16 * 1024 * 1024, type: 'application/pdf' }) } : api(url, init);
+  const b2 = carregarBackground({ abas: [aba(5, ONVIO_PORTAL)], fetchPorMundo: { MAIN: grande }, fetch: api });
+  b2.ctx.location = { origin: 'https://onvio.com.br' };
+  const g = await new Promise(res => b2.ouvintes[0]({ cmd: 'verAnexo', type: 'cadEmpregado', num: '41', anexo: { id: 'a2', nome: 'grande.pdf', direto: dir } }, { tab: { id: 5 } }, res));
+  assert.equal(g.ok, false); assert.match(g.erro, /grande demais para visualizar/);
+});
+
 test('background: baixar anexos pela rota mapeada, por staticFilePath ou pelo molde aprendido; sem rota, explica', async () => {
   const api = apiSimulada({ itens: { avisoFerias: [pend('f1', 31)], cadEmpregado: [pend('c1', 41)] } });
   const { ouvintes, store } = carregarBackground({ abas: [aba(5, ONVIO_PORTAL)], fetchPorMundo: { MAIN: api }, fetch: api });

@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.72.1)
+# Control Onvio · ControlTax (v0.73.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,13 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.73.0 (ver anexos sem baixar, 05/11/2026)
+
+- **Ver o anexo dentro da extensão:** no detalhe, clicar num anexo (na conversa ou na lista de Anexos do painel) abre o arquivo numa janela por cima, sem baixar. PDF abre no leitor do Chrome, imagens e textos aparecem direto; Word, Excel e zip não abrem no navegador e a janela oferece **Baixar**. As setas (← →) passam pelos anexos da solicitação e Esc fecha. Na janela "Anexos", o olho ao lado de cada arquivo faz o mesmo.
+- O arquivo é lido na hora pela aba do Onvio e fica só na memória daquela janela (sai ao trocar ou fechar): nada é gravado. Até 15 MB por arquivo; maior que isso, a janela pede para baixar.
+- **Correção dos downloads que falhavam** ("O arquivo não estava disponível no site", sobretudo nos Cadastros): o endereço direto do anexo ia para o Chrome baixar sem a autorização do Onvio, e o Onvio recusava. Agora a extensão busca o arquivo pela aba **com a autorização** e só então salva; o mesmo vale para o endereço que o Onvio devolve nas outras listas.
+- A confirmar no Onvio real: o leitor de PDF dentro da camada e os anexos de trâmite do Cadastro (que dependem do caminho aprendido).
 
 ## Novidades da v0.72.1 (observações na abertura, 05/11/2026)
 
