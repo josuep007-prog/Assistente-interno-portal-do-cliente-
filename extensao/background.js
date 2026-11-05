@@ -236,6 +236,52 @@ async function lerGestta(pedidos, opcoes) {
   });
   return { aba: tab, r: (res && res.result) || null };
 }
+// Tela "Tarefas do Gestta" (0.72.0): as tarefas do mês de quem está logado (ou, para a coordenação, de outra pessoa
+// ou as sem responsável), abertas, com impedimento e concluídas, de 1000 em 1000. Lidas na hora e entregues ao app:
+// nada fica no armazenamento. O analista só vê as dele: o pedido de outra pessoa sem acesso total vira "eu".
+async function tabDoGestta(sender) {
+  const t = sender && sender.tab;
+  return t && OCG.appDe(t.url || '') ? t : await abaGestta();
+}
+async function gesttaTarefas(msg, sender) {
+  const tab = await tabDoGestta(sender);
+  if (!tab) return { ok: false, semAba: true, erro: 'Abra o Gestta numa aba, já logado.' };
+  const { r: r1 } = await lerGestta([OCG.PEDIDOS.me()], { tab });
+  if (!r1 || !r1.ok) return { ok: false, semSessao: !!(r1 && r1.semSessao), erro: (r1 && r1.motivo) || 'A aba do Gestta não respondeu (recarregue com F5).' };
+  const me = r1.resultados[0], pf = me && me.dados ? OCG.perfil(me.dados) : null;
+  if (!pf || !pf.ok) return { ok: false, erro: 'Não consegui saber quem está logado no Gestta' + (me && me.status ? ' (' + (me.erro || me.status) + ')' : '') + '.' };
+  const ano = Number(msg.ano) || new Date().getFullYear(), mes = Number(msg.mes) || new Date().getMonth() + 1;
+  let quem = String(msg.quem || 'eu');
+  if (!pf.total || !(quem === 'eu' || quem === 'sem' || /^[0-9a-f]{24}$/i.test(quem))) quem = 'eu';
+  const base = { ano, mes, limit: OCG.LIMITE_BUSCA, status: ['OPEN', 'IMPEDIMENT', 'DONE'] };
+  if (quem === 'sem') base.semDono = true; else base.companyUser = quem === 'eu' ? pf.id : quem;
+  const itens = []; let total = null, paginas = 1, cortado = false;
+  for (let p = 1; p <= paginas && p <= OCG.MAX_PAGINAS_TAREFAS; p++) {
+    const { r } = await lerGestta([OCG.PEDIDOS.buscaTarefas(Object.assign({}, base, { page: p }))], { tab });
+    const x = r && r.resultados && r.resultados[0];
+    if (!r || !r.ok || !x) return { ok: false, erro: 'A leitura das tarefas parou no meio (aba do Gestta sem resposta).' };
+    if (x.status !== 200) return { ok: false, erro: x.status === 403 ? 'Seu acesso do Gestta não inclui essas tarefas.' : x.status === 401 ? 'A sessão do Gestta acabou: faça login de novo na aba.' : 'O Gestta não respondeu às tarefas (' + (x.erro || x.recusado || x.status) + ').' };
+    itens.push(...((x.dados && x.dados.itens) || []));
+    if (x.dados && x.dados.total != null) total = x.dados.total;
+    paginas = Math.max(1, Number(x.dados && x.dados.paginas) || 1);
+  }
+  if (paginas > OCG.MAX_PAGINAS_TAREFAS) cortado = true;
+  return { ok: true, ano, mes, quem, perfil: { id: pf.id, papelNome: pf.papelNome, total: pf.total, setores: pf.setores }, itens, total: total != null ? total : itens.length, cortado, validade: r1.validade || null, lidoEm: new Date().toISOString() };
+}
+// Para a coordenação escolher de quem ver as tarefas: só id e nome da equipe ativa.
+async function gesttaEquipe(msg, sender) {
+  const tab = await tabDoGestta(sender);
+  if (!tab) return { ok: false, erro: 'Abra o Gestta numa aba, já logado.' };
+  const pessoas = [];
+  for (let p = 1; p <= 5; p++) {
+    const { r } = await lerGestta([OCG.PEDIDOS.equipe({ limit: 200, page: p })], { tab });
+    const x = r && r.resultados && r.resultados[0];
+    if (!x || x.status !== 200) return { ok: false, erro: x && x.status === 403 ? 'Seu acesso não inclui a equipe.' : 'Não consegui ler a equipe do Gestta.' };
+    (x.dados.itens || []).forEach(u => { if (u && u._id && u.active !== false) pessoas.push({ id: u._id, nome: String(u.name || ''), setores: (u.company_departments || []).map(s => String(s.name || '')) }); });
+    if (!x.dados.paginas || p >= x.dados.paginas) break;
+  }
+  return { ok: true, pessoas: pessoas.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')) };
+}
 // Configurações › Avançado: quem está logado, o perfil e uma leitura de prova de cada fonte (só contagens).
 async function testarGestta() {
   const tab = await abaGestta();
@@ -867,6 +913,7 @@ async function irParaOnvio() {
 // Dentro do portal alterna o painel daquela aba; em qualquer outra página leva ao portal (Solicitações) e abre o painel lá
 async function aoClicarNoIcone(tab) {
   if (tab && tab.id != null && ehPortal(tab.url)) await mensagemParaPainel(tab.id, 'alternar').catch(() => {});
+  else if (tab && tab.id != null && OCG.appDe(tab.url || '')) await chrome.tabs.sendMessage(tab.id, { controlGestta: 'alternar' }).catch(() => {});      // no Gestta: abre e fecha a camada de lá
   else await irParaOnvio();
 }
 chrome.action.onClicked.addListener(aoClicarNoIcone);
@@ -980,6 +1027,8 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'folhaDeNovo') { await chrome.storage.local.remove(['folhaLidos', 'folhaEstado', 'folhaPastas']); reply({ ok: true }); }      // refaz também o caminho das pastas de cada empresa
       else if (msg.cmd === 'testarLeitura') { reply({ ok: true, linhas: await testarLeitura() }); }
       else if (msg.cmd === 'testarGestta') { reply({ ok: true, linhas: await testarGestta() }); }
+      else if (msg.cmd === 'gesttaTarefas') { reply(await gesttaTarefas(msg, sender)); }
+      else if (msg.cmd === 'gesttaEquipe') { reply(await gesttaEquipe(msg, sender)); }
       else if (msg.cmd === 'fecharPainel') { if (sender.tab && sender.tab.id != null) await mensagemParaPainel(sender.tab.id, 'fechar').catch(() => {}); reply({ ok: true }); }
       else reply({ ok: false, erro: 'comando desconhecido' });
     } catch (e) {
