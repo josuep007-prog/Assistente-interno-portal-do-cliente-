@@ -1687,49 +1687,46 @@ await passo('app · Nova solicitação por departamento: modelos de DP, Fiscal e
   assert.deepEqual(p.erros, []);
 });
 
-await passo('app · setores: fora da equipe do DP só as suas (sem Todas, Equipe e Distribuir, com aviso); no DP a Geral mostra só o departamento do DP; prazo prometido visível', async () => {
-  const geral = (k, num, dep, extra) => Object.assign({ k: 'geral:' + k, type: 'geral', typeLabel: 'Geral', id: k, num, code: 2, status: 'Em análise', lado: 'esc', nivel: 0, grav: 0, parado: 1, motivos: [], resp: 'Bia', mine: false, apelido: 'X' + k, cliente: 'X' + k, detalhe: 'Assunto ' + k, departmentId: dep, created: agoraIso(2), last: agoraIso(1) }, extra || {});
-  const itens = [geral('d1', 801, 'dep-dp'), geral('f1', 802, 'dep-fiscal'), geral('m1', 803, 'dep-fiscal', { mine: true, resp: 'Ana Teste', prazoPrometido: '2099-01-10', motivos: [{ n: 0, m: 'Prometido até 10/01', legal: true, prom: true }] })];
-  const regras = eq => ({ regrasEscritorio: { url: 'https://exemplo.com/r.json', versao: 't1', regras: { versao: 't1', config: {}, feriados: [], abaErrada: [], equipeDP: eq, departamentoDP: 'dep-dp' } } });
-  // fora do DP (o nome do usuário não está em equipeDP)
-  const p = await abrirApp('#/fila', Object.assign({ snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens }) }, regras(['Bia', 'Caio'])));
-  await p.waitForSelector('#aviso-setor');
-  assert.match(await p.textContent('#aviso-setor'), /Você vê só as suas solicitações/);
-  assert.deepEqual(await p.$$eval('#abas .aba', e => e.map(x => x.dataset.aba)), ['minhas', 'respondidas'], 'sem a aba Todas');
-  assert.deepEqual(await linhas(p), ['geral:m1'], 'só as suas, de qualquer departamento');
-  assert.match(await p.textContent('#corpo [data-k="geral:m1"]'), /Prometido até 10\/01/, 'o prazo prometido é o vencimento visível');
-  assert.equal(await p.isVisible('.trilho [data-rota="equipe"]'), false);
-  assert.equal(await p.isVisible('.trilho [data-rota="distribuir"]'), false);
-  await p.goto(URL_APP + '#/equipe');
-  await p.waitForFunction(() => location.hash.startsWith('#/equipe') || document.querySelector('#titulo').textContent === 'Solicitações');
-  assert.equal(await p.textContent('#titulo'), 'Solicitações', 'Equipe leva de volta às Solicitações');
-  await p.goto(URL_APP + '#/fila?escopo=todas');
-  assert.equal(await p.$eval('#abas .aba.on', a => a.dataset.aba), 'minhas', 'escopo=todas cai em Minhas');
+await passo('app · setores (0.74.0): Pessoal, Fiscal e Contábil, cada um com a Geral do seu setor; fora do Pessoal sem os cartões da folha e com aviso; prazo prometido visível', async () => {
+  const DP = '2CDE919421384918A2BF510E5D5F4FD6', FISCAL = '8D6AF452F46D454C849B6C96F8CCF306', CTB = '26CE2C34F6F44CD99501CEAA43B93F0F';
+  const geral = (k, num, dep, extra) => Object.assign({ k: 'geral:' + k, type: 'geral', typeLabel: 'Geral', id: k, num, code: 2, status: 'Em análise', lado: 'esc', nivel: 0, grav: 0, parado: 1, motivos: [], resp: 'Bia', mine: false, apelido: 'X' + k, cliente: 'X' + k, detalhe: 'Assunto ' + k, departmentId: dep, created: new Date(Date.now() - 3 * 864e5).toISOString().slice(0, 19), last: new Date(Date.now() - 864e5).toISOString().slice(0, 19) }, extra || {});
+  const itens = [geral('d1', 801, DP), geral('f1', 802, FISCAL), geral('c1', 804, CTB), geral('m1', 803, FISCAL, { mine: true, resp: 'Ana Teste', prazoPrometido: '2099-01-10', motivos: [{ n: 0, m: 'Prometido até 10/01', legal: true, prom: true }] })];
+  const snap = (u, extra) => ({ snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens, user: Object.assign({ nome: 'Ana Teste' }, u) }, extra || {}) });
+  // Pessoal (pelo acesso): a Geral do Pessoal e a sua; sem aviso; Equipe e Distribuir
+  const p = await abrirApp('#/fila?escopo=todas', snap({ departmentId: DP }));
+  await p.waitForSelector('#corpo [data-k]');
+  assert.deepEqual((await linhas(p)).sort(), ['geral:d1', 'geral:m1'], 'Pessoal: a Geral do Fiscal e do Contábil some, menos a que é sua');
+  assert.equal(await p.$('#aviso-setor'), null);
+  assert.equal(await p.isVisible('.trilho [data-rota="equipe"]'), true);
   assert.deepEqual(p.erros, []);
-  // no DP (o usuário está em equipeDP): a Geral do Fiscal some, a do DP e a sua ficam
-  const p2 = await abrirApp('#/fila?escopo=todas', Object.assign({ snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens }) }, regras(['Ana Teste', 'Bia'])));
-  await p2.waitForSelector('#corpo [data-k]');
-  assert.deepEqual((await linhas(p2)).sort(), ['geral:d1', 'geral:m1'], 'a Geral do Fiscal (dep-fiscal) some; a do DP e a que é sua ficam');
-  assert.equal(await p2.$('#aviso-setor'), null);
+  // Fiscal (pelo acesso): a Geral do Fiscal, com a equipe toda, Equipe e Distribuir; aviso do setor; só o cartão Geral
+  const p2 = await abrirApp('#/fila?escopo=todas', snap({ departmentId: FISCAL }));
+  await p2.waitForSelector('#aviso-setor');
+  assert.match(await p2.textContent('#aviso-setor'), /Visão do setor\s*Fiscal/);
+  assert.ok((await p2.$$eval('#abas .aba', e => e.map(x => x.dataset.aba))).includes('todas'), 'o Fiscal tem a aba Todas');
+  assert.deepEqual((await linhas(p2)).sort(), ['geral:f1', 'geral:m1'], 'Fiscal: só a Geral do Fiscal');
+  assert.match(await p2.textContent('#corpo [data-k="geral:m1"]'), /Prometido até 10\/01/, 'o prazo prometido é o vencimento visível');
   assert.equal(await p2.isVisible('.trilho [data-rota="equipe"]'), true);
-  // sem regras de setor: valem os ids do Pessoal de fábrica; o que é de outro departamento (aqui, ids de teste) some, menos o que é seu
-  const p3 = await abrirApp('#/fila?escopo=todas', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens }) });
-  await p3.waitForSelector('#corpo [data-k]');
-  assert.deepEqual(await linhas(p3), ['geral:m1']);
-  // pelo acesso do usuário (company-department-access): do Pessoal vê a Geral do DP; do Fiscal vê só as suas
-  const DP = '2CDE919421384918A2BF510E5D5F4FD6', FISCAL = '8D6AF452F46D454C849B6C96F8CCF306';
-  const reais = itens.map(i => i.k === 'geral:d1' ? Object.assign({}, i, { departmentId: DP }) : i.k === 'geral:f1' ? Object.assign({}, i, { departmentId: FISCAL }) : i);
-  const snap = u => ({ snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: reais, user: Object.assign({ nome: 'Ana Teste' }, u) }) });
-  const p4 = await abrirApp('#/fila?escopo=todas', snap({ departmentId: DP }));
+  assert.equal(await p2.isVisible('.trilho [data-rota="distribuir"]'), true);
+  assert.deepEqual(await p2.$$eval('[data-tipo]', e => [...new Set(e.map(x => x.dataset.tipo).filter(Boolean))]), ['geral'], 'sem cartões da folha');
+  assert.deepEqual(await p2.$$eval('#f-tipo option', o => o.map(x => x.value)), ['', 'geral'], 'o filtro de tipo só tem a Geral');
+  if (process.env.CAP) { await p2.waitForTimeout(300); await p2.screenshot({ path: process.env.CAP + '/setor-fiscal-fila.png' }); }
+  await p2.goto(URL_APP + '#/distribuir');
+  await p2.waitForFunction(() => /A distribuição automática é só do Pessoal/.test(document.body.textContent));
+  assert.deepEqual(p2.erros, []);
+  if (process.env.CAP) { await p2.goto(URL_APP + '#/inicio'); await p2.waitForTimeout(600); await p2.screenshot({ path: process.env.CAP + '/setor-fiscal-hoje.png' }); }
+  // Contábil sem o acesso (o Onvio recusou): o setor sai das solicitações lidas, e as listas da folha ficam "sem acesso"
+  const semFolha = ['cadEmpregado', 'cadContribuinte', 'cadEstagiario', 'avisoFerias', 'calcFerias', 'avisoRescisao', 'calcRescisao', 'afastamento', 'rubricas'];
+  const soCtb = itens.filter(i => i.departmentId === CTB).concat([geral('c2', 805, CTB)]);
+  const p3 = await abrirApp('#/fila?escopo=todas', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: soCtb, semAcesso: semFolha, user: { nome: 'Ana Teste', departmentId: '' } }) });
+  await p3.waitForSelector('#aviso-setor');
+  assert.match(await p3.textContent('#aviso-setor'), /Contábil/);
+  assert.deepEqual((await linhas(p3)).sort(), ['geral:c1', 'geral:c2']);
+  // nada diz o setor (sem acesso e sem departamento conhecido): não esconde nada
+  const p4 = await abrirApp('#/fila?escopo=todas', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens.map(i => Object.assign({}, i, { departmentId: 'dep-teste' })), user: { nome: 'Ana Teste' } }) });
   await p4.waitForSelector('#corpo [data-k]');
-  assert.deepEqual((await linhas(p4)).sort(), ['geral:d1', 'geral:m1'], 'acesso ao Pessoal: a Geral do Fiscal some');
+  assert.equal((await linhas(p4)).length, 4);
   assert.equal(await p4.$('#aviso-setor'), null);
-  const p5 = await abrirApp('#/fila', snap({ departmentId: FISCAL }));
-  await p5.waitForSelector('#aviso-setor');
-  assert.deepEqual(await p5.$$eval('#abas .aba', e => e.map(x => x.dataset.aba)), ['minhas', 'respondidas'], 'acesso ao Fiscal: só as suas');
-  const p6 = await abrirApp('#/fila?escopo=todas', snap({}));
-  await p6.waitForSelector('#corpo [data-k]');
-  assert.deepEqual((await linhas(p6)).sort(), ['geral:d1', 'geral:f1', 'geral:m1'].filter(k => k !== 'geral:f1'), 'acesso desconhecido não esconde pessoas, mas a Geral só mostra o DP');
 });
 
 await passo('app · detalhe: destaques sutis; trâmites como conversa (filtro, ordem, ver tudo); Anexos num botão só com escolha do que baixar', async () => {

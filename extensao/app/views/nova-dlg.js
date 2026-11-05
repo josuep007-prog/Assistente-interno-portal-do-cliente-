@@ -41,7 +41,8 @@ export function abrirNova(o) {
     if (!clientes.some(c => c.nome === nome)) clientes.unshift({ nome, apelido: o.origem.apelido || '', origem: { type: o.origem.type, num: String(o.origem.num) } });
     else clientes.find(c => c.nome === nome).origem = { type: o.origem.type, num: String(o.origem.num) };
   }
-  f = { clientes, cliente, travado: !!o.origem, assunto: o.assunto || '', descricao: o.descricao || '', passarVez: !!o.passarVez, dep: OC.DEPARTAMENTOS.includes(o.dep) ? o.dep : '', modelo: '', confirmar: false, enviando: false, erro: '', aoCriar: typeof o.aoCriar === 'function' ? o.aoCriar : null };
+  // fora do Pessoal, o departamento já vem no setor de quem cria (0.74.0)
+  f = { clientes, cliente, travado: !!o.origem, assunto: o.assunto || '', descricao: o.descricao || '', passarVez: !!o.passarVez, dep: OC.DEPARTAMENTOS.includes(o.dep) ? o.dep : (estado.setor && OC.DEPARTAMENTOS.includes(estado.setor.setor) && estado.setor.setor !== 'dp' ? estado.setor.setor : ''), modelo: '', confirmar: false, enviando: false, erro: '', aoCriar: typeof o.aoCriar === 'function' ? o.aoCriar : null };
   const d = $('#dlg-nova');
   if (!fundo) { fundo = document.createElement('div'); fundo.className = 'fundo'; fundo.style.zIndex = 52; fundo.onclick = () => { if (!f || !f.enviando) fecharNova(); }; document.body.appendChild(fundo); }
   d.style.zIndex = 53;

@@ -108,14 +108,16 @@ function desenhar() {
   avisoSetor();
 }
 
-/* ---------- aviso discreto: visão restrita ao seu setor ---------- */
+/* ---------- aviso discreto: de que setor é a visão (Fiscal, Contábil…) ---------- */
 function avisoSetor() {
   const v = $('#vista'), velho = $('#aviso-setor', v);
   if (velho) velho.remove();
-  if (!estado.setor.fora) return;
+  // 0.74.0: fora do Pessoal, uma linha discreta diz de que setor é a visão (só a lista Geral do setor; as listas da folha são do Pessoal)
+  const st = estado.setor || {};
+  if (!st.ativo || !st.soGeral) return;
   const d = document.createElement('div');
   d.id = 'aviso-setor'; d.className = 'aviso-linha';
-  d.innerHTML = '<svg class="ic"><use href="#i-lock"/></svg><span>Você vê só as suas solicitações: a equipe toda, a Equipe e o Distribuir são do DP (quem é do DP está nas regras do escritório).</span>';
+  d.innerHTML = '<svg class="ic"><use href="#i-users"/></svg><span>Visão do setor <b>' + esc(st.nome || 'do seu acesso') + '</b>: as solicitações Gerais do setor. Admissões, férias, rescisões, afastamentos e rubricas são do Pessoal.</span>';
   v.prepend(d);
 }
 

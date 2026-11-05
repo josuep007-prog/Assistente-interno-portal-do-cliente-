@@ -1,6 +1,7 @@
 /* Cartões dos tipos de solicitação (Solicitações e Hoje). Aviso e cálculo de férias, e de rescisão, formam um bloco só
  * (cor da família e o título). Os cartões são botões com data-tipo; quem usa liga o clique. */
 import { esc, tipoVisual, tipoIcone } from '../util.js';
+import { estado } from '../estado.js';
 const OC = window.OC;
 
 // Linha de apoio dos cartões (Hoje e Solicitações, iguais): o motivo mais urgente do tipo e quantas há no total.
@@ -28,6 +29,9 @@ export function tiposHtml(items, o) {
   o = o || {};
   const c = k => cartaoTipo(k, OC.TYPE_BY_KEY[k].label, items.filter(i => i.type === k), o);
   const ordem = k => OC.TYPES.findIndex(t => t.key === k);
-  const blocos = o.prioridade ? OC.ordenarTipos(items) : OC.ordenarTipos(items).sort((a, b) => ordem(a.keys[0]) - ordem(b.keys[0]));
-  return (o.todos ? cartaoTipo('', 'Todos os tipos', items, o) : '') + blocos.map(bl => bl.keys.length === 2 ? parHtml(bl, c) : c(bl.keys[0])).join('');
+  let blocos = o.prioridade ? OC.ordenarTipos(items) : OC.ordenarTipos(items).sort((a, b) => ordem(a.keys[0]) - ordem(b.keys[0]));
+  // fora do Pessoal (0.74.0) só existe a lista Geral: os cartões da folha nem aparecem
+  const soGeral = !!(estado.setor && estado.setor.soGeral);
+  if (soGeral) blocos = blocos.filter(bl => bl.keys.includes('geral'));
+  return (o.todos && !soGeral ? cartaoTipo('', 'Todos os tipos', items, o) : '') + blocos.map(bl => bl.keys.length === 2 ? parHtml(bl, c) : c(bl.keys[0])).join('');
 }
