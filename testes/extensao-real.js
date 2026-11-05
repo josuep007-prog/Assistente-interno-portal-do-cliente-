@@ -335,7 +335,7 @@ assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br
   const TOKEN = 'JWT eyJhbGciOiJIUzI1NiJ9.' + Buffer.from(JSON.stringify({ exp: 1893456000 })).toString('base64url') + '.SEGREDO-ASSINATURA';
   const ID = '5f1e2d3c4b5a69788796a5b4', ID2 = '6a5b4c3d2e1f00112233aabb';
   const CORS = { 'access-control-allow-origin': 'https://app.gestta.com.br', 'access-control-allow-headers': 'authorization,content-type,accept', 'access-control-allow-methods': 'GET,POST,OPTIONS' };
-  const gChamadas = [], gCab = [], gBuscas = [];
+  const gChamadas = [], gCab = [], gBuscas = [], gRel = [];
   let papel = 'ROLE_ADMIN', adminProibido = false;
   await ctx.route('https://app.gestta.com.br/**', r => r.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Gestta</title><body>Tarefas</body>' }));
   await ctx.route('https://api.gestta.com.br/**', async r => {
@@ -355,6 +355,15 @@ assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br
       if (c.limit === 1) return json({ docs: [{ _id: ID, name: 'TAREFA', status: 'OPEN' }], total: 6833, pages: 6833, page: 1, limit: 1 });
       return json({ docs: [{ _id: c.page === 1 ? ID : ID2, name: 'TAREFA ' + c.page, status: 'OPEN', due_date: new Date().toISOString(), customer: { _id: ID, name: 'EMPRESA FICTICIA LTDA', code: '9999' }, value: 999, owner: { phone_number: '9' } }], total: 2, pages: 2, page: c.page, limit: 1000 });
     }
+    if (p === '/core/customer/task/report') {
+      const c = JSON.parse(q.postData() || '{}'); gRel.push(c);
+      const linha = (id, st, setor) => JSON.stringify({ id, name: 'TAREFA ' + id.slice(-2), status: st, 'company_department.name': setor, 'owner.name': 'Pessoa Ficticia', _due_date: new Date().toISOString(), 'customer.code': '9999', 'customer.name': 'EMPRESA FICTICIA LTDA', 'customer.cnpj': '12.345.678/0001-90', 'customer.monthly_payment': 999, value: 50, 'company_task.score': 3 });
+      return r.fulfill({ status: 200, headers: Object.assign({ 'content-type': 'application/x-ndjson' }, CORS), body: [linha(ID, 'DONE', 'Fiscal'), linha(ID2, 'OPEN', 'Pessoal')].join('\n') + '\n' });
+    }
+    if (p === '/core/customer/task/' + ID) return json({ _id: ID, name: 'DCTF WEB', status: 'OPEN', value: 99, timesheet: [{ h: 1 }], approvers: [{ _id: 'a' }],
+      customer_task_steps: [{ name: 'Conferir', order: 1, required: true, done: true, done_by: { email: 'x@exemplo.com' } }],
+      company_documents: [{ name: 'Recibo', disconsidered: false, validation_required: true, file: { url: 'https://arquivo.exemplo/segredo.pdf' } }],
+      document_request: { active: true, requested_documents: [{ name: 'Extrato', disconsidered: false, file: 'x' }] } });
     if (p === '/core/dashboard/attention/fine/all') return json({ fine: 7 });
     if (p === '/es/file/onvio') return json({ docs: [], totalDocs: 4 });
     if (p === '/admin/company/document') return json({ docs: [{ _id: ID, name: 'DAS' }], totalDocs: 1008, documents_without_destination: 31 });
@@ -399,8 +408,41 @@ assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br
   for (const s of ['SEGREDO', 'eyJ']) assert.ok(!JSON.stringify([t1, t2, eq]).includes(s), 'token fora: ' + s);
   // o shell entra no Gestta pelo manifesto (o botão fica num Shadow DOM fechado)
   assert.equal(await gAba.evaluate(() => !!document.getElementById('controlgestta-host')), true, 'botão do Control no Gestta');
+  // Fechamento do mês (0.73.0): um POST do relatório CUSTOMER_TASK, guardado só na memória do Chrome, no máximo 1 vez por hora
+  const antesFech = gChamadas.length;
+  const f1 = await tt({ cmd: 'gesttaFechamento', ano: 2026, mes: 11 });
+  assert.ok(f1.ok, 'gesttaFechamento: ' + (f1.erro || ''));
+  assert.equal(f1.formato, 'ndjson'); assert.equal(f1.linhas.length, 2); assert.equal(f1.parcial, false); assert.equal(f1.naMemoria, true);
+  assert.deepEqual(gChamadas.slice(antesFech).filter(c => c.startsWith('POST ')), ['POST /core/customer/task/report']);
+  assert.equal(gRel.length, 1); assert.equal(gRel[0].type, 'CUSTOMER_TASK');
+  assert.match(gRel[0].dates.startDate, /^2026-11-01/); assert.match(gRel[0].dates.endDate, /^(2026-11-30|2026-12-01T0[0-3])/);
+  for (const c of ['value', 'customer.monthly_payment', 'company_task.score']) assert.ok(!f1.colunas.includes(c), 'coluna fora do fechamento: ' + c);
+  assert.ok(f1.colunas.includes('company_department.name') && f1.colunas.includes('owner.name'), 'setor e responsável no fechamento');
+  const nRel = gRel.length;
+  const f2 = await tt({ cmd: 'gesttaFechamento', ano: 2026, mes: 11, forcar: true });
+  assert.ok(f2.ok && f2.daMemoria && f2.podeEm > 0, 'em menos de 1 hora vem da memória');
+  assert.equal(gRel.length, nRel, 'atualizar antes de 1 hora não chama o Gestta de novo');
+  const sess = await pagina.evaluate(() => chrome.storage.session.get(null));
+  assert.ok(sess['gtFech-2026-11'] && sess['gtFech-2026-11'].linhas.length === 2, 'relatório na memória do Chrome');
+  const loc = JSON.stringify(await pagina.evaluate(() => chrome.storage.local.get(null)));
+  assert.ok(!loc.includes('gtFech') && !loc.includes('EMPRESA FICTICIA'), 'nada do relatório no armazenamento do disco');
+  for (const s of ['SEGREDO', 'eyJ']) assert.ok(!JSON.stringify(sess).includes(s) && !JSON.stringify(f1).includes(s), 'token fora da memória: ' + s);
+  // detalhe da tarefa: um GET, sem valor, apontamento, aprovadores nem arquivo
+  const antesDet = gChamadas.length;
+  const d1 = await tt({ cmd: 'gesttaTarefa', id: ID });
+  assert.ok(d1.ok, 'gesttaTarefa: ' + (d1.erro || ''));
+  assert.deepEqual(gChamadas.slice(antesDet), ['GET /core/customer/task/' + ID]);
+  assert.equal(d1.tarefa.customer_task_steps[0].name, 'Conferir'); assert.equal(d1.tarefa.company_documents[0].validation_required, true);
+  assert.equal(d1.tarefa.document_request.requested_documents[0].name, 'Extrato');
+  for (const s of ['segredo.pdf', 'x@exemplo', '"value"', 'timesheet', 'approvers', '"file"']) assert.ok(!JSON.stringify(d1).includes(s), 'detalhe vazou: ' + s);
+  const antesInv = gChamadas.length;
+  const d2 = await tt({ cmd: 'gesttaTarefa', id: '../admin/company' });
+  assert.equal(d2.ok, false); assert.equal(gChamadas.length, antesInv, 'id inválido não pede nada');
   // analista: avisa que o envio ao Hub não sai; admin proibido vira "seu acesso não inclui"
   papel = 'ROLE_USER'; adminProibido = true;
+  await pagina.evaluate(() => chrome.storage.session.remove('gtFech-2026-11'));
+  const f3 = await tt({ cmd: 'gesttaFechamento', ano: 2026, mes: 11 });
+  assert.ok(f3.ok && f3.parcial === true, 'analista: fechamento marcado como parcial');
   const g2 = (await tg()).linhas.join('\n');
   assert.match(g2, /Perfil: Analista · acesso ao\(s\) setor\(es\) dele/);
   assert.match(g2, /o envio ao Hub não sai/);

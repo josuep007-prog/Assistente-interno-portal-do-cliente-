@@ -3723,7 +3723,7 @@ test('Gestta: a limpeza só deixa sair os campos permitidos (sem telefone, permi
   const cli = OCG.limpar('cliente', { docs: [{ _id: 'c1', cnpj: '1', monthly_payment: 500, due_day: 5, external_id: 'ABC', partner_config: { has_onvio_portal: true, origin: 'x' } }], totalDocs: 10, totalPages: 1 });
   assert.equal(cli.total, 10); assert.equal(cli.itens[0].monthly_payment, undefined); assert.equal(cli.itens[0].external_id, 'ABC'); assert.deepEqual(plano(cli.itens[0].partner_config), { has_onvio_portal: true });
   const det = OCG.limpar('tarefaDetalhe', { _id: 't1', value: 99, timesheet: [1], approvers: [{}], owner: { _id: 'u1', name: 'P', email: 'e' }, document_request: { requested_documents: [] } });
-  assert.deepEqual(plano(det), { _id: 't1', owner: { _id: 'u1', name: 'P' } });
+  assert.deepEqual(plano(det), { _id: 't1', owner: { _id: 'u1', name: 'P' }, document_request: { requested_documents: [] } });
   const rel = OCG.limparRelatorio([{ id: 't1', 'customer.cnpj': '1', 'customer.monthly_payment': 500, value: 9, 'company_task.score': 3, 'owner.name': 'P', 'customer.company_groupers': [{ x: 1 }] }]);
   for (const c of ['value', 'customer.monthly_payment', 'company_task.score', 'customer.company_groupers', 'concluded_by.role']) assert.ok(!rel.colunas.includes(c), 'coluna fora: ' + c);
   assert.equal(rel.linhas[0][rel.colunas.indexOf('owner.name')], 'P');
@@ -3798,6 +3798,38 @@ test('Gestta · tarefas: grupos pelo que pesa (multa, atraso, impedimento, hoje,
   assert.equal(OCG.urlTarefa('../x'), null, 'só id do Gestta');
   const p = OCG.PEDIDOS.buscaTarefas({ ano: 2026, mes: 11, semDono: true, limit: 1000 });
   assert.equal(p.corpo.no_owner, true); assert.equal(p.corpo.company_user, undefined); assert.equal(OCG.leituraPermitida(p.metodo, p.url, p.corpo).ok, true);
+});
+test('Gestta · fechamento (0.75.0): o relatório em qualquer formato aceito, as tarefas por setor, analista e empresa, a trilha e o detalhe sem arquivo', () => {
+  const H = new Date(2026, 10, 5, 10), d = dia => new Date(Date.UTC(2026, 10, dia, 3)).toISOString();
+  const lin = (id, st, setor, quem, dia, cod, cli, extra) => Object.assign({ id, name: 'T' + id, status: st, 'company_department.name': setor, 'owner.name': quem, _due_date: d(dia), 'customer.code': cod, 'customer.name': cli, 'customer.cnpj': '', fine: false, overdue: false, value: 999, 'customer.monthly_payment': 500 }, extra);
+  const L = [lin('a1', 'OPEN', 'Fiscal', 'Ana', 1, '1', 'ALFA', { fine: 'true' }), lin('a2', 'DONE', 'Pessoal', 'Bia', 2, '1', 'ALFA'), lin('a3', 'OPEN', 'Pessoal', 'Bia', 9, '1', 'ALFA'),
+    lin('b1', 'DONE', 'Fiscal', 'Ana', 3, '2', 'BETA'), lin('b2', 'DONE', 'Fiscal', 'Ana', 4, '2', 'BETA'), lin('c1', 'OPEN', 'Fiscal', 'Ana', 9, '9', 'CONTROLTAX GESTAO'), lin('x1', 'NOVA_SITUACAO', 'Fiscal', 'Ana', 9, '2', 'BETA')];
+  // formatos: lista JSON, { data }, NDJSON; desconhecido = null (vira erro visível)
+  const viaLista = OCG.limparRelatorio(JSON.stringify(L), OCG.COLUNAS_FECHAMENTO), viaData = OCG.limparRelatorio({ data: L }, OCG.COLUNAS_FECHAMENTO), viaNd = OCG.limparRelatorio(L.map(x => JSON.stringify(x)).join('\n'), OCG.COLUNAS_FECHAMENTO);
+  assert.equal(viaLista.total, 7); assert.equal(viaData.total, 7); assert.equal(viaNd.total, 7); assert.equal(viaNd.formato, 'ndjson');
+  assert.equal(OCG.limparRelatorio('<html>erro</html>', OCG.COLUNAS_FECHAMENTO), null); assert.equal(OCG.limparRelatorio({ x: 1 }), null);
+  assert.ok(!viaLista.colunas.includes('value') && !JSON.stringify(viaLista).includes('999') && !JSON.stringify(viaLista).includes('500'), 'valor e mensalidade fora');
+  const T = OCG.tarefasDoRelatorio(viaLista.colunas, viaLista.linhas);
+  assert.equal(T[0].fine, true, '"true" em texto vira sim'); assert.equal(T[0].setor, 'Fiscal'); assert.equal(T[0].customer._id, '1');
+  const f = OCG.fechamento(T, H);
+  assert.deepEqual(plano([f.total.total, f.total.feitas, f.total.abertas, f.total.multa, f.total.pct]), [5, 3, 2, 1, 60], 'sem a do escritório e sem a de situação desconhecida');
+  assert.equal(f.escritorio, 1); assert.equal(f.desconhecidas, 1, 'situação desconhecida avisada');
+  assert.deepEqual(plano(f.setores.map(s => [s.nome, s.pct])), [['Pessoal', 50], ['Fiscal', 67]], 'da menor para a maior');
+  assert.deepEqual(plano(f.analistas.map(s => s.nome)), ['Bia', 'Ana']);
+  assert.deepEqual(plano(f.empresas.map(e => [e.nome, e.fechada])), [['ALFA', false], ['BETA', true]], 'a fechada no fim');
+  assert.deepEqual(plano(f.empresas[0].setores.map(s => s.nome + ' ' + s.feitas + '/' + s.total)), ['Fiscal 0/1', 'Pessoal 1/2']);
+  // trilha: na ordem da meta, traço cheio até as concluídas do começo
+  const tr = OCG.trilhaDaEmpresa(f.empresas[1].tarefas, H);
+  assert.deepEqual(plano(tr.etapas.map(e => e.estado)), ['feita', 'feita']); assert.equal(tr.cheiaAte, 1); assert.equal(tr.pct, 100);
+  const tr2 = OCG.trilhaDaEmpresa(f.empresas[0].tarefas, H);
+  assert.deepEqual(plano(tr2.etapas.map(e => e.estado)), ['multa', 'feita', 'afazer']); assert.equal(tr2.cheiaAte, -1, 'aberta antes da concluída: o traço não enche'); assert.equal(tr2.proxima, 0);
+  assert.deepEqual(plano(OCG.filtrarTarefas(T, { setor: 'Pessoal', feitas: true }, H).map(t => t._id)), ['a3', 'a2'].sort((a, b) => a === 'a3' ? -1 : 1));
+  assert.deepEqual(plano(OCG.filtrarTarefas(T, { analista: 'Ana' }, H).map(t => t._id)), ['a1', 'c1']);
+  // detalhe: etapas internas e documentos, nunca arquivo, valor nem apontamento
+  const det = OCG.limpar('tarefaDetalhe', { _id: 't', value: 9, timesheet: [1], customer_task_steps: [{ name: 'Conferir', order: 1, done: true, extra: 1 }], company_documents: [{ name: 'Recibo', file: 'BINARIO', disconsidered: false }], document_request: { active: true, requested_documents: [{ name: 'Extrato' }], notify_email: 'x@y' } });
+  assert.deepEqual(plano(det), { _id: 't', customer_task_steps: [{ name: 'Conferir', order: 1, done: true }], company_documents: [{ name: 'Recibo', disconsidered: false }], document_request: { active: true, requested_documents: [{ name: 'Extrato' }] } });
+  const pf = OCG.PEDIDOS.fechamento({ ano: 2026, mes: 11 });
+  assert.equal(pf.tipo, 'fechamento'); assert.equal(pf.corpo.type, 'CUSTOMER_TASK'); assert.equal(OCG.leituraPermitida(pf.metodo, pf.url, pf.corpo).ok, true);
 });
 
 test('0.74.0: login do Fiscal — as listas da folha recusam e a leitura segue com a Geral do setor; a Geral recusada ainda derruba', async () => {

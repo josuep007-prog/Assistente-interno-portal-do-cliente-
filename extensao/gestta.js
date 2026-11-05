@@ -100,7 +100,10 @@
     // detalhe da tarefa: sem valor, apontamento, aprovadores e documentos anexos
     tarefaDetalhe: { _id: true, name: true, type: true, subtype: true, status: true, overdue: true, fine: true, created_at: true, legal_date: true, due_date: true, competence_date: true, conclusion_date: true,
       company_task: { _id: true, name: true, active: true }, company_department: SETOR, customer: { _id: true, name: true, code: true, active: true }, owner: { _id: true, name: true, active: true },
-      customer_has_documents_integration: true, notify_customer: true, total_step: true, done_step: true },
+      customer_has_documents_integration: true, notify_customer: true, total_step: true, done_step: true,
+      // 0.73.0: o que há dentro da tarefa (etapas e documentos), nunca o arquivo
+      customer_task_steps: [{ name: true, order: true, required: true, done: true }], company_documents: [{ name: true, disconsidered: true, validation_required: true }],
+      document_request: { active: true, requested_documents: [{ name: true, disconsidered: true }] } },
     cliente: { _id: true, code: true, name: true, trading_name: true, cnpj: true, active: true, federal_regime: { _id: true, name: true, identifier: true }, state_inscription: true, federative_unit: true, city: true, external_id: true, partner_config: { has_onvio_portal: true } },
     cartela: { company_department: SETOR, company_user: REF },
     equipe: { _id: true, name: true, role: true, active: true, company_departments: [SETOR], has_linked_tasks: true },
@@ -120,6 +123,7 @@
   // tipo: o molde a aplicar. Listas (com ou sem invólucro de paginação) viram { itens, total, paginas, pagina }.
   function limpar(tipo, dados) {
     if (tipo === 'relatorio') return limparRelatorio(dados);
+    if (tipo === 'fechamento') return limparRelatorio(dados, COLUNAS_FECHAMENTO);
     const molde = MOLDES[tipo];
     if (!molde) return null;
     if (tipo === 'me' || tipo === 'tarefaDetalhe' || tipo === 'contagem') return escolher(dados, molde) || null;
@@ -128,10 +132,43 @@
     return o;
   }
   // O relatório chega como lista de linhas planas (chaves com ponto) ou como objetos: sai só com as colunas permitidas.
-  function limparRelatorio(dados) {
-    const linhas = lista(dados);
+  // Colunas que o Fechamento do mês usa (0.73.0): a tela guarda só estas, em linhas compactas, na memória do Chrome.
+  const COLUNAS_FECHAMENTO = ['id', 'name', 'status', 'company_department.name', 'owner.name', '_due_date', 'legal_date', 'conclusion_date', 'on_time', 'fine', 'overdue', 'customer.code', 'customer.name', 'customer.cnpj'];
+  // A resposta do relatório vem em fluxo e o formato exato ainda é "a confirmar" no Gestta real: aceita lista JSON,
+  // { docs | data | rows | records }, ou uma linha JSON por registro (NDJSON). Formato desconhecido devolve null
+  // (a leitura vira "formato desconhecido", visível), nunca uma lista vazia em silêncio.
+  function linhasDoRelatorio(dados) {
+    let d = dados, formato = 'json';
+    if (typeof d === 'string') {
+      const t = d.trim(); if (!t) return { linhas: [], formato: 'vazio' };
+      try { d = JSON.parse(t); }
+      catch (e) {
+        try { d = t.split(/\r?\n/).map(x => x.trim()).filter(Boolean).map(x => JSON.parse(x.replace(/,$/, ''))); formato = 'ndjson'; }
+        catch (e2) { return null; }
+      }
+    }
+    if (Array.isArray(d)) return { linhas: d.filter(x => x && typeof x === 'object' && !Array.isArray(x)), formato };
+    if (d && typeof d === 'object') for (const k of ['docs', 'data', 'rows', 'records', 'items']) if (Array.isArray(d[k])) return { linhas: d[k], formato: formato + ':' + k };
+    return null;
+  }
+  function limparRelatorio(dados, colunas) {
+    const r = linhasDoRelatorio(dados); if (!r) return null;
+    const cols = (colunas || COLUNAS_RELATORIO).filter(c => COLUNAS_RELATORIO.includes(c));
     const valor = (l, c) => { if (l && Object.prototype.hasOwnProperty.call(l, c)) return l[c]; return c.split('.').reduce((o, k) => o && typeof o === 'object' ? o[k] : undefined, l); };
-    return { colunas: COLUNAS_RELATORIO.slice(), linhas: linhas.map(l => COLUNAS_RELATORIO.map(c => { const v = valor(l, c); return v == null || typeof v === 'object' ? '' : v; })), total: linhas.length };
+    return { colunas: cols.slice(), linhas: r.linhas.map(l => cols.map(c => { const v = valor(l, c); return v == null || typeof v === 'object' ? '' : v; })), total: r.linhas.length, formato: r.formato };
+  }
+  const sim = v => v === true || v === 1 || /^(true|sim|yes|1)$/i.test(String(v == null ? '' : v).trim());
+  // Linhas compactas do relatório → tarefas no mesmo formato da busca (para grupos, trilha e filtros)
+  function tarefasDoRelatorio(colunas, linhas) {
+    const i = {}; (colunas || []).forEach((c, n) => { i[c] = n; });
+    const v = (l, c) => i[c] == null ? '' : l[i[c]];
+    return (linhas || []).map(l => {
+      const code = v(l, 'customer.code'), cnpj = v(l, 'customer.cnpj');
+      return { _id: String(v(l, 'id') || ''), name: String(v(l, 'name') || ''), status: String(v(l, 'status') || '').toUpperCase(), fine: sim(v(l, 'fine')), overdue: sim(v(l, 'overdue')),
+        due_date: v(l, '_due_date') || '', legal_date: v(l, 'legal_date') || '', conclusion_date: v(l, 'conclusion_date') || '', no_prazo: v(l, 'on_time') === '' ? null : sim(v(l, 'on_time')),
+        setor: String(v(l, 'company_department.name') || ''), responsavel: String(v(l, 'owner.name') || ''),
+        customer: { _id: String(code || cnpj || v(l, 'customer.name') || '?'), name: String(v(l, 'customer.name') || ''), code: code === '' ? '' : String(code), cnpj: String(cnpj || '') } };
+    });
   }
 
   /* ---------- perfil ---------- */
@@ -174,6 +211,7 @@
       corpo: Object.assign({ page: o.page || 1, limit: o.limit || 100, type: o.type || ['RECURRENT', 'SERVICE_ORDER', 'ACCOUNTING'], status: o.status || ['OPEN', 'IMPEDIMENT'], date_type: 'DUE_DATE' }, janelaDoMes(o.ano, o.mes), o.companyUser ? { company_user: [o.companyUser] } : {}, o.semDono ? { no_owner: true } : {}) }),
     tarefa: (o) => ({ id: 'tarefa', tipo: 'tarefaDetalhe', metodo: 'GET', url: url('/core/customer/task/' + encodeURIComponent(o.id)) }),
     relatorio: (o) => { const j = janelaDoMes(o.ano, o.mes); return { id: 'relatorio', tipo: 'relatorio', metodo: 'POST', url: url('/core/customer/task/report'), corpo: { type: 'CUSTOMER_TASK', filter: '', dates: { startDate: j.start_date, endDate: j.end_date } } }; },
+    fechamento: (o) => Object.assign(PEDIDOS.relatorio(o), { id: 'fechamento', tipo: 'fechamento' }),
     filaOnvioErro: (o) => ({ id: 'filaOnvioErro', tipo: 'filaOnvio', metodo: 'GET', url: url('/es/file/onvio', { status: 'ERROR', limit: (o && o.limit) || 50, skip: 0 }) }),
     multas: (o) => { const j = janelaDoMes(o.ano, o.mes); return { id: 'multas', tipo: 'contagem', metodo: 'GET', url: url('/core/dashboard/attention/fine/all', j) }; },
     templatesDocumento: () => ({ id: 'templatesDocumento', tipo: 'template', metodo: 'GET', url: url('/admin/company/document', { limit: 1, page: 1 }) })
@@ -203,7 +241,7 @@
         let dados = null, texto = '';
         try { texto = await r.text(); dados = texto ? JSON.parse(texto) : null; } catch (e) { dados = null; }
         if (r.ok) {
-          const limpo = limpar(p.tipo, dados);
+          const limpo = p.tipo === 'relatorio' || p.tipo === 'fechamento' ? limpar(p.tipo, texto) : limpar(p.tipo, dados);
           resultados.push(limpo == null ? { id: p.id, status: r.status, erro: 'resposta em formato desconhecido' } : { id: p.id, status: r.status, dados: limpo });
         } else {
           const msg = dados && typeof dados === 'object' ? String(dados.message || dados.error || '').slice(0, 160) : '';
@@ -336,7 +374,9 @@
     return m;
   }
   const semAcento = s => String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-  // f: { q, grupos: [k], tipos: [type], dia: 'aaaa-mm-dd', cliente: id, feitas: bool }
+  const setorDe = t => String((t && (t.setor || (t.company_department && t.company_department.name))) || '');
+  const respDe = t => String((t && (t.responsavel || (t.owner && t.owner.name))) || '');
+  // f: { q, grupos: [k], tipos: [type], dia: 'aaaa-mm-dd', cliente: id, feitas: bool, setor, analista }
   function filtrarTarefas(lista, f, hoje) {
     f = f || {};
     const termos = semAcento(f.q || '').split(/\s+/).filter(Boolean);
@@ -348,13 +388,60 @@
       if (tipos && !tipos.has(t.type)) return false;
       if (f.dia && ymd(diaLocal(t.due_date)) !== f.dia) return false;
       if (f.cliente && (t.customer || {})._id !== f.cliente) return false;
+      if (f.setor && setorDe(t) !== f.setor) return false;
+      if (f.analista && respDe(t) !== f.analista) return false;
       if (!termos.length) return true;
-      const c = t.customer || {}, alvo = semAcento([t.name, c.name, c.code, TIPOS_TAREFA[t.type]].join(' '));
+      const c = t.customer || {}, alvo = semAcento([t.name, c.name, c.code, c.cnpj, TIPOS_TAREFA[t.type], setorDe(t), respDe(t)].join(' '));
       return termos.every(x => alvo.includes(x));
     }).sort((a, b) => {
       const ga = GRUPOS.findIndex(x => x.k === grupoTarefa(a, hoje)), gb = GRUPOS.findIndex(x => x.k === grupoTarefa(b, hoje));
       return ga - gb || String(a.due_date || '').localeCompare(String(b.due_date || '')) || String((a.customer || {}).name || '').localeCompare(String((b.customer || {}).name || ''), 'pt-BR');
     });
+  }
+
+  /* ---------- trilha da empresa e fechamento do mês (0.73.0) ---------- */
+  const ESTADO_DO_GRUPO = { feita: 'feita', multa: 'multa', atrasada: 'atrasada', impedimento: 'impedimento', hoje: 'hoje', proximas: 'afazer', depois: 'afazer' };
+  const ESTADOS = { feita: 'Concluída', multa: 'Gerando multa', atrasada: 'Atrasada', impedimento: 'Com impedimento', hoje: 'Vence hoje', afazer: 'A fazer' };
+  // As tarefas da empresa como etapas, na ordem da meta. "cheiaAte": até onde o traço fica cheio (as concluídas do começo).
+  function trilhaDaEmpresa(tarefas, hoje) {
+    const etapas = (tarefas || []).map(t => ({ t, grupo: grupoTarefa(t, hoje) })).filter(x => x.grupo)
+      .sort((a, b) => String(a.t.due_date || '9').localeCompare(String(b.t.due_date || '9')) || String(a.t.name || '').localeCompare(String(b.t.name || ''), 'pt-BR'))
+      .map(x => { const d = diaLocal(x.t.due_date); return { t: x.t, estado: ESTADO_DO_GRUPO[x.grupo], grupo: x.grupo, dia: d ? d.getDate() : null, data: d ? ymd(d) : '', prazo: prazoTexto(x.t, hoje) }; });
+    let cheiaAte = -1; while (cheiaAte + 1 < etapas.length && etapas[cheiaAte + 1].estado === 'feita') cheiaAte++;
+    const feitas = etapas.filter(e => e.estado === 'feita').length;
+    return { etapas, cheiaAte, feitas, total: etapas.length, proxima: etapas.findIndex(e => e.estado !== 'feita'), pct: etapas.length ? Math.round(feitas / etapas.length * 100) : 0 };
+  }
+  const ESCRITORIO_PROPRIO = [/\b(controltax|dynexa|diskcontador)\b/, /\boficina business\b/, /^oficina\s*(\||\d|$)/];     // o mesmo do core.js
+  const ehEscritorioProprio = n => { const t = semAcento(n).trim(); return !!t && ESCRITORIO_PROPRIO.some(r => r.test(t)); };
+  const SITUACOES_CONHECIDAS = new Set(['OPEN', 'IMPEDIMENT', 'DONE', 'IGNORED', 'DISCONSIDERED']);
+  // Fechamento do mês: total, por setor, por analista e por empresa (com a trilha). Empresas do escritório ficam fora.
+  function fechamento(tarefas, hoje) {
+    const novo = nome => ({ nome, total: 0, feitas: 0, abertas: 0, multa: 0, atrasada: 0, impedimento: 0, hoje: 0 });
+    const soma = (o, g) => { o.total++; if (g === 'feita') o.feitas++; else { o.abertas++; if (o[g] != null) o[g]++; } };
+    const tot = novo('Todas'), setores = new Map(), analistas = new Map(), empresas = new Map();
+    let desconhecidas = 0, escritorio = 0;
+    for (const t of tarefas || []) {
+      if (!SITUACOES_CONHECIDAS.has(String(t.status || ''))) desconhecidas++;
+      const g = grupoTarefa(t, hoje); if (!g) continue;
+      const c = t.customer || {};
+      if (ehEscritorioProprio(c.name)) { escritorio++; continue; }
+      soma(tot, g);
+      const st = setorDe(t) || 'Sem setor', rs = respDe(t) || 'Sem responsável';
+      if (!setores.has(st)) setores.set(st, novo(st)); soma(setores.get(st), g);
+      if (!analistas.has(rs)) analistas.set(rs, novo(rs)); soma(analistas.get(rs), g);
+      const k = c._id || c.code || c.cnpj || c.name || '?';
+      let e = empresas.get(k);
+      if (!e) { e = Object.assign(novo(String(c.name || 'Sem cliente')), { id: k, codigo: c.code || '', cnpj: c.cnpj || '', porSetor: new Map(), tarefas: [] }); empresas.set(k, e); }
+      soma(e, g); e.tarefas.push(t);
+      if (!e.porSetor.has(st)) e.porSetor.set(st, { nome: st, total: 0, feitas: 0 });
+      const ps = e.porSetor.get(st); ps.total++; if (g === 'feita') ps.feitas++;
+    }
+    const pct = o => Object.assign(o, { pct: o.total ? Math.round(o.feitas / o.total * 100) : 0 });
+    const porPct = (a, b) => a.pct - b.pct || b.abertas - a.abertas || a.nome.localeCompare(b.nome, 'pt-BR');
+    const lista = [...empresas.values()].map(e => { pct(e); e.fechada = e.total > 0 && e.feitas === e.total; e.setores = [...e.porSetor.values()].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')); delete e.porSetor; return e; })
+      .sort((a, b) => (a.fechada ? 1 : 0) - (b.fechada ? 1 : 0) || (b.multa - a.multa) || (b.atrasada - a.atrasada) || (b.impedimento - a.impedimento) || a.pct - b.pct || a.nome.localeCompare(b.nome, 'pt-BR'));
+    return { total: pct(tot), setores: [...setores.values()].map(pct).sort(porPct), analistas: [...analistas.values()].map(pct).sort(porPct), empresas: lista,
+      fechadas: lista.filter(e => e.fechada).length, desconhecidas, escritorio };
   }
   // A tarefa no Gestta (só navegação; nada é feito nela)
   const urlTarefa = id => /^[0-9a-f]{24}$/i.test(String(id || '')) ? APP + '/#/sidebar/task/overview/dashboard/' + id : null;
@@ -362,5 +449,6 @@
 
   g.OCG = { API, APP, PAUSA_MS, LIMITE_BUSCA, JANELA_MAX_DIAS, POST_LEITURA, RELATORIO_TIPOS, COLUNAS_RELATORIO, MOLDES, APPS,
     caminhoDe, leituraPermitida, appDe, escolher, limpar, limparRelatorio, perfil, expiraEm, janelaDoMes, PEDIDOS, lerNaPagina, linhasDoTeste,
-    GRUPOS, TIPOS_TAREFA, SITUACOES_TAREFA, MAX_PAGINAS_TAREFAS, diasUteis, grupoTarefa, prazoTexto, contarGrupos, porEmpresa, porDia, filtrarTarefas, urlTarefa, ymd, diaLocal };
+    GRUPOS, TIPOS_TAREFA, SITUACOES_TAREFA, MAX_PAGINAS_TAREFAS, diasUteis, grupoTarefa, prazoTexto, contarGrupos, porEmpresa, porDia, filtrarTarefas, urlTarefa, ymd, diaLocal,
+    COLUNAS_FECHAMENTO, linhasDoRelatorio, tarefasDoRelatorio, trilhaDaEmpresa, fechamento, ESTADOS, setorDe, respDe, ehEscritorioProprio };
 })(typeof self !== 'undefined' ? self : this);
