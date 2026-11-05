@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.72.0)
+# Control Onvio · ControlTax (v0.73.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,17 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.73.0 (Tarefas do Gestta: trilha por empresa e Fechamento do mês, 05/11/2026)
+
+- **Cada empresa como uma trilha de etapas.** Em Minhas tarefas › Por empresa, as tarefas do mês de cada cliente aparecem em sequência, na ordem da meta, ligadas por um traço que fica cheio até onde está concluído. Cada etapa tem marca própria, não só cor: ✓ concluída, ! gerando multa ou atrasada, losango com impedimento, anel âmbar vence hoje, anel vazio a fazer. Passe o mouse para ver nome, meta, setor e responsável; a próxima etapa aberta fica sempre à vista.
+- **Linha do tempo:** o botão ao lado troca a trilha pela grade dos dias do mês, com o fim de semana em tom claro e a linha do hoje; etapas no mesmo dia se empilham com um número. A escolha fica lembrada.
+- **Detalhe ao lado:** clicar numa etapa ou numa tarefa abre um painel à direita com situação, meta, data legal, competência, setor, responsável, as **etapas internas** (checklist), os documentos exigidos e os pedidos ao cliente, e os botões "Abrir no Gestta" e "Outra aba". As setas ‹ › (ou do teclado) passam para a etapa seguinte da mesma empresa; Esc fecha.
+- **Filtro por setor** em Minhas tarefas (o setor vem do relatório do mês; na primeira vez, "carregar setores").
+- **Fechamento do mês (aba nova):** o % fechado do escritório num anel, multas e atrasos; **por setor** e **por analista** em barras (da menor para a maior; clique para filtrar); a lista de **todas as empresas** com a trilha, a contagem por setor ("Fiscal 1/3 · Pessoal 1/2") e "mês fechado" (as fechadas vão para o fim); filtros de setor, analista, "só com pendência" e busca por empresa, código ou CNPJ. Empresas do escritório ficam fora.
+- **Todos veem o Fechamento, cada um no que o acesso alcança.** Com acesso de analista aparece o aviso de que não é o fechamento do escritório todo.
+- **Leitura leve:** o relatório do mês é lido no máximo **uma vez por hora** e fica só na memória do Chrome (some ao fechar o navegador; nunca vai ao disco nem ao Hub), só com as colunas necessárias (sem valor, mensalidade nem pontuação). "Atualizar" antes de 1 hora diz em quantos minutos pode.
+- **A conferir no Chrome do Josué:** quanto tempo o relatório leva, se o formato da resposta foi lido (a tela mostra erro se não for) e se as contagens batem com o Gestta; o detalhe de uma tarefa (nomes dos campos das etapas e documentos); com um login de analista, o aviso de acesso parcial.
 
 ## Novidades da v0.72.0 (Tarefas do Gestta, Fase 1, item 2, 05/11/2026)
 
