@@ -3889,3 +3889,46 @@ test('0.76.0: aba Concluídas — só as concluídas (prescrita fora), da mais r
   await OC.lerMovimentadas(async u => { urls.push(u); return { items: [], totalPages: 1 }; }, 30, agora);
   assert.ok(urls.every(u => /assignedtome=false/.test(u)), 'sem a opção, como antes');
 });
+
+test('Gestta (0.77.0): linha do tempo da tarefa em palavras (sem email_log), quadro de obrigações, Meu dia e ordem das empresas', () => {
+  const H = new Date(2026, 10, 5, 10), d = (dia, m) => new Date(Date.UTC(2026, m == null ? 10 : m, dia, 3)).toISOString();
+  // histórico: o molde deixa de fora email_log, arquivo e upload; os eventos viram frases, do mais recente ao mais antigo
+  const hist = OCG.limpar('historico', { docs: [
+    { _id: 'h1', type: 'DOCUMENT', status: 'NOT_SENT_TO_PORTAL', reason: 'NO_FOLDER_CONFIGURED', accomplished_at: d(4), company_document: { name: 'Recibo', template: 'x' }, upload: { url: 'u' } },
+    { _id: 'h2', type: 'EMAIL', status: 'SENT', accomplished_at: d(5), email_log: { to: ['cliente@exemplo.com'], server: 'smtp' } },
+    { _id: 'h3', type: 'DOCUMENT', status: 'DOWNLOADED', accomplished_at: d(3), accomplished_by_customer_user: { name: 'Contato', email: 'c@e' } },
+    { _id: 'h4', type: 'COMMENT', comment: 'Falta o extrato', accomplished_at: d(2), accomplished_by: { name: 'Ana', email: 'a@e' } },
+    { _id: 'h5', type: 'TIMESHEET', status: 'PLAYED', accomplished_at: d(1) },
+    { _id: 'h6', type: 'NOVO_TIPO', status: 'X', accomplished_at: d(1) }], totalDocs: 6, totalPages: 1 });
+  const txt = JSON.stringify(hist);
+  for (const s of ['cliente@exemplo', 'smtp', 'email_log', '"u"', 'template', 'c@e', 'a@e']) assert.ok(!txt.includes(s), 'fora do histórico: ' + s);
+  const ev = OCG.eventosDaTarefa(hist.itens);
+  assert.deepEqual(plano(ev.map(e => e.rot)), ['E-mail enviado ao cliente', 'Documento não foi ao portal', 'O cliente baixou o documento', 'Comentário', 'Evento do Gestta (novo_tipo, x)'], 'apontamento de horas fica fora; tipo novo aparece como tal');
+  assert.equal(ev[1].motivo, 'a pasta do portal não está configurada'); assert.equal(ev[1].tom, 'alerta'); assert.equal(ev[1].doc, 'Recibo');
+  assert.deepEqual(plano(ev[2].quem), { nome: 'Contato', cliente: true }); assert.equal(ev[3].texto, 'Falta o extrato'); assert.equal(ev[4].desconhecido, true);
+  const ph = OCG.PEDIDOS.historico({ id: 'f00000000000000000000001' });
+  assert.equal(ph.metodo, 'GET'); assert.match(ph.url, /\/core\/customer\/task\/f00000000000000000000001\/history\?page=1$/); assert.equal(OCG.leituraPermitida(ph.metodo, ph.url).ok, true);
+  // tarefas do mês simuladas
+  const A = { _id: 'cA', name: 'ALFA', code: '1' }, B = { _id: 'cB', name: 'BETA', code: '2' };
+  const t = (id, name, customer, o) => Object.assign({ _id: id, name, customer, status: 'OPEN', type: 'RECURRENT' }, o);
+  const ts = [t('1', 'DCTF WEB', A, { fine: true, overdue: true, due_date: d(1) }), t('2', 'das ', A, { status: 'DONE', due_date: d(3) }), t('3', 'DAS', B, { due_date: d(5) }),
+    t('4', 'FGTS', B, { status: 'IMPEDIMENT', due_date: d(6) }), t('5', 'FOLHA', B, { due_date: d(10) }), t('6', 'BALANCETE', A, { due_date: d(25) }), t('7', 'IGNORADA', A, { status: 'IGNORED', due_date: d(5) })];
+  // quadro: colunas pelo nome (sem diferenciar maiúsculas e espaços), das que mais se repetem
+  const q = OCG.obrigacoes(ts, H);
+  assert.equal(q.colunas[0].nome, 'DAS'); assert.deepEqual(plano(q.colunas[0]), { nome: 'DAS', total: 2, feitas: 1, alerta: 0 });
+  assert.equal(q.colunas.length, 5, 'a ignorada não vira coluna');
+  assert.deepEqual(plano(q.linhas.map(l => l.empresa.nome)), ['ALFA', 'BETA'], 'a empresa com multa primeiro');
+  assert.equal(q.linhas[0].celulas.get('DCTF WEB')[0].estado, 'multa'); assert.equal(q.linhas[1].celulas.get('DCTF WEB'), undefined);
+  // Meu dia: resolver agora, hoje, impedimento e os próximos 3 dias úteis; conta as de hoje
+  const md = OCG.meuDia(ts, H, 3);
+  assert.deepEqual(plano(md.agora.map(x => x._id)), ['1']); assert.deepEqual(plano(md.hoje.map(x => x._id)), ['3']); assert.deepEqual(plano(md.impedimento.map(x => x._id)), ['4']);
+  assert.deepEqual(plano(md.proximos.map(x => x._id)), ['5'], 'a FOLHA (10/11) está a 3 dias úteis (06, 09 e 10): entra; o balancete (25/11) não');
+  assert.equal(md.totalHoje, 1); assert.equal(md.feitasHoje, 0);
+  assert.deepEqual(plano(md.fila.map(x => x._id)), ['1', '3', '4', '5'], 'a fila: agora, hoje, impedimento, próximos');
+  // ordem das empresas
+  const emps = OCG.porEmpresa(ts, H);
+  assert.deepEqual(plano(OCG.ordenarEmpresas(emps, 'risco').map(e => e.nome)), ['ALFA', 'BETA']);
+  assert.deepEqual(plano(OCG.ordenarEmpresas(emps, 'progresso').map(e => e.nome)), ['BETA', 'ALFA'], 'BETA 0%, ALFA 33%');
+  assert.deepEqual(plano(OCG.ordenarEmpresas(emps, 'proxima').map(e => e.nome)), ['ALFA', 'BETA'], 'ALFA tem a meta aberta mais cedo (01/11)');
+  assert.deepEqual(plano(OCG.ordenarEmpresas(emps, 'nome').map(e => e.nome)), ['ALFA', 'BETA']);
+});

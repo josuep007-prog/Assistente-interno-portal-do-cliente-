@@ -1,25 +1,28 @@
-/* Control Onvio · Tarefas do Gestta (0.72.0; trilha, setor e Fechamento do mês na 0.73.0)
+/* Control Onvio · Tarefas do Gestta (0.72.0; trilha, setor e Fechamento na 0.73.0; tela de trabalho nova na 0.77.0)
  * Tela por cima do Gestta (iframe da extensão, aberto pelo shell-gestta.js). Mostra as tarefas do mês de quem está logado
- * (a coordenação escolhe outra pessoa ou as sem responsável) de três jeitos: por prazo (multa, atraso, impedimento, hoje,
- * próximos 5 dias úteis, mais adiante, concluídas), por empresa (o mês de cada cliente numa linha, com o que pesa primeiro)
- * e em calendário. Filtros instantâneos: busca, situação, tipo e dia. As tarefas são lidas na hora (cmd gesttaTarefas) e
- * ficam só na memória desta tela: nada vai ao armazenamento. Abrir uma tarefa só navega no próprio Gestta.
+ * (a coordenação escolhe outra pessoa ou as sem responsável) em abas: Meu dia (a fila do dia com o detalhe ao lado),
+ * Empresas (a lista de empresas e a ficha de cada uma, com a trilha do mês e as tarefas por situação), Lista (tabela densa),
+ * Obrigações (grade empresa × obrigação), Calendário e Fechamento do mês. Um topo só: progresso, situações que filtram,
+ * busca e Filtros. As tarefas são lidas na hora (cmd gesttaTarefas) e ficam só na memória desta tela: nada vai ao
+ * armazenamento. Abrir uma tarefa só navega no próprio Gestta.
  */
 import { $, $$, esc, toast, simples, lerPref, gravarPref, num, plural } from './util.js';
-import { listaEmpresas, abrirPainel, fecharPainel, painelAberto, passarPainel } from './gestta-trilha.js';
+import { listaEmpresas, abrirPainel, fecharPainel, painelAberto, passarPainel, abrirNoGestta } from './gestta-trilha.js';
+import { vistaDia, vistaEmpresas, vistaLista, vistaQuadro } from './gestta-vistas.js';
 const G = window.OCG;
 const enviar = msg => new Promise(res => { try { chrome.runtime.sendMessage(msg, r => res(r || { ok: false, erro: (chrome.runtime.lastError && chrome.runtime.lastError.message) || 'sem resposta' })); } catch (e) { res({ ok: false, erro: String(e.message || e) }); } });
 const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 const SEMANA = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
-const ATUALIZA_MIN = 10;               // com a camada aberta e visível, relê sozinho a cada 10 minutos
+const ATUALIZA_MIN = 10;
+const ABAS = ['dia', 'empresas', 'lista', 'quadro', 'calendario', 'fech'];               // com a camada aberta e visível, relê sozinho a cada 10 minutos
 
 const hoje0 = new Date();
 const E = {
   ano: hoje0.getFullYear(), mes: hoje0.getMonth() + 1, quem: 'eu',
   dados: null, carregando: false, erro: null, lidoEm: null, equipe: null,
-  modo: lerPref('gt.modo', 'prazo'), feitas: lerPref('gt.feitas', '0') === '1',
+  feitas: lerPref('gt.feitas', '0') === '1',
   q: '', grupos: new Set(), tipos: new Set(), dia: '', abertas: new Set(), visivel: true,
-  aba: lerPref('gt.aba', 'minhas'), trilha: lerPref('gt.trilha', 'seq'), setor: '',
+  aba: (a => ABAS.includes(a) ? a : 'dia')(lerPref('gt.aba', 'dia')), soPendEmp: false, trilha: lerPref('gt.trilha', 'seq'), setor: '',
   fech: null, fechTarefas: [], setorPorId: null, fechCarregando: false, fechErro: null, fq: '', fsetor: '', fanal: '', soPend: false,
   empMap: new Map(), listaAtual: []
 };
@@ -27,7 +30,7 @@ const E = {
 const lista = () => { const l = (E.dados && E.dados.itens) || []; return E.setorPorId ? l.map(t => Object.assign({}, t, { setor: E.setorPorId.get(t._id) || '' })) : l; };
 const nomeMes = () => MESES[E.mes - 1].replace(/^./, c => c.toUpperCase()) + ' de ' + E.ano;
 const ehMesAtual = () => E.ano === new Date().getFullYear() && E.mes === new Date().getMonth() + 1;
-const filtroAtivo = () => !!(E.q || E.grupos.size || E.tipos.size || E.dia || E.setor);
+const filtroAtivo = () => !!(E.q || E.grupos.size || E.tipos.size || E.dia || E.setor || E.soPendEmp);
 const paraPai = m => { try { window.parent.postMessage(Object.assign({}, m), 'https://app.gestta.com.br'); } catch (e) {} };
 
 /* ---------- leitura ---------- */
@@ -108,23 +111,26 @@ function anel(pct, tam) {
   const r = (tam - 10) / 2, c = 2 * Math.PI * r, v = Math.max(0, Math.min(100, pct));
   return '<svg class="gt-anel" width="' + tam + '" height="' + tam + '" viewBox="0 0 ' + tam + ' ' + tam + '" aria-hidden="true"><circle cx="' + tam / 2 + '" cy="' + tam / 2 + '" r="' + r + '" class="gt-anel-fundo"/><circle cx="' + tam / 2 + '" cy="' + tam / 2 + '" r="' + r + '" class="gt-anel-valor" stroke-dasharray="' + (c * v / 100).toFixed(1) + ' ' + c.toFixed(1) + '" transform="rotate(-90 ' + tam / 2 + ' ' + tam / 2 + ')"/></svg>';
 }
-function heroHtml(c) {
-  const kpi = gr => '<button type="button" class="gt-kpi gt-c-' + COR[gr.k] + (E.grupos.has(gr.k) ? ' on' : '') + '" data-grupo="' + gr.k + '" aria-pressed="' + E.grupos.has(gr.k) + '" title="' + esc(gr.dica) + '"><b>' + num(c.n[gr.k]) + '</b><span>' + esc(gr.rot) + '</span></button>';
-  return '<section class="gt-hero cfg-card">' +
-    '<div class="gt-prog">' + anel(c.pctFeitas, simples() ? 76 : 96) + '<div class="gt-prog-tx"><b>' + c.pctFeitas + '%</b><span>' + num(c.feitas) + ' de ' + num(c.total) + ' concluídas</span><small>' + plural(c.abertas, 'aberta', 'abertas') + ' no mês</small></div></div>' +
-    '<div class="gt-kpis" role="group" aria-label="Filtrar pela situação">' + G.GRUPOS.map(kpi).join('') + '</div></section>';
-}
-function barraHtml() {
+// rótulos curtos das situações no topo (o nome inteiro e a explicação ficam na dica)
+const SIT_CURTO = { multa: 'Multa', atrasada: 'Atrasadas', impedimento: 'Impedimento', hoje: 'Hoje', proximas: 'Próximos dias', depois: 'Mais adiante', feita: 'Concluídas' };
+// Topo das abas de trabalho (0.77.0): progresso do mês, as situações (que filtram), a busca e o menu Filtros, numa faixa só.
+function topoHtml(c) {
+  const sit = gr => (c.n[gr.k] || E.grupos.has(gr.k)) ? '<button type="button" class="gt-sit gt-c-' + COR[gr.k] + (E.grupos.has(gr.k) ? ' on' : '') + '" data-grupo="' + gr.k + '" aria-pressed="' + E.grupos.has(gr.k) + '" title="' + esc(gr.rot + ': ' + gr.dica) + '"><i class="gt-ponto"></i>' + esc(SIT_CURTO[gr.k] || gr.rot) + '<b>' + num(c.n[gr.k]) + '</b></button>' : '';
   const tipo = k => '<button type="button" class="gt-chip' + (E.tipos.has(k) ? ' on' : '') + '" data-tipo="' + k + '" aria-pressed="' + E.tipos.has(k) + '">' + esc(G.TIPOS_TAREFA[k]) + '</button>';
-  const modo = (k, ic, rot) => '<button type="button" class="' + (E.modo === k ? 'on' : '') + '" data-modo="' + k + '" aria-pressed="' + (E.modo === k) + '"><svg class="ic ic-sm"><use href="#' + ic + '"/></svg>' + rot + '</button>';
-  return '<div class="gt-barra">' +
-    '<label class="gt-busca"><svg class="ic"><use href="#i-search"/></svg><input type="search" id="gt-q" placeholder="Buscar tarefa, cliente ou código" autocomplete="off" aria-label="Buscar tarefa, cliente ou código" value="' + esc(E.q) + '"><kbd>/</kbd></label>' +
-    '<div class="gt-chips" role="group" aria-label="Tipo">' + Object.keys(G.TIPOS_TAREFA).map(tipo).join('') + '</div>' +
-    setorSelHtml() +
-    '<label class="gt-feitas"><input type="checkbox" id="gt-feitas"' + (E.feitas ? ' checked' : '') + '> Mostrar concluídas</label>' +
-    (filtroAtivo() ? '<button type="button" class="btn btn-sm gt-limpar" id="gt-limpar"><svg class="ic ic-sm"><use href="#i-x"/></svg>Limpar filtros</button>' : '') +
-    '<span class="gt-espaco"></span>' +
-    '<div class="seg gt-modos" role="group" aria-label="Como ver">' + modo('prazo', 'i-list', 'Por prazo') + modo('empresa', 'i-building', 'Por empresa') + modo('calendario', 'i-calendar', 'Calendário') + '</div></div>';
+  const nf = E.tipos.size + (E.setor ? 1 : 0) + (E.soPendEmp && (E.aba === 'empresas' || E.aba === 'quadro') ? 1 : 0) + (E.feitas && (E.aba === 'lista' || E.aba === 'calendario') ? 1 : 0);
+  return '<div class="gt-topo">' +
+    '<div class="gt-topo-prog" title="' + num(c.feitas) + ' de ' + num(c.total) + ' tarefas do mês concluídas">' + anel(c.pctFeitas, 42) + '<span><b>' + c.pctFeitas + '%</b><small>' + num(c.feitas) + ' de ' + num(c.total) + '</small></span></div>' +
+    '<div class="gt-sits" role="group" aria-label="Filtrar pela situação">' + G.GRUPOS.map(sit).join('') + '</div>' +
+    '<div class="gt-topo-dir">' +
+      '<label class="gt-busca"><svg class="ic"><use href="#i-search"/></svg><input type="search" id="gt-q" placeholder="Buscar tarefa, empresa ou código" autocomplete="off" aria-label="Buscar tarefa, empresa ou código" value="' + esc(E.q) + '"><kbd>/</kbd></label>' +
+      '<details class="menu gt-filtros" id="gt-filtros"><summary class="btn btn-sm' + (nf ? ' filtro-on' : '') + '"><svg class="ic ic-sm"><use href="#i-filter"/></svg>Filtros' + (nf ? ' <span class="menu-n">' + nf + '</span>' : '') + '</summary>' +
+        '<div class="menu-list form gt-filtros-menu"><span class="gt-f-rot">Tipo</span><div class="gt-chips" role="group" aria-label="Tipo">' + Object.keys(G.TIPOS_TAREFA).map(tipo).join('') + '</div>' +
+          setorSelHtml() +
+          (E.aba === 'empresas' || E.aba === 'quadro' ? '<label class="gt-feitas"><input type="checkbox" id="gt-pend-emp"' + (E.soPendEmp ? ' checked' : '') + '> Só empresas com pendência</label>' : '') +
+          (E.aba === 'lista' || E.aba === 'calendario' ? '<label class="gt-feitas"><input type="checkbox" id="gt-feitas"' + (E.feitas ? ' checked' : '') + '> Mostrar concluídas</label>' : '') +
+        '</div></details>' +
+      (filtroAtivo() ? '<button type="button" class="btn btn-sm gt-limpar" id="gt-limpar"><svg class="ic ic-sm"><use href="#i-x"/></svg>Limpar</button>' : '') +
+    '</div></div>';
 }
 // Setor: vem do relatório do mês (a busca não traz). Sem o relatório na memória, a opção carrega.
 function setorSelHtml() {
@@ -147,17 +153,6 @@ function linhaTarefa(t, hoje, semCliente) {
     '<div class="gt-t-acoes"><button type="button" class="btn btn-sm" data-abrir="' + esc(t._id) + '" title="Abrir esta tarefa no Gestta (a camada fecha)"><svg class="ic ic-sm"><use href="#i-ext"/></svg>Abrir</button>' +
       '<button type="button" class="icon-btn" data-nova="' + esc(t._id) + '" title="Abrir em outra aba" aria-label="Abrir em outra aba"><svg class="ic ic-sm"><use href="#i-link"/></svg></button></div></li>';
 }
-function vistaPrazo(itens, hoje) {
-  const grupos = G.GRUPOS.map(gr => ({ gr, l: itens.filter(t => G.grupoTarefa(t, hoje) === gr.k) })).filter(x => x.l.length);
-  if (!grupos.length) return vazio();
-  return grupos.map(({ gr, l }) => '<section class="gt-grupo gt-c-' + COR[gr.k] + '"><h2 class="gt-grupo-cab"><i class="gt-ponto"></i>' + esc(gr.rot) + '<span class="gt-n">' + num(l.length) + '</span><small class="ajuda">' + esc(gr.dica) + '</small></h2><ul class="gt-lista">' + l.map(t => linhaTarefa(t, hoje)).join('') + '</ul></section>').join('');
-}
-function vistaEmpresa(itens, hoje) {
-  const emps = G.porEmpresa(itens, hoje);
-  E.empMap = new Map(emps.map(e => [e.id, e.tarefas]));
-  if (!emps.length) return vazio();
-  return '<div class="gt-tr-barra">' + modoTrilhaHtml() + legendaTrilha() + '</div><div id="gt-trs-alvo"></div>';
-}
 function vistaCalendario(itens, hoje, todosDoMes) {
   const dias = G.porDia(todosDoMes, hoje), max = Math.max(1, ...Object.values(dias).map(d => d.abertas));
   const ini = new Date(E.ano, E.mes - 1, 1), nDias = new Date(E.ano, E.mes, 0).getDate(), pulo = (ini.getDay() + 6) % 7, hojeK = G.ymd(G.diaLocal(hoje));
@@ -175,12 +170,12 @@ function vistaCalendario(itens, hoje, todosDoMes) {
     '<p class="gt-cal-leg"><span><i class="lg-aberta"></i>número = abertas com meta no dia</span><span><i class="mk-atraso">3</i>atrasadas</span><span><i class="mk-feita">2</i>concluídas</span></p></section>' +
     (E.dia ? '<h2 class="gt-cal-dia">Meta em ' + dSel.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }) + '<button type="button" class="btn btn-sm" id="gt-dia-sair">Ver o mês todo</button></h2>' + (itens.length ? '<ul class="gt-lista">' + itens.map(t => linhaTarefa(t, hoje)).join('') + '</ul>' : vazio()) : '<p class="fraco gt-cal-dica">Clique num dia para ver as tarefas com meta nele.</p>');
 }
-const vazio = () => '<div class="vazio"><b>' + (filtroAtivo() ? 'Nenhuma tarefa com esses filtros' : 'Nenhuma tarefa aberta no mês') + '</b>' + (filtroAtivo() ? 'Tire um filtro ou limpe todos.' : 'Tudo em dia por aqui.') + '</div>';
+const vazio = () => '<div class="vazio"><b>' + (filtroAtivo() ? 'Nenhuma tarefa com esses filtros' : 'Nenhuma tarefa no mês') + '</b>' + (filtroAtivo() ? 'Tire um filtro ou limpe todos.' : 'Tudo em dia por aqui.') + '</div>';
 
 /* ---------- desenho ---------- */
 function abas() {
   $$('#abas [data-aba]').forEach(b => { const on = b.dataset.aba === E.aba; b.classList.toggle('on', on); b.setAttribute('aria-selected', String(on)); });
-  const qw = $('#gt-quem-wrap'); if (qw) qw.classList.toggle('gt-so-minhas', E.aba !== 'minhas');
+  const qw = $('#gt-quem-wrap'); if (qw) qw.classList.toggle('gt-so-minhas', E.aba === 'fech');
 }
 function desenhar() {
   abas();
@@ -196,21 +191,37 @@ function desenhar() {
   }
   const hoje = new Date(), todos = lista(), c = G.contarGrupos(todos, hoje);
   cabecalho(c);
-  const f = { q: E.q, grupos: [...E.grupos], tipos: [...E.tipos], feitas: E.feitas, dia: E.modo === 'calendario' ? E.dia : '', setor: E.setor };
+  const f = { q: E.q, grupos: [...E.grupos], tipos: [...E.tipos], feitas: E.aba === 'lista' || E.aba === 'calendario' ? E.feitas : true, dia: E.aba === 'calendario' ? E.dia : '', setor: E.setor };
   const filtrados = G.filtrarTarefas(todos, f, hoje);
   const base = G.filtrarTarefas(todos, Object.assign({}, f, { dia: '', feitas: true }), hoje);
   const aviso = (E.erro ? '<div class="faixa"><svg class="ic"><use href="#i-alert"/></svg><div><b>A última atualização falhou.</b> ' + esc(E.erro.erro || '') + ' Mostrando a leitura anterior.</div></div>' : '') +
     (E.dados.cortado ? '<div class="faixa"><svg class="ic"><use href="#i-alert"/></svg><div><b>Lista cortada.</b> Passou de ' + num(G.MAX_PAGINAS_TAREFAS * G.LIMITE_BUSCA) + ' tarefas no mês: a tela mostra as primeiras. Escolha uma pessoa para ver tudo dela.</div></div>' : '') +
     (E.quem !== 'eu' ? '<p class="gt-outra">Vendo ' + (E.quem === 'sem' ? 'as tarefas <b>sem responsável</b>' : 'as tarefas de <b>' + esc($('#gt-quem').selectedOptions[0] ? $('#gt-quem').selectedOptions[0].textContent : 'outra pessoa') + '</b>') + '. <button type="button" class="linkish" id="gt-voltar-eu">Voltar às minhas</button></p>' : '');
-  const conteudo = E.modo === 'empresa' ? vistaEmpresa(filtrados, hoje) : E.modo === 'calendario' ? vistaCalendario(filtrados, hoje, base) : vistaPrazo(filtrados, hoje);
-  const contagem = E.modo !== 'calendario' || E.dia ? '<p class="gt-cont" aria-live="polite">' + (filtroAtivo() ? num(filtrados.length) + ' de ' + num(c.total) + ' tarefas' : plural(filtrados.length, 'tarefa', 'tarefas') + (E.feitas ? '' : ' abertas')) + '</p>' : '';
   const foco = document.activeElement && document.activeElement.id === 'gt-q' ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null;
-  v.innerHTML = aviso + heroHtml(c) + barraHtml() + contagem + '<div class="gt-conteudo gt-modo-' + E.modo + '">' + conteudo + '</div>';
-  E.listaAtual = filtrados;
-  const alvo = $('#gt-trs-alvo', v); if (alvo) listaEmpresas(alvo, G.porEmpresa(filtrados, hoje), { modo: E.trilha, ano: E.ano, mes: E.mes, hoje });
+  const menuAberto = $('#gt-filtros') && $('#gt-filtros').open;
+  v.innerHTML = aviso + topoHtml(c) + '<div class="gt-conteudo gt-aba-' + E.aba + '" id="gt-conteudo"></div>';
+  const alvo = $('#gt-conteudo', v);
+  E.empMap = new Map(); E.listaAtual = filtrados; teclaVista = null;
+  const x = { itens: filtrados, todos, hoje, ano: E.ano, mes: E.mes, mesAtual: ehMesAtual(), filtro: filtroAtivo(), soPend: E.soPendEmp, paraPai, vazio,
+    teclas: fn => { teclaVista = fn; }, ligarEtapas };
+  if (E.aba === 'dia') vistaDia(alvo, x);
+  else if (E.aba === 'empresas') vistaEmpresas(alvo, x);
+  else if (E.aba === 'lista') vistaLista(alvo, x);
+  else if (E.aba === 'quadro') vistaQuadro(alvo, x);
+  else alvo.innerHTML = vistaCalendario(filtrados, hoje, base);
+  if (menuAberto) $('#gt-filtros').open = true;
   v.scrollTop = topo;
   if (foco) { const q = $('#gt-q'); q.focus(); try { q.setSelectionRange(foco[0], foco[1]); } catch (e) {} }
   ligar(v);
+}
+// Clique numa etapa (trilha, quadro, cartão) abre o detalhe com as tarefas daquela empresa, na ordem da meta
+let teclaVista = null;
+function ligarEtapas(el, tarefasDe) {
+  el.addEventListener('click', e => {
+    const b = e.target.closest('[data-et]'); if (!b || !el.contains(b)) return;
+    const l = G.trilhaDaEmpresa(tarefasDe(b.dataset.emp), new Date()).etapas.map(z => z.t), i = l.findIndex(t => t._id === b.dataset.et);
+    if (i >= 0) abrirPainel(l, i, paraPai);
+  });
 }
 
 /* ---------- Fechamento do mês (0.73.0): todas as empresas que o acesso alcança, do relatório CUSTOMER_TASK ---------- */
@@ -268,16 +279,15 @@ function desenharFech() {
 function ligar(v) {
   $$('[data-grupo]', v).forEach(b => b.onclick = () => { const k = b.dataset.grupo; if (E.grupos.has(k)) E.grupos.delete(k); else E.grupos.add(k); if (k === 'feita' && E.grupos.has('feita')) E.feitas = true; desenhar(); });
   $$('[data-tipo]', v).forEach(b => b.onclick = () => { const k = b.dataset.tipo; if (E.tipos.has(k)) E.tipos.delete(k); else E.tipos.add(k); desenhar(); });
-  $$('[data-modo]', v).forEach(b => b.onclick = () => { E.modo = b.dataset.modo; gravarPref('gt.modo', E.modo); desenhar(); });
   $$('[data-dia]', v).forEach(b => b.onclick = () => { E.dia = E.dia === b.dataset.dia ? '' : b.dataset.dia; desenhar(); });
   $$('[data-abrir]', v).forEach(b => b.onclick = e => { e.stopPropagation(); paraPai({ controlGestta: 'abrirTarefa', id: b.dataset.abrir }); });
   $$('[data-nova]', v).forEach(b => b.onclick = e => { e.stopPropagation(); const u = G.urlTarefa(b.dataset.nova); if (u) window.open(u, '_blank', 'noopener'); });
-  $$('[data-trilha]', v).forEach(b => b.onclick = () => { E.trilha = b.dataset.trilha; gravarPref('gt.trilha', E.trilha); desenhar(); });
+  const pe = $('#gt-pend-emp', v); if (pe) pe.onchange = () => { E.soPendEmp = pe.checked; desenhar(); };
   const st = $('#gt-setor', v); if (st) st.onchange = () => { if (st.value === '__carregar') { st.value = ''; if (!E.fechCarregando) lerFech(false); return; } E.setor = st.value; desenhar(); };
   $$('.gt-t .gt-t-main', v).forEach(m => { m.tabIndex = 0; m.setAttribute('role', 'button'); m.title = 'Ver o detalhe'; });
   const q = $('#gt-q', v); if (q) q.oninput = () => { E.q = q.value; desenhar(); };
   const fe = $('#gt-feitas', v); if (fe) fe.onchange = () => { E.feitas = fe.checked; if (!fe.checked) E.grupos.delete('feita'); gravarPref('gt.feitas', E.feitas ? '1' : '0'); desenhar(); };
-  const lp = $('#gt-limpar', v); if (lp) lp.onclick = () => { E.q = ''; E.grupos.clear(); E.tipos.clear(); E.dia = ''; E.setor = ''; desenhar(); };
+  const lp = $('#gt-limpar', v); if (lp) lp.onclick = () => { E.q = ''; E.grupos.clear(); E.tipos.clear(); E.dia = ''; E.setor = ''; E.soPendEmp = false; desenhar(); };
   const ds = $('#gt-dia-sair', v); if (ds) ds.onclick = () => { E.dia = ''; desenhar(); };
   const ve = $('#gt-voltar-eu', v); if (ve) ve.onclick = () => { E.quem = 'eu'; $('#gt-quem').value = 'eu'; ler(); };
 }
@@ -288,16 +298,19 @@ const iconeTema = () => { const d = temaAtual() === 'dark'; $('#btn-tema use').s
 $('#btn-tema').onclick = () => { const n = temaAtual() === 'dark' ? 'light' : 'dark'; document.documentElement.setAttribute('data-theme', n); try { localStorage.setItem('controlonvio-theme', n); } catch (e) {} iconeTema(); };
 $('#btn-ver-gestta').onclick = () => paraPai({ controlGestta: 'fechar' });
 $('#btn-atualizar').onclick = () => E.aba === 'fech' ? lerFech(true) : ler();
-$$('#abas [data-aba]').forEach(b => b.onclick = () => { E.aba = b.dataset.aba; gravarPref('gt.aba', E.aba); fecharPainel(); aoVivo(); desenhar(); });
+function trocarAba(a) { if (!ABAS.includes(a) || a === E.aba) return; E.aba = a; gravarPref('gt.aba', E.aba); fecharPainel(); aoVivo(); desenhar(); $('#vista').scrollTop = 0; }
+$$('#abas [data-aba]').forEach(b => b.onclick = () => trocarAba(b.dataset.aba));
 // uma etapa (trilha ou linha do tempo) ou uma tarefa da lista abre o detalhe ao lado
 function abrirDe(alvo) {
   const et = alvo.closest('[data-et]');
-  if (et) { const l = G.trilhaDaEmpresa(E.empMap.get(et.dataset.emp) || [], new Date()).etapas.map(x => x.t); const i = l.findIndex(t => t._id === et.dataset.et); if (i >= 0) abrirPainel(l, i, paraPai); return true; }
+  if (et) { if (!E.empMap.has(et.dataset.emp)) return false; const l = G.trilhaDaEmpresa(E.empMap.get(et.dataset.emp), new Date()).etapas.map(x => x.t); const i = l.findIndex(t => t._id === et.dataset.et); if (i >= 0) abrirPainel(l, i, paraPai); return true; }
   const m = alvo.closest('.gt-t-main');
   if (m) { const id = m.closest('.gt-t').dataset.id, l = E.listaAtual, i = l.findIndex(t => t._id === id); if (i >= 0) abrirPainel(l, i, paraPai); return true; }
   return false;
 }
 $('#vista').addEventListener('click', e => { abrirDe(e.target); });
+// o menu Filtros fecha ao clicar fora dele
+document.addEventListener('click', e => { const m = $('#gt-filtros'); if (m && m.open && !m.contains(e.target)) m.open = false; });
 $('#vista').addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.closest('.gt-t-main')) { e.preventDefault(); abrirDe(e.target); } });
 const trocouMes = () => { E.dia = ''; E.fech = null; E.fechTarefas = []; E.setorPorId = null; E.setor = ''; E.fechErro = null; fecharPainel(); ler(); if (E.aba === 'fech') desenhar(); };
 $('#gt-mes-ant').onclick = () => { E.mes--; if (E.mes < 1) { E.mes = 12; E.ano--; } trocouMes(); };
@@ -307,6 +320,9 @@ addEventListener('keydown', e => {
   const digitando = e.target.matches('input, select, textarea');
   if (painelAberto()) { if (e.key === 'Escape') { e.preventDefault(); fecharPainel(); return; } if (!digitando && e.key === 'ArrowLeft') { passarPainel(-1); return; } if (!digitando && e.key === 'ArrowRight') { passarPainel(1); return; } }
   if (e.key === '/' && !digitando) { const q = $('#gt-q') || $('#gt-fq'); if (q) { e.preventDefault(); q.focus(); } return; }
+  if (!digitando && !e.ctrlKey && !e.metaKey && !e.altKey && teclaVista && E.aba !== 'fech' && teclaVista(e)) { e.preventDefault(); return; }
+  const n = '123456'.indexOf(e.key);
+  if (!digitando && n >= 0 && !e.ctrlKey && !e.metaKey && !e.altKey) { trocarAba(ABAS[n]); return; }
   if (e.key === 'Escape') { if (digitando && e.target.id === 'gt-q' && E.q) { E.q = ''; desenhar(); return; } if (!digitando) paraPai({ controlGestta: 'fechar' }); }
 });
 // A camada avisa quando aparece ou some: só relê sozinho com ela visível.

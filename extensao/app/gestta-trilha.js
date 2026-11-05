@@ -79,30 +79,42 @@ export function listaEmpresas(el, empresas, o) {
   requestAnimationFrame(() => $$('.gt-trilha', el).forEach(ol => { const p = ol.querySelector('.gt-et:not(.gt-e-feita)'); if (p && ol.scrollWidth > ol.clientWidth) ol.scrollLeft = Math.max(0, p.parentElement.offsetLeft - 40); }));
 }
 
-/* ---------- painel lateral: o detalhe da tarefa ---------- */
-let P = null;          // { lista: [tarefas da empresa em ordem], i, dados, erro, carregando, paraPai }
-export const painelAberto = () => !!P;
-export function abrirPainel(lista, i, paraPai) {
-  P = { lista, i, paraPai, dados: null, erro: null, carregando: true };
-  let fundo = $('#gt-painel-fundo'), el = $('#gt-painel');
-  if (!el) {
-    document.body.insertAdjacentHTML('beforeend', '<div class="gt-painel-fundo" id="gt-painel-fundo"></div><aside class="gt-painel" id="gt-painel" role="dialog" aria-modal="true" aria-label="Detalhe da tarefa" tabindex="-1"></aside>');
-    fundo = $('#gt-painel-fundo'); el = $('#gt-painel');
-    fundo.onclick = fecharPainel;
+/* ---------- painel do detalhe da tarefa ----------
+ * Por cima (gaveta à direita, com fundo) ou embutido numa coluna da tela (o.alvo, no Meu dia). Duas abas: Resumo (datas,
+ * etapas internas, documentos e pedidos ao cliente) e Linha do tempo (o histórico da tarefa, lido só quando a aba abre).
+ * Detalhe e histórico são lidos na hora (cmds gesttaTarefa e gesttaHistorico) e ficam só na memória desta tela. */
+let P = null;          // { lista, i, dados, erro, carregando, paraPai, alvo, aba }
+const HIST = new Map();  // histórico já lido nesta visita, por id (some ao fechar a tela)
+export const painelAberto = () => !!(P && !P.alvo);
+export const painelTarefa = () => P && P.lista[P.i];
+export function abrirPainel(lista, i, paraPai, o) {
+  const alvo = o && o.alvo;
+  const aba = P && P.aba === 'tempo' ? 'tempo' : 'resumo';
+  if (P && !P.alvo && alvo) fecharPainel();
+  P = { lista, i, paraPai, dados: null, erro: null, carregando: true, alvo, aba };
+  if (!alvo) {
+    let fundo = $('#gt-painel-fundo'), el = $('#gt-painel');
+    if (!el) {
+      document.body.insertAdjacentHTML('beforeend', '<div class="gt-painel-fundo" id="gt-painel-fundo"></div><aside class="gt-painel" id="gt-painel" role="dialog" aria-modal="true" aria-label="Detalhe da tarefa" tabindex="-1"></aside>');
+      fundo = $('#gt-painel-fundo'); el = $('#gt-painel');
+      fundo.onclick = fecharPainel;
+    }
+    fundo.hidden = false; el.hidden = false;
+    requestAnimationFrame(() => { el.classList.add('aberto'); fundo.classList.add('aberto'); });
+    setTimeout(() => el.focus(), 30);
   }
-  fundo.hidden = false; el.hidden = false;
-  requestAnimationFrame(() => { el.classList.add('aberto'); fundo.classList.add('aberto'); });
   desenharPainel(); carregar();
-  setTimeout(() => el.focus(), 30);
 }
 export function fecharPainel() {
   if (!P) return;
+  const eraFlutuante = !P.alvo;
   P = null;
+  if (!eraFlutuante) return;
   const el = $('#gt-painel'), fundo = $('#gt-painel-fundo');
   if (el) { el.classList.remove('aberto'); el.hidden = true; }
   if (fundo) { fundo.classList.remove('aberto'); fundo.hidden = true; }
 }
-export function passarPainel(d) { if (!P) return; const j = P.i + d; if (j < 0 || j >= P.lista.length) return; P.i = j; P.dados = null; P.erro = null; P.carregando = true; desenharPainel(); carregar(); }
+export function passarPainel(d) { if (!P) return; const j = P.i + d; if (j < 0 || j >= P.lista.length) return; P.i = j; P.dados = null; P.erro = null; P.carregando = true; desenharPainel(); carregar(); if (P.aba === 'tempo') carregarHist(); }
 async function carregar() {
   const meu = P, t = P.lista[P.i];
   const r = await enviar({ cmd: 'gesttaTarefa', id: t._id });
@@ -110,10 +122,34 @@ async function carregar() {
   P.carregando = false;
   if (r && r.ok) P.dados = r.tarefa; else P.erro = (r && r.erro) || 'Não consegui ler a tarefa.';
   desenharPainel();
+  if (P.aba === 'tempo') carregarHist();
+}
+async function carregarHist(forcar) {
+  const meu = P, id = P.lista[P.i]._id;
+  const h = HIST.get(id);
+  if (h && !forcar && (h.eventos || h.carregando)) return;
+  HIST.set(id, { carregando: true });
+  desenharPainel();
+  const r = await enviar({ cmd: 'gesttaHistorico', id });
+  HIST.set(id, r && r.ok ? { eventos: r.eventos || [], total: r.total, paginas: r.paginas } : { erro: (r && r.erro) || 'Não consegui ler o histórico.' });
+  if (P === meu && P.lista[P.i]._id === id) desenharPainel();
 }
 const fmt = v => { if (!v) return ''; const d = new Date(v); return isNaN(d) ? String(v) : d.toLocaleDateString('pt-BR'); };
+const fmtHora = v => { const d = new Date(v); return isNaN(d) ? '' : d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); };
+function linhaDoTempoHtml(id) {
+  const h = HIST.get(id);
+  if (!h || h.carregando) return '<div class="gt-esq"><i></i><i></i><i></i></div><p class="fraco">Lendo o histórico no Gestta…</p>';
+  if (h.erro) return '<div class="faixa"><svg class="ic"><use href="#i-alert"/></svg><div><b>Não consegui ler o histórico.</b> ' + esc(h.erro) + '</div><button class="btn btn-sm" id="gp-hist-tentar">Tentar de novo</button></div>';
+  if (!h.eventos.length) return '<p class="fraco">Nada registrado no histórico desta tarefa.</p>';
+  return '<ol class="gp-tl">' + h.eventos.map(ev => '<li class="gp-ev tom-' + ev.tom + '"><span class="gp-ev-pt" aria-hidden="true"></span><div class="gp-ev-tx"><b>' + esc(ev.rot) + '</b>' +
+      (ev.doc ? '<span class="gp-ev-doc">' + esc(ev.doc) + '</span>' : '') + (ev.motivo ? '<span class="gp-ev-mot">Motivo: ' + esc(ev.motivo) + '</span>' : '') +
+      (ev.texto ? '<p class="gp-ev-com">' + esc(ev.texto) + '</p>' : '') +
+      '<small>' + esc(fmtHora(ev.quando)) + (ev.quem ? ' · ' + esc(ev.quem.nome) + (ev.quem.cliente ? ' (cliente)' : '') : ev.auto ? ' · automático' : '') + '</small></div></li>').join('') + '</ol>' +
+    (h.paginas > 1 ? '<p class="fraco">Mostrando os eventos mais recentes. O histórico completo fica no Gestta.</p>' : '');
+}
 function desenharPainel() {
-  const el = $('#gt-painel'); if (!el || !P) return;
+  if (!P) return;
+  const el = P.alvo || $('#gt-painel'); if (!el) return;
   const base = P.lista[P.i], d = P.dados || {}, hoje = new Date();
   const t = Object.assign({}, base, d, { customer: Object.assign({}, base.customer, d.customer) });
   const g = G.grupoTarefa(t, hoje), est = { feita: 'feita', multa: 'multa', atrasada: 'atrasada', impedimento: 'impedimento', hoje: 'hoje' }[g] || 'afazer';
@@ -123,22 +159,37 @@ function desenharPainel() {
   const passos = Array.isArray(d.customer_task_steps) ? d.customer_task_steps.slice().sort((a, b) => (a.order || 0) - (b.order || 0)) : null;
   const docs = (Array.isArray(d.company_documents) ? d.company_documents : []).filter(x => x && !x.disconsidered);
   const pedidos = (d.document_request && Array.isArray(d.document_request.requested_documents) ? d.document_request.requested_documents : []).filter(x => x && !x.disconsidered);
-  const corpo = P.carregando
+  const nPassos = passos ? passos.length : Number(t.total_step) || 0, fPassos = passos ? passos.filter(p => p.done).length : Number(t.done_step) || 0;
+  const resumo = P.carregando
     ? '<div class="gt-esq"><i></i><i></i><i></i><i></i></div><p class="fraco">Lendo a tarefa no Gestta…</p>'
     : P.erro ? '<div class="faixa"><svg class="ic"><use href="#i-alert"/></svg><div><b>Não consegui abrir o detalhe.</b> ' + esc(P.erro) + '</div><button class="btn btn-sm" id="gp-tentar">Tentar de novo</button></div>'
-    : (passos && passos.length ? '<section class="gp-sec"><h3>Etapas da tarefa <span class="gt-n">' + passos.filter(p => p.done).length + '/' + passos.length + '</span></h3><ul class="gp-passos">' + passos.map(p => '<li class="' + (p.done ? 'ok' : '') + '"><span class="gp-ck" aria-hidden="true">' + (p.done ? '✓' : '') + '</span><span>' + esc(p.name || 'Etapa') + (p.required ? ' <small class="fraco">obrigatória</small>' : '') + '</span><span class="sr-only">' + (p.done ? 'feita' : 'a fazer') + '</span></li>').join('') + '</ul></section>' : '<p class="fraco">Esta tarefa não tem etapas internas.</p>') +
+    : (passos && passos.length ? '<section class="gp-sec"><h3>Etapas da tarefa <span class="gt-n">' + fPassos + '/' + nPassos + '</span></h3><div class="gp-prog" aria-hidden="true"><i style="width:' + Math.round(fPassos / nPassos * 100) + '%"></i></div><ul class="gp-passos">' + passos.map(p => '<li class="' + (p.done ? 'ok' : '') + '"><span class="gp-ck" aria-hidden="true">' + (p.done ? '✓' : '') + '</span><span>' + esc(p.name || 'Etapa') + (p.required ? ' <small class="fraco">obrigatória</small>' : '') + '</span><span class="sr-only">' + (p.done ? 'feita' : 'a fazer') + '</span></li>').join('') + '</ul></section>' : '<p class="fraco">Esta tarefa não tem etapas internas.</p>') +
       (docs.length ? '<section class="gp-sec"><h3>Documentos da tarefa</h3><ul class="gp-docs">' + docs.map(x => '<li>' + esc(x.name || 'Documento') + (x.validation_required ? ' <small class="fraco">pede validação</small>' : '') + '</li>').join('') + '</ul></section>' : '') +
       (pedidos.length ? '<section class="gp-sec"><h3>Pedidos ao cliente' + (d.document_request && d.document_request.active ? ' <span class="pill pill-today">cobrança ativa</span>' : '') + '</h3><ul class="gp-docs">' + pedidos.map(x => '<li>' + esc(x.name || 'Documento') + '</li>').join('') + '</ul></section>' : '');
-  el.innerHTML = '<header class="gp-cab"><div class="gp-nav"><button type="button" class="icon-btn" id="gp-ant" aria-label="Etapa anterior"' + (P.i ? '' : ' disabled') + '><svg class="ic"><use href="#i-chev-l"/></svg></button><span class="fraco">' + (P.i + 1) + ' de ' + P.lista.length + '</span><button type="button" class="icon-btn" id="gp-prox" aria-label="Próxima etapa"' + (P.i < P.lista.length - 1 ? '' : ' disabled') + '><svg class="ic"><use href="#i-chev-r"/></svg></button></div>' +
-      '<button type="button" class="icon-btn" id="gp-fechar" aria-label="Fechar (Esc)"><svg class="ic"><use href="#i-x"/></svg></button></header>' +
-    '<div class="gp-corpo"><span class="pill ' + pill + '">' + esc(G.ESTADOS[est]) + '</span><h2 class="gp-tit">' + esc(t.name || 'Tarefa') + '</h2><p class="gp-cli">' + (t.customer.code ? '<span class="gt-cod">' + esc(t.customer.code) + '</span>' : '') + esc(t.customer.name || '') + '</p>' +
+  const abaBtn = (k, rot) => '<button type="button" role="tab" class="gp-aba' + (P.aba === k ? ' on' : '') + '" data-gp-aba="' + k + '" aria-selected="' + (P.aba === k) + '">' + rot + '</button>';
+  el.classList.toggle('gp-embutido', !!P.alvo);
+  el.innerHTML = '<header class="gp-cab"><div class="gp-nav"><button type="button" class="icon-btn" id="gp-ant" aria-label="Tarefa anterior"' + (P.i ? '' : ' disabled') + '><svg class="ic"><use href="#i-chev-l"/></svg></button><span class="fraco">' + (P.i + 1) + ' de ' + P.lista.length + '</span><button type="button" class="icon-btn" id="gp-prox" aria-label="Próxima tarefa"' + (P.i < P.lista.length - 1 ? '' : ' disabled') + '><svg class="ic"><use href="#i-chev-r"/></svg></button></div>' +
+      (P.alvo ? '' : '<button type="button" class="icon-btn" id="gp-fechar" aria-label="Fechar (Esc)"><svg class="ic"><use href="#i-x"/></svg></button>') + '</header>' +
+    '<div class="gp-corpo"><div class="gp-topo"><span class="pill ' + pill + '">' + esc(G.ESTADOS[est]) + '</span>' + (nPassos ? '<span class="gp-etapas-mini" title="Etapas da tarefa">' + fPassos + '/' + nPassos + ' etapas</span>' : '') + '</div>' +
+      '<h2 class="gp-tit">' + esc(t.name || 'Tarefa') + '</h2><p class="gp-cli">' + (t.customer.code ? '<span class="gt-cod">' + esc(t.customer.code) + '</span>' : '') + esc(t.customer.name || '') + '</p>' +
       '<dl class="gp-dl">' + campo('Meta', fmt(t.due_date) + ' · ' + G.prazoTexto(t, hoje)) + campo('Data legal', fmt(t.legal_date)) + campo('Competência', fmt(t.competence_date)) + campo('Setor', setor) + campo('Responsável', resp) + campo('Concluída em', fmt(t.conclusion_date)) + campo('Modelo', d.company_task && d.company_task.name) + '</dl>' +
-      corpo + '</div>' +
-    '<footer class="gp-pe"><button type="button" class="btn btn-primary" id="gp-abrir"><svg class="ic ic-sm"><use href="#i-ext"/></svg>Abrir no Gestta</button><button type="button" class="btn" id="gp-aba"><svg class="ic ic-sm"><use href="#i-link"/></svg>Outra aba</button></footer>';
-  $('#gp-fechar', el).onclick = fecharPainel;
-  $('#gp-ant', el).onclick = () => passarPainel(-1);
-  $('#gp-prox', el).onclick = () => passarPainel(1);
-  $('#gp-abrir', el).onclick = () => { const id = base._id; const pp = P.paraPai; fecharPainel(); pp({ controlGestta: 'abrirTarefa', id }); };
+      '<div class="gp-abas" role="tablist" aria-label="Detalhe">' + abaBtn('resumo', 'Resumo') + abaBtn('tempo', 'Linha do tempo') + '</div>' +
+      '<div class="gp-aba-corpo" role="tabpanel">' + (P.aba === 'tempo' ? linhaDoTempoHtml(base._id) : resumo) + '</div></div>' +
+    '<footer class="gp-pe"><button type="button" class="btn btn-primary" id="gp-abrir" title="Abrir esta tarefa no Gestta (Enter)"><svg class="ic ic-sm"><use href="#i-ext"/></svg>Abrir no Gestta</button><button type="button" class="btn" id="gp-aba" title="Abrir em outra aba"><svg class="ic ic-sm"><use href="#i-link"/></svg>Outra aba</button></footer>';
+  const f = $('#gp-fechar', el); if (f) f.onclick = fecharPainel;
+  $('#gp-ant', el).onclick = () => (P.aoPassar ? P.aoPassar(-1) : passarPainel(-1));
+  $('#gp-prox', el).onclick = () => (P.aoPassar ? P.aoPassar(1) : passarPainel(1));
+  $('#gp-abrir', el).onclick = () => abrirNoGestta();
   $('#gp-aba', el).onclick = () => { const u = G.urlTarefa(base._id); if (u) window.open(u, '_blank', 'noopener'); };
+  $$('[data-gp-aba]', el).forEach(b => b.onclick = () => { P.aba = b.dataset.gpAba; desenharPainel(); if (P.aba === 'tempo') carregarHist(); });
   const tt = $('#gp-tentar', el); if (tt) tt.onclick = () => { P.erro = null; P.carregando = true; desenharPainel(); carregar(); };
+  const th = $('#gp-hist-tentar', el); if (th) th.onclick = () => carregarHist(true);
 }
+// Abrir no Gestta: a camada fecha e o próprio Gestta vai para a tarefa
+export function abrirNoGestta() {
+  if (!P) return;
+  const id = P.lista[P.i]._id, pp = P.paraPai;
+  fecharPainel(); pp({ controlGestta: 'abrirTarefa', id });
+}
+// No Meu dia a navegação ‹ › do painel embutido passa a seleção da lista (fn(±1))
+export function aoPassarPainel(fn) { if (P) P.aoPassar = fn; }
