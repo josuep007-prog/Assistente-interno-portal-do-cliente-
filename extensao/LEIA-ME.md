@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.77.0)
+# Control Onvio · ControlTax (v0.78.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,13 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.78.0 (todos os seus setores, 05/11/2026)
+
+- **Quem tem acesso a vários setores vê todos.** O Josué tem acesso a Pessoal, Contábil, Fiscal e Portal do Cliente e via só o Pessoal: a extensão filtrava a lista Geral pelo setor do acesso. Agora, de fábrica, aparece **tudo o que o Onvio entrega para o seu login**, e uma linha no topo de todas as telas diz quais são ("Todos os seus setores: Pessoal, Contábil, Fiscal, Portal do Cliente") com a escolha **Setor** para olhar um só. A escolha fica lembrada neste Chrome.
+- Pessoal, Fiscal e Contábil juntam o departamento do sistema e a duplicata personalizada; outros departamentos (como o Portal do Cliente) aparecem com o nome lido do Onvio (só id e nome dos departamentos, nada de cliente). Ao escolher um setor que não é o Pessoal, os cartões da folha somem.
+- A aba Concluídas segue a mesma escolha. A **distribuição automática** não muda: continua só na Geral do Pessoal.
+- Quem só tem um setor continua como na 0.74.0 (a linha "Visão do setor Fiscal", sem escolha).
 
 ## Novidades da v0.77.0 (Tarefas do Gestta: tela de trabalho nova, 05/11/2026)
 

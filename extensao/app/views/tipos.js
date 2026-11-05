@@ -31,7 +31,7 @@ export function tiposHtml(items, o) {
   const ordem = k => OC.TYPES.findIndex(t => t.key === k);
   let blocos = o.prioridade ? OC.ordenarTipos(items) : OC.ordenarTipos(items).sort((a, b) => ordem(a.keys[0]) - ordem(b.keys[0]));
   // fora do Pessoal (0.74.0) só existe a lista Geral: os cartões da folha nem aparecem
-  const soGeral = !!(estado.setor && estado.setor.soGeral);
+  const soGeral = !!estado.soGeral;
   if (soGeral) blocos = blocos.filter(bl => bl.keys.includes('geral'));
   return (o.todos && !soGeral ? cartaoTipo('', 'Todos os tipos', items, o) : '') + blocos.map(bl => bl.keys.length === 2 ? parHtml(bl, c) : c(bl.keys[0])).join('');
 }

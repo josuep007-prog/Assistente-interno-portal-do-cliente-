@@ -10,13 +10,21 @@ const CHAVES = {
 };
 
 export const estado = {
-  snapBruto: null, setor: { ativo: false, fora: false, dep: '' },
+  snapBruto: null, setor: { ativo: false, fora: false, dep: '' }, setores: [], visao: '', visaoNome: '', soGeral: false,
   snap: null, status: null, usuario: {}, regras: null, ultima: null,
   eventos: [], lembretes: [], serie: {}, alertasVistosEm: null, excecoes: {}, sugIgnoradas: {}, modelosPessoais: [], distAuto: null, distLog: [],
   settings: Object.assign({}, OC.DEFAULTS)
 };
 
 const ouvintes = new Set();
+// escolha de setor da tela (0.78.0): só neste Chrome; '' = todos os setores do login
+const CHAVE_VISAO = 'controlonvio-setor-visao';
+function lerVisao() { try { return localStorage.getItem(CHAVE_VISAO) || ''; } catch (e) { return ''; } }
+export function escolherVisao(chave) {
+  try { if (chave) localStorage.setItem(CHAVE_VISAO, chave); else localStorage.removeItem(CHAVE_VISAO); } catch (e) { /* sem armazenamento: vale até fechar */ }
+  aplicar({});
+  ouvintes.forEach(fn => { try { fn(['snap']); } catch (e) { console.error(e); } });
+}
 export function aoMudar(fn) { ouvintes.add(fn); return () => ouvintes.delete(fn); }
 
 function aplicar(d) {
@@ -27,10 +35,18 @@ function aplicar(d) {
     estado[campo] = v == null ? (['eventos', 'lembretes', 'modelosPessoais', 'distLog'].includes(campo) ? [] : ['serie', 'usuario', 'excecoes', 'sugIgnoradas'].includes(campo) ? {} : null) : v;
   }
   estado.settings = OC.combinarSettings(estado.regras, estado.usuario);
-  // Setores (0.74.0): cada um vê o seu (Pessoal, Fiscal ou Contábil); fora do Pessoal só existe a lista Geral do setor
+  // Setores: o perfil (0.74.0) diz o setor de quem usa (aviso, Nova solicitação, distribuição automática). O que aparece na tela (0.78.0):
+  // de fábrica, todos os setores que o login enxerga; a pessoa pode escolher um (lembrado neste Chrome).
   const raw = estado.snapBruto;
   estado.setor = OC.perfilSetor(estado.settings, raw && raw.user && raw.user.nome, raw && raw.user && raw.user.departmentId, raw);
-  estado.snap = raw && estado.setor.ativo ? Object.assign({}, raw, { items: OC.filtrarPorSetor(raw.items, estado.setor), resolvidas: OC.filtrarPorSetor(raw.resolvidas, estado.setor) }) : raw;
+  estado.setores = raw ? OC.setoresVistos(raw, estado.settings) : [];
+  let v = lerVisao(); if (v && !estado.setores.some(x => x.chave === v)) v = '';
+  estado.visao = v;
+  const vis = estado.setores.find(x => x.chave === v);
+  // só a Geral existe: o setor escolhido não é o Pessoal, ou o login não alcança as listas da folha
+  estado.soGeral = v ? v !== 'dp' : !!estado.setor.soGeral && !((raw && raw.items) || []).some(i => i.type !== 'geral');
+  estado.visaoNome = vis ? vis.nome : '';
+  estado.snap = raw && v ? Object.assign({}, raw, { items: OC.filtrarVisao(raw.items, v, estado.settings), resolvidas: OC.filtrarVisao(raw.resolvidas, v, estado.settings) }) : raw;
   if (estado.setor.fora) estado.eventos = (estado.eventos || []).filter(e => e.mine);
 }
 
