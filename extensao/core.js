@@ -1187,6 +1187,7 @@
   function grupoSituacao(it) {
     const t = it && TYPE_BY_KEY[it.type];
     if (!t || it.desconhecido || it.lado === 'desc') return GRUPOS_SIT[5];
+    if (it.lado === 'fim') return { k: 'fim', rot: 'Encerrada' };            // concluída ou prescrita (aba Concluídas): fora dos cartões de situação
     let k = it.code != null ? SIT_GRUPO[t.familia][Number(it.code)] : null;
     if (!k) {                                                   // sem código (leitura antiga): pelo texto e pela vez
       const st = it.status || '';
@@ -2176,14 +2177,14 @@
    * mais fez admissões no período. Sem histórico no período, não sugere ninguém (a pessoa escolhe). É lido na hora
    * (sob demanda) e não é guardado. */
   const ADMISSAO = new Set(['cadEmpregado', 'cadContribuinte', 'cadEstagiario']);
-  async function lerMovimentadas(fetcher, dias, now, maxPaginas) {
-    now = now || new Date();
+  async function lerMovimentadas(fetcher, dias, now, maxPaginas, o) {
+    now = now || new Date(); o = o || {};
     const desde = now.getTime() - (dias || 7) * 864e5;
     const out = [], erros = [];
     await Promise.all(TYPES.map(async t => {
       try {
         for (let page = 1; page <= (maxPaginas || 5); page++) {
-          const d = await fetcher(urlConsulta(t, { per: 200, page, orderBy: 'lastUpdated desc' }));
+          const d = await fetcher(urlConsulta(t, { per: 200, page, orderBy: 'lastUpdated desc', mine: !!o.mine }));
           const rs = (d && d.items) || [];
           let parou = false;
           for (const r of rs) {
@@ -2197,6 +2198,25 @@
       } catch (e) { if (e && e.auth && (t.key === 'geral' || e.cliente)) throw e; if (!(e && e.auth)) erros.push(t.label + ': ' + (e && e.message ? e.message : e)); }   // sem acesso pelo setor: fica de fora sem erro
     }));
     return { itens: out, erros };
+  }
+  // Aba Concluídas das Solicitações (0.76.0): só as concluídas (a prescrita encerra sem entrega e fica de fora), da mais recente
+  // à mais antiga. A data que vale é a da última movimentação, que numa concluída é a da conclusão.
+  function soConcluidas(itens) {
+    return (itens || []).filter(x => x && x.lado === 'fim' && !/^Prescrit/.test(x.status || ''))
+      .sort((a, b) => String(b.last || '').localeCompare(String(a.last || '')));
+  }
+  // Grupo da data da conclusão: hoje, ontem, nesta semana (desde segunda), neste mês, antes
+  function grupoConclusao(item, now) {
+    now = now || new Date();
+    const d = parseDate(item && item.last);
+    if (!d) return 'Sem data';
+    const dia = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+    const h = dia(now), x = dia(d), seg = h - ((now.getDay() + 6) % 7) * 864e5;
+    if (x >= h) return 'Hoje';
+    if (x >= h - 864e5) return 'Ontem';
+    if (x >= seg) return 'Nesta semana';
+    if (d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()) return 'Neste mês';
+    return 'Antes';
   }
   const chaveCliente = i => (i.codCliente !== '' && i.codCliente != null ? 'c' + i.codCliente : 'n' + semAcento(i.cliente || i.apelido || ''));
   function distribuirPorCliente(pendentes, movimentadas, dias) {
@@ -3909,5 +3929,5 @@
     return resultados;
   }
 
-  g.OC = { testarEmpregadosEmpresa, extratoContribuintes, lerFolhaContribuintes, resumoFolha, tipoCalculo, competenciaMinima, FOLHA_V, FOLHA_MESES_QUADRO, testarFolhaEmpresa, PASTA_PESSOAL, testarFolha, competenciaDoNome, FOLHA_COLUNAS, negritoUnicode, aplicarDestaques, ehEscritorioProprio, sondarEmpregados, montarLoteHub, HUB_CATEGORIAS, tabelaAnaliseSolicitacoes, tabelaAnaliseEquipe, hubPlano, hubExecutar, hubPartesDe, partirTabela, tabelaLista, tabelaPessoais, tabelaCnd, tabelaNfe, lerEscritorio, lerDocumentos, lerNoticias, slugHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, SETOR_NOMES, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, dentroDoHorario, planoDistribuicaoAuto, acaoConcluir, agruparSugestoes, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, acaoAnalise, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, mensagensProntas, marcadoresPendentes, observacoesFaltantes, avisosResposta, situacaoEquivalente, despersonalizar, previsaoPorEmpresa, lerMovimentadas, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { testarEmpregadosEmpresa, extratoContribuintes, lerFolhaContribuintes, resumoFolha, tipoCalculo, competenciaMinima, FOLHA_V, FOLHA_MESES_QUADRO, testarFolhaEmpresa, PASTA_PESSOAL, testarFolha, competenciaDoNome, FOLHA_COLUNAS, negritoUnicode, aplicarDestaques, ehEscritorioProprio, sondarEmpregados, montarLoteHub, HUB_CATEGORIAS, tabelaAnaliseSolicitacoes, tabelaAnaliseEquipe, hubPlano, hubExecutar, hubPartesDe, partirTabela, tabelaLista, tabelaPessoais, tabelaCnd, tabelaNfe, lerEscritorio, lerDocumentos, lerNoticias, slugHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, SETOR_NOMES, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, dentroDoHorario, planoDistribuicaoAuto, acaoConcluir, agruparSugestoes, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, acaoAnalise, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, mensagensProntas, marcadoresPendentes, observacoesFaltantes, avisosResposta, situacaoEquivalente, despersonalizar, previsaoPorEmpresa, lerMovimentadas, soConcluidas, grupoConclusao, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);
