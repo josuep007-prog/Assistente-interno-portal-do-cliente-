@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.71.0)
+# Control Onvio · ControlTax (v0.72.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,17 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.72.0 (Tarefas do Gestta, Fase 1, item 2, 05/11/2026)
+
+- **Uma tela de trabalho por cima do Gestta.** Em qualquer tela do Gestta aparece o botão do Control (arrastável; mostra quantas tarefas pedem atenção). Ele abre, só quando você clica, as **Tarefas do Gestta** em tela cheia; "Ver Gestta" ou Esc volta.
+- **O mês inteiro num relance:** o progresso (quantas concluídas) e as situações em cartões que também filtram: gerando multa, atrasadas, com impedimento, vencem hoje, próximos 5 dias úteis, mais adiante e concluídas.
+- **Três jeitos de ver:** **por prazo** (o que pesa primeiro, com "Venceu há 3 dias", "Vence hoje", "Vence em 2 dias úteis" e as etapas), **por empresa** (cada cliente numa linha com a barra do mês, multa, atraso, impedimento e a próxima meta; clique para ver as tarefas dele) e **calendário** (as metas de cada dia; clique num dia para ver a lista).
+- **Filtros na hora:** busca por tarefa, cliente ou código (sem precisar de acento; tecla /), tipo (recorrente, ordem de serviço, contábil) e "Mostrar concluídas". Troca de mês nas setas.
+- **Abrir** leva o próprio Gestta até a tarefa (a camada fecha); o outro botão abre em outra aba. Nada é feito na tarefa: só leitura.
+- **Coordenação:** escolhe de quem ver as tarefas ou vê as sem responsável. **Analista:** vê só as dele.
+- As tarefas não ficam guardadas: são lidas na hora e somem ao fechar. Com a tela aberta, ela se atualiza a cada 10 minutos.
+- **A conferir no Chrome do Josué:** o botão e a camada em cada app do Gestta (clássico, admin, painel, integração e Express), o tempo da primeira leitura com o volume real e se a contagem bate com a lista do Gestta.
 
 ## Novidades da v0.71.0 (Gestta, Fase 1, item 1: leitura e perfil, 05/11/2026)
 
