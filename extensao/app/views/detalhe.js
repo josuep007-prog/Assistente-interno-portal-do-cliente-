@@ -7,7 +7,7 @@ import { respostaHtml, ligarResposta, prepararResposta, bolhaRascunho, recemEnvi
 import { esc, pillSituacao, motivosHtml, fmtDataHora, fmtData, textoPuro, toast, ladoTexto, relativo, iniciais, simples, $, $$ } from '../util.js';
 import { abrirLembrete, lembreteAberto } from './lembrete-dlg.js';
 import { abrirNova, novaAberta } from './nova-dlg.js';
-import { abrirAnexos, anexosAbertos, contarAnexos, tipoArquivo } from './anexos-dlg.js';
+import { abrirAnexos, anexosAbertos, contarAnexos, tipoArquivo, abrirVisualizador, verAberto } from './anexos-dlg.js';
 const OC = window.OC;
 
 let atual = null;        // { type, num }
@@ -148,7 +148,8 @@ function desenhar(i, r, erro, carregando) {
   const anexos = marcar => abrirAnexos({ item: i, r, marcar });
   if ($('#g-anexos')) $('#g-anexos').onclick = () => anexos();
   if ($('#g-anexos2')) $('#g-anexos2').onclick = () => anexos();
-  $$('[data-ax-abrir]', g).forEach(b => b.onclick = e => { e.stopPropagation(); anexos(b.dataset.axAbrir); });
+  // clicar num anexo (conversa ou painel) abre o arquivo aqui mesmo, sem baixar (0.73.0); a janela Anexos continua para baixar vários
+  $$('[data-ax-abrir]', g).forEach(b => b.onclick = e => { e.stopPropagation(); abrirVisualizador({ item: i, r, chave: b.dataset.axAbrir }); });
   $$('.tr-mais', g).forEach(b => b.onclick = () => { const c = b.closest('.tr-bolha'); const ab = c.classList.toggle('aberto'); b.textContent = ab ? 'Ver menos' : 'Ver tudo'; });
   // texto longo ganha "Ver tudo" na hora (medido já na montagem, sem piscar); se a conversa acabou de ser levada ao fim, continua no fim
   $$('.tr-texto', g).forEach(t => { if (t.scrollHeight > t.clientHeight + 4) t.closest('.tr-bolha').classList.add('longo'); });
@@ -241,6 +242,8 @@ function tramitesHtml(r, carregando, i) {
   for (const t of todos) { gis.set(t, acum); if (t.arquivos && t.arquivos.length) acum++; }
   // abertura sem texto: a mensagem do cliente está na descrição da solicitação; ela vai para a bolha (e sai do painel)
   const desc = descricaoDe(i, r), descTr = descNaConversa(i, r);
+  // 0.74.1 (Josué, 05/11/2026): enquanto o escritório não respondeu, o pedido do cliente (a abertura) fica maior e em destaque
+  const aguardaEsc = !todos.some(t => t.n !== 1 && t.lado === 'esc');
   let ant = null;
   const corpo = todos.map(x => {
     // tempo entre este trâmite e o anterior na leitura (só quando passou ao menos 1 dia)
@@ -253,24 +256,28 @@ function tramitesHtml(r, carregando, i) {
     const anexos = (x.arquivos && x.arquivos.length ? x.arquivos : (x.anexos || []).map(nome => ({ nome })));
     const gi = gis.get(x);
     const sit = ant0 && x.situacao !== ant0.situacao ? '<div class="tr-sit"><span>Situação passou a: <b>' + esc(x.situacao) + '</b></span></div>' : '';
-    return gap + '<div class="tr-item ' + lado + (x === ult ? ' ultimo' : '') + (novo && x === ult && lado === 'esc' ? ' tr-nova' : '') + '">' +
+    const dest = aguardaEsc && x.n === 1, origem = x === descTr ? esc(desc.k) + ' da solicitação' : '';
+    return gap + '<div class="tr-item ' + lado + (dest ? ' tr-abertura-destaque' : '') + (x === ult ? ' ultimo' : '') + (novo && x === ult && lado === 'esc' ? ' tr-nova' : '') + '">' +
       '<span class="tr-av" title="' + esc(quem) + '">' + esc(iniciais(quem) || (lado === 'esc' ? 'E' : 'C')) + '</span>' +
       '<div class="tr-bolha">' +
         '<div class="tr-meta"><b>' + esc(quem) + '</b><span class="tr-lado">' + (x.n === 1 ? 'abertura' : lado === 'esc' ? 'escritório' : 'cliente') + '</span>' +
           (x.situacao && x.n !== 1 ? '<span class="tr-sit-pill" title="Situação gravada por este trâmite">' + esc(x.situacao) + '</span>' : '') + '<span class="tr-quando" title="' + esc(fmtDataHora(x.em)) + '">#' + String(x.n).padStart(2, '0') + ' · ' + esc(simples() ? relativo(x.em) : relativo(x.em) !== fmtDataHora(x.em) ? relativo(x.em) + ' · ' + fmtDataHora(x.em) : fmtDataHora(x.em)) + '</span></div>' +
+        (dest ? '<div class="tr-origem tr-origem-destaque">Pedido do cliente · aguardando a 1ª resposta do escritório' + (origem ? ' <span>(' + origem.toLowerCase() + ')</span>' : '') + '</div>' : '') +
         (x.texto ? '<div class="tr-texto">' + esc(textoPuro(x.texto)) + '</div><button type="button" class="tr-mais">Ver tudo</button>'
-          : x === descTr ? '<div class="tr-origem">Descrição da solicitação</div><div class="tr-texto tr-desc">' + esc(textoPuro(desc)) + '</div><button type="button" class="tr-mais">Ver tudo</button>'
+          : x === descTr ? (dest ? '' : '<div class="tr-origem">' + origem + '</div>') + '<div class="tr-texto tr-desc">' + esc(textoPuro(desc.v)) + '</div><button type="button" class="tr-mais">Ver tudo</button>'
           : '<div class="tr-texto fraco">Sem texto' + (anexos.length ? ' (só anexo)' : '') + '</div>') +
-        (anexos.length ? '<div class="tr-anexos">' + anexos.map((a, ai) => { const tp = tipoArquivo(a.nome); return '<button type="button" class="tr-arq"' + (a.id || a.direto ? ' data-ax-abrir="' + gi + ':' + ai + '"' : ' disabled') + ' title="Baixar ' + esc(a.nome) + '"><span class="ax-ic ' + tp.cls + '">' + tp.rot + '</span><span class="ax-nome">' + esc(a.nome) + '</span></button>'; }).join('') + '</div>' : '') +
+        (anexos.length ? '<div class="tr-anexos">' + anexos.map((a, ai) => { const tp = tipoArquivo(a.nome); return '<button type="button" class="tr-arq"' + (a.id || a.direto ? ' data-ax-abrir="' + gi + ':' + ai + '"' : ' disabled') + ' title="Ver ' + esc(a.nome) + ' sem baixar"><span class="ax-ic ' + tp.cls + '">' + tp.rot + '</span><span class="ax-nome">' + esc(a.nome) + '</span></button>'; }).join('') + '</div>' : '') +
       '</div>' + (x === ultCli && x.n !== 1 ? responder : '') + '</div>' + sit;
   }).join('');
   return '<div class="tr-lista" id="tr-lista">' + corpo + rasc + '</div>';
 }
 
-// Descrição da solicitação (o texto que o cliente escreveu ao abrir): do detalhe completo ou, na falta, do resumo.
+// Texto que o cliente escreveu ao abrir: a Descrição ou, nos Cadastros (que não têm descrição), as Observações (0.72.1, pedido do Josué em 05/11/2026).
+// Do detalhe completo ou, na falta, do resumo. Devolve { k: rótulo, v: texto, campo } ou null.
+const CAMPOS_ABERTURA = ['Descrição', 'Observações', 'Observação'];
 function descricaoDe(i, r) {
-  for (const g of (r && r.grupos) || []) for (const c of g.campos) if (c.longo && c.k === 'Descrição' && String(c.v || '').trim()) return c.v;
-  return (i && String(i.descricao || '').trim()) ? i.descricao : '';
+  for (const k of CAMPOS_ABERTURA) for (const g of (r && r.grupos) || []) for (const c of g.campos) if (c.longo && c.k === k && String(c.v || '').trim()) return { k: c.k, v: c.v, campo: c };
+  return (i && String(i.descricao || '').trim()) ? { k: 'Descrição', v: i.descricao, campo: null } : null;
 }
 // O trâmite de abertura (#01) que veio sem texto e recebe a descrição; nulo quando não há o que mover.
 function descNaConversa(i, r) {
@@ -294,7 +301,10 @@ function destaquesHtml(r) {
 function painelHtml(i, r, carregando, nAnexos) {
   if (carregando) return '<section class="dlg-dados" id="g-painel" aria-label="Dados da solicitação"><div class="vazio">Lendo a solicitação completa no Onvio…</div></section>';
   const abertura = (r && r.anexos) || [], total = Math.max(nAnexos, abertura.length);
-  const arq = nome => { const tp = tipoArquivo(nome); return '<li title="' + esc(nome) + '"><span class="ax-ic ' + tp.cls + '">' + tp.rot + '</span><span class="ax-nome">' + esc(nome) + '</span></li>'; };
+  // cada anexo da abertura vira um botão que abre o arquivo aqui (a chave é a da janela Anexos: grupo 0 = abertura)
+  const comId = (r && r.arquivos) || [];
+  const arq = nome => { const tp = tipoArquivo(nome), k = comId.findIndex(a => a.nome === nome && (a.id || a.direto)), dentro = '<span class="ax-ic ' + tp.cls + '">' + tp.rot + '</span><span class="ax-nome">' + esc(nome) + '</span>';
+    return '<li title="' + esc(nome) + '">' + (k >= 0 ? '<button type="button" class="pn-arq" data-ax-abrir="0:' + k + '" title="Ver ' + esc(nome) + ' sem baixar">' + dentro + '<svg class="ic ic-sm pn-arq-ver" aria-hidden="true"><use href="#i-eye"/></svg></button>' : dentro) + '</li>'; };
   const anexos = total ? '<aside class="pn-anex" id="pn-anex" data-pn="anexos" aria-label="Anexos"><header class="pn-anex-cab"><b>Anexos</b><span class="pn-n">' + total + '</span>' +
       (nAnexos ? '<button type="button" class="btn btn-sm" id="g-anexos2" title="Escolha quais anexos baixar"><svg class="ic ic-sm"><use href="#i-download"/></svg> Baixar</button>' : '') + '</header>' +
     '<ul class="pn-anex-lista">' + abertura.map(arq).join('') + '</ul>' +
@@ -333,10 +343,10 @@ function dados(i, r, carregando) {
   if (carregando) return '<div class="vazio">Lendo a solicitação completa no Onvio…</div>';
   if (r && r.grupos) {
     // cada grupo num cartão; o nome (do empregado, por exemplo) vai para o título do cartão em vez de ser mais um campo
-    const semDesc = !!descNaConversa(i, r);
+    const semDesc = descNaConversa(i, r) ? descricaoDe(i, r) : null;
     let html = r.grupos.map(gr => {
       const nome = gr.titulo !== 'Solicitação' && gr.campos.find(c => c.k === 'Nome' && !c.longo);
-      const campos = gr.campos.filter(c => c !== nome && !(semDesc && c.longo && c.k === 'Descrição'));
+      const campos = gr.campos.filter(c => c !== nome && !(semDesc && c === semDesc.campo));
       if (!campos.length && !nome) return '';
       const curtos = campos.filter(c => !c.longo), longos = campos.filter(c => c.longo);
       return '<section class="dados-g"><header class="dados-cab"><h4 class="dados-tit">' + esc(gr.titulo) + '</h4>' + (nome ? '<span class="dados-nome">' + esc(nome.v) + '</span>' : '') + '</header>' +
@@ -362,7 +372,7 @@ function lembretesHtml(lems) {
 
 // Setas ← → andam na lista; lembretes mudaram com a janela aberta: redesenha a aba.
 addEventListener('keydown', e => {
-  if (!detalheAberto() || lembreteAberto() || novaAberta() || anexosAbertos() || e.target.matches('input, select, textarea')) return;
+  if (!detalheAberto() || lembreteAberto() || novaAberta() || anexosAbertos() || verAberto() || e.target.matches('input, select, textarea')) return;
   if (e.key === 'ArrowLeft') andar(-1);
   else if (e.key === 'ArrowRight') andar(1);
   else if ((e.key === 'r' || e.key === 'R') && !e.ctrlKey && !e.metaKey && !e.altKey) {

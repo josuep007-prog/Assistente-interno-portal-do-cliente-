@@ -107,7 +107,7 @@ export function render(el, ctx, params) {
       '<input type="search" id="f-texto" placeholder="' + (simples() ? 'Filtrar por ID, cliente ou assunto' : 'Filtrar por ID, cliente, empregado, assunto ou responsável…') + '" title="Filtrar por ID, cliente, empregado, assunto ou responsável" value="' + esc(filtros.texto) + '" aria-label="Filtrar">' +
       '<details class="menu" id="m-filtros"><summary class="btn btn-sm" id="b-filtros"><svg class="ic ic-sm"><use href="#i-filter"/></svg> Filtros <span class="menu-n" id="n-filtros"></span></summary>' +
         '<div class="menu-list form">' +
-          sel('f-tipo', 'Tipo de solicitação', [['', 'Todos os tipos']].concat(OC.TYPES.map(t => [t.key, t.label])), filtros.tipo) +
+          sel('f-tipo', 'Tipo de solicitação', [['', 'Todos os tipos']].concat(OC.TYPES.filter(t => !(estado.setor && estado.setor.soGeral) || t.key === 'geral').map(t => [t.key, t.label])), filtros.tipo) +
           sel('f-legal', 'Prazo legal', [['', 'Todas'], ['1', 'Prazo legal perto']], filtros.legal) +
           (umaPessoa ? '' : sel('f-resp', 'Responsável', [['', 'Todos']].concat(resps.map(r => [r, r])), filtros.resp)) +
           '<div class="menu-pe"><button class="btn btn-sm" id="f-limpar">Limpar filtros</button><button class="btn btn-sm btn-primary" id="f-ok">Pronto</button></div>' +

@@ -1413,7 +1413,7 @@ await passo('app · detalhe: sempre abre na conversa, com os dados no painel ao 
   assert.deepEqual(p.erros, []);
 });
 
-await passo('app · detalhe: abertura sem texto mostra a descrição da solicitação na bolha e o painel não a repete (0.70.7)', async () => {
+await passo('app · detalhe: abertura sem texto mostra a descrição (ou, nos Cadastros, as observações) na bolha e o painel não a repete (0.70.7, 0.72.1)', async () => {
   const p = await abrirApp('#/fila?escopo=equipe');
   const grupos = [{ titulo: 'Solicitação', campos: [{ k: 'Tipo de rescisão', v: 'Trabalhado', destaque: true }, { k: 'Descrição', v: 'Pedido do cliente pelo portal', longo: true }] }];
   await p.evaluate(g => { window.__respostas = Object.assign(window.__respostas || {}, { detalhe: { ok: true, item: { assunto: 'x' }, grupos: g,
@@ -1421,7 +1421,10 @@ await passo('app · detalhe: abertura sem texto mostra a descrição da solicita
   await p.click('#corpo [data-k="geral:b"]');
   await p.waitForSelector('#g-corpo .tr-item');
   const bolha = await p.textContent('#g-corpo .tr-item');
-  assert.match(bolha, /Descrição da solicitação/);
+  assert.match(bolha, /Pedido do cliente · aguardando a 1ª resposta do escritório \(descrição da solicitação\)/, '0.74.1: sem resposta do escritório, a abertura fica em destaque');
+  assert.ok(await p.$('#g-corpo .tr-item.tr-abertura-destaque'), 'a bolha da abertura tem o destaque');
+  assert.equal(await p.$eval('#g-corpo .tr-abertura-destaque .tr-texto', t => getComputedStyle(t).maxHeight), 'none', 'a mensagem fica toda à vista');
+  assert.equal(await p.isVisible('#g-corpo .tr-abertura-destaque .tr-mais'), false, 'sem "Ver tudo"');
   assert.match(bolha, /Pedido do cliente pelo portal/);
   assert.doesNotMatch(bolha, /Sem texto/);
   assert.doesNotMatch(await p.textContent('#pn-dados'), /Pedido do cliente pelo portal/, 'o painel não repete a descrição');
@@ -1433,6 +1436,65 @@ await passo('app · detalhe: abertura sem texto mostra a descrição da solicita
   await p.waitForSelector('#g-corpo .tr-item');
   assert.doesNotMatch(await p.textContent('#g-corpo .tr-item'), /Descrição da solicitação/);
   assert.match(await p.textContent('#pn-dados'), /Pedido do cliente pelo portal/);
+  await p.keyboard.press('Escape');
+  // 0.72.1: nos Cadastros não há descrição; a mensagem do cliente vem nas Observações e vai para a abertura do mesmo jeito
+  await p.evaluate(() => { const d = window.__respostas.detalhe; d.tramites[0].texto = ''; d.grupos = [{ titulo: 'Solicitação', campos: [{ k: 'Categoria', v: 'Estagiário', destaque: true }, { k: 'Observações', v: 'Registrar no horário da tarde', longo: true }] }]; });
+  await p.click('#corpo [data-k="geral:b"]');
+  await p.waitForSelector('#g-corpo .tr-item');
+  const bolha2 = await p.textContent('#g-corpo .tr-item');
+  assert.match(bolha2, /observações da solicitação/i); assert.match(bolha2, /Registrar no horário da tarde/); assert.doesNotMatch(bolha2, /Sem texto/);
+  assert.doesNotMatch(await p.textContent('#pn-dados'), /Registrar no horário da tarde/, 'o painel não repete as observações');
+  assert.match(await p.textContent('#pn-dados'), /Estagiário/);
+  await p.keyboard.press('Escape');
+  // 0.74.1: depois da 1ª resposta do escritório, a abertura volta ao normal (sem destaque, com a etiqueta de antes)
+  await p.evaluate(() => { const d = window.__respostas.detalhe; d.tramites.push({ n: 2, id: 't2', em: '2026-10-08T09:00:00', situacao: 'Em análise', lado: 'esc', autor: 'Ana Teste', texto: 'Recebido', anexos: [], arquivos: [] }); });
+  await p.click('#corpo [data-k="geral:b"]');
+  await p.waitForSelector('#g-corpo .tr-item');
+  assert.equal(await p.$('#g-corpo .tr-item.tr-abertura-destaque'), null, 'com resposta do escritório, sem destaque');
+  assert.match(await p.textContent('#g-corpo .tr-item'), /Observações da solicitação/);
+  if (process.env.CAP) { await p.evaluate(() => { const d = window.__respostas.detalhe; d.tramites.pop(); }); await p.keyboard.press('Escape'); await p.click('#corpo [data-k="geral:b"]'); await p.waitForSelector('#g-corpo .tr-abertura-destaque'); await p.waitForTimeout(400); await p.screenshot({ path: process.env.CAP + '/abertura-destaque.png' }); await p.evaluate(() => { document.documentElement.dataset.theme = 'dark'; }); await p.waitForTimeout(200); await p.screenshot({ path: process.env.CAP + '/abertura-destaque-escuro.png' }); }
+  assert.deepEqual(p.erros, []);
+});
+
+await passo('app · detalhe: clicar num anexo abre o arquivo dentro da extensão, sem baixar (0.73.0): PDF, imagem, tipo que não abre, setas e Baixar', async () => {
+  const p = await abrirApp('#/fila?escopo=equipe');
+  const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+  await p.evaluate(png => { window.__respostas = Object.assign(window.__respostas || {}, {
+    detalhe: { ok: true, item: { assunto: 'x' }, anexos: ['aso ficticio.pdf'], arquivos: [{ id: 'a1', nome: 'aso ficticio.pdf', direto: 'https://onvio.com.br/api/storage/v1/files/x/aso.pdf' }], grupos: [{ titulo: 'Solicitação', campos: [{ k: 'Categoria', v: 'Estagiário' }] }],
+      tramites: [{ n: 1, id: 't1', em: '2026-10-07T19:03:00', situacao: 'Sem análise', lado: 'cli', autor: 'Cliente BETA', texto: 'segue', anexos: ['foto.png', 'contrato.docx'], arquivos: [{ id: 'a2', nome: 'foto.png' }, { id: 'a3', nome: 'contrato.docx' }] }] },
+    verAnexo: { ok: true, nome: 'aso ficticio.pdf', tipo: 'application/pdf', b64: 'JVBERi0xLjQKJWZpY3RpY2lv', tamanho: 18 } }); }, PNG);
+  await p.click('#corpo [data-k="geral:b"]');
+  await p.waitForSelector('#pn-anex .pn-arq');
+  // no painel: o anexo da abertura abre aqui, em PDF
+  await p.click('#pn-anex .pn-arq');
+  await p.waitForSelector('#dlg-ver .ver-pdf');
+  assert.match(await p.$eval('#dlg-ver .ver-pdf', f => f.getAttribute('src')), /^blob:/, 'o PDF vem da memória (blob), nada gravado');
+  assert.match(await p.textContent('#dlg-ver .ver-cab'), /aso ficticio\.pdf[\s\S]*1 de 3/);
+  const m1 = await p.evaluate(() => window.__msgs.filter(m => m.cmd === 'verAnexo').pop());
+  assert.deepEqual([m1.anexo.id, m1.anexo.direto, m1.num], ['a1', 'https://onvio.com.br/api/storage/v1/files/x/aso.pdf', 'b'.replace('b', m1.num)]);
+  // seta para a direita: a imagem do trâmite
+  await p.evaluate(png => { window.__respostas.verAnexo = { ok: true, nome: 'foto.png', tipo: '', b64: png, tamanho: 68 }; }, PNG);
+  await p.keyboard.press('ArrowRight');
+  await p.waitForSelector('#dlg-ver .ver-img img');
+  assert.match(await p.textContent('#dlg-ver .ver-cab'), /foto\.png[\s\S]*2 de 3/);
+  // Word não abre no navegador: oferece Baixar
+  await p.evaluate(() => { window.__respostas.verAnexo = { ok: true, nome: 'contrato.docx', tipo: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', b64: 'UEsDBA==', tamanho: 4 }; });
+  await p.click('#ver-prox');
+  await p.waitForFunction(() => /não abre no navegador/.test(document.querySelector('#dlg-ver .ver-corpo').textContent));
+  // erro do Onvio aparece na janela
+  await p.evaluate(() => { window.__respostas.verAnexo = { ok: false, erro: 'HTTP 401' }; });
+  await p.keyboard.press('ArrowRight');
+  await p.waitForFunction(() => /Não foi possível abrir este anexo[\s\S]*HTTP 401/.test(document.querySelector('#dlg-ver .ver-corpo').textContent));
+  // Esc fecha só o visualizador; o detalhe continua aberto
+  await p.keyboard.press('Escape');
+  assert.equal(await p.$('#dlg-ver:not([hidden])'), null);
+  assert.ok(await p.$('#g-painel'), 'o detalhe continua aberto');
+  // na conversa: o anexo do trâmite também abre aqui
+  await p.evaluate(png => { window.__respostas.verAnexo = { ok: true, nome: 'foto.png', tipo: 'image/png', b64: png, tamanho: 68 }; }, PNG);
+  await p.click('#g-corpo .tr-arq');
+  await p.waitForSelector('#dlg-ver .ver-img img');
+  if (process.env.CAP) { await p.waitForTimeout(400); await p.screenshot({ path: process.env.CAP + '/ver-anexo.png' }); }
+  await p.keyboard.press('Escape');
   assert.deepEqual(p.erros, []);
 });
 
@@ -1636,49 +1698,46 @@ await passo('app · Nova solicitação por departamento: modelos de DP, Fiscal e
   assert.deepEqual(p.erros, []);
 });
 
-await passo('app · setores: fora da equipe do DP só as suas (sem Todas, Equipe e Distribuir, com aviso); no DP a Geral mostra só o departamento do DP; prazo prometido visível', async () => {
-  const geral = (k, num, dep, extra) => Object.assign({ k: 'geral:' + k, type: 'geral', typeLabel: 'Geral', id: k, num, code: 2, status: 'Em análise', lado: 'esc', nivel: 0, grav: 0, parado: 1, motivos: [], resp: 'Bia', mine: false, apelido: 'X' + k, cliente: 'X' + k, detalhe: 'Assunto ' + k, departmentId: dep, created: agoraIso(2), last: agoraIso(1) }, extra || {});
-  const itens = [geral('d1', 801, 'dep-dp'), geral('f1', 802, 'dep-fiscal'), geral('m1', 803, 'dep-fiscal', { mine: true, resp: 'Ana Teste', prazoPrometido: '2099-01-10', motivos: [{ n: 0, m: 'Prometido até 10/01', legal: true, prom: true }] })];
-  const regras = eq => ({ regrasEscritorio: { url: 'https://exemplo.com/r.json', versao: 't1', regras: { versao: 't1', config: {}, feriados: [], abaErrada: [], equipeDP: eq, departamentoDP: 'dep-dp' } } });
-  // fora do DP (o nome do usuário não está em equipeDP)
-  const p = await abrirApp('#/fila', Object.assign({ snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens }) }, regras(['Bia', 'Caio'])));
-  await p.waitForSelector('#aviso-setor');
-  assert.match(await p.textContent('#aviso-setor'), /Você vê só as suas solicitações/);
-  assert.deepEqual(await p.$$eval('#abas .aba', e => e.map(x => x.dataset.aba)), ['minhas', 'respondidas'], 'sem a aba Todas');
-  assert.deepEqual(await linhas(p), ['geral:m1'], 'só as suas, de qualquer departamento');
-  assert.match(await p.textContent('#corpo [data-k="geral:m1"]'), /Prometido até 10\/01/, 'o prazo prometido é o vencimento visível');
-  assert.equal(await p.isVisible('.trilho [data-rota="equipe"]'), false);
-  assert.equal(await p.isVisible('.trilho [data-rota="distribuir"]'), false);
-  await p.goto(URL_APP + '#/equipe');
-  await p.waitForFunction(() => location.hash.startsWith('#/equipe') || document.querySelector('#titulo').textContent === 'Solicitações');
-  assert.equal(await p.textContent('#titulo'), 'Solicitações', 'Equipe leva de volta às Solicitações');
-  await p.goto(URL_APP + '#/fila?escopo=todas');
-  assert.equal(await p.$eval('#abas .aba.on', a => a.dataset.aba), 'minhas', 'escopo=todas cai em Minhas');
+await passo('app · setores (0.74.0): Pessoal, Fiscal e Contábil, cada um com a Geral do seu setor; fora do Pessoal sem os cartões da folha e com aviso; prazo prometido visível', async () => {
+  const DP = '2CDE919421384918A2BF510E5D5F4FD6', FISCAL = '8D6AF452F46D454C849B6C96F8CCF306', CTB = '26CE2C34F6F44CD99501CEAA43B93F0F';
+  const geral = (k, num, dep, extra) => Object.assign({ k: 'geral:' + k, type: 'geral', typeLabel: 'Geral', id: k, num, code: 2, status: 'Em análise', lado: 'esc', nivel: 0, grav: 0, parado: 1, motivos: [], resp: 'Bia', mine: false, apelido: 'X' + k, cliente: 'X' + k, detalhe: 'Assunto ' + k, departmentId: dep, created: new Date(Date.now() - 3 * 864e5).toISOString().slice(0, 19), last: new Date(Date.now() - 864e5).toISOString().slice(0, 19) }, extra || {});
+  const itens = [geral('d1', 801, DP), geral('f1', 802, FISCAL), geral('c1', 804, CTB), geral('m1', 803, FISCAL, { mine: true, resp: 'Ana Teste', prazoPrometido: '2099-01-10', motivos: [{ n: 0, m: 'Prometido até 10/01', legal: true, prom: true }] })];
+  const snap = (u, extra) => ({ snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens, user: Object.assign({ nome: 'Ana Teste' }, u) }, extra || {}) });
+  // Pessoal (pelo acesso): a Geral do Pessoal e a sua; sem aviso; Equipe e Distribuir
+  const p = await abrirApp('#/fila?escopo=todas', snap({ departmentId: DP }));
+  await p.waitForSelector('#corpo [data-k]');
+  assert.deepEqual((await linhas(p)).sort(), ['geral:d1', 'geral:m1'], 'Pessoal: a Geral do Fiscal e do Contábil some, menos a que é sua');
+  assert.equal(await p.$('#aviso-setor'), null);
+  assert.equal(await p.isVisible('.trilho [data-rota="equipe"]'), true);
   assert.deepEqual(p.erros, []);
-  // no DP (o usuário está em equipeDP): a Geral do Fiscal some, a do DP e a sua ficam
-  const p2 = await abrirApp('#/fila?escopo=todas', Object.assign({ snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens }) }, regras(['Ana Teste', 'Bia'])));
-  await p2.waitForSelector('#corpo [data-k]');
-  assert.deepEqual((await linhas(p2)).sort(), ['geral:d1', 'geral:m1'], 'a Geral do Fiscal (dep-fiscal) some; a do DP e a que é sua ficam');
-  assert.equal(await p2.$('#aviso-setor'), null);
+  // Fiscal (pelo acesso): a Geral do Fiscal, com a equipe toda, Equipe e Distribuir; aviso do setor; só o cartão Geral
+  const p2 = await abrirApp('#/fila?escopo=todas', snap({ departmentId: FISCAL }));
+  await p2.waitForSelector('#aviso-setor');
+  assert.match(await p2.textContent('#aviso-setor'), /Visão do setor\s*Fiscal/);
+  assert.ok((await p2.$$eval('#abas .aba', e => e.map(x => x.dataset.aba))).includes('todas'), 'o Fiscal tem a aba Todas');
+  assert.deepEqual((await linhas(p2)).sort(), ['geral:f1', 'geral:m1'], 'Fiscal: só a Geral do Fiscal');
+  assert.match(await p2.textContent('#corpo [data-k="geral:m1"]'), /Prometido até 10\/01/, 'o prazo prometido é o vencimento visível');
   assert.equal(await p2.isVisible('.trilho [data-rota="equipe"]'), true);
-  // sem regras de setor: valem os ids do Pessoal de fábrica; o que é de outro departamento (aqui, ids de teste) some, menos o que é seu
-  const p3 = await abrirApp('#/fila?escopo=todas', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens }) });
-  await p3.waitForSelector('#corpo [data-k]');
-  assert.deepEqual(await linhas(p3), ['geral:m1']);
-  // pelo acesso do usuário (company-department-access): do Pessoal vê a Geral do DP; do Fiscal vê só as suas
-  const DP = '2CDE919421384918A2BF510E5D5F4FD6', FISCAL = '8D6AF452F46D454C849B6C96F8CCF306';
-  const reais = itens.map(i => i.k === 'geral:d1' ? Object.assign({}, i, { departmentId: DP }) : i.k === 'geral:f1' ? Object.assign({}, i, { departmentId: FISCAL }) : i);
-  const snap = u => ({ snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: reais, user: Object.assign({ nome: 'Ana Teste' }, u) }) });
-  const p4 = await abrirApp('#/fila?escopo=todas', snap({ departmentId: DP }));
+  assert.equal(await p2.isVisible('.trilho [data-rota="distribuir"]'), true);
+  assert.deepEqual(await p2.$$eval('[data-tipo]', e => [...new Set(e.map(x => x.dataset.tipo).filter(Boolean))]), ['geral'], 'sem cartões da folha');
+  assert.deepEqual(await p2.$$eval('#f-tipo option', o => o.map(x => x.value)), ['', 'geral'], 'o filtro de tipo só tem a Geral');
+  if (process.env.CAP) { await p2.waitForTimeout(300); await p2.screenshot({ path: process.env.CAP + '/setor-fiscal-fila.png' }); }
+  await p2.goto(URL_APP + '#/distribuir');
+  await p2.waitForFunction(() => /A distribuição automática é só do Pessoal/.test(document.body.textContent));
+  assert.deepEqual(p2.erros, []);
+  if (process.env.CAP) { await p2.goto(URL_APP + '#/inicio'); await p2.waitForTimeout(600); await p2.screenshot({ path: process.env.CAP + '/setor-fiscal-hoje.png' }); }
+  // Contábil sem o acesso (o Onvio recusou): o setor sai das solicitações lidas, e as listas da folha ficam "sem acesso"
+  const semFolha = ['cadEmpregado', 'cadContribuinte', 'cadEstagiario', 'avisoFerias', 'calcFerias', 'avisoRescisao', 'calcRescisao', 'afastamento', 'rubricas'];
+  const soCtb = itens.filter(i => i.departmentId === CTB).concat([geral('c2', 805, CTB)]);
+  const p3 = await abrirApp('#/fila?escopo=todas', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: soCtb, semAcesso: semFolha, user: { nome: 'Ana Teste', departmentId: '' } }) });
+  await p3.waitForSelector('#aviso-setor');
+  assert.match(await p3.textContent('#aviso-setor'), /Contábil/);
+  assert.deepEqual((await linhas(p3)).sort(), ['geral:c1', 'geral:c2']);
+  // nada diz o setor (sem acesso e sem departamento conhecido): não esconde nada
+  const p4 = await abrirApp('#/fila?escopo=todas', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens.map(i => Object.assign({}, i, { departmentId: 'dep-teste' })), user: { nome: 'Ana Teste' } }) });
   await p4.waitForSelector('#corpo [data-k]');
-  assert.deepEqual((await linhas(p4)).sort(), ['geral:d1', 'geral:m1'], 'acesso ao Pessoal: a Geral do Fiscal some');
+  assert.equal((await linhas(p4)).length, 4);
   assert.equal(await p4.$('#aviso-setor'), null);
-  const p5 = await abrirApp('#/fila', snap({ departmentId: FISCAL }));
-  await p5.waitForSelector('#aviso-setor');
-  assert.deepEqual(await p5.$$eval('#abas .aba', e => e.map(x => x.dataset.aba)), ['minhas', 'respondidas'], 'acesso ao Fiscal: só as suas');
-  const p6 = await abrirApp('#/fila?escopo=todas', snap({}));
-  await p6.waitForSelector('#corpo [data-k]');
-  assert.deepEqual((await linhas(p6)).sort(), ['geral:d1', 'geral:f1', 'geral:m1'].filter(k => k !== 'geral:f1'), 'acesso desconhecido não esconde pessoas, mas a Geral só mostra o DP');
 });
 
 await passo('app · detalhe: destaques sutis; trâmites como conversa (filtro, ordem, ver tudo); Anexos num botão só com escolha do que baixar', async () => {
@@ -1726,8 +1785,8 @@ await passo('app · detalhe: destaques sutis; trâmites como conversa (filtro, o
   assert.match(await p.textContent('#dlg-anexos'), /Na abertura da solicitação.*Trâmite #01 · cliente.*Trâmite #02 · escritório/s);
   await p.click('#ax-todos');
   assert.equal(await p.isDisabled('#ax-baixar'), true, 'nada marcado, nada a baixar');
-  await p.click('#dlg-anexos .ax-arq:has-text("aviso.pdf")');
-  await p.click('#dlg-anexos .ax-arq:has-text("pedido.pdf")');
+  await p.click('#dlg-anexos .ax-arq:has-text("aviso.pdf") input');
+  await p.click('#dlg-anexos .ax-arq:has-text("pedido.pdf") input');
   assert.match(await p.textContent('#ax-cont'), /2 de 4/);
   if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/anexos.png' });
   assert.equal(await p.$eval('#ax-todos', e => e.indeterminate), true);
@@ -1736,11 +1795,20 @@ await passo('app · detalhe: destaques sutis; trâmites como conversa (filtro, o
   const m = await p.evaluate(() => window.__msgs.find(x => x.cmd === 'baixarAnexos'));
   assert.deepEqual([m.type, m.num, JSON.stringify(m.anexos)], ['geral', '102', JSON.stringify([{ id: 'a0', topico: null, nome: 'pedido.pdf', direto: null }, { id: 'a2', topico: 't2', nome: 'aviso.pdf', direto: null }])]);
   assert.equal(await p.isHidden('#gaveta'), false, 'o detalhe continua aberto');
-  // clicar num anexo do trâmite abre a escolha só com ele marcado; sem caminho conhecido, explica como ensinar
-  await p.evaluate(() => { window.__respostas.baixarAnexos = { ok: true, baixados: 0, falhas: [], semRota: 1 }; });
+  // clicar num anexo do trâmite abre o arquivo aqui mesmo (0.73.0), sem a janela de escolha
+  await p.evaluate(() => { window.__respostas.verAnexo = { ok: false, erro: 'ainda não sei como o Onvio entrega este anexo: baixe um anexo pelo Onvio uma vez' }; });
   await p.click('#g-corpo .tr-arq:has-text("recibo.pdf")');
+  await p.waitForSelector('#dlg-ver .ver-corpo');
+  assert.match(await p.textContent('#dlg-ver .ver-cab'), /recibo\.pdf/);
+  assert.equal(await p.isHidden('#dlg-anexos'), true);
+  await p.keyboard.press('Escape');
+  // na janela Anexos, só ele marcado; sem caminho conhecido, explica como ensinar
+  await p.evaluate(() => { window.__respostas.baixarAnexos = { ok: true, baixados: 0, falhas: [], semRota: 1 }; });
+  await p.click('#g-anexos');
   await p.waitForSelector('#dlg-anexos [data-ax]');
-  assert.deepEqual(await p.$$eval('#dlg-anexos [data-ax]:checked', e => e.map(x => x.closest('label').textContent)), ['PDFrecibo.pdf']);
+  await p.click('#ax-todos');
+  await p.click('#dlg-anexos .ax-arq:has-text("recibo.pdf") input');
+  assert.deepEqual(await p.$$eval('#dlg-anexos [data-ax]:checked', e => e.map(x => x.closest('label').querySelector('.ax-nome').textContent)), ['recibo.pdf']);
   await p.click('#ax-baixar');
   await p.waitForSelector('#ax-onvio');
   assert.match(await p.textContent('#ax-msg'), /Ainda não sei como o Onvio baixa/);

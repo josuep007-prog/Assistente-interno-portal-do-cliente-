@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.73.0)
+# Control Onvio · ControlTax (v0.75.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -45,7 +45,7 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
 
-## Novidades da v0.73.0 (Tarefas do Gestta: trilha por empresa e Fechamento do mês, 05/11/2026)
+## Novidades da v0.75.0 (Tarefas do Gestta: trilha por empresa e Fechamento do mês, 05/11/2026)
 
 - **Cada empresa como uma trilha de etapas.** Em Minhas tarefas › Por empresa, as tarefas do mês de cada cliente aparecem em sequência, na ordem da meta, ligadas por um traço que fica cheio até onde está concluído. Cada etapa tem marca própria, não só cor: ✓ concluída, ! gerando multa ou atrasada, losango com impedimento, anel âmbar vence hoje, anel vazio a fazer. Passe o mouse para ver nome, meta, setor e responsável; a próxima etapa aberta fica sempre à vista.
 - **Linha do tempo:** o botão ao lado troca a trilha pela grade dos dias do mês, com o fim de semana em tom claro e a linha do hoje; etapas no mesmo dia se empilham com um número. A escolha fica lembrada.
@@ -55,6 +55,30 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 - **Todos veem o Fechamento, cada um no que o acesso alcança.** Com acesso de analista aparece o aviso de que não é o fechamento do escritório todo.
 - **Leitura leve:** o relatório do mês é lido no máximo **uma vez por hora** e fica só na memória do Chrome (some ao fechar o navegador; nunca vai ao disco nem ao Hub), só com as colunas necessárias (sem valor, mensalidade nem pontuação). "Atualizar" antes de 1 hora diz em quantos minutos pode.
 - **A conferir no Chrome do Josué:** quanto tempo o relatório leva, se o formato da resposta foi lido (a tela mostra erro se não for) e se as contagens batem com o Gestta; o detalhe de uma tarefa (nomes dos campos das etapas e documentos); com um login de analista, o aviso de acesso parcial.
+
+## Novidades da v0.74.1 (pedido do cliente em destaque, 05/11/2026)
+
+- Enquanto o escritório ainda não respondeu, a **primeira mensagem da conversa** (a abertura, com a descrição ou as observações do cliente) fica **maior e em destaque**: bolha mais larga, texto maior, borda azul e a etiqueta "Pedido do cliente · aguardando a 1ª resposta do escritório". A mensagem aparece **inteira**, sem precisar clicar em "Ver tudo". Depois do primeiro trâmite do escritório, ela volta ao normal (pedido do Josué). Nos dois estilos e nos dois temas.
+
+## Novidades da v0.74.0 (Fiscal e Contábil, 05/11/2026)
+
+- **A leitura não cai mais para quem não é do Pessoal.** Com login do Fiscal ou do Contábil o Onvio só libera a lista **Geral** (e os documentos) do próprio setor; as listas da folha (cadastros, férias, rescisão, afastamento, rubricas) respondem "sem permissão". Antes, essa recusa era tratada como sessão perdida e derrubava a leitura inteira. Agora essas listas ficam como **"sem acesso por este login"** (Configurações › Avançado › Diagnóstico) e o resto segue. Só a recusa da própria Geral continua sendo sessão perdida. O mesmo vale para a verificação ao vivo, a busca e a leitura das movimentadas (Distribuir, Equipe).
+- **Cada setor vê o seu.** A extensão reconhece o setor (Pessoal, Fiscal ou Contábil) pelo acesso no Onvio ou, quando o Onvio não diz, pelas solicitações Gerais que o login enxerga. Quem é do Fiscal ou do Contábil passa a ter **Minhas, Todas, Respondidas, Equipe e Distribuir** com a Geral do seu setor (antes via só as suas), com uma linha discreta no topo "Visão do setor Fiscal". Os cartões e filtros das listas da folha somem; a "Nova solicitação" já vem no departamento do setor.
+- A **distribuição automática** continua só do Pessoal (como autorizado em 23/10); nos outros setores a tela Distribuir explica e a atribuição é manual.
+- O perfil "acesso de cliente" não é mais decidido só pelo endereço da folha: se ele recusar, a extensão confere a lista de departamentos do escritório antes (quem é do Fiscal não é confundido com cliente).
+- Regras do escritório: `departamentosSetor` (`dp`, `fiscal`, `contabil`) troca os ids dos departamentos de cada setor; de fábrica, os mapeados em 22/10/2026.
+- **A confirmar no Onvio real** (com um login do Fiscal ou do Contábil): quais listas o Onvio recusa e com que código, se o acesso por departamento responde e se a sessão traz a marca de escritório.
+
+## Novidades da v0.73.0 (ver anexos sem baixar, 05/11/2026)
+
+- **Ver o anexo dentro da extensão:** no detalhe, clicar num anexo (na conversa ou na lista de Anexos do painel) abre o arquivo numa janela por cima, sem baixar. PDF abre no leitor do Chrome, imagens e textos aparecem direto; Word, Excel e zip não abrem no navegador e a janela oferece **Baixar**. As setas (← →) passam pelos anexos da solicitação e Esc fecha. Na janela "Anexos", o olho ao lado de cada arquivo faz o mesmo.
+- O arquivo é lido na hora pela aba do Onvio e fica só na memória daquela janela (sai ao trocar ou fechar): nada é gravado. Até 15 MB por arquivo; maior que isso, a janela pede para baixar.
+- **Correção dos downloads que falhavam** ("O arquivo não estava disponível no site", sobretudo nos Cadastros): o endereço direto do anexo ia para o Chrome baixar sem a autorização do Onvio, e o Onvio recusava. Agora a extensão busca o arquivo pela aba **com a autorização** e só então salva; o mesmo vale para o endereço que o Onvio devolve nas outras listas.
+- A confirmar no Onvio real: o leitor de PDF dentro da camada e os anexos de trâmite do Cadastro (que dependem do caminho aprendido).
+
+## Novidades da v0.72.1 (observações na abertura, 05/11/2026)
+
+- Nos **Cadastros** (empregado, contribuinte, estagiário) não há campo Descrição: a mensagem do cliente vem em **Observações**. Agora, quando a abertura (#01) vem sem texto, as observações aparecem dentro da bolha da abertura com a etiqueta "Observações da solicitação", como já acontecia com a descrição, e saem do painel de dados (pedido do Josué). Havendo descrição, ela continua tendo a preferência.
 
 ## Novidades da v0.72.0 (Tarefas do Gestta, Fase 1, item 2, 05/11/2026)
 
