@@ -349,7 +349,7 @@ function carregarBackground(opcoes = {}) {
   const ctx = { console, URL, URLSearchParams, AbortController, setTimeout, clearTimeout, chrome, FormData, Blob, atob, Headers, fetch: opcoes.fetch || (async () => { throw new Error('sem rede'); }) };
   ctx.self = ctx;
   ctx.window = ctx;
-  ctx.importScripts = f => vm.runInContext(src(f), ctx);
+  ctx.importScripts = (...fs) => fs.forEach(f => vm.runInContext(src(f), ctx));
   vm.createContext(ctx);
   vm.runInContext(src('background.js'), ctx);
   return { ctx, store, chamadas, ouvintes, chrome, instalado };
@@ -600,10 +600,11 @@ test('manifesto: painel só no Portal do Cliente, sem painel lateral do Chrome, 
   const painelPages = m.content_scripts.filter(c => c.js.includes('shell.js'));
   assert.equal(painelPages.length, 1);
   assert.deepEqual(painelPages[0].matches, ['https://onvio.com.br/br-portal-do-cliente/*'], 'painel só no Portal do Cliente (nada de /staff/)');
-  for (const c of m.content_scripts) for (const u of c.matches) assert.ok(u.startsWith('https://onvio.com.br/'), 'nenhum script fora do Onvio: ' + u);
+  // Onvio, e no Gestta (0.72.0) só a camada das Tarefas do Gestta
+  for (const c of m.content_scripts) for (const u of c.matches) assert.ok(u.startsWith('https://onvio.com.br/') || (u === 'https://app.gestta.com.br/*' && c.js.join() === 'shell-gestta.js'), 'nenhum script fora do Onvio e do Gestta: ' + u);
   const war = m.web_accessible_resources.flatMap(w => w.resources);
   for (const f of ['app/app.html', 'logo.svg']) assert.ok(war.includes(f), f + ' precisa ser acessível pela página');
-  for (const w of m.web_accessible_resources) assert.deepEqual(w.matches, ['https://onvio.com.br/*']);
+  for (const w of m.web_accessible_resources) assert.ok(JSON.stringify(w.matches) === JSON.stringify(['https://onvio.com.br/*']) || (JSON.stringify(w.matches) === JSON.stringify(['https://app.gestta.com.br/*']) && w.resources.includes('app/gestta.html') && !w.resources.includes('app/app.html')), 'recursos só para o Onvio (e a tela do Gestta para o Gestta)');
   // tudo que o manifesto cita existe
   for (const f of m.content_scripts.flatMap(c => c.js).concat(war, ['background.js', 'options.html'])) assert.ok(fs.existsSync(path.join(EXT, f)), 'falta ' + f);
 });
@@ -3718,4 +3719,41 @@ test('Gestta: o texto do teste traz só contagens e situação, e o analista é 
   assert.ok(!t.includes('SIGILO'), 'nome de cliente nunca aparece');
   assert.match(OCG.linhasDoTeste(null, null).join(''), /Nenhuma aba do Gestta aberta/);
   assert.match(OCG.linhasDoTeste({ ok: false, semSessao: true, app: 'classico' }, { id: 1 }).join(''), /faça login/);
+});
+test('Gestta · tarefas: grupos pelo que pesa (multa, atraso, impedimento, hoje, 5 dias úteis, adiante, concluídas), prazo em palavras, por empresa, por dia e filtros', () => {
+  const H = new Date(2026, 10, 5, 10);                       // quinta-feira, 05/11/2026
+  const d = (dia) => new Date(Date.UTC(2026, 10, dia, 3)).toISOString();   // meia-noite no Brasil
+  const C = (id, nome) => ({ _id: id, name: nome, code: id.slice(-2) });
+  const A = C('c1', 'ÁLFA COMÉRCIO'), B = C('c2', 'BETA'), L = [
+    { _id: '1', name: 'DCTF', status: 'OPEN', fine: true, due_date: d(1), customer: A, type: 'RECURRENT' },
+    { _id: '2', name: 'Folha', status: 'OPEN', overdue: true, due_date: d(3), customer: A, type: 'RECURRENT' },
+    { _id: '3', name: 'ICMS', status: 'IMPEDIMENT', due_date: d(10), customer: B, type: 'RECURRENT' },
+    { _id: '4', name: 'FGTS', status: 'OPEN', due_date: d(5), customer: B, type: 'RECURRENT' },
+    { _id: '5', name: 'DAS', status: 'OPEN', due_date: d(12), customer: B, type: 'SERVICE_ORDER' },      // quinta seguinte: 5 dias úteis
+    { _id: '6', name: 'Balancete', status: 'OPEN', due_date: d(13), customer: A, type: 'ACCOUNTING' },  // 6 dias úteis
+    { _id: '7', name: 'eSocial', status: 'DONE', due_date: d(4), customer: A, type: 'RECURRENT' },
+    { _id: '8', name: 'Ignorada', status: 'IGNORED', due_date: d(6), customer: A, type: 'RECURRENT' }];
+  assert.deepEqual(L.map(t => OCG.grupoTarefa(t, H)), ['multa', 'atrasada', 'impedimento', 'hoje', 'proximas', 'depois', 'feita', null]);
+  assert.equal(OCG.diasUteis(H, new Date(2026, 10, 9)), 2, 'sexta e segunda'); assert.equal(OCG.diasUteis(H, new Date(2026, 10, 3)), -2);
+  assert.equal(OCG.prazoTexto(L[0], H), 'Venceu há 4 dias (01/11)'); assert.equal(OCG.prazoTexto(L[3], H), 'Vence hoje');
+  assert.equal(OCG.prazoTexto({ status: 'OPEN', due_date: d(6) }, H), 'Vence amanhã'); assert.equal(OCG.prazoTexto(L[4], H), 'Vence em 5 dias úteis (12/11)');
+  assert.equal(OCG.prazoTexto(L[6], H), 'Concluída');
+  const c = OCG.contarGrupos(L, H);
+  assert.deepEqual(plano(c), { n: { multa: 1, atrasada: 1, impedimento: 1, hoje: 1, proximas: 1, depois: 1, feita: 1 }, total: 7, abertas: 6, feitas: 1, ignoradas: 1, pctFeitas: 14 });
+  const e = OCG.porEmpresa(L, H);
+  assert.deepEqual(plano(e.map(x => x.nome)), ['ÁLFA COMÉRCIO', 'BETA'], 'a com multa primeiro');
+  assert.deepEqual(plano([e[0].n, e[0].abertas, e[0].feitas, e[0].multa, e[0].atrasada, e[0].pctFeitas, e[0].proxima]), [4, 3, 1, 1, 1, 25, '2026-11-01']);
+  const dia = OCG.porDia(L, H);
+  assert.deepEqual(plano(dia['2026-11-05']), { total: 1, abertas: 1, atrasadas: 0, feitas: 0 }); assert.equal(dia['2026-11-06'], undefined, 'ignorada não entra');
+  const f = o => plano(OCG.filtrarTarefas(L, o, H).map(t => t._id));
+  assert.deepEqual(f({}), ['1', '2', '3', '4', '5', '6'], 'sem as concluídas, na ordem do que pesa');
+  assert.deepEqual(f({ feitas: true }), ['1', '2', '3', '4', '5', '6', '7']);
+  assert.deepEqual(f({ q: 'alfa comercio' }), ['1', '2', '6'], 'busca sem acento e sem maiúscula');
+  assert.deepEqual(f({ grupos: ['feita'] }), ['7'], 'escolher Concluídas mostra as concluídas');
+  assert.deepEqual(f({ tipos: ['SERVICE_ORDER', 'ACCOUNTING'] }), ['5', '6']);
+  assert.deepEqual(f({ dia: '2026-11-05' }), ['4']); assert.deepEqual(f({ cliente: 'c2' }), ['3', '4', '5']);
+  assert.equal(OCG.urlTarefa('5f1e2d3c4b5a69788796a5b4'), 'https://app.gestta.com.br/#/sidebar/task/overview/dashboard/5f1e2d3c4b5a69788796a5b4');
+  assert.equal(OCG.urlTarefa('../x'), null, 'só id do Gestta');
+  const p = OCG.PEDIDOS.buscaTarefas({ ano: 2026, mes: 11, semDono: true, limit: 1000 });
+  assert.equal(p.corpo.no_owner, true); assert.equal(p.corpo.company_user, undefined); assert.equal(OCG.leituraPermitida(p.metodo, p.url, p.corpo).ok, true);
 });
