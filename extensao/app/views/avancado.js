@@ -213,6 +213,7 @@ async function estadoRegras(el) {
 /* ---------- Testes de leitura ---------- */
 const TESTES = [
   { id: 'testarLeitura', ic: 'i-pulso', rot: 'Testar a leitura', desc: 'Confere a sessão do Onvio e cada jeito de ler (página, extensão, direto).', espera: 'Testando a leitura…' },
+  { id: 'testarGestta', ic: 'i-pulso', rot: 'Testar a leitura do Gestta', desc: 'Com o Gestta aberto e logado numa aba: quem está logado, o perfil e uma leitura de prova de cada fonte, só contagens.', espera: 'Lendo o Gestta pela aba aberta (só leitura)…' },
   { id: 'sondarEmpregados', ic: 'i-users', rot: 'Sondar a lista de empregados', desc: 'Lê uma empresa e mostra só o formato da lista (campos e contagens), sem nome nem CPF.', espera: 'Sondando a lista de empregados (uma empresa, só leitura)…' },
   { id: 'testarFolha', ic: 'i-recibo', rot: 'Testar a leitura da folha', desc: 'Acha uma empresa com Extrato Mensal, lê o mais recente e mostra só o formato (contagens, vínculos, competência).', espera: 'Procurando um Extrato Mensal no portal de documentos (só leitura)…' },
   { id: 'folhaDeNovo', ic: 'i-repeat', rot: 'Ler a folha de novo', desc: 'No próximo envio ao Hub, procura de novo as pastas e lê os extratos dos últimos 12 meses (pode levar horas).', confirma: true }
@@ -220,7 +221,7 @@ const TESTES = [
 function parteTestes(corpo, d) {
   const fe = d.folhaEstado;
   corpo.innerHTML = '<section class="cfg-card adv-card"><h3><svg class="ic"><use href="#i-pulso"/></svg>Testes de leitura</h3>' +
-    '<p class="fraco ajuda">Só leitura no Onvio. O resultado mostra formatos e contagens, nunca dado de cliente.' + (fe && fe.em ? ' Última varredura da folha: ' + esc(OP.quando(fe.em)) + (fe.pendentes ? ' (' + fe.pendentes + ' PDFs ficaram para o próximo envio)' : '') + '.' : '') + '</p>' +
+    '<p class="fraco ajuda">Só leitura no Onvio e no Gestta. O resultado mostra formatos e contagens, nunca dado de cliente.' + (fe && fe.em ? ' Última varredura da folha: ' + esc(OP.quando(fe.em)) + (fe.pendentes ? ' (' + fe.pendentes + ' PDFs ficaram para o próximo envio)' : '') + '.' : '') + '</p>' +
     '<form class="adv-empresa" id="adv-folha-emp"><label class="adv-campo adv-cresce"><span>Uma empresa: código ou parte do nome</span><input type="text" id="adv-folha-busca" autocomplete="off" placeholder="ex.: 123 ou torre"></label>' +
       '<button type="submit" class="btn btn-primary btn-sm" id="adv-folha-testar">Testar a folha</button><button type="button" class="btn btn-sm" id="adv-emp-testar">Testar os empregados</button></form>' +
       '<p class="fraco ajuda">Folha: onde a leitura do Extrato Mensal para nessa empresa (projeto, pastas, extratos e o mais recente). Empregados: quantas pessoas o Onvio devolve em cada código da empresa e se o Hub as descartaria (código antigo, filiais com o mesmo nome). Só contagens, nunca nome nem CPF.</p>' +

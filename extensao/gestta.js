@@ -1,0 +1,256 @@
+/* Control Onvio · núcleo do Gestta (sem chrome.*)
+ * Roda em três lugares: no service worker (importScripts), dentro da aba do Gestta (mundo da página, injetado pelo
+ * service worker só na hora da leitura) e nos testes (Node). Aqui ficam os endereços da API não oficial do Gestta,
+ * a lista do que a extensão pode pedir, a limpeza de cada resposta (só os campos permitidos saem da página) e a
+ * leitura do perfil de quem está logado.
+ *
+ * Regras (CLAUDE.md, seção Gestta; mapa em mapeamento/gestta-2026-11-04.md):
+ *  - Só leitura: GET em https://api.gestta.com.br e dois POST que só leem, autorizados pelo Josué:
+ *    a busca de tarefas (04/11/2026) e o relatório de tarefas do tipo CUSTOMER_TASK (05/11/2026).
+ *  - O token (localStorage 'ngStorage-jwt') só é usado dentro da página. Nada aqui o devolve: lerNaPagina descarta o
+ *    token antes de responder e só a validade (campo exp) sai.
+ *  - Nunca: Senhas do cliente, certificados (senha de revogação), conta do escritório, permissões e login dos
+ *    funcionários, destinatários do email_log, telefone, mensalidade, valor, pontuação e horas.
+ */
+(function (g) {
+  'use strict';
+
+  const API = 'https://api.gestta.com.br';
+  const APP = 'https://app.gestta.com.br';
+  const PAUSA_MS = 300;                 // entre uma leitura e outra (carga leve, como no Onvio)
+  const LIMITE_BUSCA = 1000;            // o Gestta aceita até 1000 por página na busca de tarefas
+  const JANELA_MAX_DIAS = 31;           // um mês por chamada: 12 meses de uma vez deu erro 500 (05/11/2026)
+
+  /* ---------- o que pode ser pedido ---------- */
+  // POST que só leem. Qualquer outro POST, PUT, PATCH ou DELETE é recusado antes de sair.
+  const POST_LEITURA = {
+    '/core/customer/task/search': 'busca',
+    '/core/customer/task/report': 'relatorio'
+  };
+  const RELATORIO_TIPOS = ['CUSTOMER_TASK'];   // CUSTOMER_CERTIFICATE (senha de revogação) e CUSTOMER_TASK_DOCUMENT (binários) nunca
+  // Caminhos proibidos mesmo em GET: Senhas, configurações e cobrança da conta, apontamento de horas, certificados,
+  // exportação de arquivo, lote e a conta do escritório.
+  const PROIBIDO = /password|senha|smtp|billing|email-domain|timesheet|certificate|\/export\b|\/batch\b|^\/admin\/company\/?$|^\/auth\//i;
+
+  function caminhoDe(url) {
+    try {
+      const u = new URL(url, API);
+      if (u.protocol !== 'https:' || u.hostname !== 'api.gestta.com.br' || u.username || u.password || u.port) return null;
+      return u.pathname.replace(/\/+$/, '') || '/';
+    } catch (e) { return null; }
+  }
+  const diasEntre = (a, b) => { const x = Date.parse(a), y = Date.parse(b); return isNaN(x) || isNaN(y) ? Infinity : Math.abs(y - x) / 864e5; };
+
+  // { ok, motivo } — usada no service worker antes de pedir e de novo dentro da página antes do fetch.
+  function leituraPermitida(metodo, url, corpo) {
+    const m = String(metodo || 'GET').toUpperCase();
+    const p = caminhoDe(url);
+    if (!p) return { ok: false, motivo: 'fora da API do Gestta' };
+    if (PROIBIDO.test(p)) return { ok: false, motivo: 'endereço proibido para a extensão' };
+    if (m === 'GET') return corpo == null ? { ok: true } : { ok: false, motivo: 'GET não leva corpo' };
+    if (m !== 'POST') return { ok: false, motivo: 'só leitura: ' + m + ' não é permitido' };
+    const tipo = POST_LEITURA[p];
+    if (!tipo) return { ok: false, motivo: 'POST não autorizado' };
+    if (/\?/.test(String(url))) return { ok: false, motivo: 'POST sem querystring' };
+    const c = corpo && typeof corpo === 'object' && !Array.isArray(corpo) ? corpo : null;
+    if (!c) return { ok: false, motivo: 'corpo inválido' };
+    if (tipo === 'busca') {
+      if (!(Number(c.limit) >= 1 && Number(c.limit) <= LIMITE_BUSCA)) return { ok: false, motivo: 'limit entre 1 e ' + LIMITE_BUSCA };
+      if (!c.start_date || !c.end_date || diasEntre(c.start_date, c.end_date) > JANELA_MAX_DIAS) return { ok: false, motivo: 'a busca vai um mês por vez' };
+      return { ok: true };
+    }
+    if (!RELATORIO_TIPOS.includes(c.type)) return { ok: false, motivo: 'relatório não autorizado' };
+    const d = c.dates || {};
+    if (!d.startDate || !d.endDate || diasEntre(d.startDate, d.endDate) > JANELA_MAX_DIAS) return { ok: false, motivo: 'o relatório vai um mês por vez' };
+    return { ok: true };
+  }
+
+  /* ---------- em que app do Gestta a aba está ---------- */
+  function appDe(url) {
+    let u; try { u = new URL(url); } catch (e) { return null; }
+    if (u.origin !== APP) return null;
+    const p = u.pathname, h = u.hash || '';
+    if (/^#\/login/.test(h)) return 'login';
+    if (p.startsWith('/admin')) return 'admin';
+    if (p.startsWith('/dashboard-v2')) return 'painel';
+    if (p.startsWith('/dominio-integration')) return 'integracao';
+    if (p.startsWith('/express')) return 'express';
+    return 'classico';
+  }
+  const APPS = { classico: 'Tarefas (clássico)', admin: 'Cadastros (admin)', painel: 'Painel novo', integracao: 'Status de integração', express: 'Express', login: 'Tela de login' };
+
+  /* ---------- limpeza: só os campos permitidos saem da página ---------- */
+  // Molde: { campo: true } copia o valor simples; { campo: {molde} } desce no objeto; { campo: [molde] } cada item da lista.
+  function escolher(v, molde) {
+    if (v == null) return v;
+    if (Array.isArray(molde)) return Array.isArray(v) ? v.slice(0, 5000).map(x => escolher(x, molde[0])) : undefined;
+    if (molde === true) return v === null || ['string', 'number', 'boolean'].includes(typeof v) ? v : undefined;
+    if (typeof v !== 'object' || Array.isArray(v)) return undefined;
+    const o = {};
+    for (const k of Object.keys(molde)) { const x = escolher(v[k], molde[k]); if (x !== undefined) o[k] = x; }
+    return o;
+  }
+  const REF = { _id: true, name: true };
+  const SETOR = REF;
+  const MOLDES = {
+    // quem está logado: só o que decide o perfil (nada de permissões, tentativas ou último login)
+    me: { _id: true, name: true, role: true, active: true, root: true, company_departments: [SETOR] },
+    // busca de tarefas (lista enxuta)
+    tarefa: { _id: true, name: true, customer: { _id: true, name: true, code: true }, type: true, subtype: true, status: true, fine: true, overdue: true, done_overdue: true, done_fine: true, total_step: true, done_step: true, created_at: true, due_date: true, competence_date: true },
+    // detalhe da tarefa: sem valor, apontamento, aprovadores e documentos anexos
+    tarefaDetalhe: { _id: true, name: true, type: true, subtype: true, status: true, overdue: true, fine: true, created_at: true, legal_date: true, due_date: true, competence_date: true, conclusion_date: true,
+      company_task: { _id: true, name: true, active: true }, company_department: SETOR, customer: { _id: true, name: true, code: true, active: true }, owner: { _id: true, name: true, active: true },
+      customer_has_documents_integration: true, notify_customer: true, total_step: true, done_step: true },
+    cliente: { _id: true, code: true, name: true, trading_name: true, cnpj: true, active: true, federal_regime: { _id: true, name: true, identifier: true }, state_inscription: true, federative_unit: true, city: true, external_id: true, partner_config: { has_onvio_portal: true } },
+    cartela: { company_department: SETOR, company_user: REF },
+    equipe: { _id: true, name: true, role: true, active: true, company_departments: [SETOR], has_linked_tasks: true },
+    setor: SETOR,
+    template: REF,
+    filaOnvio: { _id: true, status: true, error: true, retry_count: true, created_at: true, updated_at: true,
+      customer_task: { _id: true, name: true, customer: { _id: true, name: true, cnpj: true }, company_department: SETOR, owner: REF, _due_date: true, _competence_date: true },
+      customer_task_file: { company_document: REF } },
+    contagem: { fine: true, approve: true, email_not_sent: true, count: true }
+  };
+  // Colunas do relatório CUSTOMER_TASK que saem da página (das 34): fora valor, pontuação e mensalidade (decisão pendente).
+  const COLUNAS_RELATORIO = ['id', 'name', 'type', 'subtype', 'status', 'company_department.name', 'owner.name', 'owner.role', 'notify_customer', 'fine', '_due_date', 'legal_date', 'downloaded',
+    'done_overdue', 'done_fine', 'created_at', 'concluded_by.name', 'conclusion_date', 'overdue', 'on_time', 'company.status', 'customer.active', 'customer.cnpj', 'customer.name', 'customer.code', 'customer.federal_regime.name'];
+
+  const lista = (d) => Array.isArray(d) ? d : d && Array.isArray(d.docs) ? d.docs : [];
+  const pagina = (d) => Array.isArray(d) ? { total: d.length } : d && typeof d === 'object' ? { total: d.totalDocs != null ? d.totalDocs : d.total != null ? d.total : undefined, paginas: d.totalPages != null ? d.totalPages : d.pages, pagina: d.page } : {};
+  // tipo: o molde a aplicar. Listas (com ou sem invólucro de paginação) viram { itens, total, paginas, pagina }.
+  function limpar(tipo, dados) {
+    if (tipo === 'relatorio') return limparRelatorio(dados);
+    const molde = MOLDES[tipo];
+    if (!molde) return null;
+    if (tipo === 'me' || tipo === 'tarefaDetalhe' || tipo === 'contagem') return escolher(dados, molde) || null;
+    const o = Object.assign({ itens: lista(dados).map(x => escolher(x, molde)) }, pagina(dados));
+    if (dados && dados.documents_without_destination != null) o.semPasta = Number(dados.documents_without_destination) || 0;
+    return o;
+  }
+  // O relatório chega como lista de linhas planas (chaves com ponto) ou como objetos: sai só com as colunas permitidas.
+  function limparRelatorio(dados) {
+    const linhas = lista(dados);
+    const valor = (l, c) => { if (l && Object.prototype.hasOwnProperty.call(l, c)) return l[c]; return c.split('.').reduce((o, k) => o && typeof o === 'object' ? o[k] : undefined, l); };
+    return { colunas: COLUNAS_RELATORIO.slice(), linhas: linhas.map(l => COLUNAS_RELATORIO.map(c => { const v = valor(l, c); return v == null || typeof v === 'object' ? '' : v; })), total: linhas.length };
+  }
+
+  /* ---------- perfil ---------- */
+  const PAPEIS = { ROLE_ADMIN: 'Administrador', ROLE_MANAGER: 'Gestor', ROLE_USER: 'Analista' };
+  // A coordenação (administrador ou gestor) vê todos os setores; o analista só os dele (Josué, 05/11/2026).
+  // "total" só quando o papel diz isso: um envio ao Hub nunca sai de um acesso parcial como se fosse o todo.
+  function perfil(me) {
+    if (!me || typeof me !== 'object' || !me._id) return { ok: false, motivo: 'não foi possível saber quem está logado' };
+    const papel = String(me.role || '');
+    const setores = (me.company_departments || []).filter(s => s && s._id).map(s => ({ id: s._id, nome: String(s.name || '') }));
+    const total = papel === 'ROLE_ADMIN' || papel === 'ROLE_MANAGER' || me.root === true;
+    return { ok: true, id: me._id, papel, papelNome: PAPEIS[papel] || (papel ? 'Papel desconhecido (' + papel + ')' : 'Sem papel'), total, setores, ativo: me.active !== false };
+  }
+
+  // Validade da sessão: só o campo exp do JWT, lido dentro da página. O token nunca é devolvido.
+  function expiraEm(token) {
+    try {
+      const parte = String(token || '').replace(/^JWT\s+/i, '').split('.')[1];
+      if (!parte) return null;
+      const json = JSON.parse(decodeURIComponent(escape(atob(parte.replace(/-/g, '+').replace(/_/g, '/')))));
+      return typeof json.exp === 'number' ? new Date(json.exp * 1000).toISOString() : null;
+    } catch (e) { return null; }
+  }
+
+  /* ---------- montagem dos pedidos ---------- */
+  const url = (p, q) => { const u = new URL(p, API); Object.keys(q || {}).forEach(k => { if (q[k] != null && q[k] !== '') u.searchParams.set(k, q[k]); }); return u.toString(); };
+  const iso = d => new Date(d).toISOString();
+  // Mês de referência → { start_date, end_date } do primeiro ao último dia (horário do Brasil, como o Gestta usa).
+  function janelaDoMes(ano, mes) {
+    const ini = new Date(Date.UTC(ano, mes - 1, 1, 3, 0, 0)), fim = new Date(Date.UTC(ano, mes, 1, 2, 59, 59));
+    return { start_date: iso(ini), end_date: iso(fim) };
+  }
+  const PEDIDOS = {
+    me: () => ({ id: 'me', tipo: 'me', metodo: 'GET', url: url('/core/company/user/me') }),
+    setores: () => ({ id: 'setores', tipo: 'setor', metodo: 'GET', url: url('/admin/company/department') }),
+    equipe: (o) => ({ id: 'equipe', tipo: 'equipe', metodo: 'GET', url: url('/admin/company/user', { active: true, limit: (o && o.limit) || 200, page: (o && o.page) || 1 }) }),
+    clientes: (o) => ({ id: 'clientes', tipo: 'cliente', metodo: 'GET', url: url('/admin/customer', { active: true, limit: (o && o.limit) || 200, page: (o && o.page) || 1 }) }),
+    cartela: (o) => ({ id: 'cartela', tipo: 'cartela', metodo: 'GET', url: url('/admin/customer/' + encodeURIComponent(o.cliente) + '/responsible') }),
+    buscaTarefas: (o) => ({ id: 'buscaTarefas', tipo: 'tarefa', metodo: 'POST', url: url('/core/customer/task/search'),
+      corpo: Object.assign({ page: o.page || 1, limit: o.limit || 100, type: o.type || ['RECURRENT', 'SERVICE_ORDER', 'ACCOUNTING'], status: o.status || ['OPEN', 'IMPEDIMENT'], date_type: 'DUE_DATE' }, janelaDoMes(o.ano, o.mes), o.companyUser ? { company_user: [o.companyUser] } : {}) }),
+    tarefa: (o) => ({ id: 'tarefa', tipo: 'tarefaDetalhe', metodo: 'GET', url: url('/core/customer/task/' + encodeURIComponent(o.id)) }),
+    relatorio: (o) => { const j = janelaDoMes(o.ano, o.mes); return { id: 'relatorio', tipo: 'relatorio', metodo: 'POST', url: url('/core/customer/task/report'), corpo: { type: 'CUSTOMER_TASK', filter: '', dates: { startDate: j.start_date, endDate: j.end_date } } }; },
+    filaOnvioErro: (o) => ({ id: 'filaOnvioErro', tipo: 'filaOnvio', metodo: 'GET', url: url('/es/file/onvio', { status: 'ERROR', limit: (o && o.limit) || 50, skip: 0 }) }),
+    multas: (o) => { const j = janelaDoMes(o.ano, o.mes); return { id: 'multas', tipo: 'contagem', metodo: 'GET', url: url('/core/dashboard/attention/fine/all', j) }; },
+    templatesDocumento: () => ({ id: 'templatesDocumento', tipo: 'template', metodo: 'GET', url: url('/admin/company/document', { limit: 1, page: 1 }) })
+  };
+
+  /* ---------- leitura dentro da página (mundo MAIN da aba do Gestta) ----------
+   * Recebe uma lista de pedidos, confere cada um de novo, usa o token só aqui e devolve só os dados limpos.
+   * O token não está no retorno, nem nos erros (só o código e uma mensagem curta do servidor). */
+  async function lerNaPagina(pedidos, opcoes) {
+    const pausa = opcoes && opcoes.pausa != null ? opcoes.pausa : PAUSA_MS;
+    const app = appDe(String(g.location && g.location.href || ''));
+    let tok = null;
+    try { tok = JSON.parse(g.localStorage.getItem('ngStorage-jwt') || 'null'); } catch (e) { tok = null; }
+    if (typeof tok !== 'string' || !/^JWT\s+\S+/.test(tok)) return { ok: false, app, semSessao: true, motivo: 'sem sessão do Gestta nesta aba (faça login)' };
+    const validade = expiraEm(tok);
+    const resultados = [];
+    for (let i = 0; i < (pedidos || []).length; i++) {
+      const p = pedidos[i] || {};
+      const perm = leituraPermitida(p.metodo, p.url, p.corpo == null ? null : p.corpo);
+      if (!perm.ok) { resultados.push({ id: p.id, status: 0, recusado: perm.motivo }); continue; }
+      if (i) await new Promise(r => setTimeout(r, pausa));
+      try {
+        const metodo = String(p.metodo || 'GET').toUpperCase();
+        const headers = { Accept: 'application/json, text/plain, */*', Authorization: tok };
+        if (metodo === 'POST') headers['Content-Type'] = 'application/json';
+        const r = await g.fetch(p.url, { method: metodo, headers, body: metodo === 'POST' ? JSON.stringify(p.corpo) : undefined, credentials: 'omit' });
+        let dados = null, texto = '';
+        try { texto = await r.text(); dados = texto ? JSON.parse(texto) : null; } catch (e) { dados = null; }
+        if (r.ok) {
+          const limpo = limpar(p.tipo, dados);
+          resultados.push(limpo == null ? { id: p.id, status: r.status, erro: 'resposta em formato desconhecido' } : { id: p.id, status: r.status, dados: limpo });
+        } else {
+          const msg = dados && typeof dados === 'object' ? String(dados.message || dados.error || '').slice(0, 160) : '';
+          resultados.push({ id: p.id, status: r.status, erro: msg || ('erro ' + r.status) });
+          if (r.status === 401) break;             // sessão caiu: para tudo
+        }
+      } catch (e) { resultados.push({ id: p.id, status: 0, erro: 'sem resposta do Gestta (' + String(e && e.message || e).slice(0, 80) + ')' }); }
+    }
+    tok = null;
+    return { ok: true, app, validade, resultados };
+  }
+
+  /* ---------- texto do "Testar a leitura do Gestta" (só contagens e situação) ---------- */
+  const fmt = n => typeof n === 'number' ? n.toLocaleString('pt-BR') : '?';
+  function linhasDoTeste(r, aba) {
+    const L = [];
+    if (!aba) return ['Nenhuma aba do Gestta aberta. Abra https://app.gestta.com.br já logado e teste de novo.'];
+    if (!r) return ['A aba do Gestta não respondeu (recarregue a página com F5 e teste de novo).'];
+    L.push('Aba do Gestta: ' + (APPS[r.app] || 'tela desconhecida') + '.');
+    if (r.semSessao || r.app === 'login') return L.concat(['Sem sessão do Gestta: faça login na aba e teste de novo.']);
+    if (r.validade) L.push('Sessão válida até ' + new Date(r.validade).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) + '.');
+    const por = {}; (r.resultados || []).forEach(x => { por[x.id] = x; });
+    const me = por.me, pf = me && me.dados ? perfil(me.dados) : null;
+    if (!pf || !pf.ok) return L.concat(['Não consegui ler quem está logado' + (me ? ' (' + (me.erro || me.recusado || 'status ' + me.status) + ')' : '') + ': nada mais foi lido.']);
+    L.push('Perfil: ' + pf.papelNome + (pf.total ? ' · acesso a todos os setores' : ' · acesso ao(s) setor(es) dele') + ' · ' + pf.setores.length + (pf.setores.length === 1 ? ' setor' : ' setores') + (pf.setores.length ? ': ' + pf.setores.map(s => s.nome).join(', ') : '') + '.');
+    if (!pf.total) L.push('Com este acesso, o envio ao Hub não sai: ele exige o acesso da coordenação para não mandar dados de um setor como se fossem de todos.');
+    const linha = (rot, x, conta) => {
+      if (!x) return '· ' + rot + ': não lido';
+      if (x.recusado) return '· ' + rot + ': recusado pela extensão (' + x.recusado + ')';
+      if (x.status === 403) return '· ' + rot + ': seu acesso não inclui esta leitura (403)';
+      if (x.status !== 200) return '· ' + rot + ': falhou (' + (x.erro || 'status ' + x.status) + ')';
+      return '· ' + rot + ': ' + conta(x.dados);
+    };
+    const tot = d => d && d.total != null ? fmt(d.total) : fmt((d && d.itens || []).length);
+    L.push('Leituras (só contagens):');
+    L.push(linha('setores', por.setores, d => tot(d)));
+    L.push(linha('equipe ativa', por.equipe, d => tot(d)));
+    L.push(linha('clientes ativos', por.clientes, d => tot(d)));
+    L.push(linha('cartela de 1 cliente', por.cartela, d => fmt((d.itens || []).length) + ' setor(es) com responsável'));
+    L.push(linha('tarefas abertas ou com impedimento no mês', por.buscaTarefas, d => tot(d)));
+    L.push(linha('multas no mês (painel)', por.multas, d => fmt(d.fine)));
+    L.push(linha('fila de envio ao Onvio com erro', por.filaOnvioErro, d => tot(d)));
+    L.push(linha('templates de documento sem pasta no portal', por.templatesDocumento, d => d.semPasta != null ? fmt(d.semPasta) : '?'));
+    L.push('Relatório do mês (CUSTOMER_TASK): liberado, mas não é lido no teste (é pesado: dezenas de segundos).');
+    return L;
+  }
+
+  g.OCG = { API, APP, PAUSA_MS, LIMITE_BUSCA, JANELA_MAX_DIAS, POST_LEITURA, RELATORIO_TIPOS, COLUNAS_RELATORIO, MOLDES, APPS,
+    caminhoDe, leituraPermitida, appDe, escolher, limpar, limparRelatorio, perfil, expiraEm, janelaDoMes, PEDIDOS, lerNaPagina, linhasDoTeste };
+})(typeof self !== 'undefined' ? self : this);
