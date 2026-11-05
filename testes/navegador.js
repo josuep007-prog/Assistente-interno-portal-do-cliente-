@@ -1413,7 +1413,7 @@ await passo('app · detalhe: sempre abre na conversa, com os dados no painel ao 
   assert.deepEqual(p.erros, []);
 });
 
-await passo('app · detalhe: abertura sem texto mostra a descrição da solicitação na bolha e o painel não a repete (0.70.7)', async () => {
+await passo('app · detalhe: abertura sem texto mostra a descrição (ou, nos Cadastros, as observações) na bolha e o painel não a repete (0.70.7, 0.72.1)', async () => {
   const p = await abrirApp('#/fila?escopo=equipe');
   const grupos = [{ titulo: 'Solicitação', campos: [{ k: 'Tipo de rescisão', v: 'Trabalhado', destaque: true }, { k: 'Descrição', v: 'Pedido do cliente pelo portal', longo: true }] }];
   await p.evaluate(g => { window.__respostas = Object.assign(window.__respostas || {}, { detalhe: { ok: true, item: { assunto: 'x' }, grupos: g,
@@ -1433,6 +1433,15 @@ await passo('app · detalhe: abertura sem texto mostra a descrição da solicita
   await p.waitForSelector('#g-corpo .tr-item');
   assert.doesNotMatch(await p.textContent('#g-corpo .tr-item'), /Descrição da solicitação/);
   assert.match(await p.textContent('#pn-dados'), /Pedido do cliente pelo portal/);
+  await p.keyboard.press('Escape');
+  // 0.72.1: nos Cadastros não há descrição; a mensagem do cliente vem nas Observações e vai para a abertura do mesmo jeito
+  await p.evaluate(() => { const d = window.__respostas.detalhe; d.tramites[0].texto = ''; d.grupos = [{ titulo: 'Solicitação', campos: [{ k: 'Categoria', v: 'Estagiário', destaque: true }, { k: 'Observações', v: 'Registrar no horário da tarde', longo: true }] }]; });
+  await p.click('#corpo [data-k="geral:b"]');
+  await p.waitForSelector('#g-corpo .tr-item');
+  const bolha2 = await p.textContent('#g-corpo .tr-item');
+  assert.match(bolha2, /Observações da solicitação/); assert.match(bolha2, /Registrar no horário da tarde/); assert.doesNotMatch(bolha2, /Sem texto/);
+  assert.doesNotMatch(await p.textContent('#pn-dados'), /Registrar no horário da tarde/, 'o painel não repete as observações');
+  assert.match(await p.textContent('#pn-dados'), /Estagiário/);
   assert.deepEqual(p.erros, []);
 });
 

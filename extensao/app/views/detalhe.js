@@ -259,7 +259,7 @@ function tramitesHtml(r, carregando, i) {
         '<div class="tr-meta"><b>' + esc(quem) + '</b><span class="tr-lado">' + (x.n === 1 ? 'abertura' : lado === 'esc' ? 'escritório' : 'cliente') + '</span>' +
           (x.situacao && x.n !== 1 ? '<span class="tr-sit-pill" title="Situação gravada por este trâmite">' + esc(x.situacao) + '</span>' : '') + '<span class="tr-quando" title="' + esc(fmtDataHora(x.em)) + '">#' + String(x.n).padStart(2, '0') + ' · ' + esc(simples() ? relativo(x.em) : relativo(x.em) !== fmtDataHora(x.em) ? relativo(x.em) + ' · ' + fmtDataHora(x.em) : fmtDataHora(x.em)) + '</span></div>' +
         (x.texto ? '<div class="tr-texto">' + esc(textoPuro(x.texto)) + '</div><button type="button" class="tr-mais">Ver tudo</button>'
-          : x === descTr ? '<div class="tr-origem">Descrição da solicitação</div><div class="tr-texto tr-desc">' + esc(textoPuro(desc)) + '</div><button type="button" class="tr-mais">Ver tudo</button>'
+          : x === descTr ? '<div class="tr-origem">' + esc(desc.k) + ' da solicitação</div><div class="tr-texto tr-desc">' + esc(textoPuro(desc.v)) + '</div><button type="button" class="tr-mais">Ver tudo</button>'
           : '<div class="tr-texto fraco">Sem texto' + (anexos.length ? ' (só anexo)' : '') + '</div>') +
         (anexos.length ? '<div class="tr-anexos">' + anexos.map((a, ai) => { const tp = tipoArquivo(a.nome); return '<button type="button" class="tr-arq"' + (a.id || a.direto ? ' data-ax-abrir="' + gi + ':' + ai + '"' : ' disabled') + ' title="Baixar ' + esc(a.nome) + '"><span class="ax-ic ' + tp.cls + '">' + tp.rot + '</span><span class="ax-nome">' + esc(a.nome) + '</span></button>'; }).join('') + '</div>' : '') +
       '</div>' + (x === ultCli && x.n !== 1 ? responder : '') + '</div>' + sit;
@@ -267,10 +267,12 @@ function tramitesHtml(r, carregando, i) {
   return '<div class="tr-lista" id="tr-lista">' + corpo + rasc + '</div>';
 }
 
-// Descrição da solicitação (o texto que o cliente escreveu ao abrir): do detalhe completo ou, na falta, do resumo.
+// Texto que o cliente escreveu ao abrir: a Descrição ou, nos Cadastros (que não têm descrição), as Observações (0.72.1, pedido do Josué em 05/11/2026).
+// Do detalhe completo ou, na falta, do resumo. Devolve { k: rótulo, v: texto, campo } ou null.
+const CAMPOS_ABERTURA = ['Descrição', 'Observações', 'Observação'];
 function descricaoDe(i, r) {
-  for (const g of (r && r.grupos) || []) for (const c of g.campos) if (c.longo && c.k === 'Descrição' && String(c.v || '').trim()) return c.v;
-  return (i && String(i.descricao || '').trim()) ? i.descricao : '';
+  for (const k of CAMPOS_ABERTURA) for (const g of (r && r.grupos) || []) for (const c of g.campos) if (c.longo && c.k === k && String(c.v || '').trim()) return { k: c.k, v: c.v, campo: c };
+  return (i && String(i.descricao || '').trim()) ? { k: 'Descrição', v: i.descricao, campo: null } : null;
 }
 // O trâmite de abertura (#01) que veio sem texto e recebe a descrição; nulo quando não há o que mover.
 function descNaConversa(i, r) {
@@ -333,10 +335,10 @@ function dados(i, r, carregando) {
   if (carregando) return '<div class="vazio">Lendo a solicitação completa no Onvio…</div>';
   if (r && r.grupos) {
     // cada grupo num cartão; o nome (do empregado, por exemplo) vai para o título do cartão em vez de ser mais um campo
-    const semDesc = !!descNaConversa(i, r);
+    const semDesc = descNaConversa(i, r) ? descricaoDe(i, r) : null;
     let html = r.grupos.map(gr => {
       const nome = gr.titulo !== 'Solicitação' && gr.campos.find(c => c.k === 'Nome' && !c.longo);
-      const campos = gr.campos.filter(c => c !== nome && !(semDesc && c.longo && c.k === 'Descrição'));
+      const campos = gr.campos.filter(c => c !== nome && !(semDesc && c === semDesc.campo));
       if (!campos.length && !nome) return '';
       const curtos = campos.filter(c => !c.longo), longos = campos.filter(c => c.longo);
       return '<section class="dados-g"><header class="dados-cab"><h4 class="dados-tit">' + esc(gr.titulo) + '</h4>' + (nome ? '<span class="dados-nome">' + esc(nome.v) + '</span>' : '') + '</header>' +
