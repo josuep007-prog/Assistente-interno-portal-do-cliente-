@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.76.0)
+# Control Onvio · ControlTax (v0.77.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,28 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.77.0 (Tarefas do Gestta: tela de trabalho nova, 05/11/2026)
+
+- **Seis abas no topo**, também pelas teclas 1 a 6: **Meu dia**, **Empresas**, **Lista**, **Obrigações**, **Calendário** e **Fechamento do mês**.
+- **Topo enxuto:** o progresso do mês, as situações (Multa, Atrasadas, Impedimento, Hoje, Próximos dias, Mais adiante, Concluídas), que filtram com um clique, a busca e um botão **Filtros** (tipo, setor, "só empresas com pendência" e "mostrar concluídas"), numa faixa só.
+- **Meu dia (abre primeiro):** a fila do dia na ordem certa (resolver agora, vencem hoje, com impedimento, próximos 3 dias úteis), numerada, com "0 de 1 com meta hoje concluídas". O **detalhe fica ao lado**, sem cobrir a lista. ↑ e ↓ mudam de tarefa, Enter abre no Gestta, O abre em outra aba.
+- **Empresas:** a lista de empresas (ordem por risco, progresso, próxima meta ou nome), cada uma com a barra do mês e os alertas. Ao lado, a **ficha da empresa**:
+  - o progresso e as situações;
+  - a **próxima etapa**;
+  - a barra de cada setor;
+  - a **trilha do mês com o nome de cada etapa**, ou a linha do tempo;
+  - as **tarefas em colunas por situação** (resolver agora, a fazer, com impedimento, concluídas).
+- **Lista:** tabela densa (umas 20 tarefas por tela), agrupada por prazo, por empresa ou sem grupo, e ordenada clicando no cabeçalho.
+- **Obrigações:** a grade empresa × obrigação do mês, com a marca da situação e o dia em cada célula. Clicar no nome de uma obrigação mostra só as empresas com ela pendente.
+- **Detalhe da tarefa com Linha do tempo:** o histórico da tarefa em frases, por exemplo:
+  - documento enviado ao portal ou não, e por quê (pasta não configurada, cliente sem usuário no setor);
+  - o cliente baixou ou viu o documento;
+  - e-mail enviado ou não;
+  - comentários, impedimentos e etapas.
+
+  É lido só quando a aba abre e nunca é guardado. Nunca entram os destinatários dos e-mails nem os arquivos.
+- **A conferir no Gestta real:** os nomes dos campos do histórico (o prompt `mapeamento/prompt-conferir-gestta-077.md` traz o script de conferência).
 
 ## Novidades da v0.76.0 (aba Concluídas nas Solicitações, 05/11/2026)
 
