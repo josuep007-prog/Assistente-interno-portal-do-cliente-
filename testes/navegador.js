@@ -863,7 +863,7 @@ await passo('app · Hoje sem nada com você: abre na equipe toda e a frase expli
 await passo('app · Fila: abas Minhas, Todas e Respondidas, cartões por padrão, grupos por prioridade, filtros e chips, cartões de situação, ordenação, ↑↓ e Enter', async () => {
   const p = await abrirApp('#/fila');
   assert.equal(await p.textContent('#titulo'), 'Solicitações');
-  assert.deepEqual(await p.$$eval('#abas .aba', e => e.map(x => x.textContent)), ['Minhas2', 'Todas4', 'Respondidas']);
+  assert.deepEqual(await p.$$eval('#abas .aba', e => e.map(x => x.textContent)), ['Minhas2', 'Todas4', 'Respondidas', 'Concluídas']);
   assert.equal(await p.$eval('[data-vis="cartoes"]', b => b.classList.contains('on')), true, 'cartões por padrão');
   assert.equal((await linhas(p)).length, 2, 'Minhas: as suas e as sem responsável, na vez do escritório');
   await p.goto(URL_APP + '#/fila?kpi=atraso'); await p.waitForSelector('#corpo [data-k]');
@@ -2598,6 +2598,57 @@ await passo('app · detalhe: dados e anexos à vista na coluna da direita, sem r
   }
 });
 
+// Concluídas (0.76.0): as que a leitura sob demanda devolve (já normalizadas, como o service worker manda)
+const CONC_ITENS = (() => {
+  const d = n => { const x = new Date(); x.setDate(x.getDate() - n); x.setHours(11, 0, 0, 0); return x.toISOString(); };
+  const b = { lado: 'fim', mine: true, resp: 'Ana Teste', motivos: [], nivel: 0, grav: 0 };
+  return [
+    Object.assign({}, b, { k: 'geral:c1', type: 'geral', typeLabel: 'Geral', id: 'c1', num: 901, code: 5, status: 'Concluído', apelido: 'ALFA', cliente: 'ALFA', detalhe: 'Documentos', created: d(9), last: d(0) }),
+    Object.assign({}, b, { k: 'avisoFerias:c2', type: 'avisoFerias', typeLabel: 'Aviso de férias', id: 'c2', num: 902, code: 5, status: 'Concluído', apelido: 'BETA', cliente: 'BETA', detalhe: 'Fulano', created: d(20), last: d(1) }),
+    Object.assign({}, b, { k: 'cadEmpregado:c3', type: 'cadEmpregado', typeLabel: 'Cadastro empregado', id: 'c3', num: 903, code: 6, status: 'Concluído', apelido: 'GAMA', cliente: 'GAMA', detalhe: 'Beltrano', created: d(40), last: d(25) })
+  ];
+})();
+const RESP_CONC = { concluidas: { ok: true, dias: 30, itens: CONC_ITENS, erros: [], lidoEm: new Date().toISOString() } };
+
+await passo('app · Solicitações: aba Concluídas, lida sob demanda (as minhas e as da equipe), agrupada pela data da conclusão (0.76.0)', async () => {
+  const p = await abrirApp('#/fila?escopo=concluidas', { settings: { __v: 2 } }, 'window.__respostas = ' + JSON.stringify(RESP_CONC));
+  await p.waitForSelector('#corpo [data-k="geral:c1"]');
+  const m1 = await p.evaluate(() => window.__msgs.filter(m => m.cmd === 'concluidas'));
+  assert.equal(m1.length, 1, 'uma leitura ao abrir'); assert.equal(m1[0].equipe, false, 'as minhas primeiro');
+  assert.match(await p.textContent('#abas'), /Concluídas\s*3/);
+  const grupos = await p.$$eval('#corpo .emp-cab b', e => e.map(x => x.textContent));
+  assert.deepEqual(grupos.slice(0, 2), ['Hoje', 'Ontem'], 'agrupada pela data da conclusão, da mais recente');
+  assert.ok(grupos.includes('Antes') || grupos.includes('Neste mês'), 'as mais antigas no fim');
+  assert.match(await p.textContent('#corpo [data-k="geral:c1"]'), /Concluída em \d\d\/\d\d/);
+  assert.equal(await p.$$eval('#corpo [data-concluir], #corpo [data-analise]', e => e.length), 0, 'encerrada não tem Concluir nem Pôr em análise');
+  assert.equal(await p.$('#sits'), null, 'sem os cartões de situação');
+  assert.match(await p.textContent('#tipos'), /1 concluída/);
+  // filtro por tipo e busca valem aqui também
+  await p.fill('#f-texto', 'beta');
+  assert.deepEqual(await p.$$eval('#corpo [data-k]', e => e.map(x => x.dataset.k)), ['avisoFerias:c2']);
+  await p.fill('#f-texto', '');
+  if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/concluidas.png' });
+  // reabrir a aba em menos de 5 min não lê de novo; Atualizar lê
+  await p.evaluate(() => { location.hash = '#/fila?escopo=minhas'; }); await p.waitForTimeout(150);
+  await p.evaluate(() => { location.hash = '#/fila?escopo=concluidas'; }); await p.waitForSelector('#corpo [data-k="geral:c1"]');
+  assert.equal(await p.evaluate(() => window.__msgs.filter(m => m.cmd === 'concluidas').length), 1, 'da memória');
+  await p.click('#f-conc-ler');
+  await p.waitForFunction(() => window.__msgs.filter(m => m.cmd === 'concluidas').length === 2);
+  // da equipe: outra leitura, com a coluna do responsável na lista
+  await p.click('[data-ver="equipe"]');
+  await p.waitForFunction(() => window.__msgs.some(m => m.cmd === 'concluidas' && m.equipe === true));
+  await p.click('[data-vis="lista"]'); await p.waitForSelector('#corpo .lr');
+  assert.match(await p.textContent('#corpo .lh'), /Responsável/);
+  assert.match(await p.textContent('body'), /Da equipe toda nos últimos 30 dias/);
+  assert.match(await p.textContent('#corpo .lh'), /Conclusão/);
+  await p.click('[data-vis="cartoes"]');
+  await p.context().close();
+  // erro de leitura: aparece, não fica lista vazia em silêncio
+  const p2 = await abrirApp('#/fila?escopo=concluidas&ver=equipe', { settings: { __v: 2 } }, 'window.__respostas = { concluidas: { ok: false, erro: "Sessão do Onvio expirou" } }');
+  await p2.waitForFunction(() => /Não deu para ler as concluídas/.test(document.querySelector('#corpo').textContent));
+  await p2.context().close();
+});
+
 await passo('app · contraste: nenhum texto abaixo de 4,5:1 (WCAG AA) nas telas principais, nos dois estilos e nos dois temas (0.64.0)', async () => {
   const medir = require('./contraste-lib.js');
   const TR = [
@@ -2616,6 +2667,7 @@ await passo('app · contraste: nenhum texto abaixo de 4,5:1 (WCAG AA) nas telas 
     ['Configurações · Prazos', '#/config?aba=prazos', async () => {}],
     ['Configurações · Feriados', '#/config?aba=feriados', async () => {}],
     ...['hub', 'regras', 'testes', 'aprender', 'diag'].map(sec => ['Configurações · Avançado · ' + sec, '#/config?aba=avancado&sec=' + sec, async p => { await p.evaluate(r => { window.__respostas = r; }, AV_RESP); await p.waitForSelector('.adv-tab.on'); if (sec === 'testes') { await p.click('[data-teste="testarFolha"]'); await p.waitForSelector('#adv-saida'); } await p.waitForTimeout(250); }]),
+    ['Solicitações · Concluídas', '#/fila?escopo=concluidas', async p => { await p.evaluate(r => { window.__respostas = r; }, RESP_CONC); await p.click('#f-conc-ler'); await p.waitForSelector('#corpo [data-k="geral:c1"]'); }],
     ['Detalhe', '#/fila?escopo=todas', abrirDet],
     ['Detalhe com a resposta aberta', '#/fila?escopo=todas', async p => { await abrirDet(p); await p.keyboard.press('r'); await p.waitForSelector('#a-texto'); await p.click('#cmp-mp'); await p.waitForSelector('#mp-balao'); }],
   ];

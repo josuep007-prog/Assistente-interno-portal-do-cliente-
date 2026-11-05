@@ -92,6 +92,8 @@ export function concluirBtn(i) {
   const dois = a.acao.antes && a.acao.antes.length;
   return '<button type="button" class="btn btn-sm btn-concluir" data-concluir="' + esc(i.k) + '"' + (a.pode.ok ? ' title="Concluir sem retorno do cliente' + (dois ? ' (em dois passos: ' + esc(a.acao.antes[0].rot) + ' e depois Concluído, com uma confirmação só)' : '') + '. Abre o trâmite já preenchido: você revisa e confirma."' : ' disabled title="' + esc(a.pode.motivo) + '"') + '>' + '<svg class="ic ic-sm"><use href="#i-check"/></svg> Concluir</button>';
 }
+// Concluídas (0.76.0): a data da conclusão (a última movimentação de uma solicitação encerrada)
+export function concluidaTxt(i) { return (/^Prescrit/.test(i.status || '') ? 'Prescrita' : 'Concluída') + (i.last ? ' em ' + fmtDataCurta(i.last) : ''); }
 export function cartaoItem(i, o) {
   const resp = o && o.semResp ? '' : respHtml(i), botaoResp = resp.includes('sug-resp');
   const ms = legais(i).sort((a, b) => b.n - a.n);
@@ -102,7 +104,7 @@ export function cartaoItem(i, o) {
     '<div class="sc-cli" title="' + esc(i.cliente) + '">' + esc(nomeCli(i)) + '</div>' +
     (simples() && !i.detalhe ? '' : '<div class="sc-sub">' + esc(i.detalhe || '—') + '</div>') +
     mot +
-    '<div class="sc-pe"><span class="sc-info"><span><b>' + (i.parado || 0) + 'd</b> parada</span>' + (resp && !botaoResp ? '<span class="resp">' + resp + '</span>' : '') + '</span>' +
+    '<div class="sc-pe"><span class="sc-info">' + (i.lado === 'fim' ? '<span>' + esc(concluidaTxt(i)) + '</span>' : '<span><b>' + (i.parado || 0) + 'd</b> parada</span>') + (resp && !botaoResp ? '<span class="resp">' + resp + '</span>' : '') + '</span>' +
       // os botões (Escolher responsável, Concluir, Pôr em análise) ficam sempre no canto inferior direito do cartão
       '<span class="sc-acoes">' + (botaoResp ? resp : '') + concluirBtn(i) + analiseBtn(i) + '</span></div></div>';
 }

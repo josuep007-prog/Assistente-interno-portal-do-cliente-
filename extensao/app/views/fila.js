@@ -1,12 +1,14 @@
-/* Solicitações (rota #/fila) · Minhas, Todas e Respondidas (pendências lidas ao vivo).
+/* Solicitações (rota #/fila) · Minhas, Todas, Respondidas (pendências lidas ao vivo) e Concluídas (lidas sob demanda).
  * Barra como a de Empresas no Departamento Pessoal: busca, Filtros, Ordenar, Lista/Cartões e Mais.
  * Minhas: as suas e as sem responsável, na vez do escritório. Todas: a equipe toda. Respondidas: as suas na vez do
  * cliente, com as "consideradas resolvidas" num grupo no fim. A ordem é por prioridade (OC.ordemFila): prazo legal,
- * sem análise, em análise, cliente respondeu, aguardando o cliente. Prazo interno e gravidade não aparecem aqui. */
+ * sem análise, em análise, cliente respondeu, aguardando o cliente. Prazo interno e gravidade não aparecem aqui.
+ * Concluídas (0.76.0): as dos últimos 30 dias (cmd 'concluidas'), as suas ou as da equipe, agrupadas pela data da conclusão;
+ * ficam só na memória desta tela e são relidas no máximo a cada 5 minutos (ou no botão Atualizar da lista). */
 import { estado, itens, minhas, clienteRespondeu, enviar, primeiroNome } from '../estado.js';
 import { abrirLote } from './lote-dlg.js';
 import { tiposHtml, subPorMotivo } from './tipos.js';
-import { esc, concluirBtn, analiseBtn, pillSituacao, prazoHtml, cartaoItem, ligarItens, csvItens, fmtDataCurta, normal, tipoVisual, tipoIcone, nivelLegal, respHtml, definirSugestoesResp, simples, $, $$ } from '../util.js';
+import { esc, concluidaTxt, concluirBtn, analiseBtn, pillSituacao, prazoHtml, cartaoItem, ligarItens, csvItens, fmtDataCurta, normal, tipoVisual, tipoIcone, nivelLegal, respHtml, definirSugestoesResp, simples, $, $$ } from '../util.js';
 const OC = window.OC;
 
 // Atalhos de outras telas (Equipe, Hoje); hoje/atraso/g3 só chegam da área do gestor
@@ -41,6 +43,9 @@ let ord = (() => { try { const k = localStorage.getItem('controlonvio-fila-ord')
 let filtros = { texto: '', tipo: '', legal: '', sit: '', resp: '' };
 // Responsável sugerido para as sem responsável (cmd 'distribuicao', 30 dias): lido ao abrir, no máximo a cada 10 min, só na memória
 let sugEm = 0, sugLendo = false, refazerFila = null, sugResp = new Map();
+// Concluídas: lidas ao abrir a aba, só na memória (as suas e as da equipe à parte)
+const CONC_MIN = 5;
+let conc = { minhas: null, equipe: null }, concLendo = { minhas: false, equipe: false }, concErro = '';
 let vis = (() => { try { return localStorage.getItem('controlonvio-fila-vis') || 'cartoes'; } catch (e) { return 'cartoes'; } })();
 
 // Que aba abre: a escolhida no endereço; atalhos antigos (equipe, semresp, resolvidas) caem nas novas
@@ -49,6 +54,7 @@ function abaDoEndereco(params, kpi, motivo, todas) {
   if (e === 'respondidas' || e === 'resolvidas') return 'respondidas';
   if (e === 'todas' || e === 'equipe' || e === 'semresp') return 'todas';
   if (e === 'minhas') return 'minhas';
+  if (e === 'concluidas') return 'concluidas';
   if (motivo && motivo.k === 'cliente') return 'respondidas';
   if (kpi && params.kpi === 'cli') return 'respondidas';
   const f = params.foco && todas.find(i => i.k === params.foco);       // vindo do Hoje com uma solicitação escolhida
@@ -69,11 +75,16 @@ export function render(el, ctx, params) {
   if (estado.setor.fora && aba === 'todas') aba = 'minhas';              // fora do DP: sem a equipe toda
   const doMinhas = i => (i.mine || !i.resp) && i.lado !== 'cli';
   const doRespondidas = () => minhas().filter(i => i.lado === 'cli').concat(resolvidasMinhas);
-  const n = { minhas: todas.filter(doMinhas).length, todas: todas.length, respondidas: doRespondidas().length };
-  let base = aba === 'minhas' ? todas.filter(doMinhas) : aba === 'respondidas' ? doRespondidas() : todas;
+  const verEquipe = aba === 'concluidas' && params.ver === 'equipe' && !estado.setor.fora;
+  const qConc = verEquipe ? 'equipe' : 'minhas', cConc = conc[qConc];
+  const doConcluidas = () => { const l = (cConc && cConc.itens) || []; return estado.setor.ativo ? OC.filtrarPorSetor(l, estado.setor) : l; };
+  const n = { minhas: todas.filter(doMinhas).length, todas: todas.length, respondidas: doRespondidas().length, concluidas: conc.minhas ? doConcluidasDe(conc.minhas) : '' };
+  function doConcluidasDe(c) { const l = c.itens || []; return (estado.setor.ativo ? OC.filtrarPorSetor(l, estado.setor) : l).length; }
+  let base = aba === 'minhas' ? todas.filter(doMinhas) : aba === 'respondidas' ? doRespondidas() : aba === 'concluidas' ? doConcluidas() : todas;
   let titulo = 'Solicitações';
   const lidas = simples() ? '' : ' · pendências lidas do Onvio, ao vivo';       // Simplificado: a leitura ao vivo já está no cabeçalho
-  let sub = (aba === 'minhas' ? 'As suas e as sem responsável' : aba === 'respondidas' ? 'As suas, esperando o cliente' : 'Da equipe toda') + lidas;
+  let sub = aba === 'concluidas' ? (verEquipe ? 'Da equipe toda' : 'As que você concluiu') + ' nos últimos 30 dias' + (cConc ? ' · lidas às ' + new Date(cConc.lidoEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '')
+    : (aba === 'minhas' ? 'As suas e as sem responsável' : aba === 'respondidas' ? 'As suas, esperando o cliente' : 'Da equipe toda') + lidas;
   if (params.escopo === 'semresp') { base = base.filter(i => !i.resp); sub = 'Sem responsável' + lidas; }
   if (params.analista) { base = todas.filter(i => (i.resp || '(sem responsável)') === params.analista); titulo = params.analista; sub = 'Fila do responsável · <a href="#/equipe">voltar à Equipe</a>'; }
   if (params.cliente) { base = todas.filter(i => (i.cliente || i.apelido || '(cliente não informado)') === params.cliente); titulo = params.cliente; sub = 'Pendências do cliente · <a href="#/inicio">voltar ao Hoje</a>'; }
@@ -82,16 +93,19 @@ export function render(el, ctx, params) {
   // vindos do Hoje: faixa de dias parada (mapa de calor)
   const idade = /^(\d+)-(\d*)$/.exec(params.idade || '');
   if (idade) base = base.filter(i => (i.parado || 0) >= Number(idade[1]) && (idade[2] === '' || (i.parado || 0) <= Number(idade[2])));
-  const umaPessoa = aba === 'minhas' || aba === 'respondidas';
+  const umaPessoa = aba === 'minhas' || aba === 'respondidas' || (aba === 'concluidas' && !verEquipe);
   if (umaPessoa) filtros.resp = '';
   const cols = COLUNAS.filter(c => !(c.equipe && umaPessoa && !base.some(i => !i.resp)));      // com sem responsável na lista a coluna aparece, para a sugestão
+  const ROT_CONC = { parado: 'Data', prazo: 'Conclusão' };
+  if (aba === 'concluidas') cols.forEach((c, n) => { if (ROT_CONC[c.k]) cols[n] = Object.assign({}, c, { rot: ROT_CONC[c.k] }); });
 
   ctx.cab({
     titulo, sub,
     abas: [
       { id: 'minhas', rot: 'Minhas', href: '#/fila', n: n.minhas },
       ...(estado.setor.fora ? [] : [{ id: 'todas', rot: 'Todas', href: '#/fila?escopo=todas', n: n.todas }]),
-      { id: 'respondidas', rot: 'Respondidas', href: '#/fila?escopo=respondidas', n: n.respondidas }
+      { id: 'respondidas', rot: 'Respondidas', href: '#/fila?escopo=respondidas', n: n.respondidas },
+      { id: 'concluidas', rot: 'Concluídas', href: '#/fila?escopo=concluidas', n: n.concluidas }
     ],
     aba,
     extra: '<button type="button" class="btn btn-sm btn-primary" id="f-nova"><svg class="ic ic-sm"><use href="#i-plus"/></svg> Nova solicitação</button>'
@@ -100,7 +114,7 @@ export function render(el, ctx, params) {
 
   const resps = [...new Set(base.map(i => i.resp || '(sem responsável)'))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
   const sel = (id, rot, ops, v) => '<label class="field">' + rot + '<select id="' + id + '">' + ops.map(([k, r]) => '<option value="' + esc(k) + '"' + (v === k ? ' selected' : '') + '>' + esc(r) + '</option>').join('') + '</select></label>';
-  const tituloLista = aba === 'minhas' ? 'A responder' : aba === 'respondidas' ? 'Aguardando o cliente' : porPessoa ? 'Pendências' : 'Todas as pendências';
+  const tituloLista = aba === 'minhas' ? 'A responder' : aba === 'respondidas' ? 'Aguardando o cliente' : aba === 'concluidas' ? 'Concluídas' : porPessoa ? 'Pendências' : 'Todas as pendências';
 
   el.innerHTML =
     '<div class="barra barra-fila">' +
@@ -118,9 +132,11 @@ export function render(el, ctx, params) {
       '<details class="menu"><summary class="btn btn-sm" aria-label="Mais" title="Mais"><svg class="ic ic-sm"><use href="#i-more"/></svg></summary><div class="menu-list"><button class="menu-item" id="csv"><svg class="ic"><use href="#i-download"/></svg> Exportar CSV (o que está na tela)</button><button class="menu-item" id="m-onvio"><svg class="ic"><use href="#i-eye"/></svg> Ver a lista no Onvio</button></div></details>' +
     '</div>' +
     '<div class="fila-cab"><h3 id="vez-tit">' + esc(tituloLista) + '</h3><span class="count" id="cont"></span><span class="spacer" style="flex:1"></span>' +
+      (aba === 'concluidas' ? (estado.setor.fora ? '' : '<div class="seg" role="group" aria-label="De quem" id="f-conc-quem"><button type="button" data-ver=""' + (verEquipe ? '' : ' class="on"') + ' aria-pressed="' + !verEquipe + '">As minhas</button><button type="button" data-ver="equipe"' + (verEquipe ? ' class="on"' : '') + ' aria-pressed="' + verEquipe + '">Da equipe</button></div>') +
+        '<button type="button" class="btn btn-sm" id="f-conc-ler" title="Ler de novo as concluídas no Onvio"><svg class="ic ic-sm"><use href="#i-refresh"/></svg> Atualizar</button>' : '') +
       '<button type="button" class="btn btn-sm btn-primary" id="f-analise-lote" hidden title="Pôr em análise, de uma vez, as solicitações desta lista em que isso cabe: você confere a lista e confirma"><svg class="ic ic-sm"><use href="#i-clock"/></svg> <span>Pôr em análise</span></button></div>' +
     '<div class="tipos" id="tipos" role="group" aria-label="Tipo de solicitação"></div>' +
-    '<div class="sits" id="sits" role="group" aria-label="Situação"></div>' +
+    (aba === 'concluidas' ? '' : '<div class="sits" id="sits" role="group" aria-label="Situação"></div>') +
     '<div class="ativos" id="ativos"></div>' +
     (aba === 'respondidas' ? (() => {
       const dias = estado.settings ? estado.settings.resolvidaClienteDias : OC.DEFAULTS.resolvidaClienteDias;
@@ -141,6 +157,7 @@ export function render(el, ctx, params) {
     const l = base.filter(i => passa(i, o) && (!q || normal([i.num, i.apelido, i.cliente, i.detalhe, i.resp, i.status, i.typeLabel].join(' ')).includes(q)));
     const rank = new Map(OC.ordemFila(l).map((p, k) => [p.item.k, k]));
     const r = i => rank.get(i.k) ?? 1e6;
+    if (aba === 'concluidas' && ord.k === 'prio') return OC.soConcluidas(l);
     const resolv = l.filter(i => i.resolvida).sort((a, b) => (b.semRetorno || 0) - (a.semRetorno || 0));
     const resto = l.filter(i => !i.resolvida);
     if (ord.k === 'prio') resto.sort((a, b) => r(a) - r(b) || (b.parado - a.parado));
@@ -155,11 +172,12 @@ export function render(el, ctx, params) {
   // inclusive os sem nada (pedido do Josué, 23/10/2026); "Todos os tipos" no começo tira o filtro. Contam com os outros filtros aplicados.
   const tipos = () => {
     const l = filtrar({ semTipo: true });
-    $('#tipos', el).innerHTML = tiposHtml(l, { todos: true, on: filtros.tipo, prioridade: true, sub: subPorMotivo });
+    $('#tipos', el).innerHTML = tiposHtml(l, aba === 'concluidas' ? { todos: true, on: filtros.tipo, sub: xs => xs.length ? xs.length + (xs.length === 1 ? ' concluída' : ' concluídas') : 'nenhuma' } : { todos: true, on: filtros.tipo, prioridade: true, sub: subPorMotivo });
     $$('[data-tipo]', el).forEach(b => b.onclick = () => { filtros.tipo = filtros.tipo === b.dataset.tipo ? '' : b.dataset.tipo; const s = $('#f-tipo', el); if (s) s.value = filtros.tipo; desenhar(); });
   };
   // Cartões de situação (cor própria por grupo): quantas há em cada situação, com os outros filtros aplicados
   const sits = () => {
+    if (!$('#sits', el)) return;
     const l = filtrar({ semSit: true });
     $('#sits', el).innerHTML = OC.GRUPOS_SIT.map(g => {
       const tot = l.filter(i => OC.grupoSituacao(i).k === g.k).length;
@@ -187,7 +205,8 @@ export function render(el, ctx, params) {
     });
   };
   // Grupos: por prioridade na ordem de prioridade e por empresa na ordem por empresa
-  const grupoDe = i => ord.k === 'prio' ? (i.resolvida ? 'Consideradas resolvidas' : ROT_GRUPO[OC.motivoDe(i)]) : ord.k === 'cliente' ? (i.apelido || i.cliente || '—') : null;
+  const agora = new Date();
+  const grupoDe = i => aba === 'concluidas' && ord.k === 'prio' ? OC.grupoConclusao(i, agora) : ord.k === 'prio' ? (i.resolvida ? 'Consideradas resolvidas' : ROT_GRUPO[OC.motivoDe(i)]) : ord.k === 'cliente' ? (i.apelido || i.cliente || '—') : null;
   // Pôr em análise em lote: uma janela com a lista (dá para desmarcar), uma confirmação e um trâmite por vez. Os textos de férias e
   // de aviso de rescisão levam datas de cada solicitação: são preenchidos na hora, com o detalhe lido no Onvio (nada é guardado)
   function analisarEmLote(lista) {
@@ -222,9 +241,11 @@ export function render(el, ctx, params) {
     sits();
     chips();
     $('#cont', el).textContent = l.length + (l.length === 1 ? ' solicitação' : ' solicitações');
-    const vazio = '<div class="vazio">' + (!estado.snap ? '<b>Aguardando a primeira leitura do Onvio</b>' : base.length && l.length < base.length ? '<b>Nada aqui com esses filtros</b>Tire um filtro acima para ver mais.' : aba === 'respondidas' ? '<b>Nada esperando o cliente</b>Quando você responder e a vez passar ao cliente, a solicitação aparece aqui.' : '<b>Nada pendente aqui</b>Quando chegar solicitação, ela aparece sozinha.') + '</div>';
+    const vazio = '<div class="vazio">' + (aba === 'concluidas' && !cConc ? (concLendo[qConc] ? '<b>Lendo as concluídas no Onvio…</b>As listas do Onvio, dos últimos 30 dias.' : concErro ? '<b>Não deu para ler as concluídas</b>' + esc(concErro) : '<b>Concluídas</b>Abrindo a leitura…')
+      : aba === 'concluidas' && !base.length ? '<b>Nenhuma concluída nos últimos 30 dias</b>' + (verEquipe ? 'Quando a equipe concluir uma solicitação, ela aparece aqui.' : 'Quando você concluir uma solicitação, ela aparece aqui.')
+      : !estado.snap ? '<b>Aguardando a primeira leitura do Onvio</b>' : base.length && l.length < base.length ? '<b>Nada aqui com esses filtros</b>Tire um filtro acima para ver mais.' : aba === 'respondidas' ? '<b>Nada esperando o cliente</b>Quando você responder e a vez passar ao cliente, a solicitação aparece aqui.' : '<b>Nada pendente aqui</b>Quando chegar solicitação, ela aparece sozinha.') + '</div>';
     const nGrupo = l.reduce((m, i) => { const g = grupoDe(i); if (g) m[g] = (m[g] || 0) + 1; return m; }, {});
-    const comGrupos = (fn, cls) => { let ant = null; return l.map(i => { const g = grupoDe(i); const h = g && g !== ant ? '<div class="' + cls + (ord.k === 'prio' ? ' grp-' + (i.resolvida ? 'resolvida' : OC.motivoDe(i)) : '') + '"><b>' + esc(g) + '</b><span>' + nGrupo[g] + '</span></div>' : ''; ant = g; return h + fn(i); }).join(''); };
+    const comGrupos = (fn, cls) => { let ant = null; return l.map(i => { const g = grupoDe(i); const h = g && g !== ant ? '<div class="' + cls + (ord.k === 'prio' ? ' grp-' + (aba === 'concluidas' ? 'concluida' : i.resolvida ? 'resolvida' : OC.motivoDe(i)) : '') + '"><b>' + esc(g) + '</b><span>' + nGrupo[g] + '</span></div>' : ''; ant = g; return h + fn(i); }).join(''); };
     const comCol = i => linha(i, cols);
     if (vis === 'cartoes') $('#corpo', el).innerHTML = l.length ? '<div class="cards-emp">' + comGrupos(i => cartaoItem(i, { semResp: simples() && aba === 'minhas' && !!i.mine && !!i.resp }), 'emp-cab') + '</div>' : '<div class="list-card">' + vazio + '</div>';
     else $('#corpo', el).innerHTML = '<div class="list-card" style="--cols:' + cols.map(c => c.w).join(' ') + '"><div class="lh" role="row">' +
@@ -283,8 +304,30 @@ export function render(el, ctx, params) {
   }));
   $('#csv', el).addEventListener('click', () => { csvItens('onvio-' + (aba || 'fila') + '-' + OC.ymd(new Date()) + '.csv', filtrar()); });
   $('#m-onvio', el).addEventListener('click', () => enviar({ cmd: 'fecharPainel' }));
+  // Concluídas: a leitura é sob demanda (até ~15 chamadas as suas, ~50 as da equipe); nada é guardado
+  function lerConcluidas(forcar) {
+    const c = conc[qConc];
+    if (concLendo[qConc] || (!forcar && c && Date.now() - c.em < CONC_MIN * 60000)) return;
+    concLendo[qConc] = true; concErro = '';
+    const b = $('#f-conc-ler', el); if (b) b.disabled = true;
+    const q = qConc;
+    enviar({ cmd: 'concluidas', equipe: q === 'equipe' }).then(r => {
+      concLendo[q] = false;
+      if (r && r.ok) conc[q] = { itens: r.itens || [], em: Date.now(), lidoEm: r.lidoEm, erros: r.erros || [] };
+      else concErro = (r && r.erro) || 'a leitura não respondeu';
+      if (el.isConnected && location.hash.startsWith('#/fila') && /escopo=concluidas/.test(location.hash)) ctx.navegar('fila', Object.assign({}, params));
+    });
+  }
+  if (aba === 'concluidas') {
+    $$('[data-ver]', el).forEach(b => b.onclick = () => { const p = Object.assign({}, params, { escopo: 'concluidas' }); if (b.dataset.ver) p.ver = b.dataset.ver; else delete p.ver; ctx.navegar('fila', p); });
+    const bl = $('#f-conc-ler', el); if (bl) { bl.disabled = !!concLendo[qConc]; bl.onclick = () => lerConcluidas(true); }
+  }
   refazerFila = desenhar;
   desenhar();
+  if (aba === 'concluidas') {
+    lerConcluidas(false);
+    if (cConc && cConc.erros && cConc.erros.length) $('#ativos', el).insertAdjacentHTML('beforeend', '<span class="nota-regra nota-curta" title="' + esc(cConc.erros.join(' · ')) + '">Algumas listas não responderam: a lista pode estar incompleta <i class="info" aria-hidden="true">ⓘ</i></span>');
+  }
   // a sugestão vem do histórico (leitura pesada): no máximo a cada 10 min, ou a cada 2 min quando chegou solicitação sem responsável que ela ainda não viu
   const semSug = todas.some(i => !i.resp && !sugResp.has(i.k));
   if (estado.snap && todas.some(i => !i.resp) && !sugLendo && Date.now() - sugEm > (semSug ? 2 : 10) * 60000) {
@@ -323,8 +366,8 @@ function linha(i, cols) {
     cliente: '<span><div class="c-main" title="' + esc(i.cliente) + '">' + esc(i.apelido || i.cliente || '—') + '</div><div class="c-sub" title="' + esc(i.detalhe) + '">' + esc(i.detalhe || '—') + (i.abaProvavel ? ' · pode ser: ' + esc(i.abaProvavel.label) : '') + '</div></span>',
     status: '<span>' + pillSituacao(i) + '</span>',
     resp: '<span class="c-sub" style="color:var(--ink-2)">' + respHtml(i) + '</span>',
-    parado: '<span class="num"><b class="mono">' + (i.parado || 0) + 'd</b><div class="c-sub">' + (i.last ? fmtDataCurta(i.last) : '') + '</div></span>',
-    prazo: '<span class="c-prazo">' + prazoHtml(i) + concluirBtn(i) + analiseBtn(i) + '</span>'
+    parado: i.lado === 'fim' ? '<span class="num"><span class="c-sub">' + (i.last ? fmtDataCurta(i.last) : '') + '</span></span>' : '<span class="num"><b class="mono">' + (i.parado || 0) + 'd</b><div class="c-sub">' + (i.last ? fmtDataCurta(i.last) : '') + '</div></span>',
+    prazo: '<span class="c-prazo">' + (i.lado === 'fim' ? '<span class="fraco">' + esc(concluidaTxt(i)) + '</span>' : prazoHtml(i) + concluirBtn(i) + analiseBtn(i)) + '</span>'
   };
   return '<div class="lr lvl-' + nivelLegal(i) + (i.resolvida ? ' resolvida' : '') + '" tabindex="0" data-k="' + esc(i.k) + '" role="row">' + (cols || COLUNAS).map(c => cel[c.k]).join('') + '</div>';
 }
