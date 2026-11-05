@@ -1421,7 +1421,10 @@ await passo('app · detalhe: abertura sem texto mostra a descrição (ou, nos Ca
   await p.click('#corpo [data-k="geral:b"]');
   await p.waitForSelector('#g-corpo .tr-item');
   const bolha = await p.textContent('#g-corpo .tr-item');
-  assert.match(bolha, /Descrição da solicitação/);
+  assert.match(bolha, /Pedido do cliente · aguardando a 1ª resposta do escritório \(descrição da solicitação\)/, '0.74.1: sem resposta do escritório, a abertura fica em destaque');
+  assert.ok(await p.$('#g-corpo .tr-item.tr-abertura-destaque'), 'a bolha da abertura tem o destaque');
+  assert.equal(await p.$eval('#g-corpo .tr-abertura-destaque .tr-texto', t => getComputedStyle(t).maxHeight), 'none', 'a mensagem fica toda à vista');
+  assert.equal(await p.isVisible('#g-corpo .tr-abertura-destaque .tr-mais'), false, 'sem "Ver tudo"');
   assert.match(bolha, /Pedido do cliente pelo portal/);
   assert.doesNotMatch(bolha, /Sem texto/);
   assert.doesNotMatch(await p.textContent('#pn-dados'), /Pedido do cliente pelo portal/, 'o painel não repete a descrição');
@@ -1439,9 +1442,17 @@ await passo('app · detalhe: abertura sem texto mostra a descrição (ou, nos Ca
   await p.click('#corpo [data-k="geral:b"]');
   await p.waitForSelector('#g-corpo .tr-item');
   const bolha2 = await p.textContent('#g-corpo .tr-item');
-  assert.match(bolha2, /Observações da solicitação/); assert.match(bolha2, /Registrar no horário da tarde/); assert.doesNotMatch(bolha2, /Sem texto/);
+  assert.match(bolha2, /observações da solicitação/i); assert.match(bolha2, /Registrar no horário da tarde/); assert.doesNotMatch(bolha2, /Sem texto/);
   assert.doesNotMatch(await p.textContent('#pn-dados'), /Registrar no horário da tarde/, 'o painel não repete as observações');
   assert.match(await p.textContent('#pn-dados'), /Estagiário/);
+  await p.keyboard.press('Escape');
+  // 0.74.1: depois da 1ª resposta do escritório, a abertura volta ao normal (sem destaque, com a etiqueta de antes)
+  await p.evaluate(() => { const d = window.__respostas.detalhe; d.tramites.push({ n: 2, id: 't2', em: '2026-10-08T09:00:00', situacao: 'Em análise', lado: 'esc', autor: 'Ana Teste', texto: 'Recebido', anexos: [], arquivos: [] }); });
+  await p.click('#corpo [data-k="geral:b"]');
+  await p.waitForSelector('#g-corpo .tr-item');
+  assert.equal(await p.$('#g-corpo .tr-item.tr-abertura-destaque'), null, 'com resposta do escritório, sem destaque');
+  assert.match(await p.textContent('#g-corpo .tr-item'), /Observações da solicitação/);
+  if (process.env.CAP) { await p.evaluate(() => { const d = window.__respostas.detalhe; d.tramites.pop(); }); await p.keyboard.press('Escape'); await p.click('#corpo [data-k="geral:b"]'); await p.waitForSelector('#g-corpo .tr-abertura-destaque'); await p.waitForTimeout(400); await p.screenshot({ path: process.env.CAP + '/abertura-destaque.png' }); await p.evaluate(() => { document.documentElement.dataset.theme = 'dark'; }); await p.waitForTimeout(200); await p.screenshot({ path: process.env.CAP + '/abertura-destaque-escuro.png' }); }
   assert.deepEqual(p.erros, []);
 });
 

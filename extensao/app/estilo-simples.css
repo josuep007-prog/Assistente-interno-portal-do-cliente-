@@ -239,6 +239,7 @@
 /* 0.66.0 · caixa de resposta no Simplificado: lisa, sem sombra */
 /* conversa: balões sem sombra e linha do tempo mais leve */
 :root[data-estilo="simples"] .tr-bolha{ box-shadow:none }
+:root[data-estilo="simples"] .tr-abertura-destaque .tr-bolha{ box-shadow:none; background:color-mix(in srgb, var(--blue-pale) 35%, var(--surface)) }
 
 /* ======================= Equipe, Distribuir, Agenda e Configurações ======================= */
 /* textos de ajuda: escondidos (o texto está na dica do bloco) */

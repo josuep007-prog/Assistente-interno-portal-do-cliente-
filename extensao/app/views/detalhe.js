@@ -242,6 +242,8 @@ function tramitesHtml(r, carregando, i) {
   for (const t of todos) { gis.set(t, acum); if (t.arquivos && t.arquivos.length) acum++; }
   // abertura sem texto: a mensagem do cliente está na descrição da solicitação; ela vai para a bolha (e sai do painel)
   const desc = descricaoDe(i, r), descTr = descNaConversa(i, r);
+  // 0.74.1 (Josué, 05/11/2026): enquanto o escritório não respondeu, o pedido do cliente (a abertura) fica maior e em destaque
+  const aguardaEsc = !todos.some(t => t.n !== 1 && t.lado === 'esc');
   let ant = null;
   const corpo = todos.map(x => {
     // tempo entre este trâmite e o anterior na leitura (só quando passou ao menos 1 dia)
@@ -254,13 +256,15 @@ function tramitesHtml(r, carregando, i) {
     const anexos = (x.arquivos && x.arquivos.length ? x.arquivos : (x.anexos || []).map(nome => ({ nome })));
     const gi = gis.get(x);
     const sit = ant0 && x.situacao !== ant0.situacao ? '<div class="tr-sit"><span>Situação passou a: <b>' + esc(x.situacao) + '</b></span></div>' : '';
-    return gap + '<div class="tr-item ' + lado + (x === ult ? ' ultimo' : '') + (novo && x === ult && lado === 'esc' ? ' tr-nova' : '') + '">' +
+    const dest = aguardaEsc && x.n === 1, origem = x === descTr ? esc(desc.k) + ' da solicitação' : '';
+    return gap + '<div class="tr-item ' + lado + (dest ? ' tr-abertura-destaque' : '') + (x === ult ? ' ultimo' : '') + (novo && x === ult && lado === 'esc' ? ' tr-nova' : '') + '">' +
       '<span class="tr-av" title="' + esc(quem) + '">' + esc(iniciais(quem) || (lado === 'esc' ? 'E' : 'C')) + '</span>' +
       '<div class="tr-bolha">' +
         '<div class="tr-meta"><b>' + esc(quem) + '</b><span class="tr-lado">' + (x.n === 1 ? 'abertura' : lado === 'esc' ? 'escritório' : 'cliente') + '</span>' +
           (x.situacao && x.n !== 1 ? '<span class="tr-sit-pill" title="Situação gravada por este trâmite">' + esc(x.situacao) + '</span>' : '') + '<span class="tr-quando" title="' + esc(fmtDataHora(x.em)) + '">#' + String(x.n).padStart(2, '0') + ' · ' + esc(simples() ? relativo(x.em) : relativo(x.em) !== fmtDataHora(x.em) ? relativo(x.em) + ' · ' + fmtDataHora(x.em) : fmtDataHora(x.em)) + '</span></div>' +
+        (dest ? '<div class="tr-origem tr-origem-destaque">Pedido do cliente · aguardando a 1ª resposta do escritório' + (origem ? ' <span>(' + origem.toLowerCase() + ')</span>' : '') + '</div>' : '') +
         (x.texto ? '<div class="tr-texto">' + esc(textoPuro(x.texto)) + '</div><button type="button" class="tr-mais">Ver tudo</button>'
-          : x === descTr ? '<div class="tr-origem">' + esc(desc.k) + ' da solicitação</div><div class="tr-texto tr-desc">' + esc(textoPuro(desc.v)) + '</div><button type="button" class="tr-mais">Ver tudo</button>'
+          : x === descTr ? (dest ? '' : '<div class="tr-origem">' + origem + '</div>') + '<div class="tr-texto tr-desc">' + esc(textoPuro(desc.v)) + '</div><button type="button" class="tr-mais">Ver tudo</button>'
           : '<div class="tr-texto fraco">Sem texto' + (anexos.length ? ' (só anexo)' : '') + '</div>') +
         (anexos.length ? '<div class="tr-anexos">' + anexos.map((a, ai) => { const tp = tipoArquivo(a.nome); return '<button type="button" class="tr-arq"' + (a.id || a.direto ? ' data-ax-abrir="' + gi + ':' + ai + '"' : ' disabled') + ' title="Ver ' + esc(a.nome) + ' sem baixar"><span class="ax-ic ' + tp.cls + '">' + tp.rot + '</span><span class="ax-nome">' + esc(a.nome) + '</span></button>'; }).join('') + '</div>' : '') +
       '</div>' + (x === ultCli && x.n !== 1 ? responder : '') + '</div>' + sit;
