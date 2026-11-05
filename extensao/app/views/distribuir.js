@@ -58,7 +58,7 @@ export function render(el, ctx) {
     enviar({ cmd: 'distribuicao', dias }).then(r => {
       lendo = false;
       if (!r.ok) { toast('Não foi possível ler o Onvio: ' + (r.erro || ''), true); resultado = { dias, movimentadas: 0, erros: [r.erro || 'erro'], sugestoes: OC.distribuirPorCliente(estado.snap.items || [], [], dias) }; }
-      else resultado = r;
+      else resultado = Object.assign({ erros: [], sugestoes: [] }, r);          // resposta sem listas não derruba a tela
       if (location.hash.startsWith('#/distribuir')) render(el, ctx);
     });
     $('#d-recalc', el).disabled = true;
