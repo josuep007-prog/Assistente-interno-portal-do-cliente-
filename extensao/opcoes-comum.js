@@ -14,7 +14,10 @@
     'incompleto': 'O Hub não recebeu todas as partes.', 'ciclo-perdido': 'O Hub foi recarregado no meio do envio: tente de novo.',
     'partes': 'O Hub recusou as partes (versão antiga do Hub?).', 'categoria': 'O Hub não conhece esta categoria (publique a versão nova do Hub).', 'fonte-desconhecida': 'O Hub não conhece este tipo de dado (publique a versão nova do Hub).',
     'visao-cliente': 'O Onvio está com um acesso de cliente: o envio é só da visão do escritório.',
-    'sem-pessoais': 'A folha vai junto com "Dados pessoais": ligue esse conjunto em "O que vai no envio completo".'
+    'sem-pessoais': 'A folha vai junto com "Dados pessoais": ligue esse conjunto em "O que vai no envio completo".',
+    'sem-gestta': 'Abra o Gestta numa aba do Chrome, já logado, e envie de novo.', 'sem-sessao-gestta': 'O Gestta está sem sessão nesta aba: faça login e envie de novo.',
+    'acesso-parcial': 'O Gestta está com um login de analista: o envio ao Hub só sai com o acesso da coordenação, que vê todos os setores.',
+    'interrompido': 'O envio foi interrompido no meio.'
   };
   const msgHub = r => (r && (r.mensagem || MOTIVOS_HUB[r.motivo] || r.motivo)) || 'Não foi possível enviar.';
   const quando = d => (d ? new Date(d).toLocaleString('pt-BR') : '—');
@@ -73,21 +76,24 @@
     'Encaminhar para outro usuário', 'Anexar um arquivo fictício ao trâmite e excluí-lo', 'Baixar os anexos', 'Imprimir', 'Copiar o link da solicitação para o cliente (Geral)', 'Excluir uma solicitação criada só para o teste'];
 
   // Andamento do envio completo ao Hub em linhas (tom: ok, erro, aviso, nota) para as duas telas desenharem do seu jeito.
-  function linhasEnvio(hubSync) {
-    if (!hubSync) return { cab: 'Nenhum envio completo ainda.', estado: 'nunca', linhas: [] };
+  // o: { nome: 'do Gestta', cartelaEm } para o envio do Gestta (0.79.0)
+  function linhasEnvio(hubSync, o) {
+    o = o || {};
+    if (!hubSync) return { cab: o.nome ? 'Nenhum envio ' + o.nome + ' ainda.' : 'Nenhum envio completo ainda.', estado: 'nunca', linhas: [] };
     const ok = (hubSync.resultados || []).filter(r => r.ok), mal = (hubSync.resultados || []).filter(r => !r.ok);
     const preso = hubSync.estado === 'enviando' && hubSync.pulso && Date.now() - hubSync.pulso > 240000;        // sem sinal há 4 min: o envio morreu no meio
     const est = preso ? 'interrompido' : hubSync.estado;
     const cab = est === 'interrompido' ? 'Último envio interrompido. O envio automático continua de onde parou, sem reenviar o que o Hub já aceitou.'
       : est === 'enviando' && hubSync.soFolha ? 'Lendo só a folha… ' + (hubSync.detalhe || '')
       : est === 'enviando' ? 'Enviando… ' + (hubSync.etapa || '') + (hubSync.detalhe ? ': ' + hubSync.detalhe : '') + ' (etapa ' + (hubSync.feito + 1) + ' de ' + hubSync.total + ')'
-      : (hubSync.soFolha ? 'Último envio só da folha: ' : 'Último envio completo: ') + ({ ok: 'tudo aceito', parcial: 'parte aceita', erro: 'não concluído' }[est] || est) + ' em ' + quando(hubSync.terminouEm) + (hubSync.motivo ? ' · ' + (MOTIVOS_HUB[hubSync.motivo] || hubSync.motivo) : '') +
+      : (o.nome ? 'Último envio ' + o.nome + ': ' : hubSync.soFolha ? 'Último envio só da folha: ' : 'Último envio completo: ') + ({ ok: 'tudo aceito', parcial: 'parte aceita', erro: 'não concluído' }[est] || est) + ' em ' + quando(hubSync.terminouEm) + (hubSync.motivo ? ' · ' + (MOTIVOS_HUB[hubSync.motivo] || hubSync.motivo) : '') +
         ' · ' + ok.length + ' conjuntos enviados, ' + ok.reduce((n, r) => n + (r.linhas || 0), 0).toLocaleString('pt-BR') + ' linhas';
     const linhas = [];
     mal.forEach(r => linhas.push({ tom: 'erro', rotulo: r.rotulo, texto: MOTIVOS_HUB[r.motivo] || r.motivo }));
     ok.filter(x => x.cortado).forEach(r => linhas.push({ tom: 'aviso', rotulo: r.rotulo, texto: 'veio incompleto' + (r.porque ? ': ' + r.porque : ' (cortado)') + (r.linhas ? ' · ' + r.linhas.toLocaleString('pt-BR') + ' linhas enviadas' : '') }));
     ok.filter(x => x.motivo && !x.cortado).forEach(r => linhas.push({ tom: r.nota ? 'nota' : 'aviso', rotulo: r.rotulo, texto: MOTIVOS_HUB[r.motivo] || r.motivo }));
     ok.filter(x => !x.motivo && !x.cortado).forEach(r => linhas.push({ tom: 'ok', rotulo: r.rotulo, texto: (r.linhas || 0).toLocaleString('pt-BR') + ' linhas' }));
+    if (o.cartelaEm && est !== 'enviando') linhas.push({ tom: 'nota', rotulo: 'Cartela', texto: 'última leitura em ' + quando(o.cartelaEm) + '; a próxima vem no primeiro envio depois de ' + quando(o.cartelaEm + 20 * 3600e3) });
     return { cab, estado: est, linhas, feito: hubSync.feito, total: hubSync.total };
   }
 
