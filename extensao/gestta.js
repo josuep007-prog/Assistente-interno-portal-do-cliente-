@@ -592,12 +592,15 @@
       const cols = rel.colunas || [], iC = cols.indexOf('customer.cnpj'), iN = cols.indexOf('customer.name');
       if (iC < 0) continue;
       for (const l of rel.linhas || []) {
-        const cnpj = String(l[iC] || '').replace(/\D/g, ''), nome = iN >= 0 ? String(l[iN] || '').trim() : '';
-        if ((cnpj.length !== 14 && cnpj.length !== 11) || ehEscritorioProprio(nome)) continue;
-        const x = m.get(cnpj) || { nome, n: 0, mes: '' }; x.n++; if (mes > x.mes) x.mes = mes; if (!x.nome) x.nome = nome; m.set(cnpj, x);
+        const dig = String(l[iC] || '').replace(/\D/g, ''), nome = iN >= 0 ? String(l[iN] || '').trim() : '';
+        const cnpj = dig.length === 14 || dig.length === 11 ? dig : '';
+        if (ehEscritorioProprio(nome) || (!cnpj && !nome)) continue;
+        // 0.82.0: cliente sem CNPJ no Gestta (CPF, empregador doméstico) também vai, pelo nome; antes era descartado e a empresa sumia do Hub
+        const chave = cnpj || 'n:' + nome.toUpperCase();
+        const x = m.get(chave) || { cnpj, nome, n: 0, mes: '' }; x.n++; if (mes > x.mes) x.mes = mes; if (!x.nome) x.nome = nome; m.set(chave, x);
       }
     }
-    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([c, x]) => linhaTab([c, x.nome, x.n, x.mes]));
+    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([, x]) => linhaTab([x.cnpj, x.nome, x.n, x.mes]));
   }
   const mesAnterior = (ano, mes) => mes === 1 ? { ano: ano - 1, mes: 12 } : { ano, mes: mes - 1 };
   const mesTexto = (ano, mes) => ano + '-' + String(mes).padStart(2, '0');
