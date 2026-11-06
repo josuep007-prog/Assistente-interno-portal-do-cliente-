@@ -1256,6 +1256,7 @@ await passo('app · Configurações → Avançado (0.69.0): cinco partes com o e
     assert.ok(vis.some(v => /folha.*falhou em 2 leituras/.test(v)) && !vis.some(v => /77DF7394/.test(v)), 'sem os ids enormes: ' + vis.join(' / '));
     assert.equal(await p.isVisible('details.adv-todos .adv-igual'), false, 'o que deu certo fica recolhido');
     assert.match(await p.textContent('details.adv-todos > summary'), /Ver os outros 3 conjuntos/);
+    assert.match(await p.textContent('#adv-envio [data-reenviar]'), /^Reenviar o que deu erro \(1\)$/, '0.84.0: com erro, o botão de reenviar só o que deu erro');
     if (process.env.CAP) await (await p.$('#adv-envio')).screenshot({ path: process.env.CAP + '/avancado-envio-' + estilo + '.png' });
     // dados pessoais pedem confirmação antes de ligar
     await p.click('.adv-cat input[data-cat="pessoais"]');

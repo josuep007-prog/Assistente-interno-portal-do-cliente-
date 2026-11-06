@@ -3593,8 +3593,8 @@ test('Folha (0.70.1): "Enviar só a folha" roda só a tarefa da folha, com mais 
   assert.deepEqual(plano(r.map(x => x.id)), ['pessoais-folha-contribuintes'], 'só a folha');
   assert.ok(!lidas.some(u => /employees|tickets|communications/.test(u)), 'nem empregados, nem solicitações, nem comunicações');
   const bg = src('background.js'), avc = src('app/views/avancado.js');
-  assert.match(bg, /soTarefas: soFolha \? \['pessoais:folha'\] : null, folhaDocsMax: soFolha \? FOLHA_DOCS_SO_FOLHA : undefined/);
-  assert.match(bg, /hubSync\.soFolha \? Date\.parse\(hubSync\.completoAnterior/, 'o automático conta a partir do último envio completo');
+  assert.match(bg, /soTarefas: soFolha \? \['pessoais:folha'\] : reenvio, folhaDocsMax: soFolha \? FOLHA_DOCS_SO_FOLHA : undefined/);
+  assert.match(bg, /hubSync\.soFolha \|\| hubSync\.reenvio \? Date\.parse\(hubSync\.completoAnterior/, 'o automático conta a partir do último envio completo');
   assert.match(bg, /msg\.soFolha && !\(await hubEnvioCats\(\)\)\.includes\('pessoais'\)\) reply\(\{ ok: false, motivo: 'sem-pessoais' \}\)/);
   assert.match(avc, /id="adv-so-folha"/);
 });
@@ -4044,4 +4044,30 @@ test('Gestta → Hub (0.83.0): relatório recusado com 400 tenta o período do p
   assert.equal(pedidos.filter(x => x === 'buscaTarefas').length, 2, 'uma busca por mês');
   assert.deepEqual(plano(env2['gestta-empresas-ativas'].partes.join('\n').split('\n')), ['00000000000100\tEMPRESA ALFA\t2\t2026-11', '\tMARIA EMPREGADORA\t2\t2026-11']);
   assert.ok(!env2['gestta-clientes'], 'sem a categoria clientes, a lista é lida mas não vai');
+});
+
+test('Hub (0.84.0): "Reenviar o que deu erro" sabe de qual tarefa veio cada conjunto e só refaz o que falhou', () => {
+  const todas = OC.HUB_CATEGORIAS.map(k => k.id), ids = new Set(OC.hubPlano(todas).map(t => t.id));
+  const conjuntos = ['analise-solicitacoes', 'analise-equipe', 'clientes-cnd', 'clientes-nfe', 'documentos-pastas', 'noticias-artigos', 'pessoais-empregados', 'pessoais-folha-contribuintes', 'pessoais-comunicacoes', 'pessoais-pendentes-dados', 'pessoais-pendentes-tramites', 'escritorio-licencas', 'escritorio-conta']
+    .concat(OC.TYPES.flatMap(t => ['lista-' + OC.slugHub(t.key), 'pessoais-' + OC.slugHub(t.key)]));
+  conjuntos.forEach(c => assert.ok(ids.has(OC.hubTarefaDoConjunto(c)), c + ' → ' + OC.hubTarefaDoConjunto(c)));
+  assert.equal(OC.hubTarefaDoConjunto('lista:geral'), 'lista:geral', 'falha de leitura já vem com o id da tarefa');
+  assert.equal(OC.hubTarefaDoConjunto('nada-disso'), '');
+  const geral = OC.slugHub(OC.TYPES[0].key);
+  const sync = { estado: 'parcial', resultados: [
+    { id: 'pessoais-folha-contribuintes', categoria: 'pessoais', ok: false, motivo: 'sem-resposta' },
+    { id: 'escritorio-licencas', categoria: 'escritorio', ok: false, motivo: 'HTTP 403' },
+    { id: 'lista-' + geral, categoria: 'listas', ok: false, motivo: 'sem-resposta' }, { id: 'pessoais-' + geral, categoria: 'pessoais', ok: false, motivo: 'sem-resposta' },
+    { id: 'clientes-cnd', categoria: 'clientes', ok: true } ] };
+  assert.deepEqual(plano(OC.hubParaReenviar(sync)), ['pessoais:folha', 'lista:' + OC.TYPES[0].key], 'o escritório que o Onvio não libera fica fora; a lista e os dados pessoais dela são uma leitura só');
+  assert.deepEqual(plano(OC.hubParaReenviar(Object.assign({}, sync, { estado: 'enviando' }))), []);
+  assert.deepEqual(plano(OC.hubParaReenviar(null)), []);
+  // Gestta: a categoria que refaz cada conjunto
+  assert.deepEqual(plano(OCG.paraReenviar({ estado: 'parcial', resultados: [{ id: 'gestta-empresas-ativas', ok: false }, { id: 'gestta-setores', ok: false }, { id: 'gestta-clientes', ok: true }, { id: 'gestta-tarefas', ok: false }] })), ['tarefas', 'equipe']);
+  // a tela diz que o envio teve reenvio e oferece o botão pelo número de erros
+  const sb = { self: {} }; vm.runInNewContext(src('opcoes-comum.js'), sb);
+  const t = sb.self.OCOpcoes.linhasEnvio({ estado: 'parcial', reenvio: true, terminouEm: new Date().toISOString(), resultados: sync.resultados.map(r => Object.assign({ rotulo: r.id }, r)) });
+  assert.match(t.cab, /^Último envio \(com o reenvio do que deu erro\)/);
+  assert.equal(t.resumo.erro, 3, 'o escritório recusado é aviso, não erro');
+  assert.ok(sb.self.OCOpcoes.MOTIVOS_HUB['nada-reenviar']);
 });

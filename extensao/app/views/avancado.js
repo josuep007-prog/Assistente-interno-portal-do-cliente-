@@ -191,20 +191,29 @@ async function estadoHub(el) {
     pilula(!u ? 'neutro' : u.ok ? 'ok' : 'erro', !u ? 'Nenhum resumo enviado' : u.ok ? 'Resumo aceito em ' + OP.quando(u.em) + ' (' + u.linhas + ' de ' + u.total + ')' : 'Resumo recusado: ' + OP.msgHub(u));
   const ICO = { ok: '✓', erro: '✕', aviso: '⚠', nota: '•', igual: '=' }, ordem = { erro: 0, aviso: 1, nota: 2, ok: 3, igual: 4 };
   // 0.83.0: o resumo numa linha; à vista só o que pede atenção (erro e aviso); o resto recolhido
-  const pinta = (alvo, e) => {
+  // 0.84.0 (Josué, 06/11/2026): com erro no último envio, "Reenviar o que deu erro" refaz só esses conjuntos (o resto fica como estava)
+  const pinta = (alvo, e, cmd) => {
     const aberto = alvo.querySelector('details.adv-todos[open]');
     const barra = e.estado === 'enviando' && e.total ? '<div class="adv-barra" role="progressbar" aria-valuemin="0" aria-valuemax="' + e.total + '" aria-valuenow="' + e.feito + '"><i style="width:' + Math.round(e.feito / e.total * 100) + '%"></i></div>' : '';
     const li = l => '<li class="adv-' + l.tom + '"' + (l.dica && l.dica !== l.texto ? ' title="' + esc(l.dica) + '"' : '') + '><span aria-hidden="true">' + ICO[l.tom] + '</span><b>' + esc(l.rotulo) + '</b><span>' + esc(l.texto) + '</span></li>';
     const ls = e.linhas.slice().sort((a, b) => ordem[a.tom] - ordem[b.tom]), prob = ls.filter(l => l.tom === 'erro' || l.tom === 'aviso'), resto = ls.filter(l => l.tom !== 'erro' && l.tom !== 'aviso');
     const r = e.resumo || {}, chip = (n, cls, rot) => n ? '<span class="adv-chip adv-' + cls + '">' + ICO[cls] + ' ' + n + ' ' + rot + '</span>' : '';
     const resumo = e.linhas.length ? '<div class="adv-resumo">' + chip(r.ok, 'ok', r.ok === 1 ? 'enviado' : 'enviados') + chip(r.igual, 'igual', 'sem mudança') + chip(r.aviso, 'aviso', r.aviso === 1 ? 'aviso' : 'avisos') + chip(r.erro, 'erro', r.erro === 1 ? 'erro' : 'erros') + '</div>' : '';
-    alvo.innerHTML = '<p class="adv-msg' + (['erro', 'interrompido'].includes(e.estado) ? ' adv-msg-erro' : '') + '">' + esc(e.cab) + '</p>' + barra + resumo +
+    const reenv = cmd && r.erro && e.estado !== 'enviando' ? '<button type="button" class="btn btn-sm adv-reenviar" data-reenviar="' + cmd + '">Reenviar o que deu erro (' + r.erro + ')</button>' : '';
+    alvo.innerHTML = '<p class="adv-msg' + (['erro', 'interrompido'].includes(e.estado) ? ' adv-msg-erro' : '') + '">' + esc(e.cab) + '</p>' + barra + (resumo || reenv ? '<div class="adv-resumo-l">' + resumo + reenv + '</div>' : '') +
       (prob.length ? '<ul class="adv-res">' + prob.map(li).join('') + '</ul>' : '') +
       (resto.length ? '<details class="adv-todos"' + (aberto ? ' open' : '') + '><summary>Ver ' + (prob.length ? 'os outros ' : 'os ') + resto.length + ' conjuntos</summary><ul class="adv-res">' + resto.map(li).join('') + '</ul></details>' : '');
+    const b = alvo.querySelector('[data-reenviar]');
+    if (b) b.onclick = async () => {
+      b.disabled = true; b.textContent = 'Reenviando…';
+      const r = await enviar({ cmd: b.dataset.reenviar, reenviar: true });
+      if (r && r.ok === false) { toast(OP.msgHub(r)); b.disabled = false; b.textContent = 'Reenviar o que deu erro'; return; }
+      toast(r && r.jaRodando ? 'Já há um envio em andamento: espere ele terminar' : 'Reenviando ' + (r && r.n ? r.n + (r.n === 1 ? ' conjunto' : ' conjuntos') : 'o que deu erro'));
+    };
   };
-  pinta(envio, OP.linhasEnvio(hubSync));
+  pinta(envio, OP.linhasEnvio(hubSync), 'hubSincronizar');
   const ge = $('#adv-gestta-envio', el);
-  if (ge) { const { hubSyncGestta, gesttaCartelaEm } = await ler(['hubSyncGestta', 'gesttaCartelaEm']); pinta(ge, OP.linhasEnvio(hubSyncGestta, { nome: 'do Gestta', cartelaEm: gesttaCartelaEm })); }
+  if (ge) { const { hubSyncGestta, gesttaCartelaEm } = await ler(['hubSyncGestta', 'gesttaCartelaEm']); pinta(ge, OP.linhasEnvio(hubSyncGestta, { nome: 'do Gestta', cartelaEm: gesttaCartelaEm }), 'gesttaHubSync'); }
 }
 
 /* ---------- Regras do escritório ---------- */
