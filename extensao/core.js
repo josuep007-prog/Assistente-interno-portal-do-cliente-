@@ -144,7 +144,6 @@
     pagamentoFeriasAntes: 2,  // CLT art. 145: férias pagas até 2 dias antes do início
     pagamentoRescisaoDias: 10, // CLT art. 477 §6º: verbas rescisórias em até 10 dias do término do contrato
     avisoFeriasDias: 30,      // CLT art. 135: aviso de férias com 30 dias de antecedência
-    abrirAoEntrar: true,      // ao entrar no Onvio, o Control Onvio já ocupa a tela
     regrasUrl: '',            // endereço (https) de um arquivo de regras do escritório; vazio = só as embutidas
     // Geral: palavras do assunto que sugerem uma solicitação específica ("possível aba errada").
     // Sem acento e em minúsculas. A primeira entrada que casar vence, então as mais específicas vêm antes.
