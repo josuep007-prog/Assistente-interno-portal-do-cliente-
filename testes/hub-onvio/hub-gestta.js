@@ -57,7 +57,7 @@ const EQUIPE = { colunas: ['Id', 'Nome', 'Papel', 'Ativo', 'Setores', 'Tem taref
   ['u1', 'Carla Mendes Souza', 'Analista', 'sim', 'Departamento Pessoal', 'sim'], ['u2', 'Rui Teixeira', 'Analista', 'sim', 'Contábil | Legalização', 'sim'],
   ['u3', 'Paula Nunes', 'Analista', 'sim', 'Fiscal', 'sim'], ['u9', 'Zélia Desconhecida', 'Analista', 'sim', 'Contábil', 'sim'], ['u7', 'Marcos Lima', 'Analista', 'não', 'Contábil', 'não']] };
 // empresas com tarefa no mês atual ou anterior (extensão 0.81.0): a VELHA não está
-const ATIVAS = { colunas: ['CNPJ', 'Cliente', 'Tarefas', 'Último mês'], linhas: [[C.alfa, 'ALFA COMERCIO LTDA', 30, '2026-11'], [C.beta, 'BETA SERVICOS LTDA', 12, '2026-11'], [C.gama, 'GAMA INDUSTRIA LTDA', 8, '2026-10'], [C.delta, 'DELTA MEI', 2, '2026-11']] };
+const ATIVAS = { colunas: ['CNPJ', 'Cliente', 'Tarefas', 'Último mês'], linhas: [[C.alfa, 'ALFA COMERCIO LTDA', 30, '2026-11'], [C.beta, 'BETA SERVICOS LTDA', 12, '2026-11'], [C.gama, 'GAMA INDUSTRIA LTDA', 8, '2026-10'], [C.delta, 'DELTA MEI', 2, '2026-11'], ['', 'MARIA EMPREGADORA DOMESTICA', 3, '2026-11']] };
 const GT = { 'gestta-clientes': CLIENTES, 'gestta-cartela': CARTELA, 'gestta-setores': SETORES, 'gestta-tarefas': TAREFAS, 'gestta-equipe': EQUIPE, 'gestta-empresas-ativas': ATIVAS };
 
 const balde = (id, n) => { let h = 0; for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0; return h % n; };
@@ -84,6 +84,13 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
   await semear('dp_empresas/e-alfa', { nome: 'ALFA COMERCIO LTDA', cnpj: fmt(C.alfa), tributacao: 'LUCRO PRESUMIDO', responsavel: '', situacao: 'Ativa', funcionarios: [], historico: [] });
   await semear('dp_empresas/e-beta', { nome: 'BETA SERVICOS LTDA', cnpj: fmt(C.beta), tributacao: 'LUCRO PRESUMIDO', responsavel: 'Carla Souza', situacao: 'Ativa', funcionarios: [], historico: [] });
   await semear('dp_empresas/e-velha', { nome: 'VELHA SEM TAREFA LTDA', cnpj: fmt(C.velha), tributacao: 'SIMPLES NACIONAL', responsavel: 'Carla Souza', situacao: 'Ativa', funcionarios: [], historico: [] });
+  // Hub 323 ("várias empresas sumiram do DP"): filial de cliente do Gestta, empresa sem CNPJ, CNPJ diferente do Gestta e empregador doméstico (sem CNPJ no Gestta) ficam
+  await semear('dp_empresas/e-filial', { nome: 'ALFA COMERCIO LTDA FILIAL', cnpj: fmt('11111111000282'), situacao: 'Ativa', funcionarios: [], historico: [] });
+  await semear('dp_empresas/e-semcnpj', { nome: 'GAMA INDUSTRIA', cnpj: '', situacao: 'Ativa', funcionarios: [], historico: [] });
+  await semear('dp_empresas/e-cnpjdif', { nome: 'DELTA MEI', cnpj: fmt('99999999000199'), situacao: 'Ativa', funcionarios: [], historico: [] });
+  await semear('dp_empresas/e-domestica', { nome: 'MARIA EMPREGADORA DOMESTICA', cnpj: '123.456.789-09', situacao: 'Ativa', funcionarios: [], historico: [] });
+  await semear('dp_empresas/e-folha', { nome: 'ZULU COM FOLHA LTDA', cnpj: fmt('88888888000108'), situacao: 'Ativa', funcionarios: [{ id: 'z1', nome: 'Empregado Ativo', admissao: '2024-01-02', situacao: 'Ativo' }], historico: [] });
+  await semear('dp_empresas/e-sumiu', { nome: 'OUTRA SEM CNPJ NEM TAREFA', cnpj: '', situacao: 'Ativa', funcionarios: [], historico: [] });
   await semear('dp_empresas/e-delta', { nome: 'DELTA MEI', cnpj: fmt(C.delta), tributacao: 'MEI', responsavel: 'Marcos Lima', situacao: 'Ativa', funcionarios: [], historico: [] });
   await semear('ctb_emp/b' + balde('c' + C.velha, 8), { ['c' + C.velha]: { id: 'c' + C.velha, nome: 'VELHA SEM TAREFA LTDA', cnpj: fmt(C.velha), trib: 'simples', analista: 'Rui Teixeira', sit: 'ativa' } });
   await semear('empresas/p-velha', { nome: 'VELHA SEM TAREFA LTDA', cnpj: fmt(C.velha) });
@@ -132,7 +139,7 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
   await passo('Referência absoluta: empresa sem tarefa no Gestta some do DP, do Contábil, do Portal e do cadastro; analista fora da equipe sai da carteira; a lista do Gestta faltando não esconde nada', async () => {
     const dp = () => page.evaluate(() => window.__hubApi.api('dp').listar().map(e => [e.nome, e.analista]).sort());
     await page.waitForFunction(() => !window.__hubApi.api('dp').listar().some(e => /VELHA/.test(e.nome)), null, { timeout: 8000 });
-    assert.deepEqual(await dp(), [['ALFA COMERCIO LTDA', ''], ['BETA SERVICOS LTDA', 'Carla Souza'], ['DELTA MEI', '']], 'VELHA escondida; Marcos Lima (inativo no Gestta) sai da DELTA');
+    assert.deepEqual(await dp(), [['ALFA COMERCIO LTDA FILIAL', ''], ['ALFA COMERCIO LTDA', ''], ['BETA SERVICOS LTDA', 'Carla Souza'], ['DELTA MEI', ''], ['DELTA MEI', ''], ['GAMA INDUSTRIA', ''], ['MARIA EMPREGADORA DOMESTICA', ''], ['ZULU COM FOLHA LTDA', '']], 'VELHA e a sem CNPJ nem tarefa escondidas; filial, sem CNPJ, CNPJ diferente, doméstica e a com empregado ativo (sem tarefa no Gestta) ficam; Marcos Lima (inativo no Gestta) sai da DELTA');
     assert.deepEqual(await page.evaluate(() => window.__hubApi.cfg.dp.equipe()), ['Carla Mendes Souza'], 'a equipe do DP é a do Gestta');
     const cad = await page.evaluate(([v, a]) => [window.__cadastro.ativa('ctb', 'c' + v, v), window.__cadastro.ativa('ctb', 'c' + a, a), window.__cadastro.ativa('portal', 'p-velha', v), window.__cadastro.analistaAtivo('Marcos Lima'), window.__cadastro.analistaAtivo('Carla Souza'), window.__cadastro.analistaGestta('Carla Souza'), window.__cadastro.analistas('ctb')], [C.velha, C.alfa]);
     assert.deepEqual(cad, [false, true, false, false, true, 'Carla Mendes Souza', ['Rui Teixeira', 'Zélia Desconhecida']]);
@@ -140,7 +147,7 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     assert.equal(await page.evaluate(() => window.__db.ler('dp_empresas/e-delta').responsavel), 'Marcos Lima', 'o nome gravado fica');
     await esperar();
     const ref = await api((g) => g.referencia());
-    assert.deepEqual([ref.empresas.ok, ref.empresas.n, ref.analistas.ok, ref.fora.dp, ref.fora.contabil, ref.fora.portal], [true, 4, true, ['VELHA SEM TAREFA LTDA'], ['VELHA SEM TAREFA LTDA'], ['VELHA SEM TAREFA LTDA']]);
+    assert.deepEqual([ref.empresas.ok, ref.empresas.n, ref.analistas.ok, ref.fora.dp, ref.fora.contabil, ref.fora.portal], [true, 5, true, ['OUTRA SEM CNPJ NEM TAREFA · sem CNPJ e o nome não está no Gestta', 'VELHA SEM TAREFA LTDA · 77.777.777/0001-07 · CNPJ sem tarefa no Gestta'], ['VELHA SEM TAREFA LTDA · 77.777.777/0001-07 · CNPJ sem tarefa no Gestta'], ['VELHA SEM TAREFA LTDA · 77.777.777/0001-07 · CNPJ sem tarefa no Gestta']]);
     assert.ok(ref.analistasFora.some(a => a.nome === 'Marcos Lima'), JSON.stringify(ref.analistasFora));
     // trava: lista velha (mais de 72 h) não esconde nada
     const man = await page.evaluate(() => window.__db.ler('ing_dados/gestta~gestta-empresas-ativas'));
@@ -162,7 +169,7 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     await fr.locator('[data-dec="onvio"]').click();
     assert.equal(await fr.locator('#secCadastro').isVisible(), true); assert.equal(await fr.locator('#secGestta').isVisible(), false);
     await fr.locator('[data-dec="gestta"]').click();
-    assert.match(await fr.locator('#gtRef').textContent(), /4 empresas em atividade no Gestta/);
+    assert.match(await fr.locator('#gtRef').textContent(), /5 empresas em atividade no Gestta/);
     assert.match(await fr.locator('#gtRef').textContent(), /4 analistas ativos no Gestta/);
     const n = await fr.locator('#gtDifs tr[data-gt-k]').count();
     assert.equal(n, (await difs()).length);
@@ -197,7 +204,7 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     assert.deepEqual([fr2.analistaId, fr2.analistaNome], ['f1', 'Carla Souza']);
     const r3 = await api((g) => { const d = g.difs().find(x => x.mod === 'portal' && x.campo === 'analista-contabil'); return g.aplicar(d.k, d.chave); });
     assert.equal(r3.ok, false, 'sem a pessoa na equipe do Portal não grava');
-    const hist = await page.evaluate(() => window.__db.listar('gt_hist'));
+    const hist = await page.evaluate(() => window.__db.listar('gt_hist').flatMap(d => Array.isArray(d.itens) ? d.itens : [d]));
     assert.equal(hist.length, 3); assert.ok(hist.every(h => !h.auto && h.cnpj === '11111111000101'));
     const d = await difs();
     assert.ok(!d.some(x => x[0] === 'dp' && x[2] === 'responsavel' && x[1] === '11'), 'a diferença aplicada some');
@@ -244,14 +251,14 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
 
   await passo('Automático: desligado de fábrica; ligado só complementa sozinho (o "conferir antes" fica), com "automaticamente" no histórico', async () => {
     assert.equal(await api((g) => g.auto().ligada), false);
-    const antes = (await page.evaluate(() => window.__db.listar('gt_hist'))).length;
+    const antes = (await page.evaluate(() => window.__db.listar('gt_hist').flatMap(d => Array.isArray(d.itens) ? d.itens : [d]))).length;
     // alguém apagou o analista do DP da ALFA: há de novo o que complementar
     await page.evaluate(() => { const e = window.__db.ler('dp_empresas/e-alfa'); e.responsavel = ''; window.__db.semear('dp_empresas/e-alfa', e); });
     await page.waitForFunction(() => window.__hubApi.api('gestta').difs().some(d => d.mod === 'dp' && d.campo === 'responsavel' && d.acao === 'complementar'), null, { timeout: 5000 });
     await api((g) => g.salvarCfg(c => { c.auto.ligada = true; }));
-    await page.waitForFunction((n) => window.__db.listar('gt_hist').length > n, antes, { timeout: 8000 });
+    await page.waitForFunction((n) => window.__db.listar('gt_hist').flatMap(d => Array.isArray(d.itens) ? d.itens : [d]).length > n, antes, { timeout: 8000 });
     await page.waitForFunction(() => !window.__hubApi.api('gestta').auto().rodando, null, { timeout: 8000 });
-    const novos = (await page.evaluate(() => window.__db.listar('gt_hist'))).slice(antes);
+    const novos = (await page.evaluate(() => window.__db.listar('gt_hist').flatMap(d => Array.isArray(d.itens) ? d.itens : [d]))).slice(antes);
     assert.ok(novos.length >= 1 && novos.every(h => h.auto && h.acao === 'complementar'), JSON.stringify(novos.map(h => [h.mod, h.acao])));
     const d = await difs();
     assert.ok(!d.some(x => x[3] === 'complementar' && x[7] && !x[6]), 'nada para complementar sobrou');
