@@ -4071,3 +4071,21 @@ test('Hub (0.84.0): "Reenviar o que deu erro" sabe de qual tarefa veio cada conj
   assert.equal(t.resumo.erro, 3, 'o escritório recusado é aviso, não erro');
   assert.ok(sb.self.OCOpcoes.MOTIVOS_HUB['nada-reenviar']);
 });
+
+test('Gestta (0.85.0): as tarefas pela competência; a busca tenta COMPETENCE_DATE e a tela separa pela competence_date quando o Gestta não filtra', () => {
+  const t = (id, comp, meta) => ({ _id: id, competence_date: comp, due_date: meta });
+  assert.equal(OCG.competenciaDe(t('a', '2026-10-01T03:00:00.000Z', '2026-11-20T03:00:00Z')), '2026-10', 'a competência, não a meta');
+  assert.equal(OCG.competenciaDe(t('b', '2026-10-01T00:00:00.000Z')), '2026-10', 'meia-noite em UTC não vira setembro');
+  assert.equal(OCG.competenciaDe({ due_date: '2026-11-20T03:00:00Z' }), '2026-11', 'sem competência, vale o mês da meta');
+  const itens = [t('a', '2026-10-01T03:00:00Z', '2026-11-20T03:00:00Z'), t('b', '2026-09-01T03:00:00Z', '2026-10-20T03:00:00Z'), t('c', '2026-10-01T03:00:00Z', '2026-12-15T03:00:00Z'), t('d', '2026-10-01T03:00:00Z', '2026-11-05T03:00:00Z')];
+  assert.deepEqual(plano(OCG.daCompetencia(itens, 2026, 10).map(x => x._id)), ['a', 'c', 'd']);
+  assert.equal(OCG.buscaPorCompetenciaValeu(itens, 2026, 10), false, 'veio tarefa de outra competência: o Gestta ignorou o filtro');
+  assert.equal(OCG.buscaPorCompetenciaValeu(OCG.daCompetencia(itens, 2026, 10), 2026, 10), true);
+  assert.deepEqual(plano(OCG.competenciaPadrao(new Date(2026, 10, 6))), { ano: 2026, mes: 10 }, 'em novembro, outubro');
+  assert.deepEqual(plano(OCG.competenciaPadrao(new Date(2026, 0, 6))), { ano: 2025, mes: 12 });
+  assert.deepEqual(plano(OCG.mesesDaCompetencia(2026, 11)).map(m => m.ano + '-' + m.mes), ['2026-11', '2026-12', '2027-1', '2027-2']);
+  assert.deepEqual(plano(OCG.mesesDeMeta(OCG.daCompetencia(itens, 2026, 10))), [{ ano: 2026, mes: 11, n: 2 }, { ano: 2026, mes: 12, n: 1 }], 'o mês em que mais vencem primeiro');
+  const b = OCG.PEDIDOS.buscaTarefas({ ano: 2026, mes: 10, dataTipo: 'COMPETENCE_DATE' });
+  assert.equal(b.corpo.date_type, 'COMPETENCE_DATE'); assert.equal(OCG.PEDIDOS.buscaTarefas({ ano: 2026, mes: 10, dataTipo: 'X' }).corpo.date_type, 'DUE_DATE', 'só os dois tipos de data');
+  assert.equal(OCG.leituraPermitida(b.metodo, b.url, b.corpo).ok, true, 'continua sendo a busca de um mês');
+});

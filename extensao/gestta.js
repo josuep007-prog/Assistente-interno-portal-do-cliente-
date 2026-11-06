@@ -226,7 +226,7 @@
     clientes: (o) => ({ id: 'clientes', tipo: 'cliente', metodo: 'GET', url: url('/admin/customer', { active: true, limit: (o && o.limit) || 200, page: (o && o.page) || 1 }) }),
     cartela: (o) => ({ id: 'cartela', tipo: 'cartela', metodo: 'GET', url: url('/admin/customer/' + encodeURIComponent(o.cliente) + '/responsible') }),
     buscaTarefas: (o) => ({ id: 'buscaTarefas', tipo: 'tarefa', metodo: 'POST', url: url('/core/customer/task/search'),
-      corpo: Object.assign({ page: o.page || 1, limit: o.limit || 100, type: o.type || ['RECURRENT', 'SERVICE_ORDER', 'ACCOUNTING'], status: o.status || ['OPEN', 'IMPEDIMENT'], date_type: 'DUE_DATE' }, janelaDoMes(o.ano, o.mes), o.companyUser ? { company_user: [o.companyUser] } : {}, o.semDono ? { no_owner: true } : {}) }),
+      corpo: Object.assign({ page: o.page || 1, limit: o.limit || 100, type: o.type || ['RECURRENT', 'SERVICE_ORDER', 'ACCOUNTING'], status: o.status || ['OPEN', 'IMPEDIMENT'], date_type: o.dataTipo === 'COMPETENCE_DATE' ? 'COMPETENCE_DATE' : 'DUE_DATE' }, janelaDoMes(o.ano, o.mes), o.companyUser ? { company_user: [o.companyUser] } : {}, o.semDono ? { no_owner: true } : {}) }),
     tarefa: (o) => ({ id: 'tarefa', tipo: 'tarefaDetalhe', metodo: 'GET', url: url('/core/customer/task/' + encodeURIComponent(o.id)) }),
     historico: (o) => ({ id: 'historico', tipo: 'historico', metodo: 'GET', url: url('/core/customer/task/' + encodeURIComponent(o.id) + '/history', { page: o.page || 1 }) }),
     relatorio: (o) => { const j = janelaDoMes(o.ano, o.mes); return { id: 'relatorio', tipo: 'relatorio', metodo: 'POST', url: url('/core/customer/task/report'), corpo: { type: 'CUSTOMER_TASK', filter: o.filtro != null ? String(o.filtro) : filtroRelOk, dates: { startDate: j.start_date, endDate: j.end_date } } }; },
@@ -619,6 +619,24 @@
     'gestta-envios-onvio-erro': 'alertas', 'gestta-templates-sem-pasta': 'alertas', 'gestta-cartela': 'cartela' };
   const catDoConjunto = id => CAT_DO_CONJUNTO[String(id || '')] || '';
   const paraReenviar = hubSync => (!hubSync || hubSync.estado === 'enviando') ? [] : [...new Set((hubSync.resultados || []).filter(r => !r.ok).map(r => catDoConjunto(r.id)).filter(Boolean))];
+  // 0.85.0 (Josué, 06/11/2026: "as tarefas devem ser agrupadas por competência e não por data de vencimento").
+  // A competência de uma tarefa é o mês de competence_date (gravada no 1º dia do mês; meio-dia em UTC evita trocar de mês
+  // pelo fuso) e, sem ela, o mês da meta. A busca tenta date_type COMPETENCE_DATE; se o Gestta recusar ou ignorar
+  // (veio tarefa de outra competência), a tela lê as metas da competência e dos 3 meses seguintes e separa aqui.
+  const mesUtc = d => { const t = new Date(d).getTime(); if (!isFinite(t)) return ''; const x = new Date(t + 12 * 3600e3); return x.getUTCFullYear() + '-' + p2(x.getUTCMonth() + 1); };
+  const mesLocal = d => { const x = diaLocal(d); return x ? x.getFullYear() + '-' + p2(x.getMonth() + 1) : ''; };
+  const competenciaDe = t => (t && t.competence_date ? mesUtc(t.competence_date) : '') || mesLocal(t && t.due_date);
+  const daCompetencia = (itens, ano, mes) => { const k = mesTexto(ano, mes); return (itens || []).filter(t => t && competenciaDe(t) === k); };
+  const buscaPorCompetenciaValeu = (itens, ano, mes) => (itens || []).every(t => !t || competenciaDe(t) === mesTexto(ano, mes));
+  const competenciaPadrao = hoje => { const h = hoje || new Date(); return mesAnterior(h.getFullYear(), h.getMonth() + 1); };
+  const mesSeguinte = (ano, mes) => mes === 12 ? { ano: ano + 1, mes: 1 } : { ano, mes: mes + 1 };
+  // os meses de meta a ler quando a busca por competência não serve: a própria competência e os 3 seguintes
+  const mesesDaCompetencia = (ano, mes) => { const l = [{ ano, mes }]; for (let i = 0; i < 3; i++) l.push(mesSeguinte(l[l.length - 1].ano, l[l.length - 1].mes)); return l; };
+  // o mês em que mais tarefas da competência vencem (para a grade do calendário e da linha do tempo), e os outros, em ordem
+  function mesesDeMeta(itens) {
+    const n = new Map(); (itens || []).forEach(t => { const k = mesLocal(t && t.due_date); if (k) n.set(k, (n.get(k) || 0) + 1); });
+    return [...n.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([k, q]) => ({ ano: Number(k.slice(0, 4)), mes: Number(k.slice(5, 7)), n: q }));
+  }
   const mesAnterior = (ano, mes) => mes === 1 ? { ano: ano - 1, mes: 12 } : { ano, mes: mes - 1 };
   const mesTexto = (ano, mes) => ano + '-' + String(mes).padStart(2, '0');
   // Lê e entrega cada conjunto. ler(pedidos) → resultados (o mesmo de lerNaPagina, feito pelo service worker na aba do Gestta);
@@ -742,5 +760,5 @@
     GRUPOS, TIPOS_TAREFA, SITUACOES_TAREFA, MAX_PAGINAS_TAREFAS, diasUteis, grupoTarefa, prazoTexto, contarGrupos, porEmpresa, porDia, filtrarTarefas, urlTarefa, ymd, diaLocal,
     COLUNAS_FECHAMENTO, linhasDoRelatorio, tarefasDoRelatorio, trilhaDaEmpresa, fechamento, ESTADOS, setorDe, respDe, ehEscritorioProprio,
     eventosDaTarefa, obrigacoes, nomeObrigacao, meuDia, ORDENS_EMPRESA, ordenarEmpresas,
-    HUB_GESTTA, hubExecutarGestta, catDoConjunto, paraReenviar, filtrosRelatorio, lembrarFiltroRel, partirLinhas, tabelaTarefasHub, empresasAtivasHub, COLS_TAREFAS_HUB, COLS_CLIENTES_HUB, COLS_CARTELA_HUB, COLS_ATIVAS_HUB };
+    HUB_GESTTA, hubExecutarGestta, catDoConjunto, paraReenviar, competenciaDe, daCompetencia, buscaPorCompetenciaValeu, competenciaPadrao, mesesDaCompetencia, mesesDeMeta, mesTexto, filtrosRelatorio, lembrarFiltroRel, partirLinhas, tabelaTarefasHub, empresasAtivasHub, COLS_TAREFAS_HUB, COLS_CLIENTES_HUB, COLS_CARTELA_HUB, COLS_ATIVAS_HUB };
 })(typeof self !== 'undefined' ? self : this);
