@@ -202,7 +202,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const hg = await esperarGestta();
   assert.equal(hg.estado, 'ok', 'envio do Gestta: ' + JSON.stringify(hg).slice(0, 400));
   const lg = await lotesG();
-  assert.deepEqual([...new Set(lg.map(x => x.tipoDado))].sort(), ['gestta-cartela', 'gestta-clientes', 'gestta-envios-onvio-erro', 'gestta-equipe', 'gestta-setores', 'gestta-tarefas', 'gestta-templates-sem-pasta']);
+  assert.deepEqual([...new Set(lg.map(x => x.tipoDado))].sort(), ['gestta-cartela', 'gestta-clientes', 'gestta-empresas-ativas', 'gestta-envios-onvio-erro', 'gestta-equipe', 'gestta-setores', 'gestta-tarefas', 'gestta-templates-sem-pasta']);
   assert.deepEqual([...new Set(lg.map(x => x.categoria))].sort(), ['alertas', 'cadastros', 'tarefas']);
   assert.ok(lg.every(x => x.token === TOKEN && /^g[a-z0-9]+$/.test(x.ciclo) && x.versaoExt), 'mesmo protocolo em partes');
   const gtxt = JSON.stringify(lg);
@@ -225,7 +225,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   assert.equal(ha.estado, 'erro'); assert.equal(ha.motivo, 'acesso-parcial');
   assert.equal((await lotesG()).length, nAntes, 'com acesso de analista nada vai ao Hub');
   gPapel = 'ROLE_ADMIN';
-  console.log('Gestta no Hub: 7 conjuntos, só GET e o relatório, sem token, contato, valor nem empresa do escritório; analista não envia');
+  console.log('Gestta no Hub: 8 conjuntos, só GET e o relatório, sem token, contato, valor nem empresa do escritório; analista não envia');
   // caminho de reserva: o resumo copiável não leva o código de pareamento
   const r = await msg('hubLote'); assert.ok(r.ok && !('token' in r.lote));
   // desconectar tira o script e a permissão
