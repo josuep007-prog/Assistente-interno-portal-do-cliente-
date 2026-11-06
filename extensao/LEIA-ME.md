@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.78.0)
+# Control Onvio · ControlTax (v0.79.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,19 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.79.0 (o Gestta no Control Hub, Fase 1, item 3, 05/11/2026)
+
+- **O Gestta vai ao Control Hub.** Em Configurações › Avançado › Control Hub há um bloco novo, **Gestta no Hub**, com os conjuntos (todos ligados) e o botão **Enviar o Gestta agora**. O envio também sai junto com o envio automático do Onvio (a cada 6 horas), com o Hub e o Gestta abertos.
+  - **Tarefas do mês:** todas as do mês atual e do anterior, de todos os setores: empresa, CNPJ, código, tarefa, setor, responsável, meta, data legal, conclusão, quem concluiu, multa e atraso.
+  - **Clientes:** os ativos, com código, nome, nome fantasia, CNPJ, regime, inscrição estadual, UF, cidade e se usam o portal do Onvio.
+  - **Equipe e setores:** nome, papel, ativo e setores de cada funcionário.
+  - **Alertas:** os envios de documento ao Onvio que deram erro e os templates de documento sem pasta no portal.
+  - **Cartela:** quem atende cada setor de cada cliente, como está no Gestta. É uma leitura por cliente (uns 10 minutos) e acontece no máximo uma vez por dia.
+- **Só com o login da coordenação.** Com login de analista, o envio para e explica por quê: nunca vai um setor só como se fosse o escritório todo.
+- **O que nunca vai:** valor, mensalidade, pontuação, e-mail, telefone, permissões, último login, senhas, o token do Gestta e as empresas do próprio escritório. Nada do Gestta fica guardado na extensão.
+- **No Hub (versão 315):** a Entrada de dados mostra os conjuntos em "Gestta · Tarefas", "Gestta · Cadastros" e "Gestta · Alertas". O Hub passa a aceitar só a extensão 0.79.0 ou mais nova. Os módulos (DP, Fiscal, Contábil, Empresas) ainda não usam esses dados: cada uso é o próximo passo, a aprovar.
+- **A conferir no Gestta real:** o tempo do envio completo (os dois relatórios do mês levam dezenas de segundos cada; a cartela, uns 10 minutos) e o formato do relatório (se não for lido, o conjunto das tarefas mostra o erro, nunca vai vazio).
 
 ## Novidades da v0.78.0 (todos os seus setores, 05/11/2026)
 
