@@ -541,14 +541,14 @@ test('ícone fora do portal leva ao Portal do Cliente: reaproveita uma aba do po
   assert.deepEqual(plano(b.chamadas), [['atualizar', 4, { active: true }], ['janela', 7, { focused: true }], ['mensagem', 4, 'abrir']]);
 });
 
-test('ícone fora do portal sem nenhuma aba do portal cria uma nas Solicitações e pede o painel para quando a leitura terminar', async () => {
+test('ícone fora do portal sem nenhuma aba do portal cria uma nas Solicitações e pede o painel (é o clique da pessoa)', async () => {
   for (const url of [undefined, '', 'chrome://newtab/', 'about:blank', 'https://exemplo.com/', 'https://onvio.com.br.falso.com/br-portal-do-cliente/', 'https://onvio.com.br/staff/#/home', 'https://onvio.com.br/', 'https://onvio.com.br/br-portal-do-clientex/']) {
     const { ctx, chamadas, store } = carregarBackground({ abas: url && /onvio\.com\.br\/(staff|$)/.test(url) ? [aba(9, url)] : [] });
     await ctx.aoClicarNoIcone({ id: 9, url });
     assert.equal(chamadas.length, 1, 'só cria a aba: ' + url);
     assert.equal(chamadas[0][0], 'criar');
     assert.equal(chamadas[0][1].url, ONVIO_PORTAL, 'direto nas Solicitações: ' + url);
-    assert.ok(Date.now() - store.abrirPainelAoCarregar < 5000, 'o painel abre sozinho ao carregar (shell.js)');
+    assert.ok(Date.now() - store.abrirPainelAoCarregar < 5000, 'o painel abre ao carregar, como resposta ao clique (shell.js)');
   }
 });
 
@@ -580,7 +580,7 @@ test('abrir uma solicitação a partir do painel navega a MESMA aba do portal (o
   const b = carregarBackground({ abas: [] });
   await b.ctx.abrir({ type: 'geral', num: 5 });
   assert.equal(b.chamadas[0][0], 'criar');
-  assert.ok(b.store.abrirPainelAoCarregar);
+  assert.equal(b.store.abrirPainelAoCarregar, undefined, "\"Abrir no Onvio\" sem aba do portal: a camada não abre sozinha");
 });
 
 test('o botão de fechar do painel (iframe) manda a aba fechar o painel', async () => {

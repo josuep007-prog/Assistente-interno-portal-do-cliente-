@@ -12,7 +12,6 @@
   if (window.__controlOnvioShell) return;
   window.__controlOnvioShell = true;
 
-  const CHAVE_ABERTO = 'controlonvio-painel-aberto';
 
   const viva = () => { try { return !!(chrome.runtime && chrome.runtime.id); } catch (e) { return false; } };
   const url = p => chrome.runtime.getURL(p);
@@ -51,12 +50,30 @@
       .camada.open{opacity:1;visibility:visible;transition:opacity .16s ease}
       iframe{border:0;width:100%;height:100%;display:block;background:#EDF0F3;color-scheme:normal}
       @media (prefers-reduced-motion: reduce){.camada,.camada.open,.launcher{transition:none}.launcher::before,.launcher::after{animation:none;opacity:.35;transform:scale(1.35)}.launcher::after{display:none}}
+      /* aviso por cima quando a extensão não está lendo (0.80.0) */
+      .aviso{position:fixed;top:16px;left:50%;transform:translateX(-50%);width:min(460px,calc(100vw - 32px));z-index:2;background:#fff;color:#101820;
+        border:1px solid #D7DEE5;border-left:4px solid #C2000C;border-radius:4px;box-shadow:0 8px 28px rgba(16,24,32,.28);padding:14px 16px 12px;
+        font:400 13.5px/1.45 'IBM Plex Sans',system-ui,sans-serif}
+      .aviso[hidden]{display:none}
+      .aviso h2{margin:0 0 4px;font:600 15px/1.3 'Archivo',system-ui,sans-serif;color:#101820}
+      .aviso p{margin:0 0 6px;color:#2F3A44}
+      .aviso .det{font-size:12px;color:#4A5662;word-break:break-word}
+      .aviso .acoes{display:flex;gap:8px;justify-content:flex-end;margin-top:10px}
+      .aviso button{font:600 13px/1 'IBM Plex Sans',system-ui,sans-serif;border-radius:4px;padding:9px 14px;cursor:pointer}
+      .aviso .ler{background:#0E151B;color:#fff;border:1px solid #0E151B}
+      .aviso .ler:disabled{opacity:1;background:#4A5662;border-color:#4A5662;cursor:default}
+      .aviso .depois{background:#fff;color:#2F3A44;border:1px solid #C2CCD5}
+      .aviso button:focus-visible{outline:2px solid #3C659B;outline-offset:2px}
+      @media (prefers-color-scheme: dark){.aviso{background:#151E26;color:#EEF2F5;border-color:#2B3843}.aviso h2{color:#EEF2F5}.aviso p{color:#C9D3DB}.aviso .det{color:#AEB9C3}
+        .aviso .depois{background:#151E26;color:#C9D3DB;border-color:#3A4855}.aviso .ler{background:#EEF2F5;color:#0E151B;border-color:#EEF2F5}.aviso .ler:disabled{background:#AEB9C3;border-color:#AEB9C3}}
       @media print{:host{display:none}}
     </style>
     <button class="launcher" type="button" aria-label="Voltar ao Control Onvio" title="Voltar ao Control Onvio">
       <span class="mark"><img alt="" src="${url('logo.svg')}"></span><span class="badge" hidden></span>
     </button>
-    <div class="camada" aria-hidden="true"></div>`;
+    <div class="camada" aria-hidden="true"></div>
+    <div class="aviso" role="alert" hidden><h2></h2><p class="txt"></p><p class="det" hidden></p>
+      <div class="acoes"><button type="button" class="depois">Agora não</button><button type="button" class="ler">Ler agora</button></div></div>`;
   const launcher = raiz.querySelector('.launcher');
   const badge = raiz.querySelector('.badge');
   const wrap = raiz.querySelector('.camada');
@@ -85,7 +102,6 @@
     // com a camada aberta a página do Onvio por trás não rola nem recebe o foco
     document.documentElement.classList.toggle('controlonvio-cheia', abrir);
     if (abrir && iframe) setTimeout(() => { try { iframe.focus(); } catch (e) {} }, 50);
-    try { sessionStorage.setItem(CHAVE_ABERTO, abrir ? '1' : '0'); } catch (e) {}   // só nesta aba
   }
   /* ---------- botão arrastável ----------
    * O botão atrapalha em algumas telas do Onvio: dá para arrastá-lo para outro canto. O clique só conta sem arraste
@@ -139,31 +155,63 @@
     launcher.setAttribute('aria-label', txt); launcher.title = txt;
   }
 
-  /* ---------- mensagens do service worker (ícone da extensão, atalho) ---------- */
-  // Pedido de abrir (ícone fora do portal, "Abrir no Onvio"): espera a primeira leitura terminar para a camada já aparecer
-  // com dados. Abre na hora se já há leitura (ou se ela respondeu com erro, para mostrar o aviso) e, no máximo, em 45 s.
-  let esperando = false, limiteEspera = null;
-  const lido = (snap, st) => !!(snap && snap.items && !(st && ['erro', 'sem_sessao', 'visao_cliente'].includes(st.estado)));
-  const respondeu = st => !!(st && ['ok', 'erro', 'sem_sessao', 'visao_cliente'].includes(st.estado));
-  function abrirQuandoPronto(snap, st) {
-    if (lido(snap, st) || respondeu(st)) { esperando = false; clearTimeout(limiteEspera); definirPainel(true); return; }
-    esperando = true;
-    clearTimeout(limiteEspera);
-    limiteEspera = setTimeout(() => { if (esperando) { esperando = false; definirPainel(true); } }, 45000);
+  /* ---------- aviso quando a extensão não está lendo (Josué, 06/11/2026) ----------
+   * Por cima do Onvio (e da camada, se aberta): o motivo provável e o botão "Ler agora". Some sozinho quando a leitura volta;
+   * "Agora não" esconde até o motivo mudar. Acesso de cliente não é falha (a extensão não lê de propósito): sem aviso aqui. */
+  const avisoEl = raiz.querySelector('.aviso'), avisoLer = raiz.querySelector('.aviso .ler');
+  const carregouEm = Date.now();
+  let snapAtual = null, settingsAtual = null, avisoFechado = '', avisoChave = '', lendoAgora = false;
+  const minDesde = iso => { const t = Date.parse(iso || ''); return isFinite(t) ? Math.max(0, Math.round((Date.now() - t) / 60000)) : null; };
+  const fmtMin = n => n >= 120 ? Math.round(n / 60) + ' horas' : n === 1 ? '1 minuto' : n + ' minutos';
+  function motivoSemLeitura() {
+    if (!viva()) return { k: 'orfao', tit: 'A extensão foi atualizada', txt: 'Esta página ainda está com a versão anterior do Control Onvio e por isso não lê mais o Onvio. Recarregue a página para voltar a ler.', botao: 'Recarregar a página' };
+    const st = statusAtual || {}, e = st.estado;
+    if (e === 'visao_cliente') return null;
+    if (e === 'sem_sessao') return { k: 'sem_sessao|' + (st.em || ''), tit: 'O Control Onvio não está lendo o Onvio', txt: 'O Onvio não aceitou a leitura: a sessão pode ter acabado ou a página ainda não terminou de entrar. Se o Onvio pedir login, entre de novo; depois clique em Ler agora.', det: st.msg };
+    if (e === 'erro') return { k: 'erro|' + (st.em || ''), tit: 'O Control Onvio não conseguiu ler o Onvio', txt: 'O Onvio não respondeu à leitura. Pode ser instabilidade do Onvio ou da internet, ou uma mudança no Onvio. Tente ler de novo; se continuar, veja o Diagnóstico em Configurações › Avançado.', det: st.msg };
+    if (e === 'lendo') { const m = minDesde(st.em); return m != null && m >= 3 ? { k: 'travada|' + st.em, tit: 'A leitura do Onvio está demorando', txt: 'A leitura começou há ' + fmtMin(m) + ' e ainda não terminou. O Chrome pode ter pausado a extensão ou o Onvio está lento. Clique em Ler agora para começar de novo.' } : null; }
+    const lim = Math.max(15, 3 * (Number(settingsAtual && settingsAtual.intervalo) || 5));
+    const m = minDesde(snapAtual && snapAtual.fetchedAt);
+    if (m == null) return Date.now() - carregouEm > 90000 ? { k: 'nunca', tit: 'O Control Onvio ainda não leu o Onvio', txt: 'Nenhuma leitura terminou desde que esta página abriu. O Chrome pode ter pausado a extensão ou a sessão do Onvio ainda está entrando. Clique em Ler agora.' } : null;
+    if (m >= lim) return { k: 'parada|' + snapAtual.fetchedAt, tit: 'O Control Onvio parou de ler', txt: 'A última leitura foi há ' + fmtMin(m) + '. O Chrome pode ter pausado a extensão (computador em repouso ou aba em segundo plano). Os números da tela podem estar desatualizados.' };
+    return null;
   }
-  function conferirEspera() {
-    if (esperando && viva()) chrome.storage.local.get(['snapshot', 'status'], d => { if (esperando) abrirQuandoPronto(d.snapshot, d.status); });
+  function atualizarAviso() {
+    const mo = motivoSemLeitura();
+    if (mo && mo.k !== avisoChave) lendoAgora = false;
+    avisoChave = mo ? mo.k : '';
+    const mostrar = !!mo && mo.k !== avisoFechado;
+    avisoEl.hidden = !mostrar;
+    if (mostrar) host.dataset.aviso = mo.k.split('|')[0]; else delete host.dataset.aviso;
+    if (!mostrar) return;
+    avisoEl.querySelector('h2').textContent = mo.tit;
+    avisoEl.querySelector('.txt').textContent = mo.txt;
+    const det = avisoEl.querySelector('.det'); det.hidden = !mo.det; det.textContent = mo.det ? 'Detalhe: ' + String(mo.det).slice(0, 240) : '';
+    avisoLer.textContent = lendoAgora ? 'Lendo…' : mo.botao || 'Ler agora';
+    avisoLer.disabled = lendoAgora;
   }
+  avisoLer.addEventListener('click', () => {
+    if (!viva()) { location.reload(); return; }
+    lendoAgora = true; atualizarAviso();
+    try { chrome.runtime.sendMessage({ cmd: 'atualizar' }, () => { void chrome.runtime.lastError; lendoAgora = false; atualizarAviso(); }); }
+    catch (e) { lendoAgora = false; atualizarAviso(); }
+  });
+  raiz.querySelector('.aviso .depois').addEventListener('click', () => { avisoFechado = avisoChave; atualizarAviso(); });
+  setInterval(atualizarAviso, 30000);
+
+  /* ---------- mensagens do service worker (ícone da extensão, atalho) ----------
+   * A camada NUNCA abre sozinha (Josué, 06/11/2026): só pelo clique no botão, no ícone da extensão ou pelo atalho, e na hora. */
   chrome.runtime.onMessage.addListener(m => {
     if (!m || typeof m.type !== 'string' || !noPortal()) return;
-    if (m.type === 'alternar') { esperando = false; definirPainel(!aberto); }
-    else if (m.type === 'abrir') chrome.storage.local.get(['snapshot', 'status'], d => abrirQuandoPronto(d.snapshot, d.status));
+    if (m.type === 'alternar') definirPainel(!aberto);
+    else if (m.type === 'abrir') definirPainel(true);
     else if (m.type === 'fechar') definirPainel(false);
   });
   chrome.storage.onChanged.addListener((ch, area) => {
     if (area !== 'local') return;
-    if (ch.snapshot) atualizarContador(ch.snapshot.newValue);
-    if (ch.snapshot || ch.status) setTimeout(conferirEspera, 0);       // a primeira leitura terminou? então abre o painel pedido
+    if (ch.snapshot) { snapAtual = ch.snapshot.newValue || null; atualizarContador(snapAtual); }
+    if (ch.settings) settingsAtual = ch.settings.newValue || null;
+    if (ch.snapshot || ch.status || ch.settings) setTimeout(atualizarAviso, 0);
     if (ch.status) { statusAtual = ch.status.newValue || null; visaoCliente = !!(statusAtual && statusAtual.estado === 'visao_cliente'); launcher.classList.toggle('hidden', aberto || visaoCliente); chrome.storage.local.get('snapshot', d => atualizarContador(d.snapshot)); }
     if (ch.posBotao) aplicarPos(ch.posBotao.newValue);
   });
@@ -229,26 +277,17 @@
   chrome.storage.local.get('aprender', d => avisarHook(d.aprender));
 
   /* ---------- estado inicial ----------
-   * Abre ao entrar no Onvio (configurável). Fica escondido se nesta aba a pessoa escolheu "Ver Onvio", ou se
-   * chegou aqui por "Abrir no Onvio" (quer ver a tela nativa). O pedido do ícone fora do Onvio sempre abre. */
-  chrome.storage.local.get(['snapshot', 'status', 'abrirPainelAoCarregar', 'verOnvioAoCarregar', 'settings', 'regrasEscritorio', 'posBotao'], d => {
-    statusAtual = d.status || null;
+   * Nunca abre sozinha (Josué, 06/11/2026): ao entrar no Portal do Cliente fica só o botão. A única exceção é o clique no ícone
+   * da extensão fora do portal, que cria a aba do portal e pede a camada (abrirPainelAoCarregar, de até 2 min atrás): ela abre
+   * logo que a página carrega, como resposta a esse clique. */
+  chrome.storage.local.get(['snapshot', 'status', 'abrirPainelAoCarregar', 'posBotao', 'settings'], d => {
+    statusAtual = d.status || null; snapAtual = d.snapshot || null; settingsAtual = d.settings || null;
     if (d.posBotao && typeof d.posBotao.r === 'number' && typeof d.posBotao.b === 'number') aplicarPos(d.posBotao);
     atualizarContador(d.snapshot);
     visaoCliente = !!(d.status && d.status.estado === 'visao_cliente');
-    let naAba = null;
-    try { naAba = sessionStorage.getItem(CHAVE_ABERTO); } catch (e) {}
-    const recente = ts => ts && Date.now() - ts < 120000;
-    const pedido = recente(d.abrirPainelAoCarregar);
-    const verOnvio = recente(d.verOnvioAoCarregar);
+    const pedido = !!(d.abrirPainelAoCarregar && Date.now() - d.abrirPainelAoCarregar < 120000);
     if (pedido) chrome.storage.local.remove('abrirPainelAoCarregar');
-    if (verOnvio) chrome.storage.local.remove('verOnvioAoCarregar');
-    const abrirAoEntrar = !(d.settings && d.settings.abrirAoEntrar === false);
-    // com acesso de cliente só abre a pedido (ícone), para mostrar o aviso; nunca sozinho. Sozinha, a camada também só abre
-    // quando já há leitura (resumo guardado e estado sem erro): sem dados fica só o botão, com o aviso, e o clique abre igual.
-    const comDados = !!(d.snapshot && d.snapshot.items && !(d.status && ['erro', 'sem_sessao', 'visao_cliente'].includes(d.status.estado)));
-    const abrir = !visaoCliente && !verOnvio && comDados && (naAba === '1' || (naAba === null && abrirAoEntrar));
-    if (pedido) abrirQuandoPronto(d.snapshot, d.status);          // pedido pelo ícone: abre assim que a leitura estiver pronta
-    else definirPainel(abrir);
+    definirPainel(pedido);
+    atualizarAviso();
   });
 })();

@@ -3,7 +3,7 @@
   'use strict';
   const $ = s => document.querySelector(s);
   const NUM = ['tempoRealSeg', 'intervalo', 'primeiroTramite', 'conclusaoSimples', 'conclusaoCalculo', 'clienteSemRetorno', 'resolvidaClienteDias', 'parada', 'foraDoPortalDias', 'concluirClienteDias', 'desfazerSeg', 'prescricaoDias'];
-  const BOOL = ['abrirAoEntrar', 'notificar', 'modoGestor'];
+  const BOOL = ['notificar', 'modoGestor'];
   let regras = null;          // regras do escritório guardadas (arquivo)
 
   // O que vale sem ajustes pessoais: padrões do código + regras do escritório.

@@ -991,7 +991,7 @@ async function irParaOnvio() {
   return t.id;
 }
 
-// Dentro do portal alterna o painel daquela aba; em qualquer outra página leva ao portal (Solicitações) e abre o painel lá
+// Dentro do portal alterna o painel daquela aba; em qualquer outra página leva ao portal (Solicitações) e abre o painel lá, na hora (é o clique da pessoa)
 async function aoClicarNoIcone(tab) {
   if (tab && tab.id != null && ehPortal(tab.url)) await mensagemParaPainel(tab.id, 'alternar').catch(() => {});
   else if (tab && tab.id != null && OCG.appDe(tab.url || '')) await chrome.tabs.sendMessage(tab.id, { controlGestta: 'alternar' }).catch(() => {});      // no Gestta: abre e fecha a camada de lá
@@ -1005,17 +1005,14 @@ chrome.commands.onCommand.addListener(async (cmd, tab) => { if (cmd === 'alterna
 async function abrir(it, tabPreferida) {
   const t = OC.TYPE_BY_KEY[it.type];
   const url = OC.PORTAL + t.route;
-  await chrome.storage.local.set({ abrir: { route: t.route, num: String(it.num), ts: Date.now() }, verOnvioAoCarregar: Date.now() });
+  await chrome.storage.local.set({ abrir: { route: t.route, num: String(it.num), ts: Date.now() } });
   const pref = tabPreferida != null ? await chrome.tabs.get(tabPreferida).catch(() => null) : null;
   const tabs = await chrome.tabs.query({ url: 'https://onvio.com.br/br-portal-do-cliente/*' });
   const alvo = pref && ehPortal(pref.url) ? pref : tabs[0];
   if (alvo) {
     await chrome.tabs.update(alvo.id, { url, active: true });
     await chrome.windows.update(alvo.windowId, { focused: true });
-  } else {
-    await chrome.storage.local.set({ abrirPainelAoCarregar: Date.now() });
-    await chrome.tabs.create({ url });
-  }
+  } else await chrome.tabs.create({ url });           // "Abrir no Onvio" quer a tela do Onvio: a camada não abre (nunca abre sozinha)
 }
 
 // Vereditos das Sugestões de ação (k -> { l, tipo, trecho }): só na memória, some quando o service worker dorme
