@@ -178,14 +178,6 @@ function parteHub(corpo, d, el) {
     if (r && r.jaRodando) toast('Já há um envio em andamento: acompanhe em "Último envio"');
   };
   $('#adv-sincronizar', corpo).onclick = () => sincronizar(false);
-  if (!corpo.dataset.reenviar) corpo.dataset.reenviar = '1', corpo.addEventListener('click', async ev => {          // uma vez só: a parte é redesenhada sem trocar o elemento
-    const b = ev.target.closest('[data-reenviar]'); if (!b) return;
-    b.disabled = true; b.textContent = 'Reenviando…';
-    const r = await enviar({ cmd: b.dataset.reenviar, reenviar: true });
-    if (r && r.ok === false) { toast(OP.msgHub(r)); b.disabled = false; b.textContent = 'Reenviar o que deu erro'; return; }
-    if (r && r.jaRodando) toast('Já há um envio em andamento: espere ele terminar');
-    else toast('Reenviando ' + (r && r.n ? r.n + (r.n === 1 ? ' conjunto' : ' conjuntos') : 'o que deu erro'));
-  });
   $('#adv-so-folha', corpo).onclick = () => sincronizar(true);
   estadoHub(el);
 }
@@ -211,6 +203,13 @@ async function estadoHub(el) {
     alvo.innerHTML = '<p class="adv-msg' + (['erro', 'interrompido'].includes(e.estado) ? ' adv-msg-erro' : '') + '">' + esc(e.cab) + '</p>' + barra + (resumo || reenv ? '<div class="adv-resumo-l">' + resumo + reenv + '</div>' : '') +
       (prob.length ? '<ul class="adv-res">' + prob.map(li).join('') + '</ul>' : '') +
       (resto.length ? '<details class="adv-todos"' + (aberto ? ' open' : '') + '><summary>Ver ' + (prob.length ? 'os outros ' : 'os ') + resto.length + ' conjuntos</summary><ul class="adv-res">' + resto.map(li).join('') + '</ul></details>' : '');
+    const b = alvo.querySelector('[data-reenviar]');
+    if (b) b.onclick = async () => {
+      b.disabled = true; b.textContent = 'Reenviando…';
+      const r = await enviar({ cmd: b.dataset.reenviar, reenviar: true });
+      if (r && r.ok === false) { toast(OP.msgHub(r)); b.disabled = false; b.textContent = 'Reenviar o que deu erro'; return; }
+      toast(r && r.jaRodando ? 'Já há um envio em andamento: espere ele terminar' : 'Reenviando ' + (r && r.n ? r.n + (r.n === 1 ? ' conjunto' : ' conjuntos') : 'o que deu erro'));
+    };
   };
   pinta(envio, OP.linhasEnvio(hubSync), 'hubSincronizar');
   const ge = $('#adv-gestta-envio', el);
