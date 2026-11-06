@@ -614,6 +614,11 @@
     }
     return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([, x]) => linhaTab([x.cnpj, x.nome, x.n, x.mes]));
   }
+  // 0.84.0: reenviar só o que deu erro. Qual categoria do envio refaz cada conjunto (a lista das ativas sai da etapa das tarefas).
+  const CAT_DO_CONJUNTO = { 'gestta-tarefas': 'tarefas', 'gestta-empresas-ativas': 'tarefas', 'gestta-clientes': 'clientes', 'gestta-equipe': 'equipe', 'gestta-setores': 'equipe',
+    'gestta-envios-onvio-erro': 'alertas', 'gestta-templates-sem-pasta': 'alertas', 'gestta-cartela': 'cartela' };
+  const catDoConjunto = id => CAT_DO_CONJUNTO[String(id || '')] || '';
+  const paraReenviar = hubSync => (!hubSync || hubSync.estado === 'enviando') ? [] : [...new Set((hubSync.resultados || []).filter(r => !r.ok).map(r => catDoConjunto(r.id)).filter(Boolean))];
   const mesAnterior = (ano, mes) => mes === 1 ? { ano: ano - 1, mes: 12 } : { ano, mes: mes - 1 };
   const mesTexto = (ano, mes) => ano + '-' + String(mes).padStart(2, '0');
   // Lê e entrega cada conjunto. ler(pedidos) → resultados (o mesmo de lerNaPagina, feito pelo service worker na aba do Gestta);
@@ -737,5 +742,5 @@
     GRUPOS, TIPOS_TAREFA, SITUACOES_TAREFA, MAX_PAGINAS_TAREFAS, diasUteis, grupoTarefa, prazoTexto, contarGrupos, porEmpresa, porDia, filtrarTarefas, urlTarefa, ymd, diaLocal,
     COLUNAS_FECHAMENTO, linhasDoRelatorio, tarefasDoRelatorio, trilhaDaEmpresa, fechamento, ESTADOS, setorDe, respDe, ehEscritorioProprio,
     eventosDaTarefa, obrigacoes, nomeObrigacao, meuDia, ORDENS_EMPRESA, ordenarEmpresas,
-    HUB_GESTTA, hubExecutarGestta, filtrosRelatorio, lembrarFiltroRel, partirLinhas, tabelaTarefasHub, empresasAtivasHub, COLS_TAREFAS_HUB, COLS_CLIENTES_HUB, COLS_CARTELA_HUB, COLS_ATIVAS_HUB };
+    HUB_GESTTA, hubExecutarGestta, catDoConjunto, paraReenviar, filtrosRelatorio, lembrarFiltroRel, partirLinhas, tabelaTarefasHub, empresasAtivasHub, COLS_TAREFAS_HUB, COLS_CLIENTES_HUB, COLS_CARTELA_HUB, COLS_ATIVAS_HUB };
 })(typeof self !== 'undefined' ? self : this);
