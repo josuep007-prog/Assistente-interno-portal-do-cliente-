@@ -1218,7 +1218,10 @@ const AV_ESTADO = {
   hubSync: { estado: 'parcial', terminouEm: new Date().toISOString(), resultados: [
     { id: 'lista-geral', rotulo: 'Solicitações · Geral (todas)', ok: true, linhas: 120 },
     { id: 'pessoais-folha-contribuintes', rotulo: 'Dados pessoais · contribuintes na folha (Extrato Mensal)', ok: true, nota: true, motivo: '12 empresas com extrato, nenhum extrato novo desde a última leitura' },
-    { id: 'clientes-cnd', rotulo: 'Clientes de CND', ok: false, motivo: 'sem-resposta' }] },
+    { id: 'clientes-cnd', rotulo: 'Clientes de CND', ok: false, motivo: 'sem-resposta' },
+    { id: 'escritorio-licencas', rotulo: 'Escritório · Licenças', categoria: 'escritorio', ok: false, motivo: 'leitura falhou: provisioning/v1/licenses' },
+    { id: 'pessoais-cad-estagiario', rotulo: 'Dados pessoais · Cadastro estagiário', ok: true, motivo: 'sem-mudanca' },
+    { id: 'pessoais-folha-x', rotulo: 'Dados pessoais · folha', ok: true, cortado: true, porque: '5 falhas (HTTP 500); falhou: documentos do cliente 77DF7394DD2A4C3FB5722A39DA123D66, documentos do cliente 1316655BC5E54D0794B456F08F522B7F' }] },
   regrasEscritorio: { url: 'https://exemplo.com/r.json', versao: 't7', atualizadoEm: new Date().toISOString(), regras: { versao: 't7' } },
   aprendizado: [{ metodo: 'POST', caminho: '/api/x/{id}', status: 200, vezes: 2, rotas: ['/x'] }],
   settings: { __v: 2, regrasUrl: 'https://exemplo.com/r.json' }
@@ -1245,6 +1248,15 @@ await passo('app · Configurações → Avançado (0.69.0): cinco partes com o e
     const res = await p.$$eval('.adv-res li', e => e.map(x => x.className + '|' + x.textContent));
     assert.match(res[0], /adv-erro.*Clientes de CND.*não respondeu/, 'erro primeiro: ' + res[0]);
     assert.ok(res.some(r => /adv-nota.*Extrato Mensal.*nenhum extrato novo/.test(r)), 'a folha aparece como nota');
+    // 0.83.0: resumo numa linha; à vista só erro e aviso; "sem mudança" e o que deu certo recolhidos; licença do escritório é aviso; ids longos somem
+    assert.match(await p.textContent('.adv-resumo'), /1 enviado\b.*1 sem mudança.*2 avisos.*1 erro/);
+    const vis = await p.$$eval('#adv-envio > .adv-res li', e => e.map(x => x.className + '|' + x.textContent));
+    assert.deepEqual(vis.map(v => v.split('|')[0]), ['adv-erro', 'adv-aviso', 'adv-aviso'], 'à vista só os problemas: ' + vis.join(' / '));
+    assert.ok(vis.some(v => /Licenças.*não liberou esta leitura/.test(v)));
+    assert.ok(vis.some(v => /folha.*falhou em 2 leituras/.test(v)) && !vis.some(v => /77DF7394/.test(v)), 'sem os ids enormes: ' + vis.join(' / '));
+    assert.equal(await p.isVisible('details.adv-todos .adv-igual'), false, 'o que deu certo fica recolhido');
+    assert.match(await p.textContent('details.adv-todos > summary'), /Ver os outros 3 conjuntos/);
+    if (process.env.CAP) await (await p.$('#adv-envio')).screenshot({ path: process.env.CAP + '/avancado-envio-' + estilo + '.png' });
     // dados pessoais pedem confirmação antes de ligar
     await p.click('.adv-cat input[data-cat="pessoais"]');
     await p.waitForSelector('#adv-pessoais-aviso:not([hidden])');

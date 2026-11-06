@@ -1697,6 +1697,13 @@ body.setor-fora .trilho [data-rota="equipe"], body.setor-fora .trilho [data-rota
 .adv-res li{display:grid; grid-template-columns:18px minmax(0, 260px) minmax(0, 1fr); gap:8px; padding:6px 0; border-top:1px solid var(--rule); font-size:12.5px; color:var(--ink-2)}
 .adv-res li b{font-weight:600; color:var(--ink)}
 .adv-res li.adv-ok > span:first-child{color:var(--ok)} .adv-res li.adv-erro > span:first-child, .adv-res li.adv-erro > span:last-child{color:var(--late)} .adv-res li.adv-aviso > span:first-child{color:var(--today)}
+.adv-res li.adv-igual > span:first-child{color:var(--ink-3)}
+/* 0.83.0: resumo do envio numa linha e o resto recolhido */
+.adv-resumo{display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 0}
+.adv-chip{display:inline-flex; align-items:center; gap:4px; padding:3px 8px; border:1px solid var(--rule); border-radius:var(--r); font-size:12px; font-weight:600; color:var(--ink-2); background:var(--surface)}
+.adv-chip.adv-ok{color:var(--ink)} .adv-chip.adv-erro{border-color:var(--late); color:var(--ink)} .adv-chip.adv-aviso{border-color:var(--today); color:var(--ink)}
+.adv-todos{margin:8px 0 0} .adv-todos > summary{cursor:pointer; font-size:12.5px; font-weight:600; color:var(--ink-2); padding:4px 0}
+.adv-todos > summary:hover{color:var(--ink)} .adv-todos .adv-res{margin-top:4px}
 .adv-barra{height:6px; margin:8px 0 0; border-radius:3px; background:var(--surface-3); overflow:hidden} .adv-barra i{display:block; height:100%; background:var(--blue-deep); transition:width .3s}
 .adv-empresa{display:flex; align-items:flex-end; gap:8px; flex-wrap:wrap; margin:0 0 4px} .adv-empresa .btn{height:34px}
 .adv-testes{display:grid; grid-template-columns:repeat(auto-fill, minmax(240px, 1fr)); gap:8px}

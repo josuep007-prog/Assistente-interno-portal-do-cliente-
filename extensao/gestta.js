@@ -207,6 +207,18 @@
     const ini = new Date(Date.UTC(ano, mes - 1, 1, 3, 0, 0)), fim = new Date(Date.UTC(ano, mes, 1, 2, 59, 59));
     return { start_date: iso(ini), end_date: iso(fim) };
   }
+  // 0.83.0 (Josué, 06/11/2026: "Tarefas do mês atual e do anterior: erro 400"): o próprio Gestta pede o relatório com o período no
+  // campo filter (CURRENT_MONTH); com filter vazio o servidor pode recusar. Só num 400 tenta os outros valores, e lembra o que deu certo.
+  // lembra o JEITO que deu certo ('' vazio, 'P' período relativo, 'CUSTOM'), nunca a palavra: CURRENT_MONTH num mês passado traria o mês errado
+  let modoRelOk = '';
+  function filtrosRelatorio(m, hoje) {
+    const h = hoje || new Date(), ant = mesAnterior(h.getFullYear(), h.getMonth() + 1);
+    const rel = m.ano === h.getFullYear() && m.mes === h.getMonth() + 1 ? 'CURRENT_MONTH' : m.ano === ant.ano && m.mes === ant.mes ? 'LAST_MONTH' : '';
+    const deModo = (md) => md === 'P' ? rel : md;
+    return [...new Set([deModo(modoRelOk), '', rel, 'CUSTOM'])];          // rel vazio (mês mais antigo) cai no '' que já está na lista
+  }
+  const lembrarFiltroRel = (f) => { modoRelOk = f === 'CURRENT_MONTH' || f === 'LAST_MONTH' ? 'P' : String(f || ''); };
+  const filtroRelOk = '';
   const PEDIDOS = {
     me: () => ({ id: 'me', tipo: 'me', metodo: 'GET', url: url('/core/company/user/me') }),
     setores: () => ({ id: 'setores', tipo: 'setor', metodo: 'GET', url: url('/admin/company/department') }),
@@ -217,7 +229,7 @@
       corpo: Object.assign({ page: o.page || 1, limit: o.limit || 100, type: o.type || ['RECURRENT', 'SERVICE_ORDER', 'ACCOUNTING'], status: o.status || ['OPEN', 'IMPEDIMENT'], date_type: 'DUE_DATE' }, janelaDoMes(o.ano, o.mes), o.companyUser ? { company_user: [o.companyUser] } : {}, o.semDono ? { no_owner: true } : {}) }),
     tarefa: (o) => ({ id: 'tarefa', tipo: 'tarefaDetalhe', metodo: 'GET', url: url('/core/customer/task/' + encodeURIComponent(o.id)) }),
     historico: (o) => ({ id: 'historico', tipo: 'historico', metodo: 'GET', url: url('/core/customer/task/' + encodeURIComponent(o.id) + '/history', { page: o.page || 1 }) }),
-    relatorio: (o) => { const j = janelaDoMes(o.ano, o.mes); return { id: 'relatorio', tipo: 'relatorio', metodo: 'POST', url: url('/core/customer/task/report'), corpo: { type: 'CUSTOMER_TASK', filter: '', dates: { startDate: j.start_date, endDate: j.end_date } } }; },
+    relatorio: (o) => { const j = janelaDoMes(o.ano, o.mes); return { id: 'relatorio', tipo: 'relatorio', metodo: 'POST', url: url('/core/customer/task/report'), corpo: { type: 'CUSTOMER_TASK', filter: o.filtro != null ? String(o.filtro) : filtroRelOk, dates: { startDate: j.start_date, endDate: j.end_date } } }; },
     fechamento: (o) => Object.assign(PEDIDOS.relatorio(o), { id: 'fechamento', tipo: 'fechamento' }),
     filaOnvioErro: (o) => ({ id: 'filaOnvioErro', tipo: 'filaOnvio', metodo: 'GET', url: url('/es/file/onvio', { status: 'ERROR', limit: (o && o.limit) || 50, skip: (o && o.skip) || 0 }) }),
     multas: (o) => { const j = janelaDoMes(o.ano, o.mes); return { id: 'multas', tipo: 'contagem', metodo: 'GET', url: url('/core/dashboard/attention/fine/all', j) }; },
@@ -610,7 +622,7 @@
   async function hubExecutarGestta(ler, cats, ctx, enviar, progresso) {
     ctx = ctx || {}; const hoje = ctx.hoje || new Date();
     const res = [], quer = k => (cats || []).includes(k);
-    const etapas = [quer('tarefas') && 'tarefas', quer('clientes') || (quer('cartela') && ctx.cartela) ? 'clientes' : null, quer('equipe') && 'equipe', quer('alertas') && 'alertas', quer('cartela') && ctx.cartela && 'cartela'].filter(Boolean);
+    const etapas = [quer('tarefas') && 'tarefas', quer('clientes') || quer('tarefas') || (quer('cartela') && ctx.cartela) ? 'clientes' : null, quer('equipe') && 'equipe', quer('alertas') && 'alertas', quer('cartela') && ctx.cartela && 'cartela'].filter(Boolean);
     let feito = 0, parar = false, clientes = null;
     const prog = rot => progresso && progresso({ etapa: rot, feito, total: etapas.length });
     const um = async (pedido) => { const r = await ler([pedido]); const x = r && r[0]; if (!x) throw new Error('a aba do Gestta não respondeu'); if (x.status !== 200 || !x.dados) { const e = new Error(x.status === 403 ? 'seu acesso não inclui esta leitura (403)' : x.status === 401 ? 'a sessão do Gestta acabou' : (x.erro || x.recusado || ('HTTP ' + x.status))); e.status = x.status; throw e; } return x.dados; };
@@ -621,6 +633,16 @@
       const item = Object.assign({ id: conj.tipoDado, rotulo: conj.titulo, categoria: conj.categoria, ok: !!r.ok, motivo: r.ok ? (r.motivo || '') : (r.motivo || 'erro'), linhas: linhas.length, partes: p.partes.length, cortado: p.cortado || !!(extra && extra.cortado), porque: extra && extra.porque || '' }, r.ok && r.motivo === 'sem-mudanca' ? { nota: true } : {});
       res.push(item); if (r.parar) parar = true; return item;
     };
+    // o relatório de um mês, tentando os valores de período só quando o Gestta responde 400
+    const lerRelatorio = async (m) => {
+      let ultimo = null;
+      for (const f of filtrosRelatorio(m, hoje)) {
+        try { const r = await um(PEDIDOS.relatorio(Object.assign({}, m, { filtro: f }))); lembrarFiltroRel(f); return r; }
+        catch (e) { if (e && e.status === 400) { ultimo = e; continue; } throw e; }
+      }
+      const e = new Error('o Gestta recusou o relatório de tarefas (erro 400' + (ultimo && ultimo.message && !/^erro 400$/.test(ultimo.message) ? ': ' + ultimo.message : '') + ')'); e.status = 400; throw e;
+    };
+    let ativasPendente = false;
     const falhou = (tipoDado, titulo, categoria, e) => { res.push({ id: tipoDado, rotulo: titulo, categoria, ok: false, motivo: String((e && e.message) || e).slice(0, 160) }); if (e && e.status === 401) parar = true; };
     for (const etapa of etapas) {
       if (parar || (ctx.cancelado && ctx.cancelado())) break;
@@ -632,13 +654,13 @@
         try {
           for (const m of [ant, atual]) {
             ctx.andamento && ctx.andamento('relatório de ' + mesTexto(m.ano, m.mes));
-            const rel = await um(PEDIDOS.relatorio(m));
+            const rel = await lerRelatorio(m);
             const t = tabelaTarefasHub(rel, mesTexto(m.ano, m.mes)); linhas.push(...t.linhas); escritorio += t.escritorio; total += rel.total || 0; formatos.push(rel.formato);
             rels.push({ rel, mes: mesTexto(m.ano, m.mes) });
           }
           await entregar({ tipoDado: 'gestta-tarefas', categoria: 'tarefas', titulo: 'Gestta · Tarefas do mês atual e do anterior', colunas: COLS_TAREFAS_HUB, totalNaOrigem: total - escritorio }, linhas, { porque: escritorio ? escritorio + ' tarefas de empresas do escritório ficaram fora' : '' });
           if (!parar) { const at = empresasAtivasHub(rels); await entregar({ tipoDado: 'gestta-empresas-ativas', categoria: 'cadastros', titulo: 'Gestta · Empresas em atividade (tarefa no mês atual ou anterior)', colunas: COLS_ATIVAS_HUB, totalNaOrigem: at.length }, at); }
-        } catch (e) { falhou('gestta-tarefas', 'Gestta · Tarefas do mês atual e do anterior', 'tarefas', e); }
+        } catch (e) { falhou('gestta-tarefas', 'Gestta · Tarefas do mês atual e do anterior', 'tarefas', e); if (!parar) ativasPendente = true; }
       }
       if (etapa === 'clientes') {
         prog('Clientes');
@@ -647,6 +669,17 @@
           clientes = r.itens.filter(c => c && c._id && !ehEscritorioProprio(c.name));
           if (quer('clientes')) await entregar({ tipoDado: 'gestta-clientes', categoria: 'cadastros', titulo: 'Gestta · Clientes ativos', colunas: COLS_CLIENTES_HUB, totalNaOrigem: r.total }, clientes.map(linhaCliente), { cortado: r.cortado, porque: r.cortado ? 'a lista passou do limite de páginas' : '' });
         } catch (e) { if (quer('clientes')) falhou('gestta-clientes', 'Gestta · Clientes ativos', 'cadastros', e); }
+        // sem o relatório, a lista das empresas em atividade sai da busca de tarefas (abertas, com impedimento e concluídas, um mês por vez)
+        if (ativasPendente && clientes && !parar) try {
+          const porId = new Map(clientes.map(c => [String(c._id), c])), vistos = new Map(); let cortado = false;
+          for (const m of [mesAnterior(hoje.getFullYear(), hoje.getMonth() + 1), { ano: hoje.getFullYear(), mes: hoje.getMonth() + 1 }]) {
+            const r = await paginar(p => { ctx.andamento && ctx.andamento('tarefas de ' + mesTexto(m.ano, m.mes) + ', página ' + p); return um(PEDIDOS.buscaTarefas({ ano: m.ano, mes: m.mes, page: p, limit: LIMITE_BUSCA, status: ['OPEN', 'IMPEDIMENT', 'DONE'] })); }, MAX_PAGINAS_TAREFAS);
+            if (r.cortado) cortado = true;
+            r.itens.forEach(t => { const cu = t && t.customer; if (!cu) return; const c = porId.get(String(cu._id)); const nome = (c && c.name) || cu.name || ''; if (ehEscritorioProprio(nome)) return; const cnpj = String((c && c.cnpj) || '').replace(/\D/g, ''); const k = cnpj.length === 14 || cnpj.length === 11 ? cnpj : 'n:' + String(nome).toUpperCase(); const x = vistos.get(k) || { cnpj: cnpj.length === 14 || cnpj.length === 11 ? cnpj : '', nome, n: 0, mes: '' }; x.n++; const ms = mesTexto(m.ano, m.mes); if (ms > x.mes) x.mes = ms; vistos.set(k, x); });
+          }
+          const at = [...vistos.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([, x]) => linhaTab([x.cnpj, x.nome, x.n, x.mes]));
+          await entregar({ tipoDado: 'gestta-empresas-ativas', categoria: 'cadastros', titulo: 'Gestta · Empresas em atividade (pela busca de tarefas)', colunas: COLS_ATIVAS_HUB, totalNaOrigem: at.length }, at, { cortado, porque: cortado ? 'a busca passou do limite de páginas' : '' });
+        } catch (e) { falhou('gestta-empresas-ativas', 'Gestta · Empresas em atividade', 'cadastros', e); }
       }
       if (etapa === 'equipe') {
         prog('Equipe e setores');
@@ -704,5 +737,5 @@
     GRUPOS, TIPOS_TAREFA, SITUACOES_TAREFA, MAX_PAGINAS_TAREFAS, diasUteis, grupoTarefa, prazoTexto, contarGrupos, porEmpresa, porDia, filtrarTarefas, urlTarefa, ymd, diaLocal,
     COLUNAS_FECHAMENTO, linhasDoRelatorio, tarefasDoRelatorio, trilhaDaEmpresa, fechamento, ESTADOS, setorDe, respDe, ehEscritorioProprio,
     eventosDaTarefa, obrigacoes, nomeObrigacao, meuDia, ORDENS_EMPRESA, ordenarEmpresas,
-    HUB_GESTTA, hubExecutarGestta, partirLinhas, tabelaTarefasHub, empresasAtivasHub, COLS_TAREFAS_HUB, COLS_CLIENTES_HUB, COLS_CARTELA_HUB, COLS_ATIVAS_HUB };
+    HUB_GESTTA, hubExecutarGestta, filtrosRelatorio, lembrarFiltroRel, partirLinhas, tabelaTarefasHub, empresasAtivasHub, COLS_TAREFAS_HUB, COLS_CLIENTES_HUB, COLS_CARTELA_HUB, COLS_ATIVAS_HUB };
 })(typeof self !== 'undefined' ? self : this);
