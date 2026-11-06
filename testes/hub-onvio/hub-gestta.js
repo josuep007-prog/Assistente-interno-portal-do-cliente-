@@ -363,6 +363,21 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     assert.ok(ids.length <= 150 && !ids.includes('velho') && ids.includes('r0'), ids.length + ' pontos');
   });
 
+  await passo('Hub 322: analista ativa sem setor no cadastro do Gestta entra no módulo pelo setor da cartela', async () => {
+    const eq = EQUIPE.linhas.concat([['u10', 'Thais Exemplo', 'Analista', 'sim', '', 'sim'], ['u11', 'Sem Cartela', 'Analista', 'sim', '', 'sim']]);
+    await semear('ing_partes/gestta~gestta-equipe~a0', { ciclo: 'g3', parte: 0, tabela: tab(eq) });
+    const manE = await page.evaluate(() => window.__db.ler('ing_dados/gestta~gestta-equipe'));
+    await semear('ing_dados/gestta~gestta-equipe', Object.assign({}, manE, { ciclo: 'g3', partes: 1, nLinhas: eq.length, totalNaOrigem: eq.length }));
+    const cart = CARTELA.linhas.concat([['g3', '3', 'GAMA INDUSTRIA LTDA', C.gama, 'Contábil', 's2', 'Thais Exemplo', 'u10']]);
+    await semear('ing_partes/gestta~gestta-cartela~a0', { ciclo: 'g3', parte: 0, tabela: tab(cart) });
+    const manC = await page.evaluate(() => window.__db.ler('ing_dados/gestta~gestta-cartela'));
+    await semear('ing_dados/gestta~gestta-cartela', Object.assign({}, manC, { ciclo: 'g3', partes: 1, nLinhas: cart.length, totalNaOrigem: cart.length }));
+    await page.waitForFunction(() => (window.__cadastro.analistas('ctb') || []).includes('Thais Exemplo'), null, { timeout: 10000 });
+    const ana = await page.evaluate(() => [window.__cadastro.analistas('ctb'), window.__cadastro.analistaAtivo('Thais Exemplo'), window.__cadastro.analistaAtivo('Sem Cartela')]);
+    assert.ok(ana[0].includes('Thais Exemplo') && !ana[0].includes('Sem Cartela'), JSON.stringify(ana[0]));
+    assert.deepEqual(ana.slice(1), [true, true], 'as duas continuam ativas no Gestta');
+  });
+
   await passo('Uso do banco mede também o histórico do Gestta e o login', async () => {
     const cols = await page.evaluate(() => window.__hubApi.usoColecoes ? window.__hubApi.usoColecoes().map(c => c.path) : null);
     if (cols) assert.ok(['gt_hist', 'auth_log', 'hub_log'].every(c => cols.includes(c)), cols.join(', '));
