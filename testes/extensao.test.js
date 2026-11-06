@@ -3970,6 +3970,9 @@ test('Gestta → Hub (0.79.0): conjuntos em português, sem as empresas do escri
   const at = enviados['gestta-empresas-ativas'];
   assert.equal(at.conj.categoria, 'cadastros'); assert.deepEqual(plano(at.conj.colunas), ['CNPJ', 'Cliente', 'Tarefas', 'Último mês']);
   assert.equal(at.p.partes.join('\n'), '00000000000100\tEMPRESA ALFA\t2\t2026-11');
+  // 0.82.0: cliente sem CNPJ no Gestta vai pelo nome (antes era descartado)
+  const relSem = { colunas: ['customer.cnpj', 'customer.name'], linhas: [['', 'MARIA EMPREGADORA DOMESTICA'], ['12.345.678/0001-90', 'BETA LTDA'], ['', 'MARIA EMPREGADORA DOMESTICA'], ['', 'CONTROLTAX CONSULTORIA']] };
+  assert.deepEqual(plano(OCG.empresasAtivasHub([{ rel: relSem, mes: '2026-11' }])), ['12345678000190\tBETA LTDA\t1\t2026-11', '\tMARIA EMPREGADORA DOMESTICA\t2\t2026-11']);
   assert.ok(res.every(r => r.ok));
   // tarefas: mês anterior e atual, só as das empresas que não são do escritório, colunas e valores em português
   const tar = enviados['gestta-tarefas'];
