@@ -89,12 +89,19 @@
       : (o.nome ? 'Último envio ' + o.nome + ': ' : hubSync.soFolha ? 'Último envio só da folha: ' : 'Último envio completo: ') + ({ ok: 'tudo aceito', parcial: 'parte aceita', erro: 'não concluído' }[est] || est) + ' em ' + quando(hubSync.terminouEm) + (hubSync.motivo ? ' · ' + (MOTIVOS_HUB[hubSync.motivo] || hubSync.motivo) : '') +
         ' · ' + ok.length + ' conjuntos enviados, ' + ok.reduce((n, r) => n + (r.linhas || 0), 0).toLocaleString('pt-BR') + ' linhas';
     const linhas = [];
-    mal.forEach(r => linhas.push({ tom: 'erro', rotulo: r.rotulo, texto: MOTIVOS_HUB[r.motivo] || r.motivo }));
-    ok.filter(x => x.cortado).forEach(r => linhas.push({ tom: 'aviso', rotulo: r.rotulo, texto: 'veio incompleto' + (r.porque ? ': ' + r.porque : ' (cortado)') + (r.linhas ? ' · ' + r.linhas.toLocaleString('pt-BR') + ' linhas enviadas' : '') }));
-    ok.filter(x => x.motivo && !x.cortado).forEach(r => linhas.push({ tom: r.nota ? 'nota' : 'aviso', rotulo: r.rotulo, texto: MOTIVOS_HUB[r.motivo] || r.motivo }));
+    // 0.83.0 (Josué, 06/11/2026: "essa tela tá muito bagunçada com tantas linhas"): ids longos viram "…", listas de falhas viram contagem,
+    // "nada mudou" não é alerta, e leitura do escritório que o Onvio não libera (licenças, preferências) é aviso, não erro.
+    const curto = (t) => { let x = String(t || '').replace(/\b[0-9A-F]{20,}\b/gi, '…');
+      x = x.replace(/falhou: ((?:[^·;]+?, )+[^·;]+?)(?= ·|;|$)/, (m, l) => 'falhou em ' + l.split(', ').length + ' leituras'); return x.length > 160 ? x.slice(0, 157) + '…' : x; };
+    mal.forEach(r => linhas.push(r.categoria === 'escritorio'
+      ? { tom: 'aviso', rotulo: r.rotulo, texto: 'o Onvio não liberou esta leitura para o seu login (não atrapalha o resto)', dica: r.motivo }
+      : { tom: 'erro', rotulo: r.rotulo, texto: curto(MOTIVOS_HUB[r.motivo] || r.motivo), dica: r.motivo }));
+    ok.filter(x => x.cortado).forEach(r => linhas.push({ tom: 'aviso', rotulo: r.rotulo, texto: curto('veio incompleto' + (r.porque ? ': ' + r.porque : ' (cortado)') + (r.linhas ? ' · ' + r.linhas.toLocaleString('pt-BR') + ' linhas enviadas' : '')), dica: r.porque || '' }));
+    ok.filter(x => x.motivo && !x.cortado).forEach(r => linhas.push({ tom: r.motivo === 'sem-mudanca' ? 'igual' : r.nota ? 'nota' : 'aviso', rotulo: r.rotulo, texto: r.motivo === 'sem-mudanca' ? 'sem mudança' : curto(MOTIVOS_HUB[r.motivo] || r.motivo) }));
     ok.filter(x => !x.motivo && !x.cortado).forEach(r => linhas.push({ tom: 'ok', rotulo: r.rotulo, texto: (r.linhas || 0).toLocaleString('pt-BR') + ' linhas' }));
     if (o.cartelaEm && est !== 'enviando') linhas.push({ tom: 'nota', rotulo: 'Cartela', texto: 'última leitura em ' + quando(o.cartelaEm) + '; a próxima vem no primeiro envio depois de ' + quando(o.cartelaEm + 20 * 3600e3) });
-    return { cab, estado: est, linhas, feito: hubSync.feito, total: hubSync.total };
+    const conta = (t) => linhas.filter(l => l.tom === t).length;
+    return { cab, estado: est, linhas, feito: hubSync.feito, total: hubSync.total, resumo: { ok: conta('ok'), igual: conta('igual'), aviso: conta('aviso'), erro: conta('erro') } };
   }
 
   g.OCOpcoes = { MOTIVOS_HUB, msgHub, quando, diagnostico, APRENDER_MAX_MS, aprenderAtivo, aprenderResta, textoAprendido, ROTEIRO_APRENDER, linhasEnvio, URL_REGRAS_CLIENTE: 'https://raw.githubusercontent.com/josuep007-prog/assistente-portal-regras/main/regras.json', HUB_ORIGENS: ['https://claude.ai/*'] };

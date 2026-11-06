@@ -189,11 +189,18 @@ async function estadoHub(el) {
     pilula(st.permitido ? 'ok' : 'aviso', st.permitido ? 'claude.ai permitido' : 'claude.ai não permitido') +
     pilula(st.hubAberto ? 'ok' : 'aviso', st.hubAberto ? (st.hubSegundoPlano ? 'Hub aberto em segundo plano' : 'Hub aberto e respondendo') : 'Hub não encontrado numa aba') +
     pilula(!u ? 'neutro' : u.ok ? 'ok' : 'erro', !u ? 'Nenhum resumo enviado' : u.ok ? 'Resumo aceito em ' + OP.quando(u.em) + ' (' + u.linhas + ' de ' + u.total + ')' : 'Resumo recusado: ' + OP.msgHub(u));
-  const ICO = { ok: '✓', erro: '✕', aviso: '⚠', nota: '•' }, ordem = { erro: 0, aviso: 1, nota: 2, ok: 3 };
+  const ICO = { ok: '✓', erro: '✕', aviso: '⚠', nota: '•', igual: '=' }, ordem = { erro: 0, aviso: 1, nota: 2, ok: 3, igual: 4 };
+  // 0.83.0: o resumo numa linha; à vista só o que pede atenção (erro e aviso); o resto recolhido
   const pinta = (alvo, e) => {
+    const aberto = alvo.querySelector('details.adv-todos[open]');
     const barra = e.estado === 'enviando' && e.total ? '<div class="adv-barra" role="progressbar" aria-valuemin="0" aria-valuemax="' + e.total + '" aria-valuenow="' + e.feito + '"><i style="width:' + Math.round(e.feito / e.total * 100) + '%"></i></div>' : '';
-    alvo.innerHTML = '<p class="adv-msg' + (['erro', 'interrompido'].includes(e.estado) ? ' adv-msg-erro' : '') + '">' + esc(e.cab) + '</p>' + barra +
-      (e.linhas.length ? '<ul class="adv-res">' + e.linhas.sort((a, b) => ordem[a.tom] - ordem[b.tom]).map(l => '<li class="adv-' + l.tom + '"><span aria-hidden="true">' + ICO[l.tom] + '</span><b>' + esc(l.rotulo) + '</b><span>' + esc(l.texto) + '</span></li>').join('') + '</ul>' : '');
+    const li = l => '<li class="adv-' + l.tom + '"' + (l.dica && l.dica !== l.texto ? ' title="' + esc(l.dica) + '"' : '') + '><span aria-hidden="true">' + ICO[l.tom] + '</span><b>' + esc(l.rotulo) + '</b><span>' + esc(l.texto) + '</span></li>';
+    const ls = e.linhas.slice().sort((a, b) => ordem[a.tom] - ordem[b.tom]), prob = ls.filter(l => l.tom === 'erro' || l.tom === 'aviso'), resto = ls.filter(l => l.tom !== 'erro' && l.tom !== 'aviso');
+    const r = e.resumo || {}, chip = (n, cls, rot) => n ? '<span class="adv-chip adv-' + cls + '">' + ICO[cls] + ' ' + n + ' ' + rot + '</span>' : '';
+    const resumo = e.linhas.length ? '<div class="adv-resumo">' + chip(r.ok, 'ok', r.ok === 1 ? 'enviado' : 'enviados') + chip(r.igual, 'igual', 'sem mudança') + chip(r.aviso, 'aviso', r.aviso === 1 ? 'aviso' : 'avisos') + chip(r.erro, 'erro', r.erro === 1 ? 'erro' : 'erros') + '</div>' : '';
+    alvo.innerHTML = '<p class="adv-msg' + (['erro', 'interrompido'].includes(e.estado) ? ' adv-msg-erro' : '') + '">' + esc(e.cab) + '</p>' + barra + resumo +
+      (prob.length ? '<ul class="adv-res">' + prob.map(li).join('') + '</ul>' : '') +
+      (resto.length ? '<details class="adv-todos"' + (aberto ? ' open' : '') + '><summary>Ver ' + (prob.length ? 'os outros ' : 'os ') + resto.length + ' conjuntos</summary><ul class="adv-res">' + resto.map(li).join('') + '</ul></details>' : '');
   };
   pinta(envio, OP.linhasEnvio(hubSync));
   const ge = $('#adv-gestta-envio', el);
