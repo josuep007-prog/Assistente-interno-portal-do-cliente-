@@ -130,9 +130,9 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     assert.ok(delta && delta[3] === 'novo' && delta[6] === false && delta[5] === 'DELTA MEI', 'DELTA: empresa nova no Contábil, com o analista do Gestta');
     // Fiscal: tudo novo (o módulo está vazio, em modo exemplo); BETA tem demanda pela tarefa, sem responsável
     assert.deepEqual(d.filter(x => x[0] === 'fiscal').map(x => x[1] + ' ' + x[3]).sort(), ['11 novo', '22 novo', '33 novo']);
-    // Portal: só as frentes que existem; Contábil sem a pessoa na equipe do Portal não pode ser aplicado
+    // Portal: só as frentes que existem; Contábil sem a pessoa na equipe do Portal também pode ser aplicado (Hub 324: a pessoa entra na equipe)
     const pt = d.filter(x => x[0] === 'portal').map(x => [x[2], x[5], x[7]]);
-    assert.deepEqual(pt.sort(), [['analista-contabil', 'Rui Teixeira', false], ['analista-pessoal', 'Carla Souza', true]]);
+    assert.deepEqual(pt.sort(), [['analista-contabil', 'Rui Teixeira', true], ['analista-pessoal', 'Carla Souza', true]]);
     assert.ok(!d.some(x => x[1] === '55' || x[1] === '66'), 'inativo e empresa do escritório nunca entram');
     assert.ok(!d.some(x => x[2] === 'empresa' && x[0] === 'dp' && x[1] === '33'), 'Legalização não é módulo do Hub');
   });
@@ -204,11 +204,16 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     const fr2 = await page.evaluate(() => window.__db.ler('empresaSetores/p-alfa_pessoal'));
     assert.deepEqual([fr2.analistaId, fr2.analistaNome], ['f1', 'Carla Souza']);
     const r3 = await api((g) => { const d = g.difs().find(x => x.mod === 'portal' && x.campo === 'analista-contabil'); return g.aplicar(d.k, d.chave); });
-    assert.equal(r3.ok, false, 'sem a pessoa na equipe do Portal não grava');
-    await page.waitForFunction(() => window.__db.listar('gt_hist').flatMap(d => Array.isArray(d.itens) ? d.itens : [d]).length === 3, null, { timeout: 5000 });
+    assert.ok(r3.ok, 'Hub 324: a pessoa que falta entra na equipe do Portal e a frente fica com ela: ' + JSON.stringify(r3));
+    const ruis = await page.evaluate(() => window.__db.listar('funcionarios').filter(f => f.nome === 'Rui Teixeira'));
+    assert.equal(ruis.length, 1, 'cadastrada uma vez');
+    assert.equal(ruis[0].setor, 'contabil'); assert.equal(ruis[0].cargo, 'Analista');
+    const fr3 = await page.evaluate(() => window.__db.listar('empresaSetores').find(x => /_contabil$/.test(x.__id || '') || x.analistaNome === 'Rui Teixeira'));
+    assert.ok(fr3 && fr3.analistaNome === 'Rui Teixeira' && fr3.analistaId, 'a frente aponta para a pessoa nova');
+    await page.waitForFunction(() => window.__db.listar('gt_hist').flatMap(d => Array.isArray(d.itens) ? d.itens : [d]).length === 4, null, { timeout: 5000 });
     const hist = await page.evaluate(() => window.__db.listar('gt_hist').flatMap(d => Array.isArray(d.itens) ? d.itens : [d]));
     assert.ok(window_docs_ok(await page.evaluate(() => window.__db.listar('gt_hist'))), 'histórico num documento por mês e pessoa, não um por aplicação');
-    assert.equal(hist.length, 3); assert.ok(hist.every(h => !h.auto && h.cnpj === '11111111000101'));
+    assert.equal(hist.length, 4); assert.ok(hist.every(h => !h.auto && h.cnpj === '11111111000101'));
     const d = await difs();
     assert.ok(!d.some(x => x[0] === 'dp' && x[2] === 'responsavel' && x[1] === '11'), 'a diferença aplicada some');
   });
