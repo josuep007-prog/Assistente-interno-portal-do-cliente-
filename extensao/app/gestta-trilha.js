@@ -33,7 +33,7 @@ export function trilhaTempo(tr, k, ano, mes) {
     h += '<span class="gt-tl-c" style="grid-column:' + d + '">' + etapaBotao(e, k, i) + (l.length > 1 ? '<span class="gt-tl-mais" title="' + esc(l.map(x => x[0].t.name).join(' · ')) + '">' + l.length + '</span>' : '') + '</span>';
   }
   const fora = porDia.get(0);
-  return h + '</div>' + (fora ? '<span class="gt-tl-fora fraco">' + num(fora.length) + ' fora do mês</span>' : '');
+  return h + '</div>' + (fora ? '<span class="gt-tl-fora fraco">' + num(fora.length) + ' com meta em outro mês</span>' : '');
 }
 function etapaBotao(e, k, i) {
   const t = e.t, dica = [t.name || 'Tarefa', G.ESTADOS[e.estado], e.prazo, G.setorDe(t), G.respDe(t)].filter(Boolean).join(' · ');

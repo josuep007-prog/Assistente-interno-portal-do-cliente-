@@ -2739,7 +2739,7 @@ function gtTarefas() {
     t(8, { name: 'IGNORADA', customer: A, status: 'IGNORED', due_date: dia(1) })
   ];
 }
-const gtResp = (total, itens) => ({ gesttaTarefas: { ok: true, ano: new Date().getFullYear(), mes: new Date().getMonth() + 1, quem: 'eu', perfil: { id: GT_EU, papelNome: total ? 'Administrador' : 'Analista', total, setores: [{ id: 's1', nome: 'Fiscal' }] }, itens: itens || gtTarefas(), total: 8, cortado: false, lidoEm: new Date().toISOString() },
+const gtResp = (total, itens) => ({ gesttaTarefas: { ok: true, ano: new Date().getFullYear(), mes: new Date().getMonth() + 1, quem: 'eu', perfil: { id: GT_EU, papelNome: total ? 'Administrador' : 'Analista', total, setores: [{ id: 's1', nome: 'Fiscal' }] }, itens: itens || gtTarefas(), dia: itens || gtTarefas(), total: 8, cortado: false, lidoEm: new Date().toISOString() },
   gesttaEquipe: { ok: true, pessoas: [{ id: GT_EU, nome: 'Eu Mesmo' }, { id: GT_B, nome: 'Pessoa Beta' }] },
   gesttaTarefa: { ok: true, tarefa: { _id: 'f00000000000000000000001', name: 'DCTF WEB', company_department: { name: 'Fiscal' }, owner: { name: 'Eu Mesmo' }, legal_date: new Date().toISOString(), customer_task_steps: [{ name: 'Conferir', order: 1, done: true }, { name: 'Transmitir', order: 2, done: false, required: true }], company_documents: [{ name: 'Recibo' }] } },
   gesttaHistorico: { ok: true, total: 4, paginas: 1, eventos: [
@@ -2784,6 +2784,11 @@ await passo('Gestta · Tarefas (0.77.0): Meu dia com o detalhe ao lado e a linha
   const filtros = async () => { if (!(await fr.$eval('#gt-filtros', d => d.open))) await fr.click('#gt-filtros summary'); };
   for (const k of ['multa', 'atrasada', 'impedimento', 'hoje', 'proximas', 'depois', 'feita']) assert.equal(await sit(k), '1', 'um em ' + k);
   assert.match(await fr.textContent('.gt-topo-prog'), /14%\s*1 de 7/, 'a ignorada não conta');
+  // 0.85.0: a tela abre na competência do mês anterior (a que está sendo fechada); o Meu dia segue o vencimento
+  const h0 = new Date(), cp = h0.getMonth() === 0 ? { ano: h0.getFullYear() - 1, mes: 12 } : { ano: h0.getFullYear(), mes: h0.getMonth() };
+  const m0 = await fr.evaluate(() => (window.__msgs || []).find(m => m.cmd === 'gesttaTarefas'));
+  assert.deepEqual([m0.ano, m0.mes], [cp.ano, cp.mes], 'pede a competência anterior');
+  assert.match(await fr.textContent('#gt-mes-rot'), new RegExp('^Competência \\S+ de ' + cp.ano + '$'));
   // Meu dia (abre primeiro): resolver agora (multa antes do atraso), vence hoje, impedimento, próximos 3 dias úteis
   await fr.waitForSelector('.gd-it');
   assert.deepEqual(await fr.$$eval('.gd-bloco h3', l => l.map(h => h.childNodes[1].textContent)), ['Resolver agora', 'Vencem hoje', 'Com impedimento', 'Próximos 3 dias úteis']);
@@ -2881,7 +2886,7 @@ await passo('Gestta · Tarefas (0.77.0): Meu dia com o detalhe ao lado e a linha
   // Fechamento do mês: geral, por setor e por analista; clicar numa barra filtra; só com pendência; empresa do escritório fora
   await fr.click('#abas [data-aba="fech"]');
   await fr.waitForSelector('.gt-bar');
-  assert.match(await fr.textContent('.gt-prog-tx'), /57%\s*4 de 7 tarefas concluídas\s*1 de 3 empresas com o mês fechado/, 'a do escritório não conta');
+  assert.match(await fr.textContent('.gt-prog-tx'), /57%\s*4 de 7 tarefas concluídas\s*1 de 3 empresas com a competência fechada/, 'a do escritório não conta');
   assert.deepEqual(await fr.$$eval('.gt-pn:first-child .gt-bar-nome', l => l.map(e => e.textContent)), ['Fiscal', 'Pessoal'], 'da menor para a maior');
   assert.deepEqual(await fr.$$eval('.gt-tr-nome b', l => l.map(e => e.textContent)), ['CLIENTE ALFA LTDA', 'CLIENTE BETA ME', 'CLIENTE DELTA EIRELI'], 'fechada no fim');
   assert.match(await fr.textContent('.gt-tr'), /Fiscal 0\/1 · Pessoal 1\/2/);
