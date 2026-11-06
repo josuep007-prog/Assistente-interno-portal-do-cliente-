@@ -31,7 +31,7 @@ const servidor = http.createServer((req, res) => {
 const BANCO = fs.readFileSync(path.join(__dirname, 'hub-onvio.js'), 'utf8').match(/const BANCO = `([\s\S]*?)`;/)[1];
 
 // Gestta fictício: 4 clientes ativos + 1 inativo + 1 do escritório
-const C = { alfa: '11111111000101', beta: '22222222000102', gama: '33333333000103', delta: '44444444000104', inat: '55555555000105', esc: '66666666000106' };
+const C = { alfa: '11111111000101', beta: '22222222000102', gama: '33333333000103', delta: '44444444000104', inat: '55555555000105', esc: '66666666000106', velha: '77777777000107' };
 const tab = (linhas) => linhas.map(l => l.join('\t')).join('\n');
 const CLIENTES = { colunas: ['Id', 'Código', 'Nome', 'Nome fantasia', 'CNPJ', 'Ativo', 'Regime', 'Inscrição estadual', 'UF', 'Cidade', 'Id externo', 'Usa o portal do Onvio'], linhas: [
   ['g1', '1', 'ALFA COMERCIO LTDA', 'ALFA', C.alfa, 'sim', 'Simples Nacional', '123.456.789', 'SP', 'Campinas', '', 'sim'],
@@ -53,7 +53,12 @@ const CARTELA = { colunas: ['Id do cliente', 'Código do cliente', 'Cliente', 'C
 const SETORES = { colunas: ['Id', 'Setor'], linhas: [['s1', 'Departamento Pessoal'], ['s2', 'Contábil'], ['s3', 'Fiscal'], ['s4', 'Legalização']] };
 const TAREFAS = { colunas: ['Mês', 'Id', 'Tarefa', 'Setor', 'Responsável', 'Situação', 'CNPJ', 'Cliente'], linhas: [
   ['2026-11', 't1', 'DCTFWeb', 'Fiscal', '', 'Aberta', C.beta, 'BETA SERVICOS LTDA']] };
-const GT = { 'gestta-clientes': CLIENTES, 'gestta-cartela': CARTELA, 'gestta-setores': SETORES, 'gestta-tarefas': TAREFAS };
+const EQUIPE = { colunas: ['Id', 'Nome', 'Papel', 'Ativo', 'Setores', 'Tem tarefas atreladas'], linhas: [
+  ['u1', 'Carla Mendes Souza', 'Analista', 'sim', 'Departamento Pessoal', 'sim'], ['u2', 'Rui Teixeira', 'Analista', 'sim', 'Contábil | Legalização', 'sim'],
+  ['u3', 'Paula Nunes', 'Analista', 'sim', 'Fiscal', 'sim'], ['u9', 'Zélia Desconhecida', 'Analista', 'sim', 'Contábil', 'sim'], ['u7', 'Marcos Lima', 'Analista', 'não', 'Contábil', 'não']] };
+// empresas com tarefa no mês atual ou anterior (extensão 0.81.0): a VELHA não está
+const ATIVAS = { colunas: ['CNPJ', 'Cliente', 'Tarefas', 'Último mês'], linhas: [[C.alfa, 'ALFA COMERCIO LTDA', 30, '2026-11'], [C.beta, 'BETA SERVICOS LTDA', 12, '2026-11'], [C.gama, 'GAMA INDUSTRIA LTDA', 8, '2026-10'], [C.delta, 'DELTA MEI', 2, '2026-11']] };
+const GT = { 'gestta-clientes': CLIENTES, 'gestta-cartela': CARTELA, 'gestta-setores': SETORES, 'gestta-tarefas': TAREFAS, 'gestta-equipe': EQUIPE, 'gestta-empresas-ativas': ATIVAS };
 
 const balde = (id, n) => { let h = 0; for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0; return h % n; };
 const fmt = (c) => c.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
@@ -78,7 +83,11 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
   // DP: ALFA sem analista e com tributação diferente; BETA com o nome curto da analista
   await semear('dp_empresas/e-alfa', { nome: 'ALFA COMERCIO LTDA', cnpj: fmt(C.alfa), tributacao: 'LUCRO PRESUMIDO', responsavel: '', situacao: 'Ativa', funcionarios: [], historico: [] });
   await semear('dp_empresas/e-beta', { nome: 'BETA SERVICOS LTDA', cnpj: fmt(C.beta), tributacao: 'LUCRO PRESUMIDO', responsavel: 'Carla Souza', situacao: 'Ativa', funcionarios: [], historico: [] });
-  await semear('dp_config/equipe', { lista: ['Carla Souza'] });
+  await semear('dp_empresas/e-velha', { nome: 'VELHA SEM TAREFA LTDA', cnpj: fmt(C.velha), tributacao: 'SIMPLES NACIONAL', responsavel: 'Carla Souza', situacao: 'Ativa', funcionarios: [], historico: [] });
+  await semear('dp_empresas/e-delta', { nome: 'DELTA MEI', cnpj: fmt(C.delta), tributacao: 'MEI', responsavel: 'Marcos Lima', situacao: 'Ativa', funcionarios: [], historico: [] });
+  await semear('ctb_emp/b' + balde('c' + C.velha, 8), { ['c' + C.velha]: { id: 'c' + C.velha, nome: 'VELHA SEM TAREFA LTDA', cnpj: fmt(C.velha), trib: 'simples', analista: 'Rui Teixeira', sit: 'ativa' } });
+  await semear('empresas/p-velha', { nome: 'VELHA SEM TAREFA LTDA', cnpj: fmt(C.velha) });
+  await semear('funcionarios/f3', { nome: 'R. Teixeira' });
   // Contábil: ALFA com outro analista e Presumido (o Gestta diz Simples)
   await semear('ctb_emp/b' + balde('c' + C.alfa, 8), { ['c' + C.alfa]: { id: 'c' + C.alfa, nome: 'ALFA COMERCIO LTDA', cnpj: fmt(C.alfa), trib: 'presumido', analista: 'Marcos Lima', sit: 'ativa' } });
   // Portal: ALFA com as frentes Pessoal e Fiscal (sem analista); equipe do Portal com Carla e Paula
@@ -101,15 +110,16 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     await esperar();
     const d = await difs(), s = d.map(x => x.slice(0, 6).join(' ')).sort();
     // DP
-    assert.ok(s.includes('dp 11 responsavel complementar — Carla Souza'), 'ALFA: complementar o analista do DP pelo nome do Hub (primeiro e último nome): ' + s.join(' | '));
+    assert.ok(s.includes('dp 11 responsavel complementar — Carla Mendes Souza'), 'ALFA: complementar o analista do DP com o nome do Gestta (a referência): ' + s.join(' | '));
     assert.ok(s.includes('dp 11 tributacao corrigir LUCRO PRESUMIDO SIMPLES NACIONAL'));
-    assert.ok(!s.some(x => /^dp 22 responsavel/.test(x)), 'BETA: "Carla Mendes Souza" e "Carla Souza" são a mesma pessoa');
+    assert.ok(s.includes('dp 22 responsavel corrigir Carla Souza Carla Mendes Souza'), 'BETA: o nome do Hub vira o do Gestta');
+    assert.ok(!d.some(x => x[1] === '77'), 'VELHA não tem tarefa no Gestta: nada dela');
     assert.ok(!d.some(x => x[0] === 'dp' && x[1] === '33'), 'GAMA não tem demanda no Pessoal');
     // Contábil
     assert.ok(s.includes('contabil 11 analista corrigir Marcos Lima Rui Teixeira'));
     assert.ok(s.includes('contabil 11 trib corrigir Lucro Presumido Simples Nacional'));
     const delta = d.find(x => x[0] === 'contabil' && x[1] === '44');
-    assert.ok(delta && delta[3] === 'novo' && delta[6] === true, 'DELTA: empresa nova no Contábil, "conferir antes" (analista sem par no Hub)');
+    assert.ok(delta && delta[3] === 'novo' && delta[6] === false && delta[5] === 'DELTA MEI', 'DELTA: empresa nova no Contábil, com o analista do Gestta');
     // Fiscal: tudo novo (o módulo está vazio, em modo exemplo); BETA tem demanda pela tarefa, sem responsável
     assert.deepEqual(d.filter(x => x[0] === 'fiscal').map(x => x[1] + ' ' + x[3]).sort(), ['11 novo', '22 novo', '33 novo']);
     // Portal: só as frentes que existem; Contábil sem a pessoa na equipe do Portal não pode ser aplicado
@@ -119,10 +129,34 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     assert.ok(!d.some(x => x[2] === 'empresa' && x[0] === 'dp' && x[1] === '33'), 'Legalização não é módulo do Hub');
   });
 
+  await passo('Referência absoluta: empresa sem tarefa no Gestta some do DP, do Contábil, do Portal e do cadastro; analista fora da equipe sai da carteira; a lista do Gestta faltando não esconde nada', async () => {
+    const dp = () => page.evaluate(() => window.__hubApi.api('dp').listar().map(e => [e.nome, e.analista]).sort());
+    await page.waitForFunction(() => !window.__hubApi.api('dp').listar().some(e => /VELHA/.test(e.nome)), null, { timeout: 8000 });
+    assert.deepEqual(await dp(), [['ALFA COMERCIO LTDA', ''], ['BETA SERVICOS LTDA', 'Carla Souza'], ['DELTA MEI', '']], 'VELHA escondida; Marcos Lima (inativo no Gestta) sai da DELTA');
+    assert.deepEqual(await page.evaluate(() => window.__hubApi.cfg.dp.equipe()), ['Carla Mendes Souza'], 'a equipe do DP é a do Gestta');
+    const cad = await page.evaluate(([v, a]) => [window.__cadastro.ativa('ctb', 'c' + v, v), window.__cadastro.ativa('ctb', 'c' + a, a), window.__cadastro.ativa('portal', 'p-velha', v), window.__cadastro.analistaAtivo('Marcos Lima'), window.__cadastro.analistaAtivo('Carla Souza'), window.__cadastro.analistaGestta('Carla Souza'), window.__cadastro.analistas('ctb')], [C.velha, C.alfa]);
+    assert.deepEqual(cad, [false, true, false, false, true, 'Carla Mendes Souza', ['Rui Teixeira', 'Zélia Desconhecida']]);
+    assert.equal(await page.evaluate(() => window.__db.ler('dp_empresas/e-velha').nome), 'VELHA SEM TAREFA LTDA', 'nada é apagado');
+    assert.equal(await page.evaluate(() => window.__db.ler('dp_empresas/e-delta').responsavel), 'Marcos Lima', 'o nome gravado fica');
+    await esperar();
+    const ref = await api((g) => g.referencia());
+    assert.deepEqual([ref.empresas.ok, ref.empresas.n, ref.analistas.ok, ref.fora.dp, ref.fora.contabil, ref.fora.portal], [true, 4, true, ['VELHA SEM TAREFA LTDA'], ['VELHA SEM TAREFA LTDA'], ['VELHA SEM TAREFA LTDA']]);
+    assert.ok(ref.analistasFora.some(a => a.nome === 'Marcos Lima'), JSON.stringify(ref.analistasFora));
+    // trava: lista velha (mais de 72 h) não esconde nada
+    const man = await page.evaluate(() => window.__db.ler('ing_dados/gestta~gestta-empresas-ativas'));
+    await semear('ing_dados/gestta~gestta-empresas-ativas', Object.assign({}, man, { recebidoEm: Date.now() - 80 * 3600e3 }));
+    await page.waitForFunction(() => window.__hubApi.api('dp').listar().some(e => /VELHA/.test(e.nome)), null, { timeout: 8000 });
+    assert.equal(await page.evaluate((v) => window.__cadastro.ativa('ctb', 'c' + v, v), C.velha), true);
+    await semear('ing_dados/gestta~gestta-empresas-ativas', man);
+    await page.waitForFunction(() => !window.__hubApi.api('dp').listar().some(e => /VELHA/.test(e.nome)), null, { timeout: 8000 });
+  });
+
   await passo('Entrada de dados: a seção do Gestta mostra as diferenças por empresa, filtra por módulo e nada é gravado antes de confirmar', async () => {
     await page.evaluate(() => window.__hubApi.abrirModulo('fontes'));
     const fr = page.frameLocator('#fontes-frame');
     await fr.locator('#gtDifs tr[data-gt-k]').first().waitFor({ timeout: 10000 });
+    assert.match(await fr.locator('#gtRef').textContent(), /4 empresas em atividade no Gestta/);
+    assert.match(await fr.locator('#gtRef').textContent(), /4 analistas ativos no Gestta/);
     const n = await fr.locator('#gtDifs tr[data-gt-k]').count();
     assert.equal(n, (await difs()).length);
     assert.match(await fr.locator('#gtSub').textContent(), new RegExp(n + ' diferenças'));
@@ -130,7 +164,7 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     assert.equal(await fr.locator('#gtDifs tr[data-gt-k]').count(), 3);
     await fr.locator('[data-gt-mod=""]').click();
     const antes = await page.evaluate(() => window.__gravacoes.length);
-    await fr.locator('#gtDifs tr[data-gt-k][data-gt-chave^="dp|responsavel"] [data-gt-aplicar]').click();
+    await fr.locator('#gtDifs tr[data-gt-k="11111111000101"][data-gt-chave^="dp|responsavel"] [data-gt-aplicar]').click();
     await fr.locator('#dlgConf[open]').waitFor();
     await fr.locator('#dlgConf [value="cancel"], #dlgConf #confNao').first().click().catch(async () => { await page.keyboard.press('Escape'); });
     await page.waitForTimeout(300);
@@ -140,11 +174,11 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
 
   await passo('Aplicar: complementa o DP com histórico, corrige o Contábil e o Portal pelo id da pessoa, e registra em gt_hist', async () => {
     const fr = page.frameLocator('#fontes-frame');
-    await fr.locator('#gtDifs tr[data-gt-k][data-gt-chave^="dp|responsavel"] [data-gt-aplicar]').click();
+    await fr.locator('#gtDifs tr[data-gt-k="11111111000101"][data-gt-chave^="dp|responsavel"] [data-gt-aplicar]').click();
     await fr.locator('#dlgConf[open]').waitFor(); await fr.locator('#confSim').click();
-    await page.waitForFunction(() => (window.__db.ler('dp_empresas/e-alfa') || {}).responsavel === 'Carla Souza', null, { timeout: 5000 });
+    await page.waitForFunction(() => (window.__db.ler('dp_empresas/e-alfa') || {}).responsavel === 'Carla Mendes Souza', null, { timeout: 5000 });
     const e = await page.evaluate(() => window.__db.ler('dp_empresas/e-alfa'));
-    assert.match(e.historico[0].alteracao, /Complementado pelo Gestta: Analista do Pessoal: — → Carla Souza/);
+    assert.match(e.historico[0].alteracao, /Complementado pelo Gestta: Analista do Pessoal: — → Carla Mendes Souza/);
     assert.equal(e.tributacao, 'LUCRO PRESUMIDO', 'só o campo aplicado muda');
     const r1 = await api((g) => { const d = g.difs().find(x => x.mod === 'contabil' && x.campo === 'trib'); return g.aplicar(d.k, d.chave); });
     assert.ok(r1.ok, JSON.stringify(r1));
@@ -193,10 +227,12 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     await fr.locator('select[data-gt-setor="legalizacao"]').selectOption('contabil');
     await page.waitForFunction(() => (window.__db.ler('gt_config/cfg') || { setores: {} }).setores.legalizacao === 'contabil', null, { timeout: 5000 });
     await page.waitForFunction(() => window.__hubApi.api('gestta').difs().some(d => d.mod === 'contabil' && d.k.startsWith('33') && d.acao === 'novo'), null, { timeout: 5000 });
-    // Zélia (sem par) ligada a um nome do Hub: deixa de ser "conferir antes"
-    const r = await api((g) => g.salvarCfg(c => { c.analistas['zelia desconhecida'] = 'Marcos Lima'; }));
+    // Rui (sem par na equipe do Portal) ligado à pessoa do Portal "R. Teixeira": a frente do Contábil passa a poder ser aplicada, e "R. Teixeira" conta como ativo
+    assert.equal(await page.evaluate(() => window.__cadastro.analistaAtivo('R. Teixeira')), false);
+    const r = await api((g) => g.salvarCfg(c => { c.analistas['rui teixeira'] = 'R. Teixeira'; }));
     assert.ok(r.ok);
-    await page.waitForFunction(() => { const d = window.__hubApi.api('gestta').difs().find(x => x.mod === 'contabil' && x.k.startsWith('44')); return d && !d.confirmar && d.valor.analista === 'Marcos Lima'; }, null, { timeout: 5000 });
+    await page.waitForFunction(() => { const d = window.__hubApi.api('gestta').difs().find(x => x.mod === 'portal' && x.campo === 'analista-contabil'); return d && d.pode && d.depois === 'R. Teixeira'; }, null, { timeout: 5000 });
+    assert.equal(await page.evaluate(() => window.__cadastro.analistaAtivo('R. Teixeira')), true);
   });
 
   await passo('Automático: desligado de fábrica; ligado só complementa sozinho (o "conferir antes" fica), com "automaticamente" no histórico', async () => {
@@ -224,6 +260,44 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     const larg = await page.evaluate(() => { const d = document.querySelector('#fontes-frame').contentDocument; return [d.documentElement.scrollWidth, d.documentElement.clientWidth]; });
     assert.ok(larg[0] <= larg[1] + 1, 'sem rolagem horizontal: ' + larg.join(' > '));
     if (CAP) await page.screenshot({ path: path.join(CAP, 'gestta-entrada-escuro-estreita.png') });
+  });
+
+  await passo('Módulos: o Contábil e o Portal do Cliente escondem a empresa sem tarefa no Gestta e tiram da carteira o analista inativo; ao salvar, o nome escondido não é apagado', async () => {
+    await page.setViewportSize({ width: 1360, height: 900 });
+    // os módulos só abrem com o login do Hub (auth.js): aqui um login simulado de coordenação
+    await page.evaluate(() => { window.__auth = { nivel: () => 'coord', podeVer: () => true, ehAdmin: () => true, usuario: () => ({ id: 'u-teste', nome: 'Ana Teste' }), analista: () => '', perfis: () => Promise.resolve({}), aguardar: () => Promise.resolve(), onPendentes: () => {} }; });
+    // Contábil: a VELHA some; a ALFA continua; Marcos Lima (inativo) sai da ALFA
+    await page.evaluate(() => window.__hubApi.abrirModulo('contabil'));
+    const ctbApi = () => page.evaluate(() => { const a = window.__hubApi.api('contabil'); return a && a.pronto && a.pronto() ? a.listar().map(e => [e.nome, e.analista]) : null; });
+    for (let i = 0; i < 60 && !(await ctbApi()); i++) await page.waitForTimeout(250);
+    await page.waitForFunction(() => { const a = window.__hubApi.api('contabil'); return a && a.listar().length === 1; }, null, { timeout: 8000 });
+    assert.deepEqual(await ctbApi(), [['ALFA COMERCIO LTDA', '']], 'VELHA escondida; Marcos Lima (inativo) fora da carteira da ALFA');
+    const c = page.frames().find(x => /contabil\.html/.test(x.url()));
+    const txt = await c.evaluate(() => document.body.innerText);
+    assert.ok(/Zélia Desconhecida/.test(txt) && !/Marcos Lima/.test(txt), 'a lista de analistas é a equipe do Contábil no Gestta');
+    // salvar a ficha da ALFA por outro motivo (uma observação) não apaga o Marcos Lima gravado
+    await page.evaluate(() => window.__hubApi.api('contabil').abrirEmpresa('c11111111000101'));
+    await c.waitForSelector('#dlgFicha[open] #fForm');
+    assert.equal(await c.$eval('#fForm [name="analista"]', el => el.value), '', 'na ficha a ALFA aparece sem analista');
+    await c.fill('#fForm [name="obs"]', 'nota de teste');
+    await c.click('#fSalvar');
+    if (await c.locator('#dlgConf[open]').count()) await c.click('#confSim');          // o CNPJ fictício não confere o dígito
+    await page.waitForFunction((p) => ((window.__db.ler(p) || {})['c11111111000101'] || {}).obs === 'nota de teste', 'ctb_emp/b' + balde('c' + C.alfa, 8), { timeout: 5000 });
+    const gravado = await page.evaluate((p) => window.__db.ler(p)['c11111111000101'], 'ctb_emp/b' + balde('c' + C.alfa, 8));
+    assert.deepEqual([gravado.analista, 'foraGestta' in gravado, Object.keys(gravado).some(k => /Oculto/.test(k))], ['Marcos Lima', false, false], 'o nome gravado fica; nada de campo interno no banco');
+    // Portal: a VELHA some; a frente do Contábil sem a pessoa ativa fica vazia; "R. Teixeira" (ligado ao Rui) conta como da equipe
+    await page.evaluate(() => window.__hubApi.abrirModulo('portal'));
+    let fp = null; for (let i = 0; i < 60 && !fp; i++) { fp = page.frames().find(x => /portal\.html/.test(x.url())) || null; if (!fp) await page.waitForTimeout(250); }
+    assert.ok(fp, 'o Portal abriu');
+    // a frente Pessoal da ALFA tem a Carla (aplicada antes); deixo também a do Contábil com o Marcos Lima (inativo): ela some da frente
+    await semear('empresaSetores/p-alfa_contabil', { empresaId: 'p-alfa', empresaNome: 'ALFA', setor: 'contabil', analistaId: 'fx', analistaNome: 'Marcos Lima', etapas: {} });
+    await page.waitForFunction(() => { const a = window.__hubApi.api('portal'); return a && a.pronto && a.pronto() && a.empresas().length > 0; }, null, { timeout: 10000 });
+    await page.waitForTimeout(600);
+    const pt = await page.evaluate(() => { const a = window.__hubApi.api('portal'); return { emps: a.empresas().map(e => e.nome), ana: a.analistas() }; });
+    assert.ok(!pt.emps.some(n => /VELHA/.test(n)) && pt.emps.some(n => /ALFA/.test(n)), 'VELHA fora do Portal: ' + pt.emps.join(', '));
+    assert.deepEqual(pt.ana, ['Carla Souza'], 'Marcos Lima (inativo) sai da frente do Contábil; Carla segue na do Pessoal');
+    assert.equal(await page.evaluate(() => window.__db.ler('empresaSetores/p-alfa_contabil').analistaNome), 'Marcos Lima', 'o gravado não muda');
+    if (CAP) { await page.waitForTimeout(500); await page.screenshot({ path: path.join(CAP, 'portal-referencia.png') }); }
   });
 
   await passo('sem erros de página', async () => { assert.deepEqual(erros, []); });
