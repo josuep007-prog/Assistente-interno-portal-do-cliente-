@@ -307,6 +307,31 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     if (CAP) { await page.waitForTimeout(500); await page.screenshot({ path: path.join(CAP, 'portal-referencia.png') }); }
   });
 
+  await passo('Hub 319: quem está no Portal só pelo primeiro nome casa com o nome do Gestta; o mesmo CNPJ duas vezes no Gestta não duplica diferenças', async () => {
+    // Portal: a frente Contábil da DELTA com "Zélia" (só o primeiro nome); no Gestta é "Zélia Desconhecida", única com esse nome
+    await semear('funcionarios/f5', { nome: 'Zélia' });
+    await semear('empresas/p-delta', { nome: 'DELTA MEI', cnpj: fmt(C.delta) });
+    await semear('empresaSetores/p-delta_contabil', { empresaId: 'p-delta', empresaNome: 'DELTA', setor: 'contabil', analistaId: 'f5', analistaNome: 'Zélia', etapas: {} });
+    // Gestta: a DELTA cadastrada duas vezes (outro id, mesmo CNPJ)
+    const linhas = CLIENTES.linhas.concat([['g4b', '4b', 'DELTA MEI', '', C.delta, 'sim', 'MEI', '', 'SP', 'Santos', '', 'não']]);
+    await semear('ing_partes/gestta~gestta-clientes~a0', { ciclo: 'g2', parte: 0, tabela: tab(linhas) });
+    const man = await page.evaluate(() => window.__db.ler('ing_dados/gestta~gestta-clientes'));
+    await semear('ing_dados/gestta~gestta-clientes', Object.assign({}, man, { ciclo: 'g2', partes: 1, nLinhas: linhas.length, totalNaOrigem: linhas.length }));
+    const cart = CARTELA.linhas.concat([['g4b', '4b', 'DELTA MEI', C.delta, 'Contábil', 's2', 'Zélia Desconhecida', 'u9']]);
+    await semear('ing_partes/gestta~gestta-cartela~a0', { ciclo: 'g2', parte: 0, tabela: tab(cart) });
+    const manC = await page.evaluate(() => window.__db.ler('ing_dados/gestta~gestta-cartela'));
+    await semear('ing_dados/gestta~gestta-cartela', Object.assign({}, manC, { ciclo: 'g2', partes: 1, nLinhas: cart.length, totalNaOrigem: cart.length }));
+    await esperar();
+    await page.waitForFunction(() => { const g = window.__hubApi.api('gestta'); return !g.carregando() && g.difs().length > 0; }, null, { timeout: 8000 });
+    const d = await api((g) => g.difs().map(x => x.k + '|' + x.chave));
+    assert.equal(new Set(d).size, d.length, 'nenhuma diferença repetida: ' + d.join(' · '));
+    const delta = await api((g, k) => g.difs().filter(x => x.k === k).map(x => x.mod + ' ' + x.campo), C.delta);
+    assert.ok(!delta.some(x => x.startsWith('portal')), 'Zélia = Zélia Desconhecida: nada a corrigir no Portal: ' + delta.join(', '));
+    assert.equal(delta.filter(x => x === 'contabil empresa').length, 1, 'DELTA nova no Contábil uma vez só');
+    const ana = await api((g) => g.analistas().find(a => a.nome === 'Zélia Desconhecida').noHub.map(r => r.mod + ':' + r.casou));
+    assert.ok(ana.length >= 1);
+  });
+
   await passo('sem erros de página', async () => { assert.deepEqual(erros, []); });
   await browser.close(); servidor.close();
   console.log(falhas ? 'FALHARAM: ' + falhas : 'tudo ok');
