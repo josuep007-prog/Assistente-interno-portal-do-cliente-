@@ -155,6 +155,13 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     await page.evaluate(() => window.__hubApi.abrirModulo('fontes'));
     const fr = page.frameLocator('#fontes-frame');
     await fr.locator('#gtDifs tr[data-gt-k]').first().waitFor({ timeout: 10000 });
+    // Para decidir: Onvio e Gestta uma de cada vez; sem nada do Onvio, abre no Gestta; o topo conta os dois
+    assert.equal(await fr.locator('#secCadastro').isVisible(), false); assert.equal(await fr.locator('#secGestta').isVisible(), true);
+    assert.match(await fr.locator('[data-dec="gestta"]').textContent(), /Gestta\s*\d+/);
+    assert.match(await fr.locator('#resumoTopo').textContent(), /Gestta: \d+ diferenças/);
+    await fr.locator('[data-dec="onvio"]').click();
+    assert.equal(await fr.locator('#secCadastro').isVisible(), true); assert.equal(await fr.locator('#secGestta').isVisible(), false);
+    await fr.locator('[data-dec="gestta"]').click();
     assert.match(await fr.locator('#gtRef').textContent(), /4 empresas em atividade no Gestta/);
     assert.match(await fr.locator('#gtRef').textContent(), /4 analistas ativos no Gestta/);
     const n = await fr.locator('#gtDifs tr[data-gt-k]').count();
