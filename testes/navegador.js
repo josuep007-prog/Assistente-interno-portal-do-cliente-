@@ -248,14 +248,17 @@ await passo('aprender: registra método, caminho e formato (sem valores); deslig
 /* ---------- shell: camada em tela cheia por cima do Onvio ---------- */
 const appFrame = p => p.frames().find(f => /\/app\/app\.html$/.test(f.url()));
 const cheia = p => p.evaluate(() => document.documentElement.classList.contains('controlonvio-cheia'));
-const COM_DADOS = { snapshot: { fetchedAt: new Date().toISOString(), items: [] }, status: { estado: 'ok' } };      // a camada só abre sozinha com leitura
-await passo('shell: ao entrar no Onvio o app cobre a tela inteira; "Ver Onvio" esconde e o botão volta; lembra na aba', async () => {
+const COM_DADOS = { snapshot: { fetchedAt: new Date().toISOString(), items: [] }, status: { estado: 'ok' } };
+await passo('shell: ao entrar no Onvio fica só o botão (nunca abre sozinha); o clique cobre a tela inteira; "Ver Onvio" esconde e o botão volta', async () => {
   const p = await pagina(URL_PORTAL, '<!doctype html><body style="height:3000px">Onvio</body>');
   await p.setViewportSize({ width: 1360, height: 800 });
   await p.emulateMedia({ reducedMotion: 'reduce' });                                     // sem transição: o clique no botão não depende do tempo
   await semear(p, COM_DADOS);
   await p.goto(URL_PORTAL);
   await p.addScriptTag({ content: lerExt('shell.js') });
+  await p.waitForTimeout(500);
+  assert.equal(await cheia(p), false, 'nunca abre sozinha, mesmo com leitura');
+  await p.mouse.click(1318, 758);                                                         // o clique no botão abre
   await esperar(() => appFrame(p));
   assert.equal(await cheia(p), true);
   const caixa = await (await appFrame(p).frameElement()).boundingBox();
@@ -273,13 +276,13 @@ await passo('shell: ao entrar no Onvio o app cobre a tela inteira; "Ver Onvio" e
   await p.reload();
   await p.addScriptTag({ content: lerExt('shell.js') });
   await p.waitForTimeout(500);
-  assert.equal(await cheia(p), false, 'nesta aba a pessoa escolheu ver o Onvio');
+  assert.equal(await cheia(p), false, 'recarregar a página não abre');
   await p.evaluate(() => window.__ouvintes.forEach(f => f({ type: 'alternar' })));
   await p.waitForFunction(() => document.documentElement.classList.contains('controlonvio-cheia'));
   assert.deepEqual(p.erros, []);
 });
 
-await passo('shell: "Abrir no Onvio" chega com a camada escondida; desligar "abrir ao entrar" respeita; pedido do ícone abre', async () => {
+await passo('shell: nunca abre sozinha (Josué, 06/11/2026): nem com leitura, nem com erro, nem com acesso de cliente; só o pedido do ícone (clique) abre, na hora', async () => {
   const caso = async extra => {
     const p = await pagina(URL_PORTAL, '<!doctype html><body>Onvio</body>');
     await semear(p, extra);
@@ -288,51 +291,60 @@ await passo('shell: "Abrir no Onvio" chega com a camada escondida; desligar "abr
     await p.waitForTimeout(500);
     return cheia(p);
   };
-  assert.equal(await caso(Object.assign({ verOnvioAoCarregar: Date.now() }, COM_DADOS)), false);
-  assert.equal(await caso(Object.assign({ settings: { abrirAoEntrar: false } }, COM_DADOS)), false);
-  assert.equal(await caso(Object.assign({ settings: { abrirAoEntrar: false }, abrirPainelAoCarregar: Date.now() }, COM_DADOS)), true);
-  assert.equal(await caso(Object.assign({ verOnvioAoCarregar: Date.now() - 10 * 60000 }, COM_DADOS)), true, 'pedido antigo não vale');
-  assert.equal(await caso({ status: { estado: 'visao_cliente' } }), false, 'acesso de cliente: não abre sozinho');
-  assert.equal(await caso({ status: { estado: 'visao_cliente' }, abrirPainelAoCarregar: Date.now() }), true, 'pelo ícone abre (para mostrar o aviso)');
-  // só abre sozinha quando já há leitura: sem dados ou com erro fica o botão (e o clique abre igual)
-  assert.equal(await caso({ snapshot: null }), false, 'sem leitura nenhuma: só o botão');
-  assert.equal(await caso({ snapshot: COM_DADOS.snapshot, status: { estado: 'erro', msg: 'x' } }), false, 'leitura com erro: só o botão');
-  assert.equal(await caso({ snapshot: COM_DADOS.snapshot, status: { estado: 'sem_sessao' } }), false, 'sem sessão: só o botão');
-  assert.equal(await caso({ snapshot: COM_DADOS.snapshot, status: { estado: 'erro' }, abrirPainelAoCarregar: Date.now() }), true, 'pelo ícone abre para mostrar o erro');
-});
-
-await passo('shell: o pedido do ícone (ou "abrir" por mensagem) sem leitura ainda espera a primeira leitura e abre sozinho quando ela chega; erro abre na hora; com leitura guardada abre direto', async () => {
-  const p = await pagina(URL_PORTAL, '<!doctype html><body>Onvio</body>');
-  await semear(p, { snapshot: null, abrirPainelAoCarregar: Date.now(), status: { estado: 'lendo' } });          // 1ª vez: ainda não há resumo guardado
-  await p.goto(URL_PORTAL);
-  await p.addScriptTag({ content: lerExt('shell.js') });
-  await p.waitForTimeout(600);
-  assert.equal(await cheia(p), false, 'sem leitura: espera (só o botão)');
-  await p.evaluate(() => chrome.storage.local.set({ status: { estado: 'lendo', etapa: '3/10 · Geral' } }));
-  await p.waitForTimeout(300);
-  assert.equal(await cheia(p), false, 'lendo ainda: continua esperando');
-  await p.evaluate(snap => chrome.storage.local.set({ snapshot: snap, status: { estado: 'ok' } }), COM_DADOS.snapshot);
-  await esperar(() => cheia(p));
-  assert.equal(await cheia(p), true, 'a primeira leitura terminou: o app abre sozinho');
-  // o pedido por mensagem (ícone com a aba do portal já aberta) segue a mesma regra
+  assert.equal(await caso(COM_DADOS), false, 'com leitura: só o botão');
+  assert.equal(await caso({ snapshot: null }), false, 'sem leitura: só o botão');
+  assert.equal(await caso({ snapshot: COM_DADOS.snapshot, status: { estado: 'erro', msg: 'x' } }), false, 'erro: só o botão');
+  assert.equal(await caso({ status: { estado: 'visao_cliente' } }), false, 'acesso de cliente: não abre');
+  assert.equal(await caso(Object.assign({ settings: { abrirAoEntrar: true } }, COM_DADOS)), false, 'a opção antiga não vale mais');
+  assert.equal(await caso(Object.assign({ abrirPainelAoCarregar: Date.now() - 10 * 60000 }, COM_DADOS)), false, 'pedido antigo não vale');
+  assert.equal(await caso({ snapshot: null, status: { estado: 'lendo' }, abrirPainelAoCarregar: Date.now() }), true, 'clique no ícone fora do portal: abre logo que a página carrega, sem esperar a leitura');
+  // ícone com a aba do portal já aberta: abre na hora, com ou sem leitura
   const q = await pagina(URL_PORTAL, '<!doctype html><body>Onvio</body>');
-  await semear(q, { snapshot: null, settings: { abrirAoEntrar: false } });
+  await semear(q, { snapshot: null, status: { estado: 'lendo' } });
   await q.goto(URL_PORTAL);
   await q.addScriptTag({ content: lerExt('shell.js') });
-  await q.evaluate(() => window.__ouvintes.forEach(f => f({ type: 'abrir' })));
+  await q.waitForTimeout(300);
+  await q.evaluate(snap => chrome.storage.local.set({ snapshot: snap, status: { estado: 'ok' } }), COM_DADOS.snapshot);
   await q.waitForTimeout(500);
-  assert.equal(await cheia(q), false, 'por mensagem, sem leitura: espera');
-  await q.evaluate(() => chrome.storage.local.set({ status: { estado: 'sem_sessao', msg: 'x' } }));
+  assert.equal(await cheia(q), false, 'a leitura terminar não abre');
+  await q.evaluate(() => window.__ouvintes.forEach(f => f({ type: 'abrir' })));
   await esperar(() => cheia(q));
-  assert.equal(await cheia(q), true, 'a leitura respondeu com erro: abre para mostrar o aviso');
-  // já com leitura guardada: abre na hora
-  const r = await pagina(URL_PORTAL, '<!doctype html><body>Onvio</body>');
-  await semear(r, Object.assign({ settings: { abrirAoEntrar: false } }, COM_DADOS));
-  await r.goto(URL_PORTAL);
-  await r.addScriptTag({ content: lerExt('shell.js') });
-  await r.evaluate(() => window.__ouvintes.forEach(f => f({ type: 'abrir' })));
-  await esperar(() => cheia(r));
-  assert.equal(await cheia(r), true);
+  assert.deepEqual(q.erros, []);
+});
+
+await passo('shell: quando a extensão não está lendo aparece um aviso por cima com o motivo e o botão Ler agora; some quando a leitura volta', async () => {
+  const caso = async extra => {
+    const p = await pagina(URL_PORTAL, '<!doctype html><body>Onvio</body>');
+    await semear(p, extra);
+    await p.goto(URL_PORTAL);
+    await p.addScriptTag({ content: lerExt('shell.js') });
+    await p.waitForTimeout(400);
+    return p;
+  };
+  const aviso = p => p.evaluate(() => document.getElementById('controlonvio-host').dataset.aviso || '');
+  assert.equal(await aviso(await caso(COM_DADOS)), '', 'lendo normalmente: sem aviso');
+  assert.equal(await aviso(await caso({ snapshot: COM_DADOS.snapshot, status: { estado: 'visao_cliente' } })), '', 'acesso de cliente não é falha');
+  assert.equal(await aviso(await caso({ snapshot: COM_DADOS.snapshot, status: { estado: 'lendo', em: new Date().toISOString() } })), '', 'lendo agora: sem aviso');
+  assert.equal(await aviso(await caso({ snapshot: COM_DADOS.snapshot, status: { estado: 'lendo', em: new Date(Date.now() - 5 * 60000).toISOString() } })), 'travada');
+  assert.equal(await aviso(await caso({ snapshot: Object.assign({}, COM_DADOS.snapshot, { fetchedAt: new Date(Date.now() - 40 * 60000).toISOString() }), status: { estado: 'ok' } })), 'parada', 'última leitura há 40 min');
+  assert.equal(await aviso(await caso({ snapshot: COM_DADOS.snapshot, status: { estado: 'erro', em: 'x', msg: 'HTTP 500' } })), 'erro');
+  const p = await caso({ snapshot: COM_DADOS.snapshot, status: { estado: 'sem_sessao', em: 'y', msg: 'HTTP 401' } });
+  assert.equal(await aviso(p), 'sem_sessao');
+  assert.equal(await cheia(p), false, 'o aviso não abre a camada');
+  if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/aviso-sem-leitura.png' });
+  // Tab: botão do Control Onvio, "Agora não", "Ler agora"
+  await p.keyboard.press('Tab'); await p.keyboard.press('Tab'); await p.keyboard.press('Tab'); await p.keyboard.press('Enter');
+  await esperar(() => p.evaluate(() => (window.__msgs || []).some(m => m && m.cmd === 'atualizar')));
+  await p.evaluate(snap => chrome.storage.local.set({ snapshot: snap, status: { estado: 'ok' } }), COM_DADOS.snapshot);
+  await esperar(async () => (await aviso(p)) === '');
+  // "Agora não" esconde até o motivo mudar
+  await p.evaluate(() => chrome.storage.local.set({ status: { estado: 'erro', em: 'z', msg: 'x' } }));
+  await esperar(async () => (await aviso(p)) === 'erro');
+  await p.mouse.click(20, 400);                                                           // foco de volta na página
+  await p.keyboard.press('Tab'); await p.keyboard.press('Tab'); await p.keyboard.press('Enter');   // botão do Control Onvio, "Agora não"
+  await esperar(async () => (await aviso(p)) === '');
+  await p.evaluate(() => chrome.storage.local.set({ status: { estado: 'sem_sessao', em: 'w', msg: 'x' } }));
+  await esperar(async () => (await aviso(p)) === 'sem_sessao');
   assert.deepEqual(p.erros, []);
 });
 
@@ -343,9 +355,7 @@ await passo('shell: o botão é arrastável (clique só sem arraste), a posiçã
   await semear(p, COM_DADOS);
   await p.goto(URL_PORTAL);
   await p.addScriptTag({ content: lerExt('shell.js') });
-  await esperar(() => appFrame(p));
-  await p.evaluate(() => window.__ouvintes.forEach(f => f({ type: 'fechar' })));
-  await p.waitForFunction(() => !document.documentElement.classList.contains('controlonvio-cheia'));
+  await p.waitForTimeout(400);
   const ponto = () => p.evaluate(() => { const e = document.elementFromPoint(958, 658); return e && e.id; });
   assert.equal(await ponto(), 'controlonvio-host', 'começa no canto inferior direito');
   // arrasta 300 px para a esquerda e 200 para cima: não abre

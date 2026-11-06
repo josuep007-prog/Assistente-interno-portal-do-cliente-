@@ -142,7 +142,10 @@ const esperar = async (cond, ms = 8000) => { const fim = Date.now() + ms; while 
 const portal = await ctx.newPage();
 await portal.setViewportSize({ width: 1440, height: 900 });
 await portal.goto(PORTAL_TESTE);
-await esperar(() => appDe(portal));                                   // ao entrar no Onvio, o app já ocupa a tela
+await new Promise(r => setTimeout(r, 1500));
+assert.equal(appDe(portal), undefined, 'ao entrar no Onvio a camada nunca abre sozinha (só o botão)');
+await sw.evaluate(async i => aoClicarNoIcone(await chrome.tabs.get(i)), await idDaAba(PORTAL_TESTE));      // o clique no ícone abre
+await esperar(() => appDe(portal));
 const app = appDe(portal);
 await app.waitForSelector('.hj-hero .an-svg', { timeout: 8000 });
 await new Promise(r => setTimeout(r, 1000));                         // números e anel animados
@@ -285,7 +288,7 @@ assert.equal(ctx.pages().length, abasAntes, 'e reaproveita a aba do portal que j
 await staff.close();
 console.log('ícone fora do portal -> leva ao portal e abre o app lá; /staff/ nunca tem painel');
 
-// sem nenhuma aba do portal: o ícone cria uma nas Solicitações e o app abre sozinho assim que a primeira leitura termina
+// sem nenhuma aba do portal: o ícone cria uma nas Solicitações e o app abre lá (resposta ao clique)
 for (const pg of ctx.pages()) if (/onvio\.com\.br/.test(pg.url())) await pg.close();
 await pagina.evaluate(() => chrome.storage.local.remove(['snapshot', 'status', 'assinaturas', 'ultimaVerificacao']));      // como na 1ª vez: ainda não há leitura
 const antes = ctx.pages().length;
@@ -293,10 +296,9 @@ await sw.evaluate(i => aoClicarNoIcone({ id: i, url: 'https://exemplo.com/' }), 
 await esperar(() => ctx.pages().length > antes);
 const nova = ctx.pages().find(pg => /onvio\.com\.br\/br-portal-do-cliente\/service-requesting\/general/.test(pg.url()));
 assert.ok(nova, 'abriu o portal nas Solicitações');
-await esperar(() => appDe(nova), 20000);                                  // abre sozinho depois da leitura
+await esperar(() => appDe(nova), 20000);                                  // abre logo que a página carrega: é a resposta ao clique
 assert.equal(await cheia(nova), true);
-assert.ok((await pagina.evaluate(() => chrome.storage.local.get('snapshot'))).snapshot, 'e já com a primeira leitura feita');
-console.log('primeira vez: o portal abre nas Solicitações e o app aparece sozinho depois da leitura');
+console.log('primeira vez: o clique no ícone abre o portal nas Solicitações com o app');
 
 // folha (0.68.0): o PDF vem pela aba do Onvio, o texto sai do pdf.js no documento fora da tela e o núcleo acha os contribuintes
 {
