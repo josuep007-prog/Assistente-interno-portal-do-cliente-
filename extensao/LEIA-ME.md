@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.84.0)
+# Control Onvio · ControlTax (v0.85.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,15 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.85.0 (06/11/2026): Tarefas do Gestta pela competência
+
+- Pedido do Josué: "as tarefas devem ser agrupadas por competência e não por data de vencimento". A tela das Tarefas do Gestta passa a ser **da competência**: o seletor do topo diz "Competência outubro de 2026" e abre, de fábrica, na **competência do mês anterior** (a que está sendo fechada).
+- Empresas, Lista, Obrigações e **Fechamento** mostram as tarefas da competência escolhida, vençam quando vencerem. O **Meu dia continua pelo vencimento** (escolha do Josué): o que vence hoje, está atrasado ou vence nos próximos dias, de qualquer competência.
+- O calendário e a linha do tempo mostram os dias das **metas** dessas tarefas, um mês de meta por vez (o mês em que mais vencem, com a escolha dos outros).
+- Leitura: a busca tenta `date_type: COMPETENCE_DATE` e confere se o Gestta respeitou; se recusar ou ignorar, lê as metas da competência e dos 3 meses seguintes e separa pela `competence_date` (`OCG.competenciaDe`, `OCG.daCompetencia`). O Fechamento junta as tarefas da competência com o relatório de cada mês em que elas vencem (`gtFechC-AAAA-MM` na memória do Chrome).
+- **A conferir no Gestta real:** se a busca aceita `COMPETENCE_DATE` (senão a extensão usa o caminho pelas metas, que é mais lento) e se a `competence_date` vem no 1º dia do mês.
+- O envio ao Hub não mudou (tarefas pela meta do mês atual e do anterior).
 
 ## Novidades da v0.84.0 (06/11/2026): reenviar só o que deu erro
 

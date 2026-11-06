@@ -338,7 +338,7 @@ assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br
   const ID = '5f1e2d3c4b5a69788796a5b4', ID2 = '6a5b4c3d2e1f00112233aabb';
   const CORS = { 'access-control-allow-origin': 'https://app.gestta.com.br', 'access-control-allow-headers': 'authorization,content-type,accept', 'access-control-allow-methods': 'GET,POST,OPTIONS' };
   const gChamadas = [], gCab = [], gBuscas = [], gRel = [];
-  let papel = 'ROLE_ADMIN', adminProibido = false;
+  let papel = 'ROLE_ADMIN', adminProibido = false, gCompOk = true;
   await ctx.route('https://app.gestta.com.br/**', r => r.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Gestta</title><body>Tarefas</body>' }));
   await ctx.route('https://api.gestta.com.br/**', async r => {
     const q = r.request(), u = new URL(q.url());
@@ -355,7 +355,11 @@ assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br
     if (p === '/core/customer/task/search') {
       const c = JSON.parse(q.postData() || '{}'); gBuscas.push(c);
       if (c.limit === 1) return json({ docs: [{ _id: ID, name: 'TAREFA', status: 'OPEN' }], total: 6833, pages: 6833, page: 1, limit: 1 });
-      return json({ docs: [{ _id: c.page === 1 ? ID : ID2, name: 'TAREFA ' + c.page, status: 'OPEN', due_date: new Date().toISOString(), customer: { _id: ID, name: 'EMPRESA FICTICIA LTDA', code: '9999' }, value: 999, owner: { phone_number: '9' } }], total: 2, pages: 2, page: c.page, limit: 1000 });
+      // 0.85.0: com gCompOk o Gestta filtra pela competência; sem, recusa date_type COMPETENCE_DATE (400) e a meta de M é da competência M-1
+      if (c.date_type === 'COMPETENCE_DATE' && !gCompOk) return json({ message: 'invalid date_type' }, 400);
+      const ini = new Date(c.start_date), porComp = c.date_type === 'COMPETENCE_DATE';
+      const comp = porComp ? ini : new Date(Date.UTC(ini.getUTCFullYear(), ini.getUTCMonth() - 1, 1, 3)), meta = new Date(porComp ? Date.UTC(ini.getUTCFullYear(), ini.getUTCMonth() + 1, 10, 3) : ini.getTime() + 9 * 864e5);
+      return json({ docs: [{ _id: c.page === 1 ? ID : ID2, name: 'TAREFA ' + c.page, status: 'OPEN', due_date: meta.toISOString(), competence_date: comp.toISOString(), customer: { _id: ID, name: 'EMPRESA FICTICIA LTDA', code: '9999' }, value: 999, owner: { phone_number: '9' } }], total: 2, pages: 2, page: c.page, limit: 1000 });
     }
     if (p === '/core/customer/task/report') {
       const c = JSON.parse(q.postData() || '{}'); gRel.push(c);
@@ -402,7 +406,21 @@ assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br
   const t1 = await tt({ cmd: 'gesttaTarefas' });
   assert.ok(t1.ok, 'gesttaTarefas: ' + (t1.erro || ''));
   assert.equal(t1.itens.length, 2, 'as duas páginas'); assert.equal(t1.quem, 'eu'); assert.equal(t1.perfil.total, true);
-  assert.deepEqual(gBuscas.map(c => c.page), [1, 2]);
+  // 0.85.0: a competência (de fábrica a do mês anterior) pela busca COMPETENCE_DATE, e o Meu dia pelas metas do mês corrente
+  const hj = new Date(), cpA = hj.getMonth() === 0 ? [hj.getFullYear() - 1, 12] : [hj.getFullYear(), hj.getMonth()];
+  assert.deepEqual([t1.ano, t1.mes], cpA, 'competência anterior de fábrica'); assert.equal(t1.modoCompetencia, 'direto');
+  assert.deepEqual(gBuscas.map(c => c.date_type + ':' + c.page), ['COMPETENCE_DATE:1', 'COMPETENCE_DATE:2', 'DUE_DATE:1', 'DUE_DATE:2']);
+  assert.equal(t1.dia.length, 2, 'as metas do mês para o Meu dia');
+  // o Gestta recusa a busca pela competência: lê as metas da competência e dos 3 meses seguintes e separa pela competence_date
+  gCompOk = false; gBuscas.length = 0;
+  const tc = await tt({ cmd: 'gesttaTarefas', ano: 2026, mes: 9 });
+  assert.ok(tc.ok, 'competência pelas metas: ' + (tc.erro || '')); assert.equal(tc.modoCompetencia, 'meta');
+  assert.deepEqual(tc.itens.map(t => t.competence_date.slice(0, 7)), ['2026-09', '2026-09'], 'só a competência pedida');
+  assert.deepEqual(gBuscas.filter(c => c.date_type === 'DUE_DATE').slice(0, 8).map(c => c.start_date.slice(0, 7)), ['2026-09', '2026-09', '2026-10', '2026-10', '2026-11', '2026-11', '2026-12', '2026-12']);
+  gBuscas.length = 0;
+  await tt({ cmd: 'gesttaTarefas', ano: 2026, mes: 9 });
+  assert.ok(!gBuscas.some(c => c.date_type === 'COMPETENCE_DATE'), 'lembra que a busca pela competência não serve');
+  gCompOk = true;
   assert.ok(gBuscas.every(c => c.limit === 1000 && JSON.stringify(c.company_user) === JSON.stringify([ID2]) && c.status.includes('DONE') && !c.status.includes('IGNORED')), 'só as da pessoa logada, um mês');
   assert.equal(t1.itens[0].value, undefined, 'valor da tarefa não sai da página'); assert.equal(t1.itens[0].owner, undefined);
   gBuscas.length = 0;
@@ -418,9 +436,10 @@ assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br
   const f1 = await tt({ cmd: 'gesttaFechamento', ano: 2026, mes: 11 });
   assert.ok(f1.ok, 'gesttaFechamento: ' + (f1.erro || ''));
   assert.equal(f1.formato, 'ndjson'); assert.equal(f1.linhas.length, 2); assert.equal(f1.parcial, false); assert.equal(f1.naMemoria, true);
-  assert.deepEqual(gChamadas.slice(antesFech).filter(c => c.startsWith('POST ')), ['POST /core/customer/task/report']);
-  assert.equal(gRel.length, 1); assert.equal(gRel[0].type, 'CUSTOMER_TASK');
-  assert.match(gRel[0].dates.startDate, /^2026-11-01/); assert.match(gRel[0].dates.endDate, /^(2026-11-30|2026-12-01T0[0-3])/);
+  // 0.85.0: o Fechamento é da competência: as tarefas da competência pela busca, e o relatório só dos meses em que elas vencem
+  assert.deepEqual([...new Set(gChamadas.slice(antesFech).filter(c => c.startsWith('POST ')))], ['POST /core/customer/task/search', 'POST /core/customer/task/report']);
+  assert.equal(gRel.length, 1, 'as tarefas da competência 11 vencem em dezembro: um relatório'); assert.equal(gRel[0].type, 'CUSTOMER_TASK');
+  assert.match(gRel[0].dates.startDate, /^2026-12-01/); assert.deepEqual(f1.mesesMeta, ['2026-12']); assert.equal(f1.competencia, true);
   for (const c of ['value', 'customer.monthly_payment', 'company_task.score']) assert.ok(!f1.colunas.includes(c), 'coluna fora do fechamento: ' + c);
   assert.ok(f1.colunas.includes('company_department.name') && f1.colunas.includes('owner.name'), 'setor e responsável no fechamento');
   const nRel = gRel.length;
@@ -428,7 +447,7 @@ assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br
   assert.ok(f2.ok && f2.daMemoria && f2.podeEm > 0, 'em menos de 1 hora vem da memória');
   assert.equal(gRel.length, nRel, 'atualizar antes de 1 hora não chama o Gestta de novo');
   const sess = await pagina.evaluate(() => chrome.storage.session.get(null));
-  assert.ok(sess['gtFech-2026-11'] && sess['gtFech-2026-11'].linhas.length === 2, 'relatório na memória do Chrome');
+  assert.ok(sess['gtFechC-2026-11'] && sess['gtFechC-2026-11'].linhas.length === 2, 'relatório na memória do Chrome');
   const loc = JSON.stringify(await pagina.evaluate(() => chrome.storage.local.get(null)));
   assert.ok(!loc.includes('gtFech') && !loc.includes('EMPRESA FICTICIA'), 'nada do relatório no armazenamento do disco');
   for (const s of ['SEGREDO', 'eyJ']) assert.ok(!JSON.stringify(sess).includes(s) && !JSON.stringify(f1).includes(s), 'token fora da memória: ' + s);
@@ -454,7 +473,7 @@ assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br
   assert.equal(d2.ok, false); assert.equal(gChamadas.length, antesInv, 'id inválido não pede nada');
   // analista: avisa que o envio ao Hub não sai; admin proibido vira "seu acesso não inclui"
   papel = 'ROLE_USER'; adminProibido = true;
-  await pagina.evaluate(() => chrome.storage.session.remove('gtFech-2026-11'));
+  await pagina.evaluate(() => chrome.storage.session.remove('gtFechC-2026-11'));
   const f3 = await tt({ cmd: 'gesttaFechamento', ano: 2026, mes: 11 });
   assert.ok(f3.ok && f3.parcial === true, 'analista: fechamento marcado como parcial');
   const g2 = (await tg()).linhas.join('\n');

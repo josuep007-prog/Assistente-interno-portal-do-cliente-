@@ -122,13 +122,13 @@ function fichaHtml(e, x) {
     return '<section class="gk-col gt-c-' + cor + '"><h4><i class="gt-ponto"></i>' + rot + '<span class="gt-n">' + l.length + '</span></h4>' + (l.length ? l.map(t => cartao(t, x.hoje, k)).join('') : '<p class="gk-vazio">Nada aqui</p>') + '</section>';
   }).join('');
   const modo = (m, ic, rot) => '<button type="button" class="' + (EM.trilha === m ? 'on' : '') + '" data-gf-trilha="' + m + '" aria-pressed="' + (EM.trilha === m) + '"><svg class="ic ic-sm"><use href="#' + ic + '"/></svg>' + rot + '</button>';
-  return '<header class="gf-cab"><div class="gf-tit"><h2>' + esc(e.nome) + '</h2><p>' + (e.codigo ? '<span class="gt-cod">' + esc(e.codigo) + '</span>' : '') + plural(e.n, 'tarefa', 'tarefas') + ' no mês' + (setores.length ? ' · ' + esc(setores.join(', ')) : '') + '</p></div>' +
+  return '<header class="gf-cab"><div class="gf-tit"><h2>' + esc(e.nome) + '</h2><p>' + (e.codigo ? '<span class="gt-cod">' + esc(e.codigo) + '</span>' : '') + plural(e.n, 'tarefa', 'tarefas') + ' na competência' + (setores.length ? ' · ' + esc(setores.join(', ')) : '') + '</p></div>' +
       '<div class="gf-prog">' + anel(tr.pct, 64, 8) + '<div><b>' + tr.pct + '%</b><span>' + num(tr.feitas) + ' de ' + num(tr.total) + ' concluídas</span></div></div></header>' +
     '<div class="gf-stats">' + stat('multa', e.multa, 'gerando multa') + stat('atrasada', e.atrasada, 'atrasadas') + stat('impedimento', e.impedimento, 'impedimento') + stat('hoje', e.hoje, 'vencem hoje') + stat('afazer', Math.max(0, e.abertas - e.multa - e.atrasada - e.impedimento - e.hoje), 'a fazer') + stat('feita', e.feitas, 'concluídas') + '</div>' +
     (prox ? '<button type="button" class="gf-prox gt-c-' + COR[prox.grupo] + '" data-et="' + esc(prox.t._id) + '" data-emp="' + esc(k) + '"><span class="gf-prox-rot">Próxima etapa</span>' + marca(prox.estado) + '<b>' + esc(prox.t.name || 'Tarefa') + '</b><span>' + esc(prox.prazo) + '</span><svg class="ic ic-sm"><use href="#i-chev-r"/></svg></button>'
       : tr.total ? '<div class="gf-prox gf-fechado"><span class="ge-ok" aria-hidden="true">✓</span><b>Mês fechado</b><span>todas as tarefas concluídas</span></div>' : '') +
     porSetor +
-    '<section class="gf-sec"><div class="gf-sec-cab"><h3>Trilha do mês</h3><div class="seg gt-modos" role="group" aria-label="Como desenhar as etapas">' + modo('seq', 'i-repeat', 'Trilha') + modo('tempo', 'i-calendar', 'Linha do tempo') + '</div></div>' +
+    '<section class="gf-sec"><div class="gf-sec-cab"><h3>Trilha da competência</h3><div class="seg gt-modos" role="group" aria-label="Como desenhar as etapas">' + modo('seq', 'i-repeat', 'Trilha') + modo('tempo', 'i-calendar', 'Linha do tempo') + '</div></div>' +
       (EM.trilha === 'tempo' ? '<div class="gf-tempo">' + cabecalhoTempo(x.ano, x.mes) + '<div class="gt-tr-trilha tempo">' + trilhaTempo(tr, k, x.ano, x.mes) + linhaDoHoje(x.ano, x.mes) + '</div></div>' : stepper(tr, k)) + '</section>' +
     '<section class="gf-sec"><h3>Tarefas por situação</h3><div class="gk">' + kanban + '</div></section>';
 }

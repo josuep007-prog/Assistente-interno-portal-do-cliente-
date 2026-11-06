@@ -243,6 +243,41 @@ async function tabDoGestta(sender) {
   const t = sender && sender.tab;
   return t && OCG.appDe(t.url || '') ? t : await abaGestta();
 }
+// Todas as páginas de uma busca de tarefas (de 1000 em 1000, até OCG.MAX_PAGINAS_TAREFAS).
+async function buscarTodasGestta(tab, base) {
+  const itens = []; let total = null, paginas = 1;
+  for (let p = 1; p <= paginas && p <= OCG.MAX_PAGINAS_TAREFAS; p++) {
+    const { r } = await lerGestta([OCG.PEDIDOS.buscaTarefas(Object.assign({}, base, { page: p }))], { tab });
+    const x = r && r.resultados && r.resultados[0];
+    if (!r || !r.ok || !x) return { ok: false, erro: 'A leitura das tarefas parou no meio (aba do Gestta sem resposta).' };
+    if (x.status !== 200) return { ok: false, status: x.status, erro: x.status === 403 ? 'Seu acesso do Gestta não inclui essas tarefas.' : x.status === 401 ? 'A sessão do Gestta acabou: faça login de novo na aba.' : 'O Gestta não respondeu às tarefas (' + (x.erro || x.recusado || x.status) + ').' };
+    itens.push(...((x.dados && x.dados.itens) || []));
+    if (x.dados && x.dados.total != null) total = x.dados.total;
+    paginas = Math.max(1, Number(x.dados && x.dados.paginas) || 1);
+  }
+  return { ok: true, itens, total: total != null ? total : itens.length, cortado: paginas > OCG.MAX_PAGINAS_TAREFAS };
+}
+// 0.85.0 (Josué, 06/11/2026): as tarefas de uma competência. Tenta a busca pela competência (date_type COMPETENCE_DATE) e confere
+// se o Gestta respeitou; se recusar ou ignorar, lê as metas da competência e dos 3 meses seguintes e separa pela competence_date.
+// O jeito que deu certo fica lembrado só na memória do service worker.
+let gesttaModoComp = '';
+async function tarefasDaCompetencia(tab, base, ano, mes) {
+  if (gesttaModoComp !== 'meta') {
+    const d = await buscarTodasGestta(tab, Object.assign({}, base, { ano, mes, dataTipo: 'COMPETENCE_DATE' }));
+    if (d.ok && OCG.buscaPorCompetenciaValeu(d.itens, ano, mes)) { gesttaModoComp = 'direto'; return Object.assign(d, { modo: 'direto' }); }
+    if (!d.ok && d.status !== 400 && d.status !== 422 && d.status !== 500) return d;          // 401, 403, aba sem resposta: o erro é outro
+    gesttaModoComp = 'meta';
+  }
+  const vistos = new Map(); let cortado = false;
+  for (const m of OCG.mesesDaCompetencia(ano, mes)) {
+    const d = await buscarTodasGestta(tab, Object.assign({}, base, { ano: m.ano, mes: m.mes }));
+    if (!d.ok) return d;
+    if (d.cortado) cortado = true;
+    OCG.daCompetencia(d.itens, ano, mes).forEach(t => { if (t && t._id && !vistos.has(t._id)) vistos.set(t._id, t); });
+  }
+  const itens = [...vistos.values()];
+  return { ok: true, itens, total: itens.length, cortado, modo: 'meta' };
+}
 async function gesttaTarefas(msg, sender) {
   const tab = await tabDoGestta(sender);
   if (!tab) return { ok: false, semAba: true, erro: 'Abra o Gestta numa aba, já logado.' };
@@ -250,31 +285,41 @@ async function gesttaTarefas(msg, sender) {
   if (!r1 || !r1.ok) return { ok: false, semSessao: !!(r1 && r1.semSessao), erro: (r1 && r1.motivo) || 'A aba do Gestta não respondeu (recarregue com F5).' };
   const me = r1.resultados[0], pf = me && me.dados ? OCG.perfil(me.dados) : null;
   if (!pf || !pf.ok) return { ok: false, erro: 'Não consegui saber quem está logado no Gestta' + (me && me.status ? ' (' + (me.erro || me.status) + ')' : '') + '.' };
-  const ano = Number(msg.ano) || new Date().getFullYear(), mes = Number(msg.mes) || new Date().getMonth() + 1;
+  const padrao = OCG.competenciaPadrao(new Date());
+  const ano = Number(msg.ano) || padrao.ano, mes = Number(msg.mes) || padrao.mes;
   let quem = String(msg.quem || 'eu');
   if (!pf.total || !(quem === 'eu' || quem === 'sem' || /^[0-9a-f]{24}$/i.test(quem))) quem = 'eu';
-  const base = { ano, mes, limit: OCG.LIMITE_BUSCA, status: ['OPEN', 'IMPEDIMENT', 'DONE'] };
+  const base = { limit: OCG.LIMITE_BUSCA, status: ['OPEN', 'IMPEDIMENT', 'DONE'] };
   if (quem === 'sem') base.semDono = true; else base.companyUser = quem === 'eu' ? pf.id : quem;
-  const itens = []; let total = null, paginas = 1, cortado = false;
-  for (let p = 1; p <= paginas && p <= OCG.MAX_PAGINAS_TAREFAS; p++) {
-    const { r } = await lerGestta([OCG.PEDIDOS.buscaTarefas(Object.assign({}, base, { page: p }))], { tab });
-    const x = r && r.resultados && r.resultados[0];
-    if (!r || !r.ok || !x) return { ok: false, erro: 'A leitura das tarefas parou no meio (aba do Gestta sem resposta).' };
-    if (x.status !== 200) return { ok: false, erro: x.status === 403 ? 'Seu acesso do Gestta não inclui essas tarefas.' : x.status === 401 ? 'A sessão do Gestta acabou: faça login de novo na aba.' : 'O Gestta não respondeu às tarefas (' + (x.erro || x.recusado || x.status) + ').' };
-    itens.push(...((x.dados && x.dados.itens) || []));
-    if (x.dados && x.dados.total != null) total = x.dados.total;
-    paginas = Math.max(1, Number(x.dados && x.dados.paginas) || 1);
-  }
-  if (paginas > OCG.MAX_PAGINAS_TAREFAS) cortado = true;
-  return { ok: true, ano, mes, quem, perfil: { id: pf.id, papelNome: pf.papelNome, total: pf.total, setores: pf.setores }, itens, total: total != null ? total : itens.length, cortado, validade: r1.validade || null, lidoEm: new Date().toISOString() };
+  const comp = await tarefasDaCompetencia(tab, base, ano, mes);
+  if (!comp.ok) return { ok: false, erro: comp.erro };
+  // Meu dia: pelo vencimento (escolha do Josué em 06/11/2026), as metas do mês corrente, de qualquer competência
+  const h = new Date(), dia = await buscarTodasGestta(tab, Object.assign({}, base, { ano: h.getFullYear(), mes: h.getMonth() + 1 }));
+  return { ok: true, ano, mes, quem, perfil: { id: pf.id, papelNome: pf.papelNome, total: pf.total, setores: pf.setores }, itens: comp.itens, total: comp.total, cortado: comp.cortado, modoCompetencia: comp.modo,
+    dia: dia.ok ? dia.itens : null, diaErro: dia.ok ? '' : dia.erro, diaCortado: !!dia.cortado, validade: r1.validade || null, lidoEm: new Date().toISOString() };
 }
 // Fechamento do mês (0.73.0): o relatório CUSTOMER_TASK do mês, lido sob demanda e guardado SÓ na memória do Chrome
 // (chrome.storage.session: some ao fechar o navegador, nunca vai ao disco), com no máximo uma leitura por hora
 // (decisão do Josué em 05/11/2026). Com acesso parcial, a resposta vai marcada "parcial" e a tela avisa.
 const FECH_INTERVALO_MS = 60 * 60e3;
+// O relatório CUSTOMER_TASK de um mês de meta. 0.83.0: num 400 tenta os outros valores de período que o próprio Gestta usa.
+async function relatorioDoMes(tab, ano, mes) {
+  let x = null;
+  for (const filtro of OCG.filtrosRelatorio({ ano, mes })) {
+    const { r } = await lerGestta([OCG.PEDIDOS.fechamento({ ano, mes, filtro })], { tab });
+    x = r && r.resultados && r.resultados[0];
+    if (!x || x.status !== 400) { if (x && x.status === 200) OCG.lembrarFiltroRel(filtro); break; }
+  }
+  if (!x) return { ok: false, erro: 'A aba do Gestta não respondeu ao relatório.' };
+  if (x.status !== 200 || !x.dados) return { ok: false, erro: x.status === 403 ? 'Seu acesso do Gestta não inclui o relatório de tarefas.' : x.status === 401 ? 'A sessão do Gestta acabou: faça login de novo na aba.' : 'O relatório do Gestta não veio (' + (x.erro || x.recusado || x.status) + ').' };
+  return { ok: true, colunas: x.dados.colunas, linhas: x.dados.linhas, total: x.dados.total, formato: x.dados.formato };
+}
+// 0.85.0: o Fechamento é da competência. O relatório só sabe a meta, então: as tarefas da competência (a busca, todas as que o
+// acesso alcança), os meses em que elas vencem, o relatório de cada um desses meses e só as linhas dessas tarefas.
 async function gesttaFechamento(msg, sender) {
-  const ano = Number(msg.ano) || new Date().getFullYear(), mes = Number(msg.mes) || new Date().getMonth() + 1;
-  const chave = 'gtFech-' + ano + '-' + String(mes).padStart(2, '0');
+  const padrao = OCG.competenciaPadrao(new Date());
+  const ano = Number(msg.ano) || padrao.ano, mes = Number(msg.mes) || padrao.mes;
+  const chave = 'gtFechC-' + ano + '-' + String(mes).padStart(2, '0');
   const guardado = (await chrome.storage.session.get(chave).catch(() => ({})))[chave];
   const idade = guardado ? Date.now() - new Date(guardado.lidoEm).getTime() : Infinity;
   if (guardado && (!msg.forcar || idade < FECH_INTERVALO_MS)) return Object.assign({ ok: true, daMemoria: true, podeEm: Math.max(0, Math.ceil((FECH_INTERVALO_MS - idade) / 60e3)) }, guardado);
@@ -285,17 +330,19 @@ async function gesttaFechamento(msg, sender) {
   const pf = r1.resultados[0] && r1.resultados[0].dados ? OCG.perfil(r1.resultados[0].dados) : null;
   if (!pf || !pf.ok) return { ok: false, erro: 'Não consegui saber quem está logado no Gestta.' };
   const t0 = Date.now();
-  // 0.83.0: num 400 tenta os outros valores de período que o próprio Gestta usa (OCG.filtrosRelatorio) e lembra o que deu certo
-  let r = null, x = null;
-  for (const filtro of OCG.filtrosRelatorio({ ano, mes })) {
-    ({ r } = await lerGestta([OCG.PEDIDOS.fechamento({ ano, mes, filtro })], { tab }));
-    x = r && r.resultados && r.resultados[0];
-    if (!x || x.status !== 400) { if (x && x.status === 200) OCG.lembrarFiltroRel(filtro); break; }
+  const comp = await tarefasDaCompetencia(tab, { limit: OCG.LIMITE_BUSCA, status: ['OPEN', 'IMPEDIMENT', 'DONE'] }, ano, mes);
+  if (!comp.ok) return { ok: false, erro: comp.erro };
+  const ids = new Set(comp.itens.map(t => t && t._id).filter(Boolean)), meses = OCG.mesesDeMeta(comp.itens).slice(0, 6);
+  let colunas = null, formato = '', linhas = [];
+  for (const m of meses) {
+    const rel = await relatorioDoMes(tab, m.ano, m.mes);
+    if (!rel.ok) return { ok: false, erro: rel.erro };
+    colunas = colunas || rel.colunas; formato = formato || rel.formato;
+    const iId = (rel.colunas || []).indexOf('id');
+    linhas = linhas.concat((rel.linhas || []).filter(l => iId >= 0 && ids.has(String(l[iId]))));
   }
-  if (!x) return { ok: false, erro: 'A aba do Gestta não respondeu ao relatório.' };
-  if (x.status !== 200 || !x.dados) return { ok: false, erro: x.status === 403 ? 'Seu acesso do Gestta não inclui o relatório de tarefas.' : x.status === 401 ? 'A sessão do Gestta acabou: faça login de novo na aba.' : 'O relatório do Gestta não veio (' + (x.erro || x.recusado || x.status) + ').' };
-  const dados = { ano, mes, lidoEm: new Date().toISOString(), segundos: Math.round((Date.now() - t0) / 1000), parcial: !pf.total,
-    perfil: { papelNome: pf.papelNome, total: pf.total, setores: pf.setores }, colunas: x.dados.colunas, linhas: x.dados.linhas, total: x.dados.total, formato: x.dados.formato };
+  const dados = { ano, mes, competencia: true, lidoEm: new Date().toISOString(), segundos: Math.round((Date.now() - t0) / 1000), parcial: !pf.total, mesesMeta: meses.map(m => OCG.mesTexto(m.ano, m.mes)), semRelatorio: Math.max(0, ids.size - linhas.length),
+    perfil: { papelNome: pf.papelNome, total: pf.total, setores: pf.setores }, colunas: colunas || OCG.COLUNAS_FECHAMENTO, linhas, total: linhas.length, formato, cortado: !!comp.cortado };
   let naMemoria = true;
   try { await chrome.storage.session.set({ [chave]: dados }); } catch (e) { naMemoria = false; }       // grande demais para a memória: vale só nesta resposta
   return Object.assign({ ok: true, naMemoria, podeEm: 60 }, dados);
