@@ -251,11 +251,14 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     // alguém apagou o analista do DP da ALFA: há de novo o que complementar
     await page.evaluate(() => { const e = window.__db.ler('dp_empresas/e-alfa'); e.responsavel = ''; window.__db.semear('dp_empresas/e-alfa', e); });
     await page.waitForFunction(() => window.__hubApi.api('gestta').difs().some(d => d.mod === 'dp' && d.campo === 'responsavel' && d.acao === 'complementar'), null, { timeout: 5000 });
+    const ligouEm = await page.evaluate(() => Date.now());
     await api((g) => g.salvarCfg(c => { c.auto.ligada = true; }));
     await page.waitForFunction((n) => window.__db.listar('gt_hist').flatMap(d => Array.isArray(d.itens) ? d.itens : [d]).length > n, antes, { timeout: 8000 });
     await page.waitForFunction(() => !window.__hubApi.api('gestta').auto().rodando, null, { timeout: 8000 });
     const novos = (await page.evaluate(() => window.__db.listar('gt_hist').flatMap(d => Array.isArray(d.itens) ? d.itens : [d]))).slice(antes);
     assert.ok(novos.length >= 1 && novos.every(h => h.auto && h.acao === 'complementar'), JSON.stringify(novos.map(h => [h.mod, h.acao])));
+    await page.waitForTimeout(2500);
+    { const rs = await page.evaluate((t) => window.__db.listar('hub_restauro').filter(d => d.em >= t).map(d => d.path + ' ' + d.t), ligouEm); assert.deepEqual(rs, [], 'a aplicação automática não cria ponto de restauração'); }
     const d = await difs();
     assert.ok(!d.some(x => x[3] === 'complementar' && x[7] && !x[6]), 'nada para complementar sobrou');
     assert.ok(d.some(x => x[3] === 'corrigir'), 'corrigir continua para decidir');
@@ -348,6 +351,16 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     const itens = docs.flatMap(d => d.itens);
     assert.equal(itens.length, antes + 7 + 2, 'todos os registros ficaram, sem repetir');
     assert.equal(r.apagados, 7, '6 do lote de outubro + o resto já compactado');
+  });
+
+  await passo('Hub 321: pontos de restauração ficam nos 150 mais novos e em até 3 dias; a aplicação automática não cria ponto', async () => {
+    const agora = Date.now();
+    for (let i = 0; i < 160; i++) await page.evaluate(([i, t]) => window.__db.silencioso('hub_restauro/r' + i, { path: 'dp_empresas/x', em: t - i * 1000, u: 'Teste', t: 'teste', antes: '{}' }), [i, agora]);
+    await semear('hub_restauro/velho', { path: 'dp_empresas/x', em: agora - 4 * 864e5, u: 'Teste', t: 'velho', antes: '{}' });
+    const r = await page.evaluate(() => window.__hubApi.api('gestta').podarRestauro());
+    assert.ok(r.ok, JSON.stringify(r));
+    const ids = await page.evaluate(() => window.__db.listar('hub_restauro').map(d => d.id));
+    assert.ok(ids.length <= 150 && !ids.includes('velho') && ids.includes('r0'), ids.length + ' pontos');
   });
 
   await passo('Uso do banco mede também o histórico do Gestta e o login', async () => {
