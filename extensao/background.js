@@ -1042,7 +1042,8 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'hubRegistrar') reply(await hubRegistrar());
       else if (msg.cmd === 'hubDesconectar') reply(await hubDesconectar());
       else if (msg.cmd === 'hubEnviar') reply(await enviarAoHub(null, true));
-      else if (msg.cmd === 'gesttaHubSync') { if (gesttaHubRodando) reply({ ok: true, jaRodando: true }); else { gesttaHubSincronizar(true).then(r => { if (r && r.ok === false && r.motivo && !r.estado) chrome.storage.local.set({ hubSyncGestta: { estado: 'erro', motivo: r.motivo, terminouEm: new Date().toISOString(), resultados: [] } }).catch(() => {}); }).catch(() => {}); reply({ ok: true, iniciado: true }); } }      // longo: a tela acompanha pelo hubSyncGestta
+      else if (msg.cmd === 'gesttaHubSync') { if (gesttaHubRodando) reply({ ok: true, jaRodando: true }); else if (msg.reenviar) { const { hubSyncGestta } = await chrome.storage.local.get('hubSyncGestta'); const so = OCG.paraReenviar(hubSyncGestta); if (!so.length) reply({ ok: false, motivo: 'nada-reenviar' }); else { gesttaHubSincronizar(true, so).catch(() => {}); reply({ ok: true, iniciado: true, n: so.length }); } } else { gesttaHubSincronizar(true).then(r => { if (r && r.ok === false && r.motivo && !r.estado) chrome.storage.local.set({ hubSyncGestta: { estado: 'erro', motivo: r.motivo, terminouEm: new Date().toISOString(), resultados: [] } }).catch(() => {}); }).catch(() => {}); reply({ ok: true, iniciado: true }); } }      // longo: a tela acompanha pelo hubSyncGestta
+      else if (msg.cmd === 'hubSincronizar' && msg.reenviar) { if (hubSincRodando) reply({ ok: true, jaRodando: true }); else { const { hubSync } = await chrome.storage.local.get('hubSync'); const so = OC.hubParaReenviar(hubSync); if (!so.length) reply({ ok: false, motivo: 'nada-reenviar' }); else { hubSincronizar(true, false, so).catch(() => {}); reply({ ok: true, iniciado: true, n: so.length }); } } }      // 0.84.0: só o que deu erro
       else if (msg.cmd === 'hubSincronizar') { if (hubSincRodando) reply({ ok: true, jaRodando: true }); else if (msg.soFolha && !(await hubEnvioCats()).includes('pessoais')) reply({ ok: false, motivo: 'sem-pessoais' }); else { hubSincronizar(true, !!msg.soFolha).catch(() => {}); reply({ ok: true, iniciado: true }); } }      // longo: a tela acompanha pelo hubSync
       else if (msg.cmd === 'hubLote') {                  // caminho de reserva: o resumo para colar no Hub (sem o código de pareamento)
         const { snapshot } = await chrome.storage.local.get('snapshot');
@@ -1306,7 +1307,8 @@ async function hubEnvioCats() {
 // soFolha (0.70.1, pedido do Josué em 04/11/2026): só a leitura da folha (Extrato Mensal), sem listas nem lista de empregados, com mais PDFs por rodada.
 // Não conta como envio completo: o automático continua contando a partir do último envio completo (completoAnterior).
 const FOLHA_DOCS_SO_FOLHA = 1500;
-async function hubSincronizar(manual, soFolha) {
+// so (0.84.0): ids das tarefas do plano a refazer ("Reenviar o que deu erro"); o resultado se junta ao do envio anterior.
+async function hubSincronizar(manual, soFolha, so) {
   if (hubSincRodando) return hubSincRodando;
   hubSincRodando = (async () => {
     hubCancelar = false;
@@ -1318,10 +1320,12 @@ async function hubSincronizar(manual, soFolha) {
     if (!(await hubStatus()).hubAberto) return { ok: false, motivo: 'sem-hub' };          // sondar o Hub antes de ler o Onvio: sem Hub não há por que gastar as chamadas
     let cats = await hubEnvioCats();
     if (soFolha) { if (!cats.includes('pessoais')) return { ok: false, motivo: 'sem-pessoais' }; cats = ['pessoais']; }
+    const reenvio = !soFolha && Array.isArray(so) && so.length ? so.slice() : null;
     if (!cats.length) return { ok: false, motivo: 'sem-categoria' };
     const { hubSync: anterior } = await chrome.storage.local.get('hubSync');
-    const completoAnterior = anterior ? (anterior.soFolha ? anterior.completoAnterior || '' : (['ok', 'parcial'].includes(anterior.estado) ? anterior.terminouEm || '' : anterior.completoAnterior || '')) : '';
-    const status = { estado: 'enviando', manual: !!manual, soFolha: !!soFolha, completoAnterior, iniciouEm: new Date().toISOString(), pulso: Date.now(), etapa: 'preparando', feito: 0, total: 0, categorias: cats, resultados: [] };
+    const completoAnterior = anterior ? (anterior.soFolha || anterior.reenvio ? anterior.completoAnterior || '' : (['ok', 'parcial'].includes(anterior.estado) ? anterior.terminouEm || '' : anterior.completoAnterior || '')) : '';
+    const base = reenvio && anterior && anterior.estado !== 'enviando' ? (anterior.resultados || []).filter(r => !reenvio.includes(OC.hubTarefaDoConjunto(r.id))) : [];
+    const status = { estado: 'enviando', manual: !!manual, soFolha: !!soFolha, reenvio: !!reenvio, completoAnterior, iniciouEm: new Date().toISOString(), pulso: Date.now(), etapa: 'preparando', feito: 0, total: 0, categorias: cats, resultados: [] };
     const grava = () => { status.pulso = Date.now(); return chrome.storage.local.set({ hubSync: status }).catch(() => {}); };
     await grava();
     // sinal de vida a cada 20 s, mesmo no meio de uma etapa longa (folha, empregados: uma leitura por empresa). Antes só havia sinal
@@ -1368,10 +1372,10 @@ async function hubSincronizar(manual, soFolha) {
       const ctx = { snapshot, pausa: ms => new Promise(r => setTimeout(r, ms)), onItem: null, cancelado: () => hubCancelar,
         // folha (0.68.0): no envio automático, a varredura das pastas é no máximo 1 vez por dia (os extratos saem uma vez por mês), salvo se ficou coisa para trás
         textoPdf: (!manual && folhaRecente) ? null : textoDoPdf, folhaEm: folhaEstado && folhaEstado.em, folhaLidos: lidosFolha, folhaPastas: folhaPastas || {},
-        guardarFolha: x => guardarFolha(x), soTarefas: soFolha ? ['pessoais:folha'] : null, folhaDocsMax: soFolha ? FOLHA_DOCS_SO_FOLHA : undefined, andamento: t => { status.detalhe = String(t || '').slice(0, 120); } };
+        guardarFolha: x => guardarFolha(x), soTarefas: soFolha ? ['pessoais:folha'] : reenvio, folhaDocsMax: soFolha ? FOLHA_DOCS_SO_FOLHA : undefined, andamento: t => { status.detalhe = String(t || '').slice(0, 120); } };
       ctx.onItem = (feitos, total) => { status.detalhe = 'solicitação ' + feitos + ' de ' + total; };
       const res = await OC.hubExecutar(emSegundoPlano(leitor), cats, ctx, enviar, pr => { status.etapa = pr.etapa; status.detalhe = ''; status.feito = pr.feito; status.total = pr.total; grava(); });
-      status.resultados = res.map(r => ({ id: r.id, rotulo: r.rotulo, categoria: r.categoria || '', ok: r.ok !== false, motivo: (r.nota && r.ok !== false ? r.aviso || r.motivo : r.motivo || r.aviso) || '', nota: !!r.nota && r.ok !== false, cortado: !!r.cortado, porque: String(r.porque || '').slice(0, 300), linhas: r.linhas || 0, partes: r.partes || 0 }));
+      status.resultados = base.concat(res.map(r => ({ id: r.id, rotulo: r.rotulo, categoria: r.categoria || '', ok: r.ok !== false, motivo: (r.nota && r.ok !== false ? r.aviso || r.motivo : r.motivo || r.aviso) || '', nota: !!r.nota && r.ok !== false, cortado: !!r.cortado, porque: String(r.porque || '').slice(0, 300), linhas: r.linhas || 0, partes: r.partes || 0 })));
       status.estado = status.resultados.every(r => r.ok) ? 'ok' : status.resultados.some(r => r.ok) ? 'parcial' : 'erro';
       if (fatal) status.motivo = fatal;
       await chrome.storage.local.set({ hubSyncHash: hashes });
@@ -1392,7 +1396,7 @@ async function hubSincAuto() {
   const c = await hubCfg();
   if (!c.token || !c.auto || c.syncAuto === false || !c.envioConfirmado || hubSincRodando) return;          // sem a confirmação da pessoa (quem conectou na 0.36 só tinha o resumo) não há envio completo sozinho
   const { hubSync } = await chrome.storage.local.get('hubSync');
-  const ult = !hubSync ? 0 : hubSync.soFolha ? Date.parse(hubSync.completoAnterior || '') || 0 : hubSync.terminouEm && (hubSync.estado === 'ok' || hubSync.estado === 'parcial') ? Date.parse(hubSync.terminouEm) : (Date.parse(hubSync.completoAnterior || '') || 0);       // o envio só da folha não conta como envio completo
+  const ult = !hubSync ? 0 : hubSync.soFolha || hubSync.reenvio ? Date.parse(hubSync.completoAnterior || '') || 0 : hubSync.terminouEm && (hubSync.estado === 'ok' || hubSync.estado === 'parcial') ? Date.parse(hubSync.terminouEm) : (Date.parse(hubSync.completoAnterior || '') || 0);       // o envio só da folha não conta como envio completo
   if (ult && Date.now() - ult < Math.max(1, Number(c.syncHoras) || 6) * 3600e3) return;
   if (!(await hubPermitido()) || !(await hubAbas()).length) return;
   hubSincronizar(false).catch(() => {});
@@ -1409,7 +1413,7 @@ async function gesttaHubCats() {
   const c = await hubCfg();
   return OCG.HUB_GESTTA.filter(k => (c.gestta && c.gestta[k.id] != null) ? !!c.gestta[k.id] : k.padrao).map(k => k.id);
 }
-async function gesttaHubSincronizar(manual) {
+async function gesttaHubSincronizar(manual, so) {
   if (gesttaHubRodando) return gesttaHubRodando;
   gesttaHubRodando = (async () => {
     const c = await hubCfg();
@@ -1417,13 +1421,16 @@ async function gesttaHubSincronizar(manual) {
     if (!(await hubPermitido())) return { ok: false, motivo: 'sem-permissao' };
     if (!(await hubAbas()).length || !(await hubStatus()).hubAberto) return { ok: false, motivo: 'sem-hub' };
     if (!hubSincRodando) hubCancelar = false;
-    const cats = await gesttaHubCats();
+    const reenvio = Array.isArray(so) && so.length ? so.slice() : null;          // 0.84.0: só as categorias que deram erro, o resto do último envio fica
+    const cats = reenvio || await gesttaHubCats();
     if (!cats.length) return { ok: false, motivo: 'sem-categoria' };
+    const { hubSyncGestta: antG } = reenvio ? await chrome.storage.local.get('hubSyncGestta') : {};
+    const baseG = reenvio && antG && antG.estado !== 'enviando' ? (antG.resultados || []).filter(r => !reenvio.includes(OCG.catDoConjunto(r.id))) : [];
     const tab = await abaGestta();
     if (!tab) return { ok: false, motivo: 'sem-gestta' };
     const { gesttaCartelaEm } = await chrome.storage.local.get('gesttaCartelaEm');
-    const cartela = cats.includes('cartela') && (!gesttaCartelaEm || Date.now() - gesttaCartelaEm > CARTELA_INTERVALO);
-    const status = { estado: 'enviando', manual: !!manual, iniciouEm: new Date().toISOString(), pulso: Date.now(), etapa: 'conferindo o acesso', feito: 0, total: 0, categorias: cats, cartela, resultados: [] };
+    const cartela = cats.includes('cartela') && (!!reenvio || !gesttaCartelaEm || Date.now() - gesttaCartelaEm > CARTELA_INTERVALO);
+    const status = { estado: 'enviando', manual: !!manual, reenvio: !!reenvio, iniciouEm: new Date().toISOString(), pulso: Date.now(), etapa: 'conferindo o acesso', feito: 0, total: 0, categorias: cats, cartela, resultados: [] };
     const grava = () => { status.pulso = Date.now(); return chrome.storage.local.set({ hubSyncGestta: status }).catch(() => {}); };
     await grava();
     const batida = setInterval(grava, 20000);
@@ -1458,7 +1465,7 @@ async function gesttaHubSincronizar(manual) {
       };
       const ctx = { hoje: new Date(), cartela, cancelado: () => hubCancelar, andamento: t => { status.detalhe = String(t || '').slice(0, 120); } };
       const res = await OCG.hubExecutarGestta(ler, cats, ctx, enviar, pr => { status.etapa = pr.etapa; status.feito = pr.feito; status.total = pr.total; grava(); });
-      status.resultados = res.map(r => ({ id: r.id, rotulo: r.rotulo, categoria: r.categoria || '', ok: r.ok !== false, motivo: r.motivo || '', nota: !!r.nota, cortado: !!r.cortado, porque: String(r.porque || '').slice(0, 300), linhas: r.linhas || 0, partes: r.partes || 0 }));
+      status.resultados = baseG.concat(res.map(r => ({ id: r.id, rotulo: r.rotulo, categoria: r.categoria || '', ok: r.ok !== false, motivo: r.motivo || '', nota: !!r.nota, cortado: !!r.cortado, porque: String(r.porque || '').slice(0, 300), linhas: r.linhas || 0, partes: r.partes || 0 })));
       if (res.some(r => r.cartela)) await chrome.storage.local.set({ gesttaCartelaEm: Date.now() });            // só a hora: a próxima cartela é daqui a ~1 dia
       status.estado = !status.resultados.length ? 'erro' : status.resultados.every(r => r.ok) ? 'ok' : status.resultados.some(r => r.ok) ? 'parcial' : 'erro';
       if (fatal) status.motivo = fatal;

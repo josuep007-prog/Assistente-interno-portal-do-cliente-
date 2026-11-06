@@ -69,7 +69,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await (await ctx.newPage()).goto('https://onvio.com.br/br-portal-do-cliente/home');
   const hub = await ctx.newPage(); await hub.goto('https://claude.ai/viewer'); await sleep(800);
   const opc = await ctx.newPage(); await opc.goto('chrome-extension://' + id + '/options.html');
-  const msg = cmd => opc.evaluate(c => new Promise(res => chrome.runtime.sendMessage({ cmd: c }, res)), cmd);
+  const msg = cmd => opc.evaluate(c => new Promise(res => chrome.runtime.sendMessage(typeof c === 'string' ? { cmd: c } : c, res)), cmd);
 
   // sem código nem permissão registrada: nada sai
   assert.equal((await msg('hubEnviar')).motivo, 'sem-codigo');
@@ -172,6 +172,24 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const emPartes = () => f4().evaluate(() => window.lotes.filter(x => x.partes != null).length);
   const ant = await emPartes(); await msg('hubAbriu'); await sleep(6000);
   assert.equal(await emPartes(), ant, 'dentro do intervalo não envia de novo o envio completo');
+  // 0.84.0: "Reenviar o que deu erro" refaz só o que falhou e junta ao resultado do envio anterior
+  const hOk = (await opc.evaluate(() => chrome.storage.local.get('hubSync'))).hubSync;
+  await opc.evaluate(h => chrome.storage.local.set({ hubSync: h }), Object.assign({}, hOk, { resultados: hOk.resultados.map(r => Object.assign({}, r, { ok: true })) }));
+  assert.equal((await msg({ cmd: 'hubSincronizar', reenviar: true })).motivo, 'nada-reenviar', 'sem erro, nada a reenviar');
+  const comErro = Object.assign({}, hOk, { estado: 'parcial', resultados: hOk.resultados.map(r => r.id === 'clientes-cnd' ? Object.assign({}, r, { ok: false, motivo: 'sem-resposta' }) : r) });
+  assert.ok(comErro.resultados.some(r => !r.ok), 'o envio tinha clientes-cnd');
+  await opc.evaluate(h => chrome.storage.local.set({ hubSync: h }), comErro);
+  const antR = (await f4().evaluate(() => window.lotes)).length;
+  const rr = await msg({ cmd: 'hubSincronizar', reenviar: true });
+  const falhasAntes = new Set(comErro.resultados.filter(r => !r.ok).map(r => r.id));          // a folha sem extrato no Onvio simulado também conta
+  assert.equal(rr.ok, true); assert.equal(rr.n, falhasAntes.size);
+  const hR = await esperarSync();
+  const soNovos = (await f4().evaluate(() => window.lotes)).slice(antR);
+  assert.deepEqual([...new Set(soNovos.map(x => x.tipoDado))], ['clientes-cnd'], 'só o que deu erro foi reenviado');
+  assert.equal(hR.reenvio, true); assert.ok(hR.resultados.find(r => r.id === 'clientes-cnd').ok, 'o que falhou agora foi aceito');
+  assert.equal(hR.resultados.length, hOk.resultados.length, 'o resto do envio anterior continua no resultado');
+  assert.equal(hR.completoAnterior, hOk.terminouEm, 'o reenvio não conta como envio completo para o automático');
+  console.log('reenviar o que deu erro (Onvio): ok');
   // ---- Gestta no Hub (0.79.0): conjuntos lidos na aba do Gestta, fonte "gestta", só com acesso de coordenação ----
   const GT_TOKEN = 'JWT eyJhbGciOiJIUzI1NiJ9.' + Buffer.from(JSON.stringify({ exp: 1893456000 })).toString('base64url') + '.SEGREDO-GESTTA';
   const GCORS = { 'access-control-allow-origin': 'https://app.gestta.com.br', 'access-control-allow-headers': 'authorization,content-type,accept', 'access-control-allow-methods': 'GET,POST,OPTIONS' };
@@ -218,6 +236,15 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   gPedidos.length = 0;
   await msg('gesttaHubSync'); await sleep(400); await esperarGestta();
   assert.ok(!gPedidos.some(x => /responsible/.test(x)), 'cartela no máximo 1 vez por dia');
+  // 0.84.0: reenviar só o que deu erro no Gestta
+  const hgOk = (await opc.evaluate(() => chrome.storage.local.get('hubSyncGestta'))).hubSyncGestta;
+  await opc.evaluate(h => chrome.storage.local.set({ hubSyncGestta: h }), Object.assign({}, hgOk, { estado: 'parcial', resultados: hgOk.resultados.map(r => r.id === 'gestta-setores' ? Object.assign({}, r, { ok: false, motivo: 'sem-resposta' }) : r) }));
+  const nG = (await lotesG()).length; gPedidos.length = 0;
+  assert.equal((await msg({ cmd: 'gesttaHubSync', reenviar: true })).n, 1);
+  await sleep(400); const hgR = await esperarGestta();
+  assert.deepEqual([...new Set((await lotesG()).slice(nG).map(x => x.tipoDado))].sort(), ['gestta-equipe', 'gestta-setores'], 'só a etapa que falhou');
+  assert.ok(!gPedidos.some(x => /report|\/admin\/customer$/.test(x)), 'sem reler tarefas nem clientes: ' + gPedidos.join(', '));
+  assert.equal(hgR.estado, 'ok'); assert.equal(hgR.resultados.length, hgOk.resultados.length);
   // login de analista: nada sai
   gPapel = 'ROLE_USER'; const nAntes = (await lotesG()).length;
   await msg('gesttaHubSync'); await sleep(400);
