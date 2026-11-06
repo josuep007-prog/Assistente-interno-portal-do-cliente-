@@ -17,7 +17,7 @@
     'sem-pessoais': 'A folha vai junto com "Dados pessoais": ligue esse conjunto em "O que vai no envio completo".',
     'sem-gestta': 'Abra o Gestta numa aba do Chrome, já logado, e envie de novo.', 'sem-sessao-gestta': 'O Gestta está sem sessão nesta aba: faça login e envie de novo.',
     'acesso-parcial': 'O Gestta está com um login de analista: o envio ao Hub só sai com o acesso da coordenação, que vê todos os setores.',
-    'interrompido': 'O envio foi interrompido no meio.'
+    'interrompido': 'O envio foi interrompido no meio.', 'nada-reenviar': 'Nada deu erro no último envio: não há o que reenviar.'
   };
   const msgHub = r => (r && (r.mensagem || MOTIVOS_HUB[r.motivo] || r.motivo)) || 'Não foi possível enviar.';
   const quando = d => (d ? new Date(d).toLocaleString('pt-BR') : '—');
@@ -85,8 +85,9 @@
     const est = preso ? 'interrompido' : hubSync.estado;
     const cab = est === 'interrompido' ? 'Último envio interrompido. O envio automático continua de onde parou, sem reenviar o que o Hub já aceitou.'
       : est === 'enviando' && hubSync.soFolha ? 'Lendo só a folha… ' + (hubSync.detalhe || '')
+      : est === 'enviando' && hubSync.reenvio ? 'Reenviando o que deu erro… ' + (hubSync.etapa || '') + (hubSync.detalhe ? ': ' + hubSync.detalhe : '')
       : est === 'enviando' ? 'Enviando… ' + (hubSync.etapa || '') + (hubSync.detalhe ? ': ' + hubSync.detalhe : '') + ' (etapa ' + (hubSync.feito + 1) + ' de ' + hubSync.total + ')'
-      : (o.nome ? 'Último envio ' + o.nome + ': ' : hubSync.soFolha ? 'Último envio só da folha: ' : 'Último envio completo: ') + ({ ok: 'tudo aceito', parcial: 'parte aceita', erro: 'não concluído' }[est] || est) + ' em ' + quando(hubSync.terminouEm) + (hubSync.motivo ? ' · ' + (MOTIVOS_HUB[hubSync.motivo] || hubSync.motivo) : '') +
+      : (o.nome ? 'Último envio ' + o.nome + ': ' : hubSync.soFolha ? 'Último envio só da folha: ' : hubSync.reenvio ? 'Último envio (com o reenvio do que deu erro): ' : 'Último envio completo: ') + ({ ok: 'tudo aceito', parcial: 'parte aceita', erro: 'não concluído' }[est] || est) + ' em ' + quando(hubSync.terminouEm) + (hubSync.motivo ? ' · ' + (MOTIVOS_HUB[hubSync.motivo] || hubSync.motivo) : '') +
         ' · ' + ok.length + ' conjuntos enviados, ' + ok.reduce((n, r) => n + (r.linhas || 0), 0).toLocaleString('pt-BR') + ' linhas';
     const linhas = [];
     // 0.83.0 (Josué, 06/11/2026: "essa tela tá muito bagunçada com tantas linhas"): ids longos viram "…", listas de falhas viram contagem,
