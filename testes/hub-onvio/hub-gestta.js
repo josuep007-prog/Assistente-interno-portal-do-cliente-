@@ -64,6 +64,7 @@ const balde = (id, n) => { let h = 0; for (let i = 0; i < id.length; i++) h = (h
 const fmt = (c) => c.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
 
 let falhas = 0;
+const window_docs_ok = (docs) => docs.length === 1 && Array.isArray(docs[0].itens) && /^h\d{4}-\d{2}~/.test(docs[0].id);
 async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.env.SO) && nome !== 'sem erros de página') return; try { await fn(); console.log('ok   ' + nome); } catch (e) { falhas++; console.log('FALHA ' + nome + '\n     ' + String(e && e.message || e).split('\n').slice(0, 6).join('\n     ')); } }
 
 (async () => {
@@ -197,7 +198,9 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     assert.deepEqual([fr2.analistaId, fr2.analistaNome], ['f1', 'Carla Souza']);
     const r3 = await api((g) => { const d = g.difs().find(x => x.mod === 'portal' && x.campo === 'analista-contabil'); return g.aplicar(d.k, d.chave); });
     assert.equal(r3.ok, false, 'sem a pessoa na equipe do Portal não grava');
-    const hist = await page.evaluate(() => window.__db.listar('gt_hist'));
+    await page.waitForFunction(() => window.__db.listar('gt_hist').flatMap(d => Array.isArray(d.itens) ? d.itens : [d]).length === 3, null, { timeout: 5000 });
+    const hist = await page.evaluate(() => window.__db.listar('gt_hist').flatMap(d => Array.isArray(d.itens) ? d.itens : [d]));
+    assert.ok(window_docs_ok(await page.evaluate(() => window.__db.listar('gt_hist'))), 'histórico num documento por mês e pessoa, não um por aplicação');
     assert.equal(hist.length, 3); assert.ok(hist.every(h => !h.auto && h.cnpj === '11111111000101'));
     const d = await difs();
     assert.ok(!d.some(x => x[0] === 'dp' && x[2] === 'responsavel' && x[1] === '11'), 'a diferença aplicada some');
@@ -244,14 +247,14 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
 
   await passo('Automático: desligado de fábrica; ligado só complementa sozinho (o "conferir antes" fica), com "automaticamente" no histórico', async () => {
     assert.equal(await api((g) => g.auto().ligada), false);
-    const antes = (await page.evaluate(() => window.__db.listar('gt_hist'))).length;
+    const antes = (await page.evaluate(() => window.__db.listar('gt_hist').flatMap(d => Array.isArray(d.itens) ? d.itens : [d]))).length;
     // alguém apagou o analista do DP da ALFA: há de novo o que complementar
     await page.evaluate(() => { const e = window.__db.ler('dp_empresas/e-alfa'); e.responsavel = ''; window.__db.semear('dp_empresas/e-alfa', e); });
     await page.waitForFunction(() => window.__hubApi.api('gestta').difs().some(d => d.mod === 'dp' && d.campo === 'responsavel' && d.acao === 'complementar'), null, { timeout: 5000 });
     await api((g) => g.salvarCfg(c => { c.auto.ligada = true; }));
-    await page.waitForFunction((n) => window.__db.listar('gt_hist').length > n, antes, { timeout: 8000 });
+    await page.waitForFunction((n) => window.__db.listar('gt_hist').flatMap(d => Array.isArray(d.itens) ? d.itens : [d]).length > n, antes, { timeout: 8000 });
     await page.waitForFunction(() => !window.__hubApi.api('gestta').auto().rodando, null, { timeout: 8000 });
-    const novos = (await page.evaluate(() => window.__db.listar('gt_hist'))).slice(antes);
+    const novos = (await page.evaluate(() => window.__db.listar('gt_hist').flatMap(d => Array.isArray(d.itens) ? d.itens : [d]))).slice(antes);
     assert.ok(novos.length >= 1 && novos.every(h => h.auto && h.acao === 'complementar'), JSON.stringify(novos.map(h => [h.mod, h.acao])));
     const d = await difs();
     assert.ok(!d.some(x => x[3] === 'complementar' && x[7] && !x[6]), 'nada para complementar sobrou');
@@ -330,6 +333,26 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     assert.equal(delta.filter(x => x === 'contabil empresa').length, 1, 'DELTA nova no Contábil uma vez só');
     const ana = await api((g) => g.analistas().find(a => a.nome === 'Zélia Desconhecida').noHub.map(r => r.mod + ':' + r.casou));
     assert.ok(ana.length >= 1);
+  });
+
+  await passo('Hub 320: o histórico antigo (um documento por aplicação) é compactado em lotes e libera o banco, sem perder nem repetir registro', async () => {
+    const antes = await page.evaluate(() => window.__db.listar('gt_hist').flatMap(d => Array.isArray(d.itens) ? d.itens : [d]).length);
+    for (let i = 0; i < 7; i++) await semear('gt_hist/velho' + i, { em: '2026-10-0' + (i + 1) + 'T10:00:00.000Z', por: 'u', porNome: 'Teste', mod: 'dp', cnpj: '11111111000101', empresa: 'ALFA', campo: 'responsavel', acao: 'corrigir', antes: 'a', depois: 'b', auto: true });
+    // um resto de compactação interrompida: já está no lote e ficou solto
+    await semear('gt_hist/lote-out', { mes: '2026-09', compactado: true, ids: ['lote-out', 'resto1'], itens: [{ em: '2026-09-01T10:00:00.000Z', acao: 'corrigir' }, { em: '2026-09-02T10:00:00.000Z', acao: 'corrigir' }] });
+    await semear('gt_hist/resto1', { em: '2026-09-02T10:00:00.000Z', acao: 'corrigir', mod: 'dp' });
+    const r = await page.evaluate(() => window.__hubApi.api('gestta').compactarHistorico());
+    assert.ok(r.ok, JSON.stringify(r));
+    const docs = await page.evaluate(() => window.__db.listar('gt_hist'));
+    assert.ok(!docs.some(d => !Array.isArray(d.itens)), 'nenhum registro solto: ' + docs.map(d => d.id).join(', '));
+    const itens = docs.flatMap(d => d.itens);
+    assert.equal(itens.length, antes + 7 + 2, 'todos os registros ficaram, sem repetir');
+    assert.equal(r.apagados, 7, '6 do lote de outubro + o resto já compactado');
+  });
+
+  await passo('Uso do banco mede também o histórico do Gestta e o login', async () => {
+    const cols = await page.evaluate(() => window.__hubApi.usoColecoes ? window.__hubApi.usoColecoes().map(c => c.path) : null);
+    if (cols) assert.ok(['gt_hist', 'auth_log', 'hub_log'].every(c => cols.includes(c)), cols.join(', '));
   });
 
   await passo('sem erros de página', async () => { assert.deepEqual(erros, []); });
