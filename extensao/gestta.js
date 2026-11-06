@@ -113,6 +113,8 @@
       customer_task: { _id: true, name: true, customer: { _id: true, name: true, cnpj: true }, company_department: SETOR, owner: REF, _due_date: true, _competence_date: true },
       customer_task_file: { company_document: REF } },
     contagem: { fine: true, approve: true, email_not_sent: true, count: true },
+    // 0.79.0: template de documento com o destino no portal (só nomes de pasta; nunca o arquivo modelo)
+    templateDoc: { _id: true, name: true, automation_type: true, valid: true, bypass: true, documents_integration: { pathName: [true] } },
     // 0.77.0: o histórico da tarefa para a linha do tempo do painel (lido na hora, nunca guardado). Fora o email_log
     // (destinatários e servidores), o arquivo e o upload: só o tipo, a situação, o motivo, a data, quem fez e o nome do documento.
     historico: { _id: true, type: true, status: true, reason: true, accomplished_at: true, created_at: true, accomplished_by: { name: true },
@@ -217,9 +219,11 @@
     historico: (o) => ({ id: 'historico', tipo: 'historico', metodo: 'GET', url: url('/core/customer/task/' + encodeURIComponent(o.id) + '/history', { page: o.page || 1 }) }),
     relatorio: (o) => { const j = janelaDoMes(o.ano, o.mes); return { id: 'relatorio', tipo: 'relatorio', metodo: 'POST', url: url('/core/customer/task/report'), corpo: { type: 'CUSTOMER_TASK', filter: '', dates: { startDate: j.start_date, endDate: j.end_date } } }; },
     fechamento: (o) => Object.assign(PEDIDOS.relatorio(o), { id: 'fechamento', tipo: 'fechamento' }),
-    filaOnvioErro: (o) => ({ id: 'filaOnvioErro', tipo: 'filaOnvio', metodo: 'GET', url: url('/es/file/onvio', { status: 'ERROR', limit: (o && o.limit) || 50, skip: 0 }) }),
+    filaOnvioErro: (o) => ({ id: 'filaOnvioErro', tipo: 'filaOnvio', metodo: 'GET', url: url('/es/file/onvio', { status: 'ERROR', limit: (o && o.limit) || 50, skip: (o && o.skip) || 0 }) }),
     multas: (o) => { const j = janelaDoMes(o.ano, o.mes); return { id: 'multas', tipo: 'contagem', metodo: 'GET', url: url('/core/dashboard/attention/fine/all', j) }; },
-    templatesDocumento: () => ({ id: 'templatesDocumento', tipo: 'template', metodo: 'GET', url: url('/admin/company/document', { limit: 1, page: 1 }) })
+    templatesDocumento: () => ({ id: 'templatesDocumento', tipo: 'template', metodo: 'GET', url: url('/admin/company/document', { limit: 1, page: 1 }) }),
+    // 0.79.0: a lista inteira de templates de documento, com a pasta de destino no portal (para achar os que não têm pasta)
+    templatesLista: (o) => ({ id: 'templatesLista', tipo: 'templateDoc', metodo: 'GET', url: url('/admin/company/document', { limit: (o && o.limit) || 200, page: (o && o.page) || 1 }) })
   };
 
   /* ---------- leitura dentro da página (mundo MAIN da aba do Gestta) ----------
@@ -521,11 +525,162 @@
     if (criterio === 'nome') return l.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
     return l;
   }
+  /* ---------- 0.79.0: o Gestta no Control Hub (item 3 da Fase 1, aprovado pelo Josué em 05/11/2026) ----------
+   * Conjuntos (fonte "gestta" no Hub, mesmo protocolo em partes do Onvio): tarefas do mês atual e do anterior (relatório
+   * CUSTOMER_TASK), clientes, equipe, setores, alertas (envios ao Onvio com erro e templates sem pasta no portal) e a cartela
+   * (quem atende cada setor de cada cliente, uma leitura por cliente, no máximo 1 vez por dia). Só com acesso total (a
+   * coordenação), sem as empresas do escritório e sem valor, mensalidade, pontuação, telefone, e-mail ou senhas. Tudo é lido
+   * na hora e vai direto ao Hub: nada fica na extensão. */
+  const HUB_GESTTA = [
+    { id: 'tarefas', nome: 'Tarefas do mês', ajuda: 'Todas as tarefas do mês atual e do anterior: empresa, CNPJ, código, tarefa, setor, responsável, meta, data legal, conclusão, quem concluiu, multa e atraso. Sem valor nem pontuação.', padrao: true },
+    { id: 'clientes', nome: 'Clientes', ajuda: 'Os clientes ativos: código, nome, nome fantasia, CNPJ, regime, inscrição estadual, UF, cidade e se usam o portal do Onvio. Sem mensalidade.', padrao: true },
+    { id: 'equipe', nome: 'Equipe e setores', ajuda: 'Os funcionários do escritório (nome, papel, ativo e setores) e os setores. Sem e-mail, telefone, permissões nem último login.', padrao: true },
+    { id: 'alertas', nome: 'Alertas', ajuda: 'Os envios de documento ao Onvio que deram erro (empresa, tarefa e motivo) e os templates de documento sem pasta no portal.', padrao: true },
+    { id: 'cartela', nome: 'Cartela (1 vez por dia)', ajuda: 'Quem atende cada setor de cada cliente, como está no Gestta. Uma leitura por cliente (uns 10 minutos), no máximo uma vez por dia.', padrao: true }
+  ];
+  const HUB_GESTTA_PARTE = 140000, HUB_GESTTA_PARTES_MAX = 80;
+  const celula = (v, max) => String(v == null ? '' : v).replace(/[\t\r\n\u2028\u2029]+/g, ' ').replace(/ {2,}/g, ' ').trim().slice(0, max || 300);
+  const simNao = v => v === '' || v == null ? '' : sim(v) ? 'sim' : 'não';
+  const dataHub = v => { const t = String(v == null ? '' : v); return /^\d{4}-\d{2}-\d{2}T/.test(t) ? t.slice(0, 16).replace('T', ' ') : /^\d{4}-\d{2}-\d{2}/.test(t) ? t.slice(0, 10) : t; };
+  function partirLinhas(linhas) {
+    const partes = []; let atual = [], n = 0;
+    for (const l of linhas) {
+      const t = l.length > HUB_GESTTA_PARTE ? l.slice(0, HUB_GESTTA_PARTE) : l;
+      if (n + t.length + 1 > HUB_GESTTA_PARTE && atual.length) { partes.push(atual.join('\n')); atual = []; n = 0; }
+      atual.push(t); n += t.length + 1;
+    }
+    if (atual.length || !partes.length) partes.push(atual.join('\n'));
+    const cortado = partes.length > HUB_GESTTA_PARTES_MAX;
+    const ficam = partes.slice(0, HUB_GESTTA_PARTES_MAX);
+    return { partes: ficam, cortado, nLinhasTotal: ficam.reduce((s, p) => s + (p ? p.split('\n').length : 0), 0) };
+  }
+  const linhaTab = vals => vals.map(v => celula(v)).join('\t');
+  // Tarefas: as colunas do relatório (sem valor, pontuação, mensalidade e grupos) com nomes em português e o mês de referência
+  const ROT_REL = { id: 'Id', name: 'Tarefa', type: 'Tipo', subtype: 'Subtipo', status: 'Situação', 'company_department.name': 'Setor', 'owner.name': 'Responsável', 'owner.role': 'Papel do responsável',
+    notify_customer: 'Avisa o cliente', fine: 'Gerando multa', _due_date: 'Meta', legal_date: 'Data legal', downloaded: 'Baixada', done_overdue: 'Concluída com atraso', done_fine: 'Concluída com multa',
+    created_at: 'Criada em', 'concluded_by.name': 'Concluída por', conclusion_date: 'Concluída em', overdue: 'Atrasada', on_time: 'No prazo', 'customer.active': 'Cliente ativo',
+    'customer.cnpj': 'CNPJ', 'customer.name': 'Cliente', 'customer.code': 'Código do cliente', 'customer.federal_regime.name': 'Regime' };
+  const COLS_TAREFAS_HUB = ['Mês'].concat(COLUNAS_RELATORIO.filter(c => ROT_REL[c]).map(c => ROT_REL[c]));
+  const BOOL_REL = new Set(['notify_customer', 'fine', 'downloaded', 'done_overdue', 'done_fine', 'overdue', 'on_time', 'customer.active']);
+  const DATA_REL = new Set(['_due_date', 'legal_date', 'created_at', 'conclusion_date']);
+  function tabelaTarefasHub(rel, mesRef) {
+    const cols = rel.colunas || [], iNome = cols.indexOf('customer.name'), out = [];
+    let escritorio = 0;
+    for (const l of rel.linhas || []) {
+      if (iNome >= 0 && ehEscritorioProprio(l[iNome])) { escritorio++; continue; }
+      const val = c => { const i = cols.indexOf(c); if (i < 0) return ''; const v = l[i]; return BOOL_REL.has(c) ? simNao(v) : DATA_REL.has(c) ? dataHub(v) : c === 'type' ? (TIPOS_TAREFA[v] || v) : c === 'status' ? (SITUACOES_TAREFA[v] || v) : v; };
+      out.push(linhaTab([mesRef].concat(COLUNAS_RELATORIO.filter(c => ROT_REL[c]).map(val))));
+    }
+    return { linhas: out, escritorio };
+  }
+  const COLS_CLIENTES_HUB = ['Id', 'Código', 'Nome', 'Nome fantasia', 'CNPJ', 'Ativo', 'Regime', 'Inscrição estadual', 'UF', 'Cidade', 'Id externo', 'Usa o portal do Onvio'];
+  const linhaCliente = c => linhaTab([c._id, c.code, c.name, c.trading_name, c.cnpj, simNao(c.active), c.federal_regime && c.federal_regime.name, c.state_inscription, c.federative_unit, c.city, c.external_id, simNao(c.partner_config && c.partner_config.has_onvio_portal)]);
+  const COLS_EQUIPE_HUB = ['Id', 'Nome', 'Papel', 'Ativo', 'Setores', 'Tem tarefas atreladas'];
+  const linhaEquipe = u => linhaTab([u._id, u.name, PAPEIS[u.role] || u.role, simNao(u.active), (u.company_departments || []).map(x => x && x.name).filter(Boolean).join(' | '), simNao(u.has_linked_tasks)]);
+  const COLS_SETORES_HUB = ['Id', 'Setor'];
+  const COLS_ENVIOS_HUB = ['Id', 'Situação', 'Erro', 'Tentativas', 'Criado em', 'Atualizado em', 'Tarefa', 'Id da tarefa', 'Cliente', 'CNPJ', 'Setor', 'Responsável', 'Meta', 'Competência', 'Documento'];
+  const linhaEnvio = x => { const t = x.customer_task || {}, c = t.customer || {}; return linhaTab([x._id, x.status, x.error, x.retry_count, dataHub(x.created_at), dataHub(x.updated_at), t.name, t._id, c.name, c.cnpj, t.company_department && t.company_department.name, t.owner && t.owner.name, dataHub(t._due_date), dataHub(t._competence_date), x.customer_task_file && x.customer_task_file.company_document && x.customer_task_file.company_document.name]); };
+  const COLS_TEMPLATES_HUB = ['Id', 'Template', 'Tipo de automação', 'Válido', 'Dispensado'];
+  const semPasta = t => !(t && t.documents_integration && Array.isArray(t.documents_integration.pathName) && t.documents_integration.pathName.filter(Boolean).length);
+  const COLS_CARTELA_HUB = ['Id do cliente', 'Código do cliente', 'Cliente', 'CNPJ', 'Setor', 'Id do setor', 'Responsável', 'Id do responsável'];
+  const mesAnterior = (ano, mes) => mes === 1 ? { ano: ano - 1, mes: 12 } : { ano, mes: mes - 1 };
+  const mesTexto = (ano, mes) => ano + '-' + String(mes).padStart(2, '0');
+  // Lê e entrega cada conjunto. ler(pedidos) → resultados (o mesmo de lerNaPagina, feito pelo service worker na aba do Gestta);
+  // enviar(conjunto, partes) → { ok, motivo, parar }; progresso({ etapa, feito, total }). ctx: { hoje, cartela (ler a cartela
+  // nesta rodada), cancelado(), andamento(texto) }.
+  async function hubExecutarGestta(ler, cats, ctx, enviar, progresso) {
+    ctx = ctx || {}; const hoje = ctx.hoje || new Date();
+    const res = [], quer = k => (cats || []).includes(k);
+    const etapas = [quer('tarefas') && 'tarefas', quer('clientes') || (quer('cartela') && ctx.cartela) ? 'clientes' : null, quer('equipe') && 'equipe', quer('alertas') && 'alertas', quer('cartela') && ctx.cartela && 'cartela'].filter(Boolean);
+    let feito = 0, parar = false, clientes = null;
+    const prog = rot => progresso && progresso({ etapa: rot, feito, total: etapas.length });
+    const um = async (pedido) => { const r = await ler([pedido]); const x = r && r[0]; if (!x) throw new Error('a aba do Gestta não respondeu'); if (x.status !== 200 || !x.dados) { const e = new Error(x.status === 403 ? 'seu acesso não inclui esta leitura (403)' : x.status === 401 ? 'a sessão do Gestta acabou' : (x.erro || x.recusado || ('HTTP ' + x.status))); e.status = x.status; throw e; } return x.dados; };
+    const paginar = async (fazer, max) => { const itens = []; let total; for (let p = 1; p <= max; p++) { if (ctx.cancelado && ctx.cancelado()) break; const d = await fazer(p); itens.push(...(d.itens || [])); if (total == null) total = d.total; if (!d.paginas || p >= d.paginas || !(d.itens || []).length) return { itens, total, cortado: false }; } return { itens, total, cortado: !!(total && itens.length < total) }; };
+    const entregar = async (conj, linhas, extra) => {
+      const p = partirLinhas(linhas);
+      const r = await enviar(conj, p);
+      const item = Object.assign({ id: conj.tipoDado, rotulo: conj.titulo, categoria: conj.categoria, ok: !!r.ok, motivo: r.ok ? (r.motivo || '') : (r.motivo || 'erro'), linhas: linhas.length, partes: p.partes.length, cortado: p.cortado || !!(extra && extra.cortado), porque: extra && extra.porque || '' }, r.ok && r.motivo === 'sem-mudanca' ? { nota: true } : {});
+      res.push(item); if (r.parar) parar = true; return item;
+    };
+    const falhou = (tipoDado, titulo, categoria, e) => { res.push({ id: tipoDado, rotulo: titulo, categoria, ok: false, motivo: String((e && e.message) || e).slice(0, 160) }); if (e && e.status === 401) parar = true; };
+    for (const etapa of etapas) {
+      if (parar || (ctx.cancelado && ctx.cancelado())) break;
+      if (etapa === 'tarefas') {
+        prog('Tarefas do mês');
+        const atual = { ano: hoje.getFullYear(), mes: hoje.getMonth() + 1 }, ant = mesAnterior(atual.ano, atual.mes), linhas = [];
+        let escritorio = 0, total = 0, formatos = [];
+        try {
+          for (const m of [ant, atual]) {
+            ctx.andamento && ctx.andamento('relatório de ' + mesTexto(m.ano, m.mes));
+            const rel = await um(PEDIDOS.relatorio(m));
+            const t = tabelaTarefasHub(rel, mesTexto(m.ano, m.mes)); linhas.push(...t.linhas); escritorio += t.escritorio; total += rel.total || 0; formatos.push(rel.formato);
+          }
+          await entregar({ tipoDado: 'gestta-tarefas', categoria: 'tarefas', titulo: 'Gestta · Tarefas do mês atual e do anterior', colunas: COLS_TAREFAS_HUB, totalNaOrigem: total - escritorio }, linhas, { porque: escritorio ? escritorio + ' tarefas de empresas do escritório ficaram fora' : '' });
+        } catch (e) { falhou('gestta-tarefas', 'Gestta · Tarefas do mês atual e do anterior', 'tarefas', e); }
+      }
+      if (etapa === 'clientes') {
+        prog('Clientes');
+        try {
+          const r = await paginar(p => { ctx.andamento && ctx.andamento('clientes, página ' + p); return um(PEDIDOS.clientes({ limit: 200, page: p })); }, 40);
+          clientes = r.itens.filter(c => c && c._id && !ehEscritorioProprio(c.name));
+          if (quer('clientes')) await entregar({ tipoDado: 'gestta-clientes', categoria: 'cadastros', titulo: 'Gestta · Clientes ativos', colunas: COLS_CLIENTES_HUB, totalNaOrigem: r.total }, clientes.map(linhaCliente), { cortado: r.cortado, porque: r.cortado ? 'a lista passou do limite de páginas' : '' });
+        } catch (e) { if (quer('clientes')) falhou('gestta-clientes', 'Gestta · Clientes ativos', 'cadastros', e); }
+      }
+      if (etapa === 'equipe') {
+        prog('Equipe e setores');
+        try {
+          const r = await paginar(p => um(PEDIDOS.equipe({ limit: 200, page: p })), 10);
+          await entregar({ tipoDado: 'gestta-equipe', categoria: 'cadastros', titulo: 'Gestta · Equipe do escritório', colunas: COLS_EQUIPE_HUB, totalNaOrigem: r.total }, r.itens.filter(u => u && u._id).map(linhaEquipe), { cortado: r.cortado });
+        } catch (e) { falhou('gestta-equipe', 'Gestta · Equipe do escritório', 'cadastros', e); }
+        if (!parar) try {
+          const d = await um(PEDIDOS.setores());
+          await entregar({ tipoDado: 'gestta-setores', categoria: 'cadastros', titulo: 'Gestta · Setores', colunas: COLS_SETORES_HUB, totalNaOrigem: (d.itens || []).length }, (d.itens || []).filter(x => x && x._id).map(x => linhaTab([x._id, x.name])));
+        } catch (e) { falhou('gestta-setores', 'Gestta · Setores', 'cadastros', e); }
+      }
+      if (etapa === 'alertas') {
+        prog('Alertas');
+        try {
+          const itens = []; let total, cortado = false;
+          for (let k = 0; k < 20; k++) { const d = await um(PEDIDOS.filaOnvioErro({ limit: 50, skip: k * 50 })); if (total == null) total = d.total; itens.push(...(d.itens || [])); if ((d.itens || []).length < 50) break; if (k === 19) cortado = true; }
+          const ok = itens.filter(x => x && !ehEscritorioProprio(x.customer_task && x.customer_task.customer && x.customer_task.customer.name));
+          await entregar({ tipoDado: 'gestta-envios-onvio-erro', categoria: 'alertas', titulo: 'Gestta · Envios ao Onvio com erro', colunas: COLS_ENVIOS_HUB, totalNaOrigem: total }, ok.map(linhaEnvio), { cortado });
+        } catch (e) { falhou('gestta-envios-onvio-erro', 'Gestta · Envios ao Onvio com erro', 'alertas', e); }
+        if (!parar) try {
+          const r = await paginar(p => um(PEDIDOS.templatesLista({ limit: 200, page: p })), 20);
+          const sem = r.itens.filter(t => t && t._id && semPasta(t));
+          await entregar({ tipoDado: 'gestta-templates-sem-pasta', categoria: 'alertas', titulo: 'Gestta · Templates de documento sem pasta no portal', colunas: COLS_TEMPLATES_HUB, totalNaOrigem: r.total }, sem.map(t => linhaTab([t._id, t.name, t.automation_type, simNao(t.valid), simNao(t.bypass)])), { cortado: r.cortado, porque: sem.length + ' de ' + r.itens.length + ' templates sem pasta' });
+        } catch (e) { falhou('gestta-templates-sem-pasta', 'Gestta · Templates de documento sem pasta no portal', 'alertas', e); }
+      }
+      if (etapa === 'cartela') {
+        prog('Cartela');
+        if (!clientes) { falhou('gestta-cartela', 'Gestta · Cartela por setor', 'cadastros', new Error('sem a lista de clientes')); }
+        else try {
+          const linhas = [], LOTE = 40; let falhas = 0, lidos = 0;
+          for (let i = 0; i < clientes.length && !(ctx.cancelado && ctx.cancelado()); i += LOTE) {
+            const fatia = clientes.slice(i, i + LOTE);
+            ctx.andamento && ctx.andamento('cartela, cliente ' + Math.min(i + LOTE, clientes.length) + ' de ' + clientes.length);
+            const r = await ler(fatia.map(c => Object.assign(PEDIDOS.cartela({ cliente: c._id }), { id: 'cartela:' + c._id })));
+            (r || []).forEach((x, k) => {
+              const c = fatia[k];
+              if (!x || x.status !== 200 || !x.dados) { falhas++; if (x && x.status === 401) { const e = new Error('a sessão do Gestta acabou'); e.status = 401; throw e; } return; }
+              lidos++;
+              (x.dados.itens || []).forEach(z => { if (z && z.company_department) linhas.push(linhaTab([c._id, c.code, c.name, c.cnpj, z.company_department.name, z.company_department._id, z.company_user && z.company_user.name, z.company_user && z.company_user._id])); });
+            });
+          }
+          const it = await entregar({ tipoDado: 'gestta-cartela', categoria: 'cadastros', titulo: 'Gestta · Cartela por setor', colunas: COLS_CARTELA_HUB, totalNaOrigem: clientes.length }, linhas, { cortado: lidos < clientes.length, porque: lidos < clientes.length ? (clientes.length - lidos) + ' clientes sem leitura' + (falhas ? ' (' + falhas + ' com erro)' : '') : '' });
+          it.cartela = it.ok && !it.cortado;
+        } catch (e) { falhou('gestta-cartela', 'Gestta · Cartela por setor', 'cadastros', e); }
+      }
+      feito++; prog('');
+    }
+    return res;
+  }
   const MAX_PAGINAS_TAREFAS = 15;      // 15 × 1000: bem acima do que uma pessoa tem num mês; passou disso, a tela avisa que cortou
 
   g.OCG = { API, APP, PAUSA_MS, LIMITE_BUSCA, JANELA_MAX_DIAS, POST_LEITURA, RELATORIO_TIPOS, COLUNAS_RELATORIO, MOLDES, APPS,
     caminhoDe, leituraPermitida, appDe, escolher, limpar, limparRelatorio, perfil, expiraEm, janelaDoMes, PEDIDOS, lerNaPagina, linhasDoTeste,
     GRUPOS, TIPOS_TAREFA, SITUACOES_TAREFA, MAX_PAGINAS_TAREFAS, diasUteis, grupoTarefa, prazoTexto, contarGrupos, porEmpresa, porDia, filtrarTarefas, urlTarefa, ymd, diaLocal,
     COLUNAS_FECHAMENTO, linhasDoRelatorio, tarefasDoRelatorio, trilhaDaEmpresa, fechamento, ESTADOS, setorDe, respDe, ehEscritorioProprio,
-    eventosDaTarefa, obrigacoes, nomeObrigacao, meuDia, ORDENS_EMPRESA, ordenarEmpresas };
+    eventosDaTarefa, obrigacoes, nomeObrigacao, meuDia, ORDENS_EMPRESA, ordenarEmpresas,
+    HUB_GESTTA, hubExecutarGestta, partirLinhas, tabelaTarefasHub, COLS_TAREFAS_HUB, COLS_CLIENTES_HUB, COLS_CARTELA_HUB };
 })(typeof self !== 'undefined' ? self : this);
