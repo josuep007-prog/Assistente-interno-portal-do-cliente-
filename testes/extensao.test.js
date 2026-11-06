@@ -4011,3 +4011,37 @@ test('Gestta → Hub (0.79.0): conjuntos em português, sem as empresas do escri
   const lt = OCG.PEDIDOS.templatesLista({ page: 2 }); assert.equal(OCG.leituraPermitida(lt.metodo, lt.url).ok, true);
   const fe = OCG.PEDIDOS.filaOnvioErro({ skip: 50 }); assert.match(fe.url, /skip=50/); assert.equal(OCG.leituraPermitida(fe.metodo, fe.url).ok, true);
 });
+
+test('Gestta → Hub (0.83.0): relatório recusado com 400 tenta o período do próprio Gestta; se nunca sai, as empresas em atividade vêm da busca de tarefas', async () => {
+  const H = new Date(2026, 10, 6, 10);
+  const linhaRel = (mes) => OCG.COLUNAS_RELATORIO.map(c => ({ id: 't' + mes, name: 'DAS', status: 'DONE', 'customer.name': 'EMPRESA ALFA', 'customer.cnpj': '00.000.000/0001-00' })[c] ?? '');
+  const clientes = () => ({ status: 200, dados: { itens: [{ _id: 'c1', name: 'EMPRESA ALFA', cnpj: '00.000.000/0001-00', active: true }, { _id: 'c2', name: 'MARIA EMPREGADORA', cnpj: '', active: true }], total: 2, paginas: 1 } });
+  // 1) o Gestta só aceita com o período no filter
+  OCG.lembrarFiltroRel('');
+  const filtros = [];
+  const ler1 = async ps => ps.map(p => { const t = p.id.split(':')[0];
+    if (t === 'relatorio') { filtros.push(p.corpo.filter); return p.corpo.filter === '' ? { id: p.id, status: 400, erro: 'erro 400' } : { id: p.id, status: 200, dados: { colunas: OCG.COLUNAS_RELATORIO.slice(), linhas: [linhaRel(p.corpo.dates.startDate.slice(5, 7))], total: 1 } }; }
+    if (t === 'clientes') return Object.assign({ id: p.id }, clientes());
+    return { id: p.id, status: 200, dados: { itens: [], total: 0, paginas: 1 } }; });
+  const env1 = {};
+  const r1 = await OCG.hubExecutarGestta(ler1, ['tarefas'], { hoje: H }, async (c, p) => { env1[c.tipoDado] = p; return { ok: true }; });
+  assert.deepEqual(plano(filtros), ['', 'LAST_MONTH', 'CURRENT_MONTH'], 'mês anterior: LAST_MONTH; no mês atual já vai direto o período dele (CURRENT_MONTH), nunca o LAST_MONTH');
+  assert.ok(r1.find(x => x.id === 'gestta-tarefas').ok);
+  assert.match(env1['gestta-empresas-ativas'].partes.join('\n'), /^00000000000100\tEMPRESA ALFA\t2\t2026-11$/);
+  OCG.lembrarFiltroRel('');
+  // 2) o relatório nunca sai: as tarefas falham com o motivo, e a lista vem da busca (com o cliente sem CNPJ pelo nome)
+  const pedidos = [];
+  const ler2 = async ps => ps.map(p => { const t = p.id.split(':')[0]; pedidos.push(t);
+    if (t === 'relatorio') return { id: p.id, status: 400, erro: 'erro 400' };
+    if (t === 'clientes') return Object.assign({ id: p.id }, clientes());
+    if (t === 'buscaTarefas') return { id: p.id, status: 200, dados: { itens: [{ _id: 'x', customer: { _id: 'c1', name: 'EMPRESA ALFA' } }, { _id: 'y', customer: { _id: 'c2', name: 'MARIA EMPREGADORA' } }], total: 2, paginas: 1 } };
+    return { id: p.id, status: 200, dados: { itens: [], total: 0, paginas: 1 } }; });
+  const env2 = {};
+  const r2 = await OCG.hubExecutarGestta(ler2, ['tarefas'], { hoje: H }, async (c, p) => { env2[c.tipoDado] = p; return { ok: true }; });
+  const t = r2.find(x => x.id === 'gestta-tarefas');
+  assert.equal(t.ok, false); assert.match(t.motivo, /recusou o relatório de tarefas \(erro 400\)/);
+  assert.ok(pedidos.filter(x => x === 'relatorio').length === 3, 'três tentativas no mês anterior, depois desiste');
+  assert.equal(pedidos.filter(x => x === 'buscaTarefas').length, 2, 'uma busca por mês');
+  assert.deepEqual(plano(env2['gestta-empresas-ativas'].partes.join('\n').split('\n')), ['00000000000100\tEMPRESA ALFA\t2\t2026-11', '\tMARIA EMPREGADORA\t2\t2026-11']);
+  assert.ok(!env2['gestta-clientes'], 'sem a categoria clientes, a lista é lida mas não vai');
+});

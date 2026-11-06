@@ -285,8 +285,13 @@ async function gesttaFechamento(msg, sender) {
   const pf = r1.resultados[0] && r1.resultados[0].dados ? OCG.perfil(r1.resultados[0].dados) : null;
   if (!pf || !pf.ok) return { ok: false, erro: 'Não consegui saber quem está logado no Gestta.' };
   const t0 = Date.now();
-  const { r } = await lerGestta([OCG.PEDIDOS.fechamento({ ano, mes })], { tab });
-  const x = r && r.resultados && r.resultados[0];
+  // 0.83.0: num 400 tenta os outros valores de período que o próprio Gestta usa (OCG.filtrosRelatorio) e lembra o que deu certo
+  let r = null, x = null;
+  for (const filtro of OCG.filtrosRelatorio({ ano, mes })) {
+    ({ r } = await lerGestta([OCG.PEDIDOS.fechamento({ ano, mes, filtro })], { tab }));
+    x = r && r.resultados && r.resultados[0];
+    if (!x || x.status !== 400) { if (x && x.status === 200) OCG.lembrarFiltroRel(filtro); break; }
+  }
   if (!x) return { ok: false, erro: 'A aba do Gestta não respondeu ao relatório.' };
   if (x.status !== 200 || !x.dados) return { ok: false, erro: x.status === 403 ? 'Seu acesso do Gestta não inclui o relatório de tarefas.' : x.status === 401 ? 'A sessão do Gestta acabou: faça login de novo na aba.' : 'O relatório do Gestta não veio (' + (x.erro || x.recusado || x.status) + ').' };
   const dados = { ano, mes, lidoEm: new Date().toISOString(), segundos: Math.round((Date.now() - t0) / 1000), parcial: !pf.total,
