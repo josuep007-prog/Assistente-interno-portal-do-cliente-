@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.79.0)
+# Control Onvio · ControlTax (v0.80.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -8,18 +8,18 @@ Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashbo
 2. No Chrome, abra `chrome://extensions` e ligue o **Modo do desenvolvedor** (canto superior direito).
 3. Clique em **Carregar sem compactação** e escolha a pasta **`extensao`** (a que tem o `manifest.json`).
 4. Fixe o ícone da extensão na barra (ícone de quebra-cabeça > alfinete).
-5. Entre no Onvio: o Control Onvio abre por cima, em tela cheia. Precisa do Chrome 114 ou mais novo.
+5. Entre no Onvio e clique na bolinha com a logo (canto inferior direito) ou no ícone da extensão: o Control Onvio abre por cima, em tela cheia. Ele nunca abre sozinho. Precisa do Chrome 114 ou mais novo.
 
 Para atualizar a versão: substitua os arquivos da pasta, clique em **Recarregar** no card da extensão e dê F5 na aba do Onvio.
 
 ## Como usar
 
 - **Trilho lateral** (à esquerda, escuro, como no Control Hub): Hoje, Solicitações, Agenda e lembretes, Equipe (área do gestor, com senha) e Distribuir. A busca (/ ou Ctrl+K) procura nas 10 listas do Onvio, inclusive concluídas. Passe o mouse num ícone para ver o nome; os números vermelhos/azuis são o que pede atenção.
-- **Ver Onvio** (canto superior direito) mostra a tela nativa do Onvio; a **bolinha** com a logo, no canto inferior direito, traz o app de volta. O ícone da extensão e o atalho **Alt+Shift+O** fazem o mesmo dentro do Portal do Cliente e, em qualquer outra página, levam ao portal (Solicitações) e o app abre sozinho assim que a primeira leitura termina.
+- **Ver Onvio** (canto superior direito) mostra a tela nativa do Onvio; a **bolinha** com a logo, no canto inferior direito, traz o app de volta. O ícone da extensão e o atalho **Alt+Shift+O** fazem o mesmo dentro do Portal do Cliente e, em qualquer outra página, levam ao portal (Solicitações) e abrem o app lá. O app **nunca abre sozinho**: só por esse clique.
 - **Busca** em janela central: tecla **/** ou **Ctrl+K**. Já mostra, enquanto você digita, as pendências lidas e os clientes; **Enter** busca em todas as listas do Onvio, inclusive concluídas (ou abre direto a solicitação, se você digitou o ID exato).
 - Clique numa solicitação para abrir o **detalhe** (dados e trâmites lidos na hora). Setas **← →** passam para a anterior/próxima da mesma lista sem fechar. "Abrir no Onvio" leva à lista certa do Onvio já filtrada pelo ID.
 - Nas listas: **↑ ↓** andam entre as linhas e **Enter** abre.
-- Em **Configurações** você vê as regras em vigor em linguagem simples, testa um prazo novo vendo o efeito na fila antes de salvar, inclui feriados locais e desliga "Abrir o Control Onvio ao entrar no Onvio".
+- Em **Configurações** você vê as regras em vigor em linguagem simples, testa um prazo novo vendo o efeito na fila antes de salvar, e inclui feriados locais.
 
 ## Telas
 
@@ -44,6 +44,11 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.80.0 (06/11/2026)
+
+- **O Control Onvio nunca abre sozinho** (pedido do Josué): ao entrar no Portal do Cliente fica só a bolinha. Abre pelo clique nela, no ícone da extensão ou no atalho Alt+Shift+O, e na hora (não espera mais a leitura terminar). "Abrir no Onvio" e o clique numa notificação levam à tela do Onvio sem abrir a camada. Saiu a opção "Abrir o Control Onvio ao entrar no Portal do Cliente".
+- **Aviso quando a extensão não está lendo**: por cima do Onvio (e do app, se aberto), um quadro diz o motivo provável e tem o botão **Ler agora**. Aparece quando o Onvio recusa a leitura (sessão acabou ou ainda entrando), quando a leitura dá erro (com o detalhe), quando a leitura está presa há 3 minutos ou mais, quando a última leitura tem mais de 3 vezes o intervalo (mínimo 15 minutos; o Chrome pode ter pausado a extensão) e quando a extensão foi atualizada e a página precisa ser recarregada (aí o botão é **Recarregar a página**). Some sozinho quando a leitura volta; "Agora não" esconde até o motivo mudar. Com login de cliente não aparece (ali a extensão não lê de propósito).
 
 ## Novidades da v0.79.0 (o Gestta no Control Hub, Fase 1, item 3, 05/11/2026)
 
