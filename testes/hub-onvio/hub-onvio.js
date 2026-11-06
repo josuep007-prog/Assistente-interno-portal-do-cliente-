@@ -511,6 +511,14 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
       const l = { ...lote('cat-' + c.id, 'cK', 0), tipoDado: (c.id === 'analise' ? 'analise-solicitacoes' : 'categoria-' + c.id), categoria: c.id, partes: 1, nLinhasTotal: 1, totalNaOrigem: 1 };
       const r = await envia(l); assert.equal(r.ok, true, 'categoria ' + c.id + ' aceita (' + (r.motivo || '') + ')');
     }
+    // Gestta (Hub 315, extensão 0.79.0): fonte "gestta" com as categorias tarefas, cadastros e alertas; outra fonte continua recusada
+    for (const [tipo, cat] of [['gestta-tarefas', 'tarefas'], ['gestta-clientes', 'cadastros'], ['gestta-envios-onvio-erro', 'alertas']]) {
+      const r = await envia({ ...lote('g-' + tipo, 'g1', 0), fonte: 'gestta', tipoDado: tipo, categoria: cat, partes: 1, nLinhasTotal: 1, totalNaOrigem: 1 });
+      assert.equal(r.ok, true, 'Gestta ' + tipo + ' aceito (' + (r.motivo || '') + ')');
+    }
+    const mg = await page.evaluate(() => window.__db.ler('ing_dados/gestta~gestta-tarefas')); assert.equal(mg.fonte, 'gestta'); assert.equal(mg.categoria, 'tarefas');
+    assert.equal((await envia({ ...lote('z0', 'z1', 0), fonte: 'outra', tipoDado: 'x', partes: 1 })).motivo, 'fonte-desconhecida');
+    assert.equal((await envia({ ...lote('z1', 'z2', 0), fonte: 'gestta', tipoDado: 'gestta-x', categoria: 'inventada', partes: 1 })).motivo, 'categoria');
   });
 
   await passo('Folha (Extrato Mensal, extensão 0.68.0): as remessas se acumulam pelo documento e a ficha mostra os meses de cada contribuinte (ativo só nos meses em que aparece)', async () => {
@@ -870,7 +878,8 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await page.evaluate(() => { const d = window.__db.ler('dp_empresas/e-lira'); d.funcionarios.push({ id: 'f-nurcia', nome: 'Nurcia Ficticia', cargo: '', codigo: '40', vinculo: 'Empregado', admissao: '2024-01-01', status: 'Ativo', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '', salario: '', obs: '' }, { id: 'f-socio-lira', nome: 'Socio da Lira', cargo: '', codigo: '41', admissao: '2010-01-01', status: 'Ativo', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '', salario: '', obs: '' }); window.__db.semear('dp_empresas/e-lira', d); });
     assert.equal((await envia(l)).ok, true);
     await page.waitForFunction(() => window.__hubApi.api('onvio').difs().some(d => /nurcia/i.test(d.nome) && d.tipo === 'vinculo'), null, { timeout: 8000 });
-    assert.equal(await page.evaluate(() => window.__db.ler('ing_config/cfg').versaoExtMax || ''), VEXT, 'a versão que chegou, mais nova que o piso, passa a ser a exigida');
+    // a versão que chegou passa a ser a exigida quando é mais nova que o piso; igual ao piso (o Hub 315 exige 0.79.0), o piso já é ela
+    assert.ok([VEXT, ''].includes(await page.evaluate(() => window.__db.ler('ing_config/cfg').versaoExtMax || '')), 'a versão exigida é a que chegou (ou o piso, igual a ela)');
     const ds = await page.evaluate(() => window.__hubApi.api('onvio').difs().filter(d => d.empId === 'e-lira' && d.tipo === 'vinculo').map(d => [d.nome, d.acao, d.depois]));
     assert.deepEqual(ds.find(d => /nurcia/i.test(d[0])), ['Nurcia Ficticia', 'corrigir', 'RPA/autônomo'], 'estava como Empregado; a folha diz RPA');
     assert.deepEqual(ds.find(d => /socio da lira/i.test(d[0])), ['Socio da Lira', 'complementar', 'Pró-labore']);

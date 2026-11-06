@@ -3945,3 +3945,62 @@ test('0.78.0: escolha de setor — todos os setores do login, com o nome do depa
   assert.deepEqual(plano(OC.filtrarVisao(snap.items, 'd:' + PORTAL.toUpperCase(), {}).map(x => x.k)), ['g5']);
   assert.equal(OC.setoresVistos({ items: [g('x', 'DESCONHECIDO')] }, {})[0].nome, 'Outro departamento', 'sem o nome do Onvio, um nome neutro');
 });
+
+test('Gestta → Hub (0.79.0): conjuntos em português, sem as empresas do escritório nem valor/mensalidade/pontuação/e-mail/telefone, cartela só quando pedida, 401 para tudo', async () => {
+  const H = new Date(2026, 10, 5, 10);
+  const rel = mes => ({ colunas: OCG.COLUNAS_RELATORIO.slice(), total: 2, formato: 'json', linhas: [
+    OCG.COLUNAS_RELATORIO.map(c => ({ id: 't' + mes, name: 'DAS', type: 'RECURRENT', status: 'DONE', 'company_department.name': 'Fiscal', 'owner.name': 'Ana', fine: 'false', _due_date: '2026-' + mes + '-20T03:00:00.000Z', 'customer.name': 'EMPRESA ALFA', 'customer.code': '10', 'customer.cnpj': '00.000.000/0001-00', on_time: 'true' })[c] ?? ''),
+    OCG.COLUNAS_RELATORIO.map(c => ({ id: 'x' + mes, name: 'DAS', status: 'OPEN', 'customer.name': 'CONTROLTAX CONSULTORIA' })[c] ?? '')] });
+  const pedidos = [];
+  const respostas = {
+    relatorio: p => ({ status: 200, dados: rel(p.corpo.dates.startDate.slice(5, 7)) }),
+    clientes: () => ({ status: 200, dados: { itens: [{ _id: 'c1', code: '10', name: 'EMPRESA ALFA', cnpj: '1', active: true, monthly_payment: 900, phone: '9', federal_regime: { name: 'Simples' }, partner_config: { has_onvio_portal: true } }, { _id: 'c2', name: 'DYNEXA SERVICOS', active: true }], total: 2, paginas: 1 } }),
+    equipe: () => ({ status: 200, dados: { itens: [{ _id: 'u1', name: 'Ana', role: 'ROLE_USER', active: true, company_departments: [{ _id: 's1', name: 'Fiscal' }], email: 'ana@x', phone_number: '9' }], total: 1, paginas: 1 } }),
+    setores: () => ({ status: 200, dados: { itens: [{ _id: 's1', name: 'Fiscal' }] } }),
+    filaOnvioErro: () => ({ status: 200, dados: { itens: [{ _id: 'e1', status: 'ERROR', error: 'Pasta de destino não configurada', customer_task: { _id: 't1', name: 'DAS', customer: { name: 'EMPRESA ALFA', cnpj: '1' } } }], total: 1 } }),
+    templatesLista: () => ({ status: 200, dados: { itens: [{ _id: 'd1', name: 'DAS', documents_integration: { pathName: ['Fiscal', 'Guias'] } }, { _id: 'd2', name: 'RECIBO', documents_integration: { pathName: [] } }], total: 2, paginas: 1 } }),
+    cartela: () => ({ status: 200, dados: { itens: [{ company_department: { _id: 's1', name: 'Fiscal' }, company_user: { _id: 'u1', name: 'Ana' } }] } })
+  };
+  const ler = async ps => ps.map(p => { pedidos.push(p.id.split(':')[0]); const f = respostas[p.id.split(':')[0]]; return Object.assign({ id: p.id }, f(p)); });
+  const enviados = {};
+  const enviar = async (conj, p) => { enviados[conj.tipoDado] = { conj, p }; return { ok: true }; };
+  const res = await OCG.hubExecutarGestta(ler, ['tarefas', 'clientes', 'equipe', 'alertas', 'cartela'], { hoje: H, cartela: false }, enviar);
+  assert.deepEqual(plano(res.map(r => r.id)), ['gestta-tarefas', 'gestta-clientes', 'gestta-equipe', 'gestta-setores', 'gestta-envios-onvio-erro', 'gestta-templates-sem-pasta'], 'sem a cartela quando não é a vez dela');
+  assert.ok(res.every(r => r.ok));
+  // tarefas: mês anterior e atual, só as das empresas que não são do escritório, colunas e valores em português
+  const tar = enviados['gestta-tarefas'];
+  assert.equal(tar.conj.categoria, 'tarefas');
+  const linhas = tar.p.partes.join('\n').split('\n').map(l => l.split('\t'));
+  assert.equal(linhas.length, 2, 'uma por mês, sem a do escritório');
+  const col = n => tar.conj.colunas.indexOf(n);
+  assert.deepEqual(plano(linhas.map(l => l[col('Mês')])), ['2026-10', '2026-11']);
+  assert.equal(linhas[0][col('Situação')], 'Concluída'); assert.equal(linhas[0][col('Tipo')], 'Recorrente'); assert.equal(linhas[0][col('No prazo')], 'sim'); assert.equal(linhas[0][col('Meta')], '2026-10-20 03:00');
+  for (const c of ['Valor', 'Mensalidade', 'Pontuação']) assert.equal(col(c), -1, 'coluna fora: ' + c);
+  // clientes e equipe: sem mensalidade, telefone nem e-mail; empresa do escritório fora
+  const tudo = JSON.stringify(enviados);
+  for (const s of ['900', 'ana@x', 'DYNEXA', 'CONTROLTAX']) assert.ok(!tudo.includes(s), 'não vai ao Hub: ' + s);
+  assert.equal(enviados['gestta-clientes'].p.partes[0].split('\n').length, 1);
+  assert.match(enviados['gestta-clientes'].p.partes[0], /\tsim$/, 'usa o portal do Onvio');
+  assert.match(enviados['gestta-equipe'].p.partes[0], /^u1\tAna\tAnalista\tsim\tFiscal\t$/);
+  // alertas: o envio com erro e só o template sem pasta
+  assert.match(enviados['gestta-envios-onvio-erro'].p.partes[0], /Pasta de destino não configurada/);
+  assert.equal(enviados['gestta-templates-sem-pasta'].p.partes[0], 'd2\tRECIBO\t\t\t');
+  // cartela quando é a vez dela: uma leitura por cliente (sem o do escritório)
+  pedidos.length = 0;
+  const r2 = await OCG.hubExecutarGestta(ler, ['cartela'], { hoje: H, cartela: true }, enviar);
+  assert.deepEqual(plano(pedidos), ['clientes', 'cartela'], 'só lê os clientes (sem enviá-los) e a cartela do único que não é do escritório');
+  assert.deepEqual(plano(r2.map(r => r.id)), ['gestta-cartela']); assert.equal(r2[0].cartela, true);
+  assert.equal(enviados['gestta-cartela'].p.partes[0], 'c1\t10\tEMPRESA ALFA\t1\tFiscal\ts1\tAna\tu1');
+  // sessão perdida (401): para tudo
+  const r3 = await OCG.hubExecutarGestta(async ps => ps.map(p => ({ id: p.id, status: 401, erro: 'erro 401' })), ['tarefas', 'clientes', 'equipe'], { hoje: H }, enviar);
+  assert.deepEqual(plano(r3.map(r => r.id)), ['gestta-tarefas'], 'depois de um 401 não lê mais nada'); assert.match(r3[0].motivo, /sessão do Gestta acabou/);
+  // o Hub recusa com erro fatal (parar): o resto não é lido
+  const r4 = await OCG.hubExecutarGestta(ler, ['tarefas', 'clientes'], { hoje: H }, async () => ({ ok: false, motivo: 'versao-antiga', parar: true }));
+  assert.equal(r4.length, 1);
+  // partes: até 140 mil caracteres cada
+  const grandes = Array.from({ length: 3000 }, (_, i) => 'x'.repeat(100) + i);
+  const pp = OCG.partirLinhas(grandes);
+  assert.ok(pp.partes.length >= 3 && pp.partes.every(x => x.length <= 140000)); assert.equal(pp.nLinhasTotal, 3000); assert.equal(pp.cortado, false);
+  const lt = OCG.PEDIDOS.templatesLista({ page: 2 }); assert.equal(OCG.leituraPermitida(lt.metodo, lt.url).ok, true);
+  const fe = OCG.PEDIDOS.filaOnvioErro({ skip: 50 }); assert.match(fe.url, /skip=50/); assert.equal(OCG.leituraPermitida(fe.metodo, fe.url).ok, true);
+});

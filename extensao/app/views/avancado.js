@@ -43,7 +43,7 @@ export async function avancado(el, params) {
   // um ouvinte só, registrado uma vez: atualiza a tela que estiver aberta (o estado muda pelo service worker, por exemplo no envio ao Hub)
   if (!ouvindo) { ouvindo = true; chrome.storage.onChanged.addListener((mud, area) => {
     if (area !== 'local' || !elAtual || !elAtual.isConnected) return;
-    if (['hubSync', 'hubCfg', 'regrasEscritorio', 'aprender', 'aprendizado', 'snapshot', 'status'].some(k => k in mud)) atualizar(elAtual);
+    if (['hubSync', 'hubSyncGestta', 'hubCfg', 'regrasEscritorio', 'aprender', 'aprendizado', 'snapshot', 'status'].some(k => k in mud)) atualizar(elAtual);
   }); }
   clearInterval(timer);
   timer = setInterval(() => { if (!el.isConnected) { clearInterval(timer); timer = null; return; } verHub(el); }, 15000);
@@ -108,11 +108,35 @@ function parteHub(corpo, d, el) {
       '<div class="adv-alerta" id="adv-pessoais-aviso" hidden><b>Dados pessoais no Hub.</b> Com esta opção vão para o banco do Hub (no claude.ai) CPF, salário, nomes de empregados, assunto e descrição de todas as solicitações, dados completos e trâmites das pendentes, a folha (contribuintes por competência) e comunicações. Quem acessa o Hub passa a poder ver. Só ligue se o escritório decidiu isso.' +
         '<div class="adv-acoes"><button type="button" class="btn btn-primary btn-sm" id="adv-pessoais-sim">Entendi, enviar dados pessoais</button><button type="button" class="btn btn-sm" id="adv-pessoais-nao">Cancelar</button></div></div>' +
     '</section>' +
-    '<section class="cfg-card adv-card"><h3><svg class="ic"><use href="#i-clock"/></svg>Último envio</h3><div id="adv-envio"></div></section>';
+    '<section class="cfg-card adv-card"><h3><svg class="ic"><use href="#i-clock"/></svg>Último envio</h3><div id="adv-envio"></div></section>' +
+    // 0.79.0: o Gestta no Hub (tarefas, clientes, equipe e setores, alertas e a cartela 1 vez por dia), lido na aba do Gestta
+    '<section class="cfg-card adv-card" id="adv-gestta"><h3><svg class="ic"><use href="#i-layers"/></svg>Gestta no Hub</h3>' +
+      '<p class="fraco ajuda">Com o Gestta aberto numa aba e logado com acesso de coordenação, a extensão lê os conjuntos marcados e entrega ao Hub, junto com o envio automático. Nada fica guardado na extensão; nunca vão valor, mensalidade, pontuação, e-mail, telefone ou senhas, nem as empresas do escritório.</p>' +
+      '<label class="cfg-sw"><input type="checkbox" id="adv-gesttaAuto"' + (c.gesttaAuto !== false ? ' checked' : '') + '><span class="cfg-tx"><b>Junto com o envio automático</b><small class="ajuda">A cada ' + (c.syncHoras || 6) + ' horas, com o Hub e o Gestta abertos.</small></span></label>' +
+      '<div class="adv-cats" id="adv-gestta-cats"></div>' +
+      '<div class="adv-acoes"><button type="button" class="btn btn-primary btn-sm" id="adv-gestta-enviar">Enviar o Gestta agora</button></div>' +
+      '<div id="adv-gestta-envio"></div>' +
+    '</section>';
   // conjuntos: cartões com chave
   const cats = $('#adv-cats', corpo);
   cats.innerHTML = OC.HUB_CATEGORIAS.map(k => { const on = c.envio && c.envio[k.id] != null ? !!c.envio[k.id] : !!k.padrao;
     return '<label class="adv-cat' + (k.pessoal ? ' adv-cat-pessoal' : '') + '" title="' + esc(k.ajuda) + '"><input type="checkbox" data-cat="' + k.id + '"' + (on ? ' checked' : '') + '><span class="cfg-tx"><b>' + esc(k.nome) + (k.pessoal ? ' ' + pilula('aviso', 'sensível') : '') + '</b><small class="ajuda">' + esc(k.ajuda) + '</small></span></label>'; }).join('');
+  const G = window.OCG;
+  $('#adv-gestta-cats', corpo).innerHTML = G ? G.HUB_GESTTA.map(k => { const on = c.gestta && c.gestta[k.id] != null ? !!c.gestta[k.id] : !!k.padrao;
+    return '<label class="adv-cat" title="' + esc(k.ajuda) + '"><input type="checkbox" data-gcat="' + k.id + '"' + (on ? ' checked' : '') + '><span class="cfg-tx"><b>' + esc(k.nome) + '</b><small class="ajuda">' + esc(k.ajuda) + '</small></span></label>'; }).join('') : '';
+  $('#adv-gestta-cats', corpo).addEventListener('change', async e => {
+    const inp = e.target.closest('input[data-gcat]'); if (!inp) return;
+    const { hubCfg } = await ler('hubCfg'); const n = Object.assign({}, hubCfg || {}); n.gestta = Object.assign({}, n.gestta || {}, { [inp.dataset.gcat]: inp.checked }); await chrome.storage.local.set({ hubCfg: n });
+    const k = G.HUB_GESTTA.find(x => x.id === inp.dataset.gcat); toast(inp.checked ? '“' + k.nome + '” vai ao Hub' : '“' + k.nome + '” fora do envio');
+  });
+  $('#adv-gesttaAuto', corpo).addEventListener('change', async e => { const { hubCfg } = await ler('hubCfg'); await chrome.storage.local.set({ hubCfg: Object.assign({}, hubCfg || {}, { gesttaAuto: e.target.checked }) }); });
+  $('#adv-gestta-enviar', corpo).onclick = async () => {
+    await salvar();
+    $('#adv-gestta-envio', corpo).innerHTML = '<p class="adv-msg">Iniciando…</p>';
+    const r = await enviar({ cmd: 'gesttaHubSync' });
+    if (r && r.ok === false) { $('#adv-gestta-envio', corpo).innerHTML = '<p class="adv-msg adv-msg-erro">' + esc(OP.msgHub(r)) + '</p>'; return; }
+    if (r && r.jaRodando) toast('Já há um envio do Gestta em andamento');
+  };
   const salvar = async () => {
     const { hubCfg } = await ler('hubCfg'), token = $('#adv-hubCodigo', corpo).value.replace(/\s+/g, '').toUpperCase();
     const horas = Math.min(48, Math.max(1, Number($('#adv-syncHoras', corpo).value) || 6));
@@ -165,11 +189,15 @@ async function estadoHub(el) {
     pilula(st.permitido ? 'ok' : 'aviso', st.permitido ? 'claude.ai permitido' : 'claude.ai não permitido') +
     pilula(st.hubAberto ? 'ok' : 'aviso', st.hubAberto ? (st.hubSegundoPlano ? 'Hub aberto em segundo plano' : 'Hub aberto e respondendo') : 'Hub não encontrado numa aba') +
     pilula(!u ? 'neutro' : u.ok ? 'ok' : 'erro', !u ? 'Nenhum resumo enviado' : u.ok ? 'Resumo aceito em ' + OP.quando(u.em) + ' (' + u.linhas + ' de ' + u.total + ')' : 'Resumo recusado: ' + OP.msgHub(u));
-  const e = OP.linhasEnvio(hubSync), ICO = { ok: '✓', erro: '✕', aviso: '⚠', nota: '•' };
-  const barra = e.estado === 'enviando' && e.total ? '<div class="adv-barra" role="progressbar" aria-valuemin="0" aria-valuemax="' + e.total + '" aria-valuenow="' + e.feito + '"><i style="width:' + Math.round(e.feito / e.total * 100) + '%"></i></div>' : '';
-  const ordem = { erro: 0, aviso: 1, nota: 2, ok: 3 };
-  envio.innerHTML = '<p class="adv-msg' + (['erro', 'interrompido'].includes(e.estado) ? ' adv-msg-erro' : '') + '">' + esc(e.cab) + '</p>' + barra +
-    (e.linhas.length ? '<ul class="adv-res">' + e.linhas.sort((a, b) => ordem[a.tom] - ordem[b.tom]).map(l => '<li class="adv-' + l.tom + '"><span aria-hidden="true">' + ICO[l.tom] + '</span><b>' + esc(l.rotulo) + '</b><span>' + esc(l.texto) + '</span></li>').join('') + '</ul>' : '');
+  const ICO = { ok: '✓', erro: '✕', aviso: '⚠', nota: '•' }, ordem = { erro: 0, aviso: 1, nota: 2, ok: 3 };
+  const pinta = (alvo, e) => {
+    const barra = e.estado === 'enviando' && e.total ? '<div class="adv-barra" role="progressbar" aria-valuemin="0" aria-valuemax="' + e.total + '" aria-valuenow="' + e.feito + '"><i style="width:' + Math.round(e.feito / e.total * 100) + '%"></i></div>' : '';
+    alvo.innerHTML = '<p class="adv-msg' + (['erro', 'interrompido'].includes(e.estado) ? ' adv-msg-erro' : '') + '">' + esc(e.cab) + '</p>' + barra +
+      (e.linhas.length ? '<ul class="adv-res">' + e.linhas.sort((a, b) => ordem[a.tom] - ordem[b.tom]).map(l => '<li class="adv-' + l.tom + '"><span aria-hidden="true">' + ICO[l.tom] + '</span><b>' + esc(l.rotulo) + '</b><span>' + esc(l.texto) + '</span></li>').join('') + '</ul>' : '');
+  };
+  pinta(envio, OP.linhasEnvio(hubSync));
+  const ge = $('#adv-gestta-envio', el);
+  if (ge) { const { hubSyncGestta, gesttaCartelaEm } = await ler(['hubSyncGestta', 'gesttaCartelaEm']); pinta(ge, OP.linhasEnvio(hubSyncGestta, { nome: 'do Gestta', cartelaEm: gesttaCartelaEm })); }
 }
 
 /* ---------- Regras do escritório ---------- */

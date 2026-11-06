@@ -172,6 +172,60 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const emPartes = () => f4().evaluate(() => window.lotes.filter(x => x.partes != null).length);
   const ant = await emPartes(); await msg('hubAbriu'); await sleep(6000);
   assert.equal(await emPartes(), ant, 'dentro do intervalo não envia de novo o envio completo');
+  // ---- Gestta no Hub (0.79.0): conjuntos lidos na aba do Gestta, fonte "gestta", só com acesso de coordenação ----
+  const GT_TOKEN = 'JWT eyJhbGciOiJIUzI1NiJ9.' + Buffer.from(JSON.stringify({ exp: 1893456000 })).toString('base64url') + '.SEGREDO-GESTTA';
+  const GCORS = { 'access-control-allow-origin': 'https://app.gestta.com.br', 'access-control-allow-headers': 'authorization,content-type,accept', 'access-control-allow-methods': 'GET,POST,OPTIONS' };
+  let gPapel = 'ROLE_ADMIN'; const gPedidos = [];
+  await ctx.route('https://app.gestta.com.br/**', r => r.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Gestta</title><body>Gestta</body>' }));
+  await ctx.route('https://api.gestta.com.br/**', async r => {
+    const q = r.request(), u = new URL(q.url()), p = u.pathname;
+    if (q.method() === 'OPTIONS') return r.fulfill({ status: 204, headers: GCORS });
+    gPedidos.push(q.method() + ' ' + p.replace(/[0-9a-f]{24}/g, '{id}'));
+    const json = o => r.fulfill({ status: 200, headers: Object.assign({ 'content-type': 'application/json' }, GCORS), body: JSON.stringify(o) });
+    const id = n => String(n).padStart(24, 'c');
+    if (p === '/core/company/user/me') return json({ _id: id(1), name: 'Coordenação Ficticia', role: gPapel, email: 'coord@exemplo.com' });
+    if (p === '/core/customer/task/report') { const c = JSON.parse(q.postData() || '{}'); return json([{ id: id(7), name: 'DAS', status: 'OPEN', type: 'RECURRENT', 'company_department.name': 'Fiscal', 'owner.name': 'Ana', _due_date: c.dates.startDate, 'customer.name': 'GAMA GESTTA LTDA', 'customer.code': '10', value: 999, 'customer.monthly_payment': 777 }, { id: id(8), name: 'DAS', status: 'OPEN', 'customer.name': 'CONTROLTAX CONSULTORIA' }]); }
+    if (p === '/admin/customer') return json({ docs: [{ _id: id(2), code: '10', name: 'GAMA GESTTA LTDA', cnpj: '11.111.111/0001-11', active: true, monthly_payment: 777, phone: '(27) 90000-0000' }], totalDocs: 1, totalPages: 1 });
+    if (p === '/admin/company/user') return json({ docs: [{ _id: id(3), name: 'Ana', role: 'ROLE_USER', active: true, email: 'ana@exemplo.com', phone_number: '(27) 91111-1111', permissions: ['X'], last_login: '2026-11-05' }], totalDocs: 1, totalPages: 1 });
+    if (p === '/admin/company/department') return json([{ _id: id(4), name: 'Fiscal' }]);
+    if (p === '/es/file/onvio') return json({ docs: [{ _id: id(5), status: 'ERROR', error: 'Pasta de destino não configurada', customer_task: { _id: id(7), name: 'DAS', customer: { _id: id(2), name: 'GAMA GESTTA LTDA', cnpj: '1' } } }], totalDocs: 1 });
+    if (p === '/admin/company/document') return json({ docs: [{ _id: id(6), name: 'RECIBO', documents_integration: { pathName: [] } }], totalDocs: 1, totalPages: 1 });
+    if (/^\/admin\/customer\/c+2\/responsible$/.test(p)) return json([{ company_department: { _id: id(4), name: 'Fiscal' }, company_user: { _id: id(3), name: 'Ana', phone_number: '9' } }]);
+    return r.fulfill({ status: 404, headers: GCORS, body: '{}' });
+  });
+  const gAba = await ctx.newPage(); await gAba.goto('https://app.gestta.com.br/#/sidebar/task/list');
+  await gAba.evaluate(t => localStorage.setItem('ngStorage-jwt', JSON.stringify(t)), GT_TOKEN);
+  await opc.bringToFront();
+  const esperarGestta = async () => { for (let i = 0; i < 120; i++) { await sleep(500); const h = (await opc.evaluate(() => chrome.storage.local.get('hubSyncGestta'))).hubSyncGestta; if (h && h.estado !== 'enviando' && h.terminouEm) return h; } throw new Error('envio do Gestta não terminou'); };
+  const lotesG = async () => (await f4().evaluate(() => window.lotes)).filter(x => x.fonte === 'gestta');
+  assert.equal((await msg('gesttaHubSync')).ok, true);
+  const hg = await esperarGestta();
+  assert.equal(hg.estado, 'ok', 'envio do Gestta: ' + JSON.stringify(hg).slice(0, 400));
+  const lg = await lotesG();
+  assert.deepEqual([...new Set(lg.map(x => x.tipoDado))].sort(), ['gestta-cartela', 'gestta-clientes', 'gestta-envios-onvio-erro', 'gestta-equipe', 'gestta-setores', 'gestta-tarefas', 'gestta-templates-sem-pasta']);
+  assert.deepEqual([...new Set(lg.map(x => x.categoria))].sort(), ['alertas', 'cadastros', 'tarefas']);
+  assert.ok(lg.every(x => x.token === TOKEN && /^g[a-z0-9]+$/.test(x.ciclo) && x.versaoExt), 'mesmo protocolo em partes');
+  const gtxt = JSON.stringify(lg);
+  for (const sx of ['SEGREDO-GESTTA', 'eyJ', 'coord@exemplo', 'ana@exemplo', '(27)', '777', '999', 'CONTROLTAX', 'last_login', 'permissions']) assert.ok(!gtxt.includes(sx), 'não vai ao Hub: ' + sx);
+  const tg = lg.find(x => x.tipoDado === 'gestta-tarefas');
+  assert.equal(tg.tabela.split('\n').length, 2, 'mês anterior e atual, sem a empresa do escritório');
+  assert.equal(gPedidos.filter(x => x === 'POST /core/customer/task/report').length, 2, 'um relatório por mês');
+  assert.ok(gPedidos.every(x => /^GET |^POST \/core\/customer\/task\/report$/.test(x)), 'só GET e o relatório: ' + gPedidos.join(', '));
+  const guardado = JSON.stringify(await opc.evaluate(() => chrome.storage.local.get(null)));
+  for (const sx of ['GAMA GESTTA', 'SEGREDO', 'Pasta de destino']) assert.ok(!guardado.includes(sx), 'nada do Gestta no armazenamento: ' + sx + ' em ' + guardado.slice(Math.max(0, guardado.indexOf(sx) - 300), guardado.indexOf(sx) + 100));
+  assert.ok((await opc.evaluate(() => chrome.storage.local.get('gesttaCartelaEm'))).gesttaCartelaEm > 0, 'a hora da cartela');
+  // de novo no mesmo dia: a cartela não é relida
+  gPedidos.length = 0;
+  await msg('gesttaHubSync'); await sleep(400); await esperarGestta();
+  assert.ok(!gPedidos.some(x => /responsible/.test(x)), 'cartela no máximo 1 vez por dia');
+  // login de analista: nada sai
+  gPapel = 'ROLE_USER'; const nAntes = (await lotesG()).length;
+  await msg('gesttaHubSync'); await sleep(400);
+  const ha = await esperarGestta();
+  assert.equal(ha.estado, 'erro'); assert.equal(ha.motivo, 'acesso-parcial');
+  assert.equal((await lotesG()).length, nAntes, 'com acesso de analista nada vai ao Hub');
+  gPapel = 'ROLE_ADMIN';
+  console.log('Gestta no Hub: 7 conjuntos, só GET e o relatório, sem token, contato, valor nem empresa do escritório; analista não envia');
   // caminho de reserva: o resumo copiável não leva o código de pareamento
   const r = await msg('hubLote'); assert.ok(r.ok && !('token' in r.lote));
   // desconectar tira o script e a permissão
