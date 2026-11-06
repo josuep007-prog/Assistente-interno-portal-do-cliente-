@@ -583,6 +583,22 @@
   const COLS_TEMPLATES_HUB = ['Id', 'Template', 'Tipo de automação', 'Válido', 'Dispensado'];
   const semPasta = t => !(t && t.documents_integration && Array.isArray(t.documents_integration.pathName) && t.documents_integration.pathName.filter(Boolean).length);
   const COLS_CARTELA_HUB = ['Id do cliente', 'Código do cliente', 'Cliente', 'CNPJ', 'Setor', 'Id do setor', 'Responsável', 'Id do responsável'];
+  // Empresas com tarefa no mês atual ou no anterior (aberta ou concluída): a referência do Hub para dizer quem está em atividade
+  // (Josué, 06/11/2026: "a empresa só deve ser considerada nos módulos se possuir tarefa ativa no Gestta"). Só CNPJ, nome e contagens.
+  const COLS_ATIVAS_HUB = ['CNPJ', 'Cliente', 'Tarefas', 'Último mês'];
+  function empresasAtivasHub(rels) {
+    const m = new Map();
+    for (const { rel, mes } of rels) {
+      const cols = rel.colunas || [], iC = cols.indexOf('customer.cnpj'), iN = cols.indexOf('customer.name');
+      if (iC < 0) continue;
+      for (const l of rel.linhas || []) {
+        const cnpj = String(l[iC] || '').replace(/\D/g, ''), nome = iN >= 0 ? String(l[iN] || '').trim() : '';
+        if ((cnpj.length !== 14 && cnpj.length !== 11) || ehEscritorioProprio(nome)) continue;
+        const x = m.get(cnpj) || { nome, n: 0, mes: '' }; x.n++; if (mes > x.mes) x.mes = mes; if (!x.nome) x.nome = nome; m.set(cnpj, x);
+      }
+    }
+    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([c, x]) => linhaTab([c, x.nome, x.n, x.mes]));
+  }
   const mesAnterior = (ano, mes) => mes === 1 ? { ano: ano - 1, mes: 12 } : { ano, mes: mes - 1 };
   const mesTexto = (ano, mes) => ano + '-' + String(mes).padStart(2, '0');
   // Lê e entrega cada conjunto. ler(pedidos) → resultados (o mesmo de lerNaPagina, feito pelo service worker na aba do Gestta);
@@ -609,13 +625,16 @@
         prog('Tarefas do mês');
         const atual = { ano: hoje.getFullYear(), mes: hoje.getMonth() + 1 }, ant = mesAnterior(atual.ano, atual.mes), linhas = [];
         let escritorio = 0, total = 0, formatos = [];
+        const rels = [];
         try {
           for (const m of [ant, atual]) {
             ctx.andamento && ctx.andamento('relatório de ' + mesTexto(m.ano, m.mes));
             const rel = await um(PEDIDOS.relatorio(m));
             const t = tabelaTarefasHub(rel, mesTexto(m.ano, m.mes)); linhas.push(...t.linhas); escritorio += t.escritorio; total += rel.total || 0; formatos.push(rel.formato);
+            rels.push({ rel, mes: mesTexto(m.ano, m.mes) });
           }
           await entregar({ tipoDado: 'gestta-tarefas', categoria: 'tarefas', titulo: 'Gestta · Tarefas do mês atual e do anterior', colunas: COLS_TAREFAS_HUB, totalNaOrigem: total - escritorio }, linhas, { porque: escritorio ? escritorio + ' tarefas de empresas do escritório ficaram fora' : '' });
+          if (!parar) { const at = empresasAtivasHub(rels); await entregar({ tipoDado: 'gestta-empresas-ativas', categoria: 'cadastros', titulo: 'Gestta · Empresas em atividade (tarefa no mês atual ou anterior)', colunas: COLS_ATIVAS_HUB, totalNaOrigem: at.length }, at); }
         } catch (e) { falhou('gestta-tarefas', 'Gestta · Tarefas do mês atual e do anterior', 'tarefas', e); }
       }
       if (etapa === 'clientes') {
@@ -682,5 +701,5 @@
     GRUPOS, TIPOS_TAREFA, SITUACOES_TAREFA, MAX_PAGINAS_TAREFAS, diasUteis, grupoTarefa, prazoTexto, contarGrupos, porEmpresa, porDia, filtrarTarefas, urlTarefa, ymd, diaLocal,
     COLUNAS_FECHAMENTO, linhasDoRelatorio, tarefasDoRelatorio, trilhaDaEmpresa, fechamento, ESTADOS, setorDe, respDe, ehEscritorioProprio,
     eventosDaTarefa, obrigacoes, nomeObrigacao, meuDia, ORDENS_EMPRESA, ordenarEmpresas,
-    HUB_GESTTA, hubExecutarGestta, partirLinhas, tabelaTarefasHub, COLS_TAREFAS_HUB, COLS_CLIENTES_HUB, COLS_CARTELA_HUB };
+    HUB_GESTTA, hubExecutarGestta, partirLinhas, tabelaTarefasHub, empresasAtivasHub, COLS_TAREFAS_HUB, COLS_CLIENTES_HUB, COLS_CARTELA_HUB, COLS_ATIVAS_HUB };
 })(typeof self !== 'undefined' ? self : this);

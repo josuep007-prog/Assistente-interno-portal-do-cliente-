@@ -3965,7 +3965,11 @@ test('Gestta → Hub (0.79.0): conjuntos em português, sem as empresas do escri
   const enviados = {};
   const enviar = async (conj, p) => { enviados[conj.tipoDado] = { conj, p }; return { ok: true }; };
   const res = await OCG.hubExecutarGestta(ler, ['tarefas', 'clientes', 'equipe', 'alertas', 'cartela'], { hoje: H, cartela: false }, enviar);
-  assert.deepEqual(plano(res.map(r => r.id)), ['gestta-tarefas', 'gestta-clientes', 'gestta-equipe', 'gestta-setores', 'gestta-envios-onvio-erro', 'gestta-templates-sem-pasta'], 'sem a cartela quando não é a vez dela');
+  assert.deepEqual(plano(res.map(r => r.id)), ['gestta-tarefas', 'gestta-empresas-ativas', 'gestta-clientes', 'gestta-equipe', 'gestta-setores', 'gestta-envios-onvio-erro', 'gestta-templates-sem-pasta'], 'sem a cartela quando não é a vez dela');
+  // empresas em atividade (0.81.0): uma linha por CNPJ com tarefa no mês atual ou anterior, sem o escritório
+  const at = enviados['gestta-empresas-ativas'];
+  assert.equal(at.conj.categoria, 'cadastros'); assert.deepEqual(plano(at.conj.colunas), ['CNPJ', 'Cliente', 'Tarefas', 'Último mês']);
+  assert.equal(at.p.partes.join('\n'), '00000000000100\tEMPRESA ALFA\t2\t2026-11');
   assert.ok(res.every(r => r.ok));
   // tarefas: mês anterior e atual, só as das empresas que não são do escritório, colunas e valores em português
   const tar = enviados['gestta-tarefas'];
@@ -3993,7 +3997,7 @@ test('Gestta → Hub (0.79.0): conjuntos em português, sem as empresas do escri
   assert.equal(enviados['gestta-cartela'].p.partes[0], 'c1\t10\tEMPRESA ALFA\t1\tFiscal\ts1\tAna\tu1');
   // sessão perdida (401): para tudo
   const r3 = await OCG.hubExecutarGestta(async ps => ps.map(p => ({ id: p.id, status: 401, erro: 'erro 401' })), ['tarefas', 'clientes', 'equipe'], { hoje: H }, enviar);
-  assert.deepEqual(plano(r3.map(r => r.id)), ['gestta-tarefas'], 'depois de um 401 não lê mais nada'); assert.match(r3[0].motivo, /sessão do Gestta acabou/);
+  assert.deepEqual(plano(r3.map(r => r.id)), ['gestta-tarefas'], 'depois de um 401 não lê mais nada (nem a lista de empresas em atividade)'); assert.match(r3[0].motivo, /sessão do Gestta acabou/);
   // o Hub recusa com erro fatal (parar): o resto não é lido
   const r4 = await OCG.hubExecutarGestta(ler, ['tarefas', 'clientes'], { hoje: H }, async () => ({ ok: false, motivo: 'versao-antiga', parar: true }));
   assert.equal(r4.length, 1);
