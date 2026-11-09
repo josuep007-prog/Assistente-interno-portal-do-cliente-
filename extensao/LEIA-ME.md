@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.88.0)
+# Control Onvio · ControlTax (v0.89.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,13 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.89.0 (09/11/2026): o setor em Configurações, a extensão simples para Contábil e Fiscal e a distribuição por setor
+
+Pedido do Josué: "o distribuidor automático está sugerindo analistas de outros setores ao invés de se ater aos analistas daquela empresa; a extensão foi pensada para o Departamento Pessoal, para quem é do Contábil/Fiscal ela deve ser bem mais simples; a seleção de setor deve ser feita dentro das configurações".
+- **Distribuição por setor:** a sugestão de responsável (Distribuir, "Sugerido" nas Solicitações e a distribuição automática) conta só quem atendeu a empresa **no mesmo setor** nos últimos 30 dias: na Geral, o mesmo departamento; na folha, o Pessoal. Sem histórico no setor, não sugere ninguém (fica para a pessoa). A conclusão feita por alguém de outro setor também não conta. A Distribuir e a sugestão das Solicitações usam só o setor escolhido, e a lista de "Novo responsável" inclui o sugerido e as alternativas. A distribuição automática continua só no Pessoal (e agora reconhece o setor pelas solicitações lidas também).
+- **Configurações › Meu setor:** a escolha do setor saiu do topo das telas. Pessoal, Contábil, Fiscal, outros departamentos que o login vê, ou Todos; vale na hora e só neste Chrome. No topo fica só a linha "Setor: Fiscal · Trocar"; quem vê mais de um setor e ainda não escolheu recebe o convite para escolher (escolher "Todos" faz o convite sumir). As notificações seguem o setor escolhido.
+- **Contábil e Fiscal (e qualquer setor fora do Pessoal), mais simples:** no Hoje saem as admissões, as "Solicitações por tipo" e o "% em dia" do prazo legal (a rosca mostra quantas pendências há); nas Solicitações saem os cartões de tipo, a coluna e o filtro de prazo legal; nas Configurações somem os prazos da folha (cálculo, férias, rescisão, admissão) e as palavras da "lista errada"; a "possível lista errada" (que vem das palavras da folha) não aparece. Equipe e Distribuir continuam. A Nova solicitação já vem no departamento do setor escolhido. A previsão por empresa conta só o setor.
 
 ## Novidades da v0.88.0 (09/11/2026): o Portal do Cliente do Hub segue o Gestta (Hub 326)
 
