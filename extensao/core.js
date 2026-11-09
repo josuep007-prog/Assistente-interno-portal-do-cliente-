@@ -2245,13 +2245,18 @@
     return 'Antes';
   }
   const chaveCliente = i => (i.codCliente !== '' && i.codCliente != null ? 'c' + i.codCliente : 'n' + semAcento(i.cliente || i.apelido || ''));
-  function distribuirPorCliente(pendentes, movimentadas, dias) {
+  // 0.89.0 (Josué, 09/11/2026: "o distribuidor automático está sugerindo analistas de outros setores"): o setor de uma solicitação.
+  // A folha é do Pessoal; a Geral é do setor do seu departamento ('dp', 'fiscal', 'contabil' ou 'd:<id>'); Geral sem departamento = '?'.
+  function setorDaSolicitacao(i, mapa) { return i && i.type !== 'geral' ? 'dp' : (chaveVisao(mapa, i && i.departmentId) || '?'); }
+  function distribuirPorCliente(pendentes, movimentadas, dias, settings) {
+    const mapa = mapaSetores(Object.assign({}, DEFAULTS, settings || {})), setor = i => setorDaSolicitacao(i, mapa);
     const porCli = new Map(), adm = new Map();
     const soma = (m, k) => m.set(k, (m.get(k) || 0) + 1);
+    // conta quem atendeu a empresa SÓ no setor da solicitação (cliente|setor): o DP que fez as férias não vira o analista da Geral do Fiscal
     for (const x of movimentadas || []) {
       if (!x.resp) continue;
       if (ADMISSAO.has(x.type)) soma(adm, x.resp);
-      else { const k = chaveCliente(x); if (!porCli.has(k)) porCli.set(k, new Map()); soma(porCli.get(k), x.resp); }
+      else { const k = chaveCliente(x) + '|' + setor(x); if (!porCli.has(k)) porCli.set(k, new Map()); soma(porCli.get(k), x.resp); }
     }
     const ids = new Map();
     for (const x of (movimentadas || []).concat(pendentes || [])) if (x.resp && x.respId && !ids.has(x.resp)) ids.set(x.resp, x.respId);
@@ -2268,14 +2273,14 @@
         const o = ordem(adm);
         if (o.length) return { item: i, resp: o[0][0], n: o[0][1], motivo: 'fez ' + o[0][1] + (o[0][1] === 1 ? ' admissão ' : ' admissões ') + periodo, alternativas: o.slice(1, 4).map(([r, n]) => ({ resp: r, n })) };
       } else {
-        const m = porCli.get(chaveCliente(i));
+        const m = porCli.get(chaveCliente(i) + '|' + setor(i)), nomeSetor = SETOR_NOMES[setor(i)];
         if (m && m.size) {
           const o = ordem(m), total = o.reduce((s2, x) => s2 + x[1], 0);
-          return { item: i, resp: o[0][0], n: o[0][1], motivo: 'atendeu ' + o[0][1] + ' de ' + total + ' solicitações desta empresa ' + periodo, alternativas: o.slice(1, 4).map(([r, n]) => ({ resp: r, n })) };
+          return { item: i, resp: o[0][0], n: o[0][1], motivo: 'atendeu ' + o[0][1] + ' de ' + total + ' solicitações desta empresa' + (nomeSetor ? ' no ' + nomeSetor : ' neste setor') + ' ' + periodo, alternativas: o.slice(1, 4).map(([r, n]) => ({ resp: r, n })) };
         }
       }
       // sem histórico no período: não sugere ninguém (pedido do Josué em 16/10/2026: só a sugestão pelo histórico)
-      return { item: i, resp: '', n: 0, motivo: ADMISSAO.has(i.type) ? 'nenhuma admissão atendida ' + periodo + ': escolha o responsável' : 'ninguém atendeu esta empresa ' + periodo + ': escolha o responsável', alternativas: [], semHistorico: true };
+      return { item: i, resp: '', n: 0, motivo: ADMISSAO.has(i.type) ? 'nenhuma admissão atendida ' + periodo + ': escolha o responsável' : 'ninguém deste setor atendeu esta empresa ' + periodo + ': escolha o responsável', alternativas: [], semHistorico: true };
     }
   }
 
@@ -2353,11 +2358,14 @@
   }
   // Concluídas passam a valer para quem as concluiu (autor do trâmite de conclusão, lido em analisarEntregas), desde que
   // seja alguém da equipe conhecida; as outras ficam com o responsável. Usado pelo Distribuir ("quem mais atendeu").
-  function creditarQuemConcluiu(itens, analises) {
-    const conhecidos = new Set((itens || []).map(x => x && x.resp).filter(Boolean));
+  // 0.89.0: "conhecido" é por setor (quem é responsável de alguma solicitação do mesmo setor), para a conclusão de uma Geral do Fiscal
+  // feita por alguém do Pessoal não ensinar ao distribuidor que ele atende o Fiscal da empresa.
+  function creditarQuemConcluiu(itens, analises, settings) {
+    const mapa = mapaSetores(Object.assign({}, DEFAULTS, settings || {})), chave = (nome, x) => nome + '|' + setorDaSolicitacao(x, mapa);
+    const conhecidos = new Set((itens || []).filter(x => x && x.resp).map(x => chave(x.resp, x)));
     return (itens || []).map(x => {
       const a = x && analises && analises[x.k];
-      return a && a.a && x.lado === 'fim' && conhecidos.has(a.a) && a.a !== x.resp ? Object.assign({}, x, { resp: a.a, respId: '' }) : x;
+      return a && a.a && x.lado === 'fim' && conhecidos.has(chave(a.a, x)) && a.a !== x.resp ? Object.assign({}, x, { resp: a.a, respId: '' }) : x;
     });
   }
   const mediana = l => { if (!l.length) return null; const o = l.slice().sort((a, b) => a - b), h = o.length >> 1; return o.length % 2 ? o[h] : (o[h - 1] + o[h]) / 2; };

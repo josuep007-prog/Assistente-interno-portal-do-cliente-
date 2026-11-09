@@ -1438,15 +1438,16 @@ test('distribuição: quem mais atendeu a empresa na semana; admissões fora da 
     x('afastamento', '', 1, { k: 'a1', nivel: 2 }), x('cadEmpregado', '', 2, { k: 'c1' }), x('geral', '', 2, { k: 'g2' }), x('geral', '', 9, { k: 'g9' })];
   const s = OC.distribuirPorCliente(pend, mov, 7);
   const por = Object.fromEntries(s.map(r => [r.item.k, r]));
-  assert.equal(por.a1.resp, 'Ana', 'empresa 1: Ana atendeu 2 (as 3 admissões da Carla não contam)');
-  assert.match(por.a1.motivo, /atendeu 2 de 3 solicitações desta empresa na última semana/);
+  // 0.89.0: só o mesmo setor conta. O afastamento é do Pessoal: valem o cálculo de férias (Ana) e as rubricas (Bia), não a Geral
+  assert.equal(por.a1.resp, 'Ana', 'empresa 1: empate no Pessoal, a ordem alfabética desempata (as 3 admissões da Carla não contam)');
+  assert.match(por.a1.motivo, /atendeu 1 de 2 solicitações desta empresa no Pessoal na última semana/);
   assert.deepEqual(plano(por.a1.alternativas), [{ resp: 'Bia', n: 1, respId: '' }]);
   assert.equal(por.c1.resp, 'Carla', 'admissão vai para quem mais fez admissões');
   assert.match(por.c1.motivo, /fez 4 admissões/);
   assert.equal(por.g2.resp, 'Bia');
   assert.equal(por.g9.resp, '', 'sem histórico: não sugere ninguém (nada de "quem tem menos")');
   assert.equal(por.g9.semHistorico, true);
-  assert.match(por.g9.motivo, /ninguém atendeu esta empresa na última semana: escolha o responsável/);
+  assert.match(por.g9.motivo, /ninguém deste setor atendeu esta empresa na última semana: escolha o responsável/);
   assert.equal(s[0].item.k, 'a1', 'mais grave primeiro');
   assert.equal(s.length, 4, 'só as sem responsável');
 });
@@ -2216,7 +2217,7 @@ test('avaliação justa: o service worker lê os trâmites das entregas (com cac
   assert.equal(lidas.length, 1, 'o que está no cache e não mudou não é lido de novo');
   assert.deepEqual(plano(r.analises['geral:a']), { l: e1.last, e: 1, p: 1, a: 'Bia', c: false });
   assert.ok(!JSON.stringify(r.analises).match(/description|texto|cliente/i), 'o cache não leva texto');
-  const cred = OC.creditarQuemConcluiu([e1, { k: 'x', resp: 'Bia', lado: 'esc' }], r.analises);
+  const cred = OC.creditarQuemConcluiu([e1, { k: 'x', type: 'geral', resp: 'Bia', lado: 'esc' }], r.analises);
   assert.equal(cred[0].resp, 'Bia', 'concluída vale para quem concluiu (alguém da equipe)');
   assert.equal(OC.creditarQuemConcluiu([e1], { 'geral:a': { a: 'Fulano de fora' } })[0].resp, 'Ana', 'autor desconhecido: fica com o responsável');
 });
@@ -4132,5 +4133,22 @@ test('0.87.0 · Gestta: nomes legíveis (maiúsculas viram nome próprio, siglas
   const md = G.meuDia([t('a', 0), t('b', 1), t('c', 20), t('d', 30), t('e', 25, 'DONE')], h, 3);
   assert.equal(md.fila.map(x => x._id).join(), 'a,b');
   assert.equal(md.adiante.map(x => x._id).join(), 'c,d', 'as abertas depois dos 3 dias úteis, por meta; a concluída fica fora');
+});
+
+test('0.89.0 · distribuição por setor: a Geral do Fiscal não vai para o DP que fez as férias da empresa, e vice-versa', () => {
+  const S = { departamentosSetor: { dp: ['DEP-DP'], fiscal: ['DEP-FIS'], contabil: ['DEP-CTB'] } };
+  const x = (type, resp, dep, extra) => Object.assign({ k: type + ':' + Math.random(), type, resp, respId: resp ? 'id-' + resp : '', codCliente: 7, cliente: 'EMPRESA FICTICIA', departmentId: dep || '' }, extra || {});
+  const mov = [x('calcFerias', 'Dani DP', ''), x('rescisao', 'Dani DP', ''), x('afastamento', 'Dani DP', ''), x('geral', 'Dani DP', 'DEP-DP'),
+    x('geral', 'Fabio Fiscal', 'DEP-FIS')];
+  const pend = [x('geral', '', 'DEP-FIS', { k: 'fis' }), x('geral', '', 'DEP-DP', { k: 'dp' }), x('geral', '', 'DEP-CTB', { k: 'ctb' })];
+  const por = Object.fromEntries(OC.distribuirPorCliente(pend, mov, 30, S).map(r => [r.item.k, r]));
+  assert.equal(por.fis.resp, 'Fabio Fiscal', 'Geral do Fiscal: quem atendeu o Fiscal da empresa, mesmo com o DP tendo mais solicitações');
+  assert.match(por.fis.motivo, /no Fiscal/);
+  assert.equal(por.fis.alternativas.length, 0, 'nenhum analista do DP como alternativa');
+  assert.equal(por.dp.resp, 'Dani DP', 'Geral do Pessoal: a folha da empresa conta no Pessoal');
+  assert.equal(por.ctb.resp, '', 'Contábil sem histórico no setor: não sugere ninguém');
+  // crédito a quem concluiu, por setor: a conclusão de uma Geral do Fiscal por alguém do DP não vira "do Fiscal"
+  const conc = [x('geral', 'Fabio Fiscal', 'DEP-FIS', { k: 'c1', lado: 'fim' }), x('calcFerias', 'Dani DP', '', { k: 'c2' })];
+  assert.equal(OC.creditarQuemConcluiu(conc, { c1: { a: 'Dani DP' } }, S)[0].resp, 'Fabio Fiscal', 'Dani só é conhecida no Pessoal');
 });
 

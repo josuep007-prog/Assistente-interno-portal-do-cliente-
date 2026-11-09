@@ -2,7 +2,7 @@
  * Rotas (#/inicio, #/fila, #/equipe, #/distribuir, #/lembretes, #/config, #/busca?q=),
  * trilho lateral, cabeçalho do módulo (título, abas, ao vivo, sino, Ver Onvio), busca em janela central
  * (/ ou Ctrl+K) e as janelas de detalhe e de lembrete. */
-import { estado, iniciarEstado, aoMudar, enviar, itens, minhas, marcarAlertasVistos, escolherVisao } from './estado.js';
+import { estado, iniciarEstado, aoMudar, enviar, itens, minhas, marcarAlertasVistos } from './estado.js';
 import { $, $$, esc, relativo, fmtHoraS, toast, normal, iniciais, pillSituacao, simples } from './util.js';
 import { abrirDetalhe, fecharDetalhe, detalheAberto } from './views/detalhe.js';
 import { abrirLembrete, fecharLembrete, lembreteAberto } from './views/lembrete-dlg.js';
@@ -108,26 +108,23 @@ function desenhar() {
   avisoSetor();
 }
 
-/* ---------- aviso discreto: de que setor é a visão (Fiscal, Contábil…) ---------- */
+/* ---------- linha discreta do setor (0.89.0, Josué 09/11/2026: "a seleção de setor deve ser feita dentro das configurações") ----------
+ * A escolha mora em Configurações › Meu setor; aqui só fica dito qual setor está na tela, com o atalho para trocar. Quem enxerga mais
+ * de um setor e ainda não escolheu é convidado a escolher (escolher "Todos" de propósito faz o convite sumir). */
 function avisoSetor() {
   const v = $('#vista'), velho = $('#aviso-setor', v);
   if (velho) velho.remove();
-  // 0.78.0: quem enxerga mais de um setor escolhe aqui o que ver (de fábrica, todos); quem só tem um setor fora do Pessoal vê o aviso de antes
-  const st = estado.setor || {}, lista = estado.setores || [];
-  const varios = lista.length > 1;
-  if (!varios && !(st.ativo && estado.soGeral)) return;
+  if (/^#\/config/.test(location.hash)) return;
+  const st = estado.setor || {}, lista = estado.setores || [], varios = lista.length > 1;
+  let texto = '';
+  if (estado.visao) texto = 'Setor: <b>' + esc(estado.visaoNome || '') + '</b>' + (estado.enxuto ? ' · só a Geral do setor' : '');
+  else if (varios && !estado.visaoEscolhida) texto = 'Você está vendo todos os seus setores (' + lista.map(x => esc(x.nome)).join(', ') + '). Escolha o seu para a extensão mostrar só o que é dele.';
+  else if (!varios && st.ativo && estado.soGeral) texto = 'Setor: <b>' + esc(st.nome || (lista[0] && lista[0].nome) || 'do seu acesso') + '</b> · só a Geral do setor';
+  if (!texto) return;
   const d = document.createElement('div');
   d.id = 'aviso-setor'; d.className = 'aviso-linha aviso-setor';
-  const nome = estado.visao ? estado.visaoNome : (!varios ? (st.nome || lista[0] && lista[0].nome || '') : '');
-  const texto = estado.visao || !varios
-    ? 'Visão do setor <b>' + esc(nome || 'do seu acesso') + '</b>' + (estado.soGeral ? ': as solicitações Gerais do setor. Admissões, férias, rescisões, afastamentos e rubricas são do Pessoal.' : '.')
-    : 'Todos os seus setores: <b>' + lista.map(x => esc(x.nome)).join(', ') + '</b>.';
-  d.innerHTML = '<svg class="ic"><use href="#i-users"/></svg><span>' + texto + '</span>' +
-    (varios ? '<label class="aviso-setor-sel">Setor <select id="setor-visao" aria-label="Setor"><option value="">Todos os meus setores</option>' +
-      lista.map(x => '<option value="' + esc(x.chave) + '"' + (x.chave === estado.visao ? ' selected' : '') + '>' + esc(x.nome) + ' (' + x.n + ')</option>').join('') + '</select></label>' : '');
+  d.innerHTML = '<svg class="ic"><use href="#i-users"/></svg><span>' + texto + '</span><a class="linkish aviso-setor-link" href="#/config?aba=setor">' + (estado.visao || !varios ? 'Trocar' : 'Escolher o setor') + '</a>';
   v.prepend(d);
-  const sel = $('#setor-visao', d);
-  if (sel) sel.onchange = () => escolherVisao(sel.value);
 }
 
 /* ---------- aviso de leitura (sem sessão / erro) no topo da tela ---------- */

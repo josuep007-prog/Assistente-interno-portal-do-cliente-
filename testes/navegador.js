@@ -1157,7 +1157,7 @@ await passo('app · Configurações: prazos com efeito na fila antes de salvar, 
   const p = await abrirApp('#/config?aba=prazos', { regrasEscritorio: { url: 'https://exemplo.com/r.json', versao: 't1', regras: { versao: 't1', config: { conclusaoCalculo: 4 }, feriados: ['2099-01-02'], abaErrada: [] } }, settings: { __v: 2, parada: 20 } });
   await p.waitForSelector('#cf-imp .cfg-imp');
   assert.equal(await p.textContent('#titulo'), 'Configurações');
-  assert.deepEqual(await p.$$eval('#abas .aba', e => e.map(x => x.textContent)), ['Aparência', 'Prazos', 'Leitura e avisos', 'Feriados', 'Palavras', 'Avançado']);
+  assert.deepEqual(await p.$$eval('#abas .aba', e => e.map(x => x.textContent)), ['Aparência', 'Meu setor', 'Prazos', 'Leitura e avisos', 'Feriados', 'Palavras', 'Avançado']);
   const orig = k => p.textContent('[data-campo="' + k + '"] .orig');
   assert.equal(await orig('conclusaoCalculo'), 'escritório');
   assert.equal(await orig('parada'), 'seu ajuste');
@@ -1729,31 +1729,45 @@ await passo('app · setores (0.74.0, 0.78.0): todos os setores do login de fábr
   // login com acesso a vários setores (o do Josué): de fábrica aparece tudo o que o Onvio entrega, com a escolha de setor no topo
   const multi = itens.concat([geral('p1', 805, PORTAL)]);
   const p = await abrirApp('#/fila?escopo=todas', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: multi, user: { nome: 'Ana Teste', departmentId: DP }, departamentos: [{ id: PORTAL, nome: 'Portal do Cliente' }] }) });
-  await p.waitForSelector('#setor-visao');
+  await p.waitForSelector('#aviso-setor');
   assert.deepEqual((await linhas(p)).sort(), ['geral:c1', 'geral:d1', 'geral:f1', 'geral:m1', 'geral:p1'], 'todos os setores do login');
-  assert.match(await p.textContent('#aviso-setor'), /Todos os seus setores/);
-  if (process.env.CAP) { await p.waitForTimeout(300); await p.screenshot({ path: process.env.CAP + '/setor-escolha.png', clip: { x: 0, y: 0, width: 1360, height: 300 } }); await p.evaluate(() => { document.documentElement.dataset.theme = 'dark'; }); await p.waitForTimeout(200); await p.screenshot({ path: process.env.CAP + '/setor-escolha-escuro.png', clip: { x: 0, y: 0, width: 1360, height: 300 } }); await p.evaluate(() => { document.documentElement.dataset.theme = 'light'; }); }
-  assert.deepEqual(await p.$$eval('#setor-visao option', o => o.map(x => x.textContent)), ['Todos os meus setores', 'Pessoal (1)', 'Contábil (1)', 'Fiscal (2)', 'Portal do Cliente (1)'], 'o nome do departamento vem do Onvio');
-  await p.selectOption('#setor-visao', 'fiscal');
+  // 0.89.0: a escolha saiu do topo; a linha só convida a escolher, com o atalho para Configurações › Meu setor
+  assert.match(await p.textContent('#aviso-setor'), /todos os seus setores.*Escolha o seu/s);
+  assert.equal(await p.$('#setor-visao'), null, 'sem lista suspensa no topo');
+  await p.click('#aviso-setor a[href="#/config?aba=setor"]');
+  await p.waitForSelector('[data-setor-op]');
+  assert.deepEqual(await p.$$eval('[data-setor-op] .setor-op-tx b', o => o.map(x => x.textContent)), ['Pessoal', 'Contábil', 'Fiscal', 'Portal do Cliente', 'Todos'], 'o nome do departamento vem do Onvio');
+  if (process.env.CAP) { await p.waitForTimeout(300); await p.screenshot({ path: process.env.CAP + '/setor-escolha.png' }); await p.evaluate(() => { document.documentElement.dataset.theme = 'dark'; }); await p.waitForTimeout(200); await p.screenshot({ path: process.env.CAP + '/setor-escolha-escuro.png' }); await p.evaluate(() => { document.documentElement.dataset.theme = 'light'; }); }
+  await p.click('[data-setor-op="fiscal"]');
+  await p.waitForSelector('[data-setor-op="fiscal"].on');
+  assert.equal(await p.evaluate(() => chrome.storage.local.get('visaoSetor').then(x => x.visaoSetor)), 'fiscal', 'o setor vai ao service worker (notificações)');
+  await p.goto(URL_APP + '#/fila?escopo=todas');
   await p.waitForFunction(() => document.querySelectorAll('#corpo [data-k]').length === 2);
   assert.deepEqual((await linhas(p)).sort(), ['geral:f1', 'geral:m1'], 'só o Fiscal');
-  assert.match(await p.textContent('#aviso-setor'), /Visão do setor\s*Fiscal/);
-  await p.reload(); await p.waitForSelector('#setor-visao');
-  assert.equal(await p.$eval('#setor-visao', s => s.value), 'fiscal', 'a escolha fica lembrada neste Chrome');
-  await p.selectOption('#setor-visao', '');
+  assert.match(await p.textContent('#aviso-setor'), /Setor:\s*Fiscal.*Trocar/s);
+  assert.equal(await p.$('#tipos'), null, 'Fiscal: sem cartões de tipo');
+  assert.equal(await p.$('.lh [data-col="prazo"]'), null, 'sem a coluna Prazo legal');
+  await p.reload(); await p.waitForSelector('#aviso-setor');
+  assert.match(await p.textContent('#aviso-setor'), /Setor:\s*Fiscal/, 'a escolha fica lembrada neste Chrome');
+  await p.goto(URL_APP + '#/config?aba=prazos'); await p.waitForSelector('.cfg-card');
+  assert.ok(!/Prazos legais e admissão|Concluir cálculo/.test(await p.textContent('#vista')), 'Fiscal: Configurações sem os prazos da folha');
+  await p.goto(URL_APP + '#/config?aba=setor'); await p.waitForSelector('[data-setor-op]');
+  await p.click('[data-setor-op=""]');
+  await p.goto(URL_APP + '#/fila?escopo=todas');
   await p.waitForFunction(() => document.querySelectorAll('#corpo [data-k]').length === 5);
+  assert.equal(await p.$('#aviso-setor'), null, '"Todos" escolhido de propósito: a linha some');
   assert.equal(await p.isVisible('.trilho [data-rota="equipe"]'), true);
   assert.deepEqual(p.erros, []);
   // Fiscal (pelo acesso): a Geral do Fiscal, com a equipe toda, Equipe e Distribuir; aviso do setor; só o cartão Geral
   const p2 = await abrirApp('#/fila?escopo=todas', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens.filter(i => i.departmentId === FISCAL), user: { nome: 'Ana Teste', departmentId: FISCAL } }) });
   await p2.waitForSelector('#aviso-setor');
-  assert.match(await p2.textContent('#aviso-setor'), /Visão do setor\s*Fiscal/);
+  assert.match(await p2.textContent('#aviso-setor'), /Setor:\s*Fiscal/);
   assert.ok((await p2.$$eval('#abas .aba', e => e.map(x => x.dataset.aba))).includes('todas'), 'o Fiscal tem a aba Todas');
   assert.deepEqual((await linhas(p2)).sort(), ['geral:f1', 'geral:m1'], 'Fiscal: só a Geral do Fiscal');
   assert.match(await p2.textContent('#corpo [data-k="geral:m1"]'), /Prometido até 10\/01/, 'o prazo prometido é o vencimento visível');
   assert.equal(await p2.isVisible('.trilho [data-rota="equipe"]'), true);
   assert.equal(await p2.isVisible('.trilho [data-rota="distribuir"]'), true);
-  assert.deepEqual(await p2.$$eval('[data-tipo]', e => [...new Set(e.map(x => x.dataset.tipo).filter(Boolean))]), ['geral'], 'sem cartões da folha');
+  assert.deepEqual(await p2.$$eval('[data-tipo]', e => e.length), 0, '0.89.0: Fiscal sem cartões de tipo (só existe a Geral)');
   assert.deepEqual(await p2.$$eval('#f-tipo option', o => o.map(x => x.value)), ['', 'geral'], 'o filtro de tipo só tem a Geral');
   if (process.env.CAP) { await p2.waitForTimeout(300); await p2.screenshot({ path: process.env.CAP + '/setor-fiscal-fila.png' }); }
   await p2.goto(URL_APP + '#/distribuir');
@@ -2698,6 +2712,9 @@ await passo('app · contraste: nenhum texto abaixo de 4,5:1 (WCAG AA) nas telas 
     ['Distribuir', '#/distribuir', async () => {}],
     ['Agenda', '#/lembretes', async () => {}],
     ['Configurações · Aparência', '#/config', async () => {}],
+    ['Configurações · Meu setor', '#/config?aba=setor', async () => {}],
+    // 0.89.0: o Hoje e as Solicitações no setor Fiscal (modo enxuto, só a Geral), com a linha "Setor: Fiscal"
+    ['Hoje no Fiscal', '#/inicio', async p => { await p.evaluate(() => { localStorage.setItem('controlonvio-setor-visao', 'todos'); }); await p.goto(URL_APP + '#/config?aba=setor'); await p.waitForSelector('[data-setor-op]'); const f = await p.$('[data-setor-op="fiscal"]'); if (f) { await f.click(); } await p.goto(URL_APP + '#/inicio'); await p.waitForTimeout(400); }],
     ['Configurações · Prazos', '#/config?aba=prazos', async () => {}],
     ['Configurações · Feriados', '#/config?aba=feriados', async () => {}],
     ...['hub', 'regras', 'testes', 'aprender', 'diag'].map(sec => ['Configurações · Avançado · ' + sec, '#/config?aba=avancado&sec=' + sec, async p => { await p.evaluate(r => { window.__respostas = r; }, AV_RESP); await p.waitForSelector('.adv-tab.on'); if (sec === 'testes') { await p.click('[data-teste="testarFolha"]'); await p.waitForSelector('#adv-saida'); } await p.waitForTimeout(250); }]),

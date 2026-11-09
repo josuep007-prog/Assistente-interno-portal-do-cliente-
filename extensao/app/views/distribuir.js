@@ -18,9 +18,10 @@ let estadoK = {};       // k -> 'enviando' | 'ok' | mensagem de erro
 let trabalhando = false;
 
 export function render(el, ctx) {
+  if (resultado && resultado.visao !== estado.visao) { resultado = null; estadoK = {}; }      // trocou o setor: recalcula
   ctx.cab({
     titulo: 'Distribuir',
-    sub: 'Quem mais atendeu cada empresa nos últimos 30 dias · admissões à parte'
+    sub: 'Quem mais atendeu cada empresa no mesmo setor nos últimos 30 dias' + (estado.soGeral ? '' : ' · admissões à parte')
   });
   const sem = (estado.snap ? estado.snap.items || [] : []).filter(i => !i.resp);
   const atribuiveis = resultado ? resultado.sugestoes.filter(x => OC.podeAcao('responsavel', x.item).ok && idEscolhido(x) && estadoK[x.item.k] !== 'ok') : [];
@@ -55,10 +56,11 @@ export function render(el, ctx) {
 
   if (!resultado && !lendo && estado.snap) {
     lendo = true;
-    enviar({ cmd: 'distribuicao', dias }).then(r => {
+    const visao = estado.visao;                    // 0.89.0: só as pendentes e o histórico do setor escolhido
+    enviar({ cmd: 'distribuicao', dias, visao }).then(r => {
       lendo = false;
-      if (!r.ok) { toast('Não foi possível ler o Onvio: ' + (r.erro || ''), true); resultado = { dias, movimentadas: 0, erros: [r.erro || 'erro'], sugestoes: OC.distribuirPorCliente(estado.snap.items || [], [], dias) }; }
-      else resultado = Object.assign({ erros: [], sugestoes: [] }, r);          // resposta sem listas não derruba a tela
+      if (!r.ok) { toast('Não foi possível ler o Onvio: ' + (r.erro || ''), true); resultado = { visao, dias, movimentadas: 0, erros: [r.erro || 'erro'], sugestoes: OC.distribuirPorCliente(estado.snap.items || [], [], dias, estado.settings) }; }
+      else resultado = Object.assign({ erros: [], sugestoes: [] }, r, { visao });          // resposta sem listas não derruba a tela
       if (location.hash.startsWith('#/distribuir')) render(el, ctx);
     });
     $('#d-recalc', el).disabled = true;

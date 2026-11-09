@@ -17,7 +17,7 @@ import { abrirLote } from './lote-dlg.js';
 const OC = window.OC;
 const SEM = '(sem responsável)';
 const MINHA = '__minha', EQUIPE = '__equipe';
-let previsao = null, previsaoEm = 0, previsaoLendo = false;   // previsão por empresa: na memória por 30 min, nunca gravada
+let previsao = null, previsaoEm = 0, previsaoLendo = false, previsaoVisao = '';   // previsão por empresa: na memória por 30 min, nunca gravada
 let carteira = lerPref('hojeCarteira', '');
 // Sugestões de ação: vereditos lidos nos trâmites (cmd 'casos'), na memória por 10 min; o texto nunca chega aqui
 let casosLidos = null, casosEm = 0, casosLendo = false, casosErro = '';
@@ -63,6 +63,7 @@ export function render(el, ctx) {
   const atencao = total - cont.cliente;               // o que espera o escritório ou tem prazo legal
   const semN = base.filter(i => !i.resp).length;
   const pctDia = total ? Math.round((total - cont.legal) / total * 100) : 100;     // sem prazo legal em cima
+  const enxuto = !!estado.enxuto;                    // 0.89.0: Contábil/Fiscal (só a Geral): sem admissões, tipos nem prazo legal
   const fatias = OC.MOTIVOS.map(mo => ({ k: mo.k, rot: mo.rot, n: cont[mo.k], cor: mo.cor }));
   const prio = OC.prioridades(base);
   const lems = (estado.lembretes || []).filter(l => !l.feito && ['hoje', 'atrasado'].includes(OC.situacaoLembrete(l))).sort((a, b) => a.quando.localeCompare(b.quando));
@@ -79,10 +80,10 @@ export function render(el, ctx) {
 
   // aviso de uma linha, só quando preciso
   const aviso = estado.snap && !todas.length
-    ? '<div class="aviso-linha late" id="ht-resumo">' + ic('alert') + '<span>A última leitura não trouxe nenhuma pendência em nenhuma das 10 listas. Se o Onvio mostra solicitações pendentes, abra <a href="#/config">Configurações</a> > Testar a leitura e envie o resultado.</span></div>'
+    ? '<div class="aviso-linha late" id="ht-resumo">' + ic('alert') + '<span>A última leitura não trouxe nenhuma pendência ' + (enxuto ? 'na Geral do seu setor' : 'em nenhuma das 10 listas') + '. Se o Onvio mostra solicitações pendentes, abra <a href="#/config">Configurações</a> > Testar a leitura e envie o resultado.</span></div>'
     : automatica && cart === EQUIPE ? '<div class="aviso-linha" id="ht-resumo">' + ic('user') + '<span>Nenhuma pendência está com você como responsável no Onvio. Mostrando a equipe toda (' + plural(todas.length, 'pendência', 'pendências') + ').</span></div>' : '';
 
-  const admissoes = OC.admissoesCriticas(base);
+  const admissoes = enxuto ? [] : OC.admissoesCriticas(base);
   const resolvidasBase = resolvidas().filter(i => cart === MINHA ? i.mine : cart === EQUIPE ? true : (i.resp || SEM) === cart);
   const casos = OC.casosSugeridos(base.concat(resolvidasBase), casosLidos, estado.settings, estado.sugIgnoradas);
   casosAtuais = casos;
@@ -216,7 +217,7 @@ export function render(el, ctx) {
       .concat(semN && cart !== SEM ? ['<b class="t-sem">' + semN + ' sem analista</b>'] : []).join(' · ');
     return '<section class="hj-hero" style="--i:0">' +
       '<div class="hj-hero-g">' +
-        '<div class="hj-donut" id="hj-donut">' + anel(fatias, { ativo: null, rotulo: 'em dia', anima: animar, semLegenda: true, tam: 150, esp: 11, centro: { n: pctDia, de: animar ? 0 : pctDia, suf: '%' }, titulo: 'Pendências por situação (clique numa parte para ver em Solicitações)' }) + '</div>' +
+        '<div class="hj-donut" id="hj-donut">' + anel(fatias, { ativo: null, rotulo: enxuto ? (total === 1 ? 'pendência' : 'pendências') : 'em dia', anima: animar, semLegenda: true, tam: 150, esp: 11, centro: enxuto ? { n: total, de: animar ? 0 : total, suf: '' } : { n: pctDia, de: animar ? 0 : pctDia, suf: '%' }, titulo: 'Pendências por situação (clique numa parte para ver em Solicitações)' }) + '</div>' +
         '<div class="hj-hero-tx">' +
           '<span class="hj-eyebrow">' + esc(rotCart) + (cart !== EQUIPE ? ' · <button type="button" class="linkish" data-cart="' + EQUIPE + '">ver equipe toda</button>' : '') + '</span>' +
           '<h2 id="hj-titulo">' + titulo + '</h2>' +
@@ -236,7 +237,7 @@ export function render(el, ctx) {
   // Solicitações por tipo: os cartões das Solicitações, do tipo mais urgente para o menos urgente. O clique abre a lista
   // daquele tipo (na aba onde estão: Minhas, ou Respondidas quando só há solicitações na vez do cliente).
   function tiposPainel() {
-    if (!base.length) return '';
+    if (!base.length || enxuto) return '';          // só a Geral: um cartão só não ajuda
     return painel('hj-tipos', ic('layers', 'ic-sm') + ' Solicitações por tipo', 'Da mais urgente para a menos urgente. Clique para abrir as Solicitações daquele tipo.',
       '<div class="tipos" id="hj-tipos-l" role="group" aria-label="Solicitações por tipo">' + tiposHtml(base, { prioridade: true, sub: subPorMotivo }) + '</div>', '',
       plural(new Set(base.map(i => i.type)).size, 'tipo com pendência', 'tipos com pendência'));
@@ -289,12 +290,12 @@ export function render(el, ctx) {
   // só o painel da previsão é trocado quando ela chega (o resto da tela e as faixas de aviso ficam)
   const trocarPrevisao = () => { const sec = $('#hj-prev', el); if (sec && el.isConnected) { sec.outerHTML = prevHtml(); ligarPrevisao(); } };
   const lerPrevisao = () => {
-    previsaoLendo = true; previsao = null; previsaoEm = 0;
-    enviar({ cmd: 'previsao' }).then(r => { previsaoLendo = false; previsao = r.ok && Array.isArray(r.empresas) ? r : { erro: r.erro || 'resposta inesperada do Control Onvio' }; previsaoEm = Date.now(); trocarPrevisao(); });
+    previsaoLendo = true; previsao = null; previsaoEm = 0; previsaoVisao = estado.visao;
+    enviar({ cmd: 'previsao', visao: estado.visao }).then(r => { previsaoLendo = false; previsao = r.ok && Array.isArray(r.empresas) ? r : { erro: r.erro || 'resposta inesperada do Control Onvio' }; previsaoEm = Date.now(); trocarPrevisao(); });
   };
   function ligarPrevisao() { ligarRec($('#hj-prev', el) || document.createElement('div')); if ($('#hj-prev-ler', el)) $('#hj-prev-ler', el).onclick = () => { lerPrevisao(); trocarPrevisao(); }; }
   ligarPrevisao();
-  if (estado.snap && !previsaoLendo && (!previsao || Date.now() - previsaoEm > 30 * 60000)) { lerPrevisao(); const pv = $('#hj-prev .hj-painel-vazio', el); if (pv) pv.textContent = 'Lendo as últimas 4 semanas no Onvio…'; }
+  if (estado.snap && !previsaoLendo && (!previsao || previsaoVisao !== estado.visao || Date.now() - previsaoEm > 30 * 60000)) { lerPrevisao(); const pv = $('#hj-prev .hj-painel-vazio', el); if (pv) pv.textContent = 'Lendo as últimas 4 semanas no Onvio…'; }
   // sugestões de ação: confere os trâmites sozinha ao abrir (no máximo a cada 10 min); só o painel é trocado na volta
   const trocarSug = (noTopo) => { const sec = $('#hj-sug', el); if (sec && el.isConnected) { const rol = noTopo ? 0 : ($('.sg-lista', sec) || {}).scrollTop || 0; const casosNovos = OC.casosSugeridos(base.concat(resolvidasBase), casosLidos, estado.settings, estado.sugIgnoradas); casos.splice(0, casos.length, ...casosNovos); sec.outerHTML = sugHtml(); ligarSug(); const nova = $('#hj-sug .sg-lista', el); if (nova) nova.scrollTop = rol; } };
   const lerCasos = () => {

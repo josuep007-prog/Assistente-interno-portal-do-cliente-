@@ -10,21 +10,25 @@ const CHAVES = {
 };
 
 export const estado = {
-  snapBruto: null, setor: { ativo: false, fora: false, dep: '' }, setores: [], visao: '', visaoNome: '', soGeral: false,
+  snapBruto: null, setor: { ativo: false, fora: false, dep: '' }, setores: [], visao: '', visaoNome: '', soGeral: false, enxuto: false, visaoEscolhida: false,
   snap: null, status: null, usuario: {}, regras: null, ultima: null,
   eventos: [], lembretes: [], serie: {}, alertasVistosEm: null, excecoes: {}, sugIgnoradas: {}, modelosPessoais: [], distAuto: null, distLog: [],
   settings: Object.assign({}, OC.DEFAULTS)
 };
 
 const ouvintes = new Set();
-// escolha de setor da tela (0.78.0): só neste Chrome; '' = todos os setores do login
+// escolha de setor (0.78.0; desde a 0.89.0 em Configurações › Meu setor): só neste Chrome. 'todos' = todos os setores do login,
+// escolhido de propósito; sem escolha também mostra todos, mas a linha do topo convida a escolher.
 const CHAVE_VISAO = 'controlonvio-setor-visao';
 function lerVisao() { try { return localStorage.getItem(CHAVE_VISAO) || ''; } catch (e) { return ''; } }
 export function escolherVisao(chave) {
-  try { if (chave) localStorage.setItem(CHAVE_VISAO, chave); else localStorage.removeItem(CHAVE_VISAO); } catch (e) { /* sem armazenamento: vale até fechar */ }
+  try { localStorage.setItem(CHAVE_VISAO, chave || 'todos'); } catch (e) { /* sem armazenamento: vale até fechar */ }
   aplicar({});
+  gravarVisaoNoFundo();
   ouvintes.forEach(fn => { try { fn(['snap']); } catch (e) { console.error(e); } });
 }
+// o service worker filtra as notificações pelo setor (só a chave do setor vai para o armazenamento da extensão)
+function gravarVisaoNoFundo() { try { chrome.storage.local.set({ visaoSetor: estado.visao || '' }); } catch (e) { /* fora da extensão */ } }
 export function aoMudar(fn) { ouvintes.add(fn); return () => ouvintes.delete(fn); }
 
 function aplicar(d) {
@@ -40,18 +44,26 @@ function aplicar(d) {
   const raw = estado.snapBruto;
   estado.setor = OC.perfilSetor(estado.settings, raw && raw.user && raw.user.nome, raw && raw.user && raw.user.departmentId, raw);
   estado.setores = raw ? OC.setoresVistos(raw, estado.settings) : [];
-  let v = lerVisao(); if (v && !estado.setores.some(x => x.chave === v)) v = '';
+  const guardada = lerVisao();
+  let v = guardada === 'todos' ? '' : guardada; if (v && !estado.setores.some(x => x.chave === v)) v = '';
   estado.visao = v;
+  estado.visaoEscolhida = guardada === 'todos' || !!v;
   const vis = estado.setores.find(x => x.chave === v);
   // só a Geral existe: o setor escolhido não é o Pessoal, ou o login não alcança as listas da folha
   estado.soGeral = v ? v !== 'dp' : !!estado.setor.soGeral && !((raw && raw.items) || []).some(i => i.type !== 'geral');
   estado.visaoNome = vis ? vis.nome : '';
+  // 0.89.0 (Josué, 09/11/2026: "para quem é do contábil / fiscal ela deve ser bem mais simples"): fora do Pessoal, a extensão fica no essencial
+  estado.enxuto = !!estado.soGeral && (v ? v !== 'dp' : estado.setor.setor !== 'dp');
   estado.snap = raw && v ? Object.assign({}, raw, { items: OC.filtrarVisao(raw.items, v, estado.settings), resolvidas: OC.filtrarVisao(raw.resolvidas, v, estado.settings) }) : raw;
+  // modo simples: a "possível lista errada" vem das palavras da folha (INSS, férias…) e enganaria numa Geral do Fiscal ou do Contábil:
+  // sem ela somem a pílula "Pode ser", a sugestão e o modelo "Lista errada"
+  if (raw && estado.enxuto) { const sem = l => (l || []).map(i => i && i.abaProvavel ? Object.assign({}, i, { abaProvavel: null }) : i); estado.snap = Object.assign({}, estado.snap, { items: sem(estado.snap.items), resolvidas: sem(estado.snap.resolvidas) }); }
   if (estado.setor.fora) estado.eventos = (estado.eventos || []).filter(e => e.mine);
 }
 
 export async function iniciarEstado() {
   aplicar(await chrome.storage.local.get(Object.keys(CHAVES)));
+  gravarVisaoNoFundo();
   chrome.storage.onChanged.addListener((ch, area) => {
     if (area !== 'local') return;
     const mud = {};

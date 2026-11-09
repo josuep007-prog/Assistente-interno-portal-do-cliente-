@@ -779,7 +779,8 @@ async function calcularDistribuicao(f, pend) {
   const mov = await OC.lerMovimentadas(emSegundoPlano(f), dias, new Date());
   // concluídas valem para quem as concluiu, quando a avaliação da equipe já leu os trâmites (sem chamadas novas aqui)
   const { desempenhoCache } = await chrome.storage.local.get('desempenhoCache');
-  return { dias, movimentadas: mov.itens.length, erros: mov.erros, sugestoes: OC.distribuirPorCliente(pend, OC.creditarQuemConcluiu(mov.itens, desempenhoCache || {}), dias) };
+  const s = await getSettings();                   // 0.89.0: a conta é por setor (cliente|setor), nunca a de outro setor
+  return { dias, movimentadas: mov.itens.length, erros: mov.erros, sugestoes: OC.distribuirPorCliente(pend, OC.creditarQuemConcluiu(mov.itens, desempenhoCache || {}, s), dias, s) };
 }
 async function distribuirAutomatico(manual) {
   if (rodandoDist) return { pulou: 'já está rodando' };
@@ -801,7 +802,7 @@ async function distribuirAutomatico(manual) {
       catch (e) { if (e && e.cliente) await bloquearVisaoCliente(e); ultima.parou = e && e.cliente ? 'acesso de cliente' : String((e && e.message) || e); }
       if (f) {
         const d = await calcularDistribuicao(f, pend);
-        const perfil = OC.perfilSetor(s, snapshot.user && snapshot.user.nome, snapshot.user && snapshot.user.departmentId);
+        const perfil = OC.perfilSetor(s, snapshot.user && snapshot.user.nome, snapshot.user && snapshot.user.departmentId, snapshot);   // 0.89.0: com o snap (sem ele o perfil ficava inativo)
         const plano = OC.planoDistribuicaoAuto(pend, d.sugestoes, perfil);
         ultima.puladas = plano.puladas;
         for (const a of plano.atribuir) {
@@ -968,7 +969,10 @@ async function registrarEventos(novos) {
   await chrome.storage.local.set({ eventos: novos.concat(eventos || []).slice(0, EVENTOS_MAX) });
 }
 async function notificar(anterior, snap, s) {
-  const evs = OC.eventos(anterior, snap, s);
+  let evs = OC.eventos(anterior, snap, s);
+  // 0.89.0: só o setor escolhido em Configurações › Meu setor (gravado pelo app em visaoSetor: só a chave do setor)
+  const { visaoSetor } = await chrome.storage.local.get('visaoSetor');
+  if (visaoSetor && snap && snap.items) { const ks = new Set(OC.filtrarVisao(snap.items, visaoSetor, s).map(i => i.k)); evs = evs.filter(e => ks.has(e.k)); }
   await registrarEventos(evs);
   if (!s.notificar) return;
   const avisos = evs.filter(e => e.mine || (e.tipo === 'semresp' && s.modoGestor)).map(e => ({ e, t: e.titulo, m: '#' + e.num + ' ' + e.typeLabel + ' · ' + e.cliente }));
@@ -1101,7 +1105,8 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'previsao') {            // sob demanda: solicitações abertas por empresa nas últimas 4 semanas (nada é guardado)
         const { f } = await escolherFetcher();
         const mov = await OC.lerMovimentadas(emSegundoPlano(f), 28, new Date());
-        reply(Object.assign({ ok: true, erros: mov.erros }, OC.previsaoPorEmpresa(mov.itens, new Date(), 28)));
+        const itensV = OC.filtrarVisao(mov.itens, typeof msg.visao === 'string' ? msg.visao : '', await getSettings());     // 0.89.0: só o setor escolhido
+        reply(Object.assign({ ok: true, erros: mov.erros }, OC.previsaoPorEmpresa(itensV, new Date(), 28)));
       }
       else if (msg.cmd === 'casos') {               // Sugestões de ação do Hoje: lê os trâmites das pendências na vez do escritório
         const { f } = await escolherFetcher();        // e devolve só o veredito (tipo e qual trecho da lista casou), nunca o texto
@@ -1133,7 +1138,8 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'distribuicao') {        // sob demanda: quem mais atendeu cada empresa nos últimos dias (nada é guardado)
         const { f } = await escolherFetcher();
         const { snapshot } = await chrome.storage.local.get('snapshot');
-        const d = await calcularDistribuicao(f, (snapshot && snapshot.items) || []);
+        // 0.89.0: só as pendentes do setor escolhido na tela (a tela Distribuir e a fila batem)
+        const d = await calcularDistribuicao(f, OC.filtrarVisao((snapshot && snapshot.items) || [], typeof msg.visao === 'string' ? msg.visao : '', await getSettings()));
         reply({ ok: true, dias: d.dias, movimentadas: d.movimentadas, erros: d.erros, sugestoes: d.sugestoes });
       }
       else if (msg.cmd === 'concluidas') {          // aba Concluídas (0.76.0): as concluídas dos últimos 30 dias, sob demanda; nada é guardado
@@ -1142,7 +1148,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         // as suas: o próprio Onvio filtra (assignedtome); da equipe: todas as movimentadas, com o crédito a quem concluiu quando a avaliação já leu
         const mov = await OC.lerMovimentadas(emSegundoPlano(f), dias, new Date(), equipe ? 5 : 3, { mine: !equipe });
         let itens = OC.soConcluidas(mov.itens);
-        if (equipe) { const { desempenhoCache } = await chrome.storage.local.get('desempenhoCache'); itens = OC.creditarQuemConcluiu(itens, desempenhoCache || {}); }
+        if (equipe) { const { desempenhoCache } = await chrome.storage.local.get('desempenhoCache'); itens = OC.creditarQuemConcluiu(itens, desempenhoCache || {}, await getSettings()); }
         else itens = itens.map(x => Object.assign(x, { mine: true }));
         reply({ ok: true, dias, equipe, itens, erros: mov.erros, lidoEm: new Date().toISOString() });
       }
