@@ -50,7 +50,7 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 Pedido do Josué: "saber quais empresas têm demanda em quais setores, ter o analista atualizado de cada empresa, parar de cadastrar e excluir empresas e funcionários à mão e achar o e-mail do cliente".
 - A extensão manda ao Hub, junto com a cartela (no máximo 1 vez por dia), **quem do cliente recebe cada setor no Gestta**: nome, e-mail e se está ativo (conjunto `gestta-contatos`, uma leitura `GET admin/customer/{id}/accountable` por cliente). Sem WhatsApp nem telefone. "Testar a leitura do Gestta" mostra a contagem dos contatos de um cliente.
 - No **Hub 326**, o Portal do Cliente se atualiza sozinho pelo Gestta (decidido: aplicar sozinho, com histórico; desligável em Entrada de dados › Gestta › "Portal do Cliente pelo Gestta"):
-  - empresa com tarefa ou responsável num setor entra no Portal com a demanda daquele setor e a frente com o analista da cartela;
+  - empresa com tarefa num setor entra no Portal com a demanda daquele setor e a frente com o analista da cartela (Hub 327: só ter analista na cartela, sem tarefa, não conta como demanda, em nenhum módulo);
   - o setor que não tem mais demanda no Gestta sai (nada é apagado: só a marca da demanda);
   - o analista de cada frente segue a cartela, e quem não está na equipe do Portal entra nela; quem sai do Gestta já saía das listas (Hub 317);
   - o contato do Portal sem e-mail ganha o e-mail do Gestta;
