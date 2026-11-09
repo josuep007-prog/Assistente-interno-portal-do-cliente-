@@ -390,6 +390,71 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     assert.deepEqual(ana.slice(1), [true, true], 'as duas continuam ativas no Gestta');
   });
 
+  await passo('Hub 325: Fiscal e Contábil pelo Gestta: tarefa concluída marca sozinha a obrigação e a etapa vazias, a manual fica, desfazer não volta, a atrasada aparece e dado velho não marca', async () => {
+    const d1 = new Date(); d1.setDate(1); d1.setMonth(d1.getMonth() - 1);
+    const CP = d1.getFullYear() + '-' + String(d1.getMonth() + 1).padStart(2, '0');        // a competência em fechamento (o Fiscal mostra a dela)
+    const cols = ['Mês', 'Id', 'Tarefa', 'Setor', 'Responsável', 'Situação', 'Meta', 'Concluída em', 'Concluída com atraso', 'Gerando multa', 'CNPJ', 'Cliente', 'Competência'];
+    const linhas = [
+      ['2026-10', 't10', 'DCTFWeb', 'Fiscal', 'Paula Nunes', 'Concluída', '2026-10-15', '2026-10-14 13:00', 'não', 'não', C.alfa, 'ALFA COMERCIO LTDA', CP],
+      ['2026-10', 't11', 'EFD-Reinf', 'Fiscal', 'Paula Nunes', 'Concluída', '2026-10-15', '2026-10-15 12:00', 'não', 'não', C.alfa, 'ALFA COMERCIO LTDA', CP],
+      ['2026-10', 't12', 'PGDAS-D', 'Fiscal', 'Paula Nunes', 'Aberta', '2026-10-20', '', 'não', 'não', C.gama, 'GAMA INDUSTRIA LTDA', CP],
+      ['2026-10', 't13', 'Conciliação bancária', 'Contábil', 'Rui Teixeira', 'Concluída', '2026-10-25', '2026-10-28 15:00', 'sim', 'não', C.alfa, 'ALFA COMERCIO LTDA', CP],
+      ['2026-10', 't14', 'Tarefa esquisita XYZ', 'Fiscal', 'Paula Nunes', 'Concluída', '2026-10-25', '2026-10-25 10:00', 'não', 'não', C.alfa, 'ALFA COMERCIO LTDA', CP],
+      ['2026-10', 't15', 'DCTFWeb', 'Fiscal', 'Paula Nunes', 'Concluída', '2026-10-15', '2026-10-15 10:00', 'não', 'não', C.esc, 'CONTROLTAX CONTABILIDADE', CP]];
+    const fisDoc = 'fis_comp/' + CP + '~' + balde('c' + C.alfa, 4), ctbDoc = 'ctb_comp/' + CP + '~' + balde('c' + C.alfa, 4);
+    await semear(fisDoc, { ['c' + C.alfa]: { ob: { reinf: ['r', '2026-10-10', 'u-manual'] } } });       // marcação manual: o Gestta não troca
+    await semear('ing_partes/gestta~gestta-tarefas~a0', { ciclo: 'g9', parte: 0, tabela: tab(linhas) });
+    const man = await page.evaluate(() => window.__db.ler('ing_dados/gestta~gestta-tarefas'));
+    await semear('ing_dados/gestta~gestta-tarefas', Object.assign({}, man, { colunas: cols, ciclo: 'g9', partes: 1, nLinhas: linhas.length, totalNaOrigem: linhas.length, recebidoEm: Date.now(), cortado: false }));
+    await page.waitForFunction((cp) => { const t = window.__cadastro.tarefa('fis', '', '33333333000103', cp, 'pgdas'); return !!t; }, CP, { timeout: 10000 });
+    assert.equal((await page.evaluate((cp) => window.__cadastro.tarefa('fis', '', '33333333000103', cp, 'pgdas'), CP)).estado, 'atrasada', 'aberta com a meta vencida');
+    await page.evaluate(() => window.__cadastro.marcarAgora());
+    await page.waitForFunction((p) => { const d = window.__db.ler(p); return d && Object.values(d).some(e => e && e.ob && e.ob.dctfweb); }, fisDoc, { timeout: 10000 });
+    const fis = (await page.evaluate((p) => window.__db.ler(p), fisDoc))['c' + C.alfa];
+    assert.deepEqual(fis.ob.dctfweb, ['c', '2026-10-14', 'gestta'], 'a data da conclusão (local) e a origem');
+    assert.deepEqual(fis.ob.reinf, ['r', '2026-10-10', 'u-manual'], 'a marcação manual fica');
+    assert.equal(Object.keys(fis.ob).length, 2, 'a tarefa que não é obrigação não marca nada');
+    await page.waitForFunction((p) => !!window.__db.ler(p), ctbDoc, { timeout: 10000 });
+    const ctb = (await page.evaluate((p) => window.__db.ler(p), ctbDoc))['c' + C.alfa];
+    assert.deepEqual(ctb.e.conc, ['c', '2026-10-28', 'gestta']); assert.ok(!ctb.fechadaEm, 'só uma etapa: não fecha a competência');
+    assert.ok(!(await page.evaluate(() => window.__db.listar('fis_comp'))).some(d => JSON.stringify(d).includes('66666666')), 'empresa do escritório nunca');
+    // não reconhecidas e a régua da equipe
+    assert.deepEqual(await api((g) => g.tarefasMapa('fiscal').filter(x => !x.chave).map(x => x.nome)), ['Tarefa esquisita XYZ']);
+    const eq = await page.evaluate((cp) => window.__cadastro.tarefasEquipe('fis', cp), CP);
+    assert.deepEqual(eq.map(x => [x.nome, x.atrasadas, x.feitas]), [['Paula Nunes', 1, 3]]);
+    // desfazer (coordenação): a marca sai e não volta na próxima marcação
+    assert.ok((await page.evaluate(([c, cp]) => window.__cadastro.desfazerMarca('fis', 'c' + c, c, cp, 'dctfweb'), [C.alfa, CP])).ok);
+    const d0 = await page.evaluate((p) => window.__db.ler(p), fisDoc); delete d0['c' + C.alfa].ob.dctfweb; delete d0.id;
+    await semear(fisDoc, d0);
+    await page.evaluate(() => window.__cadastro.marcarAgora()); await page.waitForTimeout(600);
+    assert.ok(!(await page.evaluate((p) => window.__db.ler(p), fisDoc))['c' + C.alfa].ob.dctfweb, 'desfeita não volta');
+    // a coordenação liga um nome de tarefa a uma obrigação: passa a marcar
+    assert.ok((await api((g) => g.salvarCfg(c => { c.mapa = { fiscal: [{ p: 'Tarefa esquisita XYZ', k: 'iss' }] }; }))).ok);
+    await page.evaluate(() => window.__cadastro.marcarAgora());
+    await page.waitForFunction((p) => { const d = window.__db.ler(p); return d && Object.values(d).some(e => e && e.ob && e.ob.iss); }, fisDoc, { timeout: 10000 });
+    // dado velho: nada aparece nem é marcado
+    const man9 = await page.evaluate(() => window.__db.ler('ing_dados/gestta~gestta-tarefas'));
+    await semear('ing_dados/gestta~gestta-tarefas', Object.assign({}, man9, { recebidoEm: Date.now() - 80 * 3600e3 }));
+    await page.waitForFunction(() => !!window.__cadastro.tarefasMotivo(), null, { timeout: 10000 });
+    assert.equal(await page.evaluate((cp) => window.__cadastro.tarefa('fis', '', '33333333000103', cp, 'pgdas'), CP), null);
+    assert.match(await page.evaluate(() => window.__cadastro.tarefasMotivo()), /mais de 72 horas/);
+    await semear('ing_dados/gestta~gestta-tarefas', man9);
+    // o Fiscal mostra a marca "pelo Gestta" e o quadro das tarefas por responsável
+    await page.evaluate(() => window.__hubApi.abrirModulo('fiscal'));
+    let fr = null; for (let i = 0; i < 60 && !fr; i++) { fr = page.frames().find(x => /fiscal\.html/.test(x.url())); if (!fr) await page.waitForTimeout(200); }
+    await fr.waitForFunction(() => /Pelo Gestta/.test((document.querySelector('#pnGrid') || {}).textContent || ''), null, { timeout: 15000 });
+    await fr.waitForFunction(() => /Responsável/.test((document.querySelector('#pnGrid') || {}).textContent || ''), null, { timeout: 15000 });
+    assert.match(await fr.textContent('#pnGrid'), /Pelo Gestta.*Paula Nunes/s, 'a tabela das tarefas por responsável da competência em fechamento');
+    if (CAP) {
+      await fr.evaluate(() => { const l = document.querySelectorAll('#pnGrid .pn-card'); l[l.length - 1].scrollIntoView(); });
+      await page.screenshot({ path: path.join(CAP, 'hub325-fiscal-claro.png') });
+      await fr.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark')); await page.waitForTimeout(1200);
+      await fr.evaluate(() => { const l = document.querySelectorAll('#pnGrid .pn-card'); l[l.length - 1].scrollIntoView(); });
+      await page.screenshot({ path: path.join(CAP, 'hub325-fiscal-escuro.png') });
+      await fr.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'));
+    }
+  });
+
   await passo('Uso do banco mede também o histórico do Gestta e o login', async () => {
     const cols = await page.evaluate(() => window.__hubApi.usoColecoes ? window.__hubApi.usoColecoes().map(c => c.path) : null);
     if (cols) assert.ok(['gt_hist', 'auth_log', 'hub_log'].every(c => cols.includes(c)), cols.join(', '));
