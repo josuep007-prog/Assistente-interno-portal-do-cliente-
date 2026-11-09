@@ -527,8 +527,7 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .aviso-linha.late{border-left-color:var(--late)}
 /* 0.78.0: escolha do setor (quem enxerga mais de um), no fim da linha do aviso */
 .aviso-setor > span{flex:1 1 auto; min-width:0}
-.aviso-setor-sel{flex:none; display:flex; align-items:center; gap:8px; font-weight:600; color:var(--ink-2)}
-.aviso-setor-sel select{min-width:200px}
+.aviso-setor-link{flex:none; font-weight:600}
 .aviso-linha .ic{flex:none; color:var(--blue-deep)} .aviso-linha.late .ic{color:var(--late)}
 .hj-cart{display:inline-flex; align-items:center; gap:8px; font-size:12px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-3)}
 .hj-cart select{min-width:190px; font-size:12.5px; font-weight:600; letter-spacing:0; text-transform:none; color:var(--ink)}
@@ -1130,6 +1129,17 @@ body.bloqueado #btn-busca, body.bloqueado #btn-sino, body.bloqueado #btn-atualiz
 .apar-tx b{font:600 13.5px "Archivo", sans-serif}
 .apar-tx b em{font:600 11.5px "IBM Plex Sans", sans-serif; font-style:normal; color:var(--blue-deep); margin-left:6px}
 .apar-tx small{color:var(--ink-3); font-size:12px; line-height:1.4}
+/* 0.89.0: Configurações → Meu setor (uma opção por setor, a escolhida em destaque; nunca só a cor: "em uso" escrito) */
+.setor-ops{display:flex; flex-direction:column; gap:8px}
+.setor-op{display:flex; align-items:center; gap:12px; text-align:left; padding:10px 12px; border:1px solid var(--rule-strong); border-radius:var(--r); background:var(--surface); cursor:pointer; font:inherit; color:inherit}
+.setor-op:hover{border-color:var(--blue-deep)}
+.setor-op.on{border-color:var(--blue-deep); box-shadow:0 0 0 2px var(--blue-pale)}
+.setor-op:focus-visible{outline:2px solid var(--blue-deep); outline-offset:2px}
+.setor-op-tx{flex:1; min-width:0; display:flex; flex-direction:column; gap:3px}
+.setor-op-tx b{font:600 13.5px "Archivo", sans-serif; color:var(--ink)}
+.setor-op-tx b em{font:600 11.5px "IBM Plex Sans", sans-serif; font-style:normal; color:var(--blue-deep); margin-left:6px}
+.setor-op-tx small{color:var(--ink-2); font-size:12px; line-height:1.4}
+.setor-op-n{flex:none; font-size:12px; color:var(--ink-2); font-variant-numeric:tabular-nums}
 .apar-mini{display:flex; height:108px; border-radius:3px; overflow:hidden; border:1px solid #cfd8e2; background:#E6EDF5}
 .apar-mini i{display:block; border-radius:2px}
 .am-trilho{width:14px; background:#0E151B; border-radius:0!important}

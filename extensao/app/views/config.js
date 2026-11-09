@@ -2,7 +2,7 @@
  * (as pendências lidas são reavaliadas com os números novos antes de salvar). Abas: Prazos, Leitura e avisos,
  * Feriados, Palavras (como a extensão lê os textos) e Avançado (Control Hub, regras do escritório, testes de leitura, aprender ações e diagnóstico; views/avancado.js).
  * Grava só o que difere do padrão em vigor (__v: 2), como a página de opções. */
-import { estado, itens, enviar, aoMudar } from '../estado.js';
+import { estado, itens, enviar, aoMudar, escolherVisao } from '../estado.js';
 import { $, $$, esc, toast } from '../util.js';
 import { avancado as avancadoTela } from './avancado.js';
 const OC = window.OC;
@@ -34,6 +34,9 @@ const GRUPOS = [
   ] }
 ];
 const CAMPOS = GRUPOS.flatMap(g => g.campos);
+// 0.89.0: Contábil/Fiscal (só a Geral) não veem os prazos da folha (cálculo, férias, rescisão, admissão); os valores não mudam, só não aparecem
+const SO_FOLHA = new Set(['conclusaoCalculo']);
+const gruposVisiveis = () => estado.enxuto ? GRUPOS.filter(g => g.titulo !== 'Prazos legais e admissão').map(g => Object.assign({}, g, { campos: g.campos.filter(c => !SO_FOLHA.has(c.k)) })) : GRUPOS;
 const IMPACTO = [
   { k: 'fora', rot: 'Fora do prazo', f: i => i.nivel === 2, cor: 'late' },
   { k: 'hoje', rot: 'Pedem atenção', f: i => i.nivel === 1, cor: 'today' },
@@ -70,14 +73,14 @@ function reavaliar(s) {
 }
 
 export function render(el, ctx, params) {
-  const aba = ['aparencia', 'prazos', 'leitura', 'feriados', 'palavras', 'avancado'].includes(params && params.aba) ? params.aba : 'aparencia';
+  const aba = ['aparencia', 'setor', 'prazos', 'leitura', 'feriados', 'palavras', 'avancado'].includes(params && params.aba) ? params.aba : 'aparencia';
   ctx.cab({
     titulo: 'Configurações', sub: 'As regras em vigor, em linguagem simples',
-    abas: [['aparencia', 'Aparência'], ['prazos', 'Prazos'], ['leitura', 'Leitura e avisos'], ['feriados', 'Feriados'], ['palavras', 'Palavras'], ['avancado', 'Avançado']].map(([id, rot]) => ({ id, rot, href: '#/config' + (id === 'aparencia' ? '' : '?aba=' + id) })),
+    abas: [['aparencia', 'Aparência'], ['setor', 'Meu setor'], ['prazos', 'Prazos'], ['leitura', 'Leitura e avisos'], ['feriados', 'Feriados'], ['palavras', 'Palavras'], ['avancado', 'Avançado']].map(([id, rot]) => ({ id, rot, href: '#/config' + (id === 'aparencia' ? '' : '?aba=' + id) })),
     aba
   });
   if (aba !== 'prazos') rascunho = {};
-  if (aba === 'avancado') avancadoTela(el, params); else ({ aparencia, prazos, leitura, feriados, palavras })[aba](el, ctx);
+  if (aba === 'avancado') avancadoTela(el, params); else ({ aparencia, setor, prazos, leitura, feriados, palavras })[aba](el, ctx);
   // Salvou (aqui ou na aba Avançado) ou chegou leitura nova: redesenha, a não ser no meio de uma edição ou no Avançado
   if (desligar) desligar();
   desligar = aoMudar(quais => {
@@ -112,12 +115,34 @@ function aparencia(el, ctx) {
   $$('[data-tema-op]', el).forEach(b => b.onclick = () => { if (b.dataset.temaOp !== tema) ctx.definirTema(b.dataset.temaOp); });
 }
 
+/* ---------- Meu setor (0.89.0, Josué 09/11/2026): a escolha do setor saiu do topo das telas ----------
+ * Só neste Chrome (localStorage, como a Aparência), troca na hora. Pessoal = a extensão completa; Contábil, Fiscal e outros = só a Geral
+ * do setor, com as telas simples (sem admissões, prazos legais, férias e rescisões); Todos = tudo o que o login vê. */
+const DESC_SETOR = { dp: 'A extensão completa: as 10 listas, admissões, férias, rescisões e prazos legais.', fiscal: 'Só a Geral do Fiscal, com as telas simples.', contabil: 'Só a Geral do Contábil, com as telas simples.' };
+function setor(el) {
+  const lista = estado.setores || [], atual = estado.visaoEscolhida ? estado.visao : null;
+  const op = (chave, nome, n, desc) => { const on = atual === chave; return '<button type="button" class="setor-op' + (on ? ' on' : '') + '" data-setor-op="' + esc(chave) + '" role="radio" aria-checked="' + on + '">' +
+    '<span class="setor-op-tx"><b>' + esc(nome) + (on ? ' <em>em uso</em>' : '') + '</b><small>' + esc(desc) + '</small></span>' + (n != null ? '<span class="setor-op-n">' + n + (n === 1 ? ' solicitação' : ' solicitações') + '</span>' : '') + '</button>'; };
+  const total = lista.reduce((t, x) => t + x.n, 0);
+  el.innerHTML = '<div class="cfg-grade"><div class="cfg-col">' +
+    '<section class="cfg-card"><h3><svg class="ic"><use href="#i-users"/></svg>Meu setor</h3>' +
+      '<p class="fraco">A extensão mostra só o setor escolhido e se ajusta a ele. Vale na hora e só neste Chrome; o Onvio continua mostrando o que o seu acesso permite.</p>' +
+      (lista.length ? '<div class="setor-ops" role="radiogroup" aria-label="Meu setor">' +
+        lista.map(x => op(x.chave, x.nome, x.n, DESC_SETOR[x.chave] || 'Só a Geral deste departamento, com as telas simples.')).join('') +
+        (lista.length > 1 ? op('', 'Todos', total, 'Todos os setores que o seu acesso enxerga, juntos.') : '') + '</div>'
+        : '<p class="fraco">Os setores aparecem depois da primeira leitura do Onvio.</p>') +
+      (!estado.visaoEscolhida && lista.length > 1 ? '<p class="nota-regra">Você ainda não escolheu: por enquanto aparecem todos.</p>' : '') +
+      '<p class="fraco">A distribuição de responsáveis sugere só quem atendeu a empresa no mesmo setor.</p></section>' +
+    '</div></div>';
+  $$('[data-setor-op]', el).forEach(b => b.onclick = () => { escolherVisao(b.dataset.setorOp); toast(b.dataset.setorOp ? 'Setor: ' + (lista.find(x => x.chave === b.dataset.setorOp) || {}).nome : 'Todos os setores'); });
+}
+
 /* ---------- Prazos: editar e ver o efeito na fila antes de salvar ---------- */
 function prazos(el) {
   const lim = k => OC.LIMITES[k] || [0, 365];
   el.innerHTML =
     '<div class="cfg-grade">' +
-      '<div class="cfg-col">' + GRUPOS.map(g => '<section class="cfg-card"><h3><svg class="ic"><use href="#' + g.ic + '"/></svg>' + esc(g.titulo) + '</h3>' +
+      '<div class="cfg-col">' + gruposVisiveis().map(g => '<section class="cfg-card"><h3><svg class="ic"><use href="#' + g.ic + '"/></svg>' + esc(g.titulo) + '</h3>' +
         g.campos.map(c => { const [cls, rot] = origem(c.k), [mn, mx] = lim(c.k); return '<div class="cfg-campo" data-campo="' + c.k + '">' +
           '<div class="cfg-tx"><label for="cf-' + c.k + '">' + esc(c.rot) + '</label><small class="ajuda">' + esc(c.ajuda) + '</small></div>' +
           '<div class="cfg-num"><button type="button" class="icon-btn" data-menos="' + c.k + '" aria-label="Menos">−</button><input type="number" id="cf-' + c.k + '" data-k="' + c.k + '" min="' + mn + '" max="' + mx + '" value="' + esc(valor(c.k)) + '"><button type="button" class="icon-btn" data-mais="' + c.k + '" aria-label="Mais">+</button></div>' +
@@ -134,7 +159,7 @@ function prazos(el) {
     const atual = reavaliar(estado.settings), novo = reavaliar(Object.assign({}, estado.settings, rascunho));
     const n = Object.keys(rascunho).length;
     $('#cf-imp-nota', el).textContent = !itens().length ? 'Ainda sem pendências lidas do Onvio para medir.' : n ? 'Com os números alterados (ainda não salvos), comparado com o que vale hoje, nas ' + itens().length + ' pendências lidas.' : 'As ' + itens().length + ' pendências lidas, com as regras em vigor. Mude um número para ver o efeito antes de salvar.';
-    $('#cf-imp', el).innerHTML = IMPACTO.map(x => {
+    $('#cf-imp', el).innerHTML = IMPACTO.filter(x => !(estado.enxuto && x.k === 'admissao')).map(x => {
       const a = atual.filter(x.f).length, b = novo.filter(x.f).length, d = b - a;
       return '<div class="cfg-imp"><span>' + esc(x.rot) + '</span><b class="' + (b ? x.cor : '') + '">' + b + '</b>' + (d ? '<em class="' + (d > 0 ? 'sobe' : 'desce') + '">' + (d > 0 ? '+' : '') + d + '</em>' : '<em class="igual">=</em>') + '</div>';
     }).join('');
@@ -259,8 +284,8 @@ function palavras(el) {
     '<div class="cfg-grade"><div class="cfg-col">' +
       '<section class="cfg-card"><h3><svg class="ic"><use href="#i-chat"/></svg>A resposta do analista ainda pede algo ao cliente</h3><p class="fraco ajuda">Com qualquer uma destas palavras (ou uma pergunta) na última resposta, a solicitação na vez do cliente continua pendente e não conta como resolvida.</p>' + chips(s.pedidoAoCliente) + '</section>' +
       '<section class="cfg-card"><h3><svg class="ic"><use href="#i-check"/></svg>Frases de cortesia (não são pedido)</h3><p class="fraco ajuda">Tiradas do texto antes de procurar as palavras acima.</p>' + chips(s.cortesiaCliente) + '</section>' +
-      '<section class="cfg-card"><h3><svg class="ic"><use href="#i-layers"/></svg>Possível aba errada (Geral)</h3><p class="fraco ajuda">Assunto da Geral com estas palavras sugere a lista específica.</p>' +
-        (s.abaErrada || []).map(a => '<div class="cfg-aba"><b>' + esc((OC.TYPE_BY_KEY[a.tipo] || {}).label || a.tipo) + '</b>' + chips(a.palavras) + '</div>').join('') + '</section>' +
+      (estado.enxuto ? '' : '<section class="cfg-card"><h3><svg class="ic"><use href="#i-layers"/></svg>Possível aba errada (Geral)</h3><p class="fraco ajuda">Assunto da Geral com estas palavras sugere a lista específica.</p>' +
+        (s.abaErrada || []).map(a => '<div class="cfg-aba"><b>' + esc((OC.TYPE_BY_KEY[a.tipo] || {}).label || a.tipo) + '</b>' + chips(a.palavras) + '</div>').join('') + '</section>') +
       '<p class="fraco ajuda">Essas listas vêm do arquivo de regras do escritório (aba Avançado), para valerem igual para todos.</p>' +
     '</div></div>';
 }

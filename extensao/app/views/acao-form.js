@@ -13,13 +13,14 @@ export const acaoAberta = () => !!f;
 export const fecharAcao = () => { f = null; };
 export function novaAcao(acao, preset) {
   const p = preset || {};
-  f = { acao, modo: p.modo === 'responsavel' ? 'responsavel' : 'encaminhar', texto: p.texto || '', analista: p.analista || '', data: '', confirmar: false, enviando: false, erro: '', aoEnviar: typeof p.aoEnviar === 'function' ? p.aoEnviar : null };
+  f = { acao, modo: p.modo === 'responsavel' ? 'responsavel' : 'encaminhar', texto: p.texto || '', analista: p.analista || '', extras: Array.isArray(p.extras) ? p.extras : [], data: '', confirmar: false, enviando: false, erro: '', aoEnviar: typeof p.aoEnviar === 'function' ? p.aoEnviar : null };
 }
 // o que cada opção de "passar" pode fazer agora, com o motivo na própria linha quando não pode
 export function opcoesPassar(i) {
   return { encaminhar: OC.podeAcao('encaminhar', i), responsavel: OC.podeAcao('responsavel', i) };
 }
-const equipe = i => OC.equipeDe(itens()).filter(p => !(f.acao === 'passar' && f.modo === 'encaminhar') || p.id !== i.respId);
+// 0.89.0: o sugerido e as alternativas do Distribuir entram na lista mesmo sem pendência visível deles (são do mesmo setor)
+const equipe = i => { const base = OC.equipeDe(itens()), ids = new Set(base.map(p => p.id)); return base.concat((f.extras || []).filter(p => p.id && !ids.has(p.id) && ids.add(p.id))).filter(p => !(f.acao === 'passar' && f.modo === 'encaminhar') || p.id !== i.respId); };
 const nomeDe = (i, id) => (equipe(i).find(p => p.id === id) || {}).nome || '';
 
 export function formAcao(i) {

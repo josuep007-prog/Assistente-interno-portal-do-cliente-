@@ -42,7 +42,7 @@ const ROT_GRUPO = { legal: 'Prazo legal e admissões', sem: 'Sem análise', anal
 let ord = (() => { try { const k = localStorage.getItem('controlonvio-fila-ord'); return ORDENS.some(o => o[0] === k) ? { k, desc: DESC.includes(k) } : { k: 'prio', desc: false }; } catch (e) { return { k: 'prio', desc: false }; } })();
 let filtros = { texto: '', tipo: '', legal: '', sit: '', resp: '' };
 // Responsável sugerido para as sem responsável (cmd 'distribuicao', 30 dias): lido ao abrir, no máximo a cada 10 min, só na memória
-let sugEm = 0, sugLendo = false, refazerFila = null, sugResp = new Map();
+let sugEm = 0, sugLendo = false, refazerFila = null, sugResp = new Map(), sugVisao = '';
 // Concluídas: lidas ao abrir a aba, só na memória (as suas e as da equipe à parte)
 const CONC_MIN = 5;
 let conc = { minhas: null, equipe: null }, concLendo = { minhas: false, equipe: false }, concErro = '';
@@ -68,7 +68,9 @@ export function render(el, ctx, params) {
   const todas = itens();
   const resolvidasMinhas = ((estado.snap && estado.snap.resolvidas) || []).filter(i => i.mine).map(i => Object.assign({}, i, { lado: 'cli', resolvida: true }));
   if (params.tipo && OC.TYPE_BY_KEY[params.tipo]) filtros.tipo = params.tipo;      // vindo dos cartões do Hoje
-  const kpi = KPI[params.kpi];
+  // 0.89.0: Contábil/Fiscal (estado.enxuto): sem prazo legal nem admissões (só existem na folha)
+  const kpi = estado.enxuto && ['admissao', 'pagamento'].includes(params.kpi) ? null : KPI[params.kpi];
+  if (estado.enxuto) filtros.legal = '';
   const motivo = OC.MOTIVOS.find(x => x.k === params.motivo);          // vindo do anel do Hoje
   const porPessoa = !!(params.analista || params.cliente);
   let aba = porPessoa ? '' : abaDoEndereco(params, kpi, motivo, todas);
@@ -95,7 +97,7 @@ export function render(el, ctx, params) {
   if (idade) base = base.filter(i => (i.parado || 0) >= Number(idade[1]) && (idade[2] === '' || (i.parado || 0) <= Number(idade[2])));
   const umaPessoa = aba === 'minhas' || aba === 'respondidas' || (aba === 'concluidas' && !verEquipe);
   if (umaPessoa) filtros.resp = '';
-  const cols = COLUNAS.filter(c => !(c.equipe && umaPessoa && !base.some(i => !i.resp)));      // com sem responsável na lista a coluna aparece, para a sugestão
+  const cols = COLUNAS.filter(c => !(c.equipe && umaPessoa && !base.some(i => !i.resp)) && !(estado.enxuto && (c.k === 'prazo' || c.k === 'tipo')));      // com sem responsável na lista a coluna aparece, para a sugestão
   const ROT_CONC = { parado: 'Data', prazo: 'Conclusão' };
   if (aba === 'concluidas') cols.forEach((c, n) => { if (ROT_CONC[c.k]) cols[n] = Object.assign({}, c, { rot: ROT_CONC[c.k] }); });
 
@@ -122,7 +124,7 @@ export function render(el, ctx, params) {
       '<details class="menu" id="m-filtros"><summary class="btn btn-sm" id="b-filtros"><svg class="ic ic-sm"><use href="#i-filter"/></svg> Filtros <span class="menu-n" id="n-filtros"></span></summary>' +
         '<div class="menu-list form">' +
           sel('f-tipo', 'Tipo de solicitação', [['', 'Todos os tipos']].concat(OC.TYPES.filter(t => !estado.soGeral || t.key === 'geral').map(t => [t.key, t.label])), filtros.tipo) +
-          sel('f-legal', 'Prazo legal', [['', 'Todas'], ['1', 'Prazo legal perto']], filtros.legal) +
+          (estado.enxuto ? '' : sel('f-legal', 'Prazo legal', [['', 'Todas'], ['1', 'Prazo legal perto']], filtros.legal)) +
           (umaPessoa ? '' : sel('f-resp', 'Responsável', [['', 'Todos']].concat(resps.map(r => [r, r])), filtros.resp)) +
           '<div class="menu-pe"><button class="btn btn-sm" id="f-limpar">Limpar filtros</button><button class="btn btn-sm btn-primary" id="f-ok">Pronto</button></div>' +
         '</div></details>' +
@@ -135,7 +137,7 @@ export function render(el, ctx, params) {
       (aba === 'concluidas' ? (estado.setor.fora ? '' : '<div class="seg" role="group" aria-label="De quem" id="f-conc-quem"><button type="button" data-ver=""' + (verEquipe ? '' : ' class="on"') + ' aria-pressed="' + !verEquipe + '">As minhas</button><button type="button" data-ver="equipe"' + (verEquipe ? ' class="on"' : '') + ' aria-pressed="' + verEquipe + '">Da equipe</button></div>') +
         '<button type="button" class="btn btn-sm" id="f-conc-ler" title="Ler de novo as concluídas no Onvio"><svg class="ic ic-sm"><use href="#i-refresh"/></svg> Atualizar</button>' : '') +
       '<button type="button" class="btn btn-sm btn-primary" id="f-analise-lote" hidden title="Pôr em análise, de uma vez, as solicitações desta lista em que isso cabe: você confere a lista e confirma"><svg class="ic ic-sm"><use href="#i-clock"/></svg> <span>Pôr em análise</span></button></div>' +
-    '<div class="tipos" id="tipos" role="group" aria-label="Tipo de solicitação"></div>' +
+    (estado.enxuto ? '' : '<div class="tipos" id="tipos" role="group" aria-label="Tipo de solicitação"></div>') +
     (aba === 'concluidas' ? '' : '<div class="sits" id="sits" role="group" aria-label="Situação"></div>') +
     '<div class="ativos" id="ativos"></div>' +
     (aba === 'respondidas' ? (() => {
@@ -171,6 +173,7 @@ export function render(el, ctx, params) {
   // Cartões dos tipos: os mesmos do Hoje (do tipo mais urgente ao menos, com o motivo mais urgente de cada um), todos à vista,
   // inclusive os sem nada (pedido do Josué, 23/10/2026); "Todos os tipos" no começo tira o filtro. Contam com os outros filtros aplicados.
   const tipos = () => {
+    if (!$('#tipos', el)) return;
     const l = filtrar({ semTipo: true });
     $('#tipos', el).innerHTML = tiposHtml(l, aba === 'concluidas' ? { todos: true, on: filtros.tipo, sub: xs => xs.length ? xs.length + (xs.length === 1 ? ' concluída' : ' concluídas') : 'nenhuma' } : { todos: true, on: filtros.tipo, prioridade: true, sub: subPorMotivo });
     $$('[data-tipo]', el).forEach(b => b.onclick = () => { filtros.tipo = filtros.tipo === b.dataset.tipo ? '' : b.dataset.tipo; const s = $('#f-tipo', el); if (s) s.value = filtros.tipo; desenhar(); });
@@ -280,7 +283,7 @@ export function render(el, ctx, params) {
       b.addEventListener('click', e => {
         e.stopPropagation();
         const it = l.find(x => x.k === b.dataset.sugResp), s = sugResp.get(b.dataset.sugResp);
-        if (it) ctx.abrirDetalhe(it, l, { acao: 'passar', preset: { modo: 'responsavel', analista: (s && s.respId) || '' } });
+        if (it) ctx.abrirDetalhe(it, l, { acao: 'passar', preset: { modo: 'responsavel', analista: (s && s.respId) || '', analistaNome: (s && s.respId && s.resp) || '', extras: s ? [{ id: s.respId, nome: s.resp }].concat((s.alternativas || []).map(a => ({ id: a.respId, nome: a.resp }))).filter(x => x.id && x.nome) : [] } });
       });
     });
     $$('[data-col]', el).forEach(b => b.addEventListener('click', () => {
@@ -329,10 +332,11 @@ export function render(el, ctx, params) {
     if (cConc && cConc.erros && cConc.erros.length) $('#ativos', el).insertAdjacentHTML('beforeend', '<span class="nota-regra nota-curta" title="' + esc(cConc.erros.join(' · ')) + '">Algumas listas não responderam: a lista pode estar incompleta <i class="info" aria-hidden="true">ⓘ</i></span>');
   }
   // a sugestão vem do histórico (leitura pesada): no máximo a cada 10 min, ou a cada 2 min quando chegou solicitação sem responsável que ela ainda não viu
+  if (sugVisao !== estado.visao) { sugVisao = estado.visao; sugEm = 0; sugResp = new Map(); definirSugestoesResp(sugResp); }   // 0.89.0: trocou o setor
   const semSug = todas.some(i => !i.resp && !sugResp.has(i.k));
   if (estado.snap && todas.some(i => !i.resp) && !sugLendo && Date.now() - sugEm > (semSug ? 2 : 10) * 60000) {
     sugLendo = true;
-    enviar({ cmd: 'distribuicao', dias: 30 }).then(r => {
+    enviar({ cmd: 'distribuicao', dias: 30, visao: estado.visao }).then(r => {
       sugLendo = false; sugEm = Date.now();
       if (r && r.ok && Array.isArray(r.sugestoes)) { sugResp = new Map(r.sugestoes.map(x => [x.item.k, x])); definirSugestoesResp(sugResp); }
       if (refazerFila && el.isConnected && location.hash.startsWith('#/fila')) refazerFila();

@@ -297,3 +297,9 @@
 /* Leitura (0.61.0, pedido do Josué em 29/10/2026: "muitos textos cinzas e apagados"): o --ink-3 ficou mais escuro nos tokens
    e os textos de apoio com frase (não os rótulos em maiúsculas) não ficam abaixo de 12 px */
 :root[data-estilo="simples"] :is(.c-porque, .card-h .sub, .tr-gap, .pp-n small, .pp-dias small, .pp-comp small, .hj-mini-q small){ font-size:12px }
+
+/* 0.89.0: Meu setor e a linha do setor no topo, lisos */
+:root[data-estilo="simples"] .setor-op{padding:8px 10px}
+:root[data-estilo="simples"] .setor-op.on{box-shadow:none; background:var(--surface-2, var(--surface))}
+:root[data-estilo="simples"] .aviso-setor{padding:6px 10px; margin-bottom:10px}
+
