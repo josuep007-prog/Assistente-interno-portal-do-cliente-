@@ -99,11 +99,13 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
   // Contábil: ALFA com outro analista e Presumido (o Gestta diz Simples)
   await semear('ctb_emp/b' + balde('c' + C.alfa, 8), { ['c' + C.alfa]: { id: 'c' + C.alfa, nome: 'ALFA COMERCIO LTDA', cnpj: fmt(C.alfa), trib: 'presumido', analista: 'Marcos Lima', sit: 'ativa' } });
   // Portal: ALFA com as frentes Pessoal e Fiscal (sem analista); equipe do Portal com Carla e Paula
-  await semear('empresas/p-alfa', { nome: 'ALFA COMERCIO LTDA', cnpj: fmt(C.alfa) });
+  await semear('empresas/p-alfa', { nome: 'ALFA COMERCIO LTDA', cnpj: fmt(C.alfa), setoresDemanda: { pessoal: true, contabil: true } });
   await semear('empresaSetores/p-alfa_pessoal', { empresaId: 'p-alfa', empresaNome: 'ALFA', setor: 'pessoal', analistaId: '', analistaNome: '', etapas: {} });
   await semear('empresaSetores/p-alfa_contabil', { empresaId: 'p-alfa', empresaNome: 'ALFA', setor: 'contabil', analistaId: '', analistaNome: '', etapas: {} });
   await semear('funcionarios/f1', { nome: 'Carla Souza' });
   await semear('funcionarios/f2', { nome: 'Paula Nunes' });
+  // Hub 326: o Portal pelo Gestta vem ligado de fábrica; os passos antigos conferem as diferenças à mão (ele é ligado no passo do Hub 326)
+  await semear('gt_config/cfg', { portal: false });
   // Gestta
   for (const [tipo, c] of Object.entries(GT)) {
     const linhas = c.linhas, metade = Math.ceil(linhas.length / 2), partes = [tab(linhas.slice(0, metade)), tab(linhas.slice(metade))].filter(Boolean);
@@ -132,7 +134,10 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     assert.deepEqual(d.filter(x => x[0] === 'fiscal').map(x => x[1] + ' ' + x[3]).sort(), ['11 novo', '22 novo', '33 novo']);
     // Portal: só as frentes que existem; Contábil sem a pessoa na equipe do Portal também pode ser aplicado (Hub 324: a pessoa entra na equipe)
     const pt = d.filter(x => x[0] === 'portal').map(x => [x[2], x[5], x[7]]);
-    assert.deepEqual(pt.sort(), [['analista-contabil', 'Rui Teixeira', true], ['analista-pessoal', 'Carla Souza', true]]);
+    assert.deepEqual(pt.filter(x => /^analista/.test(x[0])).sort(), [['analista-contabil', 'Rui Teixeira', true], ['analista-pessoal', 'Carla Souza', true]]);
+    // Hub 326: a demanda do Fiscal da ALFA liga; BETA, GAMA e DELTA entram no Portal com os setores que têm demanda no Gestta
+    assert.deepEqual(d.filter(x => x[0] === 'portal' && !/^analista/.test(x[2])).map(x => x[1] + ' ' + x[2] + ' ' + x[3] + ' ' + x[5]).sort(),
+      ['11 demanda-fiscal novo com demanda', '22 empresa novo BETA SERVICOS LTDA', '33 empresa novo GAMA INDUSTRIA LTDA', '44 empresa novo DELTA MEI'], 'portal: ' + JSON.stringify(pt));
     assert.ok(!d.some(x => x[1] === '55' || x[1] === '66'), 'inativo e empresa do escritório nunca entram');
     assert.ok(!d.some(x => x[2] === 'empresa' && x[0] === 'dp' && x[1] === '33'), 'Legalização não é módulo do Hub');
   });
@@ -328,7 +333,7 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
   await passo('Hub 319: quem está no Portal só pelo primeiro nome casa com o nome do Gestta; o mesmo CNPJ duas vezes no Gestta não duplica diferenças', async () => {
     // Portal: a frente Contábil da DELTA com "Zélia" (só o primeiro nome); no Gestta é "Zélia Desconhecida", única com esse nome
     await semear('funcionarios/f5', { nome: 'Zélia' });
-    await semear('empresas/p-delta', { nome: 'DELTA MEI', cnpj: fmt(C.delta) });
+    await semear('empresas/p-delta', { nome: 'DELTA MEI', cnpj: fmt(C.delta), setoresDemanda: { contabil: true } });
     await semear('empresaSetores/p-delta_contabil', { empresaId: 'p-delta', empresaNome: 'DELTA', setor: 'contabil', analistaId: 'f5', analistaNome: 'Zélia', etapas: {} });
     // Gestta: a DELTA cadastrada duas vezes (outro id, mesmo CNPJ)
     const linhas = CLIENTES.linhas.concat([['g4b', '4b', 'DELTA MEI', '', C.delta, 'sim', 'MEI', '', 'SP', 'Santos', '', 'não']]);
@@ -455,6 +460,71 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     }
   });
 
+  await passo('Hub 326: o Portal segue o Gestta sozinho: empresa nova com a frente e o analista, demanda que liga e desliga, mudança à mão respeitada, e-mail completado e os contatos do Gestta na tela', async () => {
+    // contatos de quem recebe cada setor (extensão 0.88.0), dados fictícios; o inativo no Gestta não entra
+    const colsC = ['Id do cliente', 'Código do cliente', 'Cliente', 'CNPJ', 'Setor', 'Id do setor', 'Contato', 'E-mail', 'Ativo', 'Id do contato'];
+    const lc = [['g1', '1', 'ALFA COMERCIO LTDA', C.alfa, 'Departamento Pessoal', 's1', 'Joana Cliente', 'joana@exemplo.com', 'sim', 'k1'],
+      ['g1', '1', 'ALFA COMERCIO LTDA', C.alfa, 'Departamento Pessoal', 's1', 'Pedro Novo', 'pedro.novo@exemplo.com', 'sim', 'k2'],
+      ['g1', '1', 'ALFA COMERCIO LTDA', C.alfa, 'Fiscal', 's3', 'Fora Cliente', 'fora@exemplo.com', 'não', 'k3']];
+    await semear('ing_partes/gestta~gestta-contatos~a0', { ciclo: 'c1', parte: 0, tabela: tab(lc) });
+    await semear('ing_dados/gestta~gestta-contatos', { fonte: 'gestta', tipoDado: 'gestta-contatos', categoria: 'cadastros', titulo: 'Contatos', colunas: colsC, nLinhas: lc.length, totalNaOrigem: 1, cortado: false, partes: 1, slot: 'a', ciclo: 'c1', recebidoEm: Date.now(), versaoExt: '0.88.0' });
+    // Portal: contato da ALFA sem e-mail (ganha o do Gestta) e outro que não está no Gestta; DELTA com demanda no Pessoal que o Gestta não tem
+    await semear('contatos/ct-joana', { nome: 'Joana Cliente', email: '', empresaId: 'p-alfa', empresaNome: 'ALFA', setores: ['pessoal'], statusTreinamento: 'pendente' });
+    await semear('contatos/ct-antigo', { nome: 'Contato Antigo', email: 'antigo@exemplo.com', empresaId: 'p-alfa', empresaNome: 'ALFA', setores: ['pessoal'], statusTreinamento: 'pendente' });
+    await semear('empresas/p-delta', { nome: 'DELTA MEI', cnpj: fmt(C.delta), setoresDemanda: { contabil: true, pessoal: true } });
+    const nAntes = await page.evaluate(() => window.__db.listar('contatos').length);
+    // a coordenação liga (vem ligado de fábrica; os passos antigos desligaram) e o Hub aplica sozinho
+    assert.ok((await api((g) => g.salvarCfg(c => { c.portal = true; }))).ok);
+    await page.waitForFunction((k) => { const e = window.__db.ler('empresas/gt' + k); return !!e; }, C.gama, { timeout: 20000 });
+    await page.waitForFunction(() => { const g = window.__hubApi.api('gestta'); return g && g.portal().ultima && !g.portal().rodando; }, null, { timeout: 20000 });
+    const gama = await page.evaluate((k) => window.__db.ler('empresas/gt' + k), C.gama);
+    assert.deepEqual([gama.nome, gama.cnpj, gama.setoresDemanda.fiscal, gama.gtDem.fiscal, gama.setoresDemanda.pessoal, /Gestta/.test(gama.origem)], ['GAMA INDUSTRIA LTDA', fmt(C.gama), true, true, false, true], 'empresa nova com a demanda do Gestta');
+    const frG = await page.evaluate((k) => window.__db.ler('empresaSetores/gt' + k + '_fiscal'), C.gama);
+    assert.deepEqual([frG.analistaNome, frG.gtAnalista, !!frG.analistaId], ['Paula Nunes', 'Paula Nunes', true], 'a frente com o analista da cartela');
+    // ALFA: a demanda do Fiscal liga, com a frente e a analista
+    const alfa = await page.evaluate(() => window.__db.ler('empresas/p-alfa'));
+    assert.deepEqual([alfa.setoresDemanda.fiscal, alfa.gtDem.fiscal], [true, true]);
+    assert.equal((await page.evaluate(() => window.__db.ler('empresaSetores/p-alfa_fiscal'))).analistaNome, 'Paula Nunes');
+    // DELTA: o Pessoal sem demanda no Gestta sai (nada é apagado: só a marca da demanda)
+    const delta = await page.evaluate(() => window.__db.ler('empresas/p-delta'));
+    assert.deepEqual([delta.setoresDemanda.pessoal, delta.setoresDemanda.contabil, delta.gtDem.pessoal], [false, true, false]);
+    // e-mail: o contato sem e-mail ganha o do Gestta; nenhum contato novo é criado sozinho (o banco tem 5.000 documentos)
+    assert.equal((await page.evaluate(() => window.__db.ler('contatos/ct-joana'))).email, 'joana@exemplo.com');
+    assert.equal(await page.evaluate(() => window.__db.listar('contatos').length), nAntes, 'nenhum contato criado');
+    // histórico "automaticamente"
+    const hist = await page.evaluate(() => window.__db.listar('gt_hist').flatMap(d => d.itens || []).filter(x => x.mod === 'portal' && x.auto));
+    assert.ok(hist.some(x => x.campo === 'empresa') && hist.some(x => /^demanda-/.test(x.campo)) && hist.some(x => /^email-/.test(x.campo)), 'histórico: ' + hist.map(x => x.campo).join(', '));
+    // nada do Portal sobra para decidir (salvo o "conferir antes")
+    assert.deepEqual(await api((g) => g.difs().filter(d => d.mod === 'portal' && !d.confirmar).map(d => d.campo)), []);
+    // mudança à mão: a coordenação desliga o Fiscal da ALFA no Portal; o Gestta não religa enquanto ele mesmo não mudar
+    const a2 = await page.evaluate(() => window.__db.ler('empresas/p-alfa')); a2.setoresDemanda.fiscal = false; delete a2.id;
+    await semear('empresas/p-alfa', a2);
+    await api((g) => g.garantir(true)); await page.waitForTimeout(300);
+    await api((g) => g.portalAgora()); await page.waitForTimeout(500);
+    assert.equal((await page.evaluate(() => window.__db.ler('empresas/p-alfa'))).setoresDemanda.fiscal, false, 'a mudança à mão vale');
+    assert.ok(!(await api((g) => g.difs().some(d => d.mod === 'portal' && d.campo === 'demanda-fiscal'))), 'e não vira diferença');
+    // os contatos do Gestta para o Portal: os ativos, por setor
+    assert.deepEqual(await page.evaluate((k) => window.__cadastro.contatosGestta('portal', 'p-alfa', k).map(x => x.setor + ' ' + x.nome + ' ' + x.email), C.alfa), ['pessoal Joana Cliente joana@exemplo.com', 'pessoal Pedro Novo pedro.novo@exemplo.com']);
+    // a tela do Portal: a busca acha a empresa pelo e-mail do Gestta; a frente mostra quem falta, com Copiar e Incluir no Portal, e o aviso do contato fora do Gestta
+    await page.evaluate(() => window.__hubApi.abrirModulo('portal'));
+    let fp = null; for (let i = 0; i < 60 && !fp; i++) { fp = page.frames().find(x => /portal\.html/.test(x.url())) || null; if (!fp) await page.waitForTimeout(250); }
+    await page.waitForFunction(() => { const a = window.__hubApi.api('portal'); return a && a.pronto && a.pronto() && a.empresas().length > 0; }, null, { timeout: 15000 });
+    await page.evaluate(() => window.__hubApi.api('portal').irPara('progresso'));
+    await fp.fill('#empresaSearch', 'pedro.novo');
+    await fp.waitForFunction(() => document.querySelectorAll('#progressoList .erow, .erow').length === 1, null, { timeout: 10000 });
+    await fp.click('.erow[data-id="p-alfa"] .erow-main');
+    await fp.waitForSelector('.erow[data-id="p-alfa"] .gt-contatos', { timeout: 10000 });
+    const txt = await fp.textContent('.erow[data-id="p-alfa"]');
+    assert.match(txt, /No Gestta, recebem Pessoal.*Pedro Novo.*pedro\.novo@exemplo\.com.*Incluir no Portal/s);
+    assert.ok(!/Fora Cliente/.test(txt), 'inativo no Gestta não aparece');
+    assert.match(txt, /Contato Antigo.*não está no Gestta/s, 'o contato do Portal que não recebe o setor no Gestta');
+    assert.ok(await fp.$('.erow[data-id="p-alfa"] .gt-copiar[data-email="joana@exemplo.com"]'), 'copiar o e-mail do contato');
+    if (CAP) { await fp.evaluate(() => document.querySelector('.erow[data-id="p-alfa"] .gt-contatos').scrollIntoView({ block: 'center' })); await page.waitForTimeout(400); await page.screenshot({ path: path.join(CAP, 'hub326-portal-claro.png') });
+      await fp.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark')); await page.waitForTimeout(800); await page.screenshot({ path: path.join(CAP, 'hub326-portal-escuro.png') }); await fp.evaluate(() => document.documentElement.setAttribute('data-theme', 'light')); }
+    // Incluir no Portal cria o contato (é a pessoa que pede)
+    await fp.click('.erow[data-id="p-alfa"] [data-action="gt-contato-incluir"][data-email="pedro.novo@exemplo.com"]');
+    await page.waitForFunction(() => window.__db.listar('contatos').some(c => c.email === 'pedro.novo@exemplo.com' && c.empresaId === 'p-alfa'), null, { timeout: 10000 });
+  });
   await passo('Uso do banco mede também o histórico do Gestta e o login', async () => {
     const cols = await page.evaluate(() => window.__hubApi.usoColecoes ? window.__hubApi.usoColecoes().map(c => c.path) : null);
     if (cols) assert.ok(['gt_hist', 'auth_log', 'hub_log'].every(c => cols.includes(c)), cols.join(', '));

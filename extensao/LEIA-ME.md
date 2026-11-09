@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.87.0)
+# Control Onvio · ControlTax (v0.88.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,20 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.88.0 (09/11/2026): o Portal do Cliente do Hub segue o Gestta (Hub 326)
+
+Pedido do Josué: "saber quais empresas têm demanda em quais setores, ter o analista atualizado de cada empresa, parar de cadastrar e excluir empresas e funcionários à mão e achar o e-mail do cliente".
+- A extensão manda ao Hub, junto com a cartela (no máximo 1 vez por dia), **quem do cliente recebe cada setor no Gestta**: nome, e-mail e se está ativo (conjunto `gestta-contatos`, uma leitura `GET admin/customer/{id}/accountable` por cliente). Sem WhatsApp nem telefone. "Testar a leitura do Gestta" mostra a contagem dos contatos de um cliente.
+- No **Hub 326**, o Portal do Cliente se atualiza sozinho pelo Gestta (decidido: aplicar sozinho, com histórico; desligável em Entrada de dados › Gestta › "Portal do Cliente pelo Gestta"):
+  - empresa com tarefa ou responsável num setor entra no Portal com a demanda daquele setor e a frente com o analista da cartela;
+  - o setor que não tem mais demanda no Gestta sai (nada é apagado: só a marca da demanda);
+  - o analista de cada frente segue a cartela, e quem não está na equipe do Portal entra nela; quem sai do Gestta já saía das listas (Hub 317);
+  - o contato do Portal sem e-mail ganha o e-mail do Gestta;
+  - em cada frente, "No Gestta, recebem …" mostra quem falta no Portal, com **Copiar** e **Incluir no Portal**; os contatos do Portal ganham o botão **Copiar** e o aviso "não está no Gestta"; a busca acha a empresa pelo nome ou e-mail de quem recebe um setor no Gestta.
+- Mudança feita à mão no Portal vale até o Gestta mudar de novo. Empresa parecida com outra (sem CNPJ, ou filial) fica "conferir antes". Os contatos do Gestta não viram documentos sozinhos (o banco do Hub aceita 5.000 documentos): só quando a pessoa clica em "Incluir no Portal".
+- O Hub passa a exigir a 0.88.0.
+- **A confirmar no Gestta real:** se `admin/customer/{id}/accountable` sem o parâmetro `company_department` devolve todos os setores (o teste da leitura mostra a contagem).
 
 ## Novidades da v0.87.0 (09/11/2026): Tarefas do Gestta mais fáceis de ler e de usar
 

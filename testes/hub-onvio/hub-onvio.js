@@ -49,7 +49,7 @@ const BANCO = `(() => {
     delete: async () => { store.delete(p); avisa(p); },
     onSnapshot: (cb) => { poe(docL, p, cb); setTimeout(() => cb(snapDoc(p)), 0); return () => {}; },
     collection: (n) => col(p + '/' + n) });
-  const col = (p) => ({ path: p, doc: (id) => doc(p + '/' + id), get: async () => snapCol(p), onSnapshot: (cb) => { poe(colL, p, cb); setTimeout(() => cb(snapCol(p)), 0); return () => {}; } });
+  const col = (p) => ({ path: p, doc: (id) => doc(p + '/' + id), get: async () => snapCol(p), add: async (d) => { const id = 'a' + Math.random().toString(36).slice(2, 10); await doc(p + '/' + id).set(d); return doc(p + '/' + id); }, onSnapshot: (cb) => { poe(colL, p, cb); setTimeout(() => cb(snapCol(p)), 0); return () => {}; } });
   window.__gravacoes = [];
   window.__db = { listar: (c) => [...store.keys()].filter(k => colDe(k) === c).map(k => Object.assign({ id: k.split('/').pop() }, clone(store.get(k)))), semear: (p, d) => { store.set(p, clone(d)); avisa(p); }, silencioso: (p, d) => { store.set(p, clone(d)); }, ler: (p) => clone(store.get(p)), existe: (p) => store.has(p) };
   window.claude = { use: async (n) => n === 'db' ? { doc, collection: col } : n === 'downloads' ? { save: async () => {} } : n === 'user' ? { id: async () => 'u-teste', can: async () => true, canEdit: async () => window.__canEdit !== false, profiles: async () => ({}) } : null };

@@ -106,6 +106,8 @@
       document_request: { active: true, requested_documents: [{ name: true, disconsidered: true }] } },
     cliente: { _id: true, code: true, name: true, trading_name: true, cnpj: true, active: true, federal_regime: { _id: true, name: true, identifier: true }, state_inscription: true, federative_unit: true, city: true, external_id: true, partner_config: { has_onvio_portal: true } },
     cartela: { company_department: SETOR, company_user: REF },
+    // 0.88.0: quem do cliente recebe cada setor (para o Portal do Hub achar o e-mail do cliente); sem WhatsApp nem telefone
+    contatos: { company_department: SETOR, customer_user: { _id: true, name: true, email: true, active: true } },
     equipe: { _id: true, name: true, role: true, active: true, company_departments: [SETOR], has_linked_tasks: true },
     setor: SETOR,
     template: REF,
@@ -225,6 +227,7 @@
     equipe: (o) => ({ id: 'equipe', tipo: 'equipe', metodo: 'GET', url: url('/admin/company/user', { active: true, limit: (o && o.limit) || 200, page: (o && o.page) || 1 }) }),
     clientes: (o) => ({ id: 'clientes', tipo: 'cliente', metodo: 'GET', url: url('/admin/customer', { active: true, limit: (o && o.limit) || 200, page: (o && o.page) || 1 }) }),
     cartela: (o) => ({ id: 'cartela', tipo: 'cartela', metodo: 'GET', url: url('/admin/customer/' + encodeURIComponent(o.cliente) + '/responsible') }),
+    contatos: (o) => ({ id: 'contatos', tipo: 'contatos', metodo: 'GET', url: url('/admin/customer/' + encodeURIComponent(o.cliente) + '/accountable') }),
     buscaTarefas: (o) => ({ id: 'buscaTarefas', tipo: 'tarefa', metodo: 'POST', url: url('/core/customer/task/search'),
       corpo: Object.assign({ page: o.page || 1, limit: o.limit || 100, type: o.type || ['RECURRENT', 'SERVICE_ORDER', 'ACCOUNTING'], status: o.status || ['OPEN', 'IMPEDIMENT'], date_type: o.dataTipo === 'COMPETENCE_DATE' ? 'COMPETENCE_DATE' : 'DUE_DATE' }, janelaDoMes(o.ano, o.mes), o.companyUser ? { company_user: [o.companyUser] } : {}, o.semDono ? { no_owner: true } : {}) }),
     tarefa: (o) => ({ id: 'tarefa', tipo: 'tarefaDetalhe', metodo: 'GET', url: url('/core/customer/task/' + encodeURIComponent(o.id)) }),
@@ -302,6 +305,7 @@
     L.push(linha('equipe ativa', por.equipe, d => tot(d)));
     L.push(linha('clientes ativos', por.clientes, d => tot(d)));
     L.push(linha('cartela de 1 cliente', por.cartela, d => fmt((d.itens || []).length) + ' setor(es) com responsável'));
+    L.push(linha('contatos de 1 cliente', por.contatos, d => { const l = d.itens || []; return fmt(l.length) + ' contato(s) por setor, ' + fmt(l.filter(z => z && z.customer_user && z.customer_user.email).length) + ' com e-mail'; }));
     L.push(linha('tarefas abertas ou com impedimento no mês', por.buscaTarefas, d => tot(d)));
     L.push(linha('multas no mês (painel)', por.multas, d => fmt(d.fine)));
     L.push(linha('fila de envio ao Onvio com erro', por.filaOnvioErro, d => tot(d)));
@@ -551,7 +555,7 @@
     { id: 'clientes', nome: 'Clientes', ajuda: 'Os clientes ativos: código, nome, nome fantasia, CNPJ, regime, inscrição estadual, UF, cidade e se usam o portal do Onvio. Sem mensalidade.', padrao: true },
     { id: 'equipe', nome: 'Equipe e setores', ajuda: 'Os funcionários do escritório (nome, papel, ativo e setores) e os setores. Sem e-mail, telefone, permissões nem último login.', padrao: true },
     { id: 'alertas', nome: 'Alertas', ajuda: 'Os envios de documento ao Onvio que deram erro (empresa, tarefa e motivo) e os templates de documento sem pasta no portal.', padrao: true },
-    { id: 'cartela', nome: 'Cartela (1 vez por dia)', ajuda: 'Quem atende cada setor de cada cliente, como está no Gestta. Uma leitura por cliente (uns 10 minutos), no máximo uma vez por dia.', padrao: true }
+    { id: 'cartela', nome: 'Cartela e contatos (1 vez por dia)', ajuda: 'Quem atende cada setor de cada cliente e quem do cliente recebe cada setor (nome e e-mail), como está no Gestta. Duas leituras por cliente (uns 15 minutos), no máximo uma vez por dia.', padrao: true }
   ];
   const HUB_GESTTA_PARTE = 140000, HUB_GESTTA_PARTES_MAX = 80;
   const celula = (v, max) => String(v == null ? '' : v).replace(/[\t\r\n\u2028\u2029]+/g, ' ').replace(/ {2,}/g, ' ').trim().slice(0, max || 300);
@@ -602,6 +606,8 @@
   const COLS_TEMPLATES_HUB = ['Id', 'Template', 'Tipo de automação', 'Válido', 'Dispensado'];
   const semPasta = t => !(t && t.documents_integration && Array.isArray(t.documents_integration.pathName) && t.documents_integration.pathName.filter(Boolean).length);
   const COLS_CARTELA_HUB = ['Id do cliente', 'Código do cliente', 'Cliente', 'CNPJ', 'Setor', 'Id do setor', 'Responsável', 'Id do responsável'];
+  // 0.88.0 (Josué, 09/11/2026: "procurar o e-mail do cliente"): quem do cliente recebe cada setor no Gestta. Só nome, e-mail e se está ativo.
+  const COLS_CONTATOS_HUB = ['Id do cliente', 'Código do cliente', 'Cliente', 'CNPJ', 'Setor', 'Id do setor', 'Contato', 'E-mail', 'Ativo', 'Id do contato'];
   // Empresas com tarefa no mês atual ou no anterior (aberta ou concluída): a referência do Hub para dizer quem está em atividade
   // (Josué, 06/11/2026: "a empresa só deve ser considerada nos módulos se possuir tarefa ativa no Gestta"). Só CNPJ, nome e contagens.
   const COLS_ATIVAS_HUB = ['CNPJ', 'Cliente', 'Tarefas', 'Último mês'];
@@ -623,7 +629,7 @@
   }
   // 0.84.0: reenviar só o que deu erro. Qual categoria do envio refaz cada conjunto (a lista das ativas sai da etapa das tarefas).
   const CAT_DO_CONJUNTO = { 'gestta-tarefas': 'tarefas', 'gestta-empresas-ativas': 'tarefas', 'gestta-clientes': 'clientes', 'gestta-equipe': 'equipe', 'gestta-setores': 'equipe',
-    'gestta-envios-onvio-erro': 'alertas', 'gestta-templates-sem-pasta': 'alertas', 'gestta-cartela': 'cartela' };
+    'gestta-envios-onvio-erro': 'alertas', 'gestta-templates-sem-pasta': 'alertas', 'gestta-cartela': 'cartela', 'gestta-contatos': 'cartela' };
   const catDoConjunto = id => CAT_DO_CONJUNTO[String(id || '')] || '';
   const paraReenviar = hubSync => (!hubSync || hubSync.estado === 'enviando') ? [] : [...new Set((hubSync.resultados || []).filter(r => !r.ok).map(r => catDoConjunto(r.id)).filter(Boolean))];
   // 0.85.0 (Josué, 06/11/2026: "as tarefas devem ser agrupadas por competência e não por data de vencimento").
@@ -793,20 +799,32 @@
         prog('Cartela');
         if (!clientes) { falhou('gestta-cartela', 'Gestta · Cartela por setor', 'cadastros', new Error('sem a lista de clientes')); }
         else try {
-          const linhas = [], LOTE = 40; let falhas = 0, lidos = 0;
+          const linhas = [], contatos = [], LOTE = 40; let falhas = 0, lidos = 0, cFalhas = 0, cLidos = 0;
           for (let i = 0; i < clientes.length && !(ctx.cancelado && ctx.cancelado()); i += LOTE) {
             const fatia = clientes.slice(i, i + LOTE);
             ctx.andamento && ctx.andamento('cartela, cliente ' + Math.min(i + LOTE, clientes.length) + ' de ' + clientes.length);
-            const r = await ler(fatia.map(c => Object.assign(PEDIDOS.cartela({ cliente: c._id }), { id: 'cartela:' + c._id })));
+            const r = await ler(fatia.map(c => Object.assign(PEDIDOS.cartela({ cliente: c._id }), { id: 'cartela:' + c._id })).concat(fatia.map(c => Object.assign(PEDIDOS.contatos({ cliente: c._id }), { id: 'contatos:' + c._id }))));
             (r || []).forEach((x, k) => {
-              const c = fatia[k];
-              if (!x || x.status !== 200 || !x.dados) { falhas++; if (x && x.status === 401) { const e = new Error('a sessão do Gestta acabou'); e.status = 401; throw e; } return; }
+              const c = fatia[k % fatia.length], deContato = k >= fatia.length;
+              if (x && x.status === 401) { const e = new Error('a sessão do Gestta acabou'); e.status = 401; throw e; }
+              if (deContato) {
+                if (!x || x.status !== 200 || !x.dados) { cFalhas++; return; }
+                cLidos++;
+                (x.dados.itens || lista(x.dados)).forEach(z => { const u = z && z.customer_user; if (z && z.company_department && u && (u.name || u.email)) contatos.push(linhaTab([c._id, c.code, c.name, c.cnpj, z.company_department.name, z.company_department._id, u.name, String(u.email || '').trim().toLowerCase(), simNao(u.active), u._id])); });
+                return;
+              }
+              if (!x || x.status !== 200 || !x.dados) { falhas++; return; }
               lidos++;
               (x.dados.itens || []).forEach(z => { if (z && z.company_department) linhas.push(linhaTab([c._id, c.code, c.name, c.cnpj, z.company_department.name, z.company_department._id, z.company_user && z.company_user.name, z.company_user && z.company_user._id])); });
             });
           }
           const it = await entregar({ tipoDado: 'gestta-cartela', categoria: 'cadastros', titulo: 'Gestta · Cartela por setor', colunas: COLS_CARTELA_HUB, totalNaOrigem: clientes.length }, linhas, { cortado: lidos < clientes.length, porque: lidos < clientes.length ? (clientes.length - lidos) + ' clientes sem leitura' + (falhas ? ' (' + falhas + ' com erro)' : '') : '' });
           it.cartela = it.ok && !it.cortado;
+          // 0.88.0: os contatos de cada setor (mesmo ritmo da cartela); um cliente sem leitura deixa o conjunto marcado como cortado
+          if (!parar && !(ctx.cancelado && ctx.cancelado())) {
+            const ic = await entregar({ tipoDado: 'gestta-contatos', categoria: 'cadastros', titulo: 'Gestta · Contatos do cliente por setor', colunas: COLS_CONTATOS_HUB, totalNaOrigem: clientes.length }, contatos, { cortado: cLidos < clientes.length, porque: cLidos < clientes.length ? (clientes.length - cLidos) + ' clientes sem leitura dos contatos' + (cFalhas ? ' (' + cFalhas + ' com erro)' : '') : '' });
+            it.cartela = it.cartela && ic.ok;
+          }
         } catch (e) { falhou('gestta-cartela', 'Gestta · Cartela por setor', 'cadastros', e); }
       }
       feito++; prog('');
@@ -820,5 +838,5 @@
     GRUPOS, TIPOS_TAREFA, SITUACOES_TAREFA, MAX_PAGINAS_TAREFAS, diasUteis, grupoTarefa, prazoTexto, contarGrupos, porEmpresa, porDia, filtrarTarefas, urlTarefa, ymd, diaLocal,
     COLUNAS_FECHAMENTO, linhasDoRelatorio, tarefasDoRelatorio, trilhaDaEmpresa, fechamento, ESTADOS, setorDe, respDe, ehEscritorioProprio,
     eventosDaTarefa, obrigacoes, nomeObrigacao, meuDia, ORDENS_EMPRESA, ordenarEmpresas,
-    HUB_GESTTA, hubExecutarGestta, catDoConjunto, paraReenviar, nomeLegivel, competenciaDe, daCompetencia, buscaPorCompetenciaValeu, competenciaPadrao, mesesDaCompetencia, mesesDeMeta, mesTexto, filtrosRelatorio, lembrarFiltroRel, partirLinhas, tabelaTarefasHub, empresasAtivasHub, COLS_TAREFAS_HUB, COLS_CLIENTES_HUB, COLS_CARTELA_HUB, COLS_ATIVAS_HUB };
+    HUB_GESTTA, hubExecutarGestta, catDoConjunto, paraReenviar, nomeLegivel, competenciaDe, daCompetencia, buscaPorCompetenciaValeu, competenciaPadrao, mesesDaCompetencia, mesesDeMeta, mesTexto, filtrosRelatorio, lembrarFiltroRel, partirLinhas, tabelaTarefasHub, empresasAtivasHub, COLS_TAREFAS_HUB, COLS_CLIENTES_HUB, COLS_CARTELA_HUB, COLS_CONTATOS_HUB, COLS_ATIVAS_HUB };
 })(typeof self !== 'undefined' ? self : this);
