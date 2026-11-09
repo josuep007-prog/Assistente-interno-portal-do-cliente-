@@ -481,3 +481,107 @@
 :root[data-estilo="simples"] .gf-st::after{top:13px; left:calc(50% + 15px); right:calc(-50% + 15px)}
 :root[data-estilo="simples"] .gk-col{background:none; border:1px solid var(--rule); border-top:3px solid var(--gc)}
 :root[data-estilo="simples"] .gl-r{min-height:34px}
+
+/* ---------- 0.87.0: desenho e usabilidade (competência, "de quem", resolver agora, esqueleto, densidade, atalhos) ---------- */
+.sr{position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap}
+/* competência: botão que abre a grade dos meses */
+.gt-mes{position:relative}
+.gt-mes-btn{all:unset; box-sizing:border-box; cursor:pointer; min-width:132px; display:flex; flex-direction:column; align-items:center; line-height:1.1; padding:3px 10px; border-radius:3px}
+.gt-mes-btn small{font-size:11.5px; font-weight:600; color:var(--ink-2)}
+.gt-mes-btn b{font:700 14px Archivo, sans-serif; color:var(--ink)}
+.gt-mes-btn:hover, .gt-mes-btn[aria-expanded="true"]{background:var(--surface-2)}
+.gt-mes-btn:focus-visible{outline:2px solid var(--blue-deep); outline-offset:1px}
+.gt-pop{position:absolute; top:calc(100% + 6px); z-index:30; padding:10px; border:1px solid var(--rule-strong); border-radius:var(--r); background:var(--surface); color:var(--ink); box-shadow:0 10px 28px rgba(16,24,32,.18)}
+.gt-mes-pop{left:50%; transform:translateX(-50%); width:244px; display:flex; flex-direction:column; gap:8px}
+.gt-mp-cab{display:flex; align-items:center; justify-content:space-between} .gt-mp-cab b{font:700 14px Archivo, sans-serif}
+.gt-mp-grade{display:grid; grid-template-columns:repeat(4, 1fr); gap:4px}
+.gt-mp-grade button{all:unset; box-sizing:border-box; cursor:pointer; position:relative; padding:7px 0; text-align:center; font-size:13px; font-weight:600; color:var(--ink); border:1px solid var(--rule); border-radius:var(--r)}
+.gt-mp-grade button:hover{border-color:var(--blue-deep)}
+.gt-mp-grade button:focus-visible{outline:2px solid var(--blue-deep); outline-offset:1px}
+.gt-mp-grade button.fech::after{content:""; position:absolute; top:4px; right:4px; width:6px; height:6px; border-radius:50%; background:var(--gt-prox)}
+.gt-mp-grade button.on{background:var(--ink); border-color:var(--ink); color:var(--surface)}
+.gt-mp-atual{justify-content:center}
+/* "de quem": botão com avatar e uma lista com busca */
+.gt-quem{position:relative}
+.gt-quem-btn{all:unset; box-sizing:border-box; cursor:pointer; display:inline-flex; align-items:center; gap:8px; max-width:240px; padding:4px 10px 4px 4px; border:1px solid var(--rule-strong); border-radius:var(--r); background:var(--surface); font-size:13px; font-weight:600; color:var(--ink)}
+.gt-quem-btn > span:not(.gt-quem-av){overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.gt-quem-btn .ic{color:var(--ink-2); flex:none}
+.gt-quem-btn:hover, .gt-quem-btn[aria-expanded="true"]{border-color:var(--blue-deep)}
+.gt-quem-btn:focus-visible{outline:2px solid var(--blue-deep); outline-offset:2px}
+.gt-quem-av{width:24px; height:24px; flex:none; border-radius:50%; display:inline-grid; place-items:center; background:#2F5486; color:#fff; font:700 11.5px Archivo, sans-serif}
+.gt-quem-pop{right:0; width:280px; display:flex; flex-direction:column; gap:8px}
+.gt-quem-pop .inp{width:100%; box-sizing:border-box; padding:7px 9px; font-size:13px; border:1px solid var(--rule-strong); border-radius:var(--r); background:var(--surface); color:var(--ink)}
+.gt-quem-pop .inp::placeholder{color:var(--ink-3)}
+.gt-quem-lista{list-style:none; margin:0; padding:0; max-height:300px; overflow-y:auto; scrollbar-width:thin; display:flex; flex-direction:column; gap:2px}
+.gt-quem-lista button{all:unset; box-sizing:border-box; cursor:pointer; width:100%; display:flex; align-items:center; gap:8px; padding:5px 8px; border-radius:var(--r); font-size:13px; color:var(--ink)}
+.gt-quem-lista button:hover{background:var(--surface-2)}
+.gt-quem-lista button.on{background:color-mix(in srgb, var(--blue-deep) 10%, var(--surface)); box-shadow:inset 0 0 0 1px var(--blue-deep); font-weight:600}
+.gt-quem-lista button:focus-visible{outline:2px solid var(--blue-deep); outline-offset:-2px}
+.gt-quem-nada{padding:8px; font-size:12.5px}
+/* "Resolver agora" junta multa e atraso num chip só, com marca própria (não só a cor) */
+.gt-sit-agora{border-color:color-mix(in srgb, var(--gt-mk-alerta) 55%, var(--rule)); color:var(--ink)}
+.gt-sit-ic{width:16px; height:16px; flex:none; border-radius:50%; display:inline-grid; place-items:center; background:var(--gt-mk-alerta); color:var(--gt-mk-alerta-tx); font:700 11.5px/1 Archivo, sans-serif}
+/* os números do Fechamento filtram */
+.gt-kpi-est{cursor:pointer} .gt-kpi-est:hover{transform:translateY(-1px); border-color:var(--gc, var(--blue-deep))}
+/* esqueleto enquanto lê */
+.gt-esq-tela{display:flex; flex-direction:column; gap:14px}
+.gt-esq-topo{display:flex; gap:8px; align-items:center; padding:12px; border:1px solid var(--rule); border-radius:var(--r); background:var(--surface)}
+.gt-esq-topo i{display:block; width:92px; height:26px}
+.gt-esq-topo i.r{width:40px; height:40px; border-radius:50%}
+.gt-esq-corpo{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:14px}
+.gt-esq-col{display:flex; flex-direction:column; gap:6px}
+.gt-esq-col i{display:block; height:44px}
+.gt-esq-lado i{height:120px} .gt-esq-lado i:first-child{height:60px}
+.gt-esq-tela i{border-radius:var(--r); background:linear-gradient(90deg, var(--surface-3), var(--surface-2), var(--surface-3)); background-size:200% 100%; animation:gtEsq 1.2s linear infinite}
+.gt-esq-nota{margin:12px 2px 0; font-size:12.5px; color:var(--ink-2)}
+/* a última tarefa aberta pisca ao voltar */
+.gt-flash{animation:gtFlash 1.6s ease}
+@keyframes gtFlash{0%,40%{box-shadow:0 0 0 3px var(--blue-deep)} 100%{box-shadow:0 0 0 0 transparent}}
+/* ajuda dos atalhos */
+.gt-atalhos{position:fixed; inset:0; z-index:60; display:grid; place-items:center; padding:16px; background:rgba(8,13,17,.42)}
+.gt-atalhos[hidden]{display:none}
+.gt-atalhos-cx{width:min(520px, 100%); max-height:calc(100vh - 32px); overflow:auto; padding:16px 18px; border:1px solid var(--rule-strong); border-radius:var(--r); background:var(--surface); color:var(--ink); box-shadow:0 18px 44px rgba(8,13,17,.3)}
+.gt-atalhos-cab{display:flex; align-items:center; justify-content:space-between; margin-bottom:8px} .gt-atalhos-cab h2{margin:0; font:700 16px Archivo, sans-serif}
+.gt-atalhos-lista{display:grid; grid-template-columns:auto minmax(0,1fr); gap:8px 16px; margin:0; align-items:baseline}
+.gt-atalhos-lista dt{font-size:12.5px; color:var(--ink-2); white-space:nowrap} .gt-atalhos-lista dd{margin:0; font-size:13px; color:var(--ink)}
+.gt-atalhos kbd{display:inline-block; min-width:14px; text-align:center; font:600 12px 'IBM Plex Mono', monospace; border:1px solid var(--rule-strong); border-bottom-width:2px; border-radius:3px; padding:1px 5px; background:var(--surface-2); color:var(--ink)}
+#btn-atalhos b{font:700 15px Archivo, sans-serif}
+/* Meu dia: abrir direto no Gestta ao passar o mouse, "Mais adiante" e o dia livre */
+.gd-it{grid-template-columns:22px 18px minmax(0,1fr) auto auto}
+.gd-abrir{opacity:0; transition:opacity .12s}
+.gd-it:hover .gd-abrir, .gd-it.on .gd-abrir, .gd-abrir:focus-visible{opacity:1}
+.gd-adiante .gd-it{background:var(--surface-2)}
+.gd-livre-sub{font-size:13px; color:var(--ink-2)}
+/* ficha da empresa: só as colunas com tarefa */
+.gk{grid-template-columns:repeat(var(--gk-n, 4), minmax(0,1fr))}
+.gp-copiar{all:unset; cursor:pointer; display:inline-flex; align-items:center; gap:4px; padding:1px 6px; border:1px solid var(--rule-strong); border-radius:3px; font-size:11.5px; font-weight:600; color:var(--ink-2)}
+.gp-copiar:hover{border-color:var(--blue-deep); color:var(--ink)} .gp-copiar:focus-visible{outline:2px solid var(--blue-deep); outline-offset:1px}
+.gp-copiar .ic{width:12px; height:12px}
+.gp-prox-nome{font-size:12px; color:var(--ink-2); max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+/* densidade compacta: mais linhas na tela */
+[data-densidade="compacta"] .gd-it{padding:4px 10px 4px 12px}
+[data-densidade="compacta"] .gd-ol{gap:2px}
+[data-densidade="compacta"] .gl-r{min-height:30px}
+[data-densidade="compacta"] .gq-b{min-height:30px}
+[data-densidade="compacta"] .ge-emp{padding:5px 8px; gap:2px}
+[data-densidade="compacta"] .gk-c{padding:5px 8px; gap:3px}
+[data-densidade="compacta"] .gt-tr{padding-top:6px; padding-bottom:6px}
+@media (prefers-reduced-motion: reduce){ .gt-esq-tela i{animation:none} .gt-flash{animation:none; box-shadow:0 0 0 3px var(--blue-deep)} .gd-abrir{transition:none} }
+@media (max-width:900px){ .gt-esq-corpo{grid-template-columns:1fr} .gt-esq-lado{display:none} .gt-quem-pop{right:auto; left:0} }
+@media (hover:none){ .gd-abrir{opacity:1} }
+@media (max-width:1100px){ .gk{grid-template-columns:repeat(2, minmax(0,1fr))} .gk.gk-1{grid-template-columns:minmax(0,1fr)} }
+
+/* Simplificado: popovers e ajuda lisos, esqueleto sem brilho */
+:root[data-estilo="simples"] .gt-pop, :root[data-estilo="simples"] .gt-atalhos-cx{box-shadow:none}
+:root[data-estilo="simples"] .gt-mes-btn{min-width:118px}
+:root[data-estilo="simples"] .gt-mes-btn b{font-size:13px}
+:root[data-estilo="simples"] .gt-quem-av{width:20px; height:20px}
+:root[data-estilo="simples"] .gt-esq-tela i{animation:none; background:var(--surface-3)}
+:root[data-estilo="simples"] .gt-esq-topo{background:var(--surface)}
+:root[data-estilo="simples"] .gt-kpi-est:hover{transform:none}
+:root[data-estilo="simples"] .gd-adiante .gd-it{background:var(--surface)}
+.gp-copias{display:inline-flex; gap:4px; vertical-align:1px; margin-left:4px}
+.gp-copiar.ok{border-color:var(--gt-mk-feita); color:var(--ink)}
+.gp-nav{min-width:0} .gp-cab{gap:8px}
+/* o cabeçalho fica acima do topo e do detalhe, para as janelinhas da competência e do "de quem" não ficarem por baixo */
+.gt-pagina .mod-cab{position:relative; z-index:30}

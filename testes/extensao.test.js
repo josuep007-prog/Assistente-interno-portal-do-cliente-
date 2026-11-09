@@ -4112,3 +4112,20 @@ test('Gestta → Hub (0.86.0): as tarefas vão com a competência (busca cruzada
   assert.deepEqual(plano(rels), ['2026-10', '2026-11', '2026-12']);
   assert.ok(iId >= 0);
 });
+
+test('0.87.0 · Gestta: nomes legíveis (maiúsculas viram nome próprio, siglas ficam) e "Mais adiante" no Meu dia', () => {
+  const G = OCG;
+  assert.equal(G.nomeLegivel('DCTF WEB'), 'DCTF Web');
+  assert.equal(G.nomeLegivel('FOLHA DE PAGAMENTO'), 'Folha de Pagamento');
+  assert.equal(G.nomeLegivel('ESOCIAL MENSAL'), 'eSocial Mensal');
+  assert.equal(G.nomeLegivel('EFD-REINF'), 'EFD-Reinf');
+  assert.equal(G.nomeLegivel('CLIENTE FICTICIO LTDA'), 'Cliente Ficticio Ltda');
+  assert.equal(G.nomeLegivel('Conferência do eSocial'), 'Conferência do eSocial', 'texto já misto fica como está');
+  assert.equal(G.nomeLegivel(''), '');
+  const h = new Date(2026, 10, 9), dia = n => { const d = new Date(h); d.setDate(d.getDate() + n); return d.toISOString(); };
+  const t = (id, n, st) => ({ _id: id, name: 'T' + id, status: st || 'OPEN', due_date: dia(n), customer: { name: 'X' } });
+  const md = G.meuDia([t('a', 0), t('b', 1), t('c', 20), t('d', 30), t('e', 25, 'DONE')], h, 3);
+  assert.equal(md.fila.map(x => x._id).join(), 'a,b');
+  assert.equal(md.adiante.map(x => x._id).join(), 'c,d', 'as abertas depois dos 3 dias úteis, por meta; a concluída fica fora');
+});
+

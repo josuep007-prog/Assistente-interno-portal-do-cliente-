@@ -513,7 +513,7 @@
   }
   // Meu dia: o que resolver agora (multa e atraso), o que está parado, o que vence hoje e os próximos dias úteis.
   function meuDia(tarefas, hoje, diasProximos) {
-    const h = diaLocal(hoje || new Date()), n = diasProximos || 3, out = { agora: [], impedimento: [], hoje: [], proximos: [], feitasHoje: 0, totalHoje: 0 };
+    const h = diaLocal(hoje || new Date()), n = diasProximos || 3, out = { agora: [], impedimento: [], hoje: [], proximos: [], adiante: [], feitasHoje: 0, totalHoje: 0 };
     for (const t of tarefas || []) {
       const g = grupoTarefa(t, h); if (!g) continue;
       const d = diaLocal(t.due_date), ehHoje = d && +d === +h;
@@ -522,9 +522,12 @@
       else if (g === 'impedimento') out.impedimento.push(t);
       else if (g === 'hoje') out.hoje.push(t);
       else if (g !== 'feita' && d && diasUteis(h, d) <= n) out.proximos.push(t);
+      else if (g !== 'feita' && d && d > h) out.adiante.push(t);
     }
     const porMeta = (a, b) => String(a.due_date || '').localeCompare(String(b.due_date || '')) || String((a.customer || {}).name || '').localeCompare(String((b.customer || {}).name || ''), 'pt-BR');
     out.agora.sort((a, b) => (b.fine ? 1 : 0) - (a.fine ? 1 : 0) || porMeta(a, b)); out.impedimento.sort(porMeta); out.hoje.sort(porMeta); out.proximos.sort(porMeta);
+    // 0.87.0: as próximas depois dos 3 dias úteis (até 6), para o dia livre não ficar vazio
+    out.adiante = out.adiante.sort(porMeta).slice(0, 6);
     out.fila = out.agora.concat(out.hoje, out.impedimento, out.proximos);
     return out;
   }
@@ -640,6 +643,29 @@
   function mesesDeMeta(itens) {
     const n = new Map(); (itens || []).forEach(t => { const k = mesLocal(t && t.due_date); if (k) n.set(k, (n.get(k) || 0) + 1); });
     return [...n.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([k, q]) => ({ ano: Number(k.slice(0, 4)), mes: Number(k.slice(5, 7)), n: q }));
+  }
+  // 0.87.0 (Josué, 09/11/2026: melhorias de leitura): nomes que vêm todos em CAIXA ALTA do Gestta viram "Primeira maiúscula",
+  // com as siglas conhecidas mantidas (DCTF, ICMS, FGTS…) e os conectores em minúscula. Nome já escrito em caixa mista fica como está.
+  const SIGLAS = { dctf: 'DCTF', dctfweb: 'DCTFWeb', icms: 'ICMS', ipi: 'IPI', iss: 'ISS', issqn: 'ISSQN', fgts: 'FGTS', inss: 'INSS', irpj: 'IRPJ', irpf: 'IRPF', irrf: 'IRRF', csll: 'CSLL', pis: 'PIS',
+    cofins: 'COFINS', efd: 'EFD', ecd: 'ECD', ecf: 'ECF', defis: 'DEFIS', pgdas: 'PGDAS', 'pgdas-d': 'PGDAS-D', das: 'DAS', mei: 'MEI', cnd: 'CND', 'nf-e': 'NF-e', nfe: 'NF-e', 'nfs-e': 'NFS-e', nfse: 'NFS-e',
+    sped: 'SPED', gps: 'GPS', darf: 'DARF', rais: 'RAIS', dirf: 'DIRF', caged: 'CAGED', esocial: 'eSocial', reinf: 'Reinf', 'efd-reinf': 'EFD-Reinf', destda: 'DeSTDA', gia: 'GIA', dime: 'DIME', dmed: 'DMED',
+    dimob: 'DIMOB', dapi: 'DAPI', dasn: 'DASN', 'dasn-simei': 'DASN-SIMEI', simei: 'SIMEI', itr: 'ITR', ir: 'IR', cnpj: 'CNPJ', cpf: 'CPF', rh: 'RH', dp: 'DP', ti: 'TI', os: 'OS', me: 'ME', epp: 'EPP', ltda: 'Ltda',
+    eireli: 'Eireli', sa: 'S.A.', 's/a': 'S/A', 's.a.': 'S.A.', ss: 'SS', cat: 'CAT', aso: 'ASO', pcmso: 'PCMSO', pgr: 'PGR', ppp: 'PPP', grrf: 'GRRF', fap: 'FAP', rat: 'RAT', difal: 'DIFAL', st: 'ST', ctps: 'CTPS', tce: 'TCE' };
+  const MINUSC = new Set(['de', 'da', 'do', 'das', 'dos', 'e', 'em', 'para', 'com', 'por', 'na', 'no', 'nas', 'nos', 'a', 'o', 'as', 'os', 'ao', 'aos', 'à', 'às']);
+  function nomeLegivel(v) {
+    const s = String(v == null ? '' : v);
+    const letras = s.replace(/[^A-Za-zÀ-ÿ]/g, ''); if (letras.length < 3) return s;
+    const maius = letras.replace(/[^A-ZÀ-Þ]/g, '').length;
+    if (maius / letras.length < 0.85) return s;          // já está em caixa mista: respeita como veio
+    let i = 0;
+    return s.replace(/[A-Za-zÀ-ÿ0-9][A-Za-zÀ-ÿ0-9./-]*/g, w => {
+      const n = w.toLowerCase(), primeira = i++ === 0, limpo = n.replace(/[.,;:]+$/, ''), fim = n.slice(limpo.length);
+      if (SIGLAS[limpo]) return SIGLAS[limpo] + fim;
+      if (/\d/.test(w)) return w;                          // códigos, anos, "13º"
+      if (!primeira && MINUSC.has(limpo)) return n;
+      if (/-/.test(limpo)) return limpo.split('-').map(p => SIGLAS[p] || (p ? p[0].toUpperCase() + p.slice(1) : p)).join('-') + fim;
+      return n[0].toUpperCase() + n.slice(1);
+    });
   }
   let modoCompBusca = '';
   const mesAnterior = (ano, mes) => mes === 1 ? { ano: ano - 1, mes: 12 } : { ano, mes: mes - 1 };
@@ -794,5 +820,5 @@
     GRUPOS, TIPOS_TAREFA, SITUACOES_TAREFA, MAX_PAGINAS_TAREFAS, diasUteis, grupoTarefa, prazoTexto, contarGrupos, porEmpresa, porDia, filtrarTarefas, urlTarefa, ymd, diaLocal,
     COLUNAS_FECHAMENTO, linhasDoRelatorio, tarefasDoRelatorio, trilhaDaEmpresa, fechamento, ESTADOS, setorDe, respDe, ehEscritorioProprio,
     eventosDaTarefa, obrigacoes, nomeObrigacao, meuDia, ORDENS_EMPRESA, ordenarEmpresas,
-    HUB_GESTTA, hubExecutarGestta, catDoConjunto, paraReenviar, competenciaDe, daCompetencia, buscaPorCompetenciaValeu, competenciaPadrao, mesesDaCompetencia, mesesDeMeta, mesTexto, filtrosRelatorio, lembrarFiltroRel, partirLinhas, tabelaTarefasHub, empresasAtivasHub, COLS_TAREFAS_HUB, COLS_CLIENTES_HUB, COLS_CARTELA_HUB, COLS_ATIVAS_HUB };
+    HUB_GESTTA, hubExecutarGestta, catDoConjunto, paraReenviar, nomeLegivel, competenciaDe, daCompetencia, buscaPorCompetenciaValeu, competenciaPadrao, mesesDaCompetencia, mesesDeMeta, mesTexto, filtrosRelatorio, lembrarFiltroRel, partirLinhas, tabelaTarefasHub, empresasAtivasHub, COLS_TAREFAS_HUB, COLS_CLIENTES_HUB, COLS_CARTELA_HUB, COLS_ATIVAS_HUB };
 })(typeof self !== 'undefined' ? self : this);

@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.86.0)
+# Control Onvio · ControlTax (v0.87.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,22 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.87.0 (09/11/2026): Tarefas do Gestta mais fáceis de ler e de usar
+
+Só desenho e usabilidade, nada muda no que é lido do Gestta:
+- **Nomes legíveis**: tarefas e empresas que o Gestta guarda em maiúsculas aparecem como nome próprio, com as siglas mantidas (DCTF Web, Folha de Pagamento, eSocial Mensal, Cliente Alfa Ltda). Texto já misto fica como está.
+- **Topo**: multa e atraso viram um chip só, **Resolver agora** (com marca própria, não só a cor); o anel diz "N de M concluídas".
+- **Competência**: o rótulo virou um botão que abre a grade dos 12 meses (com o ano e o atalho "Em fechamento").
+- **De quem** (coordenação): botão com as iniciais e uma lista com busca, no lugar da lista suspensa.
+- **Meu dia**: botão de abrir no Gestta em cada linha (ao passar o mouse), "Mais adiante" com as próximas 6 metas e, sem nada pendente, "Tudo em dia".
+- **Empresas**: a ficha mostra só as situações que existem e só as colunas de tarefas com algo dentro; "competência fechada" no lugar de "mês fechado"; o detalhe tem botões para copiar o código (e o CNPJ, quando vem) e mostra o nome da próxima tarefa.
+- **Lista**: sem a coluna Empresa quando agrupa por empresa, sem Etapas quando nenhuma tem e sem Tipo quando todas são do mesmo tipo.
+- **Obrigações**: as que pedem atenção primeiro (com alerta, depois as mais pendentes).
+- **Fechamento**: os números do topo (abertas, multa, atraso, impedimento, com pendência) filtram as empresas.
+- **Carregando**: o contorno da tela aparece no lugar do texto; **densidade** Confortável ou Compacta em Filtros (fica no navegador); **voltar ao ponto**: depois de abrir uma tarefa no Gestta, a tela volta na mesma aba, rolagem e filtros e pisca a tarefa aberta (30 min, só na sessão do navegador).
+- **Atalhos**: a tecla **?** (ou o botão ? no topo) mostra todos.
+- **Botão no Gestta**: contador maior e a dica separa o que gera multa, o que está atrasado e o que vence hoje.
 
 ## Novidades da v0.86.0 (09/11/2026): as tarefas do Gestta vão ao Hub com a competência (Hub 325)
 
