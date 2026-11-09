@@ -4041,7 +4041,7 @@ test('Gestta → Hub (0.83.0): relatório recusado com 400 tenta o período do p
   const t = r2.find(x => x.id === 'gestta-tarefas');
   assert.equal(t.ok, false); assert.match(t.motivo, /recusou o relatório de tarefas \(erro 400\)/);
   assert.ok(pedidos.filter(x => x === 'relatorio').length === 3, 'três tentativas no mês anterior, depois desiste');
-  assert.equal(pedidos.filter(x => x === 'buscaTarefas').length, 2, 'uma busca por mês');
+  assert.ok(pedidos.filter(x => x === 'buscaTarefas').length >= 2, 'a busca das competências (0.86.0) e uma por mês para as empresas em atividade');
   assert.deepEqual(plano(env2['gestta-empresas-ativas'].partes.join('\n').split('\n')), ['00000000000100\tEMPRESA ALFA\t2\t2026-11', '\tMARIA EMPREGADORA\t2\t2026-11']);
   assert.ok(!env2['gestta-clientes'], 'sem a categoria clientes, a lista é lida mas não vai');
 });
@@ -4088,4 +4088,27 @@ test('Gestta (0.85.0): as tarefas pela competência; a busca tenta COMPETENCE_DA
   const b = OCG.PEDIDOS.buscaTarefas({ ano: 2026, mes: 10, dataTipo: 'COMPETENCE_DATE' });
   assert.equal(b.corpo.date_type, 'COMPETENCE_DATE'); assert.equal(OCG.PEDIDOS.buscaTarefas({ ano: 2026, mes: 10, dataTipo: 'X' }).corpo.date_type, 'DUE_DATE', 'só os dois tipos de data');
   assert.equal(OCG.leituraPermitida(b.metodo, b.url, b.corpo).ok, true, 'continua sendo a busca de um mês');
+});
+
+test('Gestta → Hub (0.86.0): as tarefas vão com a competência (busca cruzada pelo id) e as metas de outros meses entram só se forem das competências', async () => {
+  const H = new Date(2026, 10, 6, 10);
+  const mesDe = iso => iso.slice(0, 7), menos1 = k => { const [a, m] = k.split('-').map(Number); return m === 1 ? (a - 1) + '-12' : a + '-' + String(m - 1).padStart(2, '0'); };
+  const linha = id => OCG.COLUNAS_RELATORIO.map(c => ({ id, name: 'DCTFWEB', status: 'DONE', 'customer.name': 'EMPRESA ALFA', 'customer.cnpj': '00.000.000/0001-00' })[c] ?? '');
+  const rels = [];
+  const ler = async ps => ps.map(p => { const t = p.id.split(':')[0];
+    if (t === 'buscaTarefas') { const k = mesDe(p.corpo.start_date); const porComp = p.corpo.date_type === 'COMPETENCE_DATE';
+      // o Gestta simulado ignora COMPETENCE_DATE (devolve pela meta): a extensão percebe e separa pela competence_date
+      return { id: p.id, status: 200, dados: { itens: [{ _id: 'd' + k, name: 'DCTFWEB', competence_date: menos1(k) + '-01T03:00:00.000Z', due_date: k + '-15T03:00:00.000Z', customer: { _id: 'c1', name: 'EMPRESA ALFA' } }], total: 1, paginas: 1, porComp } }; }
+    if (t === 'relatorio') { const k = mesDe(p.corpo.dates.startDate); rels.push(k); return { id: p.id, status: 200, dados: { colunas: OCG.COLUNAS_RELATORIO.slice(), linhas: [linha('d' + k), linha('x' + k)], total: 2 } }; }
+    return { id: p.id, status: 200, dados: { itens: [], total: 0, paginas: 1 } }; });
+  const env = {};
+  const r = await OCG.hubExecutarGestta(ler, ['tarefas'], { hoje: H }, async (c, p) => { env[c.tipoDado] = { p, c }; return { ok: true }; });
+  assert.ok(r.find(x => x.id === 'gestta-tarefas').ok);
+  assert.equal(OCG.COLS_TAREFAS_HUB[OCG.COLS_TAREFAS_HUB.length - 1], 'Competência');
+  const linhas = env['gestta-tarefas'].p.partes.join('\n').split('\n').map(l => l.split('\t'));
+  const iId = OCG.COLS_TAREFAS_HUB.indexOf('Id') >= 0 ? OCG.COLS_TAREFAS_HUB.indexOf('Id') : 1;
+  const porId = Object.fromEntries(linhas.map(l => [l.find(v => /^[dx]2026/.test(v)), l[l.length - 1]]));
+  assert.deepEqual(plano(porId), { 'd2026-10': '2026-09', 'x2026-10': '', 'd2026-11': '2026-10', 'x2026-11': '', 'd2026-12': '2026-11' }, 'dezembro só com a tarefa da competência de novembro');
+  assert.deepEqual(plano(rels), ['2026-10', '2026-11', '2026-12']);
+  assert.ok(iId >= 0);
 });
