@@ -52,7 +52,14 @@ const CARTELA = { colunas: ['Id do cliente', 'Código do cliente', 'Cliente', 'C
   ['g6', '6', 'CONTROLTAX CONTABILIDADE', C.esc, 'Departamento Pessoal', 's1', 'Carla Mendes Souza', 'u1']] };
 const SETORES = { colunas: ['Id', 'Setor'], linhas: [['s1', 'Departamento Pessoal'], ['s2', 'Contábil'], ['s3', 'Fiscal'], ['s4', 'Legalização']] };
 const TAREFAS = { colunas: ['Mês', 'Id', 'Tarefa', 'Setor', 'Responsável', 'Situação', 'CNPJ', 'Cliente'], linhas: [
-  ['2026-11', 't1', 'DCTFWeb', 'Fiscal', '', 'Aberta', C.beta, 'BETA SERVICOS LTDA']] };
+  ['2026-11', 't1', 'DCTFWeb', 'Fiscal', '', 'Aberta', C.beta, 'BETA SERVICOS LTDA'],
+  // Hub 327: demanda = tarefa no setor. BETA tem analista no Pessoal (cartela) e nenhuma tarefa lá: o Pessoal dela é descartado
+  ['2026-11', 't2', 'Folha', 'Departamento Pessoal', 'Carla Mendes Souza', 'Aberta', C.alfa, 'ALFA COMERCIO LTDA'],
+  ['2026-11', 't3', 'Balancete', 'Contábil', 'Rui Teixeira', 'Aberta', C.alfa, 'ALFA COMERCIO LTDA'],
+  ['2026-11', 't4', 'DCTFWeb', 'Fiscal', 'Paula Nunes', 'Aberta', C.alfa, 'ALFA COMERCIO LTDA'],
+  ['2026-11', 't5', 'PGDAS-D', 'Fiscal', 'Paula Nunes', 'Aberta', C.gama, 'GAMA INDUSTRIA LTDA'],
+  ['2026-11', 't6', 'Alvará', 'Legalização', 'Rui Teixeira', 'Aberta', C.gama, 'GAMA INDUSTRIA LTDA'],
+  ['2026-11', 't7', 'Balancete', 'Contábil', 'Zélia Desconhecida', 'Aberta', C.delta, 'DELTA MEI']] };
 const EQUIPE = { colunas: ['Id', 'Nome', 'Papel', 'Ativo', 'Setores', 'Tem tarefas atreladas'], linhas: [
   ['u1', 'Carla Mendes Souza', 'Analista', 'sim', 'Departamento Pessoal', 'sim'], ['u2', 'Rui Teixeira', 'Analista', 'sim', 'Contábil | Legalização', 'sim'],
   ['u3', 'Paula Nunes', 'Analista', 'sim', 'Fiscal', 'sim'], ['u9', 'Zélia Desconhecida', 'Analista', 'sim', 'Contábil', 'sim'], ['u7', 'Marcos Lima', 'Analista', 'não', 'Contábil', 'não']] };
@@ -122,7 +129,8 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     // DP
     assert.ok(s.includes('dp 11 responsavel complementar — Carla Mendes Souza'), 'ALFA: complementar o analista do DP com o nome do Gestta (a referência): ' + s.join(' | '));
     assert.ok(s.includes('dp 11 tributacao corrigir LUCRO PRESUMIDO SIMPLES NACIONAL'));
-    assert.ok(s.includes('dp 22 responsavel corrigir Carla Souza Carla Mendes Souza'), 'BETA: o nome do Hub vira o do Gestta');
+    assert.ok(!d.some(x => x[0] === 'dp' && x[1] === '22'), 'Hub 327: BETA tem analista no Pessoal mas nenhuma tarefa lá: sem demanda, nada no DP');
+    assert.ok(!d.some(x => x[0] === 'portal' && x[1] === '22' && /pessoal/i.test(x[5] + x[2])), 'nem a frente do Pessoal no Portal');
     assert.ok(!d.some(x => x[1] === '77'), 'VELHA não tem tarefa no Gestta: nada dela');
     assert.ok(!d.some(x => x[0] === 'dp' && x[1] === '33'), 'GAMA não tem demanda no Pessoal');
     // Contábil
@@ -472,6 +480,13 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     await semear('contatos/ct-joana', { nome: 'Joana Cliente', email: '', empresaId: 'p-alfa', empresaNome: 'ALFA', setores: ['pessoal'], statusTreinamento: 'pendente' });
     await semear('contatos/ct-antigo', { nome: 'Contato Antigo', email: 'antigo@exemplo.com', empresaId: 'p-alfa', empresaNome: 'ALFA', setores: ['pessoal'], statusTreinamento: 'pendente' });
     await semear('empresas/p-delta', { nome: 'DELTA MEI', cnpj: fmt(C.delta), setoresDemanda: { contabil: true, pessoal: true } });
+    // Hub 327: demanda = tarefa no setor; a lista de tarefas do passo anterior ganha a folha da ALFA e o balancete da DELTA
+    const manT = await page.evaluate(() => window.__db.ler('ing_dados/gestta~gestta-tarefas'));
+    const tAnt = (await page.evaluate(() => window.__db.ler('ing_partes/gestta~gestta-tarefas~a0'))).tabela;
+    const ext = [['2026-10', 't20', 'Folha', 'Departamento Pessoal', 'Carla Mendes Souza', 'Aberta', '2026-11-20', '', 'não', 'não', C.alfa, 'ALFA COMERCIO LTDA', '2026-10'],
+      ['2026-10', 't21', 'Balancete', 'Contábil', 'Zélia Desconhecida', 'Aberta', '2026-11-20', '', 'não', 'não', C.delta, 'DELTA MEI', '2026-10']];
+    await semear('ing_partes/gestta~gestta-tarefas~a0', { ciclo: 'g10', parte: 0, tabela: tAnt + '\n' + tab(ext) });
+    await semear('ing_dados/gestta~gestta-tarefas', Object.assign({}, manT, { ciclo: 'g10', partes: 1, nLinhas: manT.nLinhas + 2, totalNaOrigem: manT.nLinhas + 2, recebidoEm: Date.now() }));
     const nAntes = await page.evaluate(() => window.__db.listar('contatos').length);
     // a coordenação liga (vem ligado de fábrica; os passos antigos desligaram) e o Hub aplica sozinho
     assert.ok((await api((g) => g.salvarCfg(c => { c.portal = true; }))).ok);
