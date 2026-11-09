@@ -34,7 +34,7 @@
       .launcher:focus-visible{outline:2px solid #6BAAC9;outline-offset:3px}
       .launcher .mark{width:34px;height:34px;border-radius:50%;background:#fff;display:grid;place-items:center}
       .launcher .mark img{width:17px;height:21px}
-      .launcher .badge{position:absolute;top:-5px;right:-5px;min-width:20px;height:20px;padding:0 5px;border-radius:10px;border:2px solid #fff;background:#C2000C;color:#fff;font:600 11px/16px 'Archivo',sans-serif;text-align:center}
+      .launcher .badge{position:absolute;top:-6px;right:-6px;min-width:22px;height:22px;padding:0 6px;border-radius:11px;border:2px solid #fff;background:#C2000C;color:#fff;font:700 12px/18px 'Archivo',sans-serif;text-align:center;box-sizing:border-box}
       .launcher .badge[hidden]{display:none}
       .launcher.hidden{display:none}
       .camada{position:fixed;inset:0;width:100vw;height:100vh;opacity:0;visibility:hidden;transition:opacity .16s ease, visibility 0s linear .16s;background:#E9F1F9}
@@ -104,7 +104,10 @@
       const n = Math.max(0, Math.min(9999, Number(d.atencao) || 0));
       badge.hidden = !n; badge.textContent = n > 99 ? '99+' : String(n);
       launcher.classList.toggle('late', n > 0);
-      launcher.title = n ? n + (n === 1 ? ' tarefa pede atenção (multa, atraso ou vence hoje)' : ' tarefas pedem atenção (multa, atraso ou vencem hoje)') + ' · Tarefas do Gestta' : 'Tarefas do Gestta · Control (Alt+Shift+O)';
+      // 0.87.0: a dica separa o que gera multa, o que está atrasado e o que vence hoje
+      const q = k => Math.max(0, Math.min(9999, Number(d[k]) || 0)), partes = [[q('multa'), ' gerando multa'], [q('atrasada'), ' atrasada', ' atrasadas'], [q('hoje'), ' vence hoje', ' vencem hoje']].filter(p => p[0]).map(p => p[0] + (p[0] > 1 && p[2] ? p[2] : p[1]));
+      launcher.title = n ? (partes.length ? partes.join(', ') : n + ' pedem atenção') + ' · Tarefas do Gestta (Alt+Shift+O)' : 'Tarefas do Gestta · Control (Alt+Shift+O)';
+      launcher.setAttribute('aria-label', n ? 'Abrir as Tarefas do Gestta: ' + launcher.title : 'Abrir as Tarefas do Gestta (Control)');
     }
   });
   try { chrome.runtime.onMessage.addListener(m => { if (m && m.controlGestta === 'alternar') definir(!aberto); }); } catch (e) {}

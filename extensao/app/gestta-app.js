@@ -25,20 +25,43 @@ const E = {
   q: '', grupos: new Set(), tipos: new Set(), dia: '', abertas: new Set(), visivel: true,
   aba: (a => ABAS.includes(a) ? a : 'dia')(lerPref('gt.aba', 'dia')), soPendEmp: false, trilha: lerPref('gt.trilha', 'seq'), setor: '',
   fech: null, fechTarefas: [], setorPorId: null, fechCarregando: false, fechErro: null, fq: '', fsetor: '', fanal: '', soPend: false,
-  empMap: new Map(), listaAtual: []
+  empMap: new Map(), listaAtual: [],
+  fest: '', ultimaAberta: '', dens: lerPref('gt.dens', 'conf')
 };
+// 0.87.0: nomes em CAIXA ALTA do Gestta ficam legíveis (siglas mantidas); a busca continua sem acento e sem diferenciar maiúsculas
+const legivel = t => t ? Object.assign({}, t, { name: G.nomeLegivel(t.name), customer: t.customer ? Object.assign({}, t.customer, { name: G.nomeLegivel(t.customer.name) }) : t.customer }) : t;
+const MES3 = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+// 0.87.0: voltar ao mesmo ponto quando a camada reabre (aba, competência, pessoa, filtros e rolagem), por 30 minutos, só nesta sessão do navegador
+const SALVO = 'gt.estado';
+function restaurar() {
+  let v = null; try { v = JSON.parse(sessionStorage.getItem(SALVO) || 'null'); } catch (e) {}
+  if (!v || Date.now() - (v.em || 0) > 30 * 60e3) return null;
+  if (ABAS.includes(v.aba)) E.aba = v.aba;
+  if (v.ano && v.mes) { E.ano = v.ano; E.mes = v.mes; }
+  if (v.quem) E.quem = v.quem;
+  E.q = v.q || ''; E.grupos = new Set(v.grupos || []); E.tipos = new Set(v.tipos || []); E.ultimaAberta = v.ultimaAberta || '';
+  return v;
+}
+let tSalvar = 0;
+function salvarEstado(agora) {
+  clearTimeout(tSalvar);
+  const gravar = () => { try { sessionStorage.setItem(SALVO, JSON.stringify({ em: Date.now(), aba: E.aba, ano: E.ano, mes: E.mes, quem: E.quem, q: E.q, grupos: [...E.grupos], tipos: [...E.tipos], ultimaAberta: E.ultimaAberta, rolagem: $('#vista') ? $('#vista').scrollTop : 0 })); } catch (e) {} };
+  if (agora) gravar(); else tSalvar = setTimeout(gravar, 250);
+}
+const salvo = restaurar();
 // as tarefas da busca ganham o setor quando o relatório do mês já está na memória (cruzando pelo id)
 const comSetor = l => E.setorPorId ? l.map(t => Object.assign({}, t, { setor: E.setorPorId.get(t._id) || '' })) : l;
 const lista = () => comSetor((E.dados && E.dados.itens) || []);
 const listaDia = () => comSetor((E.dados && E.dados.dia) || []);          // o que vence no mês corrente, de qualquer competência
 const nomeMes = () => 'Competência ' + MESES[E.mes - 1] + ' de ' + E.ano;
+const rotMes = () => '<small>Competência</small><b>' + MES3[E.mes - 1] + '/' + E.ano + '</b>';
 // o mês de meta para as grades (calendário e linha do tempo): o escolhido no calendário ou onde mais tarefas da competência vencem
 function mesDeMeta(tarefas) {
   const ms = G.mesesDeMeta(tarefas), esc = ms.find(m => G.mesTexto(m.ano, m.mes) === E.calMes);
   return esc || ms[0] || (E.mes === 12 ? { ano: E.ano + 1, mes: 1 } : { ano: E.ano, mes: E.mes + 1 });
 }
 const filtroAtivo = () => !!(E.q || E.grupos.size || E.tipos.size || E.dia || E.setor || E.soPendEmp);
-const paraPai = m => { try { window.parent.postMessage(Object.assign({}, m), 'https://app.gestta.com.br'); } catch (e) {} };
+const paraPai = m => { if (m && m.controlGestta === 'abrirTarefa') { E.ultimaAberta = m.id; salvarEstado(true); } try { window.parent.postMessage(Object.assign({}, m), 'https://app.gestta.com.br'); } catch (e) {} };
 
 /* ---------- leitura ---------- */
 let pedido = 0;
@@ -50,9 +73,10 @@ async function ler(silencioso) {
   if (meu !== pedido) return;                       // trocou de mês ou de pessoa no meio: vale a leitura mais nova
   E.carregando = false;
   if (r && r.ok) {
+    r.itens = (r.itens || []).map(legivel); if (r.dia) r.dia = r.dia.map(legivel);
     E.dados = r; E.erro = null; E.lidoEm = r.lidoEm || new Date().toISOString();
     if (r.perfil && r.perfil.total && !E.equipe) carregarEquipe();
-    if (E.quem === 'eu' && r.dia) { const c = G.contarGrupos(r.dia, new Date()).n; paraPai({ controlGestta: 'contagem', atencao: c.multa + c.atrasada + c.hoje }); }
+    if (E.quem === 'eu' && r.dia) { const c = G.contarGrupos(r.dia, new Date()).n; paraPai({ controlGestta: 'contagem', atencao: c.multa + c.atrasada + c.hoje, multa: c.multa, atrasada: c.atrasada, hoje: c.hoje }); }
   } else { E.erro = r || { erro: 'sem resposta' }; if (!silencioso) E.dados = null; }
   aoVivo(); desenhar();
 }
@@ -61,7 +85,7 @@ async function lerFech(forcar) {
   const r = await enviar({ cmd: 'gesttaFechamento', ano: E.ano, mes: E.mes, forcar: !!forcar });
   E.fechCarregando = false;
   if (r && r.ok) {
-    E.fech = r; E.fechTarefas = G.tarefasDoRelatorio(r.colunas, r.linhas); E.setorPorId = new Map(E.fechTarefas.map(t => [t._id, t.setor]));
+    E.fech = r; E.fechTarefas = G.tarefasDoRelatorio(r.colunas, r.linhas).map(legivel); E.setorPorId = new Map(E.fechTarefas.map(t => [t._id, t.setor]));
     if (forcar && r.daMemoria && r.podeEm > 0) toast('O relatório foi lido há menos de 1 hora: pode atualizar de novo em ' + r.podeEm + ' min.');
   } else E.fechErro = r || { erro: 'sem resposta' };
   aoVivo(); desenhar();
@@ -69,13 +93,26 @@ async function lerFech(forcar) {
 async function carregarEquipe() {
   const r = await enviar({ cmd: 'gesttaEquipe' });
   if (!r || !r.ok) return;
-  E.equipe = r.pessoas || [];
-  const s = $('#gt-quem');
-  s.innerHTML = '<option value="eu">Minhas</option><option value="sem">Sem responsável</option><optgroup label="Equipe">' +
-    E.equipe.filter(p => !E.dados || p.id !== E.dados.perfil.id).map(p => '<option value="' + esc(p.id) + '">' + esc(p.nome) + '</option>').join('') + '</optgroup>';
-  s.value = E.quem;
+  E.equipe = (r.pessoas || []).map(p => Object.assign({}, p, { nome: G.nomeLegivel(p.nome) }));
   $('#gt-quem-wrap').hidden = false;
+  quemRot();
 }
+// 0.87.0: "De quem" é um botão com o nome e uma lista com busca (iniciais de cada pessoa), no lugar da lista larga
+const iniciais = n => String(n || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+const quemNome = () => E.quem === 'eu' ? 'Minhas' : E.quem === 'sem' ? 'Sem responsável' : ((E.equipe || []).find(p => p.id === E.quem) || {}).nome || 'Outra pessoa';
+function quemRot() { const b = $('#gt-quem-btn'); if (b) b.innerHTML = '<span class="gt-quem-av" aria-hidden="true">' + esc(E.quem === 'eu' ? 'Eu' : E.quem === 'sem' ? '—' : iniciais(quemNome())) + '</span><span>' + esc(quemNome()) + '</span><svg class="ic ic-sm"><use href="#i-chev-d"/></svg>'; }
+function quemLista(f) {
+  const n = String(f || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const pessoas = [{ id: 'eu', nome: 'Minhas', av: 'Eu' }, { id: 'sem', nome: 'Sem responsável', av: '—' }].concat((E.equipe || []).filter(p => !E.dados || p.id !== E.dados.perfil.id).map(p => ({ id: p.id, nome: p.nome, av: iniciais(p.nome) })));
+  const l = pessoas.filter(p => !n || p.nome.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().includes(n));
+  $('#gt-quem-lista').innerHTML = l.length ? l.map(p => '<li><button type="button" role="option" data-quem="' + esc(p.id) + '" aria-selected="' + (E.quem === p.id) + '" class="' + (E.quem === p.id ? 'on' : '') + '"><span class="gt-quem-av" aria-hidden="true">' + esc(p.av) + '</span>' + esc(p.nome) + '</button></li>').join('') : '<li class="fraco gt-quem-nada">Ninguém com esse nome</li>';
+}
+function quemAbrir(abrir) {
+  const pop = $('#gt-quem-pop'), b = $('#gt-quem-btn'); if (!pop) return;
+  pop.hidden = !abrir; b.setAttribute('aria-expanded', String(abrir));
+  if (abrir) { $('#gt-quem-busca').value = ''; quemLista(''); setTimeout(() => $('#gt-quem-busca').focus(), 20); }
+}
+function trocarQuem(id) { if (!id || id === E.quem) { quemAbrir(false); return; } E.quem = id; E.abertas.clear(); quemAbrir(false); quemRot(); salvarEstado(); ler(); }
 
 /* ---------- cabeçalho, trilho e "ao vivo" ---------- */
 function aoVivo() {
@@ -98,8 +135,8 @@ function aoVivo() {
   tx.textContent = simples() ? hm : 'Lido às ' + hm; el.title = 'Lido às ' + hm;
 }
 function cabecalho(c) {
-  $('#gt-mes-rot').textContent = nomeMes();
-  const quem = E.quem === 'eu' ? 'Minhas' : E.quem === 'sem' ? 'Sem responsável' : ((E.equipe || []).find(p => p.id === E.quem) || {}).nome || 'Outra pessoa';
+  $('#gt-mes-rot').innerHTML = rotMes(); $('#gt-mes-rot').setAttribute('aria-label', nomeMes() + ' (escolher outra)');
+  const quem = quemNome();
   const sub = c ? quem + ' · ' + plural(c.total, 'tarefa', 'tarefas') + (E.aba === 'dia' ? ' com meta neste mês' : ' na competência') : quem;
   $('#subtitulo').textContent = sub;
   const t = $('#titulo'); if (simples()) t.title = sub; else t.removeAttribute('title');
@@ -123,12 +160,14 @@ function anel(pct, tam) {
 const SIT_CURTO = { multa: 'Multa', atrasada: 'Atrasadas', impedimento: 'Impedimento', hoje: 'Hoje', proximas: 'Próximos dias', depois: 'Mais adiante', feita: 'Concluídas' };
 // Topo das abas de trabalho (0.77.0): progresso do mês, as situações (que filtram), a busca e o menu Filtros, numa faixa só.
 function topoHtml(c) {
-  const sit = gr => (c.n[gr.k] || E.grupos.has(gr.k)) ? '<button type="button" class="gt-sit gt-c-' + COR[gr.k] + (E.grupos.has(gr.k) ? ' on' : '') + '" data-grupo="' + gr.k + '" aria-pressed="' + E.grupos.has(gr.k) + '" title="' + esc(gr.rot + ': ' + gr.dica) + '"><i class="gt-ponto"></i>' + esc(SIT_CURTO[gr.k] || gr.rot) + '<b>' + num(c.n[gr.k]) + '</b></button>' : '';
+  const agora = c.n.multa + c.n.atrasada, agoraOn = E.grupos.has('multa') && E.grupos.has('atrasada');
+  const sitAgora = (agora || agoraOn) ? '<button type="button" class="gt-sit gt-sit-agora gt-c-multa' + (agoraOn ? ' on' : '') + '" data-grupo="agora" aria-pressed="' + agoraOn + '" title="' + esc('Resolver agora: ' + c.n.multa + ' gerando multa e ' + c.n.atrasada + ' com a meta vencida') + '"><span class="gt-sit-ic" aria-hidden="true">!</span>Resolver agora<b>' + num(agora) + '</b></button>' : '';
+  const sit = gr => (gr.k === 'multa' || gr.k === 'atrasada') ? '' : (c.n[gr.k] || E.grupos.has(gr.k)) ? '<button type="button" class="gt-sit gt-c-' + COR[gr.k] + (E.grupos.has(gr.k) ? ' on' : '') + '" data-grupo="' + gr.k + '" aria-pressed="' + E.grupos.has(gr.k) + '" title="' + esc(gr.rot + ': ' + gr.dica) + '"><i class="gt-ponto"></i>' + esc(SIT_CURTO[gr.k] || gr.rot) + '<b>' + num(c.n[gr.k]) + '</b></button>' : '';
   const tipo = k => '<button type="button" class="gt-chip' + (E.tipos.has(k) ? ' on' : '') + '" data-tipo="' + k + '" aria-pressed="' + E.tipos.has(k) + '">' + esc(G.TIPOS_TAREFA[k]) + '</button>';
   const nf = E.tipos.size + (E.setor ? 1 : 0) + (E.soPendEmp && (E.aba === 'empresas' || E.aba === 'quadro') ? 1 : 0) + (E.feitas && (E.aba === 'lista' || E.aba === 'calendario') ? 1 : 0);
   return '<div class="gt-topo">' +
-    '<div class="gt-topo-prog" title="' + num(c.feitas) + ' de ' + num(c.total) + (E.aba === 'dia' ? ' tarefas com meta neste mês' : ' tarefas da competência') + ' concluídas">' + anel(c.pctFeitas, 42) + '<span><b>' + c.pctFeitas + '%</b><small>' + num(c.feitas) + ' de ' + num(c.total) + '</small></span></div>' +
-    '<div class="gt-sits" role="group" aria-label="Filtrar pela situação">' + G.GRUPOS.map(sit).join('') + '</div>' +
+    '<div class="gt-topo-prog" title="' + num(c.feitas) + ' de ' + num(c.total) + (E.aba === 'dia' ? ' tarefas com meta neste mês' : ' tarefas da competência') + ' concluídas">' + anel(c.pctFeitas, 52) + '<span><b>' + c.pctFeitas + '%</b><small>' + num(c.feitas) + ' de ' + num(c.total) + ' concluídas</small></span></div>' +
+    '<div class="gt-sits" role="group" aria-label="Filtrar pela situação">' + sitAgora + G.GRUPOS.map(sit).join('') + '</div>' +
     '<div class="gt-topo-dir">' +
       '<label class="gt-busca"><svg class="ic"><use href="#i-search"/></svg><input type="search" id="gt-q" placeholder="Buscar tarefa, empresa ou código" autocomplete="off" aria-label="Buscar tarefa, empresa ou código" value="' + esc(E.q) + '"><kbd>/</kbd></label>' +
       '<details class="menu gt-filtros" id="gt-filtros"><summary class="btn btn-sm' + (nf ? ' filtro-on' : '') + '"><svg class="ic ic-sm"><use href="#i-filter"/></svg>Filtros' + (nf ? ' <span class="menu-n">' + nf + '</span>' : '') + '</summary>' +
@@ -136,6 +175,7 @@ function topoHtml(c) {
           setorSelHtml() +
           (E.aba === 'empresas' || E.aba === 'quadro' ? '<label class="gt-feitas"><input type="checkbox" id="gt-pend-emp"' + (E.soPendEmp ? ' checked' : '') + '> Só empresas com pendência</label>' : '') +
           (E.aba === 'lista' || E.aba === 'calendario' ? '<label class="gt-feitas"><input type="checkbox" id="gt-feitas"' + (E.feitas ? ' checked' : '') + '> Mostrar concluídas</label>' : '') +
+          '<span class="gt-f-rot">Densidade</span><div class="seg gt-modos" role="group" aria-label="Densidade"><button type="button" class="' + (E.dens !== 'compacta' ? 'on' : '') + '" data-dens="conf" aria-pressed="' + (E.dens !== 'compacta') + '">Confortável</button><button type="button" class="' + (E.dens === 'compacta' ? 'on' : '') + '" data-dens="compacta" aria-pressed="' + (E.dens === 'compacta') + '">Compacta</button></div>' +
         '</div></details>' +
       (filtroAtivo() ? '<button type="button" class="btn btn-sm gt-limpar" id="gt-limpar"><svg class="ic ic-sm"><use href="#i-x"/></svg>Limpar</button>' : '') +
     '</div></div>';
@@ -183,6 +223,8 @@ function vistaCalendario(itens, hoje, todosDoMes) {
 }
 const vazio = () => '<div class="vazio"><b>' + (filtroAtivo() ? 'Nenhuma tarefa com esses filtros' : E.aba === 'dia' ? 'Nenhuma tarefa com meta neste mês' : 'Nenhuma tarefa na competência') + '</b>' + (filtroAtivo() ? 'Tire um filtro ou limpe todos.' : 'Tudo em dia por aqui.') + '</div>';
 
+// 0.87.0: carregando com o esqueleto da tela (os contornos no lugar), em vez de só um texto
+const esqueleto = rot => '<div class="gt-esq-tela" role="status" aria-label="' + esc(rot) + '"><div class="gt-esq-topo"><i class="r"></i><i></i><i></i><i></i><i></i></div><div class="gt-esq-corpo"><div class="gt-esq-col">' + '<i></i>'.repeat(7) + '</div><div class="gt-esq-col gt-esq-lado"><i></i><i></i><i></i></div></div><span class="sr">' + esc(rot) + '</span></div>';
 /* ---------- desenho ---------- */
 function abas() {
   $$('#abas [data-aba]').forEach(b => { const on = b.dataset.aba === E.aba; b.classList.toggle('on', on); b.setAttribute('aria-selected', String(on)); });
@@ -197,7 +239,7 @@ function desenhar() {
     if (E.erro) {
       v.innerHTML = '<div class="faixa"><svg class="ic"><use href="#i-alert"/></svg><div style="flex:1;min-width:240px"><b>' + (E.erro.semSessao ? 'Sem sessão no Gestta.' : E.erro.semAba ? 'Nenhuma aba do Gestta.' : 'Não consegui ler as tarefas.') + '</b> ' + esc(E.erro.erro || '') + '</div><button class="btn btn-sm" id="gt-tentar">Tentar de novo</button></div>';
       $('#gt-tentar').onclick = () => ler();
-    } else v.innerHTML = '<div class="gt-carregando"><span class="gt-giro" aria-hidden="true"></span><b>Lendo as tarefas no Gestta…</b><small>Só leitura, de dentro desta aba. Na primeira vez pode levar alguns segundos.</small></div>';
+    } else v.innerHTML = esqueleto('Lendo as tarefas no Gestta…');
     return;
   }
   const hoje = new Date(), todos = E.aba === 'dia' && E.dados.dia ? listaDia() : lista(), c = G.contarGrupos(todos, hoje), vm = mesDeMeta(lista());
@@ -208,7 +250,7 @@ function desenhar() {
   const aviso = (E.erro ? '<div class="faixa"><svg class="ic"><use href="#i-alert"/></svg><div><b>A última atualização falhou.</b> ' + esc(E.erro.erro || '') + ' Mostrando a leitura anterior.</div></div>' : '') +
     ((E.aba === 'dia' ? E.dados.diaCortado : E.dados.cortado) ? '<div class="faixa"><svg class="ic"><use href="#i-alert"/></svg><div><b>Lista cortada.</b> Passou de ' + num(G.MAX_PAGINAS_TAREFAS * G.LIMITE_BUSCA) + ' tarefas: a tela mostra as primeiras. Escolha uma pessoa para ver tudo dela.</div></div>' : '') +
     (E.aba === 'dia' && !E.dados.dia ? '<div class="faixa"><svg class="ic"><use href="#i-alert"/></svg><div><b>Não consegui ler as metas deste mês</b>' + (E.dados.diaErro ? ': ' + esc(E.dados.diaErro) : '') + '. O Meu dia mostra as tarefas da competência escolhida.</div></div>' : '') +
-    (E.quem !== 'eu' ? '<p class="gt-outra">Vendo ' + (E.quem === 'sem' ? 'as tarefas <b>sem responsável</b>' : 'as tarefas de <b>' + esc($('#gt-quem').selectedOptions[0] ? $('#gt-quem').selectedOptions[0].textContent : 'outra pessoa') + '</b>') + '. <button type="button" class="linkish" id="gt-voltar-eu">Voltar às minhas</button></p>' : '');
+    (E.quem !== 'eu' ? '<p class="gt-outra">Vendo ' + (E.quem === 'sem' ? 'as tarefas <b>sem responsável</b>' : 'as tarefas de <b>' + esc(quemNome()) + '</b>') + '. <button type="button" class="linkish" id="gt-voltar-eu">Voltar às minhas</button></p>' : '');
   const foco = document.activeElement && document.activeElement.id === 'gt-q' ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null;
   const menuAberto = $('#gt-filtros') && $('#gt-filtros').open;
   v.innerHTML = aviso + topoHtml(c) + '<div class="gt-conteudo gt-aba-' + E.aba + '" id="gt-conteudo"></div>';
@@ -223,8 +265,18 @@ function desenhar() {
   else alvo.innerHTML = vistaCalendario(filtrados, hoje, base);
   if (menuAberto) $('#gt-filtros').open = true;
   v.scrollTop = topo;
+  if (rolarSalvo != null) { v.scrollTop = rolarSalvo; rolarSalvo = null; }
+  salvarEstado();
   if (foco) { const q = $('#gt-q'); q.focus(); try { q.setSelectionRange(foco[0], foco[1]); } catch (e) {} }
   ligar(v);
+}
+let rolarSalvo = salvo && salvo.rolagem ? salvo.rolagem : null;
+// 0.87.0: ao reabrir a camada, a tarefa aberta no Gestta pisca na tela
+function destacarUltima() {
+  if (!E.ultimaAberta) return;
+  const el = document.querySelector('[data-id="' + CSS.escape(E.ultimaAberta) + '"], [data-et="' + CSS.escape(E.ultimaAberta) + '"]');
+  if (!el) return;
+  el.scrollIntoView({ block: 'nearest' }); el.classList.remove('gt-flash'); void el.offsetWidth; el.classList.add('gt-flash');
 }
 // Clique numa etapa (trilha, quadro, cartão) abre o detalhe com as tarefas daquela empresa, na ordem da meta
 let teclaVista = null;
@@ -245,25 +297,27 @@ function barras(lista, tipo, sel) {
 }
 function desenharFech() {
   const v = $('#vista'), topo = v.scrollTop;
-  $('#gt-mes-rot').textContent = nomeMes();
+  $('#gt-mes-rot').innerHTML = rotMes(); $('#gt-mes-rot').setAttribute('aria-label', nomeMes() + ' (escolher outra)');
   if (!E.fech) {
     $('#subtitulo').textContent = 'Fechamento da competência';
     if (E.fechErro) { v.innerHTML = '<div class="faixa"><svg class="ic"><use href="#i-alert"/></svg><div style="flex:1;min-width:240px"><b>Não consegui ler o fechamento da competência.</b> ' + esc(E.fechErro.erro || '') + '</div><button class="btn btn-sm" id="gt-fech-tentar">Tentar de novo</button></div>'; $('#gt-fech-tentar').onclick = () => lerFech(true); }
-    else { v.innerHTML = '<div class="gt-carregando"><span class="gt-giro" aria-hidden="true"></span><b>Lendo o fechamento da competência no Gestta…</b><small>São todas as tarefas da competência de todas as empresas que o seu acesso alcança, com o relatório de cada mês em que elas vencem: pode levar alguns minutos. Depois fica na memória do Chrome e atualiza no máximo 1 vez por hora.</small></div>'; if (!E.fechCarregando) lerFech(false); }
+    else { v.innerHTML = esqueleto('Lendo o fechamento da competência no Gestta…') + '<p class="fraco gt-esq-nota">São todas as tarefas da competência de todas as empresas que o seu acesso alcança, com o relatório de cada mês em que elas vencem: pode levar alguns minutos. Depois fica na memória do Chrome e atualiza no máximo 1 vez por hora.</p>'; if (!E.fechCarregando) lerFech(false); }
     return;
   }
   const hoje = new Date(), todos = E.fechTarefas, geral = G.fechamento(todos, hoje);
-  const filtradas = G.filtrarTarefas(todos, { q: E.fq, setor: E.fsetor, analista: E.fanal, feitas: true }, hoje), L = G.fechamento(filtradas, hoje);
+  const FEST = { abertas: g => g !== 'feita', multa: g => g === 'multa', atrasada: g => g === 'atrasada', impedimento: g => g === 'impedimento' };
+  const filtradas = G.filtrarTarefas(todos, { q: E.fq, setor: E.fsetor, analista: E.fanal, feitas: true }, hoje).filter(t => !FEST[E.fest] || FEST[E.fest](G.grupoTarefa(t, hoje))), L = G.fechamento(filtradas, hoje);
   const emps = E.soPend ? L.empresas.filter(e => !e.fechada) : L.empresas;
   E.empMap = new Map(emps.map(e => [e.id, e.tarefas]));
-  const t = L.total, filtro = !!(E.fq || E.fsetor || E.fanal || E.soPend);
+  const t = L.total, filtro = !!(E.fq || E.fsetor || E.fanal || E.soPend || E.fest);
   $('#subtitulo').textContent = 'Fechamento da competência · ' + plural(L.empresas.length, 'empresa', 'empresas') + ' · ' + t.pct + '% fechado';
-  const kpi = (n, rot, cls) => '<div class="gt-kpi gt-kpi-est ' + (cls || '') + '"><b>' + num(n) + '</b><span>' + rot + '</span></div>';
+  // 0.87.0: os cartões filtram a lista (clique de novo para tirar)
+  const kpi = (n, rot, cls, f) => '<button type="button" class="gt-kpi gt-kpi-est ' + (cls || '') + ((f === 'pend' ? E.soPend : E.fest === f) ? ' on' : '') + '" data-fest="' + f + '" aria-pressed="' + (f === 'pend' ? E.soPend : E.fest === f) + '" title="Mostrar só estas"><b>' + num(n) + '</b><span>' + rot + '</span></button>';
   const avisos = (E.fech.parcial ? '<div class="faixa gt-faixa-info"><svg class="ic"><use href="#i-lock"/></svg><div><b>Você vê só o que o Gestta libera para o seu acesso</b> (' + esc(E.fech.perfil.papelNome) + (E.fech.perfil.setores.length ? ': ' + esc(E.fech.perfil.setores.map(x => x.nome).join(', ')) : '') + '). Não é o fechamento do escritório todo.</div></div>' : '') +
     (geral.desconhecidas ? '<div class="faixa"><svg class="ic"><use href="#i-alert"/></svg><div><b>' + plural(geral.desconhecidas, 'tarefa veio', 'tarefas vieram') + ' com situação desconhecida</b> e não entram na conta. O Gestta pode ter mudado o relatório: avise o Josué.</div></div>' : '');
   v.innerHTML = avisos +
     '<section class="gt-hero cfg-card"><div class="gt-prog">' + anel(t.pct, simples() ? 76 : 96) + '<div class="gt-prog-tx"><b>' + t.pct + '%</b><span>' + num(t.feitas) + ' de ' + num(t.total) + ' tarefas concluídas</span><small>' + num(L.fechadas) + ' de ' + num(L.empresas.length) + ' empresas com a competência fechada</small></div></div>' +
-      '<div class="gt-kpis">' + kpi(t.abertas, 'abertas', 'gt-c-prox') + kpi(t.multa, 'gerando multa', 'gt-c-multa') + kpi(t.atrasada, 'atrasadas', 'gt-c-atraso') + kpi(t.impedimento, 'com impedimento', 'gt-c-imped') + kpi(L.empresas.length - L.fechadas, 'empresas com pendência', 'gt-c-depois') + '</div></section>' +
+      '<div class="gt-kpis">' + kpi(geral.total.abertas, 'abertas', 'gt-c-prox', 'abertas') + kpi(geral.total.multa, 'gerando multa', 'gt-c-multa', 'multa') + kpi(geral.total.atrasada, 'atrasadas', 'gt-c-atraso', 'atrasada') + kpi(geral.total.impedimento, 'com impedimento', 'gt-c-imped', 'impedimento') + kpi(geral.empresas.length - geral.fechadas, 'empresas com pendência', 'gt-c-depois', 'pend') + '</div></section>' +
     '<div class="gt-paineis"><section class="cfg-card gt-pn"><h2 class="gt-pn-tit">Por setor <small class="fraco">clique para filtrar</small></h2>' + barras(geral.setores, 'setor', E.fsetor) + '</section>' +
       '<section class="cfg-card gt-pn"><h2 class="gt-pn-tit">Por analista <small class="fraco">da menor para a maior</small></h2>' + barras(geral.analistas, 'anal', E.fanal) + '</section></div>' +
     '<div class="gt-barra">' +
@@ -285,11 +339,14 @@ function desenharFech() {
   $('#gt-fsetor', v).onchange = e => { E.fsetor = e.target.value; desenhar(); };
   $('#gt-fanal', v).onchange = e => { E.fanal = e.target.value; desenhar(); };
   $('#gt-pend', v).onchange = e => { E.soPend = e.target.checked; desenhar(); };
-  const fl = $('#gt-flimpar', v); if (fl) fl.onclick = () => { E.fq = ''; E.fsetor = ''; E.fanal = ''; E.soPend = false; desenhar(); };
+  const fl = $('#gt-flimpar', v); if (fl) fl.onclick = () => { E.fq = ''; E.fsetor = ''; E.fanal = ''; E.soPend = false; E.fest = ''; desenhar(); };
+  $$('[data-fest]', v).forEach(b => b.onclick = () => { const f = b.dataset.fest; if (f === 'pend') E.soPend = !E.soPend; else E.fest = E.fest === f ? '' : f; desenhar(); });
   if (foco === 'gt-fq') { const n = $('#gt-fq'); if (n) n.focus(); }
 }
 function ligar(v) {
-  $$('[data-grupo]', v).forEach(b => b.onclick = () => { const k = b.dataset.grupo; if (E.grupos.has(k)) E.grupos.delete(k); else E.grupos.add(k); if (k === 'feita' && E.grupos.has('feita')) E.feitas = true; desenhar(); });
+  $$('[data-dens]', v).forEach(b => b.onclick = () => { E.dens = b.dataset.dens; gravarPref('gt.dens', E.dens); document.documentElement.dataset.densidade = E.dens; desenhar(); });
+  $$('[data-grupo="agora"]', v).forEach(b => b.onclick = () => { const on = E.grupos.has('multa') && E.grupos.has('atrasada'); ['multa', 'atrasada'].forEach(k => on ? E.grupos.delete(k) : E.grupos.add(k)); desenhar(); });
+  $$('[data-grupo]:not([data-grupo="agora"])', v).forEach(b => b.onclick = () => { const k = b.dataset.grupo; if (E.grupos.has(k)) E.grupos.delete(k); else E.grupos.add(k); if (k === 'feita' && E.grupos.has('feita')) E.feitas = true; desenhar(); });
   $$('[data-tipo]', v).forEach(b => b.onclick = () => { const k = b.dataset.tipo; if (E.tipos.has(k)) E.tipos.delete(k); else E.tipos.add(k); desenhar(); });
   $$('[data-dia]', v).forEach(b => b.onclick = () => { E.dia = E.dia === b.dataset.dia ? '' : b.dataset.dia; desenhar(); });
   $$('[data-calmes]', v).forEach(b => b.onclick = () => { E.calMes = b.dataset.calmes; E.dia = ''; desenhar(); });
@@ -302,7 +359,7 @@ function ligar(v) {
   const fe = $('#gt-feitas', v); if (fe) fe.onchange = () => { E.feitas = fe.checked; if (!fe.checked) E.grupos.delete('feita'); gravarPref('gt.feitas', E.feitas ? '1' : '0'); desenhar(); };
   const lp = $('#gt-limpar', v); if (lp) lp.onclick = () => { E.q = ''; E.grupos.clear(); E.tipos.clear(); E.dia = ''; E.setor = ''; E.soPendEmp = false; desenhar(); };
   const ds = $('#gt-dia-sair', v); if (ds) ds.onclick = () => { E.dia = ''; desenhar(); };
-  const ve = $('#gt-voltar-eu', v); if (ve) ve.onclick = () => { E.quem = 'eu'; $('#gt-quem').value = 'eu'; ler(); };
+  const ve = $('#gt-voltar-eu', v); if (ve) ve.onclick = () => trocarQuem('eu');
 }
 
 /* ---------- tema e início ---------- */
@@ -310,8 +367,9 @@ const temaAtual = () => document.documentElement.getAttribute('data-theme') || '
 const iconeTema = () => { const d = temaAtual() === 'dark'; $('#btn-tema use').setAttribute('href', d ? '#i-sun' : '#i-moon'); $('#tema-tx').textContent = d ? 'Tema claro' : 'Tema escuro'; };
 $('#btn-tema').onclick = () => { const n = temaAtual() === 'dark' ? 'light' : 'dark'; document.documentElement.setAttribute('data-theme', n); try { localStorage.setItem('controlonvio-theme', n); } catch (e) {} iconeTema(); };
 $('#btn-ver-gestta').onclick = () => paraPai({ controlGestta: 'fechar' });
+$('#vista').addEventListener('scroll', () => salvarEstado(), { passive: true });
 $('#btn-atualizar').onclick = () => E.aba === 'fech' ? lerFech(true) : ler();
-function trocarAba(a) { if (!ABAS.includes(a) || a === E.aba) return; E.aba = a; gravarPref('gt.aba', E.aba); fecharPainel(); aoVivo(); desenhar(); $('#vista').scrollTop = 0; }
+function trocarAba(a) { if (!ABAS.includes(a) || a === E.aba) return; E.aba = a; gravarPref('gt.aba', E.aba); salvarEstado(); fecharPainel(); aoVivo(); desenhar(); $('#vista').scrollTop = 0; }
 $$('#abas [data-aba]').forEach(b => b.onclick = () => trocarAba(b.dataset.aba));
 // uma etapa (trilha ou linha do tempo) ou uma tarefa da lista abre o detalhe ao lado
 function abrirDe(alvo) {
@@ -325,12 +383,43 @@ $('#vista').addEventListener('click', e => { abrirDe(e.target); });
 // o menu Filtros fecha ao clicar fora dele
 document.addEventListener('click', e => { const m = $('#gt-filtros'); if (m && m.open && !m.contains(e.target)) m.open = false; });
 $('#vista').addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.closest('.gt-t-main')) { e.preventDefault(); abrirDe(e.target); } });
-const trocouMes = () => { E.dia = ''; E.calMes = ''; E.fech = null; E.fechTarefas = []; E.setorPorId = null; E.setor = ''; E.fechErro = null; fecharPainel(); ler(); if (E.aba === 'fech') desenhar(); };
+const trocouMes = () => { salvarEstado(); E.dia = ''; E.calMes = ''; E.fech = null; E.fechTarefas = []; E.setorPorId = null; E.setor = ''; E.fechErro = null; fecharPainel(); ler(); if (E.aba === 'fech') desenhar(); };
 $('#gt-mes-ant').onclick = () => { E.mes--; if (E.mes < 1) { E.mes = 12; E.ano--; } trocouMes(); };
 $('#gt-mes-prox').onclick = () => { E.mes++; if (E.mes > 12) { E.mes = 1; E.ano++; } trocouMes(); };
-$('#gt-quem').onchange = e => { E.quem = e.target.value; E.abertas.clear(); ler(); };
+// 0.87.0: clicar na competência abre a grade dos 12 meses (com o ano) e o atalho "Em fechamento"
+let anoPop = E.ano;
+function mesPop() {
+  const atual = G.competenciaPadrao(new Date());
+  $('#gt-mes-pop').innerHTML = '<div class="gt-mp-cab"><button type="button" class="icon-btn" data-mp-ano="-1" aria-label="Ano anterior"><svg class="ic"><use href="#i-chev-l"/></svg></button><b>' + anoPop + '</b><button type="button" class="icon-btn" data-mp-ano="1" aria-label="Próximo ano"><svg class="ic"><use href="#i-chev-r"/></svg></button></div>' +
+    '<div class="gt-mp-grade">' + MES3.map((m, i) => { const on = anoPop === E.ano && i + 1 === E.mes, fech = anoPop === atual.ano && i + 1 === atual.mes; return '<button type="button" class="' + (on ? 'on' : '') + (fech ? ' fech' : '') + '" data-mp-mes="' + (i + 1) + '" aria-pressed="' + on + '" aria-label="' + MESES[i] + ' de ' + anoPop + (fech ? ' (em fechamento)' : '') + '">' + m + '</button>'; }).join('') + '</div>' +
+    '<button type="button" class="btn btn-sm gt-mp-atual" data-mp-atual="1">Em fechamento: ' + MES3[atual.mes - 1] + '/' + atual.ano + '</button>';
+}
+function mesAbrir(abrir) { const pop = $('#gt-mes-pop'); pop.hidden = !abrir; $('#gt-mes-rot').setAttribute('aria-expanded', String(abrir)); if (abrir) { anoPop = E.ano; mesPop(); setTimeout(() => { const b = pop.querySelector('[data-mp-mes].on') || pop.querySelector('[data-mp-mes]'); if (b) b.focus(); }, 20); } }
+$('#gt-mes-rot').onclick = () => mesAbrir($('#gt-mes-pop').hidden);
+$('#gt-mes-pop').addEventListener('click', e => {
+  const a = e.target.closest('[data-mp-ano]'); if (a) { anoPop += Number(a.dataset.mpAno); mesPop(); return; }
+  const m = e.target.closest('[data-mp-mes]'); if (m) { E.ano = anoPop; E.mes = Number(m.dataset.mpMes); mesAbrir(false); trocouMes(); return; }
+  if (e.target.closest('[data-mp-atual]')) { const c = G.competenciaPadrao(new Date()); E.ano = c.ano; E.mes = c.mes; mesAbrir(false); trocouMes(); }
+});
+$('#gt-quem-btn').onclick = () => quemAbrir($('#gt-quem-pop').hidden);
+$('#gt-quem-busca').oninput = e => quemLista(e.target.value);
+$('#gt-quem-busca').onkeydown = e => { if (e.key === 'Enter') { const b = $('#gt-quem-lista [data-quem]'); if (b) trocarQuem(b.dataset.quem); } };
+$('#gt-quem-lista').addEventListener('click', e => { const b = e.target.closest('[data-quem]'); if (b) trocarQuem(b.dataset.quem); });
+document.addEventListener('click', e => {
+  if (!$('#gt-mes-pop').hidden && !e.target.closest('#gt-mes-pop, #gt-mes-rot')) mesAbrir(false);
+  if (!$('#gt-quem-pop').hidden && !e.target.closest('#gt-quem-pop, #gt-quem-btn')) quemAbrir(false);
+});
+// 0.87.0: a ajuda dos atalhos (tecla ?)
+function atalhos(abrir) { const d = $('#gt-atalhos'); d.hidden = !abrir; if (abrir) setTimeout(() => $('#gt-atalhos-fechar').focus(), 20); }
+$('#btn-atalhos').onclick = () => atalhos(true);
+$('#gt-atalhos-fechar').onclick = () => atalhos(false);
+$('#gt-atalhos').addEventListener('click', e => { if (e.target.id === 'gt-atalhos') atalhos(false); });
 addEventListener('keydown', e => {
   const digitando = e.target.matches('input, select, textarea');
+  if (!$('#gt-atalhos').hidden) { if (e.key === 'Escape' || e.key === '?') { e.preventDefault(); atalhos(false); } return; }
+  if (e.key === 'Escape' && !$('#gt-mes-pop').hidden) { e.preventDefault(); mesAbrir(false); $('#gt-mes-rot').focus(); return; }
+  if (e.key === 'Escape' && !$('#gt-quem-pop').hidden) { e.preventDefault(); quemAbrir(false); $('#gt-quem-btn').focus(); return; }
+  if (e.key === '?' && !digitando) { e.preventDefault(); atalhos(true); return; }
   if (painelAberto()) { if (e.key === 'Escape') { e.preventDefault(); fecharPainel(); return; } if (!digitando && e.key === 'ArrowLeft') { passarPainel(-1); return; } if (!digitando && e.key === 'ArrowRight') { passarPainel(1); return; } }
   if (e.key === '/' && !digitando) { const q = $('#gt-q') || $('#gt-fq'); if (q) { e.preventDefault(); q.focus(); } return; }
   if (!digitando && !e.ctrlKey && !e.metaKey && !e.altKey && teclaVista && E.aba !== 'fech' && teclaVista(e)) { e.preventDefault(); return; }
@@ -342,10 +431,12 @@ addEventListener('keydown', e => {
 addEventListener('message', e => {
   if (e.source !== window.parent || e.origin !== 'https://app.gestta.com.br') return;
   const d = e.data || {};
-  if (d.controlGestta === 'visivel') { E.visivel = true; if (!E.carregando && (!E.lidoEm || Date.now() - new Date(E.lidoEm) > 60e3)) ler(true); }
+  if (d.controlGestta === 'visivel') { E.visivel = true; setTimeout(destacarUltima, 120); if (!E.carregando && (!E.lidoEm || Date.now() - new Date(E.lidoEm) > 60e3)) ler(true); }
   else if (d.controlGestta === 'oculto') E.visivel = false;
 });
 setInterval(() => { if (E.visivel && !E.carregando && document.visibilityState === 'visible') ler(true); }, ATUALIZA_MIN * 60e3);
 setInterval(aoVivo, 30e3);
+document.documentElement.dataset.densidade = E.dens;
+quemRot();
 iconeTema();
-ler();
+ler().then(() => setTimeout(destacarUltima, 150));

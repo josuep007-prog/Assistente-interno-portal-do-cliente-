@@ -58,7 +58,7 @@ export function linhaEmpresa(e, o) {
   const tr = G.trilhaDaEmpresa(e.tarefas, o.hoje), k = e.id;
   const atras = tr.etapas.filter(x => x.estado === 'multa' || x.estado === 'atrasada').length, multa = tr.etapas.filter(x => x.estado === 'multa').length, imp = tr.etapas.filter(x => x.estado === 'impedimento').length;
   const fechada = tr.total > 0 && tr.feitas === tr.total;
-  const tags = fechada ? '<span class="pill pill-ok">✓ mês fechado</span>' : [multa ? '<span class="pill pill-late">' + num(multa) + ' com multa</span>' : '', atras - multa ? '<span class="pill pill-late">' + num(atras - multa) + (atras - multa === 1 ? ' atrasada' : ' atrasadas') + '</span>' : '', imp ? '<span class="pill pill-today">' + num(imp) + ' impedimento</span>' : ''].join('');
+  const tags = fechada ? '<span class="pill pill-ok">✓ competência fechada</span>' : [multa ? '<span class="pill pill-late">' + num(multa) + ' com multa</span>' : '', atras - multa ? '<span class="pill pill-late">' + num(atras - multa) + (atras - multa === 1 ? ' atrasada' : ' atrasadas') + '</span>' : '', imp ? '<span class="pill pill-today">' + num(imp) + ' impedimento</span>' : ''].join('');
   const setores = (e.setores || []).length > 1 || (e.setores || []).length === 1 && o.comSetores ? '<span class="gt-tr-setores">' + e.setores.map(s => esc(s.nome) + ' ' + s.feitas + '/' + s.total).join(' · ') + '</span>' : '';
   return '<article class="gt-tr' + (fechada ? ' fechada' : '') + (atras ? ' tem-atraso' : '') + '" data-emp-row="' + esc(k) + '">' +
     '<div class="gt-tr-nome"><b title="' + esc(e.nome) + '">' + esc(e.nome) + '</b><small>' + (e.codigo ? 'código ' + esc(e.codigo) : '') + (e.cnpj && !e.codigo ? esc(e.cnpj) : '') + '</small></div>' +
@@ -152,6 +152,10 @@ function desenharPainel() {
   const el = P.alvo || $('#gt-painel'); if (!el) return;
   const base = P.lista[P.i], d = P.dados || {}, hoje = new Date();
   const t = Object.assign({}, base, d, { customer: Object.assign({}, base.customer, d.customer) });
+  // 0.87.0: o detalhe lido na hora vem em maiúsculas como o Gestta guarda; mostra no mesmo jeito legível da lista
+  t.name = G.nomeLegivel(t.name || ''); t.customer.name = G.nomeLegivel(t.customer.name || '');
+  const prox = P.lista[P.i + 1], cnpj = t.customer.cnpj || t.customer.document || '';
+  const copiar = (v, rot) => v ? '<button type="button" class="gp-copiar" data-copiar="' + esc(v) + '" title="Copiar ' + esc(rot) + '"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg>' + esc(rot === 'o código' ? v : 'CNPJ') + '</button>' : '';
   const g = G.grupoTarefa(t, hoje), est = { feita: 'feita', multa: 'multa', atrasada: 'atrasada', impedimento: 'impedimento', hoje: 'hoje' }[g] || 'afazer';
   const pill = { feita: 'pill-ok', multa: 'pill-late', atrasada: 'pill-late', impedimento: 'pill-today', hoje: 'pill-today' }[est] || '';
   const campo = (k, v) => v ? '<div><dt>' + esc(k) + '</dt><dd>' + esc(v) + '</dd></div>' : '';
@@ -168,10 +172,11 @@ function desenharPainel() {
       (pedidos.length ? '<section class="gp-sec"><h3>Pedidos ao cliente' + (d.document_request && d.document_request.active ? ' <span class="pill pill-today">cobrança ativa</span>' : '') + '</h3><ul class="gp-docs">' + pedidos.map(x => '<li>' + esc(x.name || 'Documento') + '</li>').join('') + '</ul></section>' : '');
   const abaBtn = (k, rot) => '<button type="button" role="tab" class="gp-aba' + (P.aba === k ? ' on' : '') + '" data-gp-aba="' + k + '" aria-selected="' + (P.aba === k) + '">' + rot + '</button>';
   el.classList.toggle('gp-embutido', !!P.alvo);
-  el.innerHTML = '<header class="gp-cab"><div class="gp-nav"><button type="button" class="icon-btn" id="gp-ant" aria-label="Tarefa anterior"' + (P.i ? '' : ' disabled') + '><svg class="ic"><use href="#i-chev-l"/></svg></button><span class="fraco">' + (P.i + 1) + ' de ' + P.lista.length + '</span><button type="button" class="icon-btn" id="gp-prox" aria-label="Próxima tarefa"' + (P.i < P.lista.length - 1 ? '' : ' disabled') + '><svg class="ic"><use href="#i-chev-r"/></svg></button></div>' +
+  el.innerHTML = '<header class="gp-cab"><div class="gp-nav"><button type="button" class="icon-btn" id="gp-ant" aria-label="Tarefa anterior"' + (P.i ? '' : ' disabled') + '><svg class="ic"><use href="#i-chev-l"/></svg></button><span class="fraco">' + (P.i + 1) + ' de ' + P.lista.length + '</span><button type="button" class="icon-btn" id="gp-prox" aria-label="Próxima tarefa"' + (P.i < P.lista.length - 1 ? '' : ' disabled') + '><svg class="ic"><use href="#i-chev-r"/></svg></button>' +
+      (prox ? '<span class="gp-prox-nome" title="' + esc('Próxima: ' + G.nomeLegivel(prox.name || 'Tarefa')) + '">Próxima: ' + esc(G.nomeLegivel(prox.name || 'Tarefa')) + '</span>' : '') + '</div>' +
       (P.alvo ? '' : '<button type="button" class="icon-btn" id="gp-fechar" aria-label="Fechar (Esc)"><svg class="ic"><use href="#i-x"/></svg></button>') + '</header>' +
     '<div class="gp-corpo"><div class="gp-topo"><span class="pill ' + pill + '">' + esc(G.ESTADOS[est]) + '</span>' + (nPassos ? '<span class="gp-etapas-mini" title="Etapas da tarefa">' + fPassos + '/' + nPassos + ' etapas</span>' : '') + '</div>' +
-      '<h2 class="gp-tit">' + esc(t.name || 'Tarefa') + '</h2><p class="gp-cli">' + (t.customer.code ? '<span class="gt-cod">' + esc(t.customer.code) + '</span>' : '') + esc(t.customer.name || '') + '</p>' +
+      '<h2 class="gp-tit">' + esc(t.name || 'Tarefa') + '</h2><p class="gp-cli">' + esc(t.customer.name || '') + (t.customer.code || cnpj ? ' <span class="gp-copias">' + copiar(t.customer.code, 'o código') + copiar(cnpj, 'o CNPJ') + '</span>' : '') + '</p>' +
       '<dl class="gp-dl">' + campo('Meta', fmt(t.due_date) + ' · ' + G.prazoTexto(t, hoje)) + campo('Data legal', fmt(t.legal_date)) + campo('Competência', fmt(t.competence_date)) + campo('Setor', setor) + campo('Responsável', resp) + campo('Concluída em', fmt(t.conclusion_date)) + campo('Modelo', d.company_task && d.company_task.name) + '</dl>' +
       '<div class="gp-abas" role="tablist" aria-label="Detalhe">' + abaBtn('resumo', 'Resumo') + abaBtn('tempo', 'Linha do tempo') + '</div>' +
       '<div class="gp-aba-corpo" role="tabpanel">' + (P.aba === 'tempo' ? linhaDoTempoHtml(base._id) : resumo) + '</div></div>' +
@@ -182,6 +187,7 @@ function desenharPainel() {
   $('#gp-abrir', el).onclick = () => abrirNoGestta();
   $('#gp-aba', el).onclick = () => { const u = G.urlTarefa(base._id); if (u) window.open(u, '_blank', 'noopener'); };
   $$('[data-gp-aba]', el).forEach(b => b.onclick = () => { P.aba = b.dataset.gpAba; desenharPainel(); if (P.aba === 'tempo') carregarHist(); });
+  $$('[data-copiar]', el).forEach(b => b.onclick = () => { const v = b.dataset.copiar, ok = () => { b.classList.add('ok'); b.lastChild.textContent = 'Copiado'; setTimeout(() => desenharPainel(), 1400); }; try { navigator.clipboard.writeText(v).then(ok, ok); } catch (_) { ok(); } });
   const tt = $('#gp-tentar', el); if (tt) tt.onclick = () => { P.erro = null; P.carregando = true; desenharPainel(); carregar(); };
   const th = $('#gp-hist-tentar', el); if (th) th.onclick = () => carregarHist(true);
 }

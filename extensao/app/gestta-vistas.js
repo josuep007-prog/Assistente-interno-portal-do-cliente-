@@ -35,7 +35,7 @@ function emBlocos(corpo, partes, bloco) {
 /* ======================= Meu dia ======================= */
 const D = { sel: null };
 export function vistaDia(el, x) {
-  const md = G.meuDia(x.itens, x.hoje, 3), fila = md.fila;
+  const md = G.meuDia(x.itens, x.hoje, 3), fila = md.fila.concat(md.adiante || []);
   const pctHoje = md.totalHoje ? Math.round(md.feitasHoje / md.totalHoje * 100) : 100;
   const dataTx = x.hoje.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
   const blocos = [
@@ -46,9 +46,14 @@ export function vistaDia(el, x) {
   ];
   let n = 0;
   const linha = t => { n++; const est = estadoDe(t, x.hoje); return '<li class="gd-it gt-c-' + COR[G.grupoTarefa(t, x.hoje)] + '" role="option" tabindex="-1" data-id="' + esc(t._id) + '" aria-selected="false"><span class="gd-num">' + n + '</span>' + marca(est) +
-    '<span class="gd-tx"><b>' + esc(t.name || 'Tarefa sem nome') + '</b><span>' + cliHtml(t.customer) + '</span></span><span class="gd-prazo' + (est === 'multa' || est === 'atrasada' ? ' alerta' : '') + '">' + esc(G.prazoTexto(t, x.hoje)) + '</span></li>'; };
-  const lista = fila.length ? blocos.filter(b => b[3].length).map(b => '<section class="gd-bloco gt-c-' + b[4] + '"><h3><i class="gt-ponto"></i>' + esc(b[1]) + '<span class="gt-n">' + b[3].length + '</span><small>' + esc(b[2]) + '</small></h3><ol class="gd-ol" role="listbox" aria-label="' + esc(b[1]) + '">' + b[3].map(linha).join('') + '</ol></section>').join('')
-    : '<div class="gd-livre"><span class="gd-livre-ic" aria-hidden="true">✓</span><b>Dia livre</b><span>Nada atrasado, nada vencendo hoje nem nos próximos 3 dias úteis' + (x.filtro ? ' com esses filtros' : '') + '.</span></div>';
+    '<span class="gd-tx"><b>' + esc(t.name || 'Tarefa sem nome') + '</b><span>' + cliHtml(t.customer) + '</span></span><span class="gd-prazo' + (est === 'multa' || est === 'atrasada' ? ' alerta' : '') + '">' + esc(G.prazoTexto(t, x.hoje)) + '</span>' +
+    '<button type="button" class="icon-btn gd-abrir" data-abrir="' + esc(t._id) + '" tabindex="-1" title="Abrir no Gestta" aria-label="Abrir no Gestta"><svg class="ic ic-sm"><use href="#i-ext"/></svg></button></li>'; };
+  const bloco = b => '<section class="gd-bloco gt-c-' + b[4] + (b[0] === 'adiante' ? ' gd-adiante' : '') + '"><h3><i class="gt-ponto"></i>' + esc(b[1]) + '<span class="gt-n">' + b[3].length + '</span><small>' + esc(b[2]) + '</small></h3><ol class="gd-ol" role="listbox" aria-label="' + esc(b[1]) + '">' + b[3].map(linha).join('') + '</ol></section>';
+  const principal = blocos.filter(b => b[3].length).map(bloco).join('');                        // antes, para a numeração seguir a ordem
+  const adiante = (md.adiante || []).length ? bloco(['adiante', 'Mais adiante', 'as próximas metas depois disso', md.adiante, 'depois']) : '';
+  // 0.87.0: com a fila vazia, o dia livre comemora e mostra o que vem depois (para adiantar)
+  const lista = md.fila.length ? principal + adiante
+    : '<div class="gd-livre"><span class="gd-livre-ic" aria-hidden="true">✓</span><b>Tudo em dia</b><span class="gd-livre-sub">Nada atrasado, nada vencendo hoje nem nos próximos 3 dias úteis' + (x.filtro ? ' com esses filtros' : '') + '.' + (adiante ? ' Se quiser adiantar, as próximas estão logo abaixo.' : '') + '</span></div>' + adiante;
   el.innerHTML = (x.mesAtual ? '' : '<p class="gt-outra">Você está vendo outro mês: o Meu dia conta a partir de hoje.</p>') +
     '<div class="gd">' +
       '<section class="gd-col">' +
@@ -66,7 +71,7 @@ export function vistaDia(el, x) {
     aoPassarPainel(d => mover(d, false));
   };
   const mover = (d, foco) => { const i = fila.findIndex(t => t._id === D.sel), j = Math.max(0, Math.min(fila.length - 1, i + d)); if (fila[j]) escolher(fila[j]._id, foco !== false); };
-  $$('.gd-it', el).forEach(li => { li.onclick = () => escolher(li.dataset.id, true); });
+  $$('.gd-it', el).forEach(li => { li.onclick = e => { const a = e.target.closest('[data-abrir]'); if (a) { e.stopPropagation(); x.paraPai({ controlGestta: 'abrirTarefa', id: a.dataset.abrir }); return; } escolher(li.dataset.id, true); }; });
   if (fila.length) escolher(fila.some(t => t._id === D.sel) ? D.sel : fila[0]._id, false);
   x.teclas(e => {
     if (!fila.length) return false;
@@ -88,7 +93,7 @@ function barraEmpresa(e) {
 function itemEmpresa(e) {
   const al = e.multa + e.atrasada, fechada = e.n && e.feitas === e.n;
   return '<li class="ge-emp" role="option" tabindex="-1" data-emp="' + esc(e.id) + '" aria-selected="false"><span class="ge-emp-top"><b title="' + esc(e.nome) + '">' + esc(e.nome) + '</b>' +
-    (al ? '<span class="ge-alerta" title="' + al + ' com multa ou atraso">' + marca(e.multa ? 'multa' : 'atrasada') + al + '</span>' : fechada ? '<span class="ge-ok" title="Mês fechado">✓</span>' : '') + '</span>' +
+    (al ? '<span class="ge-alerta" title="' + al + ' com multa ou atraso">' + marca(e.multa ? 'multa' : 'atrasada') + al + '</span>' : fechada ? '<span class="ge-ok" title="Competência fechada">✓</span>' : '') + '</span>' +
     '<span class="ge-emp-sub">' + (e.codigo ? '<span class="gt-cod">' + esc(e.codigo) + '</span>' : '') + num(e.feitas) + '/' + num(e.n) + (e.proxima && e.abertas ? ' · próxima ' + ddmm(e.proxima) : '') + '</span>' + barraEmpresa(e) + '</li>';
 }
 function stepper(tr, k) {
@@ -114,23 +119,23 @@ function cartao(t, hoje, k) {
 function fichaHtml(e, x) {
   const tr = G.trilhaDaEmpresa(e.tarefas, x.hoje), k = e.id;
   const prox = tr.proxima >= 0 ? tr.etapas[tr.proxima] : null;
-  const stat = (est, n, rot) => '<span class="gf-stat' + (n ? '' : ' zero') + '">' + marca(est) + '<b>' + num(n) + '</b>' + rot + '</span>';
+  // 0.87.0: só as situações que existem (o zero não diz nada e ocupa espaço)
+  const stat = (est, n, rot) => n ? '<span class="gf-stat">' + marca(est) + '<b>' + num(n) + '</b>' + rot + '</span>' : '';
   const setores = [...new Set(e.tarefas.map(t => G.setorDe(t)).filter(Boolean))];
   const porSetor = setores.length > 1 ? '<div class="gf-setores">' + setores.sort((a, b) => a.localeCompare(b, 'pt-BR')).map(s => { const l = e.tarefas.filter(t => G.setorDe(t) === s && G.grupoTarefa(t, x.hoje)), f = l.filter(t => G.grupoTarefa(t, x.hoje) === 'feita').length; return '<span class="gf-setor"><span>' + esc(s) + '</span><span class="gt-bar-trilho"><i style="width:' + (l.length ? Math.round(f / l.length * 100) : 0) + '%"></i></span><b>' + f + '/' + l.length + '</b></span>'; }).join('') + '</div>' : '';
-  const kanban = COLUNAS_KANBAN.map(([ck, rot, grupos, cor]) => {
-    const l = tr.etapas.filter(et => grupos.includes(et.grupo)).map(et => et.t);
-    return '<section class="gk-col gt-c-' + cor + '"><h4><i class="gt-ponto"></i>' + rot + '<span class="gt-n">' + l.length + '</span></h4>' + (l.length ? l.map(t => cartao(t, x.hoje, k)).join('') : '<p class="gk-vazio">Nada aqui</p>') + '</section>';
-  }).join('');
+  // 0.87.0: as colunas vazias saem, e as que ficam dividem a largura
+  const colsK = COLUNAS_KANBAN.map(([ck, rot, grupos, cor]) => [rot, cor, tr.etapas.filter(et => grupos.includes(et.grupo)).map(et => et.t)]).filter(c => c[2].length);
+  const kanban = colsK.map(([rot, cor, l]) => '<section class="gk-col gt-c-' + cor + '"><h4><i class="gt-ponto"></i>' + rot + '<span class="gt-n">' + l.length + '</span></h4>' + l.map(t => cartao(t, x.hoje, k)).join('') + '</section>').join('');
   const modo = (m, ic, rot) => '<button type="button" class="' + (EM.trilha === m ? 'on' : '') + '" data-gf-trilha="' + m + '" aria-pressed="' + (EM.trilha === m) + '"><svg class="ic ic-sm"><use href="#' + ic + '"/></svg>' + rot + '</button>';
   return '<header class="gf-cab"><div class="gf-tit"><h2>' + esc(e.nome) + '</h2><p>' + (e.codigo ? '<span class="gt-cod">' + esc(e.codigo) + '</span>' : '') + plural(e.n, 'tarefa', 'tarefas') + ' na competência' + (setores.length ? ' · ' + esc(setores.join(', ')) : '') + '</p></div>' +
       '<div class="gf-prog">' + anel(tr.pct, 64, 8) + '<div><b>' + tr.pct + '%</b><span>' + num(tr.feitas) + ' de ' + num(tr.total) + ' concluídas</span></div></div></header>' +
     '<div class="gf-stats">' + stat('multa', e.multa, 'gerando multa') + stat('atrasada', e.atrasada, 'atrasadas') + stat('impedimento', e.impedimento, 'impedimento') + stat('hoje', e.hoje, 'vencem hoje') + stat('afazer', Math.max(0, e.abertas - e.multa - e.atrasada - e.impedimento - e.hoje), 'a fazer') + stat('feita', e.feitas, 'concluídas') + '</div>' +
     (prox ? '<button type="button" class="gf-prox gt-c-' + COR[prox.grupo] + '" data-et="' + esc(prox.t._id) + '" data-emp="' + esc(k) + '"><span class="gf-prox-rot">Próxima etapa</span>' + marca(prox.estado) + '<b>' + esc(prox.t.name || 'Tarefa') + '</b><span>' + esc(prox.prazo) + '</span><svg class="ic ic-sm"><use href="#i-chev-r"/></svg></button>'
-      : tr.total ? '<div class="gf-prox gf-fechado"><span class="ge-ok" aria-hidden="true">✓</span><b>Mês fechado</b><span>todas as tarefas concluídas</span></div>' : '') +
+      : tr.total ? '<div class="gf-prox gf-fechado"><span class="ge-ok" aria-hidden="true">✓</span><b>Competência fechada</b><span>todas as tarefas concluídas</span></div>' : '') +
     porSetor +
     '<section class="gf-sec"><div class="gf-sec-cab"><h3>Trilha da competência</h3><div class="seg gt-modos" role="group" aria-label="Como desenhar as etapas">' + modo('seq', 'i-repeat', 'Trilha') + modo('tempo', 'i-calendar', 'Linha do tempo') + '</div></div>' +
       (EM.trilha === 'tempo' ? '<div class="gf-tempo">' + cabecalhoTempo(x.ano, x.mes) + '<div class="gt-tr-trilha tempo">' + trilhaTempo(tr, k, x.ano, x.mes) + linhaDoHoje(x.ano, x.mes) + '</div></div>' : stepper(tr, k)) + '</section>' +
-    '<section class="gf-sec"><h3>Tarefas por situação</h3><div class="gk">' + kanban + '</div></section>';
+    (colsK.length ? '<section class="gf-sec"><h3>Tarefas por situação</h3><div class="gk' + (colsK.length === 1 ? ' gk-1' : '') + '" style="--gk-n:' + colsK.length + '">' + kanban + '</div></section>' : '');
 }
 export function vistaEmpresas(el, x) {
   const emps = G.ordenarEmpresas(G.porEmpresa(x.itens, x.hoje).filter(e => !x.soPend || e.abertas), EM.ordem);
@@ -176,20 +181,24 @@ const COLS = [
   { k: 'etapas', rot: 'Etapas', v: t => Number(t.total_step) ? (t.done_step || 0) / t.total_step : -1 }
 ];
 export function vistaLista(el, x) {
-  const comSetor = x.itens.some(t => G.setorDe(t));
-  const cols = COLS.filter(c => c.k !== 'setor' || comSetor);
+  // 0.87.0: só as colunas que dizem algo: sem empresa quando já agrupa por empresa, sem etapas quando nenhuma tem,
+  // sem tipo quando todas são do mesmo tipo, sem setor quando não há setor
+  const tem = { setor: x.itens.some(t => G.setorDe(t)), etapas: x.itens.some(t => Number(t.total_step) > 0), tipo: new Set(x.itens.map(t => TIPO[t.type] || '')).size > 1, empresa: L.agrupar !== 'empresa' };
+  const cols = COLS.filter(c => tem[c.k] !== false);
   const col = cols.find(c => c.k === L.col);
   const ord = col ? x.itens.slice().sort((a, b) => { const p = col.v(a, x.hoje), q = col.v(b, x.hoje); const r = p < q ? -1 : p > q ? 1 : 0; return L.desc ? -r : r; }) : x.itens;
   const linha = t => {
     const g = G.grupoTarefa(t, x.hoje), est = EST[g];
-    return '<div class="gl-r gt-c-' + COR[g] + '" role="row" tabindex="0" data-id="' + esc(t._id) + '">' +
-      '<span class="gl-c gl-nome" role="cell">' + marca(est) + '<b>' + esc(t.name || 'Tarefa sem nome') + '</b></span>' +
-      '<span class="gl-c gl-emp" role="cell">' + cliHtml(t.customer) + '</span>' +
-      '<span class="gl-c gl-meta" role="cell">' + esc(ddmm(dataDe(t)) || '—') + '</span>' +
-      '<span class="gl-c gl-sit' + (est === 'multa' || est === 'atrasada' ? ' alerta' : '') + '" role="cell">' + esc(est === 'feita' ? 'Concluída' : G.prazoTexto(t, x.hoje).replace(/ \(\d\d\/\d\d\)$/, '')) + '</span>' +
-      (comSetor ? '<span class="gl-c gl-setor" role="cell">' + esc(G.setorDe(t) || '—') + '</span>' : '') +
-      '<span class="gl-c gl-tipo" role="cell">' + esc(TIPO[t.type] || '') + '</span>' +
-      '<span class="gl-c gl-et" role="cell">' + (etapasMini(t) || '<span class="fraco">—</span>') + '</span>' +
+    const cel = {
+      tarefa: '<span class="gl-c gl-nome" role="cell">' + marca(est) + '<b>' + esc(t.name || 'Tarefa sem nome') + '</b></span>',
+      empresa: '<span class="gl-c gl-emp" role="cell">' + cliHtml(t.customer) + '</span>',
+      meta: '<span class="gl-c gl-meta" role="cell">' + esc(ddmm(dataDe(t)) || '—') + '</span>',
+      situacao: '<span class="gl-c gl-sit' + (est === 'multa' || est === 'atrasada' ? ' alerta' : '') + '" role="cell">' + esc(est === 'feita' ? 'Concluída' : G.prazoTexto(t, x.hoje).replace(/ \(\d\d\/\d\d\)$/, '')) + '</span>',
+      setor: '<span class="gl-c gl-setor" role="cell">' + esc(G.setorDe(t) || '—') + '</span>',
+      tipo: '<span class="gl-c gl-tipo" role="cell">' + esc(TIPO[t.type] || '') + '</span>',
+      etapas: '<span class="gl-c gl-et" role="cell">' + (etapasMini(t) || '<span class="fraco">—</span>') + '</span>'
+    };
+    return '<div class="gl-r gt-c-' + COR[g] + '" role="row" tabindex="0" data-id="' + esc(t._id) + '">' + cols.map(c => cel[c.k]).join('') +
       '<span class="gl-c gl-ac" role="cell"><button type="button" class="icon-btn" data-abrir="' + esc(t._id) + '" title="Abrir no Gestta" aria-label="Abrir no Gestta"><svg class="ic ic-sm"><use href="#i-ext"/></svg></button></span></div>';
   };
   // grupos: por prazo (na ordem de urgência), por empresa (na ordem de risco) ou nenhum
@@ -225,9 +234,11 @@ export function vistaQuadro(el, x) {
   if (Q.col && !ob.colunas.some(c => c.nome === Q.col)) Q.col = '';
   if (Q.col) linhas = linhas.filter(l => (l.celulas.get(Q.col) || []).some(e => e.estado !== 'feita'));
   if (!ob.colunas.length || !linhas.length) { el.innerHTML = x.vazio(); return; }
+  // 0.87.0: as obrigações que pedem atenção primeiro (com alerta, depois as mais pendentes, depois o nome)
+  ob.colunas = ob.colunas.slice().sort((a, b) => (b.alerta || 0) - (a.alerta || 0) || ((b.total - b.feitas) - (a.total - a.feitas)) || a.nome.localeCompare(b.nome, 'pt-BR'));
   const empMap = new Map(ob.linhas.map(l => [l.empresa.id, l.empresa]));
   const th = c => '<th scope="col" class="gq-h' + (Q.col === c.nome ? ' on' : '') + '"><button type="button" data-gq-col="' + esc(c.nome) + '" aria-pressed="' + (Q.col === c.nome) + '" title="' + esc(c.nome + ': ' + c.feitas + ' de ' + c.total + ' concluídas' + (c.alerta ? ', ' + c.alerta + ' com multa ou atraso' : '') + '. Clique para ver só as empresas com esta obrigação pendente.') + '">' +
-    '<span class="gq-h-nome">' + esc(c.nome) + '</span><span class="gq-h-n">' + num(c.feitas) + '/' + num(c.total) + (c.alerta ? ' <em>!' + c.alerta + '</em>' : '') + '</span><span class="gq-h-bar" aria-hidden="true"><i style="width:' + Math.round(c.feitas / c.total * 100) + '%"></i></span></button></th>';
+    '<span class="gq-h-nome">' + esc(G.nomeLegivel(c.nome)) + '</span><span class="gq-h-n">' + num(c.feitas) + '/' + num(c.total) + (c.alerta ? ' <em>!' + c.alerta + '</em>' : '') + '</span><span class="gq-h-bar" aria-hidden="true"><i style="width:' + Math.round(c.feitas / c.total * 100) + '%"></i></span></button></th>';
   const linha = l => {
     const e = l.empresa;
     return '<tr><th scope="row" class="gq-emp"><b title="' + esc(e.nome) + '">' + esc(e.nome) + '</b><small>' + (e.codigo ? esc(e.codigo) + ' · ' : '') + num(e.feitas) + '/' + num(e.n) + '</small></th>' + ob.colunas.map(c => {
