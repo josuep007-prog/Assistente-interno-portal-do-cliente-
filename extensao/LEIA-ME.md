@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.85.0)
+# Control Onvio · ControlTax (v0.86.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,12 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.86.0 (09/11/2026): as tarefas do Gestta vão ao Hub com a competência (Hub 325)
+
+- Rodada A do plano do Hub (Josué: "o Control Hub não foi feito esperando tantos dados"; começar por Fiscal e Contábil, e tarefa concluída no Gestta marca sozinha).
+- O conjunto `gestta-tarefas` ganha a coluna **Competência**: a extensão busca as tarefas das competências do mês atual, do anterior e de dois meses atrás (busca `COMPETENCE_DATE` conferida, senão pelas metas) e cruza pelo id com o relatório `CUSTOMER_TASK`. Tarefas dessas competências que vencem em outros meses entram também (só elas, do relatório desses meses). Sem a competência, o conjunto ainda vai, com o aviso.
+- No **Hub 325**: tarefa concluída no Gestta marca sozinha a obrigação do Fiscal ou a etapa do Contábil vazia da competência, com a data da conclusão e a origem "pelo Gestta"; a marcação manual nunca é trocada; desmarcar desfaz e não volta; tarefa aberta com meta vencida fica em vermelho; certificado vencendo e envio do Gestta ao portal com erro viram aviso; a Entrada de dados mostra a correspondência tarefa → obrigação/etapa e a chave "Marcar sozinho". O Hub passa a exigir a 0.86.0.
 
 ## Novidades da v0.85.0 (06/11/2026): Tarefas do Gestta pela competência
 

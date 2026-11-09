@@ -572,16 +572,20 @@
     notify_customer: 'Avisa o cliente', fine: 'Gerando multa', _due_date: 'Meta', legal_date: 'Data legal', downloaded: 'Baixada', done_overdue: 'Concluída com atraso', done_fine: 'Concluída com multa',
     created_at: 'Criada em', 'concluded_by.name': 'Concluída por', conclusion_date: 'Concluída em', overdue: 'Atrasada', on_time: 'No prazo', 'customer.active': 'Cliente ativo',
     'customer.cnpj': 'CNPJ', 'customer.name': 'Cliente', 'customer.code': 'Código do cliente', 'customer.federal_regime.name': 'Regime' };
-  const COLS_TAREFAS_HUB = ['Mês'].concat(COLUNAS_RELATORIO.filter(c => ROT_REL[c]).map(c => ROT_REL[c]));
+  // 0.86.0: a Competência (AAAA-MM) vai no fim, pela busca de tarefas cruzada pelo id (o relatório não a traz)
+  const COLS_TAREFAS_HUB = ['Mês'].concat(COLUNAS_RELATORIO.filter(c => ROT_REL[c]).map(c => ROT_REL[c]), ['Competência']);
   const BOOL_REL = new Set(['notify_customer', 'fine', 'downloaded', 'done_overdue', 'done_fine', 'overdue', 'on_time', 'customer.active']);
   const DATA_REL = new Set(['_due_date', 'legal_date', 'created_at', 'conclusion_date']);
-  function tabelaTarefasHub(rel, mesRef) {
-    const cols = rel.colunas || [], iNome = cols.indexOf('customer.name'), out = [];
+  // comp: Map id → competência; so: só as tarefas desse Map (meses de meta além do atual e do anterior)
+  function tabelaTarefasHub(rel, mesRef, comp, so) {
+    const cols = rel.colunas || [], iNome = cols.indexOf('customer.name'), iId = cols.indexOf('id'), out = [];
     let escritorio = 0;
     for (const l of rel.linhas || []) {
+      const id = iId >= 0 ? String(l[iId] || '') : '';
+      if (so && !(comp && comp.has(id))) continue;
       if (iNome >= 0 && ehEscritorioProprio(l[iNome])) { escritorio++; continue; }
       const val = c => { const i = cols.indexOf(c); if (i < 0) return ''; const v = l[i]; return BOOL_REL.has(c) ? simNao(v) : DATA_REL.has(c) ? dataHub(v) : c === 'type' ? (TIPOS_TAREFA[v] || v) : c === 'status' ? (SITUACOES_TAREFA[v] || v) : v; };
-      out.push(linhaTab([mesRef].concat(COLUNAS_RELATORIO.filter(c => ROT_REL[c]).map(val))));
+      out.push(linhaTab([mesRef].concat(COLUNAS_RELATORIO.filter(c => ROT_REL[c]).map(val), [(comp && comp.get(id)) || ''])));
     }
     return { linhas: out, escritorio };
   }
@@ -637,6 +641,7 @@
     const n = new Map(); (itens || []).forEach(t => { const k = mesLocal(t && t.due_date); if (k) n.set(k, (n.get(k) || 0) + 1); });
     return [...n.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([k, q]) => ({ ano: Number(k.slice(0, 4)), mes: Number(k.slice(5, 7)), n: q }));
   }
+  let modoCompBusca = '';
   const mesAnterior = (ano, mes) => mes === 1 ? { ano: ano - 1, mes: 12 } : { ano, mes: mes - 1 };
   const mesTexto = (ano, mes) => ano + '-' + String(mes).padStart(2, '0');
   // Lê e entrega cada conjunto. ler(pedidos) → resultados (o mesmo de lerNaPagina, feito pelo service worker na aba do Gestta);
@@ -665,6 +670,19 @@
       }
       const e = new Error('o Gestta recusou o relatório de tarefas (erro 400' + (ultimo && ultimo.message && !/^erro 400$/.test(ultimo.message) ? ': ' + ultimo.message : '') + ')'); e.status = 400; throw e;
     };
+    // 0.86.0: as tarefas de uma competência, do escritório todo (busca COMPETENCE_DATE conferida; senão, as metas da competência e
+    // dos 3 meses seguintes separadas pela competence_date). O jeito que deu certo fica em modoCompBusca (memória).
+    const tarefasDaComp = async (c) => {
+      const buscar = (o) => paginar(p => { ctx.andamento && ctx.andamento('competência ' + mesTexto(c.ano, c.mes) + ', página ' + p); return um(PEDIDOS.buscaTarefas(Object.assign({ page: p, limit: LIMITE_BUSCA, status: ['OPEN', 'IMPEDIMENT', 'DONE'] }, o))); }, MAX_PAGINAS_TAREFAS);
+      if (modoCompBusca !== 'meta') {
+        try { const d = await buscar({ ano: c.ano, mes: c.mes, dataTipo: 'COMPETENCE_DATE' }); if (buscaPorCompetenciaValeu(d.itens, c.ano, c.mes)) { modoCompBusca = 'direto'; return d; } }
+        catch (e) { if (e && e.status === 401) throw e; }
+        modoCompBusca = 'meta';
+      }
+      const vistos = new Map(); let cortado = false;
+      for (const m of mesesDaCompetencia(c.ano, c.mes)) { const d = await buscar({ ano: m.ano, mes: m.mes }); if (d.cortado) cortado = true; daCompetencia(d.itens, c.ano, c.mes).forEach(t => { if (t && t._id) vistos.set(t._id, t); }); }
+      return { itens: [...vistos.values()], cortado };
+    };
     let ativasPendente = false;
     const falhou = (tipoDado, titulo, categoria, e) => { res.push({ id: tipoDado, rotulo: titulo, categoria, ok: false, motivo: String((e && e.message) || e).slice(0, 160) }); if (e && e.status === 401) parar = true; };
     for (const etapa of etapas) {
@@ -673,15 +691,31 @@
         prog('Tarefas do mês');
         const atual = { ano: hoje.getFullYear(), mes: hoje.getMonth() + 1 }, ant = mesAnterior(atual.ano, atual.mes), linhas = [];
         let escritorio = 0, total = 0, formatos = [];
-        const rels = [];
+        const rels = [], avisos = [];
         try {
+          // a competência de cada tarefa: as competências do mês atual, do anterior e de dois meses atrás (as que estão sendo fechadas)
+          const comp = new Map(), extras = new Map(), base = new Set([mesTexto(ant.ano, ant.mes), mesTexto(atual.ano, atual.mes)]);
+          let compCortado = false;
+          try {
+            for (const c of [mesAnterior(ant.ano, ant.mes), ant, atual]) {
+              const d = await tarefasDaComp(c); if (d.cortado) compCortado = true;
+              d.itens.forEach(t => { if (!t || !t._id) return; comp.set(String(t._id), mesTexto(c.ano, c.mes)); const m = mesLocal(t.due_date); if (m && !base.has(m)) extras.set(m, (extras.get(m) || 0) + 1); });
+            }
+          } catch (e) { if (e && e.status === 401) throw e; avisos.push('a competência não pôde ser lida (' + String((e && e.message) || e).slice(0, 80) + ')'); }
+          if (compCortado) avisos.push('a busca da competência passou do limite de páginas');
           for (const m of [ant, atual]) {
             ctx.andamento && ctx.andamento('relatório de ' + mesTexto(m.ano, m.mes));
             const rel = await lerRelatorio(m);
-            const t = tabelaTarefasHub(rel, mesTexto(m.ano, m.mes)); linhas.push(...t.linhas); escritorio += t.escritorio; total += rel.total || 0; formatos.push(rel.formato);
+            const t = tabelaTarefasHub(rel, mesTexto(m.ano, m.mes), comp); linhas.push(...t.linhas); escritorio += t.escritorio; total += rel.total || 0; formatos.push(rel.formato);
             rels.push({ rel, mes: mesTexto(m.ano, m.mes) });
           }
-          await entregar({ tipoDado: 'gestta-tarefas', categoria: 'tarefas', titulo: 'Gestta · Tarefas do mês atual e do anterior', colunas: COLS_TAREFAS_HUB, totalNaOrigem: total - escritorio }, linhas, { porque: escritorio ? escritorio + ' tarefas de empresas do escritório ficaram fora' : '' });
+          // tarefas das competências que vencem em outros meses (ex.: anuais, ou metas no mês seguinte): só elas, do relatório desses meses
+          for (const k of [...extras.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(x => x[0])) {
+            const m = { ano: Number(k.slice(0, 4)), mes: Number(k.slice(5, 7)) };
+            try { ctx.andamento && ctx.andamento('relatório de ' + k); const rel = await lerRelatorio(m); const t = tabelaTarefasHub(rel, k, comp, true); linhas.push(...t.linhas); escritorio += t.escritorio; }
+            catch (e) { if (e && e.status === 401) throw e; avisos.push('o relatório de ' + k + ' não veio'); }
+          }
+          await entregar({ tipoDado: 'gestta-tarefas', categoria: 'tarefas', titulo: 'Gestta · Tarefas do mês atual e do anterior (com a competência)', colunas: COLS_TAREFAS_HUB, totalNaOrigem: total - escritorio }, linhas, { porque: [escritorio ? escritorio + ' tarefas de empresas do escritório ficaram fora' : ''].concat(avisos).filter(Boolean).join('; '), cortado: compCortado });
           if (!parar) { const at = empresasAtivasHub(rels); await entregar({ tipoDado: 'gestta-empresas-ativas', categoria: 'cadastros', titulo: 'Gestta · Empresas em atividade (tarefa no mês atual ou anterior)', colunas: COLS_ATIVAS_HUB, totalNaOrigem: at.length }, at); }
         } catch (e) { falhou('gestta-tarefas', 'Gestta · Tarefas do mês atual e do anterior', 'tarefas', e); if (!parar) ativasPendente = true; }
       }

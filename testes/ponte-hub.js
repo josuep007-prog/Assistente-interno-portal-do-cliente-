@@ -203,6 +203,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     const id = n => String(n).padStart(24, 'c');
     if (p === '/core/company/user/me') return json({ _id: id(1), name: 'Coordenação Ficticia', role: gPapel, email: 'coord@exemplo.com' });
     if (p === '/core/customer/task/report') { const c = JSON.parse(q.postData() || '{}'); return json([{ id: id(7), name: 'DAS', status: 'OPEN', type: 'RECURRENT', 'company_department.name': 'Fiscal', 'owner.name': 'Ana', _due_date: c.dates.startDate, 'customer.name': 'GAMA GESTTA LTDA', 'customer.code': '10', value: 999, 'customer.monthly_payment': 777 }, { id: id(8), name: 'DAS', status: 'OPEN', 'customer.name': 'CONTROLTAX CONSULTORIA' }]); }
+    if (p === '/core/customer/task/search') { const c = JSON.parse(q.postData() || '{}'); const k = c.start_date.slice(0, 7);         // 0.86.0: a competência das tarefas
+      return json({ docs: c.date_type === 'COMPETENCE_DATE' ? [{ _id: id(7), name: 'DAS', status: 'OPEN', competence_date: k + '-01T03:00:00.000Z', due_date: k + '-20T03:00:00.000Z', customer: { _id: id(2), name: 'GAMA GESTTA LTDA' } }] : [], total: 1, pages: 1, page: 1 }); }
     if (p === '/admin/customer') return json({ docs: [{ _id: id(2), code: '10', name: 'GAMA GESTTA LTDA', cnpj: '11.111.111/0001-11', active: true, monthly_payment: 777, phone: '(27) 90000-0000' }], totalDocs: 1, totalPages: 1 });
     if (p === '/admin/company/user') return json({ docs: [{ _id: id(3), name: 'Ana', role: 'ROLE_USER', active: true, email: 'ana@exemplo.com', phone_number: '(27) 91111-1111', permissions: ['X'], last_login: '2026-11-05' }], totalDocs: 1, totalPages: 1 });
     if (p === '/admin/company/department') return json([{ _id: id(4), name: 'Fiscal' }]);
@@ -226,9 +228,10 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const gtxt = JSON.stringify(lg);
   for (const sx of ['SEGREDO-GESTTA', 'eyJ', 'coord@exemplo', 'ana@exemplo', '(27)', '777', '999', 'CONTROLTAX', 'last_login', 'permissions']) assert.ok(!gtxt.includes(sx), 'não vai ao Hub: ' + sx);
   const tg = lg.find(x => x.tipoDado === 'gestta-tarefas');
-  assert.equal(tg.tabela.split('\n').length, 2, 'mês anterior e atual, sem a empresa do escritório');
-  assert.equal(gPedidos.filter(x => x === 'POST /core/customer/task/report').length, 2, 'um relatório por mês');
-  assert.ok(gPedidos.every(x => /^GET |^POST \/core\/customer\/task\/report$/.test(x)), 'só GET e o relatório: ' + gPedidos.join(', '));
+  assert.ok(tg.tabela.split('\n').length >= 2 && !/CONTROLTAX/.test(tg.tabela), 'mês anterior e atual (e as metas das competências em outro mês), sem a empresa do escritório');
+  assert.equal(gPedidos.filter(x => x === 'POST /core/customer/task/report').length >= 2, true, 'um relatório por mês de meta');
+  assert.ok(gPedidos.every(x => /^GET |^POST \/core\/customer\/task\/(report|search)$/.test(x)), 'só GET, a busca e o relatório: ' + gPedidos.join(', '));
+  assert.match(tg.tabela, /\t20\d\d-\d\d$/m, '0.86.0: a tarefa vai com a competência');
   const guardado = JSON.stringify(await opc.evaluate(() => chrome.storage.local.get(null)));
   for (const sx of ['GAMA GESTTA', 'SEGREDO', 'Pasta de destino']) assert.ok(!guardado.includes(sx), 'nada do Gestta no armazenamento: ' + sx + ' em ' + guardado.slice(Math.max(0, guardado.indexOf(sx) - 300), guardado.indexOf(sx) + 100));
   assert.ok((await opc.evaluate(() => chrome.storage.local.get('gesttaCartelaEm'))).gesttaCartelaEm > 0, 'a hora da cartela');
