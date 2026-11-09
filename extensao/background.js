@@ -398,9 +398,9 @@ async function testarGestta() {
     OCG.PEDIDOS.buscaTarefas({ ano, mes, limit: 1 }), OCG.PEDIDOS.multas({ ano, mes }), OCG.PEDIDOS.filaOnvioErro({ limit: 1 }), OCG.PEDIDOS.templatesDocumento()];
   const { r: r2 } = await lerGestta(pedidos, { tab });
   const resultados = [me].concat((r2 && r2.resultados) || []);
-  // cartela de um cliente (o primeiro da lista), para provar a leitura sem mostrar quem é
+  // cartela e contatos de um cliente (o primeiro da lista), para provar a leitura sem mostrar quem é (0.88.0: só contagens dos contatos)
   const cli = resultados.find(x => x.id === 'clientes'), um = cli && cli.dados && (cli.dados.itens || [])[0];
-  if (um && um._id) { const { r: r3 } = await lerGestta([OCG.PEDIDOS.cartela({ cliente: um._id })], { tab }); if (r3 && r3.resultados) resultados.push(...r3.resultados); }
+  if (um && um._id) { const { r: r3 } = await lerGestta([OCG.PEDIDOS.cartela({ cliente: um._id }), OCG.PEDIDOS.contatos({ cliente: um._id })], { tab }); if (r3 && r3.resultados) resultados.push(...r3.resultados); }
   return OCG.linhasDoTeste(Object.assign({}, r2 || r1, { resultados }), tab);
 }
 

@@ -3959,7 +3959,9 @@ test('Gestta → Hub (0.79.0): conjuntos em português, sem as empresas do escri
     setores: () => ({ status: 200, dados: { itens: [{ _id: 's1', name: 'Fiscal' }] } }),
     filaOnvioErro: () => ({ status: 200, dados: { itens: [{ _id: 'e1', status: 'ERROR', error: 'Pasta de destino não configurada', customer_task: { _id: 't1', name: 'DAS', customer: { name: 'EMPRESA ALFA', cnpj: '1' } } }], total: 1 } }),
     templatesLista: () => ({ status: 200, dados: { itens: [{ _id: 'd1', name: 'DAS', documents_integration: { pathName: ['Fiscal', 'Guias'] } }, { _id: 'd2', name: 'RECIBO', documents_integration: { pathName: [] } }], total: 2, paginas: 1 } }),
-    cartela: () => ({ status: 200, dados: { itens: [{ company_department: { _id: 's1', name: 'Fiscal' }, company_user: { _id: 'u1', name: 'Ana' } }] } })
+    cartela: () => ({ status: 200, dados: { itens: [{ company_department: { _id: 's1', name: 'Fiscal' }, company_user: { _id: 'u1', name: 'Ana' } }] } }),
+    // 0.88.0: quem do cliente recebe cada setor (dados fictícios); o WhatsApp e o telefone ficam fora
+    contatos: () => ({ status: 200, dados: [{ company_department: { _id: 's1', name: 'Fiscal' }, customer_user: { _id: 'k1', name: 'Contato Ficticio', email: ' Contato@Exemplo.com ', active: true, notify_whatsapp: true, phone_number: '9' } }, { company_department: { _id: 's1', name: 'Fiscal' }, customer_user: null }] })
   };
   const ler = async ps => ps.map(p => { pedidos.push(p.id.split(':')[0]); const f = respostas[p.id.split(':')[0]]; return Object.assign({ id: p.id }, f(p)); });
   const enviados = {};
@@ -3995,9 +3997,12 @@ test('Gestta → Hub (0.79.0): conjuntos em português, sem as empresas do escri
   // cartela quando é a vez dela: uma leitura por cliente (sem o do escritório)
   pedidos.length = 0;
   const r2 = await OCG.hubExecutarGestta(ler, ['cartela'], { hoje: H, cartela: true }, enviar);
-  assert.deepEqual(plano(pedidos), ['clientes', 'cartela'], 'só lê os clientes (sem enviá-los) e a cartela do único que não é do escritório');
-  assert.deepEqual(plano(r2.map(r => r.id)), ['gestta-cartela']); assert.equal(r2[0].cartela, true);
+  assert.deepEqual(plano(pedidos), ['clientes', 'cartela', 'contatos'], 'só lê os clientes (sem enviá-los), a cartela e os contatos do único que não é do escritório');
+  assert.deepEqual(plano(r2.map(r => r.id)), ['gestta-cartela', 'gestta-contatos']); assert.equal(r2[0].cartela, true);
   assert.equal(enviados['gestta-cartela'].p.partes[0], 'c1\t10\tEMPRESA ALFA\t1\tFiscal\ts1\tAna\tu1');
+  assert.equal(enviados['gestta-contatos'].conj.categoria, 'cadastros');
+  assert.equal(enviados['gestta-contatos'].p.partes[0], 'c1\t10\tEMPRESA ALFA\t1\tFiscal\ts1\tContato Ficticio\tcontato@exemplo.com\tsim\tk1', 'e-mail em minúsculas; sem WhatsApp nem telefone');
+  assert.equal(OCG.catDoConjunto('gestta-contatos'), 'cartela', 'reenviar os contatos refaz a cartela');
   // sessão perdida (401): para tudo
   const r3 = await OCG.hubExecutarGestta(async ps => ps.map(p => ({ id: p.id, status: 401, erro: 'erro 401' })), ['tarefas', 'clientes', 'equipe'], { hoje: H }, enviar);
   assert.deepEqual(plano(r3.map(r => r.id)), ['gestta-tarefas'], 'depois de um 401 não lê mais nada (nem a lista de empresas em atividade)'); assert.match(r3[0].motivo, /sessão do Gestta acabou/);
