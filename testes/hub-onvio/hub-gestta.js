@@ -664,6 +664,47 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     assert.equal((await page.evaluate(() => window.__db.ler('empresaSetores/p-alfa_fiscal'))).analistaId, 'gtx2');
   });
 
+  await passo('Hub 335: no Portal matriz e filiais são uma empresa só (com o nome da matriz): o Gestta não cadastra a filial à parte e o Portal junta sozinho a filial solta', async () => {
+    // dois grupos novos no Gestta: OMEGA (matriz e filial, nada no Portal) e SIGMA (matriz e duas filiais já soltas no Portal, uma desvinculada de propósito)
+    const om = '12121212000150', of = '12121212000231', sm = '13131313000100', sf = '13131313000290', sd = '13131313000370';
+    const manCli = await page.evaluate(() => window.__db.ler('ing_dados/gestta~gestta-clientes'));
+    const cliAnt = (await page.evaluate((m) => window.__db.ler('ing_partes/gestta~gestta-clientes~' + m.slot + '0'), manCli)).tabela;
+    const linhaCli = (id, nome, k) => manCli.colunas.map(c => ({ Id: id, 'Código': id, Nome: nome, CNPJ: k, Ativo: 'sim', Regime: 'Simples Nacional', UF: 'SP' })[c] || '');
+    const novosCli = [linhaCli('go1', 'OMEGA LTDA', om), linhaCli('go2', 'OMEGA LTDA FILIAL', of), linhaCli('gs1', 'SIGMA LTDA', sm), linhaCli('gs2', 'SIGMA LTDA FILIAL', sf), linhaCli('gs3', 'SIGMA LTDA OUTRA', sd)];
+    await semear('ing_partes/gestta~gestta-clientes~' + manCli.slot + '0', { ciclo: 'g35', parte: 0, tabela: cliAnt + '\n' + tab(novosCli) });
+    await semear('ing_dados/gestta~gestta-clientes', Object.assign({}, manCli, { ciclo: 'g35', partes: 1, nLinhas: manCli.nLinhas + 5, totalNaOrigem: manCli.nLinhas + 5, recebidoEm: Date.now() }));
+    const manA = await page.evaluate(() => window.__db.ler('ing_dados/gestta~gestta-empresas-ativas'));
+    const aAnt = (await page.evaluate((m) => window.__db.ler('ing_partes/gestta~gestta-empresas-ativas~' + m.slot + '0'), manA)).tabela;
+    const novasA = [[om, 'OMEGA LTDA'], [of, 'OMEGA LTDA FILIAL'], [sm, 'SIGMA LTDA'], [sf, 'SIGMA LTDA FILIAL'], [sd, 'SIGMA LTDA OUTRA']].map(([k, n]) => manA.colunas.map(c => ({ CNPJ: k, Cliente: n, Tarefas: 1, 'Último mês': MES_AT })[c] ?? ''));
+    await semear('ing_partes/gestta~gestta-empresas-ativas~' + manA.slot + '0', { ciclo: 'g35', parte: 0, tabela: aAnt + '\n' + tab(novasA) });
+    await semear('ing_dados/gestta~gestta-empresas-ativas', Object.assign({}, manA, { ciclo: 'g35', partes: 1, nLinhas: manA.nLinhas + 5, totalNaOrigem: manA.nLinhas + 5, recebidoEm: Date.now() }));
+    const manT = await page.evaluate(() => window.__db.ler('ing_dados/gestta~gestta-tarefas'));
+    const tAnt = (await page.evaluate((m) => window.__db.ler('ing_partes/gestta~gestta-tarefas~' + m.slot + '0'), manT)).tabela;
+    const linhaT = (id, setor, k, cli) => manT.colunas.map(c => ({ 'Mês': MES_AT, Id: id, Tarefa: 'Rotina', Setor: setor, 'Responsável': 'Paula Nunes', 'Situação': 'Aberta', CNPJ: k, Cliente: cli, 'Competência': MES_ANT })[c] || '');
+    const novasT = [linhaT('to1', 'Contábil', om, 'OMEGA LTDA'), linhaT('to2', 'Fiscal', of, 'OMEGA LTDA FILIAL'), linhaT('ts1', 'Fiscal', sm, 'SIGMA LTDA'), linhaT('ts2', 'Fiscal', sf, 'SIGMA LTDA FILIAL'), linhaT('ts3', 'Fiscal', sd, 'SIGMA LTDA OUTRA')];
+    await semear('ing_partes/gestta~gestta-tarefas~' + manT.slot + '0', { ciclo: 'g35', parte: 0, tabela: tAnt + '\n' + tab(novasT) });
+    await semear('ing_dados/gestta~gestta-tarefas', Object.assign({}, manT, { ciclo: 'g35', partes: 1, nLinhas: manT.nLinhas + 5, totalNaOrigem: manT.nLinhas + 5, recebidoEm: Date.now() }));
+    // SIGMA no Portal: a matriz e duas filiais soltas (uma com a frente Fiscal; a outra desvinculada à mão antes)
+    await semear('empresas/p-sm', { nome: 'SIGMA LTDA', cnpj: fmt(sm), setoresDemanda: { fiscal: true } });
+    await semear('empresas/p-sf', { nome: 'SIGMA LTDA FILIAL', cnpj: fmt(sf), setoresDemanda: { fiscal: true } });
+    await semear('empresaSetores/p-sf_fiscal', { empresaId: 'p-sf', empresaNome: 'SIGMA LTDA FILIAL', setor: 'fiscal', analistaId: '', analistaNome: '', etapas: { habilitacaoDominio: { status: 'concluido', data: '2026-10-01' } } });
+    await semear('empresas/p-sd', { nome: 'SIGMA LTDA OUTRA', cnpj: fmt(sd), setoresDemanda: { fiscal: true }, desvinculadaEm: '2026-11-01T10:00:00Z' });
+    await api((g) => g.garantir(true)); await page.waitForTimeout(500);
+    // o Gestta: uma empresa nova só para OMEGA, com as frentes da matriz e da filial; nada para as filiais nem para SIGMA
+    const novas = await api((g) => g.difs().filter(d => d.mod === 'portal' && d.campo === 'empresa' && /^1[23]/.test(d.k)).map(d => d.k + ' ' + d.rot));
+    assert.deepEqual(novas, ['12121212000150 Empresa nova no Portal (Contábil, Fiscal) · com 1 filial'], novas.join(' | '));
+    assert.ok(!(await api((g) => g.difs().some(d => d.mod === 'portal' && ['p-sf', 'p-sd'].includes(d.empId)))), 'a filial solta não recebe diferença');
+    await api((g) => g.portalAgora()); await page.waitForTimeout(800);
+    assert.ok(await page.evaluate(() => !!window.__db.ler('empresas/gt12121212000150')), 'OMEGA entrou');
+    assert.equal(await page.evaluate(() => window.__db.existe('empresas/gt12121212000231')), false, 'a filial da OMEGA não entrou à parte');
+    // o Portal aberto pela coordenação junta a filial solta da SIGMA à matriz; a desvinculada de propósito fica
+    await page.evaluate(() => window.__hubApi.abrirModulo('portal'));
+    await page.waitForFunction(() => (window.__db.ler('empresas/p-sf') || {}).matrizId === 'p-sm', null, { timeout: 15000 });
+    assert.ok(await page.evaluate(() => !!window.__db.ler('empresaSetores/p-sm_fiscal')), 'a frente da filial passou para a matriz');
+    assert.equal(await page.evaluate(() => window.__db.existe('empresaSetores/p-sf_fiscal')), false);
+    assert.ok(!(await page.evaluate(() => window.__db.ler('empresas/p-sd').matrizId)), 'a desvinculada de propósito não é juntada');
+  });
+
   await passo('Hub 334: empresa nova no DP pelo Gestta não é cadastrada de novo se outro navegador já a gravou (pelo Onvio, onv-<CNPJ>)', async () => {
     const alfa = await page.evaluate(() => window.__db.ler('dp_empresas/e-alfa'));
     await semear('dp_empresas/e-alfa', Object.assign({}, alfa, { cnpj: fmt('10101010000110') }));      // some do DP desta tela
