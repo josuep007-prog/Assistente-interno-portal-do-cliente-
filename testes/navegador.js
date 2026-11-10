@@ -2715,6 +2715,7 @@ await passo('app · contraste: nenhum texto abaixo de 4,5:1 (WCAG AA) nas telas 
     ['Configurações · Meu setor', '#/config?aba=setor', async () => {}],
     // 0.89.0: o Hoje e as Solicitações no setor Fiscal (modo enxuto, só a Geral), com a linha "Setor: Fiscal"
     ['Hoje no Fiscal', '#/inicio', async p => { await p.evaluate(() => { localStorage.setItem('controlonvio-setor-visao', 'todos'); }); await p.goto(URL_APP + '#/config?aba=setor'); await p.waitForSelector('[data-setor-op]'); const f = await p.$('[data-setor-op="fiscal"]'); if (f) { await f.click(); } await p.goto(URL_APP + '#/inicio'); await p.waitForTimeout(400); }],
+    ['Guia das Configurações (0.90.0)', '?janela=config#/config?aba=setor', async p => { await p.waitForSelector('[data-setor-op]'); }],
     ['Configurações · Prazos', '#/config?aba=prazos', async () => {}],
     ['Configurações · Feriados', '#/config?aba=feriados', async () => {}],
     ...['hub', 'regras', 'testes', 'aprender', 'diag'].map(sec => ['Configurações · Avançado · ' + sec, '#/config?aba=avancado&sec=' + sec, async p => { await p.evaluate(r => { window.__respostas = r; }, AV_RESP); await p.waitForSelector('.adv-tab.on'); if (sec === 'testes') { await p.click('[data-teste="testarFolha"]'); await p.waitForSelector('#adv-saida'); } await p.waitForTimeout(250); }]),
@@ -2735,6 +2736,26 @@ await passo('app · contraste: nenhum texto abaixo de 4,5:1 (WCAG AA) nas telas 
     await p.context().close();
   }
   assert.deepEqual(ruins.slice(0, 12), [], 'texto com pouco contraste (' + ruins.length + ')');
+});
+
+await passo('Configurações numa guia à parte (0.90.0): só a tela Configurações, sem o trilho nem a busca; outra rota fica nas Configurações', async () => {
+  const CAP = process.env.CAPTURAS;
+  for (const estilo of ['simples', 'atual']) for (const tema of ['light', 'dark']) {
+    const p = await abrirApp('?janela=config#/config?aba=setor', { settings: { __v: 2 } }, undefined, { estilo });
+    await p.evaluate(t => { document.documentElement.setAttribute('data-theme', t); }, tema);
+    await p.waitForSelector('[data-setor-op]');
+    const v = await p.evaluate(() => ({ so: document.documentElement.classList.contains('so-config'), trilho: getComputedStyle(document.querySelector('.trilho')).display, busca: getComputedStyle(document.querySelector('#btn-busca')).display, ver: getComputedStyle(document.querySelector('#btn-ver-onvio')).display, titulo: document.title, aba: (document.querySelector('#abas .aba.on') || {}).textContent }));
+    assert.deepEqual(v, { so: true, trilho: 'none', busca: 'none', ver: 'none', titulo: 'Configurações · Control', aba: 'Meu setor' }, estilo + '/' + tema);
+    const larg = await p.evaluate(() => [document.documentElement.scrollWidth, document.documentElement.clientWidth]);
+    assert.ok(larg[0] <= larg[1] + 1, 'sem rolagem horizontal');
+    if (CAP) await p.screenshot({ path: require('node:path').join(CAP, 'guia-config-' + estilo + '-' + tema + '.png') });
+    if (estilo === 'simples' && tema === 'light') {
+      await p.evaluate(() => { location.hash = '#/inicio'; }); await p.waitForTimeout(300);
+      assert.ok(await p.$('#abas .aba[data-aba="aparencia"].on'), 'outra rota continua nas Configurações (Aparência)');
+      await p.click('#abas .aba[data-aba="prazos"]'); await p.waitForSelector('.cfg-card');
+    }
+    await p.context().close();
+  }
 });
 
 /* ---------- Tarefas do Gestta (0.72.0): camada por cima do Gestta ---------- */

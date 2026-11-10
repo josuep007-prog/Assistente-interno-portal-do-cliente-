@@ -245,16 +245,30 @@ await sw.evaluate(i => aoClicarNoIcone({ id: i, url: 'https://onvio.com.br/br-po
 await esperar(async () => !(await cheia(portal)));
 await sw.evaluate(i => aoClicarNoIcone({ id: i, url: 'https://onvio.com.br/br-portal-do-cliente/painel-teste' }), idPortal);
 await esperar(() => cheia(portal));
-// Configurações > Avançado: tela própria do app (0.69.0), não mais a página de opções num quadro
+// Configurações (0.90.0): dentro do Onvio, #/config abre a guia própria das Configurações; a tela de trabalho fica onde estava
+const ehGuiaConfig = pg => pg.url().startsWith('chrome-extension://' + id + '/app/app.html?janela=config');
+const hashAntes = await app.evaluate(() => location.hash);
 await app.evaluate(() => { location.hash = '#/config?aba=avancado'; });
-await app.waitForSelector('.adv-tab[data-parte="hub"]');
-await app.click('.adv-tab[data-parte="regras"]');
-await app.waitForSelector('#adv-regrasUrl');
-await esperar(async () => /Em uso: versão/.test(await app.textContent('#adv-regras-pils')));
-console.log('Configurações > Avançado: tela própria do app (regras em uso)');
+await esperar(() => ctx.pages().some(ehGuiaConfig));
+const cfg = ctx.pages().find(ehGuiaConfig);
+assert.match(cfg.url(), /#\/config\?aba=avancado$/, 'abre já na aba pedida');
+await esperar(async () => (await app.evaluate(() => location.hash)) === hashAntes);
+await cfg.waitForSelector('.adv-tab[data-parte="hub"]');
+assert.equal(await cfg.evaluate(() => document.documentElement.classList.contains('so-config') && getComputedStyle(document.querySelector('.trilho')).display === 'none'), true, 'guia só com as Configurações, sem o trilho');
+await cfg.click('.adv-tab[data-parte="regras"]');
+await cfg.waitForSelector('#adv-regrasUrl');
+await esperar(async () => /Em uso: versão/.test(await cfg.textContent('#adv-regras-pils')));
+// o ícone do trilho reaproveita a guia aberta (não abre outra) e leva à aba pedida
+const nAbas = ctx.pages().filter(ehGuiaConfig).length;
+await app.$eval('.trilho [data-rota="config"]', a => a.click());
+await esperar(async () => /#\/config$/.test(cfg.url()));
+assert.equal(ctx.pages().filter(ehGuiaConfig).length, nAbas, 'reaproveita a guia');
+await cfg.waitForSelector('#abas .aba[data-aba="aparencia"].on');
+await cfg.close(); await portal.bringToFront();   // a pessoa volta à guia do Onvio
+console.log('Configurações: guia própria pelo ícone do Onvio (reaproveitada), Avançado com as regras em uso');
 await app.evaluate(() => { location.hash = '#/fila?escopo=equipe'; });
 await app.waitForSelector('#corpo [data-k="calcFerias:v1"]');
-await app.click('#corpo [data-k="calcFerias:v1"]');
+await app.$eval('#corpo [data-k="calcFerias:v1"]', b => b.click());   // por script: depois de trocar de guia o clique de mouse não chega ao quadro neste navegador de teste
 await app.waitForSelector('#gaveta .tr-item', { timeout: 8000 });         // espera os dados chegarem (a gaveta se redesenha)
 // clique por script: neste navegador de teste a janela real é menor que a área emulada e os ~120 px de baixo
 // não chegam ao iframe por mouse (também acontecia com a versão anterior)
@@ -431,6 +445,17 @@ assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br
   for (const s of ['SEGREDO', 'eyJ']) assert.ok(!JSON.stringify([t1, t2, eq]).includes(s), 'token fora: ' + s);
   // o shell entra no Gestta pelo manifesto (o botão fica num Shadow DOM fechado)
   assert.equal(await gAba.evaluate(() => !!document.getElementById('controlgestta-host')), true, 'botão do Control no Gestta');
+  // 0.90.0: a engrenagem das Tarefas do Gestta abre a mesma guia das Configurações
+  const gtTela = await ctx.newPage();
+  await gtTela.goto('chrome-extension://' + id + '/app/gestta.html');
+  await gtTela.click('#btn-config');
+  const ehCfg = pg => pg.url().startsWith('chrome-extension://' + id + '/app/app.html?janela=config');
+  await esperarReal(async () => ctx.pages().some(ehCfg));
+  const cfgG = ctx.pages().find(ehCfg);
+  await cfgG.waitForSelector('#abas .aba[data-aba="aparencia"]');
+  await gtTela.click('#btn-config'); await sleepMs(800);
+  assert.equal(ctx.pages().filter(ehCfg).length, 1, 'a engrenagem do Gestta reaproveita a guia');
+  await cfgG.close(); await gtTela.close();
   // Fechamento do mês (0.73.0): um POST do relatório CUSTOMER_TASK, guardado só na memória do Chrome, no máximo 1 vez por hora
   const antesFech = gChamadas.length;
   const f1 = await tt({ cmd: 'gesttaFechamento', ano: 2026, mes: 11 });
