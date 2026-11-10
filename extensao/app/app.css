@@ -1764,3 +1764,8 @@ body.setor-fora .trilho [data-rota="equipe"], body.setor-fora .trilho [data-rota
 .pn-anex-lista li:has(.pn-arq):hover{background:var(--surface-2)}
 .pn-anex-lista .pn-arq-ver{margin-left:auto; flex:none; color:var(--ink-2)}
 .tr-arq{cursor:pointer}
+
+/* 0.90.0: guia própria das Configurações (app.html?janela=config): só a tela Configurações, sem o trilho nem o que é da tela de trabalho */
+.so-config .app{padding-left:0}
+.so-config .trilho, .so-config #btn-busca, .so-config #btn-sino, .so-config #btn-ver-onvio, .so-config .mod-div{display:none}
+.so-config .principal{max-width:1180px; margin:0 auto}
