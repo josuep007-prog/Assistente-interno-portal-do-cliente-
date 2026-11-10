@@ -388,19 +388,27 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     assert.ok(ids.length <= 150 && !ids.includes('velho') && ids.includes('r0'), ids.length + ' pontos');
   });
 
-  await passo('Hub 322: analista ativa sem setor no cadastro do Gestta entra no módulo pelo setor da cartela', async () => {
-    const eq = EQUIPE.linhas.concat([['u10', 'Thais Exemplo', 'Analista', 'sim', '', 'sim'], ['u11', 'Sem Cartela', 'Analista', 'sim', '', 'sim']]);
+  await passo('Hub 322/330: no módulo entra quem tem tarefa do setor em seu nome; setor no cadastro do Gestta ou na cartela não basta', async () => {
+    // Thais: sem setor no cadastro, com tarefa do Contábil. Só Setor: setor Contábil no cadastro e na cartela, sem tarefa.
+    const eq = EQUIPE.linhas.concat([['u10', 'Thais Exemplo', 'Analista', 'sim', '', 'sim'], ['u11', 'Só Setor', 'Gestor', 'sim', 'Contábil | Departamento Pessoal', 'não']]);
     await semear('ing_partes/gestta~gestta-equipe~a0', { ciclo: 'g3', parte: 0, tabela: tab(eq) });
     const manE = await page.evaluate(() => window.__db.ler('ing_dados/gestta~gestta-equipe'));
     await semear('ing_dados/gestta~gestta-equipe', Object.assign({}, manE, { ciclo: 'g3', partes: 1, nLinhas: eq.length, totalNaOrigem: eq.length }));
-    const cart = CARTELA.linhas.concat([['g3', '3', 'GAMA INDUSTRIA LTDA', C.gama, 'Contábil', 's2', 'Thais Exemplo', 'u10']]);
+    const cart = CARTELA.linhas.concat([['g4', '4', 'DELTA MEI', C.delta, 'Contábil', 's2', 'Só Setor', 'u11']]);
     await semear('ing_partes/gestta~gestta-cartela~a0', { ciclo: 'g3', parte: 0, tabela: tab(cart) });
     const manC = await page.evaluate(() => window.__db.ler('ing_dados/gestta~gestta-cartela'));
     await semear('ing_dados/gestta~gestta-cartela', Object.assign({}, manC, { ciclo: 'g3', partes: 1, nLinhas: cart.length, totalNaOrigem: cart.length }));
+    const manT = await page.evaluate(() => window.__db.ler('ing_dados/gestta~gestta-tarefas'));
+    const tar = TAREFAS.linhas.concat([['2026-11', 't9', 'Balancete', 'Contábil', 'Thais Exemplo', 'Aberta', C.gama, 'GAMA INDUSTRIA LTDA']]);
+    await semear('ing_partes/gestta~gestta-tarefas~a0', { ciclo: 'g3', parte: 0, tabela: tab(tar) });
+    await semear('ing_dados/gestta~gestta-tarefas', Object.assign({}, manT, { ciclo: 'g3', partes: 1, nLinhas: tar.length, totalNaOrigem: tar.length }));
     await page.waitForFunction(() => (window.__cadastro.analistas('ctb') || []).includes('Thais Exemplo'), null, { timeout: 10000 });
-    const ana = await page.evaluate(() => [window.__cadastro.analistas('ctb'), window.__cadastro.analistaAtivo('Thais Exemplo'), window.__cadastro.analistaAtivo('Sem Cartela')]);
-    assert.ok(ana[0].includes('Thais Exemplo') && !ana[0].includes('Sem Cartela'), JSON.stringify(ana[0]));
-    assert.deepEqual(ana.slice(1), [true, true], 'as duas continuam ativas no Gestta');
+    const ana = await page.evaluate(() => [window.__cadastro.analistas('ctb'), window.__hubApi.cfg.dp.equipe(), window.__cadastro.analistaAtivo('Thais Exemplo'), window.__cadastro.analistaAtivo('Só Setor')]);
+    assert.ok(ana[0].includes('Thais Exemplo') && !ana[0].includes('Só Setor'), 'Contábil: ' + JSON.stringify(ana[0]));
+    assert.deepEqual(ana[1], ['Carla Mendes Souza'], 'DP: só quem tem tarefa do Pessoal');
+    assert.deepEqual(ana.slice(2), [true, true], 'as duas continuam ativas no Gestta (o nome gravado nas empresas não some)');
+    // devolve as tarefas de antes para os passos seguintes
+    await semear('ing_dados/gestta~gestta-tarefas', manT);
   });
 
   await passo('Hub 325: Fiscal e Contábil pelo Gestta: tarefa concluída marca sozinha a obrigação e a etapa vazias, a manual fica, desfazer não volta, a atrasada aparece e dado velho não marca', async () => {
