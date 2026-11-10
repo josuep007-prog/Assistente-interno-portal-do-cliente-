@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.89.0)
+# Control Onvio · ControlTax (v0.90.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,12 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.90.0 (10/11/2026): as Configurações numa guia à parte
+
+- A engrenagem do trilho no Control Onvio e a nova engrenagem das Tarefas do Gestta abrem **a mesma guia de Configurações** (Aparência, Meu setor, Prazos, Leitura e avisos, Feriados, Palavras e Avançado, com o Control Hub e o Gestta). Se a guia já está aberta, ela vem para a frente na aba pedida, sem abrir outra.
+- Dentro do Onvio, qualquer atalho para as Configurações ("Trocar" o setor, "Testar a leitura") abre essa guia e a tela de trabalho fica onde estava.
+- A guia mostra só as Configurações, sem o trilho, a busca e o "Ver Onvio", nos dois estilos e nos dois temas.
 
 ## Novidades da v0.89.0 (09/11/2026): o setor em Configurações, a extensão simples para Contábil e Fiscal e a distribuição por setor
 

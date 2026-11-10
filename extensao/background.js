@@ -1075,6 +1075,25 @@ async function abrir(it, tabPreferida) {
 let casosCache = {};
 
 /* ---------- mensagens do painel ---------- */
+// 0.90.0 (Josué, 10/11/2026): as Configurações numa guia própria, a mesma pelo Onvio e pelo Gestta. Reaproveita a guia aberta
+// (traz para frente e leva à aba pedida); só os parâmetros conhecidos (aba, sec) vão no endereço.
+async function abrirGuiaConfig(params) {
+  const base = chrome.runtime.getURL('app/app.html?janela=config');
+  const p = new URLSearchParams();
+  const ok = v => typeof v === 'string' && /^[a-z0-9-]{1,30}$/i.test(v);
+  if (params && ok(params.aba)) p.set('aba', params.aba);
+  if (params && ok(params.sec)) p.set('sec', params.sec);
+  const url = base + '#/config' + (p.toString() ? '?' + p : '');
+  const abas = await chrome.tabs.query({});
+  const ja = abas.find(t => t.url && t.url.startsWith(base));
+  if (ja) {
+    await chrome.tabs.update(ja.id, { active: true, url });
+    if (ja.windowId != null) await chrome.windows.update(ja.windowId, { focused: true }).catch(() => {});
+    return { ok: true, tabId: ja.id, reaproveitada: true };
+  }
+  const t = await chrome.tabs.create({ url });
+  return { ok: true, tabId: t.id };
+}
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   if (msg && msg.alvo === 'offscreen') return false;                  // conversa com o documento que lê PDF, não é comando
   (async () => {
@@ -1181,6 +1200,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'gesttaFechamento') { reply(await gesttaFechamento(msg, sender)); }
       else if (msg.cmd === 'gesttaTarefa') { reply(await gesttaTarefa(msg, sender)); }
       else if (msg.cmd === 'gesttaHistorico') { reply(await gesttaHistorico(msg, sender)); }
+      else if (msg.cmd === 'abrirConfig') { reply(await abrirGuiaConfig(msg.params)); }
       else if (msg.cmd === 'fecharPainel') { if (sender.tab && sender.tab.id != null) await mensagemParaPainel(sender.tab.id, 'fechar').catch(() => {}); reply({ ok: true }); }
       else reply({ ok: false, erro: 'comando desconhecido' });
     } catch (e) {
