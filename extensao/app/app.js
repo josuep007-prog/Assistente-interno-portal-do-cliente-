@@ -29,14 +29,23 @@ let redesenharDepois = false;   // mudança que chegou com uma janela aberta
 
 // Fora da equipe do DP (regras do escritório): só as suas solicitações, sem Equipe e Distribuir
 const SO_DO_SETOR = new Set(['equipe', 'distribuir']);
+// 0.90.0 (Josué, 10/11/2026: "o ícone de configuração deve aparecer tanto na extensão Gestta quanto Onvio, mas deve abrir uma guia à parte";
+// decidido: tudo num lugar): as Configurações moram numa guia própria (app.html?janela=config). Dentro do Onvio (o app num quadro), ir para
+// #/config pede ao service worker essa guia (cmd abrirConfig, reaproveita a que já existe) e a tela de trabalho fica onde estava.
+const SO_CONFIG = new URLSearchParams(location.search).get('janela') === 'config';
+const NO_QUADRO = (() => { try { return window.top !== window; } catch (e) { return true; } })();
+function abrirGuiaConfig(params) { enviar({ cmd: 'abrirConfig', params: params || {} }).then(r => { if (!r || !r.ok) toast((r && r.erro) || 'Não foi possível abrir as Configurações', true); }); }
 function lerRota() {
   const h = location.hash.replace(/^#\/?/, '');
   const [nome, q] = h.split('?');
   const params = Object.fromEntries(new URLSearchParams(q || ''));
+  if (SO_CONFIG) return { nome: 'config', params: nome === 'config' ? params : {} };
   const n = VISTAS[nome] ? nome : 'inicio';
   return { nome: estado.setor.fora && SO_DO_SETOR.has(n) ? 'fila' : n, params: estado.setor.fora && SO_DO_SETOR.has(n) ? {} : params };
 }
 function navegar(nome, params) {
+  if (nome === 'config' && NO_QUADRO && !SO_CONFIG) { abrirGuiaConfig(params); return; }
+  if (SO_CONFIG && nome !== 'config') return;
   const q = new URLSearchParams(params || {}).toString();
   const alvo = '#/' + nome + (q ? '?' + q : '');
   if (location.hash === alvo) desenhar(); else location.hash = alvo;
@@ -304,9 +313,19 @@ async function atualizar() {
 
 /* ---------- início ---------- */
 (async function iniciar() {
+  if (SO_CONFIG) { document.documentElement.classList.add('so-config'); document.title = 'Configurações · Control'; }
+  else if (NO_QUADRO && /^#\/?config(\?|$)/.test(location.hash)) { abrirGuiaConfig(Object.fromEntries(new URLSearchParams(location.hash.split('?')[1] || ''))); history.replaceState(null, '', '#/inicio'); }
   await iniciarEstado();
   desenhar(); aoVivo(); contadores(); iconeTema(); avisarNovos();
-  addEventListener('hashchange', () => { fecharVer(); fecharFoco(); fecharAnexos(); fecharLote(); fecharDetalhe(); fecharLembrete(); fecharNova(); desenhar(); });
+  addEventListener('hashchange', () => {
+    // dentro do Onvio, #/config (trilho, links, atalhos) abre a guia das Configurações e a tela de trabalho fica onde estava
+    if (NO_QUADRO && !SO_CONFIG && /^#\/?config(\?|$)/.test(location.hash)) {
+      const q = location.hash.split('?')[1] || '';
+      abrirGuiaConfig(Object.fromEntries(new URLSearchParams(q)));
+      history.replaceState(null, '', '#/' + rota.nome + (Object.keys(rota.params).length ? '?' + new URLSearchParams(rota.params) : ''));
+      return;
+    }
+    fecharVer(); fecharFoco(); fecharAnexos(); fecharLote(); fecharDetalhe(); fecharLembrete(); fecharNova(); desenhar(); });
   aoMudar(quais => {
     const ocupado = detalheAberto() || anexosAbertos() || verAberto() || loteAberto() || lembreteAberto() || novaAberta() || !$('#cmdk').hidden || document.activeElement.matches('input, select, textarea') || document.querySelector('#vista details.menu[open]');
     const relevante = quais.some(q => ['snap', 'settings', 'regras', 'lembretes', 'serie', 'eventos', 'excecoes', 'sugIgnoradas', 'distAuto', 'distLog'].includes(q)) && AO_VIVO.has(rota.nome);
