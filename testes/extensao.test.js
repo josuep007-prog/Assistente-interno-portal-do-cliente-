@@ -3163,8 +3163,12 @@ test('Hub: conjunto grande vira várias partes dentro do limite e marca o corte 
   const p = OC.hubPartesDe({ linhas, cortado: false });
   assert.ok(p.partes.length > 1 && p.partes.every(x => x.length <= 140000));
   assert.equal(p.nLinhasTotal, 4000);
-  const enorme = OC.hubPartesDe({ linhas: Array.from({ length: 100 }, () => 'y'.repeat(139000)), cortado: false });
-  assert.equal(enorme.partes.length, 80);
+  // 0.91.0: o limite subiu de 80 para 1.000 partes (ler tudo); 100 partes passam inteiras, só acima de 1.000 corta
+  const grande = OC.hubPartesDe({ linhas: Array.from({ length: 100 }, () => 'y'.repeat(139000)), cortado: false });
+  assert.equal(grande.partes.length, 100);
+  assert.equal(grande.cortado, false);
+  const enorme = OC.hubPartesDe({ linhas: Array.from({ length: 1001 }, () => 'y'.repeat(139000)), cortado: false });
+  assert.equal(enorme.partes.length, 1000);
   assert.equal(enorme.cortado, true);
 });
 

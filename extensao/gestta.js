@@ -557,7 +557,7 @@
     { id: 'alertas', nome: 'Alertas', ajuda: 'Os envios de documento ao Onvio que deram erro (empresa, tarefa e motivo) e os templates de documento sem pasta no portal.', padrao: true },
     { id: 'cartela', nome: 'Cartela e contatos (1 vez por dia)', ajuda: 'Quem atende cada setor de cada cliente e quem do cliente recebe cada setor (nome e e-mail), como está no Gestta. Duas leituras por cliente (uns 15 minutos), no máximo uma vez por dia.', padrao: true }
   ];
-  const HUB_GESTTA_PARTE = 140000, HUB_GESTTA_PARTES_MAX = 80;
+  const HUB_GESTTA_PARTE = 140000, HUB_GESTTA_PARTES_MAX = 1000;   // 0.91.0: era 80 ("bote pra ler tudo que tiver")
   const celula = (v, max) => String(v == null ? '' : v).replace(/[\t\r\n\u2028\u2029]+/g, ' ').replace(/ {2,}/g, ' ').trim().slice(0, max || 300);
   const simNao = v => v === '' || v == null ? '' : sim(v) ? 'sim' : 'não';
   const dataHub = v => { const t = String(v == null ? '' : v); return /^\d{4}-\d{2}-\d{2}T/.test(t) ? t.slice(0, 16).replace('T', ' ') : /^\d{4}-\d{2}-\d{2}/.test(t) ? t.slice(0, 10) : t; };
