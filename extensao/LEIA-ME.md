@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.90.0)
+# Control Onvio · ControlTax (v0.91.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,11 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.91.0 (10/11/2026): o envio ao Hub sem o limite de 80 partes (Hub 332)
+
+- Pedido do Josué: "pode deixar sem limite, bote pra ler tudo que tiver". O envio ao Control Hub cortava cada conjunto em 80 partes (cerca de 11 MB); a lista de tarefas do Gestta já ocupava 47. Agora o limite é de 1.000 partes (cerca de 140 MB) na extensão (`HUB_PARTES_MAX` no `core.js`, `HUB_GESTTA_PARTES_MAX` no `gestta.js`) e no Hub (`ING_PARTES_MAX`, Hub 332; a Entrada de dados abre até 1.000 partes). Na prática é ler tudo: o número só protege de um envio sem fim.
+- Cada parte é um documento no banco do Hub (limite de 5.000); conjuntos muito grandes ocupam mais. O "Uso do banco" mostra quanto.
 
 ## Novidades da v0.90.0 (10/11/2026): as Configurações numa guia à parte
 
