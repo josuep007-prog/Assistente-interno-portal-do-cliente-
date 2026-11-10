@@ -365,6 +365,7 @@ function ligar(v) {
 /* ---------- tema e início ---------- */
 const temaAtual = () => document.documentElement.getAttribute('data-theme') || 'light';
 const iconeTema = () => { const d = temaAtual() === 'dark'; $('#btn-tema use').setAttribute('href', d ? '#i-sun' : '#i-moon'); $('#tema-tx').textContent = d ? 'Tema claro' : 'Tema escuro'; };
+$('#btn-config').onclick = () => enviar({ cmd: 'abrirConfig' }).then(r => { if (!r || !r.ok) toast((r && r.erro) || 'Não foi possível abrir as Configurações', true); });   // 0.90.0: a mesma guia das Configurações do Onvio
 $('#btn-tema').onclick = () => { const n = temaAtual() === 'dark' ? 'light' : 'dark'; document.documentElement.setAttribute('data-theme', n); try { localStorage.setItem('controlonvio-theme', n); } catch (e) {} iconeTema(); };
 $('#btn-ver-gestta').onclick = () => paraPai({ controlGestta: 'fechar' });
 $('#vista').addEventListener('scroll', () => salvarEstado(), { passive: true });
