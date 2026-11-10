@@ -153,7 +153,7 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
   await passo('Referência absoluta: empresa sem tarefa no Gestta some do DP, do Contábil, do Portal e do cadastro; analista fora da equipe sai da carteira; a lista do Gestta faltando não esconde nada', async () => {
     const dp = () => page.evaluate(() => window.__hubApi.api('dp').listar().map(e => [e.nome, e.analista]).sort());
     await page.waitForFunction(() => !window.__hubApi.api('dp').listar().some(e => /VELHA/.test(e.nome)), null, { timeout: 8000 });
-    assert.deepEqual(await dp(), [['ALFA COMERCIO LTDA FILIAL', ''], ['ALFA COMERCIO LTDA', ''], ['BETA SERVICOS LTDA', 'Carla Souza'], ['DELTA MEI', ''], ['DELTA MEI', ''], ['GAMA INDUSTRIA', ''], ['MARIA EMPREGADORA DOMESTICA', ''], ['ZULU COM FOLHA LTDA', '']], 'VELHA e a sem CNPJ nem tarefa escondidas; filial, sem CNPJ, CNPJ diferente, doméstica e a com empregado ativo (sem tarefa no Gestta) ficam; Marcos Lima (inativo no Gestta) sai da DELTA');
+    assert.deepEqual(await dp(), [['ALFA COMERCIO LTDA FILIAL', ''], ['ALFA COMERCIO LTDA', ''], ['BETA SERVICOS LTDA', 'Carla Souza'], ['DELTA MEI', ''], ['DELTA MEI', ''], ['GAMA INDUSTRIA', ''], ['MARIA EMPREGADORA DOMESTICA', '']], 'VELHA, a sem CNPJ nem tarefa e (Hub 329) a com empregado ativo sem tarefa no Gestta escondidas; filial, sem CNPJ, CNPJ diferente e doméstica ficam; Marcos Lima (inativo no Gestta) sai da DELTA');
     assert.deepEqual(await page.evaluate(() => window.__hubApi.cfg.dp.equipe()), ['Carla Mendes Souza'], 'a equipe do DP é a do Gestta');
     const cad = await page.evaluate(([v, a]) => [window.__cadastro.ativa('ctb', 'c' + v, v), window.__cadastro.ativa('ctb', 'c' + a, a), window.__cadastro.ativa('portal', 'p-velha', v), window.__cadastro.analistaAtivo('Marcos Lima'), window.__cadastro.analistaAtivo('Carla Souza'), window.__cadastro.analistaGestta('Carla Souza'), window.__cadastro.analistas('ctb')], [C.velha, C.alfa]);
     assert.deepEqual(cad, [false, true, false, false, true, 'Carla Mendes Souza', ['Rui Teixeira', 'Zélia Desconhecida']]);
@@ -161,7 +161,7 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     assert.equal(await page.evaluate(() => window.__db.ler('dp_empresas/e-delta').responsavel), 'Marcos Lima', 'o nome gravado fica');
     await esperar();
     const ref = await api((g) => g.referencia());
-    assert.deepEqual([ref.empresas.ok, ref.empresas.n, ref.analistas.ok, ref.fora.dp, ref.fora.contabil, ref.fora.portal], [true, 5, true, ['OUTRA SEM CNPJ NEM TAREFA · sem CNPJ e o nome não está no Gestta', 'VELHA SEM TAREFA LTDA · 77.777.777/0001-07 · CNPJ sem tarefa no Gestta'], ['VELHA SEM TAREFA LTDA · 77.777.777/0001-07 · CNPJ sem tarefa no Gestta'], ['VELHA SEM TAREFA LTDA · 77.777.777/0001-07 · CNPJ sem tarefa no Gestta']]);
+    assert.deepEqual([ref.empresas.ok, ref.empresas.n, ref.analistas.ok, ref.fora.dp, ref.fora.contabil, ref.fora.portal], [true, 5, true, ['OUTRA SEM CNPJ NEM TAREFA · sem CNPJ e o nome não está no Gestta', 'VELHA SEM TAREFA LTDA · 77.777.777/0001-07 · CNPJ sem tarefa no Gestta', 'ZULU COM FOLHA LTDA · 88.888.888/0001-08 · CNPJ sem tarefa no Gestta'], ['VELHA SEM TAREFA LTDA · 77.777.777/0001-07 · CNPJ sem tarefa no Gestta'], ['VELHA SEM TAREFA LTDA · 77.777.777/0001-07 · CNPJ sem tarefa no Gestta']]);
     assert.ok(ref.analistasFora.some(a => a.nome === 'Marcos Lima'), JSON.stringify(ref.analistasFora));
     // trava: lista velha (mais de 72 h) não esconde nada
     const man = await page.evaluate(() => window.__db.ler('ing_dados/gestta~gestta-empresas-ativas'));
@@ -551,7 +551,6 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     await page.waitForFunction(() => window.__db.ler('empresas/p-delta').setoresDemanda.fiscal === false, null, { timeout: 15000 });
     const tr = await api((g) => g.portal().travas);
     assert.ok(tr.some(t => /analista das frentes.*cartela veio incompleta/.test(t)) && !tr.some(t => /demanda/.test(t)), 'travas: ' + tr.join(' | '));
-    assert.ok(Array.isArray(await api((g) => g.portal().porFolha)));
     // tarefas cortadas: a demanda não muda, e a tela diz isso
     const manT = await page.evaluate(() => window.__db.ler('ing_dados/gestta~gestta-tarefas'));
     await semear('ing_dados/gestta~gestta-tarefas', Object.assign({}, manT, { cortado: true }));
@@ -568,6 +567,29 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     assert.match(await det.textContent(), /Por que o Portal pode não ter mudado:.*demanda dos setores não muda/s);
     if (CAP) await page.screenshot({ path: path.join(CAP, 'hub328-portal-travas.png') });
     await semear('ing_dados/gestta~gestta-tarefas', manT); await semear('ing_dados/gestta~gestta-cartela', manC);
+  });
+  await passo('Hub 329: empresa sem tarefa no Gestta sai do Portal e do DP mesmo com empregado ativo', async () => {
+    await api((g) => g.garantir(true)); await page.waitForTimeout(300);
+    const r = await page.evaluate((k) => [window.__cadastro.ativa('portal', 'p-zulu', k, 'ZULU COM FOLHA LTDA'), window.__cadastro.ativa('dp', 'e-folha', k, 'ZULU COM FOLHA LTDA'), window.__cadastro.ativa('portal', 'p-alfa', '', 'ALFA COMERCIO LTDA')], '88888888000108');
+    assert.deepEqual(r, [false, false, true], 'ZULU (folha, sem tarefa) fora do Portal e do DP; ALFA (com tarefa) fica');
+  });
+  await passo('Hub 329: a empresa arquivada mostra o progresso na lista de Arquivadas e abre o detalhe', async () => {
+    await semear('empresas/p-arq', { nome: 'ARQUIVADA EXEMPLO LTDA', cnpj: fmt(C.alfa), setoresDemanda: { pessoal: true }, arquivada: true, arquivadaEm: '2026-11-01T10:00:00Z' });
+    await semear('empresaSetores/p-arq_pessoal', { empresaId: 'p-arq', empresaNome: 'ARQUIVADA EXEMPLO LTDA', setor: 'pessoal', etapas: { habilitacaoDominio: { status: 'concluido', data: '2026-10-01' } }, analistaNome: '' });
+    await page.evaluate(() => window.__hubApi.abrirModulo('portal'));
+    let fp = null; for (let i = 0; i < 60 && !fp; i++) { fp = page.frames().find(x => /portal\.html/.test(x.url())) || null; if (!fp) await page.waitForTimeout(250); }
+    await page.evaluate(() => window.__hubApi.api('portal').irPara('progresso'));
+    await fp.waitForSelector('#btnArquivadas:not([hidden])', { timeout: 15000 });
+    await fp.click('#btnArquivadas');
+    const row = '#empresasArq .arq-item .erow[data-id="p-arq"]';
+    await fp.waitForSelector(row + ' .epct b', { timeout: 10000 });
+    assert.match(await fp.textContent(row + ' .epct b'), /^\d+%$/);
+    assert.ok(await fp.$('#empresasArq [data-action="restaurar-empresa"][data-id="p-arq"]'), 'Restaurar continua');
+    await fp.click(row + ' .erow-main');
+    await fp.waitForSelector('#empresasArq .erow.open[data-id="p-arq"] .edetail-in', { timeout: 10000 });
+    assert.ok(!(await fp.$('#empresasArq .erow.open[data-id="p-arq"] [data-action="arquivar-empresa"]')), 'arquivada não oferece Arquivar de novo');
+    if (CAP) { await fp.evaluate(() => document.querySelector('#empresasArq').scrollIntoView({ block: 'start' })); await page.waitForTimeout(300); await page.screenshot({ path: path.join(CAP, 'hub329-arquivada.png') }); }
+    await fp.click('#btnArquivadas');
   });
   await passo('Uso do banco mede também o histórico do Gestta e o login', async () => {
     const cols = await page.evaluate(() => window.__hubApi.usoColecoes ? window.__hubApi.usoColecoes().map(c => c.path) : null);
