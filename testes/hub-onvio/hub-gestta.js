@@ -635,6 +635,7 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
   await passo('Hub 331: lista de tarefas sem o mês anterior não liga, desliga nem cadastra nada no Portal, e a Entrada de dados diz por quê', async () => {
     // só as tarefas do mês atual: a filial da DELTA sai (a folha dela era a única do Pessoal no grupo), mas sem o mês anterior nada muda
     const manT = await page.evaluate(() => window.__db.ler('ing_dados/gestta~gestta-tarefas'));
+    const parteAnt = await page.evaluate((m) => window.__db.ler('ing_partes/gestta~gestta-tarefas~' + m.slot + '0'), manT);
     const so = TAREFAS.linhas.filter(l => l[0] === MES_AT);
     await semear('ing_partes/gestta~gestta-tarefas~a0', { ciclo: 'g32', parte: 0, tabela: tab(so) });
     await semear('ing_dados/gestta~gestta-tarefas', Object.assign({}, manT, { slot: 'a', ciclo: 'g32', partes: 1, colunas: TAREFAS.colunas, nLinhas: so.length, totalNaOrigem: so.length, recebidoEm: Date.now() }));
@@ -644,7 +645,23 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     assert.ok(!(await api((g) => g.difs().some(d => d.mod === 'portal' && (/^demanda-/.test(d.campo) || d.campo === 'empresa')))), 'nenhuma demanda nem empresa nova para decidir');
     const tr = await api((g) => g.portal().travas);
     assert.ok(tr.some(t => /chegou sem/.test(t)), 'travas: ' + tr.join(' | '));
+    await semear('ing_partes/gestta~gestta-tarefas~' + manT.slot + '0', parteAnt);
     await semear('ing_dados/gestta~gestta-tarefas', manT);
+  });
+
+  await passo('Hub 333: pessoa repetida na equipe do Portal (cadastrada mais de uma vez pelo Gestta) é juntada numa só, com as frentes; quem foi cadastrado à mão fica', async () => {
+    const obs = 'Cadastrado(a) a partir do Gestta em 09/11/2026 (Entrada de dados).';
+    await semear('funcionarios/gtx1', { nome: 'Ana Repetida', setor: 'fiscal', statusTreinamento: 'pendente', observacoes: obs, criadoEm: '2026-11-09T10:00:00.000Z' });
+    await semear('funcionarios/gtx2', { nome: 'Ana Repetida', setor: 'fiscal', statusTreinamento: 'pendente', observacoes: obs, criadoEm: '2026-11-09T10:00:01.000Z' });
+    await semear('funcionarios/gtx3', { nome: 'Ana Repetida', setor: 'fiscal', statusTreinamento: 'pendente', observacoes: obs, criadoEm: '2026-11-09T10:00:02.000Z' });
+    await semear('empresaSetores/p-alfa_fiscal', Object.assign({}, await page.evaluate(() => window.__db.ler('empresaSetores/p-alfa_fiscal')), { analistaId: 'gtx2', analistaNome: 'Ana Repetida' }));
+    await semear('funcionarios/man1', { nome: 'Bia Manual', setor: 'pessoal', statusTreinamento: 'pendente', observacoes: '' });
+    await semear('funcionarios/gtx4', { nome: 'Bia Manual', setor: 'pessoal', statusTreinamento: 'pendente', observacoes: obs });
+    await api((g) => g.garantir(true)); await page.waitForTimeout(300);
+    await api((g) => g.portalAgora()); await page.waitForTimeout(800);
+    const fs = await page.evaluate(() => window.__db.listar('funcionarios').filter(f => /Repetida|Manual/.test(f.nome)).map(f => f.id).sort());
+    assert.deepEqual(fs, ['gtx2', 'man1'], 'fica a Ana com a frente e a Bia cadastrada à mão: ' + fs.join(', '));
+    assert.equal((await page.evaluate(() => window.__db.ler('empresaSetores/p-alfa_fiscal'))).analistaId, 'gtx2');
   });
 
   await passo('sem erros de página', async () => { assert.deepEqual(erros, []); });
