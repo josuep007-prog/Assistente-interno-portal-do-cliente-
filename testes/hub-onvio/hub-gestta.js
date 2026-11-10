@@ -52,6 +52,7 @@ const CARTELA = { colunas: ['Id do cliente', 'Código do cliente', 'Cliente', 'C
   ['g6', '6', 'CONTROLTAX CONTABILIDADE', C.esc, 'Departamento Pessoal', 's1', 'Carla Mendes Souza', 'u1']] };
 const SETORES = { colunas: ['Id', 'Setor'], linhas: [['s1', 'Departamento Pessoal'], ['s2', 'Contábil'], ['s3', 'Fiscal'], ['s4', 'Legalização']] };
 const TAREFAS = { colunas: ['Mês', 'Id', 'Tarefa', 'Setor', 'Responsável', 'Situação', 'CNPJ', 'Cliente'], linhas: [
+  ['2026-10', 't0', 'DCTFWeb', 'Fiscal', 'Paula Nunes', 'Concluída', C.alfa, 'ALFA COMERCIO LTDA'],        // o mês anterior na lista (a demanda só muda com os dois meses, Hub 331)
   ['2026-11', 't1', 'DCTFWeb', 'Fiscal', '', 'Aberta', C.beta, 'BETA SERVICOS LTDA'],
   // Hub 327: demanda = tarefa no setor. BETA tem analista no Pessoal (cartela) e nenhuma tarefa lá: o Pessoal dela é descartado
   ['2026-11', 't2', 'Folha', 'Departamento Pessoal', 'Carla Mendes Souza', 'Aberta', C.alfa, 'ALFA COMERCIO LTDA'],
@@ -393,9 +394,9 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     assert.ok(ids.length <= 150 && !ids.includes('velho') && ids.includes('r0'), ids.length + ' pontos');
   });
 
-  await passo('Hub 322/330: no módulo entra quem tem tarefa do setor em seu nome; setor no cadastro do Gestta ou na cartela não basta', async () => {
-    // Thais: sem setor no cadastro, com tarefa do Contábil. Só Setor: setor Contábil no cadastro e na cartela, sem tarefa.
-    const eq = EQUIPE.linhas.concat([['u10', 'Thais Exemplo', 'Analista', 'sim', '', 'sim'], ['u11', 'Só Setor', 'Gestor', 'sim', 'Contábil | Departamento Pessoal', 'não']]);
+  await passo('Hub 322 e Hub 332: analista sem setor no cadastro entra pelas tarefas; só conta tarefa do setor, de empresa ativa e das duas últimas competências', async () => {
+    const eq = EQUIPE.linhas.concat([['u10', 'Thais Exemplo', 'Analista', 'sim', '', 'sim'], ['u11', 'Sem Cartela', 'Analista', 'sim', '', 'sim'],
+      ['u12', 'Competencia Antiga', 'Analista', 'sim', 'Departamento Pessoal', 'sim'], ['u13', 'Empresa Fora', 'Analista', 'sim', 'Departamento Pessoal', 'sim'], ['u14', 'So Fiscal', 'Analista', 'sim', 'Departamento Pessoal', 'sim']]);
     await semear('ing_partes/gestta~gestta-equipe~a0', { ciclo: 'g3', parte: 0, tabela: tab(eq) });
     const manE = await page.evaluate(() => window.__db.ler('ing_dados/gestta~gestta-equipe'));
     await semear('ing_dados/gestta~gestta-equipe', Object.assign({}, manE, { ciclo: 'g3', partes: 1, nLinhas: eq.length, totalNaOrigem: eq.length }));
@@ -403,17 +404,36 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     await semear('ing_partes/gestta~gestta-cartela~a0', { ciclo: 'g3', parte: 0, tabela: tab(cart) });
     const manC = await page.evaluate(() => window.__db.ler('ing_dados/gestta~gestta-cartela'));
     await semear('ing_dados/gestta~gestta-cartela', Object.assign({}, manC, { ciclo: 'g3', partes: 1, nLinhas: cart.length, totalNaOrigem: cart.length }));
-    const manT = await page.evaluate(() => window.__db.ler('ing_dados/gestta~gestta-tarefas'));
-    const tar = TAREFAS.linhas.concat([['2026-11', 't9', 'Balancete', 'Contábil', 'Thais Exemplo', 'Aberta', C.gama, 'GAMA INDUSTRIA LTDA']]);
-    await semear('ing_partes/gestta~gestta-tarefas~a0', { ciclo: 'g3', parte: 0, tabela: tab(tar) });
-    await semear('ing_dados/gestta~gestta-tarefas', Object.assign({}, manT, { ciclo: 'g3', partes: 1, nLinhas: tar.length, totalNaOrigem: tar.length }));
+    // a lista de tarefas completa (com a coluna Competência): as duas últimas competências são a do mês anterior (A) e a de dois meses atrás (B)
+    const ym = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'), h0 = new Date();
+    const A = ym(new Date(h0.getFullYear(), h0.getMonth() - 1, 1)), B = ym(new Date(h0.getFullYear(), h0.getMonth() - 2, 1)), Cc = ym(new Date(h0.getFullYear(), h0.getMonth() - 3, 1));
+    const cols = ['Mês', 'Id', 'Tarefa', 'Setor', 'Responsável', 'Situação', 'Meta', 'Concluída em', 'Concluída com atraso', 'Gerando multa', 'CNPJ', 'Cliente', 'Competência'];
+    const t = (id, setor, resp, comp, cnpj, cli) => [A, id, 'Tarefa ' + id, setor, resp, 'Aberta', A + '-28', '', 'não', 'não', cnpj, cli, comp];
+    const FORA = '99999999000199', linhas = [
+      t('a1', 'Contábil', 'Thais Exemplo', A, C.alfa, 'ALFA COMERCIO LTDA'),
+      t('a2', 'Departamento Pessoal', 'Carla Mendes Souza', A, C.alfa, 'ALFA COMERCIO LTDA'),
+      t('a3', 'Departamento Pessoal', 'Carla Mendes Souza', B, C.alfa, 'ALFA COMERCIO LTDA'),
+      t('a4', 'Departamento Pessoal', 'Competencia Antiga', Cc, C.alfa, 'ALFA COMERCIO LTDA'),          // só numa competência antiga demais
+      t('a5', 'Departamento Pessoal', 'Empresa Fora', A, FORA, 'EMPRESA FORA DO GESTTA LTDA'),         // empresa que não é cliente ativo
+      t('a6', 'Fiscal', 'So Fiscal', A, C.alfa, 'ALFA COMERCIO LTDA'),                                 // tarefa do Fiscal, não do Pessoal
+      t('a7', 'Fiscal', 'Paula Nunes', A, C.alfa, 'ALFA COMERCIO LTDA')];
+    const manT0 = await page.evaluate(() => window.__db.ler('ing_dados/gestta~gestta-tarefas'));
+    const parteT0 = await page.evaluate((m) => window.__db.ler('ing_partes/gestta~gestta-tarefas~' + m.slot + '0'), manT0);
+    await semear('ing_partes/gestta~gestta-tarefas~a0', { ciclo: 'g322', parte: 0, tabela: tab(linhas) });
+    await semear('ing_dados/gestta~gestta-tarefas', Object.assign({}, manT0, { colunas: cols, ciclo: 'g322', partes: 1, nLinhas: linhas.length, totalNaOrigem: linhas.length, recebidoEm: Date.now(), cortado: false }));
     await page.waitForFunction(() => (window.__cadastro.analistas('ctb') || []).includes('Thais Exemplo'), null, { timeout: 10000 });
-    const ana = await page.evaluate(() => [window.__cadastro.analistas('ctb'), window.__hubApi.cfg.dp.equipe(), window.__cadastro.analistaAtivo('Thais Exemplo'), window.__cadastro.analistaAtivo('Só Setor')]);
-    assert.ok(ana[0].includes('Thais Exemplo') && !ana[0].includes('Só Setor'), 'Contábil: ' + JSON.stringify(ana[0]));
-    assert.deepEqual(ana[1], ['Carla Mendes Souza'], 'DP: só quem tem tarefa do Pessoal');
-    assert.deepEqual(ana.slice(2), [true, true], 'as duas continuam ativas no Gestta (o nome gravado nas empresas não some)');
-    // devolve as tarefas de antes para os passos seguintes
-    await semear('ing_dados/gestta~gestta-tarefas', manT);
+    const lst = await page.evaluate(() => ({ ctb: window.__cadastro.analistas('ctb'), dp: window.__cadastro.analistas('dp'), fis: window.__cadastro.analistas('fis') }));
+    assert.ok(lst.ctb.includes('Thais Exemplo') && !lst.ctb.includes('Sem Cartela'), 'Contábil: ' + JSON.stringify(lst.ctb));
+    assert.deepEqual(lst.dp, ['Carla Mendes Souza'], 'DP: só quem tem tarefa do Pessoal, de empresa ativa, nas duas últimas competências: ' + JSON.stringify(lst.dp));
+    assert.ok(lst.fis.includes('So Fiscal') && lst.fis.includes('Paula Nunes') && !lst.fis.includes('Carla Mendes Souza'), 'Fiscal: ' + JSON.stringify(lst.fis));
+    // trava: com a lista de tarefas velha (mais de 72 h) vale o cadastro do Gestta de antes
+    await semear('ing_dados/gestta~gestta-tarefas', Object.assign({}, manT0, { colunas: cols, ciclo: 'g322', partes: 1, nLinhas: linhas.length, totalNaOrigem: linhas.length, recebidoEm: Date.now() - 80 * 3600e3, cortado: false }));
+    await page.waitForFunction(() => (window.__cadastro.analistas('dp') || []).includes('Empresa Fora'), null, { timeout: 10000 });
+    await semear('ing_dados/gestta~gestta-tarefas', Object.assign({}, manT0, { colunas: cols, ciclo: 'g322', partes: 1, nLinhas: linhas.length, totalNaOrigem: linhas.length, recebidoEm: Date.now(), cortado: false }));
+    await page.waitForFunction(() => !(window.__cadastro.analistas('dp') || []).includes('Empresa Fora'), null, { timeout: 10000 });
+    // devolve as tarefas de antes para os passos seguintes (Hub 331, 333, 335)
+    await semear('ing_partes/gestta~gestta-tarefas~' + manT0.slot + '0', parteT0);
+    await semear('ing_dados/gestta~gestta-tarefas', manT0);
   });
 
   await passo('Hub 325: Fiscal e Contábil pelo Gestta: tarefa concluída marca sozinha a obrigação e a etapa vazias, a manual fica, desfazer não volta, a atrasada aparece e dado velho não marca', async () => {
@@ -424,6 +444,7 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
       ['2026-10', 't10', 'DCTFWeb', 'Fiscal', 'Paula Nunes', 'Concluída', '2026-10-15', '2026-10-14 13:00', 'não', 'não', C.alfa, 'ALFA COMERCIO LTDA', CP],
       ['2026-10', 't11', 'EFD-Reinf', 'Fiscal', 'Paula Nunes', 'Concluída', '2026-10-15', '2026-10-15 12:00', 'não', 'não', C.alfa, 'ALFA COMERCIO LTDA', CP],
       ['2026-10', 't12', 'PGDAS-D', 'Fiscal', 'Paula Nunes', 'Aberta', '2026-10-20', '', 'não', 'não', C.gama, 'GAMA INDUSTRIA LTDA', CP],
+      ['2026-11', 't12b', 'Alvará', 'Legalização', 'Rui Teixeira', 'Aberta', '2026-11-20', '', 'não', 'não', C.alfa, 'ALFA COMERCIO LTDA', CP],     // o mês atual na lista (sem setor de módulo: não muda demanda)
       ['2026-10', 't13', 'Conciliação bancária', 'Contábil', 'Rui Teixeira', 'Concluída', '2026-10-25', '2026-10-28 15:00', 'sim', 'não', C.alfa, 'ALFA COMERCIO LTDA', CP],
       ['2026-10', 't14', 'Tarefa esquisita XYZ', 'Fiscal', 'Paula Nunes', 'Concluída', '2026-10-25', '2026-10-25 10:00', 'não', 'não', C.alfa, 'ALFA COMERCIO LTDA', CP],
       ['2026-10', 't15', 'DCTFWeb', 'Fiscal', 'Paula Nunes', 'Concluída', '2026-10-15', '2026-10-15 10:00', 'não', 'não', C.esc, 'CONTROLTAX CONTABILIDADE', CP],
