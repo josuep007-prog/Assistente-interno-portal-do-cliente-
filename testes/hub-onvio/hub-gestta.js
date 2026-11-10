@@ -540,6 +540,35 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     await fp.click('.erow[data-id="p-alfa"] [data-action="gt-contato-incluir"][data-email="pedro.novo@exemplo.com"]');
     await page.waitForFunction(() => window.__db.listar('contatos').some(c => c.email === 'pedro.novo@exemplo.com' && c.empresaId === 'p-alfa'), null, { timeout: 10000 });
   });
+  await passo('Hub 328: a cartela incompleta não trava mais a demanda (só as tarefas), e a Entrada de dados diz o porquê', async () => {
+    const manC = await page.evaluate(() => window.__db.ler('ing_dados/gestta~gestta-cartela'));
+    await semear('ing_dados/gestta~gestta-cartela', Object.assign({}, manC, { cortado: true }));
+    // DELTA ganha à mão o Fiscal, onde o Gestta não tem tarefa nem nunca aplicou nada: com a cartela cortada, a demanda sai mesmo assim
+    const d0 = await page.evaluate(() => window.__db.ler('empresas/p-delta')); d0.setoresDemanda.fiscal = true; delete d0.id;
+    await semear('empresas/p-delta', d0);
+    await api((g) => g.garantir(true)); await page.waitForTimeout(300);
+    await api((g) => g.portalAgora());
+    await page.waitForFunction(() => window.__db.ler('empresas/p-delta').setoresDemanda.fiscal === false, null, { timeout: 15000 });
+    const tr = await api((g) => g.portal().travas);
+    assert.ok(tr.some(t => /analista das frentes.*cartela veio incompleta/.test(t)) && !tr.some(t => /demanda/.test(t)), 'travas: ' + tr.join(' | '));
+    assert.ok(Array.isArray(await api((g) => g.portal().porFolha)));
+    // tarefas cortadas: a demanda não muda, e a tela diz isso
+    const manT = await page.evaluate(() => window.__db.ler('ing_dados/gestta~gestta-tarefas'));
+    await semear('ing_dados/gestta~gestta-tarefas', Object.assign({}, manT, { cortado: true }));
+    await api((g) => g.garantir(true)); await page.waitForTimeout(300);
+    const tr2 = await api((g) => g.portal().travas);
+    assert.ok(tr2.some(t => /demanda dos setores não muda.*tarefas veio incompleta/.test(t)), 'travas: ' + tr2.join(' | '));
+    // a Entrada de dados mostra o porquê no bloco do Portal
+    await page.evaluate(() => window.__hubApi.abrirModulo('fontes'));
+    const fr = page.frameLocator('#fontes-frame');
+    const det = fr.locator('details[data-gt-det="portal"]');
+    await det.waitFor({ timeout: 15000 });
+    await det.evaluate(d => { d.open = true; d.scrollIntoView({ block: 'center' }); });
+    await fr.locator('details[data-gt-det="portal"] [role="status"]').waitFor({ timeout: 10000 });
+    assert.match(await det.textContent(), /Por que o Portal pode não ter mudado:.*demanda dos setores não muda/s);
+    if (CAP) await page.screenshot({ path: path.join(CAP, 'hub328-portal-travas.png') });
+    await semear('ing_dados/gestta~gestta-tarefas', manT); await semear('ing_dados/gestta~gestta-cartela', manC);
+  });
   await passo('Uso do banco mede também o histórico do Gestta e o login', async () => {
     const cols = await page.evaluate(() => window.__hubApi.usoColecoes ? window.__hubApi.usoColecoes().map(c => c.path) : null);
     if (cols) assert.ok(['gt_hist', 'auth_log', 'hub_log'].every(c => cols.includes(c)), cols.join(', '));
