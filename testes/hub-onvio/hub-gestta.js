@@ -664,6 +664,20 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     assert.equal((await page.evaluate(() => window.__db.ler('empresaSetores/p-alfa_fiscal'))).analistaId, 'gtx2');
   });
 
+  await passo('Hub 334: empresa nova no DP pelo Gestta não é cadastrada de novo se outro navegador já a gravou (pelo Onvio, onv-<CNPJ>)', async () => {
+    const alfa = await page.evaluate(() => window.__db.ler('dp_empresas/e-alfa'));
+    await semear('dp_empresas/e-alfa', Object.assign({}, alfa, { cnpj: fmt('10101010000110') }));      // some do DP desta tela
+    await api((g) => g.garantir(true));
+    await page.waitForFunction(() => window.__hubApi.api('gestta').difs().some(d => d.mod === 'dp' && d.acao === 'novo' && d.k === '11111111000101'), null, { timeout: 8000 });
+    const chave = await api((g) => g.difs().find(d => d.mod === 'dp' && d.acao === 'novo' && d.k === '11111111000101').chave);
+    await page.evaluate(() => window.__db.silencioso('dp_empresas/onv-11111111000101', { nome: 'ALFA COMERCIO LTDA', cnpj: '11.111.111/0001-01', situacao: 'Ativa', funcionarios: [], historico: [] }));
+    const r = await api((g, c) => g.aplicar('11111111000101', c), chave);
+    assert.equal(r.ok, false, 'recusa: ' + JSON.stringify(r));
+    assert.match(r.erro, /cadastrada há pouco/);
+    assert.equal(await page.evaluate(() => window.__db.existe('dp_empresas/gt-11111111000101')), false, 'nenhuma gt-<CNPJ> criada');
+    await semear('dp_empresas/e-alfa', alfa);
+  });
+
   await passo('sem erros de página', async () => { assert.deepEqual(erros, []); });
   await browser.close(); servidor.close();
   console.log(falhas ? 'FALHARAM: ' + falhas : 'tudo ok');
