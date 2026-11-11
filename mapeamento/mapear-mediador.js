@@ -20,7 +20,7 @@
  *   4. No fim, rode  medMapa.resultado()  : o texto vai para a área de transferência.
  *   medMapa.parar() desliga a escuta; medMapa.limpar() apaga as anotações. */
 (() => {
-  const CHAVE = 'medMapa.v1', MAX = 300;
+  const CHAVE = 'medMapa.v2', MAX = 300;
   if (window.medMapa && window.medMapa.ligado) { console.log('mapeamento do Mediador já está ligado nesta página (' + window.medMapa.n() + ' anotações)'); return; }
   let notas = [];
   try { notas = JSON.parse(sessionStorage.getItem(CHAVE) || '[]'); } catch (e) { notas = []; }
@@ -67,9 +67,36 @@
     }
     return typeof b;
   };
+  // v2: o esqueleto de um pedaço de HTML: tags, classes e ids, com o texto trocado pelo tipo (para a extensão saber onde ler)
+  const esqueletoEl = (el, prof) => {
+    if (!el || prof > 7) return '…';
+    if (el.nodeType === 3) { const t = limpo(el.textContent); return t ? '«' + tipoTexto(t) + '»' : ''; }
+    if (el.nodeType !== 1) return '';
+    const tag = el.tagName.toLowerCase() + (el.id ? '#' + el.id.replace(/\d{3,}/g, '{n}') : '') + (el.className && typeof el.className === 'string' ? '.' + el.className.trim().split(/\s+/).slice(0, 3).join('.') : '');
+    const on = el.getAttribute && el.getAttribute('onclick'); const href = el.getAttribute && el.getAttribute('href');
+    const extra = (on ? ' onclick=' + mascaraJs(on) : '') + (href && !/^#$/.test(href) ? ' href=' + (/^javascript:/i.test(href) ? mascaraJs(href) : molde(href).caminho) : '');
+    const filhos = [...el.childNodes].map(c => esqueletoEl(c, prof + 1)).filter(Boolean);
+    return filhos.length ? { [tag + extra]: filhos.length > 12 ? filhos.slice(0, 12).concat(['… +' + (filhos.length - 12)]) : filhos } : tag + extra;
+  };
+  // chamada de função em onclick/href: o nome e a forma dos argumentos (MR{n}_{n}, {n}…), nunca os valores
+  const mascaraJs = (js) => String(js).replace(/\s+/g, ' ').trim().slice(0, 160).replace(/'([^']*)'|"([^"]*)"/g, (m, a, b) => "'" + String(a != null ? a : b).replace(/\d+/g, '{n}').replace(/[A-Za-zÀ-ú]{4,}/g, (w) => /^(MR|true|false|null)$/i.test(w) ? w : '{texto}') + "'").replace(/\b\d+\b/g, '{n}');
+  const esqueletoHtml = (html) => {
+    try {
+      const doc = new DOMParser().parseFromString(String(html), 'text/html');
+      const comDownload = [...doc.querySelectorAll('[onclick*="fDownload"],[href*="fDownload"]')];
+      // o bloco de um instrumento: o menor ancestral do 1º link "Download" que não contém o 2º
+      let bloco = comDownload[0] || null;
+      while (bloco && bloco.parentElement && !(comDownload[1] && bloco.parentElement.contains(comDownload[1]))) bloco = bloco.parentElement;
+      const funcoes = [...new Set([...doc.querySelectorAll('[onclick],[href^="javascript"]')].map(e => mascaraJs(e.getAttribute('onclick') || e.getAttribute('href'))))].slice(0, 40);
+      const paginas = [...doc.querySelectorAll('a,button,li,span')].filter(e => /^(\d{1,3}|próxim\w*|anterior|»|«|>|<|primeira|última)$/i.test(limpo(e.textContent))).slice(0, 12).map(e => esqueletoEl(e, 6));
+      return { tamanho: Math.round(String(html).length / 1024) + ' KB', instrumentos: comDownload.length, umInstrumento: bloco ? esqueletoEl(bloco, 0) : 'não achei o link Download', funcoes, paginacao: paginas,
+        totalNaPagina: (limpo(doc.body.textContent).match(/(\d+)\s*(registros?|resultados?|instrumentos?)\b/i) || [, ''])[2] || '' };
+    } catch (e) { return 'não deu para ler o HTML: ' + e.message; }
+  };
   const respostaForma = (texto, tipo) => {
     if (!texto) return 'vazia';
     if (/json/.test(tipo || '') || /^[[{]/.test(String(texto).trim())) { try { return forma(JSON.parse(texto), 0); } catch (e) {} }
+    if (/html/.test(tipo || '') || /^\s*</.test(String(texto))) return { html: esqueletoHtml(texto) };      // v2
     return (tipo || 'sem tipo') + ', ' + Math.round(String(texto).length / 1024) + ' KB';
   };
   const anotar = (n) => {
@@ -133,6 +160,7 @@
   const tela = () => ({
     pagina: molde(location.href), titulo: limpo(document.title).slice(0, 80), captcha: captcha(),
     formularios: formularios(), tabelas: tabelas(), links: links(),
+    funcoes: [...new Set([...document.querySelectorAll('[onclick],[href^="javascript"]')].map(e => mascaraJs(e.getAttribute('onclick') || e.getAttribute('href'))))].slice(0, 40),      // v2
     quadros: [...document.querySelectorAll('iframe,frame')].map(f => molde(f.src || '').host + molde(f.src || '').caminho).slice(0, 10),
     botoes: [...document.querySelectorAll('button, input[type=submit], input[type=button], input[type=image]')].map(b => limpo(b.value || b.textContent || b.alt).slice(0, 30)).filter(Boolean).slice(0, 20),
     tecnologia: [window.jQuery && 'jQuery', window.angular && 'AngularJS', window.PrimeFaces && 'PrimeFaces (JSF)', document.querySelector('input[name="javax.faces.ViewState"]') && 'JSF ViewState', document.querySelector('input[name="__VIEWSTATE"]') && 'ASP.NET ViewState', window.__NEXT_DATA__ && 'Next.js', document.querySelector('[ng-app],[data-ng-app]') && 'ng-app'].filter(Boolean),
@@ -176,8 +204,18 @@
       console.log('[mediador] tela "' + marca + '": ' + t.formularios.length + ' formulário(s), ' + t.tabelas.length + ' tabela(s), captcha: ' + t.captcha.join(', '));
       return t.captcha;
     },
+    // v2: a estrutura do texto da convenção aberta (títulos, cláusulas, tabelas), só a forma
+    estrutura(nome) {
+      marca = String(nome || 'estrutura').slice(0, 60);
+      const corpo = document.body, txt = limpo(corpo.textContent);
+      const titulos = [...corpo.querySelectorAll('h1,h2,h3,h4,h5,strong,b,p')].map(e => limpo(e.textContent)).filter(t => t && t.length <= 90 && /^(CL[ÁA]USULA|CAP[ÍI]TULO|T[ÍI]TULO|ANEXO|SAL[ÁA]RIO|REAJUSTE|PISO|VIG[ÊE]NCIA|DATA.?BASE|CONTRIBUI|ABRANG)/i.test(t))
+        .map(t => t.replace(/\d+/g, '{n}').replace(/(CL[ÁA]USULA\s+\S+)\s*[-–:]?\s*(.*)/i, (m, a, b) => a + (b ? ' - ' + b : ''))).slice(0, 120);
+      const e = { marca, quando: new Date().toISOString().slice(11, 19), pagina: molde(location.href), tamanhoTexto: Math.round(txt.length / 1024) + ' KB', clausulas: (txt.match(/CL[ÁA]USULA\s/gi) || []).length,
+        titulos, tabelas: tabelas(), temVigencia: /vig[êe]ncia/i.test(txt), temDataBase: /data.?base/i.test(txt), temPiso: /piso/i.test(txt), temReajuste: /reajust/i.test(txt), temPercentual: /\d+[.,]?\d*\s*%/.test(txt), esqueleto: esqueletoEl(corpo, 0) };
+      notas.push(e); guardar(); console.log('[mediador] estrutura "' + marca + '": ' + e.clausulas + ' cláusulas, ' + titulos.length + ' títulos'); return e.clausulas;
+    },
     resultado() {
-      const saida = { roteiro: 'mapear-mediador v1', quando: new Date().toISOString().slice(0, 16), navegador: (navigator.userAgent.match(/Chrome\/\d+/) || [''])[0], anotacoes: notas };
+      const saida = { roteiro: 'mapear-mediador v2', quando: new Date().toISOString().slice(0, 16), navegador: (navigator.userAgent.match(/Chrome\/\d+/) || [''])[0], anotacoes: notas };
       const texto = JSON.stringify(saida, null, 1);
       try { navigator.clipboard.writeText(texto); } catch (e) {}
       try { copy(texto); } catch (e) {}
