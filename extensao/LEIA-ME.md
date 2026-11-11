@@ -45,7 +45,7 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
 
-## Novidades da v0.95.0 (11/11/2026): as convenções do Mediador do MTE no Hub (Hub 346)
+## Novidades da v0.95.0 (11/11/2026): as convenções do Mediador do MTE no Hub (Hub 347)
 
 - **Convenções sem digitar tudo:** a extensão procura no **Mediador do MTE** as convenções e os aditivos de cada sindicato cadastrado no Hub (pelo CNPJ) e manda ao módulo Convenções a lista de todos os instrumentos e o texto, cláusula por cláusula, da convenção vigente e dos aditivos dela. Só dados públicos, numa aba do próprio Mediador aberta em segundo plano (o captcha invisível do site trabalha ali; nada é contornado).
 - **No Hub, em Convenções:** o bloco **Mediador do MTE** mostra o que é **novo** (registrado no Mediador e ainda sem convenção cadastrada) com **Cadastrar**, que abre o formulário já preenchido (registro, vigência, data-base, sindicatos) para conferir e salvar, e **Ignorar**; todos os instrumentos por sindicato; e o **texto dentro do Hub**, com busca (piso, reajuste…). O texto das convenções antigas e o PDF do anexo são buscados na hora pela extensão e não ficam guardados.

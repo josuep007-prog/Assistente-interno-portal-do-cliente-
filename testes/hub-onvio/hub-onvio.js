@@ -1470,7 +1470,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await page.evaluate(() => window.__hubApi.inicio());
   });
 
-  await passo('Mediador (Hub 346, Josué 11/11/2026: "o módulo convenções hoje está 100% manual"): o bloco em Convenções mostra o que é novo no Mediador, Cadastrar abre a convenção preenchida, o texto abre dentro do Hub (guardado ou buscado na hora pela extensão), Ignorar some e Buscar pede à extensão', async () => {
+  await passo('Mediador (Hub 347, Josué 11/11/2026: "o módulo convenções hoje está 100% manual"): o bloco em Convenções mostra o que é novo no Mediador, Cadastrar abre a convenção preenchida, o texto abre dentro do Hub (guardado ou buscado na hora pela extensão), Ignorar some e Buscar pede à extensão', async () => {
     const OCM = require(path.join(__dirname, '..', '..', 'extensao', 'mediador.js'));
     const SIND = '11222333000181', PATR = '11444777000161';     // CNPJs válidos de exemplo (não são de cliente)
     const linha = (reg, sol, tipo, ini, fim) => `<tr><td>${reg}</td><td>10000.000001/2026-11</td><td>${sol}</td><td>${tipo}</td><td>${ini} a ${fim}</td><td>11.222.333/0001-81</td><td>SINDICATO EXEMPLO DOS EMPREGADOS</td><td>11.444.777/0001-61</td><td>SINDICATO EXEMPLO PATRONAL</td><td>1</td><td>1</td></tr>`;
