@@ -10,7 +10,7 @@ const path = require('node:path');
 
 const ROTEIRO = fs.readFileSync(path.join(__dirname, '..', 'mapeamento', 'mapear-acoes-gestta.js'), 'utf8');
 const TOKEN = 'JWT eyJ-SEGREDO-GESTTA-789';
-const SEGREDOS = [TOKEN, 'SEGREDO-GESTTA', 'Comentario sigiloso do analista', 'Aguardando extrato do banco SIGILO', 'folha-sigilosa.pdf', 'conteudo-sigiloso-do-pdf', 'EMPRESA SIGILO LTDA', '12.345.678/0001-90'];
+const SEGREDOS = ['ABCDEFSIGILOEXTERNO', 'CLIENTE_SIGILO', TOKEN, 'SEGREDO-GESTTA', 'Comentario sigiloso do analista', 'Aguardando extrato do banco SIGILO', 'folha-sigilosa.pdf', 'conteudo-sigiloso-do-pdf', 'EMPRESA SIGILO LTDA', '12.345.678/0001-90'];
 const ID = '5f1e2d3c4b5a69788796a5b4', ID2 = '6a5b4c3d2e1f00112233aabb';
 const CORS = { 'access-control-allow-origin': 'https://app.gestta.com.br', 'access-control-allow-headers': 'authorization,content-type,accept', 'access-control-allow-methods': 'GET,POST,PUT,PATCH,OPTIONS' };
 
@@ -26,7 +26,7 @@ const CORS = { 'access-control-allow-origin': 'https://app.gestta.com.br', 'acce
     const json = (o, status) => r.fulfill({ status: status || 200, headers: Object.assign({ 'content-type': 'application/json' }, CORS), body: JSON.stringify(o) });
     if (req.method() === 'GET') return json({ _id: ID, status: 'OPEN', customer: { name: 'EMPRESA SIGILO LTDA', cnpj: '12.345.678/0001-90' } });
     if (u.pathname.endsWith('/comment')) return json({ _id: ID2, text: 'Comentario sigiloso do analista', created_at: '2026-11-11T10:00:00.000Z' }, 201);
-    return json({ _id: ID, status: 'DONE', impediment: { reason: 'Aguardando extrato do banco SIGILO', active: false } });
+    return json({ _id: ID, status: 'DONE', impediment: { reason: 'Aguardando extrato do banco SIGILO', active: false }, accomplished_by: { external_id: 'ABCDEFSIGILOEXTERNO', code: 'CLIENTE_SIGILO', role: 'ROLE_ADMIN' } });
   });
   const page = await ctx.newPage();
   await page.goto('https://app.gestta.com.br/#/tarefas');
@@ -66,6 +66,8 @@ const CORS = { 'access-control-allow-origin': 'https://app.gestta.com.br', 'acce
     assert.equal(put.status, 200); assert.equal(put.acao, 'concluir etapa');
     assert.deepEqual(put.cabecalhos, ['authorization', 'content-type'], 'só os nomes dos cabeçalhos');
     assert.equal(put.resposta.status, 'código DONE');
+    assert.equal(put.resposta.accomplished_by.role, 'código ROLE_ADMIN', 'código de situação continua aparecendo');
+    assert.equal(put.resposta.accomplished_by.external_id, 'texto', 'campo de identificação nunca vira código');
     assert.deepEqual(patch.envio, { reason: 'texto', type: 'código CUSTOMER' }); assert.equal(patch.acao, 'impedimento');
     assert.equal(post.via, 'fetch'); assert.deepEqual(post.parametros, ['origin']); assert.equal(post.acao, 'enviar documento');
     assert.deepEqual(post.envio, { formulário: { company_document: 'id', file: 'arquivo (application/pdf, 0 KB)', name: 'texto' } });
