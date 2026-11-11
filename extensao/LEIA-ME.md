@@ -45,6 +45,20 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
 
+## Novidades da v0.93.0 (11/11/2026): trabalhar no Gestta pela extensão e o envio ao Hub sem o limite de 80 partes
+
+- Pedido do Josué: "tá na hora da extensão conseguir interagir com o Gestta igual acontece no Onvio e o analista consiga trabalhar por cima". Aprovadas quatro ações, mapeadas na empresa de teste em 11/11/2026 (`mapeamento/gestta-2026-11-04.md`, "Ações mapeadas").
+- No detalhe da tarefa (Tarefas do Gestta, por cima ou ao lado no Meu dia):
+  - **etapas**: clicar numa etapa marca como feita ou desmarca;
+  - **Concluir tarefa**, **Reabrir tarefa** e **Registrar impedimento** (com o motivo, obrigatório) ou **Retirar impedimento**, conforme a situação da tarefa;
+  - **Comentário interno**: fica só para a equipe (o cliente não vê);
+  - **Enviar arquivo** em cada documento da tarefa (até 15 MB). Avisa quando o documento vai ao Portal do Cliente e que, se for o último que falta, o Gestta pode concluir a tarefa sozinho.
+- Toda ação passa por uma **confirmação no próprio painel** antes de ir ao Gestta (Esc cancela só a confirmação). Depois, o detalhe e a lista são relidos.
+- Segurança: a lista do que pode ser gravado é fechada (`OCG.escritaPermitida`: o método, o endereço e os campos exatos do mapeamento; nunca excluir, nunca comentário externo, nunca outro status), conferida no service worker e de novo dentro da aba; o token do Gestta continua só na página; só a tela da extensão pode pedir uma ação; nada é guardado (nem o texto, nem o arquivo, nem a resposta).
+- **A confirmar no Gestta real:** o envio de arquivo pela tela do Gestta leva um cabeçalho próprio (`__setxhr_`) que a extensão não manda; se o Gestta recusar o arquivo, a mensagem aparece no painel.
+- **Sem o limite de 80 partes (já valendo no Hub):** Pedido do Josué: "pode deixar sem limite, bote pra ler tudo que tiver". O envio ao Control Hub cortava cada conjunto em 80 partes (cerca de 11 MB); a lista de tarefas do Gestta já ocupava 47. Agora o limite é de 1.000 partes (cerca de 140 MB) na extensão (`HUB_PARTES_MAX` no `core.js`, `HUB_GESTTA_PARTES_MAX` no `gestta.js`) e no Hub (`ING_PARTES_MAX`, Hub 332; a Entrada de dados abre até 1.000 partes). Na prática é ler tudo: o número só protege de um envio sem fim.
+- Cada parte é um documento no banco do Hub (limite de 5.000); conjuntos muito grandes ocupam mais. O "Uso do banco" mostra quanto.
+
 ## Novidades da v0.92.0 (11/11/2026): um envio só ao Hub, pedido de qualquer lado
 
 - **Onvio e Gestta num envio só.** Em Configurações › Avançado › Control Hub, o botão **Atualizar o Hub agora** leva o resumo, o Onvio e o Gestta juntos. Não há mais o botão nem o automático à parte do Gestta (os conjuntos do Gestta continuam escolhidos ali).

@@ -5,8 +5,11 @@
  * leitura do perfil de quem está logado.
  *
  * Regras (CLAUDE.md, seção Gestta; mapa em mapeamento/gestta-2026-11-04.md):
- *  - Só leitura: GET em https://api.gestta.com.br e dois POST que só leem, autorizados pelo Josué:
+ *  - Leitura: GET em https://api.gestta.com.br e dois POST que só leem, autorizados pelo Josué:
  *    a busca de tarefas (04/11/2026) e o relatório de tarefas do tipo CUSTOMER_TASK (05/11/2026).
+ *  - Escrita (0.93.0): só as quatro ações aprovadas pelo Josué em 11/11/2026 e mapeadas na empresa de teste
+ *    (mapeamento/gestta-2026-11-04.md): etapa feita ou não, concluir/reabrir e impedimento (situação da tarefa),
+ *    comentário interno e envio de documento. Lista fechada em escritaPermitida; sempre com confirmação na tela.
  *  - O token (localStorage 'ngStorage-jwt') só é usado dentro da página. Nada aqui o devolve: lerNaPagina descarta o
  *    token antes de responder e só a validade (campo exp) sai.
  *  - Nunca: Senhas do cliente, certificados (senha de revogação), conta do escritório, permissões e login dos
@@ -102,7 +105,8 @@
       company_task: { _id: true, name: true, active: true }, company_department: SETOR, customer: { _id: true, name: true, code: true, active: true }, owner: { _id: true, name: true, active: true },
       customer_has_documents_integration: true, notify_customer: true, total_step: true, done_step: true,
       // 0.73.0: o que há dentro da tarefa (etapas e documentos), nunca o arquivo
-      customer_task_steps: [{ name: true, order: true, required: true, done: true }], company_documents: [{ name: true, disconsidered: true, validation_required: true }],
+      // 0.93.0: o id de cada etapa e de cada documento (as ações precisam dele); has_documents_integration = o documento vai ao portal
+      customer_task_steps: [{ _id: true, name: true, order: true, required: true, done: true }], company_documents: [{ _id: true, name: true, disconsidered: true, validation_required: true, has_documents_integration: true }],
       document_request: { active: true, requested_documents: [{ name: true, disconsidered: true }] } },
     cliente: { _id: true, code: true, name: true, trading_name: true, cnpj: true, active: true, federal_regime: { _id: true, name: true, identifier: true }, state_inscription: true, federative_unit: true, city: true, external_id: true, partner_config: { has_onvio_portal: true } },
     cartela: { company_department: SETOR, company_user: REF },
@@ -120,7 +124,9 @@
     // 0.77.0: o histórico da tarefa para a linha do tempo do painel (lido na hora, nunca guardado). Fora o email_log
     // (destinatários e servidores), o arquivo e o upload: só o tipo, a situação, o motivo, a data, quem fez e o nome do documento.
     historico: { _id: true, type: true, status: true, reason: true, accomplished_at: true, created_at: true, accomplished_by: { name: true },
-      accomplished_by_customer_user: { name: true }, company_document: { name: true }, file_name: true, comment: true, is_auto_respond: true }
+      accomplished_by_customer_user: { name: true }, company_document: { name: true }, file_name: true, comment: true, is_auto_respond: true },
+    // 0.93.0: o que volta depois de uma ação (a resposta do Gestta traz a tarefa inteira, o cliente e o escritório: sai só isto)
+    tarefaApos: { _id: true, status: true, done_step: true, total_step: true, conclusion_date: true, customer_task_steps: [{ _id: true, done: true }] }
   };
   // Colunas do relatório CUSTOMER_TASK que saem da página (das 34): fora valor, pontuação e mensalidade (decisão pendente).
   const COLUNAS_RELATORIO = ['id', 'name', 'type', 'subtype', 'status', 'company_department.name', 'owner.name', 'owner.role', 'notify_customer', 'fine', '_due_date', 'legal_date', 'downloaded',
@@ -134,7 +140,13 @@
     if (tipo === 'fechamento') return limparRelatorio(dados, COLUNAS_FECHAMENTO);
     const molde = MOLDES[tipo];
     if (!molde) return null;
-    if (tipo === 'me' || tipo === 'tarefaDetalhe' || tipo === 'contagem') return escolher(dados, molde) || null;
+    if (tipo === 'tarefaDetalhe') {
+      const t = escolher(dados, molde) || null;
+      // 0.93.0: o documento já tem arquivo? (só o sim/não; o arquivo e o nome dele nunca saem da página)
+      if (t && Array.isArray(t.company_documents) && dados && Array.isArray(dados.company_documents)) t.company_documents.forEach((d, i) => { const o = dados.company_documents[i]; d.temArquivo = !!(o && o.file); });
+      return t;
+    }
+    if (tipo === 'me' || tipo === 'contagem') return escolher(dados, molde) || null;
     const o = Object.assign({ itens: lista(dados).map(x => escolher(x, molde)) }, pagina(dados));
     if (dados && dados.documents_without_destination != null) o.semPasta = Number(dados.documents_without_destination) || 0;
     return o;
@@ -240,6 +252,100 @@
     // 0.79.0: a lista inteira de templates de documento, com a pasta de destino no portal (para achar os que não têm pasta)
     templatesLista: (o) => ({ id: 'templatesLista', tipo: 'templateDoc', metodo: 'GET', url: url('/admin/company/document', { limit: (o && o.limit) || 200, page: (o && o.page) || 1 }) })
   };
+
+  /* ---------- ações (escrita), aprovadas pelo Josué em 11/11/2026 ----------
+   * Mapeadas na empresa de teste em 11/11/2026 (mapeamento/gestta-2026-11-04.md, "Ações mapeadas"). Lista fechada: cada uma
+   * só com o método, o endereço e os campos exatos que a tela do Gestta usa. Nunca excluir, nunca outro endereço, nunca
+   * comentário visível ao cliente (external sempre false). Conferida no service worker e de novo dentro da página. */
+  const ID24 = /^[0-9a-f]{24}$/i;
+  const TEXTO_MAX = 4000;                       // comentário e motivo do impedimento
+  const ARQ_MAX = 15 * 1024 * 1024;             // como os anexos do Onvio
+  const ESCRITAS = [
+    { acao: 'etapa', metodo: 'PUT', re: /^\/core\/customer\/task\/[0-9a-f]{24}\/step\/[0-9a-f]{24}\/done$/i },
+    { acao: 'situacao', metodo: 'PUT', re: /^\/es\/task\/[0-9a-f]{24}\/status$/i },
+    { acao: 'comentario', metodo: 'POST', re: /^\/core\/customer\/task\/[0-9a-f]{24}\/history\/comment$/i },
+    { acao: 'documento', metodo: 'POST', re: /^\/es\/upload\/direct$/ }
+  ];
+  const soChaves = (o, ks) => { const a = Object.keys(o).sort(), b = ks.slice().sort(); return a.length === b.length && a.every((k, i) => k === b[i]); };
+  const textoOk = (v) => typeof v === 'string' && v.trim().length > 0 && v.length <= TEXTO_MAX;
+  const listaVazia = (v) => Array.isArray(v) && v.length === 0;
+  const tamanhoB64 = (b) => Math.floor(String(b).replace(/=+$/, '').length * 3 / 4);
+  // { ok, motivo, acao }
+  function escritaPermitida(metodo, u, corpo) {
+    const m = String(metodo || '').toUpperCase(), p = caminhoDe(u);
+    if (!p) return { ok: false, motivo: 'fora da API do Gestta' };
+    if (/\?/.test(String(u))) return { ok: false, motivo: 'ação sem querystring' };
+    const e = ESCRITAS.find(x => x.metodo === m && x.re.test(p));
+    if (!e) return { ok: false, motivo: 'ação não autorizada no Gestta (' + m + ')' };
+    const c = corpo && typeof corpo === 'object' && !Array.isArray(corpo) ? corpo : null;
+    if (!c) return { ok: false, motivo: 'corpo inválido' };
+    const ok = { ok: true, acao: e.acao };
+    if (e.acao === 'etapa') return soChaves(c, ['done']) && typeof c.done === 'boolean' ? ok : { ok: false, motivo: 'etapa: só { done }' };
+    if (e.acao === 'situacao') {
+      if (c.status === 'IMPEDIMENT') return soChaves(c, ['status', 'justification']) && textoOk(c.justification) ? ok : { ok: false, motivo: 'impedimento pede o motivo' };
+      return (c.status === 'DONE' || c.status === 'OPEN') && soChaves(c, ['status']) ? ok : { ok: false, motivo: 'situação não autorizada' };
+    }
+    if (e.acao === 'comentario') {
+      return soChaves(c, ['message', 'external', 'mentions', 'cc_mentions', 'files']) && textoOk(c.message) && c.external === false && listaVazia(c.mentions) && listaVazia(c.cc_mentions) && listaVazia(c.files)
+        ? ok : { ok: false, motivo: 'comentário: só texto interno, sem menções nem arquivos' };
+    }
+    const a = c.arquivo;
+    if (!soChaves(c, ['customer_task', 'company_document', 'arquivo']) || !ID24.test(String(c.customer_task)) || !ID24.test(String(c.company_document))) return { ok: false, motivo: 'documento: tarefa e documento inválidos' };
+    if (!a || typeof a !== 'object' || !soChaves(a, ['nome', 'tipo', 'base64']) || !String(a.nome || '').trim() || String(a.nome).length > 200 || typeof a.base64 !== 'string' || !/^[A-Za-z0-9+/]*=*$/.test(a.base64) || !a.base64) return { ok: false, motivo: 'documento: arquivo inválido' };
+    if (tamanhoB64(a.base64) > ARQ_MAX) return { ok: false, motivo: 'documento: arquivo acima de 15 MB' };
+    return ok;
+  }
+  // Pedido de uma ação a partir do que a tela manda. o: { acao, id, etapa?, feita?, motivo?, texto?, documento?, arquivo? }
+  // acao: 'etapa' | 'concluir' | 'reabrir' | 'impedir' | 'liberar' | 'comentar' | 'documento'. Erro = { erro }.
+  function pedidoAcao(o) {
+    const x = o || {}, id = String(x.id || '');
+    if (!ID24.test(id)) return { erro: 'tarefa inválida' };
+    const base = (acao, metodo, caminho, corpo) => ({ id: acao, acao, metodo, url: url(caminho), corpo });
+    switch (x.acao) {
+      case 'etapa': if (!ID24.test(String(x.etapa || ''))) return { erro: 'etapa inválida' };
+        return base('etapa', 'PUT', '/core/customer/task/' + id + '/step/' + x.etapa + '/done', { done: !!x.feita });
+      case 'concluir': return base('situacao', 'PUT', '/es/task/' + id + '/status', { status: 'DONE' });
+      case 'reabrir': case 'liberar': return base('situacao', 'PUT', '/es/task/' + id + '/status', { status: 'OPEN' });
+      case 'impedir': if (!textoOk(String(x.motivo || ''))) return { erro: 'escreva o motivo do impedimento' };
+        return base('situacao', 'PUT', '/es/task/' + id + '/status', { status: 'IMPEDIMENT', justification: String(x.motivo).trim() });
+      case 'comentar': if (!textoOk(String(x.texto || ''))) return { erro: 'escreva o comentário' };
+        return base('comentario', 'POST', '/core/customer/task/' + id + '/history/comment', { message: String(x.texto).trim(), external: false, mentions: [], cc_mentions: [], files: [] });
+      case 'documento': { if (!ID24.test(String(x.documento || ''))) return { erro: 'documento inválido' };
+        const a = x.arquivo || {};
+        return base('documento', 'POST', '/es/upload/direct', { customer_task: id, company_document: String(x.documento), arquivo: { nome: String(a.nome || '').slice(0, 200), tipo: String(a.tipo || ''), base64: String(a.base64 || '') } }); }
+    }
+    return { erro: 'ação desconhecida' };
+  }
+  // Faz uma ação de dentro da página: confere de novo, usa o token só aqui e devolve só o resumo da tarefa (tarefaApos).
+  async function agirNaPagina(p) {
+    const perm = escritaPermitida(p && p.metodo, p && p.url, p && p.corpo);
+    if (!perm.ok) return { ok: false, status: 0, recusado: perm.motivo };
+    let tok = null;
+    try { tok = JSON.parse(g.localStorage.getItem('ngStorage-jwt') || 'null'); } catch (e) { tok = null; }
+    if (typeof tok !== 'string' || !/^JWT\s+\S+/.test(tok)) return { ok: false, semSessao: true, status: 401, erro: 'sem sessão do Gestta nesta aba (faça login)' };
+    try {
+      const headers = { Accept: 'application/json, text/plain, */*', Authorization: tok };
+      let body;
+      if (perm.acao === 'documento') {
+        // o formulário igual ao da tela do Gestta: customer_task, company_document e file
+        const a = p.corpo.arquivo, bin = g.atob(a.base64), u8 = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+        body = new g.FormData();
+        body.append('customer_task', p.corpo.customer_task); body.append('company_document', p.corpo.company_document);
+        body.append('file', new g.Blob([u8], { type: a.tipo || 'application/octet-stream' }), a.nome);
+      } else { headers['Content-Type'] = 'application/json'; body = JSON.stringify(p.corpo); }
+      const r = await g.fetch(p.url, { method: String(p.metodo).toUpperCase(), headers, body, credentials: 'omit' });
+      let dados = null;
+      try { const t = await r.text(); dados = t ? JSON.parse(t) : null; } catch (e) { dados = null; }
+      if (!r.ok) {
+        const msg = dados && typeof dados === 'object' ? String(dados.message || dados.error || '').slice(0, 160) : '';
+        return { ok: false, status: r.status, erro: msg || ('erro ' + r.status) };
+      }
+      const t = perm.acao === 'documento' ? dados && dados.customer_task : perm.acao === 'comentario' ? null : dados;
+      return { ok: true, status: r.status, acao: perm.acao, tarefa: t && typeof t === 'object' ? escolher(t, MOLDES.tarefaApos) : null };
+    } catch (e) { return { ok: false, status: 0, erro: 'sem resposta do Gestta (' + String(e && e.message || e).slice(0, 80) + ')' }; }
+    finally { tok = null; }
+  }
 
   /* ---------- leitura dentro da página (mundo MAIN da aba do Gestta) ----------
    * Recebe uma lista de pedidos, confere cada um de novo, usa o token só aqui e devolve só os dados limpos.
@@ -557,7 +663,7 @@
     { id: 'alertas', nome: 'Alertas', ajuda: 'Os envios de documento ao Onvio que deram erro (empresa, tarefa e motivo) e os templates de documento sem pasta no portal.', padrao: true },
     { id: 'cartela', nome: 'Cartela e contatos (1 vez por dia)', ajuda: 'Quem atende cada setor de cada cliente e quem do cliente recebe cada setor (nome e e-mail), como está no Gestta. Duas leituras por cliente (uns 15 minutos), no máximo uma vez por dia.', padrao: true }
   ];
-  const HUB_GESTTA_PARTE = 140000, HUB_GESTTA_PARTES_MAX = 80;
+  const HUB_GESTTA_PARTE = 140000, HUB_GESTTA_PARTES_MAX = 1000;   // 0.93.0: era 80 ("bote pra ler tudo que tiver")
   const celula = (v, max) => String(v == null ? '' : v).replace(/[\t\r\n\u2028\u2029]+/g, ' ').replace(/ {2,}/g, ' ').trim().slice(0, max || 300);
   const simNao = v => v === '' || v == null ? '' : sim(v) ? 'sim' : 'não';
   const dataHub = v => { const t = String(v == null ? '' : v); return /^\d{4}-\d{2}-\d{2}T/.test(t) ? t.slice(0, 16).replace('T', ' ') : /^\d{4}-\d{2}-\d{2}/.test(t) ? t.slice(0, 10) : t; };
@@ -834,7 +940,7 @@
   const MAX_PAGINAS_TAREFAS = 15;      // 15 × 1000: bem acima do que uma pessoa tem num mês; passou disso, a tela avisa que cortou
 
   g.OCG = { API, APP, PAUSA_MS, LIMITE_BUSCA, JANELA_MAX_DIAS, POST_LEITURA, RELATORIO_TIPOS, COLUNAS_RELATORIO, MOLDES, APPS,
-    caminhoDe, leituraPermitida, appDe, escolher, limpar, limparRelatorio, perfil, expiraEm, janelaDoMes, PEDIDOS, lerNaPagina, linhasDoTeste,
+    caminhoDe, leituraPermitida, escritaPermitida, pedidoAcao, agirNaPagina, ARQ_MAX, appDe, escolher, limpar, limparRelatorio, perfil, expiraEm, janelaDoMes, PEDIDOS, lerNaPagina, linhasDoTeste,
     GRUPOS, TIPOS_TAREFA, SITUACOES_TAREFA, MAX_PAGINAS_TAREFAS, diasUteis, grupoTarefa, prazoTexto, contarGrupos, porEmpresa, porDia, filtrarTarefas, urlTarefa, ymd, diaLocal,
     COLUNAS_FECHAMENTO, linhasDoRelatorio, tarefasDoRelatorio, trilhaDaEmpresa, fechamento, ESTADOS, setorDe, respDe, ehEscritorioProprio,
     eventosDaTarefa, obrigacoes, nomeObrigacao, meuDia, ORDENS_EMPRESA, ordenarEmpresas,

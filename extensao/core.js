@@ -3115,7 +3115,7 @@
     { id: 'pessoais', nome: 'Dados pessoais', ajuda: 'CPF, salário, nomes de empregados, a lista completa de empregados de cada empresa (uma leitura por empresa), assunto e descrição de todas as solicitações, dados completos e trâmites das pendentes, comunicações e os contribuintes de cada mês na folha (Extrato Mensal do portal de documentos: código, nome e vínculo). Fica no banco do Hub, visível a quem acessa o Hub.', pessoal: true, padrao: false }
   ];
   const HUB_PARTE_CHARS = 140000;        // o Hub aceita até 150 mil por parte
-  const HUB_PARTES_MAX = 80;
+  const HUB_PARTES_MAX = 1000;   // 0.93.0 (Josué, 10/11/2026: "pode deixar sem limite, bote pra ler tudo que tiver"): era 80; 1.000 partes (~140 MB) só protege de um envio sem fim
   const HUB_PENDENTES_MAX = 300;         // detalhes e trâmites: no máximo N pendentes por envio (1 leitura cada)
   const celulaHub = (v, max) => String(v == null ? '' : v).replace(/[\t\r\n\u2028\u2029]+/g, ' ').replace(/ {2,}/g, ' ').trim().slice(0, max || 300);
   const simNao = v => v === true ? 'sim' : v === false ? 'não' : '';

@@ -2,7 +2,7 @@
  * lateral com o detalhe da tarefa. Usado nas abas "Minhas tarefas" (visão por empresa) e "Fechamento do mês".
  * Cada tarefa do mês é uma etapa: na trilha, na ordem da meta, com o traço cheio até onde está concluído; na linha do
  * tempo, no dia da meta, com a linha do hoje. O detalhe é lido na hora (cmd gesttaTarefa) e nunca guardado. */
-import { $, $$, esc, num } from './util.js';
+import { $, $$, esc, num, toast } from './util.js';
 const G = window.OCG;
 const enviar = msg => new Promise(res => { try { chrome.runtime.sendMessage(msg, r => res(r || { ok: false, erro: 'sem resposta' })); } catch (e) { res({ ok: false, erro: String(e.message || e) }); } });
 const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
@@ -83,7 +83,7 @@ export function listaEmpresas(el, empresas, o) {
  * Por cima (gaveta à direita, com fundo) ou embutido numa coluna da tela (o.alvo, no Meu dia). Duas abas: Resumo (datas,
  * etapas internas, documentos e pedidos ao cliente) e Linha do tempo (o histórico da tarefa, lido só quando a aba abre).
  * Detalhe e histórico são lidos na hora (cmds gesttaTarefa e gesttaHistorico) e ficam só na memória desta tela. */
-let P = null;          // { lista, i, dados, erro, carregando, paraPai, alvo, aba }
+let P = null;          // { lista, i, dados, erro, carregando, paraPai, alvo, aba, conf, agindo, aviso, rasc }
 const HIST = new Map();  // histórico já lido nesta visita, por id (some ao fechar a tela)
 export const painelAberto = () => !!(P && !P.alvo);
 export const painelTarefa = () => P && P.lista[P.i];
@@ -91,7 +91,9 @@ export function abrirPainel(lista, i, paraPai, o) {
   const alvo = o && o.alvo;
   const aba = P && P.aba === 'tempo' ? 'tempo' : 'resumo';
   if (P && !P.alvo && alvo) fecharPainel();
-  P = { lista, i, paraPai, dados: null, erro: null, carregando: true, alvo, aba };
+  // 0.93.0: reaberto na mesma tarefa (a lista foi relida depois de uma ação): fica o que já foi lido, o aviso, o rascunho e a confirmação
+  const ant = P && P.lista[P.i], mesma = !!(ant && lista[i] && ant._id === lista[i]._id);
+  P = { lista, i, paraPai, dados: mesma ? P.dados : null, erro: null, carregando: !(mesma && P.dados), alvo, aba, conf: mesma ? P.conf : null, agindo: mesma ? P.agindo : false, aviso: mesma ? P.aviso : null, rasc: mesma ? P.rasc : { com: '' } };
   if (!alvo) {
     let fundo = $('#gt-painel-fundo'), el = $('#gt-painel');
     if (!el) {
@@ -114,7 +116,7 @@ export function fecharPainel() {
   if (el) { el.classList.remove('aberto'); el.hidden = true; }
   if (fundo) { fundo.classList.remove('aberto'); fundo.hidden = true; }
 }
-export function passarPainel(d) { if (!P) return; const j = P.i + d; if (j < 0 || j >= P.lista.length) return; P.i = j; P.dados = null; P.erro = null; P.carregando = true; desenharPainel(); carregar(); if (P.aba === 'tempo') carregarHist(); }
+export function passarPainel(d) { if (!P) return; const j = P.i + d; if (j < 0 || j >= P.lista.length) return; P.i = j; P.dados = null; P.erro = null; P.carregando = true; P.conf = null; P.aviso = null; P.rasc = { com: '' }; desenharPainel(); carregar(); if (P.aba === 'tempo') carregarHist(); }
 async function carregar() {
   const meu = P, t = P.lista[P.i];
   const r = await enviar({ cmd: 'gesttaTarefa', id: t._id });
@@ -133,6 +135,53 @@ async function carregarHist(forcar) {
   const r = await enviar({ cmd: 'gesttaHistorico', id });
   HIST.set(id, r && r.ok ? { eventos: r.eventos || [], total: r.total, paginas: r.paginas } : { erro: (r && r.erro) || 'Não consegui ler o histórico.' });
   if (P === meu && P.lista[P.i]._id === id) desenharPainel();
+}
+/* ---------- ações na tarefa (0.93.0, aprovadas pelo Josué em 11/11/2026) ----------
+ * Cada uma passa por uma confirmação no próprio painel (P.conf) antes de ir ao Gestta (cmd gesttaAcao). Depois, o detalhe é
+ * relido e a lista da tela também (evento gt-tarefa-mudou). Texto e arquivo ficam só na memória desta tela até o envio. */
+const ARQ_MAX = (G && G.ARQ_MAX) || 15 * 1024 * 1024;
+const tamanho = n => n >= 1048576 ? (n / 1048576).toFixed(1).replace('.', ',') + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+const lerBase64 = f => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).replace(/^data:[^,]*,/, '')); r.onerror = () => rej(r.error); r.readAsDataURL(f); });
+function pedirConfirmacao(conf) { if (!P || P.agindo) return; P.conf = conf; P.aviso = null; desenharPainel(); setTimeout(() => { const el = P && (P.alvo || $('#gt-painel')); const f = el && ($('#gp-conf-campo', el) || $('#gp-conf-ok', el)); if (f) f.focus(); }, 20); }
+async function confirmar() {
+  if (!P || !P.conf || P.agindo) return;
+  const c = P.conf, t = P.lista[P.i];
+  const campo = c.campo ? String(($('#gp-conf-campo', P.alvo || $('#gt-painel')) || {}).value || '').trim() : '';
+  if (c.campo && !campo) { P.conf.falta = true; desenharPainel(); return; }
+  P.agindo = true; desenharPainel();
+  let msg = Object.assign({ cmd: 'gesttaAcao', id: t._id }, c.msg);
+  if (c.campo) msg[c.campo] = campo;
+  try { if (c.arquivo) msg.arquivo = { nome: c.arquivo.name, tipo: c.arquivo.type || '', base64: await lerBase64(c.arquivo) }; }
+  catch (e) { msg = null; }
+  const r = msg ? await enviar(msg) : { ok: false, erro: 'Não consegui ler o arquivo escolhido.' };
+  if (!P || !P.lista[P.i] || P.lista[P.i]._id !== t._id) { if (!(r && r.ok)) toast((r && r.erro) || 'O Gestta não respondeu.', true); else { toast(c.feito); try { window.dispatchEvent(new CustomEvent('gt-tarefa-mudou', { detail: { id: t._id } })); } catch (e) {} } return; }
+  P.agindo = false; P.conf = null;
+  if (r && r.ok) {
+    P.aviso = { ok: true, texto: c.feito };
+    if (c.msg.acao === 'comentar') P.rasc.com = '';
+    const x = r.tarefa;
+    if (x && x.status) { t.status = x.status; P.lista[P.i].status = x.status; if (P.dados) P.dados.status = x.status; }
+    HIST.delete(t._id);
+    try { window.dispatchEvent(new CustomEvent('gt-tarefa-mudou', { detail: { id: t._id } })); } catch (e) {}
+    desenharPainel(); recarregarQuieto();
+    if (P.aba === 'tempo') carregarHist(true);
+  } else { P.aviso = { ok: false, texto: (r && r.erro) || 'O Gestta não respondeu.' }; desenharPainel(); }
+}
+// Relê o detalhe sem o esqueleto (depois de uma ação)
+async function recarregarQuieto() {
+  const meu = P, t = P && P.lista[P.i]; if (!t) return;
+  const r = await enviar({ cmd: 'gesttaTarefa', id: t._id });
+  if (P !== meu || P.lista[P.i] !== t || !(r && r.ok)) return;
+  P.dados = r.tarefa; if (r.tarefa && r.tarefa.status) t.status = r.tarefa.status;
+  desenharPainel();
+}
+function confHtml() {
+  if (P.aviso) return '<div class="gp-aviso ' + (P.aviso.ok ? 'ok' : 'erro') + '" role="status"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-' + (P.aviso.ok ? 'check' : 'alert') + '"/></svg><span>' + esc(P.aviso.texto) + '</span><button type="button" class="icon-btn" id="gp-aviso-x" aria-label="Fechar aviso"><svg class="ic ic-sm"><use href="#i-x"/></svg></button></div>';
+  const c = P.conf; if (!c) return '';
+  return '<div class="gp-conf' + (c.perigo ? ' perigo' : '') + '" role="alertdialog" aria-label="Confirmar ação no Gestta"><p class="gp-conf-tx">' + esc(c.texto) + '</p>' +
+    (c.campo ? '<label class="gp-conf-lab" for="gp-conf-campo">' + esc(c.rotCampo) + '</label><textarea id="gp-conf-campo" rows="3" maxlength="4000"' + (c.falta ? ' aria-invalid="true"' : '') + '>' + esc(c.valor || '') + '</textarea>' + (c.falta ? '<small class="gp-conf-falta">Escreva o ' + esc(c.rotCampo.toLowerCase()) + ' antes de confirmar.</small>' : '') : '') +
+    (c.extra ? '<ul class="gp-conf-extra">' + c.extra.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' : '') +
+    '<div class="gp-conf-bt"><button type="button" class="btn btn-primary" id="gp-conf-ok"' + (P.agindo ? ' disabled' : '') + '>' + (P.agindo ? 'Gravando no Gestta…' : esc(c.botao)) + '</button><button type="button" class="btn" id="gp-conf-nao"' + (P.agindo ? ' disabled' : '') + '>Cancelar</button></div></div>';
 }
 const fmt = v => { if (!v) return ''; const d = new Date(v); return isNaN(d) ? String(v) : d.toLocaleDateString('pt-BR'); };
 const fmtHora = v => { const d = new Date(v); return isNaN(d) ? '' : d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }); };
@@ -167,9 +216,22 @@ function desenharPainel() {
   const resumo = P.carregando
     ? '<div class="gt-esq"><i></i><i></i><i></i><i></i></div><p class="fraco">Lendo a tarefa no Gestta…</p>'
     : P.erro ? '<div class="faixa"><svg class="ic"><use href="#i-alert"/></svg><div><b>Não consegui abrir o detalhe.</b> ' + esc(P.erro) + '</div><button class="btn btn-sm" id="gp-tentar">Tentar de novo</button></div>'
-    : (passos && passos.length ? '<section class="gp-sec"><h3>Etapas da tarefa <span class="gt-n">' + fPassos + '/' + nPassos + '</span></h3><div class="gp-prog" aria-hidden="true"><i style="width:' + Math.round(fPassos / nPassos * 100) + '%"></i></div><ul class="gp-passos">' + passos.map(p => '<li class="' + (p.done ? 'ok' : '') + '"><span class="gp-ck" aria-hidden="true">' + (p.done ? '✓' : '') + '</span><span>' + esc(p.name || 'Etapa') + (p.required ? ' <small class="fraco">obrigatória</small>' : '') + '</span><span class="sr-only">' + (p.done ? 'feita' : 'a fazer') + '</span></li>').join('') + '</ul></section>' : '<p class="fraco">Esta tarefa não tem etapas internas.</p>') +
-      (docs.length ? '<section class="gp-sec"><h3>Documentos da tarefa</h3><ul class="gp-docs">' + docs.map(x => '<li>' + esc(x.name || 'Documento') + (x.validation_required ? ' <small class="fraco">pede validação</small>' : '') + '</li>').join('') + '</ul></section>' : '') +
-      (pedidos.length ? '<section class="gp-sec"><h3>Pedidos ao cliente' + (d.document_request && d.document_request.active ? ' <span class="pill pill-today">cobrança ativa</span>' : '') + '</h3><ul class="gp-docs">' + pedidos.map(x => '<li>' + esc(x.name || 'Documento') + '</li>').join('') + '</ul></section>' : '');
+    : (passos && passos.length ? '<section class="gp-sec"><h3>Etapas da tarefa <span class="gt-n">' + fPassos + '/' + nPassos + '</span></h3><div class="gp-prog" aria-hidden="true"><i style="width:' + Math.round(fPassos / nPassos * 100) + '%"></i></div><ul class="gp-passos">' + passos.map(p => {
+        const conteudo = '<span class="gp-ck" aria-hidden="true">' + (p.done ? '✓' : '') + '</span><span>' + esc(p.name || 'Etapa') + (p.required ? ' <small class="fraco">obrigatória</small>' : '') + '</span><span class="sr-only">' + (p.done ? 'feita' : 'a fazer') + '</span>';
+        // 0.93.0: com o id da etapa, clicar marca ou desmarca (com confirmação)
+        return '<li class="' + (p.done ? 'ok' : '') + '">' + (p._id ? '<button type="button" class="gp-passo" data-gp-etapa="' + esc(p._id) + '" aria-pressed="' + !!p.done + '" title="' + (p.done ? 'Desmarcar esta etapa' : 'Marcar esta etapa como feita') + '">' + conteudo + '</button>' : conteudo) + '</li>';
+      }).join('') + '</ul></section>' : '<p class="fraco">Esta tarefa não tem etapas internas.</p>') +
+      (docs.length ? '<section class="gp-sec"><h3>Documentos da tarefa</h3><ul class="gp-docs">' + docs.map(x => '<li class="gp-doc"><span class="gp-doc-nome">' + esc(x.name || 'Documento') + (x.validation_required ? ' <small class="fraco">pede validação</small>' : '') + (x.temArquivo ? ' <small class="gp-doc-ok">✓ com arquivo</small>' : '') + (x.has_documents_integration ? ' <small class="fraco">vai ao Portal do Cliente</small>' : '') + '</span>' +
+        (x._id ? '<button type="button" class="btn btn-sm" data-gp-doc="' + esc(x._id) + '"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-upload"/></svg>' + (x.temArquivo ? 'Enviar outro arquivo' : 'Enviar arquivo') + '</button>' : '') + '</li>').join('') + '</ul><input type="file" id="gp-arq" hidden></section>' : '') +
+      (pedidos.length ? '<section class="gp-sec"><h3>Pedidos ao cliente' + (d.document_request && d.document_request.active ? ' <span class="pill pill-today">cobrança ativa</span>' : '') + '</h3><ul class="gp-docs">' + pedidos.map(x => '<li>' + esc(x.name || 'Documento') + '</li>').join('') + '</ul></section>' : '') +
+      // 0.93.0: comentário interno (fica só para a equipe; nunca vai ao cliente)
+      '<section class="gp-sec gp-com"><h3><label for="gp-com">Comentário interno</label></h3><textarea id="gp-com" rows="2" maxlength="4000" placeholder="Escreva um comentário para a equipe (o cliente não vê)">' + esc(P.rasc.com) + '</textarea><div class="gp-com-pe"><button type="button" class="btn btn-sm" id="gp-comentar"' + (P.rasc.com.trim() ? '' : ' disabled') + '>Comentar</button></div></section>';
+  // 0.93.0: o que dá para fazer com a tarefa, pela situação dela no Gestta
+  const st = String(d.status || base.status || '').toUpperCase();
+  const acoesTarefa = P.carregando || P.erro ? '' : '<div class="gp-acoes" role="group" aria-label="Ações na tarefa">' +
+    (st === 'DONE' ? '<button type="button" class="btn btn-sm" data-gp-acao="reabrir"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-undo"/></svg>Reabrir tarefa</button>'
+      : st === 'IMPEDIMENT' ? '<button type="button" class="btn btn-sm btn-primary" data-gp-acao="liberar"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-check"/></svg>Retirar impedimento</button>'
+      : '<button type="button" class="btn btn-sm btn-primary" data-gp-acao="concluir"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-check"/></svg>Concluir tarefa</button><button type="button" class="btn btn-sm" data-gp-acao="impedir"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-alert"/></svg>Registrar impedimento</button>') + '</div>';
   const abaBtn = (k, rot) => '<button type="button" role="tab" class="gp-aba' + (P.aba === k ? ' on' : '') + '" data-gp-aba="' + k + '" aria-selected="' + (P.aba === k) + '">' + rot + '</button>';
   el.classList.toggle('gp-embutido', !!P.alvo);
   el.innerHTML = '<header class="gp-cab"><div class="gp-nav"><button type="button" class="icon-btn" id="gp-ant" aria-label="Tarefa anterior"' + (P.i ? '' : ' disabled') + '><svg class="ic"><use href="#i-chev-l"/></svg></button><span class="fraco">' + (P.i + 1) + ' de ' + P.lista.length + '</span><button type="button" class="icon-btn" id="gp-prox" aria-label="Próxima tarefa"' + (P.i < P.lista.length - 1 ? '' : ' disabled') + '><svg class="ic"><use href="#i-chev-r"/></svg></button>' +
@@ -177,6 +239,7 @@ function desenharPainel() {
       (P.alvo ? '' : '<button type="button" class="icon-btn" id="gp-fechar" aria-label="Fechar (Esc)"><svg class="ic"><use href="#i-x"/></svg></button>') + '</header>' +
     '<div class="gp-corpo"><div class="gp-topo"><span class="pill ' + pill + '">' + esc(G.ESTADOS[est]) + '</span>' + (nPassos ? '<span class="gp-etapas-mini" title="Etapas da tarefa">' + fPassos + '/' + nPassos + ' etapas</span>' : '') + '</div>' +
       '<h2 class="gp-tit">' + esc(t.name || 'Tarefa') + '</h2><p class="gp-cli">' + esc(t.customer.name || '') + (t.customer.code || cnpj ? ' <span class="gp-copias">' + copiar(t.customer.code, 'o código') + copiar(cnpj, 'o CNPJ') + '</span>' : '') + '</p>' +
+      acoesTarefa + confHtml() +
       '<dl class="gp-dl">' + campo('Meta', fmt(t.due_date) + ' · ' + G.prazoTexto(t, hoje)) + campo('Data legal', fmt(t.legal_date)) + campo('Competência', fmt(t.competence_date)) + campo('Setor', setor) + campo('Responsável', resp) + campo('Concluída em', fmt(t.conclusion_date)) + campo('Modelo', d.company_task && d.company_task.name) + '</dl>' +
       '<div class="gp-abas" role="tablist" aria-label="Detalhe">' + abaBtn('resumo', 'Resumo') + abaBtn('tempo', 'Linha do tempo') + '</div>' +
       '<div class="gp-aba-corpo" role="tabpanel">' + (P.aba === 'tempo' ? linhaDoTempoHtml(base._id) : resumo) + '</div></div>' +
@@ -190,6 +253,44 @@ function desenharPainel() {
   $$('[data-copiar]', el).forEach(b => b.onclick = () => { const v = b.dataset.copiar, ok = () => { b.classList.add('ok'); b.lastChild.textContent = 'Copiado'; setTimeout(() => desenharPainel(), 1400); }; try { navigator.clipboard.writeText(v).then(ok, ok); } catch (_) { ok(); } });
   const tt = $('#gp-tentar', el); if (tt) tt.onclick = () => { P.erro = null; P.carregando = true; desenharPainel(); carregar(); };
   const th = $('#gp-hist-tentar', el); if (th) th.onclick = () => carregarHist(true);
+  ligarAcoes(el, t, passos || [], docs);
+}
+function ligarAcoes(el, t, passos, docs) {
+  const nomeT = '“' + (t.name || 'Tarefa') + '”';
+  $$('[data-gp-acao]', el).forEach(b => b.onclick = () => {
+    const a = b.dataset.gpAcao;
+    if (a === 'concluir') pedirConfirmacao({ msg: { acao: 'concluir' }, texto: 'Concluir a tarefa ' + nomeT + ' no Gestta?', botao: 'Concluir tarefa', feito: 'Tarefa concluída no Gestta.',
+      extra: (passos.some(p => !p.done) ? ['Ainda há etapas não marcadas.'] : []).concat(docs.some(x => !x.temArquivo) ? ['Ainda há documento sem arquivo.'] : []) });
+    else if (a === 'reabrir') pedirConfirmacao({ msg: { acao: 'reabrir' }, texto: 'Reabrir a tarefa ' + nomeT + '? Ela volta a ficar aberta no Gestta.', botao: 'Reabrir tarefa', feito: 'Tarefa reaberta no Gestta.', perigo: true });
+    else if (a === 'impedir') pedirConfirmacao({ msg: { acao: 'impedir' }, campo: 'motivo', rotCampo: 'Motivo do impedimento', texto: 'Registrar um impedimento na tarefa ' + nomeT + '?', botao: 'Registrar impedimento', feito: 'Impedimento registrado no Gestta.' });
+    else if (a === 'liberar') pedirConfirmacao({ msg: { acao: 'liberar' }, texto: 'Retirar o impedimento da tarefa ' + nomeT + '? Ela volta a ficar aberta.', botao: 'Retirar impedimento', feito: 'Impedimento retirado: a tarefa voltou a ficar aberta.' });
+  });
+  $$('[data-gp-etapa]', el).forEach(b => b.onclick = () => {
+    const p = passos.find(x => x._id === b.dataset.gpEtapa); if (!p) return;
+    const nome = '“' + (p.name || 'Etapa') + '”';
+    pedirConfirmacao(p.done ? { msg: { acao: 'etapa', etapa: p._id, feita: false }, texto: 'Desmarcar a etapa ' + nome + '?', botao: 'Desmarcar', feito: 'Etapa desmarcada no Gestta.' }
+      : { msg: { acao: 'etapa', etapa: p._id, feita: true }, texto: 'Marcar a etapa ' + nome + ' como feita?', botao: 'Marcar como feita', feito: 'Etapa marcada como feita no Gestta.' });
+  });
+  const com = $('#gp-com', el), bc = $('#gp-comentar', el);
+  if (com) com.oninput = () => { P.rasc.com = com.value; if (bc) bc.disabled = !com.value.trim(); };
+  if (bc) bc.onclick = () => { const tx = P.rasc.com.trim(); if (!tx) return;
+    pedirConfirmacao({ msg: { acao: 'comentar', texto: tx }, texto: 'Gravar este comentário na tarefa ' + nomeT + '?', extra: ['“' + (tx.length > 160 ? tx.slice(0, 160) + '…' : tx) + '”', 'Fica só para a equipe: o cliente não vê.'], botao: 'Gravar comentário', feito: 'Comentário gravado no Gestta.' }); };
+  const arq = $('#gp-arq', el);
+  $$('[data-gp-doc]', el).forEach(b => b.onclick = () => { if (!arq) return; arq.dataset.doc = b.dataset.gpDoc; arq.value = ''; arq.click(); });
+  if (arq) arq.onchange = () => {
+    const f = arq.files && arq.files[0], doc = docs.find(x => x._id === arq.dataset.doc); if (!f || !doc) return;
+    if (f.size > ARQ_MAX) { P.aviso = { ok: false, texto: '“' + f.name + '” tem ' + tamanho(f.size) + ': o limite é 15 MB.' }; desenharPainel(); return; }
+    pedirConfirmacao({ msg: { acao: 'documento', documento: doc._id }, arquivo: f, texto: 'Enviar “' + f.name + '” (' + tamanho(f.size) + ') no documento “' + (doc.name || 'Documento') + '”?',
+      extra: (doc.has_documents_integration ? ['O arquivo vai ao Portal do Cliente.'] : []).concat(['Se este for o último documento que falta, o Gestta pode concluir a tarefa sozinho.']).concat(doc.temArquivo ? ['O documento já tem arquivo: este será mais um.'] : []),
+      botao: 'Enviar arquivo', feito: 'Arquivo enviado no Gestta.' });
+  };
+  const ok = $('#gp-conf-ok', el), nao = $('#gp-conf-nao', el), ax = $('#gp-aviso-x', el), cf = $('.gp-conf', el);
+  if (ok) ok.onclick = confirmar;
+  if (nao) nao.onclick = () => { P.conf = null; desenharPainel(); };
+  if (ax) ax.onclick = () => { P.aviso = null; desenharPainel(); };
+  const campo = $('#gp-conf-campo', el); if (campo && P.conf) campo.oninput = () => { P.conf.valor = campo.value; if (P.conf.falta && campo.value.trim()) { P.conf.falta = false; } };
+  // Esc fecha só a confirmação (sem fechar o painel e perder o que foi escrito)
+  if (cf) cf.onkeydown = e => { if (e.key === 'Escape' && !P.agindo) { e.preventDefault(); e.stopPropagation(); P.conf = null; desenharPainel(); } };
 }
 // Abrir no Gestta: a camada fecha e o próprio Gestta vai para a tarefa
 export function abrirNoGestta() {
