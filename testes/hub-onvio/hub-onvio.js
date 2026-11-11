@@ -113,7 +113,13 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await page.waitForFunction(() => [...document.querySelectorAll('#dp-painel-grid .pn-card')].some(c => /^\s*Onvio/.test(c.textContent) && /6\s*Pendentes/.test(c.textContent) && /5\s*Vez do escritório/.test(c.textContent)), null, { timeout: 8000 });
     const t = await page.$eval('#dp-painel-grid', e => [...e.querySelectorAll('.pn-card')].map(c => c.textContent.replace(/\s+/g, ' ')).find(x => /^\s*Onvio/.test(x)));
     assert.match(t, /6\s*Pendentes/); assert.match(t, /5\s*Vez do escritório/); assert.match(t, /2\s*Prazos legais em 7 dias/);
-    assert.match(await page.textContent('#dp-painel-kpis'), /Alertas de pessoal.*|2/s);
+    // Hub 344 (Josué, 11/11/2026: "tira esses cards"; "deixe essa caixa horizontal"): sem os cartões do topo, e Carteiras larga, em colunas
+    assert.equal(await page.isHidden('#dp-painel-kpis'), true, 'sem os cartões do topo do Painel');
+    const cart = page.locator('#dp-painel-grid .pn-card.pn-wide:has(h3:text-is("Carteiras"))');
+    assert.equal(await cart.count(), 1, 'Carteiras ocupa a largura toda');
+    assert.ok(await cart.locator('.vbars .vbar .vbar-fill').count() >= 1, 'uma coluna por analista');
+    const hv = await cart.locator('.vbar-fill').first().evaluate((e) => e.style.height);
+    assert.match(hv, /%$/, 'a altura da coluna é a proporção de empresas');
     const al = await page.evaluate(() => window.__hubApi.api('dp').consultar('atrasos', {}));
     assert.ok(al && al.linhas !== undefined);
     if (CAP) await page.screenshot({ path: path.join(CAP, 'painel-claro.png') });
@@ -1207,16 +1213,49 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await semearConjunto('escritorio-funcionarios', { categoria: 'escritorio', colunas: eq.colunas, linhas: [] }, 'cE2');
   });
 
-  await passo('Cartela → Onvio (resumo antigo) continua igual e ganha o CNPJ completo dos clientes de CND/NF-e', async () => {
+  await passo('Empresas do DP (Hub 343, Josué 11/11/2026: "por padrão deve aparecer apenas as empresas ativas", "adicione o nome do analista no card"): abre só com as ativas, o chip Ativas mostra as outras, e o cartão traz o analista', async () => {
+    await page.evaluate(() => document.querySelectorAll('dialog[open]').forEach((d) => d.close()));
+    await page.evaluate(() => window.__hubApi.abrirModulo('dp'));
+    await page.evaluate(() => window.__hubApi.api('dp').irPara('empresas'));
+    await page.waitForSelector('#dp-emp-faixa [data-emp-faixa="ativas"]');
+    await page.evaluate(() => { const b = document.querySelector('#dp-emp-modo [data-emp-modo="cards"]'); if (b) b.click(); });
+    await page.waitForSelector('#dp-emp-cards .emp-card');
+    const chip = page.locator('#dp-emp-faixa [data-emp-faixa="ativas"]');
+    assert.equal(await chip.getAttribute('aria-pressed'), 'true', 'de fábrica só as ativas');
+    assert.equal(await page.locator('#dp-emp-cards .emp-card.inativa').count(), 0, 'nenhuma inativa à vista');
+    assert.equal(await page.isHidden('#dp-filtros-n'), true, 'as ativas de fábrica não contam como filtro');
+    const r = await page.$$eval('#dp-emp-cards .emp-card', (cs) => cs.map((c) => (c.querySelector('.emp-resp') || {}).textContent || ''));
+    assert.ok(r.length && r.every((t) => t.trim()), 'cada cartão diz o analista (ou "Sem responsável"): ' + JSON.stringify(r));
+    const comResp = await page.evaluate(() => (window.__hubApi.api('dp').listar() || []).find((e) => e.situacao === 'Ativa' && e.analista));
+    assert.ok(comResp, 'a base de teste tem empresa ativa com analista');
+    assert.ok(r.some((t) => t.includes(comResp.analista)), 'o nome do analista aparece: ' + comResp.analista + ' em ' + JSON.stringify(r));
+    if (CAP) { await page.waitForTimeout(1500); await page.screenshot({ path: path.join(CAP, 'dp-empresas-ativas.png') }); }
+    const nAtivas = await page.locator('#dp-emp-cards .emp-card').count();
+    const temInativa = await page.evaluate(() => (window.__hubApi.api('dp').listar() || []).some((e) => e.situacao !== 'Ativa'));
+    await chip.click();
+    assert.equal(await chip.getAttribute('aria-pressed'), 'false');
+    if (temInativa) { await page.waitForFunction((n) => document.querySelectorAll('#dp-emp-cards .emp-card').length > n, nAtivas, { timeout: 5000 }); }
+    await chip.click();
+    await page.waitForFunction((n) => document.querySelectorAll('#dp-emp-cards .emp-card').length === n, nAtivas, { timeout: 5000 });
+  });
+
+  await passo('Cartela sem a aba Onvio (Hub 342, Josué 11/11/2026: "retire essa sessão Onvio daqui, está sem utilidade"): o selo "N no Onvio" abre a ficha da empresa na aba Onvio', async () => {
     const cols = ['Lista', 'Nº', 'Situação', 'Vez', 'Cliente', 'Responsável', 'Aberta em', 'Última movimentação', 'Dias parado', 'Gravidade'];
-    // o cliente do resumo tem outro nome que o do DP, mas o final do CNPJ (0001-81) e o nome do cadastro de CND batem
     await page.evaluate(([c]) => window.__db.semear('ing_lotes/onvio~solicitacoes', { fonte: 'onvio', tipoDado: 'solicitacoes', colunas: c, tabela: ['Geral\t901\tSem análise\tescritório\tORION COMERCIO LTDA | 0001-81\tAna Teste\t2026-10-20\t2026-10-20\t5\t1'].join('\n'), nLinhas: 1, totalNaOrigem: 1, cortado: false, recebidoEm: Date.now(), usuario: 'Ana Teste' }), [cols]);
+    await page.evaluate(() => document.querySelectorAll('dialog[open]').forEach((d) => d.close()));
     await page.evaluate(() => window.__hubApi.abrirModulo('dp'));
     await page.evaluate(() => window.__hubApi.api('dp').irPara('cartela'));
-    await page.click('#ct-modo [data-ct-modo="onvio"]');
-    await page.waitForSelector('#ct-pane-onvio .ct-ov-tab tbody tr');
-    assert.match(await page.textContent('#ct-pane-onvio .ct-ov-tab'), /ORION \| 0001-81/);
-    assert.match(await page.textContent('#ct-pane-onvio .ct-ov-tab'), /901/);
+    await page.waitForSelector('#ct-modo [data-ct-modo="cartela"]');
+    assert.equal(await page.locator('#ct-modo [data-ct-modo="onvio"]').count(), 0, 'sem o botão Onvio');
+    assert.deepEqual(await page.$$eval('#ct-modo [data-ct-modo]', (b) => b.map((x) => x.textContent.trim())), ['Cartela', 'Ausências', 'Movimentações']);
+    assert.equal(await page.isHidden('#ct-pane-onvio'), true);
+    const selo = page.locator('#ct-table [data-ct-ov]').first();
+    if (await selo.count()) {
+      await selo.click();
+      await page.waitForSelector('#dlg-dp-detail[open]');
+      assert.equal(await page.getAttribute('#dp-dtabs [data-dtab="onvio"]', 'aria-selected') === 'true' || await page.isVisible('[data-dpanel="onvio"]'), true, 'a ficha abre na aba Onvio');
+      await page.evaluate(() => document.querySelectorAll('dialog[open]').forEach((d) => d.close()));
+    }
   });
 
   await passo('Empresas do escritório (ControlTax, Dynexa, Oficina, Diskcontador): não aparecem em nada no Hub, nem as já cadastradas no DP nem as que vêm do Onvio', async () => {
