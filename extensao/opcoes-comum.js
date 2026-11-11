@@ -98,7 +98,7 @@
       x = x.replace(/falhou: ((?:[^·;]+?, )+[^·;]+?)(?= ·|;|$)/, (m, l) => 'falhou em ' + l.split(', ').length + ' leituras'); return x.length > 160 ? x.slice(0, 157) + '…' : x; };
     mal.forEach(r => linhas.push(r.categoria === 'escritorio'
       ? { tom: 'aviso', rotulo: r.rotulo, texto: 'o Onvio não liberou esta leitura para o seu login (não atrapalha o resto)', dica: r.motivo }
-      : { tom: 'erro', rotulo: r.rotulo, texto: curto(MOTIVOS_HUB[r.motivo] || r.motivo), dica: r.motivo }));
+      : { tom: 'erro', rotulo: r.rotulo, texto: curto(MOTIVOS_HUB[r.motivo] || r.motivo), dica: r.motivo, alimenta: OC && OC.hubAlimenta ? OC.hubAlimenta(r.id) : '' }));      // 0.93.0: o que esse erro deixa de alimentar no Hub
     ok.filter(x => x.cortado).forEach(r => linhas.push({ tom: 'aviso', rotulo: r.rotulo, texto: curto('veio incompleto' + (r.porque ? ': ' + r.porque : ' (cortado)') + (r.linhas ? ' · ' + r.linhas.toLocaleString('pt-BR') + ' linhas enviadas' : '')), dica: r.porque || '' }));
     ok.filter(x => x.motivo && !x.cortado).forEach(r => linhas.push({ tom: r.motivo === 'sem-mudanca' ? 'igual' : r.nota ? 'nota' : 'aviso', rotulo: r.rotulo, texto: r.motivo === 'sem-mudanca' ? 'sem mudança' : curto(MOTIVOS_HUB[r.motivo] || r.motivo) }));
     ok.filter(x => !x.motivo && !x.cortado).forEach(r => linhas.push({ tom: 'ok', rotulo: r.rotulo, texto: (r.linhas || 0).toLocaleString('pt-BR') + ' linhas' }));
@@ -112,13 +112,14 @@
     if (!ev) return { estado: 'nunca', texto: 'Nenhum envio ainda.', abas: '' };
     const preso = ['enviando', 'preparando'].includes(ev.estado) && ev.pulso && Date.now() - ev.pulso > 240000, est = preso ? 'interrompido' : ev.estado;
     const quem = { hub: 'pedido pelo Hub', extensao: 'pedido aqui', auto: 'automático' }[ev.origem] || '';
-    const FASE = { abas: 'abrindo o que faltava', resumo: 'resumo das pendentes', onvio: 'Onvio', gestta: 'Gestta' };
+    const FASE = { abas: 'abrindo o que faltava', resumo: 'resumo das pendentes', onvio: 'Onvio', gestta: 'Gestta', 'reenvio-onvio': 'reenviando o que deu erro no Onvio', 'reenvio-gestta': 'reenviando o que deu erro no Gestta' };
     const ROT = { ok: 'tudo aceito', parcial: 'parte aceita', erro: 'não concluído', cancelado: 'cancelado', interrompido: 'interrompido' };
     const texto = est === 'preparando' || est === 'enviando' ? 'Atualizando o Hub (' + quem + ')… ' + (FASE[ev.fase] || '')
       : 'Último envio (' + quem + '): ' + (ROT[est] || est) + ' em ' + quando(ev.terminouEm) + (ev.motivo ? ' · ' + (MOTIVOS_HUB[ev.motivo] || ev.motivo) : '');
     const NA = { abriu: 'abriu em segundo plano', aberta: 'já estava aberto', falhou: 'não consegui abrir', 'sem-sessao': 'sem sessão' };
     const abas = ['hub', 'onvio', 'gestta'].filter(k => ev.abas && ev.abas[k]).map(k => ({ hub: 'Hub', onvio: 'Onvio', gestta: 'Gestta' })[k] + ': ' + NA[ev.abas[k]]).join(' · ');
-    return { estado: est, texto, abas, avisos: ev.avisos || [], rodando: est === 'preparando' || est === 'enviando' };
+    const reenv = ev.tentativas ? ' · ' + ev.tentativas + (ev.tentativas === 1 ? ' reenvio automático' : ' reenvios automáticos') : '';
+    return { estado: est, texto: texto + reenv + (ev.alvo ? ' · só o que faltava' : ''), abas, avisos: ev.avisos || [], rodando: est === 'preparando' || est === 'enviando' };
   }
 
   g.OCOpcoes = { cabEnvio, MOTIVOS_HUB, msgHub, quando, diagnostico, APRENDER_MAX_MS, aprenderAtivo, aprenderResta, textoAprendido, ROTEIRO_APRENDER, linhasEnvio, URL_REGRAS_CLIENTE: 'https://raw.githubusercontent.com/josuep007-prog/assistente-portal-regras/main/regras.json', HUB_ORIGENS: ['https://claude.ai/*'] };
