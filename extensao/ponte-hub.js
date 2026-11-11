@@ -5,6 +5,9 @@
  *  - não lê nem altera nada da página do claude.ai além dessas mensagens.
  * Protocolo (versão 1): Hub -> {ctlhub:1, de:'hub', tipo:'ola'} | Hub -> {ctlhub:1, de:'hub', tipo:'ack', id, ok, motivo}
  *                       aqui -> {ctlhub:1, de:'ext', tipo:'lote', id, token, ...lote}.
+ * 0.92.0 (envio único): Hub -> {tipo:'pedido', id, acao: 'atualizar'|'cancelar'|'estado'} (só da janela que já provou o código) e
+ *   aqui -> {tipo:'pedidoAck', id, ok, motivo, envio} | {tipo:'progresso', token, envio} (o andamento: estados, nomes e contagens) |
+ *   {tipo:'conectado', versao} (logo depois da prova, para o Hub saber que há extensão neste Chrome).
  * Quem é o Hub (0.54.0): qualquer janela da página do claude.ai pode dizer "ola", então ninguém vira "o Hub" só por isso. Cada janela
  * que se anuncia recebe um desafio ({tipo:'busca', nonce}) e só vale se responder com a prova HMAC-SHA256(token, nonce), que o service
  * worker confere com o código de pareamento guardado. O token só sai desta ponte para uma janela que provou conhecê-lo. */
@@ -44,12 +47,24 @@
       desafios.delete(String(d.nonce));
       const origem = e.source, antigo = hub;
       try {
-        chrome.runtime.sendMessage({ cmd: 'hubProva', nonce: String(d.nonce), prova: String(d.prova) }).then(r => {
+        chrome.runtime.sendMessage({ cmd: 'hubProva', nonce: String(d.nonce), prova: String(d.prova), url: location.origin + location.pathname }).then(r => {
           if (!r || !r.ok) return;
           const novo = !antigo || antigo.win !== origem || Date.now() - antigo.em > MEMORIA_MS;
           hub = { win: origem, em: Date.now() };
+          try { origem.postMessage({ ctlhub: 1, de: 'ext', tipo: 'conectado', versao: String(r.versao || '') }, '*'); } catch (x) { /* quadro fechado */ }
           // O Hub acabou de aparecer (aba aberta ou recarregada): o service worker manda o resumo na hora, se faltar
           if (novo) { try { chrome.runtime.sendMessage({ cmd: 'hubAbriu' }).catch(() => {}); } catch (x) { /* extensão atualizada */ } }
+        }).catch(() => {});
+      } catch (x) { /* extensão atualizada */ }
+      return;
+    }
+    // O Hub pede (atualizar, cancelar ou o estado do envio): só a janela que provou o código, e o service worker confere de novo a aba
+    if (d.tipo === 'pedido' && d.id && hub && e.source === hub.win && vivo()) {
+      const id = String(d.id).slice(0, 60), acao = ['atualizar', 'cancelar', 'estado'].includes(d.acao) ? d.acao : 'estado', origem = e.source;
+      hub.em = Date.now();
+      try {
+        chrome.runtime.sendMessage({ cmd: 'hubPedido', acao }).then(r => {
+          try { origem.postMessage(Object.assign({ ctlhub: 1, de: 'ext', tipo: 'pedidoAck', id }, r || { ok: false, motivo: 'sem-resposta' }), '*'); } catch (x) { /* quadro fechado */ }
         }).catch(() => {});
       } catch (x) { /* extensão atualizada */ }
       return;
@@ -74,6 +89,10 @@
   if (!vivo()) return;
   chrome.runtime.onMessage.addListener((msg, _remetente, responder) => {
     if (!msg || msg.alvo !== 'ponte-hub') return;
+    if (msg.cmd === 'progresso') {                 // o andamento do envio vai só à janela que provou o código
+      if (temHub()) { try { hub.win.postMessage({ ctlhub: 1, de: 'ext', tipo: 'progresso', token: String(msg.token || ''), envio: msg.envio || null }, '*'); } catch (e) { /* quadro fechado */ } }
+      responder({ ok: temHub() }); return;
+    }
     if (msg.cmd === 'status') { esperarHub(2500).then(() => responder({ hub: temHub(), avisando: avisandoAgora() })); return true; }
     if (msg.cmd === 'enviar') {
       const lote = msg.lote || {};

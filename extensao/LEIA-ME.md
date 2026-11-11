@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.91.0)
+# Control Onvio · ControlTax (v0.92.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,15 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.92.0 (11/11/2026): um envio só ao Hub, pedido de qualquer lado
+
+- **Onvio e Gestta num envio só.** Em Configurações › Avançado › Control Hub, o botão **Atualizar o Hub agora** leva o resumo, o Onvio e o Gestta juntos. Não há mais o botão nem o automático à parte do Gestta (os conjuntos do Gestta continuam escolhidos ali).
+- **Nada para abrir à mão.** O que estiver fechado (o Hub, o Portal do Cliente, o Gestta) abre numa aba em segundo plano, sem tirar você do que está fazendo, e fecha no fim. A aba em que você clicar durante o envio fica aberta. O automático (a cada 6 horas) faz o mesmo, com o Chrome aberto e as sessões do Onvio e do Gestta logadas. Para a extensão saber o endereço do Hub, abra o Hub uma vez com ela conectada.
+- **Pelo Hub.** Na Entrada de dados, o painel **Atualizar o Hub** mostra se o Control Onvio está conectado naquele Chrome, o andamento ao vivo (por fonte, com a etapa e os erros), o último envio e quem pediu. A coordenação inicia ou cancela por ali; quem não tem a extensão acompanha.
+- **Acompanhar.** Na extensão, "Último envio" diz quem pediu, as abas que abriu, o resultado do Onvio e do Gestta e tem o botão **Cancelar** enquanto roda.
+- **Configurações valem na hora.** O que você muda na guia de Configurações (tema, estilo, setor, prazos, avisos) passa a valer na hora nas telas do Onvio e do Gestta que estão abertas, com o aviso "Configurações atualizadas". Antes, a tela aberta só mudava depois de recarregar.
+- A confirmar no Chrome do Josué: o Hub abrindo em segundo plano carrega e responde como numa aba visível.
 
 ## Novidades da v0.91.0 (11/11/2026): o botão em qualquer site
 

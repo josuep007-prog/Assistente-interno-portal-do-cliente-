@@ -368,6 +368,15 @@ const iconeTema = () => { const d = temaAtual() === 'dark'; $('#btn-tema use').s
 $('#btn-config').onclick = () => enviar({ cmd: 'abrirConfig' }).then(r => { if (!r || !r.ok) toast((r && r.erro) || 'Não foi possível abrir as Configurações', true); });   // 0.90.0: a mesma guia das Configurações do Onvio
 $('#btn-tema').onclick = () => { const n = temaAtual() === 'dark' ? 'light' : 'dark'; document.documentElement.setAttribute('data-theme', n); try { localStorage.setItem('controlonvio-theme', n); } catch (e) {} iconeTema(); };
 $('#btn-ver-gestta').onclick = () => paraPai({ controlGestta: 'fechar' });
+// 0.92.0: tema e estilo mudados na guia de Configurações valem aqui na hora, com um aviso
+let avisoCfg = 0;
+addEventListener('storage', e => {
+  if (e.key === 'controlonvio-theme' && e.newValue) document.documentElement.setAttribute('data-theme', e.newValue === 'dark' ? 'dark' : 'light');
+  else if (e.key === 'controlonvio-estilo' && e.newValue) document.documentElement.setAttribute('data-estilo', e.newValue === 'atual' ? 'atual' : 'simples');
+  else return;
+  iconeTema(); desenhar();
+  clearTimeout(avisoCfg); avisoCfg = setTimeout(() => toast('Configurações atualizadas: já valem nesta tela'), 400);
+});
 $('#vista').addEventListener('scroll', () => salvarEstado(), { passive: true });
 $('#btn-atualizar').onclick = () => E.aba === 'fech' ? lerFech(true) : ler();
 function trocarAba(a) { if (!ABAS.includes(a) || a === E.aba) return; E.aba = a; gravarPref('gt.aba', E.aba); salvarEstado(); fecharPainel(); aoVivo(); desenhar(); $('#vista').scrollTop = 0; }
