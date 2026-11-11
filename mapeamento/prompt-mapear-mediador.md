@@ -29,3 +29,9 @@ Quem preferir fazer à mão: abra a consulta do Mediador, cole `mapeamento/mapea
 - **Sem captcha:** a extensão consulta sozinha, no máximo uma vez por semana, só os sindicatos em uso no Hub, e manda ao Hub os instrumentos encontrados (registro, tipo, vigência, data-base, partes, data do registro). No Hub, vira "Para decidir: nova CCT registrada", com Cadastrar ou Ignorar.
 - **Com captcha:** botão "Buscar no Mediador" em cada sindicato do Hub; a pessoa resolve o captcha e a extensão lê a página aberta e preenche a convenção para conferir.
 - Qualquer dos dois é uma **exceção nova** à regra "sem acesso de rede além do Onvio e do Gestta", e precisa da autorização do Josué antes, como foi com o Gestta.
+
+## Resultado da 1ª rodada e 2ª rodada (11/11/2026)
+
+- **1ª rodada:** `mapeamento/mediador-2026-11-11.md`. A consulta funciona com o reCAPTCHA **invisível**, só de dentro de uma aba aberta do site; o texto completo sai por `GET resumoVisualizarSalvarMsWordDoc?NrSolicitacao=MR{n}_{n}`, sem token (HTML em windows-1252).
+- **Decidido pelo Josué (11/11/2026):** autorizado o acesso de leitura ao Mediador; busca pelo botão "Buscar no Mediador" e uma vez por semana junto do envio ao Hub; no Hub fica guardada a lista de todos os instrumentos e o texto da CCT vigente e dos aditivos dela, e o resto (instrumentos antigos, PDFs de anexo) abre dentro do Hub buscado na hora pela extensão, sem ocupar o banco.
+- **2ª rodada (falta):** como o site pagina (a lista não vem por data, então é preciso ler todas as páginas), como cada instrumento vem no HTML da busca, o que faz a exportação (`excel`) e a estrutura do texto da convenção. Roteiro v2 (`medMapa.estrutura`, esqueleto do HTML da busca e as funções dos links), prompt em `mapeamento/prompt-claude-chrome-mediador-2.txt`.
