@@ -45,7 +45,7 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
 
-## Novidades da v0.92.0 (11/11/2026): trabalhar no Gestta pela extensão
+## Novidades da v0.93.0 (11/11/2026): trabalhar no Gestta pela extensão e o envio ao Hub sem o limite de 80 partes
 
 - Pedido do Josué: "tá na hora da extensão conseguir interagir com o Gestta igual acontece no Onvio e o analista consiga trabalhar por cima". Aprovadas quatro ações, mapeadas na empresa de teste em 11/11/2026 (`mapeamento/gestta-2026-11-04.md`, "Ações mapeadas").
 - No detalhe da tarefa (Tarefas do Gestta, por cima ou ao lado no Meu dia):
@@ -56,11 +56,23 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 - Toda ação passa por uma **confirmação no próprio painel** antes de ir ao Gestta (Esc cancela só a confirmação). Depois, o detalhe e a lista são relidos.
 - Segurança: a lista do que pode ser gravado é fechada (`OCG.escritaPermitida`: o método, o endereço e os campos exatos do mapeamento; nunca excluir, nunca comentário externo, nunca outro status), conferida no service worker e de novo dentro da aba; o token do Gestta continua só na página; só a tela da extensão pode pedir uma ação; nada é guardado (nem o texto, nem o arquivo, nem a resposta).
 - **A confirmar no Gestta real:** o envio de arquivo pela tela do Gestta leva um cabeçalho próprio (`__setxhr_`) que a extensão não manda; se o Gestta recusar o arquivo, a mensagem aparece no painel.
-
-## Novidades da v0.91.0 (10/11/2026): o envio ao Hub sem o limite de 80 partes (Hub 332)
-
-- Pedido do Josué: "pode deixar sem limite, bote pra ler tudo que tiver". O envio ao Control Hub cortava cada conjunto em 80 partes (cerca de 11 MB); a lista de tarefas do Gestta já ocupava 47. Agora o limite é de 1.000 partes (cerca de 140 MB) na extensão (`HUB_PARTES_MAX` no `core.js`, `HUB_GESTTA_PARTES_MAX` no `gestta.js`) e no Hub (`ING_PARTES_MAX`, Hub 332; a Entrada de dados abre até 1.000 partes). Na prática é ler tudo: o número só protege de um envio sem fim.
+- **Sem o limite de 80 partes (já valendo no Hub):** Pedido do Josué: "pode deixar sem limite, bote pra ler tudo que tiver". O envio ao Control Hub cortava cada conjunto em 80 partes (cerca de 11 MB); a lista de tarefas do Gestta já ocupava 47. Agora o limite é de 1.000 partes (cerca de 140 MB) na extensão (`HUB_PARTES_MAX` no `core.js`, `HUB_GESTTA_PARTES_MAX` no `gestta.js`) e no Hub (`ING_PARTES_MAX`, Hub 332; a Entrada de dados abre até 1.000 partes). Na prática é ler tudo: o número só protege de um envio sem fim.
 - Cada parte é um documento no banco do Hub (limite de 5.000); conjuntos muito grandes ocupam mais. O "Uso do banco" mostra quanto.
+
+## Novidades da v0.92.0 (11/11/2026): um envio só ao Hub, pedido de qualquer lado
+
+- **Onvio e Gestta num envio só.** Em Configurações › Avançado › Control Hub, o botão **Atualizar o Hub agora** leva o resumo, o Onvio e o Gestta juntos. Não há mais o botão nem o automático à parte do Gestta (os conjuntos do Gestta continuam escolhidos ali).
+- **Nada para abrir à mão.** O que estiver fechado (o Hub, o Portal do Cliente, o Gestta) abre numa aba em segundo plano, sem tirar você do que está fazendo, e fecha no fim. A aba em que você clicar durante o envio fica aberta. O automático (a cada 6 horas) faz o mesmo, com o Chrome aberto e as sessões do Onvio e do Gestta logadas. Para a extensão saber o endereço do Hub, abra o Hub uma vez com ela conectada.
+- **Pelo Hub.** Na Entrada de dados, o painel **Atualizar o Hub** mostra se o Control Onvio está conectado naquele Chrome, o andamento ao vivo (por fonte, com a etapa e os erros), o último envio e quem pediu. A coordenação inicia ou cancela por ali; quem não tem a extensão acompanha.
+- **Acompanhar.** Na extensão, "Último envio" diz quem pediu, as abas que abriu, o resultado do Onvio e do Gestta e tem o botão **Cancelar** enquanto roda.
+- **Configurações valem na hora.** O que você muda na guia de Configurações (tema, estilo, setor, prazos, avisos) passa a valer na hora nas telas do Onvio e do Gestta que estão abertas, com o aviso "Configurações atualizadas". Antes, a tela aberta só mudava depois de recarregar.
+- A confirmar no Chrome do Josué: o Hub abrindo em segundo plano carrega e responde como numa aba visível.
+
+## Novidades da v0.91.0 (11/11/2026): o botão em qualquer site
+
+- Um botão arrastável aparece em **qualquer site** (menos no Portal do Cliente e no Gestta, que já têm o seu). Ao clicar, o menu pergunta para onde ir: **Onvio**, **Gestta** ou **Os dois**. A extensão só leva às guias (reaproveita as que já estão abertas, ou abre uma) e **a tela por cima nunca abre sozinha**.
+- No menu do botão: **Esconder neste site** e **Configurações**. Em Configurações › Aparência › **Botão em outros sites** dá para desligar o botão em todos os sites e mostrar de novo os que foram escondidos.
+- O botão não lê nada da página onde está. Como ele roda em todos os sites, o Chrome mostra um aviso de permissão mais amplo ao carregar a extensão.
 
 ## Novidades da v0.90.0 (10/11/2026): as Configurações numa guia à parte
 

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Control Onvio · ControlTax",
   "short_name": "Control Onvio",
-  "version": "0.92.0",
+  "version": "0.93.0",
   "description": "Página de trabalho por cima do Onvio Portal do Cliente: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores.",
   "permissions": [
     "storage",
@@ -80,6 +80,20 @@
       ],
       "js": [
         "shell-gestta.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://*/*",
+        "http://*/*"
+      ],
+      "exclude_matches": [
+        "https://onvio.com.br/br-portal-do-cliente/*",
+        "https://app.gestta.com.br/*"
+      ],
+      "js": [
+        "botao-geral.js"
       ],
       "run_at": "document_idle"
     }

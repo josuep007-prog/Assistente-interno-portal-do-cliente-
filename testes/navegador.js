@@ -1214,6 +1214,7 @@ await passo('app · Configurações: prazos com efeito na fila antes de salvar, 
 
 // dados do Avançado: Hub conectado com um envio completo que teve a folha só informativa, um erro e um conjunto aceito
 const AV_ESTADO = {
+  hubEnvio: { id: 'e1', origem: 'hub', estado: 'enviando', fase: 'onvio', iniciouEm: new Date().toISOString(), pulso: Date.now(), abas: { hub: 'aberta', onvio: 'aberta', gestta: 'abriu' }, avisos: [] },
   hubCfg: { token: 'ABCDEF123456ABCDEF123456', auto: true, syncAuto: true, syncHoras: 6, envio: { listas: true } },
   hubSync: { estado: 'parcial', terminouEm: new Date().toISOString(), resultados: [
     { id: 'lista-geral', rotulo: 'Solicitações · Geral (todas)', ok: true, linhas: 120 },
@@ -1257,6 +1258,14 @@ await passo('app · Configurações → Avançado (0.69.0): cinco partes com o e
     assert.equal(await p.isVisible('details.adv-todos .adv-igual'), false, 'o que deu certo fica recolhido');
     assert.match(await p.textContent('details.adv-todos > summary'), /Ver os outros 3 conjuntos/);
     assert.match(await p.textContent('#adv-envio [data-reenviar]'), /^Reenviar o que deu erro \(1\)$/, '0.84.0: com erro, o botão de reenviar só o que deu erro');
+    // 0.92.0: envio único: a linha de cima diz quem pediu, a fase e as abas que a extensão abriu; Cancelar enquanto roda; Onvio e Gestta no mesmo cartão
+    assert.match(await p.textContent('#adv-envio-cab'), /Atualizando o Hub \(pedido pelo Hub\)… Onvio/);
+    assert.match(await p.textContent('#adv-envio-cab .adv-abas'), /Gestta: abriu em segundo plano/);
+    assert.equal(await p.isDisabled('#adv-sincronizar'), true, 'um envio por vez');
+    assert.deepEqual(await p.$$eval('.adv-fonte', e => e.map(x => x.textContent)), ['Onvio', 'Gestta']);
+    assert.equal(await p.$$eval('#adv-gestta-enviar, #adv-gesttaAuto', e => e.length), 0, 'sem botão nem automático à parte para o Gestta');
+    await p.click('#adv-cancelar');
+    await p.waitForFunction(() => (window.__msgs || []).some(m => m.cmd === 'hubCancelar'));
     if (process.env.CAP) await (await p.$('#adv-envio')).screenshot({ path: process.env.CAP + '/avancado-envio-' + estilo + '.png' });
     // dados pessoais pedem confirmação antes de ligar
     await p.click('.adv-cat input[data-cat="pessoais"]');
@@ -2715,6 +2724,7 @@ await passo('app · contraste: nenhum texto abaixo de 4,5:1 (WCAG AA) nas telas 
     ['Configurações · Meu setor', '#/config?aba=setor', async () => {}],
     // 0.89.0: o Hoje e as Solicitações no setor Fiscal (modo enxuto, só a Geral), com a linha "Setor: Fiscal"
     ['Hoje no Fiscal', '#/inicio', async p => { await p.evaluate(() => { localStorage.setItem('controlonvio-setor-visao', 'todos'); }); await p.goto(URL_APP + '#/config?aba=setor'); await p.waitForSelector('[data-setor-op]'); const f = await p.$('[data-setor-op="fiscal"]'); if (f) { await f.click(); } await p.goto(URL_APP + '#/inicio'); await p.waitForTimeout(400); }],
+    ['Configurações · Aparência com o botão em outros sites (0.91.0)', '#/config', async p => { await p.waitForSelector('#bg-on'); }],
     ['Guia das Configurações (0.90.0)', '?janela=config#/config?aba=setor', async p => { await p.waitForSelector('[data-setor-op]'); }],
     ['Configurações · Prazos', '#/config?aba=prazos', async () => {}],
     ['Configurações · Feriados', '#/config?aba=feriados', async () => {}],
@@ -2736,6 +2746,27 @@ await passo('app · contraste: nenhum texto abaixo de 4,5:1 (WCAG AA) nas telas 
     await p.context().close();
   }
   assert.deepEqual(ruins.slice(0, 12), [], 'texto com pouco contraste (' + ruins.length + ')');
+});
+
+await passo('Configurações › Aparência: botão em outros sites (0.91.0): ligar e desligar, e mostrar de novo os sites escondidos', async () => {
+  const CAP = process.env.CAPTURAS;
+  for (const estilo of ['simples', 'atual']) for (const tema of ['light', 'dark']) {
+    const p = await abrirApp('#/config', { settings: { __v: 2 }, botaoGeralOcultos: ['exemplo.org', 'intranet.local'] }, undefined, { estilo });
+    await p.evaluate(t => { document.documentElement.setAttribute('data-theme', t); }, tema);
+    await p.waitForSelector('#bg-on');
+    assert.equal(await p.isChecked('#bg-on'), true, 'ligado de fábrica');
+    assert.match(await p.textContent('.bg-lista'), /exemplo\.org[\s\S]*intranet\.local/);
+    const lerArm = () => p.evaluate(() => new Promise(r => chrome.storage.local.get(['botaoGeralOff', 'botaoGeralOcultos'], r)));
+    await p.click('#bg-on');
+    assert.equal((await lerArm()).botaoGeralOff, true, 'desligado em todos os sites');
+    await p.click('#bg-on');
+    assert.equal((await lerArm()).botaoGeralOff, false);
+    await p.click('[data-mostrar="exemplo.org"]');
+    await p.waitForFunction(() => !/exemplo\.org/.test(document.querySelector('.bg-lista').textContent));
+    assert.deepEqual((await lerArm()).botaoGeralOcultos, ['intranet.local']);
+    if (CAP) await p.screenshot({ path: require('node:path').join(CAP, 'botao-geral-config-' + estilo + '-' + tema + '.png') });
+    await p.context().close();
+  }
 });
 
 await passo('Configurações numa guia à parte (0.90.0): só a tela Configurações, sem o trilho nem a busca; outra rota fica nas Configurações', async () => {
@@ -2817,6 +2848,28 @@ async function abrirGestta(resp, o) {
   await fr.waitForSelector('.gt-topo, .faixa');
   return { p, fr };
 }
+await passo('app · 0.92.0: mudança feita na guia de Configurações vale na hora nas telas do Onvio e do Gestta, com um aviso (tema, estilo, setor e prazos)', async () => {
+  const p = await abrirApp('#/fila', {}, '', { estilo: 'simples' });
+  await p.waitForSelector('#vista .c-item, #vista .fila-vazia, #vista');
+  // tema e estilo moram no armazenamento do navegador: a outra guia avisa pelo evento "storage"
+  await p.evaluate(() => window.dispatchEvent(new StorageEvent('storage', { key: 'controlonvio-theme', newValue: 'dark' })));
+  await p.waitForFunction(() => document.documentElement.getAttribute('data-theme') === 'dark');
+  await p.waitForFunction(() => /Configurações atualizadas/.test(document.querySelector('#toast').textContent) && document.querySelector('#toast').classList.contains('show'));
+  await p.evaluate(() => window.dispatchEvent(new StorageEvent('storage', { key: 'controlonvio-estilo', newValue: 'atual' })));
+  await p.waitForFunction(() => document.documentElement.getAttribute('data-estilo') === 'atual');
+  // prazos e o resto das configurações: chegam pelo armazenamento da extensão, redesenham a tela e avisam
+  await p.evaluate(() => { document.querySelector('#toast').classList.remove('show'); document.querySelector('#vista').dataset.marca = 'antes'; });
+  await p.evaluate(() => chrome.storage.local.set({ settings: { __v: 2, admissaoAviso: 7 } }));
+  await p.waitForFunction(() => document.querySelector('#toast').classList.contains('show') && /Configurações atualizadas/.test(document.querySelector('#toast').textContent));
+  await p.close();
+  // a tela das Tarefas do Gestta também
+  const { p: pg, fr } = await abrirGestta(gtResp(true));
+  await fr.evaluate(() => window.dispatchEvent(new StorageEvent('storage', { key: 'controlonvio-theme', newValue: 'dark' })));
+  await fr.waitForFunction(() => document.documentElement.getAttribute('data-theme') === 'dark');
+  await fr.waitForFunction(() => /Configurações atualizadas/.test((document.querySelector('#toast') || {}).textContent || ''));
+  await pg.close();
+});
+
 await passo('Gestta · Tarefas (0.77.0): Meu dia com o detalhe ao lado e a linha do tempo, Empresas com a ficha e a trilha, Lista densa, Obrigações, calendário, Fechamento e abrir no Gestta', async () => {
   const { p, fr } = await abrirGestta(gtResp(true));
   const sit = k => fr.$eval('.gt-sit[data-grupo="' + k + '"] b', e => e.textContent);
@@ -2966,7 +3019,7 @@ await passo('Gestta · Tarefas (0.77.0): Meu dia com o detalhe ao lado e a linha
   await p.waitForFunction(() => location.hash === '#/sidebar/task/overview/dashboard/f00000000000000000000001');
   assert.deepEqual(p.erros, []);
 });
-await passo('Gestta · Tarefas (0.92.0): no detalhe, marcar etapa, impedimento com motivo, comentário interno e enviar arquivo, sempre com confirmação; Esc fecha só a confirmação', async () => {
+await passo('Gestta · Tarefas (0.93.0): no detalhe, marcar etapa, impedimento com motivo, comentário interno e enviar arquivo, sempre com confirmação; Esc fecha só a confirmação', async () => {
   for (const estilo of ['simples', 'atual']) {
     const { p, fr } = await abrirGestta(gtResp(true), { estilo });
     const acoes = () => fr.evaluate(() => (window.__msgs || []).filter(m => m.cmd === 'gesttaAcao'));

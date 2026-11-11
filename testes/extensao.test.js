@@ -601,7 +601,13 @@ test('manifesto: painel só no Portal do Cliente, sem painel lateral do Chrome, 
   assert.equal(painelPages.length, 1);
   assert.deepEqual(painelPages[0].matches, ['https://onvio.com.br/br-portal-do-cliente/*'], 'painel só no Portal do Cliente (nada de /staff/)');
   // Onvio, e no Gestta (0.72.0) só a camada das Tarefas do Gestta
-  for (const c of m.content_scripts) for (const u of c.matches) assert.ok(u.startsWith('https://onvio.com.br/') || (u === 'https://app.gestta.com.br/*' && c.js.join() === 'shell-gestta.js'), 'nenhum script fora do Onvio e do Gestta: ' + u);
+  // 0.91.0: o botão em qualquer site (botao-geral.js) é o único script em todos os sites e exclui o Portal e o Gestta
+  const geral = m.content_scripts.filter(c => c.js.includes('botao-geral.js'));
+  assert.equal(geral.length, 1);
+  assert.deepEqual(geral[0].matches, ['https://*/*', 'http://*/*']);
+  assert.deepEqual(geral[0].exclude_matches, ['https://onvio.com.br/br-portal-do-cliente/*', 'https://app.gestta.com.br/*']);
+  assert.deepEqual(geral[0].js, ['botao-geral.js']);
+  for (const c of m.content_scripts.filter(c => !c.js.includes('botao-geral.js'))) for (const u of c.matches) assert.ok(u.startsWith('https://onvio.com.br/') || (u === 'https://app.gestta.com.br/*' && c.js.join() === 'shell-gestta.js'), 'nenhum script fora do Onvio e do Gestta: ' + u);
   const war = m.web_accessible_resources.flatMap(w => w.resources);
   for (const f of ['app/app.html', 'logo.svg']) assert.ok(war.includes(f), f + ' precisa ser acessível pela página');
   for (const w of m.web_accessible_resources) assert.ok(JSON.stringify(w.matches) === JSON.stringify(['https://onvio.com.br/*']) || (JSON.stringify(w.matches) === JSON.stringify(['https://app.gestta.com.br/*']) && w.resources.includes('app/gestta.html') && !w.resources.includes('app/app.html')), 'recursos só para o Onvio (e a tela do Gestta para o Gestta)');
@@ -3163,7 +3169,7 @@ test('Hub: conjunto grande vira várias partes dentro do limite e marca o corte 
   const p = OC.hubPartesDe({ linhas, cortado: false });
   assert.ok(p.partes.length > 1 && p.partes.every(x => x.length <= 140000));
   assert.equal(p.nLinhasTotal, 4000);
-  // 0.91.0: o limite subiu de 80 para 1.000 partes (ler tudo); 100 partes passam inteiras, só acima de 1.000 corta
+  // 0.93.0: o limite subiu de 80 para 1.000 partes (ler tudo); 100 partes passam inteiras, só acima de 1.000 corta
   const grande = OC.hubPartesDe({ linhas: Array.from({ length: 100 }, () => 'y'.repeat(139000)), cortado: false });
   assert.equal(grande.partes.length, 100);
   assert.equal(grande.cortado, false);
@@ -3599,8 +3605,8 @@ test('Folha (0.70.1): "Enviar só a folha" roda só a tarefa da folha, com mais 
   assert.ok(!lidas.some(u => /employees|tickets|communications/.test(u)), 'nem empregados, nem solicitações, nem comunicações');
   const bg = src('background.js'), avc = src('app/views/avancado.js');
   assert.match(bg, /soTarefas: soFolha \? \['pessoais:folha'\] : reenvio, folhaDocsMax: soFolha \? FOLHA_DOCS_SO_FOLHA : undefined/);
-  assert.match(bg, /hubSync\.soFolha \|\| hubSync\.reenvio \? Date\.parse\(hubSync\.completoAnterior/, 'o automático conta a partir do último envio completo');
-  assert.match(bg, /msg\.soFolha && !\(await hubEnvioCats\(\)\)\.includes\('pessoais'\)\) reply\(\{ ok: false, motivo: 'sem-pessoais' \}\)/);
+  assert.match(bg, /hubSync && !hubSync\.soFolha && !hubSync\.reenvio \? completo\(hubSync\) : 0/, 'o automático conta a partir do último envio completo (0.92.0: o do envio único ou o do Onvio, nunca o só da folha)');
+  assert.match(bg, /else if \(!\(await hubEnvioCats\(\)\)\.includes\('pessoais'\)\) reply\(\{ ok: false, motivo: 'sem-pessoais' \}\)/);
   assert.match(avc, /id="adv-so-folha"/);
 });
 
@@ -3631,6 +3637,48 @@ test('Folha: limite de PDFs por envio deixa o resto para o próximo', async () =
   const r = await OC.hubExecutar(apiFolha([]), ['pessoais'], Object.assign({}, ctx, { folhaLidos: {}, folhaPastas: {} }), async () => ({ ok: true }));
   const fr = r.find(x => x.id === 'pessoais-folha-contribuintes');
   assert.equal(fr.cortado, true); assert.match(fr.porque, /2 PDFs ficam para o próximo envio/, 'o resultado diz por que veio incompleto');
+});
+
+test('Hub 0.92.0: envio único (endereço do Hub, andamento só com estados e contagens, resultado geral)', () => {
+  assert.equal(OC.hubUrlValida('https://claude.ai/artifact/SGDHdEfbJi2qBjfNRo3vXS?x=1#y'), 'https://claude.ai/artifact/SGDHdEfbJi2qBjfNRo3vXS');
+  assert.equal(OC.hubUrlValida('https://claude.ai/code/artifact/3f2a9c1e-77aa-4b1d-9c0e-1234567890ab/'), 'https://claude.ai/code/artifact/3f2a9c1e-77aa-4b1d-9c0e-1234567890ab');
+  for (const u of ['https://claude.ai/chat/abc123', 'http://claude.ai/artifact/abcdef', 'https://evil.com/artifact/abcdef', 'https://x:y@claude.ai/artifact/abcdef', 'javascript:alert(1)', '']) assert.equal(OC.hubUrlValida(u), '', u);
+  const ini = new Date(Date.now() - 60000).toISOString();
+  const ev = { id: 'e1', origem: 'hub', estado: 'enviando', fase: 'onvio', iniciouEm: ini, pulso: Date.now(), abas: { hub: 'aberta', onvio: 'abriu', gestta: 'qualquer' }, avisos: [] };
+  const sync = { estado: 'enviando', iniciouEm: new Date().toISOString(), pulso: Date.now(), etapa: 'Listas', detalhe: 'empresa 3 de 9', feito: 2, total: 9,
+    resultados: [{ id: 'lista-geral', rotulo: 'Geral', ok: true, linhas: 10, segredo: 'Férias do João' }, { id: 'clientes-cnd', rotulo: 'CND', ok: false, motivo: 'sem-resposta' }, { id: 'x', rotulo: 'X', ok: true, motivo: 'sem-mudanca' }] };
+  const velho = { estado: 'ok', iniciouEm: new Date(Date.now() - 864e5).toISOString(), terminouEm: new Date(Date.now() - 864e5).toISOString(), resultados: [{ id: 'g', ok: true }] };
+  const p = OC.hubEnvioPainel(ev, sync, velho, '0.92.0');
+  assert.equal(p.estado, 'enviando'); assert.equal(p.origem, 'hub'); assert.equal(p.versao, '0.92.0');
+  const J = x => JSON.parse(JSON.stringify(x));
+  assert.deepEqual(J(p.abas), { hub: 'aberta', onvio: 'abriu', gestta: '' }, 'só os estados conhecidos');
+  const [o, g] = p.fontes;
+  assert.equal(o.estado, 'enviando'); assert.equal(o.feito, 2); assert.equal(o.total, 9); assert.equal(o.detalhe, 'empresa 3 de 9');
+  assert.deepEqual(J(o.conjuntos.map(c => [c.id, c.ok, c.igual, c.motivo])), [['lista-geral', true, false, ''], ['clientes-cnd', false, false, 'sem-resposta'], ['x', true, true, '']]);
+  assert.equal(g.estado, 'aguardando', 'o Gestta de ontem não é deste envio');
+  assert.doesNotMatch(JSON.stringify(p), /João|segredo/, 'nada além de estados, nomes e contagens');
+  // envio sem sinal há mais de 4 min: interrompido
+  assert.equal(OC.hubEnvioPainel(Object.assign({}, ev, { pulso: Date.now() - 300000 })).estado, 'interrompido');
+  assert.equal(OC.hubEnvioPainel(null).estado, 'nunca');
+  // fonte que não rodou neste envio (sem sessão) aparece como "fora" com o motivo, quando o envio acabou
+  const fim = OC.hubEnvioPainel(Object.assign({}, ev, { estado: 'parcial', fontes: { gestta: { motivo: 'sem-sessao-gestta' } } }), sync, velho);
+  assert.equal(fim.fontes[1].estado, 'fora'); assert.equal(fim.fontes[1].motivo, 'sem-sessao-gestta');
+  // resultado geral
+  assert.equal(OC.hubEnvioEstado({ estado: 'ok' }, { estado: 'ok' }), 'ok');
+  assert.equal(OC.hubEnvioEstado({ estado: 'ok' }, null), 'parcial');
+  assert.equal(OC.hubEnvioEstado({ estado: 'erro' }, { estado: 'parcial' }), 'parcial');
+  assert.equal(OC.hubEnvioEstado(null, { estado: 'erro' }), 'erro');
+  assert.equal(OC.hubEnvioEstado({ estado: 'ok' }, { estado: 'ok' }, true), 'cancelado');
+});
+
+test('Hub 0.92.0: a ponte só repassa pedido da janela que provou o código, e o service worker abre e fecha só as abas do envio', () => {
+  const ponte = src('ponte-hub.js'), bg = src('background.js');
+  assert.match(ponte, /d\.tipo === 'pedido' && d\.id && hub && e\.source === hub\.win/, 'pedido só do Hub verificado');
+  assert.match(ponte, /cmd: 'hubPedido', acao/);
+  assert.match(bg, /msg\.cmd === 'hubPedido'\) \{\s*if \(!sender \|\| !sender\.tab \|\| !\(sender\.tab\.url \|\| ''\)\.startsWith\('https:\/\/claude\.ai\/'\)\)/, 'o service worker confere a aba de novo');
+  assert.match(bg, /active: false/, 'abre sem tirar o foco');
+  assert.match(bg, /if \(a\.usada\) continue;/, 'a aba que a pessoa usou fica aberta');
+  assert.doesNotMatch(bg, /function hubSincAuto|function gesttaHubAuto/, 'um automático só');
 });
 
 test('Hub: conjunto incompleto diz o porquê (empresa que falhou, lista de tamanho redondo) e a tela mostra', async () => {
@@ -3832,7 +3880,7 @@ test('Gestta · fechamento (0.75.0): o relatório em qualquer formato aceito, as
   assert.deepEqual(plano(OCG.filtrarTarefas(T, { analista: 'Ana' }, H).map(t => t._id)), ['a1', 'c1']);
   // detalhe: etapas internas e documentos, nunca arquivo, valor nem apontamento
   const det = OCG.limpar('tarefaDetalhe', { _id: 't', value: 9, timesheet: [1], customer_task_steps: [{ name: 'Conferir', order: 1, done: true, extra: 1 }], company_documents: [{ name: 'Recibo', file: 'BINARIO', disconsidered: false }], document_request: { active: true, requested_documents: [{ name: 'Extrato' }], notify_email: 'x@y' } });
-  assert.deepEqual(plano(det), { _id: 't', customer_task_steps: [{ name: 'Conferir', order: 1, done: true }], company_documents: [{ name: 'Recibo', disconsidered: false, temArquivo: true }], document_request: { active: true, requested_documents: [{ name: 'Extrato' }] } });   // 0.92.0: só o sim/não do arquivo
+  assert.deepEqual(plano(det), { _id: 't', customer_task_steps: [{ name: 'Conferir', order: 1, done: true }], company_documents: [{ name: 'Recibo', disconsidered: false, temArquivo: true }], document_request: { active: true, requested_documents: [{ name: 'Extrato' }] } });   // 0.93.0: só o sim/não do arquivo
   const pf = OCG.PEDIDOS.fechamento({ ano: 2026, mes: 11 });
   assert.equal(pf.tipo, 'fechamento'); assert.equal(pf.corpo.type, 'CUSTOMER_TASK'); assert.equal(OCG.leituraPermitida(pf.metodo, pf.url, pf.corpo).ok, true);
 });
@@ -4157,8 +4205,8 @@ test('0.89.0 · distribuição por setor: a Geral do Fiscal não vai para o DP q
 });
 
 
-/* ---------- Gestta (0.92.0): as quatro ações aprovadas em 11/11/2026 ---------- */
-test('Gestta (0.92.0): só as ações aprovadas, com o endereço, o método e os campos exatos do mapeamento; o resto é recusado', () => {
+/* ---------- Gestta (0.93.0): as quatro ações aprovadas em 11/11/2026 ---------- */
+test('Gestta (0.93.0): só as ações aprovadas, com o endereço, o método e os campos exatos do mapeamento; o resto é recusado', () => {
   const E = OCG.escritaPermitida, A = 'https://api.gestta.com.br', T = '5f1e2d3c4b5a69788796a5b4', S = '6a5b4c3d2e1f00112233aabb';
   // os pedidos montados pelo núcleo passam na regra
   const casos = [
@@ -4200,7 +4248,7 @@ test('Gestta (0.92.0): só as ações aprovadas, com o endereço, o método e os
   assert.ok(OCG.pedidoAcao({ acao: 'impedir', id: T }).erro); assert.ok(OCG.pedidoAcao({ acao: 'comentar', id: T, texto: ' ' }).erro);
   assert.ok(OCG.pedidoAcao({ acao: 'etapa', id: T, etapa: 'x' }).erro); assert.ok(OCG.pedidoAcao({ acao: 'concluir', id: 'x' }).erro); assert.ok(OCG.pedidoAcao({ acao: 'excluir', id: T }).erro);
 });
-test('Gestta (0.92.0): o detalhe traz o id das etapas e dos documentos e se o documento tem arquivo (nunca o arquivo); depois da ação sai só o resumo', () => {
+test('Gestta (0.93.0): o detalhe traz o id das etapas e dos documentos e se o documento tem arquivo (nunca o arquivo); depois da ação sai só o resumo', () => {
   const det = OCG.limpar('tarefaDetalhe', { _id: 't1', customer_task_steps: [{ _id: 's1', name: 'Conferir', order: 1, done: true, created_at: 'x' }],
     company_documents: [{ _id: 'd1', name: 'Recibo', has_documents_integration: true, file: { name: 'segredo.pdf', url: 'https://x' } }, { _id: 'd2', name: 'Guia' }] });
   assert.deepEqual(plano(det.customer_task_steps), [{ _id: 's1', name: 'Conferir', order: 1, done: true }]);

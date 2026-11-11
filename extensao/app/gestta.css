@@ -240,7 +240,7 @@
 .gp-passos li.ok .gp-ck{background:var(--gt-mk-feita); border-color:var(--gt-mk-feita); color:var(--gt-mk-feita-tx)}
 .gp-docs li{font-size:13px; color:var(--ink); padding-left:14px; position:relative} .gp-docs li::before{content:""; position:absolute; left:2px; top:8px; width:5px; height:5px; border-radius:50%; background:var(--ink-3)}
 .gp-pe{display:flex; gap:8px; padding:12px 18px; border-top:1px solid var(--rule)}
-/* 0.92.0: ações na tarefa (botões, confirmação, etapas clicáveis, documentos e comentário) */
+/* 0.93.0: ações na tarefa (botões, confirmação, etapas clicáveis, documentos e comentário) */
 .gp-acoes{display:flex; flex-wrap:wrap; gap:8px; margin-top:2px}
 .gp-conf{border:1px solid var(--blue-deep); border-left-width:4px; border-radius:var(--r); background:color-mix(in srgb, var(--blue-pale) 55%, var(--surface)); padding:12px 14px; display:flex; flex-direction:column; gap:8px}
 .gp-conf.perigo{border-color:var(--sit-sem)}
@@ -609,7 +609,7 @@
 .gp-nav{min-width:0} .gp-cab{gap:8px}
 /* o cabeçalho fica acima do topo e do detalhe, para as janelinhas da competência e do "de quem" não ficarem por baixo */
 .gt-pagina .mod-cab{position:relative; z-index:30}
-/* Simplificado (0.92.0): ações na tarefa sem borda grossa nem fundo tingido; a confirmação é um cartão comum com a linha azul no topo */
+/* Simplificado (0.93.0): ações na tarefa sem borda grossa nem fundo tingido; a confirmação é um cartão comum com a linha azul no topo */
 :root[data-estilo="simples"] .gp-conf{border:1px solid var(--rule); border-top:3px solid var(--blue-deep); background:var(--surface); padding:10px 12px}
 :root[data-estilo="simples"] .gp-conf.perigo{border-top-color:var(--sit-sem)}
 :root[data-estilo="simples"] .gp-aviso{font-weight:500; padding:8px 10px}

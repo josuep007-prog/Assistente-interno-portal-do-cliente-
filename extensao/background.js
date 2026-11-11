@@ -371,7 +371,7 @@ async function gesttaHistorico(msg, sender) {
   if (!x || x.status !== 200 || !x.dados) return { ok: false, erro: x && x.status === 403 ? 'Seu acesso não inclui o histórico desta tarefa.' : 'Não consegui ler o histórico (' + ((x && (x.erro || x.status)) || 'sem resposta') + ').' };
   return { ok: true, eventos: OCG.eventosDaTarefa(x.dados.itens || []), total: x.dados.total, paginas: x.dados.paginas };
 }
-// Ações no Gestta (0.92.0, aprovadas pelo Josué em 11/11/2026 e mapeadas na empresa de teste): etapa feita ou não, concluir,
+// Ações no Gestta (0.93.0, aprovadas pelo Josué em 11/11/2026 e mapeadas na empresa de teste): etapa feita ou não, concluir,
 // reabrir, impedimento, comentário interno e envio de documento. A tela só chama depois da confirmação da pessoa. O pedido é
 // montado aqui (OCG.pedidoAcao), conferido aqui e de novo na página (OCG.escritaPermitida) e feito de dentro da aba do Gestta,
 // com o token só lá. Nada é guardado: nem o texto, nem o arquivo, nem a resposta (volta só o resumo da tarefa).
@@ -1076,6 +1076,26 @@ async function irParaOnvio() {
   return t.id;
 }
 
+// 0.91.0 (Josué, 10/11/2026): o botão flutuante de qualquer site pergunta para onde ir: Onvio, Gestta ou os dois. Só leva às guias
+// (reaproveita a que já existe, ou cria uma): a camada por cima nunca abre sozinha. Quando são os dois, o Onvio fica na frente.
+const GESTTA_URL = 'https://app.gestta.com.br/';
+async function focarGuia(t) { await chrome.tabs.update(t.id, { active: true }); await chrome.windows.update(t.windowId, { focused: true }); }
+async function irPara(destino) {
+  const quer = destino === 'ambos' ? ['gestta', 'onvio'] : destino === 'gestta' || destino === 'onvio' ? [destino] : [];
+  if (!quer.length) return { ok: false, erro: 'destino desconhecido' };
+  for (const d of quer) {
+    const ultimo = d === quer[quer.length - 1];                           // quem vem por último fica na frente
+    if (d === 'gestta') {
+      const t = (await chrome.tabs.query({ url: GESTTA_URL + '*' }))[0];
+      if (t) { if (ultimo) await focarGuia(t); } else await chrome.tabs.create({ url: GESTTA_URL, active: ultimo });
+    } else {
+      const t = (await chrome.tabs.query({ url: 'https://onvio.com.br/br-portal-do-cliente/*' })).find(x => ehPortal(x.url));
+      if (t) { if (ultimo) await focarGuia(t); } else await chrome.tabs.create({ url: OC.PORTAL + 'service-requesting/general', active: ultimo });
+    }
+  }
+  return { ok: true };
+}
+
 // Dentro do portal alterna o painel daquela aba; em qualquer outra página leva ao portal (Solicitações) e abre o painel lá, na hora (é o clique da pessoa)
 async function aoClicarNoIcone(tab) {
   if (tab && tab.id != null && ehPortal(tab.url)) await mensagemParaPainel(tab.id, 'alternar').catch(() => {});
@@ -1134,16 +1154,26 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         reply({ ok: true, itens: await OC.search(f, msg.q, s) });
       } else if (msg.cmd === 'abrir') { await abrir(msg.item, sender.tab && sender.tab.id); reply({ ok: true }); }
       else if (msg.cmd === 'reagendar') { await agendar(); reply({ ok: true }); }
-      else if (msg.cmd === 'hubAbriu') { reply({ ok: true }); enviarAoHubAuto(null).catch(() => {}); setTimeout(() => hubSincAuto().catch(() => {}), 4000); setTimeout(() => gesttaHubAuto().catch(() => {}), 9000); }      // o Hub apareceu numa aba: manda o resumo se faltar
+      else if (msg.cmd === 'hubAbriu') { reply({ ok: true }); enviarAoHubAuto(null).catch(() => {}); setTimeout(() => hubAutoUnico().catch(() => {}), 4000); hubProgresso(true); }      // o Hub apareceu numa aba: manda o resumo se faltar
       else if (msg.cmd === 'hubStatus') reply(await hubStatus());
+      // 0.92.0: o envio único (Onvio e Gestta juntos), pela extensão ou pelo Hub (a ponte só repassa o pedido da janela que provou o código)
+      else if (msg.cmd === 'hubAtualizar') reply(await hubIniciar(msg.origem === 'hub' ? 'hub' : 'extensao'));
+      else if (msg.cmd === 'hubPedido') {
+        if (!sender || !sender.tab || !(sender.tab.url || '').startsWith('https://claude.ai/')) reply({ ok: false, motivo: 'origem' });
+        else if (msg.acao === 'atualizar') reply(await hubIniciar('hub'));
+        else if (msg.acao === 'cancelar') reply(hubCancelarEnvio());
+        else reply({ ok: true, envio: await hubPainelAtual() });
+      }
+      else if (msg.cmd === 'hubCancelar') reply(hubCancelarEnvio());
       else if (msg.cmd === 'hubReiniciar') { await hubRetomarDepoisDeReinicio(); reply({ ok: true }); }          // o mesmo que a extensão faz ao iniciar (usado no teste)
-      else if (msg.cmd === 'hubProva') reply({ ok: await hubProvaConfere(msg.nonce, msg.prova) });      // a ponte pergunta se a janela que se diz Hub conhece o código de pareamento
+      else if (msg.cmd === 'hubProva') { const ok = await hubProvaConfere(msg.nonce, msg.prova); if (ok) await hubLembrarEndereco(msg.url, sender && sender.tab); reply({ ok, versao: chrome.runtime.getManifest().version }); }      // a ponte pergunta se a janela que se diz Hub conhece o código de pareamento
       else if (msg.cmd === 'hubRegistrar') reply(await hubRegistrar());
       else if (msg.cmd === 'hubDesconectar') reply(await hubDesconectar());
       else if (msg.cmd === 'hubEnviar') reply(await enviarAoHub(null, true));
-      else if (msg.cmd === 'gesttaHubSync') { if (gesttaHubRodando) reply({ ok: true, jaRodando: true }); else if (msg.reenviar) { const { hubSyncGestta } = await chrome.storage.local.get('hubSyncGestta'); const so = OCG.paraReenviar(hubSyncGestta); if (!so.length) reply({ ok: false, motivo: 'nada-reenviar' }); else { gesttaHubSincronizar(true, so).catch(() => {}); reply({ ok: true, iniciado: true, n: so.length }); } } else { gesttaHubSincronizar(true).then(r => { if (r && r.ok === false && r.motivo && !r.estado) chrome.storage.local.set({ hubSyncGestta: { estado: 'erro', motivo: r.motivo, terminouEm: new Date().toISOString(), resultados: [] } }).catch(() => {}); }).catch(() => {}); reply({ ok: true, iniciado: true }); } }      // longo: a tela acompanha pelo hubSyncGestta
+      else if (msg.cmd === 'gesttaHubSync') { if (gesttaHubRodando) reply({ ok: true, jaRodando: true }); else if (msg.reenviar) { const { hubSyncGestta } = await chrome.storage.local.get('hubSyncGestta'); const so = OCG.paraReenviar(hubSyncGestta); if (!so.length) reply({ ok: false, motivo: 'nada-reenviar' }); else { gesttaHubSincronizar(true, so).catch(() => {}); reply({ ok: true, iniciado: true, n: so.length }); } } else reply(await hubIniciar('extensao')); }      // 0.92.0: o Gestta vai sempre junto com o Onvio
       else if (msg.cmd === 'hubSincronizar' && msg.reenviar) { if (hubSincRodando) reply({ ok: true, jaRodando: true }); else { const { hubSync } = await chrome.storage.local.get('hubSync'); const so = OC.hubParaReenviar(hubSync); if (!so.length) reply({ ok: false, motivo: 'nada-reenviar' }); else { hubSincronizar(true, false, so).catch(() => {}); reply({ ok: true, iniciado: true, n: so.length }); } } }      // 0.84.0: só o que deu erro
-      else if (msg.cmd === 'hubSincronizar') { if (hubSincRodando) reply({ ok: true, jaRodando: true }); else if (msg.soFolha && !(await hubEnvioCats()).includes('pessoais')) reply({ ok: false, motivo: 'sem-pessoais' }); else { hubSincronizar(true, !!msg.soFolha).catch(() => {}); reply({ ok: true, iniciado: true }); } }      // longo: a tela acompanha pelo hubSync
+      else if (msg.cmd === 'hubSincronizar' && !msg.soFolha) reply(await hubIniciar('extensao'));          // 0.92.0: o envio completo é sempre Onvio e Gestta juntos
+      else if (msg.cmd === 'hubSincronizar') { if (hubSincRodando || envioRodando) reply({ ok: true, jaRodando: true }); else if (!(await hubEnvioCats()).includes('pessoais')) reply({ ok: false, motivo: 'sem-pessoais' }); else { hubSincronizar(true, true).catch(() => {}); reply({ ok: true, iniciado: true }); } }      // longo: a tela acompanha pelo hubSync
       else if (msg.cmd === 'hubLote') {                  // caminho de reserva: o resumo para colar no Hub (sem o código de pareamento)
         const { snapshot } = await chrome.storage.local.get('snapshot');
         reply(snapshot ? { ok: true, lote: OC.montarLoteHub(snapshot, { versao: chrome.runtime.getManifest().version }) } : { ok: false, motivo: 'sem-leitura' });
@@ -1230,6 +1260,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'gesttaTarefa') { reply(await gesttaTarefa(msg, sender)); }
       else if (msg.cmd === 'gesttaHistorico') { reply(await gesttaHistorico(msg, sender)); }
       else if (msg.cmd === 'gesttaAcao') { reply(await gesttaAcao(msg, sender)); }
+      else if (msg.cmd === 'irPara') { reply(await irPara(msg.destino)); }
       else if (msg.cmd === 'abrirConfig') { reply(await abrirGuiaConfig(msg.params)); }
       else if (msg.cmd === 'fecharPainel') { if (sender.tab && sender.tab.id != null) await mensagemParaPainel(sender.tab.id, 'fechar').catch(() => {}); reply({ ok: true }); }
       else reply({ ok: false, erro: 'comando desconhecido' });
@@ -1265,8 +1296,8 @@ async function hubDesconectar() {
   hubCancelar = true;                                                  // para o envio em andamento
   try { await chrome.scripting.unregisterContentScripts({ ids: [HUB_SCRIPT_ID] }); } catch (e) { /* já não estava */ }
   try { await chrome.permissions.remove({ origins: HUB_ORIGENS }); } catch (e) { /* ignora */ }
-  await hubGuardar({ token: '', envioConfirmado: false });            // o código sai do armazenamento
-  await chrome.storage.local.remove(['hubSync', 'hubSyncHash', 'hubUltimo', 'folhaLidos', 'folhaEstado', 'hubSyncGestta', 'hubSyncHashGestta', 'gesttaCartelaEm']);       // outro Hub depois recebe a folha desde o começo
+  await hubGuardar({ token: '', envioConfirmado: false, hubUrl: '' });            // o código e o endereço do Hub saem do armazenamento
+  await chrome.storage.local.remove(['hubSync', 'hubSyncHash', 'hubUltimo', 'folhaLidos', 'folhaEstado', 'hubSyncGestta', 'hubSyncHashGestta', 'gesttaCartelaEm', 'hubEnvio']);       // outro Hub depois recebe a folha desde o começo
   return { ok: true };
 }
 // Prova de que uma janela é o Hub do código de pareamento: HMAC-SHA256(código, nonce) em hexadecimal, comparado sem pressa (tempo constante).
@@ -1429,7 +1460,7 @@ async function hubSincronizar(manual, soFolha, so) {
     const completoAnterior = anterior ? (anterior.soFolha || anterior.reenvio ? anterior.completoAnterior || '' : (['ok', 'parcial'].includes(anterior.estado) ? anterior.terminouEm || '' : anterior.completoAnterior || '')) : '';
     const base = reenvio && anterior && anterior.estado !== 'enviando' ? (anterior.resultados || []).filter(r => !reenvio.includes(OC.hubTarefaDoConjunto(r.id))) : [];
     const status = { estado: 'enviando', manual: !!manual, soFolha: !!soFolha, reenvio: !!reenvio, completoAnterior, iniciouEm: new Date().toISOString(), pulso: Date.now(), etapa: 'preparando', feito: 0, total: 0, categorias: cats, resultados: [] };
-    const grava = () => { status.pulso = Date.now(); return chrome.storage.local.set({ hubSync: status }).catch(() => {}); };
+    const grava = () => { status.pulso = Date.now(); return chrome.storage.local.set({ hubSync: status }).catch(() => {}).then(() => hubProgresso()); };
     await grava();
     // sinal de vida a cada 20 s, mesmo no meio de uma etapa longa (folha, empregados: uma leitura por empresa). Antes só havia sinal
     // entre etapas e a tela dava "interrompido" depois de 4 min com o envio rodando; gravar também mantém o service worker acordado.
@@ -1494,17 +1525,6 @@ async function hubSincronizar(manual, soFolha, so) {
   })().finally(() => { hubSincRodando = null; });
   return hubSincRodando;
 }
-// Automático: só se a pessoa conectou o Hub, deixou o envio automático ligado e já passou o intervalo desde o último envio completo.
-async function hubSincAuto() {
-  const c = await hubCfg();
-  if (!c.token || !c.auto || c.syncAuto === false || !c.envioConfirmado || hubSincRodando) return;          // sem a confirmação da pessoa (quem conectou na 0.36 só tinha o resumo) não há envio completo sozinho
-  const { hubSync } = await chrome.storage.local.get('hubSync');
-  const ult = !hubSync ? 0 : hubSync.soFolha || hubSync.reenvio ? Date.parse(hubSync.completoAnterior || '') || 0 : hubSync.terminouEm && (hubSync.estado === 'ok' || hubSync.estado === 'parcial') ? Date.parse(hubSync.terminouEm) : (Date.parse(hubSync.completoAnterior || '') || 0);       // o envio só da folha não conta como envio completo
-  if (ult && Date.now() - ult < Math.max(1, Number(c.syncHoras) || 6) * 3600e3) return;
-  if (!(await hubPermitido()) || !(await hubAbas()).length) return;
-  hubSincronizar(false).catch(() => {});
-}
-
 /* ---------- Gestta no Control Hub (0.79.0, item 3 da Fase 1, aprovado pelo Josué em 05/11/2026) ----------
  * Tarefas do mês atual e do anterior, clientes, equipe, setores, alertas e a cartela (no máximo 1 vez por dia), lidos na aba do
  * Gestta (o token não sai da página) e entregues ao Hub em partes, com a fonte "gestta". Só com acesso total (coordenação).
@@ -1534,7 +1554,7 @@ async function gesttaHubSincronizar(manual, so) {
     const { gesttaCartelaEm } = await chrome.storage.local.get('gesttaCartelaEm');
     const cartela = cats.includes('cartela') && (!!reenvio || !gesttaCartelaEm || Date.now() - gesttaCartelaEm > CARTELA_INTERVALO);
     const status = { estado: 'enviando', manual: !!manual, reenvio: !!reenvio, iniciouEm: new Date().toISOString(), pulso: Date.now(), etapa: 'conferindo o acesso', feito: 0, total: 0, categorias: cats, cartela, resultados: [] };
-    const grava = () => { status.pulso = Date.now(); return chrome.storage.local.set({ hubSyncGestta: status }).catch(() => {}); };
+    const grava = () => { status.pulso = Date.now(); return chrome.storage.local.set({ hubSyncGestta: status }).catch(() => {}).then(() => hubProgresso()); };
     await grava();
     const batida = setInterval(grava, 20000);
     try {
@@ -1548,6 +1568,7 @@ async function gesttaHubSincronizar(manual, so) {
       const hashes = Object.assign({}, hubSyncHashGestta), versao = chrome.runtime.getManifest().version, usuario = pf.papelNome ? 'Gestta · ' + pf.papelNome : 'Gestta';
       let fatal = '';
       const enviar = async (conj, p) => {
+        if (hubCancelar) return { ok: false, motivo: 'cancelado', parar: true };
         if (fatal) return { ok: false, motivo: fatal, parar: true };
         const hash = hashTexto(p.partes.join('\u0001')), antigo = hashes[conj.tipoDado];
         if (!manual && antigo && antigo.h === hash && Date.now() - antigo.em < 24 * 3600e3) return { ok: true, motivo: 'sem-mudanca' };
@@ -1582,15 +1603,155 @@ async function gesttaHubSincronizar(manual, so) {
   })().finally(() => { gesttaHubRodando = null; });
   return gesttaHubRodando;
 }
-// Automático: com o Hub e o Gestta abertos, depois da confirmação do envio completo, a cada hubCfg.syncHoras (6).
-async function gesttaHubAuto() {
+/* ---------- envio único ao Hub (0.92.0, pedido do Josué em 11/11/2026) ----------
+ * "Acompanhar o envio, a divisão entre o que é do Gestta e o que não é, não poder iniciar por dentro do Hub, ter de abrir o Gestta e o
+ * Onvio à mão": um envio só leva o resumo, o Onvio e o Gestta, nessa ordem. Pode começar pela extensão, pelo Hub (cmd hubPedido, que a
+ * ponte só repassa da janela que provou o código) ou sozinho (a cada syncHoras). O que estiver fechado (Hub, Onvio, Gestta) abre numa
+ * aba em segundo plano, sem tirar o foco, e fecha no fim, salvo se a pessoa usou a aba. O andamento (hubEnvio: só estados, nomes de
+ * conjuntos e contagens) vai ao Hub a cada mudança (hubProgresso). Nada lido fica guardado; as leituras e regras são as mesmas de antes. */
+let envioRodando = null;
+const abasDoEnvio = new Map();                  // id da aba aberta pelo envio -> { usada }
+chrome.tabs.onActivated.addListener(({ tabId }) => { const a = abasDoEnvio.get(tabId); if (a) a.usada = true; });
+async function hubLembrarEndereco(url, tab) {
+  const u = OC.hubUrlValida(url || (tab && tab.url));
+  if (!u) return;
   const c = await hubCfg();
-  if (!c.token || !c.auto || c.syncAuto === false || c.gesttaAuto === false || !c.envioConfirmado || gesttaHubRodando) return;
-  const { hubSyncGestta } = await chrome.storage.local.get('hubSyncGestta');
-  const ult = hubSyncGestta && hubSyncGestta.terminouEm && ['ok', 'parcial'].includes(hubSyncGestta.estado) ? Date.parse(hubSyncGestta.terminouEm) : 0;
+  if (c.hubUrl !== u) await hubGuardar({ hubUrl: u });
+}
+async function hubPainelAtual() {
+  const { hubEnvio, hubSync, hubSyncGestta } = await chrome.storage.local.get(['hubEnvio', 'hubSync', 'hubSyncGestta']);
+  const p = OC.hubEnvioPainel(hubEnvio, hubSync, hubSyncGestta, chrome.runtime.getManifest().version);
+  p.rodando = !!envioRodando || !!hubSincRodando || !!gesttaHubRodando;
+  return p;
+}
+// Manda o andamento às abas do claude.ai (a ponte entrega só à janela do Hub que provou o código). No máximo 1 vez a cada 1,5 s.
+let progressoEm = 0, progressoTimer = null;
+function hubProgresso(forca) {
+  const agora = Date.now();
+  if (!forca && agora - progressoEm < 1500) { if (!progressoTimer) progressoTimer = setTimeout(() => { progressoTimer = null; hubProgresso(true); }, 1500 - (agora - progressoEm)); return; }
+  progressoEm = agora;
+  (async () => {
+    const c = await hubCfg(); if (!c.token || !(await hubPermitido())) return;
+    const envio = await hubPainelAtual();
+    for (const t of await hubAbas()) { try { await chrome.tabs.sendMessage(t.id, { alvo: 'ponte-hub', cmd: 'progresso', envio, token: c.token }); } catch (e) { /* aba sem a ponte */ } }
+  })().catch(() => {});
+}
+function hubCancelarEnvio() {
+  if (!envioRodando && !hubSincRodando && !gesttaHubRodando) return { ok: false, motivo: 'nada-rodando' };
+  hubCancelar = true;
+  return { ok: true };
+}
+const dormir = ms => new Promise(r => setTimeout(r, ms));
+async function esperarAte(f, ms, passo) { const fim = Date.now() + ms; for (;;) { try { if (await f()) return true; } catch (e) { if (e && e.cliente) throw e; /* ainda não */ } if (Date.now() >= fim || hubCancelar) return false; await dormir(passo || 1500); } }
+// Abre uma aba sem tirar o foco (numa janela normal; sem janela, numa janela minimizada) e espera carregar.
+async function abrirEmSegundoPlano(url) {
+  let tab = null;
+  try {
+    const jan = (await chrome.windows.getAll({ windowTypes: ['normal'] })).sort((a, b) => (b.focused === true) - (a.focused === true))[0];
+    if (jan) tab = await chrome.tabs.create({ url, active: false, windowId: jan.id });
+    else { const w = await chrome.windows.create({ url, focused: false, state: 'minimized' }); tab = w.tabs && w.tabs[0]; }
+  } catch (e) { return null; }
+  if (!tab) return null;
+  abasDoEnvio.set(tab.id, { usada: false });
+  try { await chrome.tabs.update(tab.id, { autoDiscardable: false }); } catch (e) { /* Chrome antigo */ }
+  await esperarAte(async () => { const t = await chrome.tabs.get(tab.id); return t.status === 'complete'; }, 45000, 700);
+  return tab;
+}
+async function fecharAbasDoEnvio() {
+  for (const [id, a] of abasDoEnvio) {
+    abasDoEnvio.delete(id);
+    if (a.usada) continue;                                    // a pessoa foi para a aba: fica aberta
+    try { const t = await chrome.tabs.get(id); if (!t.active) await chrome.tabs.remove(id); } catch (e) { /* já fechada */ }
+  }
+}
+async function onvioPronto() {
+  leitorCache = null;
+  try { await escolherFetcher(false); return true; } catch (e) { if (e && e.cliente) throw e; return false; }
+}
+async function gesttaPronto() {
+  const tab = await abaGestta();
+  if (!tab || OCG.appDe(tab.url || '') === 'login' || !OCG.appDe(tab.url || '')) return false;
+  const { r } = await lerGestta([OCG.PEDIDOS.me()], { tab }).catch(() => ({ r: null }));
+  return !!(r && r.ok);
+}
+// Começa o envio único e responde na hora (é longo: as telas acompanham pelo hubEnvio e o Hub pelo progresso).
+async function hubIniciar(origem) {
+  if (envioRodando || hubSincRodando || gesttaHubRodando) return { ok: true, jaRodando: true };
+  const c = await hubCfg();
+  if (!c.token) return { ok: false, motivo: 'sem-codigo' };
+  if (!(await hubPermitido())) return { ok: false, motivo: 'sem-permissao' };
+  if (origem !== 'auto') await hubGuardar({ envioConfirmado: true });           // a pessoa pediu o envio completo: vale como confirmação do que vai
+  hubAtualizar(origem).catch(() => {});
+  return { ok: true, iniciado: true };
+}
+async function hubAtualizar(origem) {
+  if (envioRodando) return envioRodando;
+  envioRodando = (async () => {
+    hubCancelar = false;
+    const manual = origem !== 'auto';
+    const ev = { id: 'e' + Date.now().toString(36), origem, estado: 'preparando', fase: 'abas', iniciouEm: new Date().toISOString(), pulso: Date.now(), abas: {}, avisos: [], fontes: {} };
+    const grava = () => { ev.pulso = Date.now(); return chrome.storage.local.set({ hubEnvio: ev }).catch(() => {}).then(() => hubProgresso()); };
+    await grava();
+    const batida = setInterval(grava, 20000);
+    let rO = null, rG = null;
+    try {
+      const c = await hubCfg();
+      // 1) o Hub: aberto e respondendo, ou abre pelo endereço aprendido
+      if ((await hubStatus()).hubAberto) ev.abas.hub = 'aberta';
+      else if (!c.hubUrl) throw Object.assign(new Error('sem-endereco-hub'), { motivo: 'sem-endereco-hub' });
+      else {
+        const t = await abrirEmSegundoPlano(c.hubUrl);
+        ev.abas.hub = t ? 'abriu' : 'falhou'; await grava();
+        if (!t || !(await esperarAte(async () => (await hubStatus()).hubAberto, 60000, 2000))) throw Object.assign(new Error('sem-hub'), { motivo: 'sem-hub' });
+      }
+      await grava();
+      // 2) o Onvio e o Gestta: abre o que faltar (os dois carregam juntos) e espera a sessão de cada um
+      const precisaOnvio = !(await abaOnvio()), precisaGestta = !(await abaGestta());
+      const [tO, tG] = await Promise.all([precisaOnvio ? abrirEmSegundoPlano(OC.PORTAL + 'service-requesting/general') : null, precisaGestta ? abrirEmSegundoPlano(GESTTA_URL) : null]);
+      ev.abas.onvio = precisaOnvio ? (tO ? 'abriu' : 'falhou') : 'aberta';
+      ev.abas.gestta = precisaGestta ? (tG ? 'abriu' : 'falhou') : 'aberta';
+      await grava();
+      const [okO, okG] = await Promise.all([esperarAte(onvioPronto, precisaOnvio ? 40000 : 8000, 2500), esperarAte(gesttaPronto, precisaGestta ? 40000 : 8000, 2500)]);
+      if (!okO) { ev.abas.onvio = 'sem-sessao'; ev.fontes.onvio = { motivo: 'sem-sessao-onvio' }; }
+      if (!okG) { ev.abas.gestta = 'sem-sessao'; ev.fontes.gestta = { motivo: 'sem-sessao-gestta' }; }
+      ev.estado = 'enviando'; await grava();
+      // 3) o resumo das pendentes, 4) o Onvio, 5) o Gestta
+      if (okO && !hubCancelar) { ev.fase = 'resumo'; await grava(); await enviarAoHub(null, manual).catch(() => {}); }
+      if (okO && !hubCancelar) { ev.fase = 'onvio'; await grava(); rO = await hubSincronizar(manual); if (rO && rO.motivo) ev.fontes.onvio = { motivo: rO.motivo }; }
+      const parar = rO && ['token', 'sem-hub', 'somente-leitura', 'sem-config', 'versao-antiga', 'visao-cliente'].includes(rO.motivo);
+      if (okG && !hubCancelar && !parar) { ev.fase = 'gestta'; await grava(); rG = await gesttaHubSincronizar(manual); if (rG && rG.motivo) ev.fontes.gestta = { motivo: rG.motivo }; }
+      ev.estado = OC.hubEnvioEstado(rO, rG, hubCancelar);
+      if (!okO) ev.avisos.push('O Onvio não estava com a sessão aberta: entre no Portal do Cliente e atualize de novo.');
+      if (!okG) ev.avisos.push('O Gestta não estava com a sessão aberta: entre no Gestta e atualize de novo.');
+      if (parar) ev.motivo = rO.motivo;
+    } catch (e) {
+      if (e && e.cliente) await bloquearVisaoCliente(e);
+      ev.estado = hubCancelar ? 'cancelado' : 'erro';
+      ev.motivo = e && e.cliente ? 'visao-cliente' : (e && e.motivo) || String((e && e.message) || e).slice(0, 160);
+    }
+    clearInterval(batida);
+    ev.fase = ''; ev.terminouEm = new Date().toISOString();
+    await fecharAbasDoEnvio();
+    await grava();
+    hubProgresso(true);
+    return { ok: ev.estado === 'ok' || ev.estado === 'parcial', estado: ev.estado, motivo: ev.motivo || '' };
+  })().finally(() => { envioRodando = null; hubCancelar = false; });
+  return envioRodando;
+}
+// Automático (Josué, 11/11/2026: abre e fecha sozinho): passou o intervalo desde o último envio completo, abre o que faltar e envia.
+// Depois de uma falha, espera 1 hora antes de tentar de novo (sessão do Onvio ou do Gestta vencida não vira uma aba aberta a cada alarme).
+async function hubAutoUnico() {
+  const c = await hubCfg();
+  if (!c.token || !c.auto || c.syncAuto === false || !c.envioConfirmado || envioRodando || hubSincRodando || gesttaHubRodando) return;
+  if (!(await hubPermitido())) return;
+  const { hubEnvio, hubSync } = await chrome.storage.local.get(['hubEnvio', 'hubSync']);
+  const completo = e => e && e.terminouEm && ['ok', 'parcial'].includes(e.estado) ? Date.parse(e.terminouEm) || 0 : 0;
+  const ult = Math.max(completo(hubEnvio), hubSync && !hubSync.soFolha && !hubSync.reenvio ? completo(hubSync) : 0);
   if (ult && Date.now() - ult < Math.max(1, Number(c.syncHoras) || 6) * 3600e3) return;
-  if (!(await hubPermitido()) || !(await hubAbas()).length || !(await abaGestta())) return;
-  gesttaHubSincronizar(false).catch(() => {});
+  const tentou = hubEnvio && hubEnvio.iniciouEm ? Date.parse(hubEnvio.iniciouEm) || 0 : 0;
+  if (tentou && tentou > ult && Date.now() - tentou < 3600e3) return;
+  if (!c.hubUrl && !(await hubStatus()).hubAberto) return;           // sem o endereço do Hub, só com ele aberto
+  hubAtualizar('auto').catch(() => {});
 }
 
 /* ---------- ciclo de vida ---------- */
@@ -1600,6 +1761,8 @@ async function hubRetomarDepoisDeReinicio() {
     if (hubSync && hubSync.estado === 'enviando' && !hubSincRodando) await chrome.storage.local.set({ hubSync: Object.assign({}, hubSync, { estado: 'interrompido', etapa: '', terminouEm: new Date().toISOString(), motivo: 'interrompido' }) });      // o service worker morreu no meio
     const { hubSyncGestta } = await chrome.storage.local.get('hubSyncGestta');
     if (hubSyncGestta && hubSyncGestta.estado === 'enviando' && !gesttaHubRodando) await chrome.storage.local.set({ hubSyncGestta: Object.assign({}, hubSyncGestta, { estado: 'interrompido', etapa: '', terminouEm: new Date().toISOString(), motivo: 'interrompido' }) });
+    const { hubEnvio } = await chrome.storage.local.get('hubEnvio');
+    if (hubEnvio && ['enviando', 'preparando'].includes(hubEnvio.estado) && !envioRodando) await chrome.storage.local.set({ hubEnvio: Object.assign({}, hubEnvio, { estado: 'interrompido', fase: '', terminouEm: new Date().toISOString(), motivo: 'interrompido' }) });
     if ((await hubCfg()).token) await hubRegistrar();                 // abas do claude.ai abertas antes da atualização ganham a ponte nova
   } catch (e) { /* sem Hub conectado */ }
 }
@@ -1626,7 +1789,7 @@ chrome.alarms.onAlarm.addListener(a => {
   else if (a.name.startsWith(PREFIXO_LEMBRETE)) dispararLembrete(a.name.slice(PREFIXO_LEMBRETE.length));
   else if (a.name === ALARME_REGRAS) atualizarRegras();
   else if (a.name === ALARME_DIST) distribuirAutomatico(false);
-  else if (a.name === ALARME_HUBSYNC) { hubSincAuto().catch(() => {}); setTimeout(() => gesttaHubAuto().catch(() => {}), 60000); }
+  else if (a.name === ALARME_HUBSYNC) { hubAutoUnico().catch(() => {}); }
 });
 chrome.storage.onChanged.addListener((ch, area) => {
   if (area !== 'local') return;

@@ -7,7 +7,7 @@
  * Regras (CLAUDE.md, seção Gestta; mapa em mapeamento/gestta-2026-11-04.md):
  *  - Leitura: GET em https://api.gestta.com.br e dois POST que só leem, autorizados pelo Josué:
  *    a busca de tarefas (04/11/2026) e o relatório de tarefas do tipo CUSTOMER_TASK (05/11/2026).
- *  - Escrita (0.92.0): só as quatro ações aprovadas pelo Josué em 11/11/2026 e mapeadas na empresa de teste
+ *  - Escrita (0.93.0): só as quatro ações aprovadas pelo Josué em 11/11/2026 e mapeadas na empresa de teste
  *    (mapeamento/gestta-2026-11-04.md): etapa feita ou não, concluir/reabrir e impedimento (situação da tarefa),
  *    comentário interno e envio de documento. Lista fechada em escritaPermitida; sempre com confirmação na tela.
  *  - O token (localStorage 'ngStorage-jwt') só é usado dentro da página. Nada aqui o devolve: lerNaPagina descarta o
@@ -105,7 +105,7 @@
       company_task: { _id: true, name: true, active: true }, company_department: SETOR, customer: { _id: true, name: true, code: true, active: true }, owner: { _id: true, name: true, active: true },
       customer_has_documents_integration: true, notify_customer: true, total_step: true, done_step: true,
       // 0.73.0: o que há dentro da tarefa (etapas e documentos), nunca o arquivo
-      // 0.92.0: o id de cada etapa e de cada documento (as ações precisam dele); has_documents_integration = o documento vai ao portal
+      // 0.93.0: o id de cada etapa e de cada documento (as ações precisam dele); has_documents_integration = o documento vai ao portal
       customer_task_steps: [{ _id: true, name: true, order: true, required: true, done: true }], company_documents: [{ _id: true, name: true, disconsidered: true, validation_required: true, has_documents_integration: true }],
       document_request: { active: true, requested_documents: [{ name: true, disconsidered: true }] } },
     cliente: { _id: true, code: true, name: true, trading_name: true, cnpj: true, active: true, federal_regime: { _id: true, name: true, identifier: true }, state_inscription: true, federative_unit: true, city: true, external_id: true, partner_config: { has_onvio_portal: true } },
@@ -125,7 +125,7 @@
     // (destinatários e servidores), o arquivo e o upload: só o tipo, a situação, o motivo, a data, quem fez e o nome do documento.
     historico: { _id: true, type: true, status: true, reason: true, accomplished_at: true, created_at: true, accomplished_by: { name: true },
       accomplished_by_customer_user: { name: true }, company_document: { name: true }, file_name: true, comment: true, is_auto_respond: true },
-    // 0.92.0: o que volta depois de uma ação (a resposta do Gestta traz a tarefa inteira, o cliente e o escritório: sai só isto)
+    // 0.93.0: o que volta depois de uma ação (a resposta do Gestta traz a tarefa inteira, o cliente e o escritório: sai só isto)
     tarefaApos: { _id: true, status: true, done_step: true, total_step: true, conclusion_date: true, customer_task_steps: [{ _id: true, done: true }] }
   };
   // Colunas do relatório CUSTOMER_TASK que saem da página (das 34): fora valor, pontuação e mensalidade (decisão pendente).
@@ -142,7 +142,7 @@
     if (!molde) return null;
     if (tipo === 'tarefaDetalhe') {
       const t = escolher(dados, molde) || null;
-      // 0.92.0: o documento já tem arquivo? (só o sim/não; o arquivo e o nome dele nunca saem da página)
+      // 0.93.0: o documento já tem arquivo? (só o sim/não; o arquivo e o nome dele nunca saem da página)
       if (t && Array.isArray(t.company_documents) && dados && Array.isArray(dados.company_documents)) t.company_documents.forEach((d, i) => { const o = dados.company_documents[i]; d.temArquivo = !!(o && o.file); });
       return t;
     }
@@ -663,7 +663,7 @@
     { id: 'alertas', nome: 'Alertas', ajuda: 'Os envios de documento ao Onvio que deram erro (empresa, tarefa e motivo) e os templates de documento sem pasta no portal.', padrao: true },
     { id: 'cartela', nome: 'Cartela e contatos (1 vez por dia)', ajuda: 'Quem atende cada setor de cada cliente e quem do cliente recebe cada setor (nome e e-mail), como está no Gestta. Duas leituras por cliente (uns 15 minutos), no máximo uma vez por dia.', padrao: true }
   ];
-  const HUB_GESTTA_PARTE = 140000, HUB_GESTTA_PARTES_MAX = 1000;   // 0.91.0: era 80 ("bote pra ler tudo que tiver")
+  const HUB_GESTTA_PARTE = 140000, HUB_GESTTA_PARTES_MAX = 1000;   // 0.93.0: era 80 ("bote pra ler tudo que tiver")
   const celula = (v, max) => String(v == null ? '' : v).replace(/[\t\r\n\u2028\u2029]+/g, ' ').replace(/ {2,}/g, ' ').trim().slice(0, max || 300);
   const simNao = v => v === '' || v == null ? '' : sim(v) ? 'sim' : 'não';
   const dataHub = v => { const t = String(v == null ? '' : v); return /^\d{4}-\d{2}-\d{2}T/.test(t) ? t.slice(0, 16).replace('T', ' ') : /^\d{4}-\d{2}-\d{2}/.test(t) ? t.slice(0, 10) : t; };

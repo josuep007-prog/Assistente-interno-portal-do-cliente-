@@ -1712,6 +1712,8 @@ body.setor-fora .trilho [data-rota="equipe"], body.setor-fora .trilho [data-rota
 .adv-resumo{display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 0}
 .adv-resumo-l{display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:8px 0 0}
 .adv-resumo-l .adv-resumo{margin:0}
+.adv-fonte{margin:14px 0 0; padding-top:10px; border-top:1px solid var(--rule); font-size:12.5px; font-weight:700; color:var(--ink); letter-spacing:.02em}
+.adv-abas{margin:4px 0 0; font-size:12px; color:var(--ink-2)}
 .adv-reenviar{margin-left:auto}
 .adv-chip{display:inline-flex; align-items:center; gap:4px; padding:3px 8px; border:1px solid var(--rule); border-radius:var(--r); font-size:12px; font-weight:600; color:var(--ink-2); background:var(--surface)}
 .adv-chip.adv-ok{color:var(--ink)} .adv-chip.adv-erro{border-color:var(--late); color:var(--ink)} .adv-chip.adv-aviso{border-color:var(--today); color:var(--ink)}
@@ -1769,3 +1771,9 @@ body.setor-fora .trilho [data-rota="equipe"], body.setor-fora .trilho [data-rota
 .so-config .app{padding-left:0}
 .so-config .trilho, .so-config #btn-busca, .so-config #btn-sino, .so-config #btn-ver-onvio, .so-config .mod-div{display:none}
 .so-config .principal{max-width:1180px; margin:0 auto}
+
+/* 0.91.0: cartão "Botão em outros sites" nas Configurações › Aparência */
+.cfg-chk{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:13px;color:var(--ink);cursor:pointer}
+.cfg-chk input{width:16px;height:16px}
+.bg-lista{margin:6px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px;font-size:13px}
+.bg-lista li{display:flex;align-items:center;justify-content:space-between;gap:10px;color:var(--ink)}

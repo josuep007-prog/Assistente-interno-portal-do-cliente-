@@ -91,7 +91,7 @@ export function abrirPainel(lista, i, paraPai, o) {
   const alvo = o && o.alvo;
   const aba = P && P.aba === 'tempo' ? 'tempo' : 'resumo';
   if (P && !P.alvo && alvo) fecharPainel();
-  // 0.92.0: reaberto na mesma tarefa (a lista foi relida depois de uma ação): fica o que já foi lido, o aviso, o rascunho e a confirmação
+  // 0.93.0: reaberto na mesma tarefa (a lista foi relida depois de uma ação): fica o que já foi lido, o aviso, o rascunho e a confirmação
   const ant = P && P.lista[P.i], mesma = !!(ant && lista[i] && ant._id === lista[i]._id);
   P = { lista, i, paraPai, dados: mesma ? P.dados : null, erro: null, carregando: !(mesma && P.dados), alvo, aba, conf: mesma ? P.conf : null, agindo: mesma ? P.agindo : false, aviso: mesma ? P.aviso : null, rasc: mesma ? P.rasc : { com: '' } };
   if (!alvo) {
@@ -136,7 +136,7 @@ async function carregarHist(forcar) {
   HIST.set(id, r && r.ok ? { eventos: r.eventos || [], total: r.total, paginas: r.paginas } : { erro: (r && r.erro) || 'Não consegui ler o histórico.' });
   if (P === meu && P.lista[P.i]._id === id) desenharPainel();
 }
-/* ---------- ações na tarefa (0.92.0, aprovadas pelo Josué em 11/11/2026) ----------
+/* ---------- ações na tarefa (0.93.0, aprovadas pelo Josué em 11/11/2026) ----------
  * Cada uma passa por uma confirmação no próprio painel (P.conf) antes de ir ao Gestta (cmd gesttaAcao). Depois, o detalhe é
  * relido e a lista da tela também (evento gt-tarefa-mudou). Texto e arquivo ficam só na memória desta tela até o envio. */
 const ARQ_MAX = (G && G.ARQ_MAX) || 15 * 1024 * 1024;
@@ -218,15 +218,15 @@ function desenharPainel() {
     : P.erro ? '<div class="faixa"><svg class="ic"><use href="#i-alert"/></svg><div><b>Não consegui abrir o detalhe.</b> ' + esc(P.erro) + '</div><button class="btn btn-sm" id="gp-tentar">Tentar de novo</button></div>'
     : (passos && passos.length ? '<section class="gp-sec"><h3>Etapas da tarefa <span class="gt-n">' + fPassos + '/' + nPassos + '</span></h3><div class="gp-prog" aria-hidden="true"><i style="width:' + Math.round(fPassos / nPassos * 100) + '%"></i></div><ul class="gp-passos">' + passos.map(p => {
         const conteudo = '<span class="gp-ck" aria-hidden="true">' + (p.done ? '✓' : '') + '</span><span>' + esc(p.name || 'Etapa') + (p.required ? ' <small class="fraco">obrigatória</small>' : '') + '</span><span class="sr-only">' + (p.done ? 'feita' : 'a fazer') + '</span>';
-        // 0.92.0: com o id da etapa, clicar marca ou desmarca (com confirmação)
+        // 0.93.0: com o id da etapa, clicar marca ou desmarca (com confirmação)
         return '<li class="' + (p.done ? 'ok' : '') + '">' + (p._id ? '<button type="button" class="gp-passo" data-gp-etapa="' + esc(p._id) + '" aria-pressed="' + !!p.done + '" title="' + (p.done ? 'Desmarcar esta etapa' : 'Marcar esta etapa como feita') + '">' + conteudo + '</button>' : conteudo) + '</li>';
       }).join('') + '</ul></section>' : '<p class="fraco">Esta tarefa não tem etapas internas.</p>') +
       (docs.length ? '<section class="gp-sec"><h3>Documentos da tarefa</h3><ul class="gp-docs">' + docs.map(x => '<li class="gp-doc"><span class="gp-doc-nome">' + esc(x.name || 'Documento') + (x.validation_required ? ' <small class="fraco">pede validação</small>' : '') + (x.temArquivo ? ' <small class="gp-doc-ok">✓ com arquivo</small>' : '') + (x.has_documents_integration ? ' <small class="fraco">vai ao Portal do Cliente</small>' : '') + '</span>' +
         (x._id ? '<button type="button" class="btn btn-sm" data-gp-doc="' + esc(x._id) + '"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-upload"/></svg>' + (x.temArquivo ? 'Enviar outro arquivo' : 'Enviar arquivo') + '</button>' : '') + '</li>').join('') + '</ul><input type="file" id="gp-arq" hidden></section>' : '') +
       (pedidos.length ? '<section class="gp-sec"><h3>Pedidos ao cliente' + (d.document_request && d.document_request.active ? ' <span class="pill pill-today">cobrança ativa</span>' : '') + '</h3><ul class="gp-docs">' + pedidos.map(x => '<li>' + esc(x.name || 'Documento') + '</li>').join('') + '</ul></section>' : '') +
-      // 0.92.0: comentário interno (fica só para a equipe; nunca vai ao cliente)
+      // 0.93.0: comentário interno (fica só para a equipe; nunca vai ao cliente)
       '<section class="gp-sec gp-com"><h3><label for="gp-com">Comentário interno</label></h3><textarea id="gp-com" rows="2" maxlength="4000" placeholder="Escreva um comentário para a equipe (o cliente não vê)">' + esc(P.rasc.com) + '</textarea><div class="gp-com-pe"><button type="button" class="btn btn-sm" id="gp-comentar"' + (P.rasc.com.trim() ? '' : ' disabled') + '>Comentar</button></div></section>';
-  // 0.92.0: o que dá para fazer com a tarefa, pela situação dela no Gestta
+  // 0.93.0: o que dá para fazer com a tarefa, pela situação dela no Gestta
   const st = String(d.status || base.status || '').toUpperCase();
   const acoesTarefa = P.carregando || P.erro ? '' : '<div class="gp-acoes" role="group" aria-label="Ações na tarefa">' +
     (st === 'DONE' ? '<button type="button" class="btn btn-sm" data-gp-acao="reabrir"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-undo"/></svg>Reabrir tarefa</button>'

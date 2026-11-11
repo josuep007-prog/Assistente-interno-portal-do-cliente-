@@ -1,4 +1,4 @@
-/* Ações no Gestta (0.92.0) contra um Gestta simulado: OCG.agirNaPagina dentro da página, como o service worker faz.
+/* Ações no Gestta (0.93.0) contra um Gestta simulado: OCG.agirNaPagina dentro da página, como o service worker faz.
  * Confere: cada ação sai com o método, o endereço e o corpo exatos do mapeamento de 11/11/2026; o documento vai num
  * formulário com customer_task, company_document e file; o token vai só no cabeçalho; da resposta (que traz cliente,
  * escritório e usuário) volta só o resumo da tarefa; um pedido adulterado ou sem sessão não sai.

@@ -16,8 +16,13 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   fs.writeFileSync(path.join(copia, 'manifest.json'), JSON.stringify(mf));
   const ctx = await chromium.launchPersistentContext(fs.mkdtempSync(path.join(os.tmpdir(), 'controlonvio-')), {
     headless: false, channel: 'chromium',
-    args: ['--headless=new', '--disable-extensions-except=' + copia, '--load-extension=' + copia, '--no-sandbox']
+    // nada sai para a rede de verdade: o que não é simulado não resolve (0.92.0: as abas que a extensão abre sozinha carregam a 1ª vez
+    // sem a simulação do Playwright, então caem no erro e o vigia abaixo recarrega, já simulado)
+    args: ['--headless=new', '--disable-extensions-except=' + copia, '--load-extension=' + copia, '--no-sandbox', '--host-resolver-rules=MAP claude.ai 0.0.0.0, MAP app.gestta.com.br 0.0.0.0, MAP api.gestta.com.br 0.0.0.0, MAP onvio.com.br 0.0.0.0']
   });
+  const recarregadas = new WeakSet();
+  const vigia = setInterval(() => { for (const p of ctx.pages()) { const u = p.url(); if (recarregadas.has(p) || !/^https:\/\/(app\.gestta\.com\.br|claude\.ai\/artifact)\//.test(u)) continue;
+    p.evaluate(() => document.title).then(t => { if (!/hub|viewer|Gestta/i.test(t || '') && !recarregadas.has(p)) { recarregadas.add(p); p.reload().catch(() => {}); } }).catch(() => {}); } }, 600);
   const sw = ctx.serviceWorkers()[0] || await ctx.waitForEvent('serviceworker', { timeout: 15000 });
   const id = new URL(sw.url()).host;
   const iso = n => new Date(Date.now() - n * 864e5).toISOString().replace(/\.\d+Z$/, '');
@@ -38,7 +43,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   });
   const TOKEN = 'TESTE1234567890TESTE1234';
   const hubFalso = `<!doctype html><title>hub</title><script>
-    window.lotes = [];
+    window.lotes = []; window.progresso = []; window.acks = {}; window.conectado = null;
+    window.pedir = (acao) => new Promise(ok => { const id = 'p' + Math.random().toString(36).slice(2); window.acks[id] = ok; top.postMessage({ ctlhub: 1, de: 'hub', tipo: 'pedido', id, acao }, '*'); setTimeout(() => ok({ ok: false, motivo: 'sem-extensao' }), 4000); });
     // como o Hub real: em segundo plano (aba escondida) não avisa; as mensagens continuam chegando
     // (o Hub publicado em 26/10/2026, versão 267: o aviso periódico só com a aba visível; o pedido "busca" da ponte responde sempre)
     if (location.search.includes('oculto')) window.__oculto = true;
@@ -50,6 +56,9 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     avisar(); setInterval(avisar, 1000);
     addEventListener('message', e => { const d = e.data; if (!d || d.ctlhub !== 1) return;
       if (d.de === 'ponte' && d.tipo === 'busca') return anunciar(d.nonce);
+      if (d.de === 'ext' && d.tipo === 'progresso') { if (d.token === ${JSON.stringify(TOKEN)}) window.progresso.push(d.envio); return; }
+      if (d.de === 'ext' && d.tipo === 'conectado') { window.conectado = d.versao; return; }
+      if (d.de === 'ext' && d.tipo === 'pedidoAck') { const f = window.acks[d.id]; if (f) { delete window.acks[d.id]; f(d); } return; }
       if (d.de !== 'ext' || d.tipo !== 'lote') return;
       const ok = d.token === ${JSON.stringify(TOKEN)}; if (ok) window.lotes.push(d);
       e.source.postMessage({ ctlhub: 1, de: 'hub', tipo: 'ack', id: d.id, ok, motivo: ok ? '' : 'token', aceitos: d.nLinhas }, '*'); });
@@ -60,12 +69,38 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     setInterval(() => top.postMessage({ ctlhub: 1, de: 'hub', tipo: 'ola' }, '*'), 300);
     addEventListener('message', e => { const d = e.data; if (!d || d.ctlhub !== 1) return; window.recebido.push(d.tipo + (d.token ? ':COM-TOKEN' : ''));
       if (d.tipo === 'busca') top.postMessage({ ctlhub: 1, de: 'hub', tipo: 'ola', nonce: d.nonce, prova: '0'.repeat(64) }, '*'); });
+    setInterval(() => top.postMessage({ ctlhub: 1, de: 'hub', tipo: 'pedido', id: 'x' + Date.now(), acao: 'atualizar' }, '*'), 700);
   <\/script>`;
   await ctx.route('https://claude.ai/**', r => {
     const u = new URL(r.request().url());
-    const html = u.pathname === '/viewer' ? '<!doctype html><title>viewer</title><iframe src="/impostor" style="width:300px;height:100px"></iframe><iframe src="/hub' + u.search + '" style="width:600px;height:300px"></iframe>' : u.pathname === '/impostor' ? impostor : u.pathname === '/hub' ? hubFalso : '';
+    const html = (u.pathname === '/viewer' || u.pathname === '/artifact/HUBTESTE01') ? '<!doctype html><title>viewer</title><iframe src="/impostor" style="width:300px;height:100px"></iframe><iframe src="/hub' + u.search + '" style="width:600px;height:300px"></iframe>' : u.pathname === '/impostor' ? impostor : u.pathname === '/hub' ? hubFalso : '';
     return r.fulfill({ contentType: 'text/html; charset=utf-8', body: html });
   });
+  const GT_TOKEN = 'JWT eyJhbGciOiJIUzI1NiJ9.' + Buffer.from(JSON.stringify({ exp: 1893456000 })).toString('base64url') + '.SEGREDO-GESTTA';
+  const GCORS = { 'access-control-allow-origin': 'https://app.gestta.com.br', 'access-control-allow-headers': 'authorization,content-type,accept', 'access-control-allow-methods': 'GET,POST,OPTIONS' };
+  let gPapel = 'ROLE_ADMIN'; const gPedidos = [];
+  await ctx.route('https://app.gestta.com.br/**', r => r.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Gestta</title><body>Gestta</body>' }));
+  await ctx.route('https://api.gestta.com.br/**', async r => {
+    const q = r.request(), u = new URL(q.url()), p = u.pathname;
+    if (q.method() === 'OPTIONS') return r.fulfill({ status: 204, headers: GCORS });
+    gPedidos.push(q.method() + ' ' + p.replace(/[0-9a-f]{24}/g, '{id}'));
+    const json = o => r.fulfill({ status: 200, headers: Object.assign({ 'content-type': 'application/json' }, GCORS), body: JSON.stringify(o) });
+    const id = n => String(n).padStart(24, 'c');
+    if (p === '/core/company/user/me') return json({ _id: id(1), name: 'Coordenação Ficticia', role: gPapel, email: 'coord@exemplo.com' });
+    if (p === '/core/customer/task/report') { const c = JSON.parse(q.postData() || '{}'); return json([{ id: id(7), name: 'DAS', status: 'OPEN', type: 'RECURRENT', 'company_department.name': 'Fiscal', 'owner.name': 'Ana', _due_date: c.dates.startDate, 'customer.name': 'GAMA GESTTA LTDA', 'customer.code': '10', value: 999, 'customer.monthly_payment': 777 }, { id: id(8), name: 'DAS', status: 'OPEN', 'customer.name': 'CONTROLTAX CONSULTORIA' }]); }
+    if (p === '/core/customer/task/search') { const c = JSON.parse(q.postData() || '{}'); const k = c.start_date.slice(0, 7);         // 0.86.0: a competência das tarefas
+      return json({ docs: c.date_type === 'COMPETENCE_DATE' ? [{ _id: id(7), name: 'DAS', status: 'OPEN', competence_date: k + '-01T03:00:00.000Z', due_date: k + '-20T03:00:00.000Z', customer: { _id: id(2), name: 'GAMA GESTTA LTDA' } }] : [], total: 1, pages: 1, page: 1 }); }
+    if (p === '/admin/customer') return json({ docs: [{ _id: id(2), code: '10', name: 'GAMA GESTTA LTDA', cnpj: '11.111.111/0001-11', active: true, monthly_payment: 777, phone: '(27) 90000-0000' }], totalDocs: 1, totalPages: 1 });
+    if (p === '/admin/company/user') return json({ docs: [{ _id: id(3), name: 'Ana', role: 'ROLE_USER', active: true, email: 'ana@exemplo.com', phone_number: '(27) 91111-1111', permissions: ['X'], last_login: '2026-11-05' }], totalDocs: 1, totalPages: 1 });
+    if (p === '/admin/company/department') return json([{ _id: id(4), name: 'Fiscal' }]);
+    if (p === '/es/file/onvio') return json({ docs: [{ _id: id(5), status: 'ERROR', error: 'Pasta de destino não configurada', customer_task: { _id: id(7), name: 'DAS', customer: { _id: id(2), name: 'GAMA GESTTA LTDA', cnpj: '1' } } }], totalDocs: 1 });
+    if (p === '/admin/company/document') return json({ docs: [{ _id: id(6), name: 'RECIBO', documents_integration: { pathName: [] } }], totalDocs: 1, totalPages: 1 });
+    if (/^\/admin\/customer\/c+2\/responsible$/.test(p)) return json([{ company_department: { _id: id(4), name: 'Fiscal' }, company_user: { _id: id(3), name: 'Ana', phone_number: '9' } }]);
+    if (/^\/admin\/customer\/c+2\/accountable$/.test(p)) return json([{ company_department: { _id: id(4), name: 'Fiscal' }, customer_user: { _id: id(9), name: 'Contato Ficticio', email: 'contato.ficticio@exemplo.com', active: true, notify_whatsapp: true, phone_number: '(27) 92222-2222' } }]);
+    return r.fulfill({ status: 404, headers: GCORS, body: '{}' });
+  });
+  // 0.92.0: o Gestta logado neste Chrome (o token fica no armazenamento da página), mas fechado: o envio único abre sozinho e fecha no fim
+  { const g0 = await ctx.newPage(); await g0.goto('https://app.gestta.com.br/#/sidebar/task/list'); await g0.evaluate(t => localStorage.setItem('ngStorage-jwt', JSON.stringify(t)), GT_TOKEN); await g0.close(); }
   await (await ctx.newPage()).goto('https://onvio.com.br/br-portal-do-cliente/home');
   const hub = await ctx.newPage(); await hub.goto('https://claude.ai/viewer'); await sleep(800);
   const opc = await ctx.newPage(); await opc.goto('chrome-extension://' + id + '/options.html');
@@ -126,7 +161,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   assert.equal((await f3().evaluate(() => window.lotes)).length, 1);
   // ---- envio completo em partes (0.52.0) ----
   const lotesHub3 = () => f3().evaluate(() => window.lotes);
-  const esperarSync = async () => { for (let i = 0; i < 90; i++) { await sleep(500); const h = (await opc.evaluate(() => chrome.storage.local.get('hubSync'))).hubSync; if (h && h.estado !== 'enviando' && h.terminouEm) return h; } throw new Error('envio completo não terminou'); };
+  const envioParado = async () => { const x = await opc.evaluate(() => chrome.storage.local.get(['hubEnvio', 'hubSync', 'hubSyncGestta'])); return (!x.hubEnvio || !['preparando', 'enviando'].includes(x.hubEnvio.estado)) && !(x.hubSync && x.hubSync.estado === 'enviando') && !(x.hubSyncGestta && x.hubSyncGestta.estado === 'enviando') ? x : null; };
+  const esperarSync = async () => { await sleep(300); for (let i = 0; i < 240; i++) { await sleep(500); const x = await envioParado(); if (x && x.hubSync && x.hubSync.terminouEm) return x.hubSync; } throw new Error('envio completo não terminou'); };
   // a tela mostra as 7 categorias; a de dados pessoais vem desligada
   await opc.reload(); await sleep(600);
   assert.equal(await opc.locator('#hub-cats input[data-cat]').count(), 7);
@@ -136,7 +172,13 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   assert.equal((await msg('hubSincronizar')).ok, true);
   const h1 = await esperarSync();
   assert.ok(['ok', 'parcial'].includes(h1.estado), 'envio completo terminou: ' + JSON.stringify(h1).slice(0, 300));
-  const novos = (await lotesHub3()).slice(antes);
+  const novos = (await lotesHub3()).slice(antes).filter(x => x.fonte === 'onvio' && x.partes != null);
+  const doGestta = (await lotesHub3()).slice(antes).filter(x => x.fonte === 'gestta');
+  assert.ok(doGestta.length >= 8, '0.92.0: o Gestta vai junto no mesmo envio (' + doGestta.length + ')');
+  const ev1 = (await opc.evaluate(() => chrome.storage.local.get('hubEnvio'))).hubEnvio;
+  assert.equal(ev1.abas.gestta, 'abriu', 'o Gestta fechado abriu em segundo plano: ' + JSON.stringify(ev1));
+  assert.equal(ev1.abas.hub, 'aberta'); assert.equal(ev1.abas.onvio, 'aberta');
+  assert.equal(ctx.pages().filter(p => p.url().startsWith('https://app.gestta.com.br/')).length, 0, 'e fechou no fim');
   assert.ok(novos.length >= 20, 'várias partes entregues (' + novos.length + ')');
   assert.ok(novos.every(x => x.partes >= 1 && x.parte >= 0 && x.parte < x.partes && /^c[a-z0-9]+$/.test(x.ciclo) && x.categoria && x.token === TOKEN));
   assert.ok(novos.every(x => x.categoria !== 'pessoais'), 'sem a categoria pessoal, nada pessoal');
@@ -151,7 +193,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   assert.equal((await opc.evaluate(() => chrome.storage.local.get('hubCfg'))).hubCfg.envio.pessoais, true);
   const antes2 = (await lotesHub3()).length;
   await msg('hubSincronizar'); await esperarSync();
-  const novos2 = (await lotesHub3()).slice(antes2);
+  const novos2 = (await lotesHub3()).slice(antes2).filter(x => x.fonte === 'onvio');
   const pessoais = novos2.filter(x => x.categoria === 'pessoais');
   assert.ok(pessoais.length >= 10, 'com a confirmação, os conjuntos pessoais vão (' + pessoais.length + ')');
   assert.match(JSON.stringify(pessoais), /Férias do João Silva/, 'o assunto vai na categoria pessoal');
@@ -161,7 +203,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   // automático: com o envio completo automático ligado, ao abrir o Hub (e nunca antes de passar o intervalo) sai tudo sozinho
   await opc.check('#hubSyncAuto'); await sleep(300);
   assert.equal((await opc.evaluate(() => chrome.storage.local.get('hubCfg'))).hubCfg.syncAuto, true);
-  await opc.evaluate(() => chrome.storage.local.remove(['hubSync', 'hubSyncHash']));
+  await opc.evaluate(() => chrome.storage.local.remove(['hubSync', 'hubSyncHash', 'hubEnvio']));
   await hub3.close();
   const hub4 = await ctx.newPage(); await hub4.goto('https://claude.ai/viewer'); await opc.bringToFront();
   const f4 = () => hub4.frames().find(f => /\/hub/.test(f.url()));
@@ -191,34 +233,12 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   assert.equal(hR.completoAnterior, hOk.terminouEm, 'o reenvio não conta como envio completo para o automático');
   console.log('reenviar o que deu erro (Onvio): ok');
   // ---- Gestta no Hub (0.79.0): conjuntos lidos na aba do Gestta, fonte "gestta", só com acesso de coordenação ----
-  const GT_TOKEN = 'JWT eyJhbGciOiJIUzI1NiJ9.' + Buffer.from(JSON.stringify({ exp: 1893456000 })).toString('base64url') + '.SEGREDO-GESTTA';
-  const GCORS = { 'access-control-allow-origin': 'https://app.gestta.com.br', 'access-control-allow-headers': 'authorization,content-type,accept', 'access-control-allow-methods': 'GET,POST,OPTIONS' };
-  let gPapel = 'ROLE_ADMIN'; const gPedidos = [];
-  await ctx.route('https://app.gestta.com.br/**', r => r.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Gestta</title><body>Gestta</body>' }));
-  await ctx.route('https://api.gestta.com.br/**', async r => {
-    const q = r.request(), u = new URL(q.url()), p = u.pathname;
-    if (q.method() === 'OPTIONS') return r.fulfill({ status: 204, headers: GCORS });
-    gPedidos.push(q.method() + ' ' + p.replace(/[0-9a-f]{24}/g, '{id}'));
-    const json = o => r.fulfill({ status: 200, headers: Object.assign({ 'content-type': 'application/json' }, GCORS), body: JSON.stringify(o) });
-    const id = n => String(n).padStart(24, 'c');
-    if (p === '/core/company/user/me') return json({ _id: id(1), name: 'Coordenação Ficticia', role: gPapel, email: 'coord@exemplo.com' });
-    if (p === '/core/customer/task/report') { const c = JSON.parse(q.postData() || '{}'); return json([{ id: id(7), name: 'DAS', status: 'OPEN', type: 'RECURRENT', 'company_department.name': 'Fiscal', 'owner.name': 'Ana', _due_date: c.dates.startDate, 'customer.name': 'GAMA GESTTA LTDA', 'customer.code': '10', value: 999, 'customer.monthly_payment': 777 }, { id: id(8), name: 'DAS', status: 'OPEN', 'customer.name': 'CONTROLTAX CONSULTORIA' }]); }
-    if (p === '/core/customer/task/search') { const c = JSON.parse(q.postData() || '{}'); const k = c.start_date.slice(0, 7);         // 0.86.0: a competência das tarefas
-      return json({ docs: c.date_type === 'COMPETENCE_DATE' ? [{ _id: id(7), name: 'DAS', status: 'OPEN', competence_date: k + '-01T03:00:00.000Z', due_date: k + '-20T03:00:00.000Z', customer: { _id: id(2), name: 'GAMA GESTTA LTDA' } }] : [], total: 1, pages: 1, page: 1 }); }
-    if (p === '/admin/customer') return json({ docs: [{ _id: id(2), code: '10', name: 'GAMA GESTTA LTDA', cnpj: '11.111.111/0001-11', active: true, monthly_payment: 777, phone: '(27) 90000-0000' }], totalDocs: 1, totalPages: 1 });
-    if (p === '/admin/company/user') return json({ docs: [{ _id: id(3), name: 'Ana', role: 'ROLE_USER', active: true, email: 'ana@exemplo.com', phone_number: '(27) 91111-1111', permissions: ['X'], last_login: '2026-11-05' }], totalDocs: 1, totalPages: 1 });
-    if (p === '/admin/company/department') return json([{ _id: id(4), name: 'Fiscal' }]);
-    if (p === '/es/file/onvio') return json({ docs: [{ _id: id(5), status: 'ERROR', error: 'Pasta de destino não configurada', customer_task: { _id: id(7), name: 'DAS', customer: { _id: id(2), name: 'GAMA GESTTA LTDA', cnpj: '1' } } }], totalDocs: 1 });
-    if (p === '/admin/company/document') return json({ docs: [{ _id: id(6), name: 'RECIBO', documents_integration: { pathName: [] } }], totalDocs: 1, totalPages: 1 });
-    if (/^\/admin\/customer\/c+2\/responsible$/.test(p)) return json([{ company_department: { _id: id(4), name: 'Fiscal' }, company_user: { _id: id(3), name: 'Ana', phone_number: '9' } }]);
-    if (/^\/admin\/customer\/c+2\/accountable$/.test(p)) return json([{ company_department: { _id: id(4), name: 'Fiscal' }, customer_user: { _id: id(9), name: 'Contato Ficticio', email: 'contato.ficticio@exemplo.com', active: true, notify_whatsapp: true, phone_number: '(27) 92222-2222' } }]);
-    return r.fulfill({ status: 404, headers: GCORS, body: '{}' });
-  });
   const gAba = await ctx.newPage(); await gAba.goto('https://app.gestta.com.br/#/sidebar/task/list');
   await gAba.evaluate(t => localStorage.setItem('ngStorage-jwt', JSON.stringify(t)), GT_TOKEN);
   await opc.bringToFront();
-  const esperarGestta = async () => { for (let i = 0; i < 120; i++) { await sleep(500); const h = (await opc.evaluate(() => chrome.storage.local.get('hubSyncGestta'))).hubSyncGestta; if (h && h.estado !== 'enviando' && h.terminouEm) return h; } throw new Error('envio do Gestta não terminou'); };
+  const esperarGestta = async () => { await sleep(300); for (let i = 0; i < 240; i++) { await sleep(500); const x = await envioParado(); if (x && x.hubSyncGestta && x.hubSyncGestta.terminouEm) return x.hubSyncGestta; } throw new Error('envio do Gestta não terminou'); };
   const lotesG = async () => (await f4().evaluate(() => window.lotes)).filter(x => x.fonte === 'gestta');
+  await opc.evaluate(() => chrome.storage.local.remove('gesttaCartelaEm'));          // o envio único anterior já leu a cartela (Hub em outra aba)
   assert.equal((await msg('gesttaHubSync')).ok, true);
   const hg = await esperarGestta();
   assert.equal(hg.estado, 'ok', 'envio do Gestta: ' + JSON.stringify(hg).slice(0, 400));
@@ -258,6 +278,41 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   assert.equal((await lotesG()).length, nAntes, 'com acesso de analista nada vai ao Hub');
   gPapel = 'ROLE_ADMIN';
   console.log('Gestta no Hub: 9 conjuntos (com os contatos do cliente por setor), só GET e o relatório, sem token, telefone, valor nem empresa do escritório; analista não envia');
+  // ---- 0.92.0: envio único pedido pelo Hub, andamento no Hub, Hub fechado aberto pela extensão ----
+  await hub4.close();
+  const hub5 = await ctx.newPage(); await hub5.goto('https://claude.ai/artifact/HUBTESTE01'); await opc.bringToFront();
+  const f5 = () => hub5.frames().find(f => /\/hub/.test(f.url()));
+  let con = null; for (let i = 0; i < 20 && !con; i++) { await sleep(400); con = await f5().evaluate(() => window.conectado).catch(() => null); }
+  assert.equal(con, (await opc.evaluate(() => chrome.runtime.getManifest().version)), 'a extensão avisa o Hub que está conectada, com a versão');
+  assert.equal((await opc.evaluate(() => chrome.storage.local.get('hubCfg'))).hubCfg.hubUrl, 'https://claude.ai/artifact/HUBTESTE01', 'aprende o endereço do Hub (sem querystring)');
+  const est = await f5().evaluate(() => window.pedir('estado'));
+  assert.equal(est.ok, true); assert.equal(est.envio.rodando, false); assert.deepEqual(est.envio.fontes.map(f => f.id), ['onvio', 'gestta']);
+  assert.equal((await f5().evaluate(() => window.pedir('cancelar'))).motivo, 'nada-rodando');
+  // o impostor da página pede "atualizar" a cada 0,7 s desde o começo: nunca vale (a ponte só aceita a janela que provou o código)
+  const evAntes = (await opc.evaluate(() => chrome.storage.local.get('hubEnvio'))).hubEnvio;
+  await sleep(2500);
+  assert.equal((await opc.evaluate(() => chrome.storage.local.get('hubEnvio'))).hubEnvio.id, evAntes.id, 'pedido do impostor não começa envio');
+  const nProg = (await f5().evaluate(() => window.progresso)).length;
+  const pa = await f5().evaluate(() => window.pedir('atualizar'));
+  assert.equal(pa.ok, true); assert.equal(pa.iniciado, true);
+  assert.equal((await f5().evaluate(() => window.pedir('atualizar'))).jaRodando, true, 'um envio por vez');
+  await esperarSync();
+  await sleep(1800);
+  const prog = (await f5().evaluate(() => window.progresso)).slice(nProg);
+  assert.ok(prog.length >= 3, 'o andamento chega ao Hub (' + prog.length + ')');
+  assert.ok(['preparando', 'enviando'].includes(prog[0].estado), 'o começo do envio chega ao Hub (no simulado o envio todo leva ~1 s; o andamento sai no máximo a cada 1,5 s)');
+  const fimP = prog[prog.length - 1];
+  assert.equal(fimP.origem, 'hub'); assert.ok(['ok', 'parcial'].includes(fimP.estado), JSON.stringify(fimP).slice(0, 300));
+  assert.ok(fimP.fontes.every(f => f.conjuntos.length > 0), 'cada fonte com os conjuntos');
+  assert.doesNotMatch(JSON.stringify(prog), /João Silva|Assunto secreto|GAMA GESTTA|ACME|SEGREDO|TESTE1234567890TESTE1234/, 'o andamento não leva dado lido nem o código');
+  // Hub fechado: a extensão abre pelo endereço aprendido, em segundo plano, e fecha no fim
+  await hub5.close(); await sleep(300);
+  const ra = await msg('hubAtualizar'); assert.equal(ra.ok, true, JSON.stringify(ra));
+  await esperarSync();
+  const evH = (await opc.evaluate(() => chrome.storage.local.get('hubEnvio'))).hubEnvio;
+  assert.equal(evH.abas.hub, 'abriu', JSON.stringify(evH)); assert.ok(['ok', 'parcial'].includes(evH.estado), JSON.stringify(evH).slice(0, 300));
+  assert.equal(ctx.pages().filter(p => p.url().includes('/artifact/HUBTESTE01')).length, 0, 'a aba do Hub aberta pela extensão fechou no fim');
+  console.log('envio único: o Hub pede e acompanha, o impostor não começa nada, Hub e Gestta fechados abrem e fecham sozinhos');
   // caminho de reserva: o resumo copiável não leva o código de pareamento
   const r = await msg('hubLote'); assert.ok(r.ok && !('token' in r.lote));
   // desconectar tira o script e a permissão
@@ -272,5 +327,6 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await msg('hubReiniciar');
   assert.equal((await opc.evaluate(() => chrome.storage.local.get('hubSync'))).hubSync.estado, 'interrompido');
   console.log('ponte com o Control Hub: ok');
+  clearInterval(vigia);
   await ctx.close();
 })().catch(e => { console.error('FALHOU:', e.message); process.exit(1); });
