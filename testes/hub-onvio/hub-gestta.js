@@ -157,16 +157,17 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
   });
 
   await passo('Referência absoluta: no DP, empresa sem tarefa do Pessoal no CNPJ dela ou sem funcionário ativo fica Inativa (à vista, nada gravado, Hub 337); some do Contábil e do Portal; analista fora da equipe sai da carteira; a lista do Gestta faltando não muda nada', async () => {
-    const dp = () => page.evaluate(() => window.__hubApi.api('dp').listar().map(e => [e.nome, e.analista, e.situacao, e.motivoInativa]).sort((a, b) => (a[0] + a[3]).localeCompare(b[0] + b[3])));
+    // Hub 345: o motivo diz as competências conferidas; aqui elas viram "X e Y" para o teste não depender da data
+    const dp = () => page.evaluate(() => window.__hubApi.api('dp').listar().map(e => [e.nome, e.analista, e.situacao, String(e.motivoInativa || '').replace(/competências \d{4}-\d{2} e \d{4}-\d{2}/, 'competências X e Y')]).sort((a, b) => (a[0] + a[3]).localeCompare(b[0] + b[3])));
     await page.waitForFunction(() => window.__hubApi.api('dp').listar().some(e => /VELHA/.test(e.nome) && /sem tarefa do Pessoal/.test(e.motivoInativa)) && !window.__hubApi.api('dp').listar().some(e => e.analista === 'Marcos Lima'), null, { timeout: 8000 });      // o Gestta chegou (empresas e equipe)
     // Hub 337 (Josué, 11/11/2026: "empresas sem funcionário/tarefa ativa deve contar como inativa"): só a ALFA tem tarefa do Pessoal no CNPJ dela,
     // e não tem funcionário; a filial não fica pela raiz; nome igual não segura empresa cuja raiz o Gestta conhece
     assert.deepEqual(await dp(), [
       ['ALFA COMERCIO LTDA FILIAL', '', 'Inativa', 'filial sem tarefa do Pessoal no CNPJ dela'],
       ['ALFA COMERCIO LTDA', '', 'Inativa', 'sem funcionário ativo'],
-      ['BETA SERVICOS LTDA', 'Carla Souza', 'Inativa', 'só tem tarefa de outro setor no Gestta'],
+      ['BETA SERVICOS LTDA', 'Carla Souza', 'Inativa', 'sem tarefa do Pessoal nas competências X e Y (só de outro setor ou de outro mês)'],
       ['DELTA MEI', '', 'Inativa', 'CNPJ sem tarefa do Pessoal no Gestta'],
-      ['DELTA MEI', '', 'Inativa', 'só tem tarefa de outro setor no Gestta'],
+      ['DELTA MEI', '', 'Inativa', 'sem tarefa do Pessoal nas competências X e Y (só de outro setor ou de outro mês)'],
       ['GAMA INDUSTRIA', '', 'Inativa', 'sem CNPJ e o nome não está no Gestta'],
       ['MARIA EMPREGADORA DOMESTICA', '', 'Inativa', 'CPF sem tarefa do Pessoal no Gestta'],
       ['OUTRA SEM CNPJ NEM TAREFA', '', 'Inativa', 'sem CNPJ e o nome não está no Gestta'],
@@ -188,11 +189,16 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     assert.deepEqual([ref.empresas.ok, ref.empresas.n, ref.analistas.ok, ref.fora.contabil, ref.fora.portal], [true, 5, true, ['VELHA SEM TAREFA LTDA · 77.777.777/0001-07 · CNPJ sem tarefa do Contábil no Gestta'], ['VELHA SEM TAREFA LTDA · 77.777.777/0001-07 · CNPJ sem tarefa no Gestta']]);
     assert.equal(ref.fora.dp.length, 10); assert.ok(ref.fora.dp.includes('VELHA SEM TAREFA LTDA · 77.777.777/0001-07 · inativa: CNPJ sem tarefa do Pessoal no Gestta'), ref.fora.dp.join(' | '));
     assert.ok(ref.analistasFora.some(a => a.nome === 'Marcos Lima'), JSON.stringify(ref.analistasFora));
-    // trava: lista velha (mais de 72 h) não esconde nada
+    // trava: lista velha (mais de 72 h) não esconde nada nos outros módulos; no DP (Hub 345) as tarefas valem até 7 dias, então só a lista de
+    // tarefas velha demais (ou faltando) volta o DP a contar só o funcionário
     const man = await page.evaluate(() => window.__db.ler('ing_dados/gestta~gestta-empresas-ativas'));
+    const manT = await page.evaluate(() => window.__db.ler('ing_dados/gestta~gestta-tarefas'));
     await semear('ing_dados/gestta~gestta-empresas-ativas', Object.assign({}, man, { recebidoEm: Date.now() - 80 * 3600e3 }));
-    await page.waitForFunction(() => window.__hubApi.api('dp').listar().some(e => /VELHA/.test(e.nome) && e.motivoInativa === 'sem funcionário ativo'), null, { timeout: 8000 });      // sem a lista do Gestta, só o funcionário conta
-    assert.equal(await page.evaluate((v) => window.__cadastro.ativa('ctb', 'c' + v, v), C.velha), true);
+    await page.waitForFunction((v) => window.__cadastro.ativa('ctb', 'c' + v, v) === true, C.velha, { timeout: 8000 });
+    assert.ok((await dp()).some(e => /VELHA/.test(e[0]) && /sem tarefa do Pessoal/.test(e[3])), 'no DP a regra segue pelas tarefas');
+    await semear('ing_dados/gestta~gestta-tarefas', Object.assign({}, manT, { recebidoEm: Date.now() - 8 * 24 * 3600e3 }));
+    await page.waitForFunction(() => window.__hubApi.api('dp').listar().some(e => /VELHA/.test(e.nome) && e.motivoInativa === 'sem funcionário ativo'), null, { timeout: 8000 });      // sem lista do Gestta que valha, só o funcionário conta
+    await semear('ing_dados/gestta~gestta-tarefas', manT);
     await semear('ing_dados/gestta~gestta-empresas-ativas', man);
     await page.waitForFunction(() => window.__hubApi.api('dp').listar().some(e => /VELHA/.test(e.nome) && /sem tarefa do Pessoal/.test(e.motivoInativa)), null, { timeout: 8000 });
   });
@@ -783,6 +789,52 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     assert.match(r.erro, /cadastrada há pouco/);
     assert.equal(await page.evaluate(() => window.__db.existe('dp_empresas/gt-11111111000101')), false, 'nenhuma gt-<CNPJ> criada');
     await semear('dp_empresas/e-alfa', alfa);
+  });
+
+  await passo('Hub 345: no DP, só tarefa do Pessoal nas duas últimas competências e de cliente ativo segura a empresa; lista cortada ou com a lista de empresas velha ainda vale; a Cartela diz a regra', async () => {
+    const ym = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'), h0 = new Date();
+    const A = ym(new Date(h0.getFullYear(), h0.getMonth() - 1, 1)), B = ym(new Date(h0.getFullYear(), h0.getMonth() - 2, 1)), Cc = ym(new Date(h0.getFullYear(), h0.getMonth() - 4, 1));
+    const cols = ['Mês', 'Id', 'Tarefa', 'Setor', 'Responsável', 'Situação', 'Meta', 'CNPJ', 'Cliente', 'Cliente ativo', 'Competência'];
+    const t = (id, setor, comp, cnpj, cli, ativo) => [comp, id, 'Tarefa ' + id, setor, 'Carla Mendes Souza', 'Aberta', comp + '-28', cnpj, cli, ativo || 'sim', comp];
+    const linhas = [
+      t('h1', 'Departamento Pessoal', A, C.alfa, 'ALFA COMERCIO LTDA'),
+      t('h2', 'Fiscal', B, C.beta, 'BETA SERVICOS LTDA'),
+      t('h3', 'Departamento Pessoal', Cc, C.velha, 'VELHA SEM TAREFA LTDA'),             // só numa competência antiga (anual, por exemplo)
+      t('h4', 'Departamento Pessoal', A, C.delta, 'DELTA MEI', 'não')];                   // cliente inativo no Gestta
+    const manT0 = await page.evaluate(() => window.__db.ler('ing_dados/gestta~gestta-tarefas'));
+    const parteT0 = await page.evaluate((m) => window.__db.ler('ing_partes/gestta~gestta-tarefas~' + m.slot + '0'), manT0);
+    const manA = await page.evaluate(() => window.__db.ler('ing_dados/gestta~gestta-empresas-ativas'));
+    const alfa0 = await page.evaluate(() => window.__db.ler('dp_empresas/e-alfa')), velha0 = await page.evaluate(() => window.__db.ler('dp_empresas/e-velha')), delta0 = await page.evaluate(() => window.__db.ler('dp_empresas/e-delta'));
+    const comFunc = (e) => Object.assign({}, e, { funcionarios: [{ id: 'f1', nome: 'Empregado Ficticio', admissao: '2024-01-02', situacao: 'Ativo' }] });
+    await semear('dp_empresas/e-alfa', comFunc(alfa0)); await semear('dp_empresas/e-velha', comFunc(velha0)); await semear('dp_empresas/e-delta', comFunc(delta0));
+    await semear('ing_partes/gestta~gestta-tarefas~a0', { ciclo: 'g342', parte: 0, tabela: tab(linhas) });
+    // a busca da competência cortada e a lista de empresas em atividade velha: antes, o DP voltava à lista de todos os setores
+    await semear('ing_dados/gestta~gestta-tarefas', Object.assign({}, manT0, { slot: 'a', colunas: cols, ciclo: 'g342', partes: 1, nLinhas: linhas.length, totalNaOrigem: linhas.length, recebidoEm: Date.now(), cortado: true }));
+    await semear('ing_dados/gestta~gestta-empresas-ativas', Object.assign({}, manA, { recebidoEm: Date.now() - 80 * 3600e3 }));
+    const sit = () => page.evaluate(() => Object.fromEntries(window.__hubApi.api('dp').listar().filter(e => ['e-alfa', 'e-velha', 'e-delta'].includes(e.id)).map(e => [e.nome.split(' ')[0], e.situacao + (e.motivoInativa ? ': ' + e.motivoInativa : '')])));
+    await page.waitForFunction(() => { const l = window.__hubApi.api('dp').listar(); return l.some(e => /VELHA/.test(e.nome) && /competências/.test(e.motivoInativa || '')) && l.some(e => e.id === 'e-alfa' && e.situacao === 'Ativa'); }, null, { timeout: 10000 }).catch(() => {});
+    const s1 = await sit();
+    assert.equal(s1.ALFA, 'Ativa', JSON.stringify(s1));
+    assert.equal(s1.VELHA, 'Inativa: sem tarefa do Pessoal nas competências ' + A + ' e ' + B + ' (só de outro setor ou de outro mês)', JSON.stringify(s1));
+    assert.match(s1.DELTA, /^Inativa: (CNPJ sem tarefa do Pessoal|sem tarefa do Pessoal nas competências)/, JSON.stringify(s1));
+    // a Cartela diz a regra e quantas ficaram fora
+    await page.evaluate(() => window.__hubApi.api('dp').irPara('cartela'));
+    await page.waitForFunction(() => /tarefa do Pessoal/.test((document.querySelector('#ct-regra') || {}).textContent || ''), null, { timeout: 8000 });
+    const txt = await page.evaluate(() => document.querySelector('#ct-regra').textContent);
+    assert.match(txt, new RegExp('competências ' + A + ' e ' + B));
+    assert.match(txt, /empresas? fora \(\d+ sem tarefa do Pessoal/);
+    assert.ok(!(await page.evaluate(() => window.__hubApi.api('dp').listar().filter(e => e.situacao !== 'Inativa').map(e => e.nome))).some(n => /VELHA|DELTA/.test(n)), 'fora das Ativas da Cartela');
+    // lista de tarefas com mais de 7 dias: a regra não vale e a Cartela avisa
+    await semear('ing_dados/gestta~gestta-tarefas', Object.assign({}, manT0, { slot: 'a', colunas: cols, ciclo: 'g342', partes: 1, nLinhas: linhas.length, totalNaOrigem: linhas.length, recebidoEm: Date.now() - 8 * 24 * 3600e3, cortado: false }));
+    await semear('ing_dados/gestta~gestta-empresas-ativas', Object.assign({}, manA, { recebidoEm: Date.now() - 8 * 24 * 3600e3 }));
+    await page.waitForFunction(() => /não está valendo/.test((document.querySelector('#ct-regra') || {}).textContent || ''), null, { timeout: 8000 });
+    assert.match(await page.evaluate(() => document.querySelector('#ct-regra').textContent), /mais de 7 dias/);
+    assert.equal((await sit()).VELHA, 'Ativa', 'sem lista que valha, nada fica inativo pelo Gestta');
+    assert.equal(await page.evaluate(() => window.__db.ler('dp_empresas/e-velha').situacao), 'Ativa', 'nada é gravado');
+    // devolve
+    await semear('dp_empresas/e-alfa', alfa0); await semear('dp_empresas/e-velha', velha0); await semear('dp_empresas/e-delta', delta0);
+    await semear('ing_partes/gestta~gestta-tarefas~' + manT0.slot + '0', parteT0);
+    await semear('ing_dados/gestta~gestta-tarefas', manT0); await semear('ing_dados/gestta~gestta-empresas-ativas', manA);
   });
 
   await passo('sem erros de página', async () => { assert.deepEqual(erros, []); });
