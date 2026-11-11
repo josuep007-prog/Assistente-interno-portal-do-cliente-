@@ -1047,6 +1047,26 @@ async function irParaOnvio() {
   return t.id;
 }
 
+// 0.91.0 (Josué, 10/11/2026): o botão flutuante de qualquer site pergunta para onde ir: Onvio, Gestta ou os dois. Só leva às guias
+// (reaproveita a que já existe, ou cria uma): a camada por cima nunca abre sozinha. Quando são os dois, o Onvio fica na frente.
+const GESTTA_URL = 'https://app.gestta.com.br/';
+async function focarGuia(t) { await chrome.tabs.update(t.id, { active: true }); await chrome.windows.update(t.windowId, { focused: true }); }
+async function irPara(destino) {
+  const quer = destino === 'ambos' ? ['gestta', 'onvio'] : destino === 'gestta' || destino === 'onvio' ? [destino] : [];
+  if (!quer.length) return { ok: false, erro: 'destino desconhecido' };
+  for (const d of quer) {
+    const ultimo = d === quer[quer.length - 1];                           // quem vem por último fica na frente
+    if (d === 'gestta') {
+      const t = (await chrome.tabs.query({ url: GESTTA_URL + '*' }))[0];
+      if (t) { if (ultimo) await focarGuia(t); } else await chrome.tabs.create({ url: GESTTA_URL, active: ultimo });
+    } else {
+      const t = (await chrome.tabs.query({ url: 'https://onvio.com.br/br-portal-do-cliente/*' })).find(x => ehPortal(x.url));
+      if (t) { if (ultimo) await focarGuia(t); } else await chrome.tabs.create({ url: OC.PORTAL + 'service-requesting/general', active: ultimo });
+    }
+  }
+  return { ok: true };
+}
+
 // Dentro do portal alterna o painel daquela aba; em qualquer outra página leva ao portal (Solicitações) e abre o painel lá, na hora (é o clique da pessoa)
 async function aoClicarNoIcone(tab) {
   if (tab && tab.id != null && ehPortal(tab.url)) await mensagemParaPainel(tab.id, 'alternar').catch(() => {});
@@ -1200,6 +1220,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'gesttaFechamento') { reply(await gesttaFechamento(msg, sender)); }
       else if (msg.cmd === 'gesttaTarefa') { reply(await gesttaTarefa(msg, sender)); }
       else if (msg.cmd === 'gesttaHistorico') { reply(await gesttaHistorico(msg, sender)); }
+      else if (msg.cmd === 'irPara') { reply(await irPara(msg.destino)); }
       else if (msg.cmd === 'abrirConfig') { reply(await abrirGuiaConfig(msg.params)); }
       else if (msg.cmd === 'fecharPainel') { if (sender.tab && sender.tab.id != null) await mensagemParaPainel(sender.tab.id, 'fechar').catch(() => {}); reply({ ok: true }); }
       else reply({ ok: false, erro: 'comando desconhecido' });
