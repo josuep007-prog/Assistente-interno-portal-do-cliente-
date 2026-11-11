@@ -3973,20 +3973,74 @@
     return {
       id, nome, estado: preso ? 'interrompido' : (st.estado || 'aguardando'), etapa: t(st.etapa), detalhe: t(st.detalhe), feito: Number(st.feito) || 0, total: Number(st.total) || 0,
       motivo: t(st.motivo), iniciouEm: st.iniciouEm || '', terminouEm: st.terminouEm || '',
-      conjuntos: (st.resultados || []).slice(0, 80).map(r => ({ id: t(r.id), rotulo: t(r.rotulo), ok: r.ok !== false, igual: r.motivo === 'sem-mudanca', nota: !!r.nota, cortado: !!r.cortado, motivo: r.motivo === 'sem-mudanca' ? '' : t(r.motivo), linhas: Number(r.linhas) || 0 }))
+      conjuntos: (st.resultados || []).slice(0, 80).map(r => ({ id: t(r.id), rotulo: t(r.rotulo), ok: r.ok !== false, igual: r.motivo === 'sem-mudanca', nota: !!r.nota, cortado: !!r.cortado, motivo: r.motivo === 'sem-mudanca' ? '' : t(r.motivo), linhas: Number(r.linhas) || 0, alimenta: hubAlimenta(r.id) }))
     };
   }
   function hubEnvioPainel(ev, hubSync, hubSyncGestta, versao) {
     const e = ev || {};
     const preso = (e.estado === 'enviando' || e.estado === 'preparando') && e.pulso && Date.now() - e.pulso > 240000;
     const fontes = [hubFontePainel('onvio', 'Onvio', hubSync, ev), hubFontePainel('gestta', 'Gestta', hubSyncGestta, ev)];
-    return {
+    const p = {
       v: 1, versao: String(versao || ''), id: String(e.id || ''), origem: ['hub', 'extensao', 'auto'].includes(e.origem) ? e.origem : '',
       estado: preso ? 'interrompido' : ENVIO_ESTADOS.includes(e.estado) ? e.estado : (ev ? 'erro' : 'nunca'),
       fase: String(e.fase || ''), iniciouEm: e.iniciouEm || '', terminouEm: e.terminouEm || '', motivo: String(e.motivo || '').slice(0, 160),
       abas: Object.fromEntries(['hub', 'onvio', 'gestta'].map(k => [k, ['aberta', 'abriu', 'falhou', 'sem-sessao'].includes(e.abas && e.abas[k]) ? e.abas[k] : ''])),
-      avisos: (e.avisos || []).slice(0, 6).map(a => String(a).slice(0, 200)), fontes
+      avisos: (e.avisos || []).slice(0, 6).map(a => String(a).slice(0, 200)), fontes, tentativas: Number(e.tentativas) || 0,
+      alvo: e.alvo ? true : false
     };
+    // 0.94.0: terminou com erro (depois dos reenvios automáticos): o diagnóstico para copiar vai junto
+    if (!['preparando', 'enviando', 'nunca'].includes(p.estado) && fontes.some(f => (f.conjuntos || []).some(c => !c.ok))) p.diagnostico = hubDiagnostico(p);
+    return p;
+  }
+  // 0.94.0 (Josué, 11/11/2026: "dizer qual informação esse erro iria alimentar"): o que cada conjunto alimenta no Hub. O id pode vir do
+  // conjunto ('lista-geral') ou da tarefa do plano ('lista:geral'), por isso [-:]. Só texto fixo, nunca dado lido.
+  const HUB_ALIMENTA = [
+    [/^solicitacoes$/, 'o resumo das pendentes (Cartela › Onvio do DP e o cartão Onvio do Painel)'],
+    [/^lista[-:]/, 'as solicitações de cada empresa (ficha › Onvio) e os prazos do Onvio na Agenda do DP'],
+    [/^clientes[-:]cnd$/, 'a ficha da empresa (CNPJ e inscrições) e o cadastro único de empresas'],
+    [/^clientes[-:]nfe$/, 'o certificado digital e o apelido do Onvio de cada empresa (ficha, Fiscal e cadastro único)'],
+    [/^escritorio[-:]funcionarios$/, 'a equipe ativa do escritório (as empresas do próprio escritório no DP)'],
+    [/^escritorio[-:]/, 'a conferência do escritório e do acesso (departamentos, licenças, permissões)'],
+    [/^documentos[-:]/, 'as pastas do portal de documentos'],
+    [/^noticias[-:]/, 'as notícias do Onvio'],
+    [/^analise[-:]/, 'a análise do escritório (solicitações e equipe) nos Relatórios'],
+    [/^pessoais[-:]empregados$/, 'quem é funcionário ativo em cada empresa (Funcionários do DP e as diferenças da Entrada de dados)'],
+    [/^pessoais[-:]folha/, 'a folha de cada empresa: quem está ativo em cada mês, pró-labore e RPA'],
+    [/^pessoais[-:]pendentes/, 'os dados completos e os trâmites das pendentes (ficha da empresa)'],
+    [/^pessoais[-:]comunicacoes$/, 'as comunicações do Onvio'],
+    [/^pessoais[-:]/, 'os dados pessoais das solicitações (assunto e empregado) na ficha da empresa'],
+    [/^gestta-tarefas$|^tarefas$/, 'as empresas e os analistas ativos de cada módulo, a demanda do Portal e as marcações do Fiscal e do Contábil'],
+    [/^gestta-empresas-ativas$/, 'quais empresas estão em atividade no Gestta (a referência dos módulos)'],
+    [/^gestta-clientes$|^clientes$/, 'os cadastros pelo Gestta (tributação, inscrições, UF) e quais clientes estão ativos'],
+    [/^gestta-equipe$|^equipe$/, 'o cadastro de analistas dos módulos'],
+    [/^gestta-setores$/, 'de qual setor vem cada analista e cada tarefa'],
+    [/^gestta-cartela$|^cartela$/, 'o analista de cada setor de cada empresa'],
+    [/^gestta-contatos$/, 'os e-mails de quem recebe cada setor no Portal do Cliente'],
+    [/^gestta-envios-onvio-erro$|^alertas$/, 'o aviso de envio com erro nas fichas do Fiscal e do Contábil'],
+    [/^gestta-templates-sem-pasta$/, 'o alerta de templates do Gestta sem pasta']
+  ];
+  const hubAlimenta = id => { const s = String(id || ''); const x = HUB_ALIMENTA.find(([re]) => re.test(s)); return x ? x[1] : ''; };
+  // O que o Hub pediu para atualizar ("só o que falta", Hub 340): conjuntos do Onvio viram tarefas do plano; os do Gestta seguem como conjuntos
+  function hubAlvo(alvo) {
+    if (!alvo || typeof alvo !== 'object') return null;
+    const lista = v => Array.isArray(v) ? [...new Set(v.map(x => String(x || '').slice(0, 80)).filter(x => /^[a-z0-9:-]+$/i.test(x)))].slice(0, 200) : [];
+    const on = lista(alvo.onvio), gt = lista(alvo.gestta);
+    return { resumo: on.includes('solicitacoes'), onvio: [...new Set(on.filter(x => x !== 'solicitacoes').map(hubTarefaDoConjunto).filter(Boolean))], gestta: gt.filter(x => /^gestta-/.test(x)) };
+  }
+  // Texto para copiar quando o erro continua depois dos reenvios: só estados, nomes de conjuntos, motivos e o que cada um alimenta
+  function hubDiagnostico(p) {
+    if (!p) return '';
+    const l = ['Control Onvio · diagnóstico do envio ao Hub', 'Versão ' + (p.versao || '?') + ' · envio ' + (p.id || '?') + ' (' + (p.origem || '?') + ') · começou ' + (p.iniciouEm || '—') + ' · terminou ' + (p.terminouEm || '—'),
+      'Resultado: ' + (p.estado || '?') + (p.motivo ? ' · ' + p.motivo : '') + ' · reenvios automáticos: ' + (p.tentativas || 0),
+      'Abas: ' + ['hub', 'onvio', 'gestta'].map(k => k + '=' + ((p.abas && p.abas[k]) || '—')).join(', ')];
+    (p.avisos || []).forEach(a => l.push('Aviso: ' + a));
+    (p.fontes || []).forEach(f => {
+      const mal = (f.conjuntos || []).filter(c => !c.ok);
+      l.push('[' + f.nome + '] ' + (f.estado || '?') + (f.motivo ? ' · ' + f.motivo : '') + ' · ' + (f.conjuntos || []).length + ' conjuntos, ' + mal.length + ' com erro');
+      mal.forEach(c => l.push('  - ' + (c.rotulo || c.id) + ' (' + c.id + '): ' + (c.motivo || 'erro') + (c.alimenta ? ' · alimenta: ' + c.alimenta : '')));
+    });
+    l.push('(Sem dado de cliente: só nomes de conjuntos, estados e motivos.)');
+    return l.join('\n').slice(0, 6000);
   }
   // Resultado geral de um envio único pelo que cada fonte deu.
   function hubEnvioEstado(rOnvio, rGestta, cancelado) {
@@ -4030,5 +4084,5 @@
     return resultados;
   }
 
-  g.OC = { hubUrlValida, hubEnvioPainel, hubEnvioEstado, hubTarefaDoConjunto, hubParaReenviar, testarEmpregadosEmpresa, extratoContribuintes, lerFolhaContribuintes, resumoFolha, tipoCalculo, competenciaMinima, FOLHA_V, FOLHA_MESES_QUADRO, testarFolhaEmpresa, PASTA_PESSOAL, testarFolha, competenciaDoNome, FOLHA_COLUNAS, negritoUnicode, aplicarDestaques, ehEscritorioProprio, sondarEmpregados, montarLoteHub, HUB_CATEGORIAS, tabelaAnaliseSolicitacoes, tabelaAnaliseEquipe, hubPlano, hubExecutar, hubPartesDe, partirTabela, tabelaLista, tabelaPessoais, tabelaCnd, tabelaNfe, lerEscritorio, lerDocumentos, lerNoticias, slugHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, SETOR_NOMES, setoresVistos, filtrarVisao, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, dentroDoHorario, planoDistribuicaoAuto, acaoConcluir, agruparSugestoes, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, acaoAnalise, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, mensagensProntas, marcadoresPendentes, observacoesFaltantes, avisosResposta, situacaoEquivalente, despersonalizar, previsaoPorEmpresa, lerMovimentadas, soConcluidas, grupoConclusao, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { hubAlimenta, hubAlvo, hubDiagnostico, hubUrlValida, hubEnvioPainel, hubEnvioEstado, hubTarefaDoConjunto, hubParaReenviar, testarEmpregadosEmpresa, extratoContribuintes, lerFolhaContribuintes, resumoFolha, tipoCalculo, competenciaMinima, FOLHA_V, FOLHA_MESES_QUADRO, testarFolhaEmpresa, PASTA_PESSOAL, testarFolha, competenciaDoNome, FOLHA_COLUNAS, negritoUnicode, aplicarDestaques, ehEscritorioProprio, sondarEmpregados, montarLoteHub, HUB_CATEGORIAS, tabelaAnaliseSolicitacoes, tabelaAnaliseEquipe, hubPlano, hubExecutar, hubPartesDe, partirTabela, tabelaLista, tabelaPessoais, tabelaCnd, tabelaNfe, lerEscritorio, lerDocumentos, lerNoticias, slugHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, SETOR_NOMES, setoresVistos, filtrarVisao, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, dentroDoHorario, planoDistribuicaoAuto, acaoConcluir, agruparSugestoes, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, acaoAnalise, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, mensagensProntas, marcadoresPendentes, observacoesFaltantes, avisosResposta, situacaoEquivalente, despersonalizar, previsaoPorEmpresa, lerMovimentadas, soConcluidas, grupoConclusao, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);

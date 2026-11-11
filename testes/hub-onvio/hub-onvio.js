@@ -580,6 +580,54 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await fr.locator('#envioBox').waitFor();
   });
 
+  await passo('Desatualizados (Hub 340): a Entrada de dados mostra o que pode estar desatualizado e o que alimenta, pede à extensão só o que falta, o conferido no fim tira da lista, e o erro que continua tem o diagnóstico para copiar', async () => {
+    const cfg = await page.evaluate(() => window.__db.ler('ing_config/cfg'));
+    await page.evaluate(() => { if (!window.__msgs) { window.__msgs = []; window.addEventListener('message', (e) => { if (e.data && e.data.ctlhub === 1 && e.data.de === 'hub') window.__msgs.push(e.data); }); } window.__msgs.length = 0; });
+    await page.evaluate(() => { if (!window.__resp340) { window.__resp340 = true; window.addEventListener('message', (e) => { const d = e.data; if (d && d.ctlhub === 1 && d.de === 'hub' && d.tipo === 'pedido') window.postMessage({ ctlhub: 1, de: 'ext', tipo: 'pedidoAck', id: d.id, ok: true, iniciado: d.acao === 'atualizar' }, '*'); }); } });
+    // um conjunto que não chega há 30 h
+    const cnd = await page.evaluate(() => window.__db.ler('ing_dados/onvio~clientes-cnd'));
+    await page.evaluate(([c]) => window.__db.semear('ing_dados/onvio~clientes-cnd', Object.assign({}, c, { recebidoEm: Date.now() - 30 * 3600e3 })), [cnd]);
+    await page.evaluate(() => document.querySelectorAll('dialog[open]').forEach((d) => d.close()));
+    await page.evaluate(() => window.__hubApi.abrirModulo('fontes'));
+    await page.waitForSelector('#fontes-frame', { state: 'visible' });
+    await page.evaluate(() => window.postMessage({ ctlhub: 1, de: 'ext', tipo: 'conectado', versao: '0.94.0' }, '*'));
+    const box = fr.locator('#desatBox');
+    await box.waitFor({ timeout: 8000 });
+    await fr.locator('#desatBox li:has-text("Clientes")').first().waitFor({ timeout: 8000 });
+    const txt = await box.textContent();
+    assert.match(txt, /sem atualizar há 30 h/);
+    assert.match(txt, /Alimenta: a ficha da empresa \(CNPJ e inscrições\) e o cadastro único de empresas/);
+    // o botão pede à extensão só o que falta
+    await fr.locator('#desatAtualizar').waitFor({ timeout: 8000 });
+    await fr.locator('#desatAtualizar').click();
+    await page.waitForFunction(() => window.__msgs.some((m) => m.tipo === 'pedido' && m.acao === 'atualizar' && m.alvo), null, { timeout: 5000 });
+    const ped = await page.evaluate(() => window.__msgs.find((m) => m.tipo === 'pedido' && m.alvo));
+    assert.ok(ped.alvo.onvio.includes('clientes-cnd'), JSON.stringify(ped.alvo));
+    // o fim do envio confere o conjunto (enviado ou sem mudança): sai da lista
+    const fim = { v: 1, versao: '0.94.0', id: 'e340', origem: 'hub', estado: 'ok', fase: '', iniciouEm: new Date().toISOString(), terminouEm: new Date().toISOString(), abas: {}, avisos: [], tentativas: 0,
+      fontes: [{ id: 'onvio', nome: 'Onvio', estado: 'ok', conjuntos: [{ id: 'clientes-cnd', rotulo: 'Clientes de CND', ok: true, igual: true }] }, { id: 'gestta', nome: 'Gestta', estado: 'fora', conjuntos: [] }] };
+    await page.evaluate(([e, t]) => window.postMessage({ ctlhub: 1, de: 'ext', tipo: 'progresso', token: t, envio: Object.assign({}, e, { estado: 'enviando', terminouEm: '' }) }, '*'), [fim, cfg.token]);
+    await page.waitForTimeout(300);
+    await page.evaluate(([e, t]) => window.postMessage({ ctlhub: 1, de: 'ext', tipo: 'progresso', token: t, envio: e }, '*'), [fim, cfg.token]);
+    await page.waitForFunction(() => !!(window.__db.ler('ing_envio/conferidos') || {})['onvio_clientes-cnd'], null, { timeout: 6000 });
+    await fr.locator('#desatBox li:has-text("Clientes de CND")').waitFor({ state: 'detached', timeout: 8000 }).catch(() => {});
+    assert.doesNotMatch(await box.textContent(), /Clientes de CND/, 'conferido no fim do envio: sai da lista');
+    // o erro que continuou depois dos reenvios: o diagnóstico para copiar e o que deixa de alimentar
+    const comErro = Object.assign({}, fim, { id: 'e341', estado: 'parcial', tentativas: 2, diagnostico: 'Control Onvio · diagnóstico do envio ao Hub\n[Onvio] parcial', fontes: [{ id: 'onvio', nome: 'Onvio', estado: 'parcial', conjuntos: [{ id: 'clientes-nfe', rotulo: 'Clientes de NF-e', ok: false, motivo: 'sem-resposta', alimenta: 'o certificado digital e o apelido do Onvio de cada empresa (ficha, Fiscal e cadastro único)' }] }, { id: 'gestta', nome: 'Gestta', estado: 'fora', conjuntos: [] }] });
+    await page.evaluate(([e, t]) => window.postMessage({ ctlhub: 1, de: 'ext', tipo: 'progresso', token: t, envio: Object.assign({}, e, { estado: 'enviando' }) }, '*'), [comErro, cfg.token]);
+    await page.waitForTimeout(300);
+    await page.evaluate(([e, t]) => window.postMessage({ ctlhub: 1, de: 'ext', tipo: 'progresso', token: t, envio: e }, '*'), [comErro, cfg.token]);
+    await fr.locator('#envDiag').waitFor({ timeout: 8000 });
+    const env = await fr.locator('#envioBox').textContent();
+    assert.match(env, /Ainda com erro depois de 2 reenvios automáticos/);
+    assert.match(env, /Deixa sem atualizar no Hub: o certificado digital/);
+    assert.match(await box.textContent(), /Clientes de NF-e.*deu erro no último envio/);
+    await fr.locator('#envDiag').click();
+    await fr.locator('#envDiagTxt').waitFor({ timeout: 4000 }).catch(() => {});          // sem área de transferência no teste: o texto aparece para copiar à mão
+    if (await fr.locator('#envDiagTxt').count()) assert.match(await fr.locator('#envDiagTxt').inputValue(), /diagnóstico do envio ao Hub/);
+    if (CAP) await (await page.$('#fontes-frame')).screenshot({ path: path.join(CAP, 'entrada-desatualizados.png') });
+  });
+
   await passo('Carteira (Hub 338): a carteira escolhida aparece numa faixa em todas as abas do DP, não fica lembrada e o clique num analista da Cartela filtra só a Cartela', async () => {
     await page.evaluate(() => document.querySelectorAll('dialog[open]').forEach((d) => d.close()));
     await page.evaluate(() => window.__hubApi.abrirModulo('dp'));

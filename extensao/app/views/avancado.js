@@ -186,7 +186,7 @@ async function estadoHub(el) {
   const pinta = (alvo, e, cmd) => {
     const aberto = alvo.querySelector('details.adv-todos[open]');
     const barra = e.estado === 'enviando' && e.total ? '<div class="adv-barra" role="progressbar" aria-valuemin="0" aria-valuemax="' + e.total + '" aria-valuenow="' + e.feito + '"><i style="width:' + Math.round(e.feito / e.total * 100) + '%"></i></div>' : '';
-    const li = l => '<li class="adv-' + l.tom + '"' + (l.dica && l.dica !== l.texto ? ' title="' + esc(l.dica) + '"' : '') + '><span aria-hidden="true">' + ICO[l.tom] + '</span><b>' + esc(l.rotulo) + '</b><span>' + esc(l.texto) + '</span></li>';
+    const li = l => '<li class="adv-' + l.tom + '"' + (l.dica && l.dica !== l.texto ? ' title="' + esc(l.dica) + '"' : '') + '><span aria-hidden="true">' + ICO[l.tom] + '</span><b>' + esc(l.rotulo) + '</b><span>' + esc(l.texto) + (l.alimenta ? '<small class="adv-alimenta">Deixa sem atualizar no Hub: ' + esc(l.alimenta) + '</small>' : '') + '</span></li>';
     const ls = e.linhas.slice().sort((a, b) => ordem[a.tom] - ordem[b.tom]), prob = ls.filter(l => l.tom === 'erro' || l.tom === 'aviso'), resto = ls.filter(l => l.tom !== 'erro' && l.tom !== 'aviso');
     const r = e.resumo || {}, chip = (n, cls, rot) => n ? '<span class="adv-chip adv-' + cls + '">' + ICO[cls] + ' ' + n + ' ' + rot + '</span>' : '';
     const resumo = e.linhas.length ? '<div class="adv-resumo">' + chip(r.ok, 'ok', r.ok === 1 ? 'enviado' : 'enviados') + chip(r.igual, 'igual', 'sem mudança') + chip(r.aviso, 'aviso', r.aviso === 1 ? 'aviso' : 'avisos') + chip(r.erro, 'erro', r.erro === 1 ? 'erro' : 'erros') + '</div>' : '';
@@ -209,6 +209,20 @@ async function estadoHub(el) {
     cabEl.innerHTML = '<div class="adv-resumo-l"><p class="adv-msg' + (['erro', 'interrompido'].includes(ce.estado) ? ' adv-msg-erro' : '') + '">' + esc(ce.texto) + '</p>' + (ce.rodando ? '<button type="button" class="btn btn-sm" id="adv-cancelar">Cancelar</button>' : '') + '</div>' +
       (ce.abas ? '<p class="fraco adv-abas">' + esc(ce.abas) + '</p>' : '') + (ce.avisos || []).map(a => '<p class="adv-msg adv-msg-erro">' + esc(a) + '</p>').join('');
     const bc = $('#adv-cancelar', cabEl); if (bc) bc.onclick = async () => { bc.disabled = true; const r = await enviar({ cmd: 'hubCancelar' }); toast(r && r.ok ? 'Cancelando: o envio para no próximo conjunto' : OP.msgHub(r)); };
+    // 0.94.0: o erro continuou depois dos reenvios automáticos: o diagnóstico para copiar (só nomes, estados e motivos)
+    if (!ce.rodando && hubEnvio) {
+      const { hubSync: hs, hubSyncGestta: hg } = await ler(['hubSync', 'hubSyncGestta']);
+      const pn = OC.hubEnvioPainel(hubEnvio, hs, hg, chrome.runtime.getManifest().version);
+      if (pn.diagnostico) {
+        const n = pn.tentativas || 0;
+        cabEl.insertAdjacentHTML('beforeend', '<div class="adv-resumo-l"><span class="adv-msg adv-msg-erro">Ainda com erro' + (n ? ' depois de ' + n + ' reenvio' + (n === 1 ? '' : 's') + ' automático' + (n === 1 ? '' : 's') : '') + '.</span><button type="button" class="btn btn-sm" id="adv-envio-diag"><svg class="ic"><use href="#i-copy"/></svg>Copiar diagnóstico</button></div>');
+        // sem área de transferência (permissão negada), o texto aparece selecionado para copiar à mão
+        $('#adv-envio-diag', cabEl).onclick = async () => {
+          try { await navigator.clipboard.writeText(pn.diagnostico); toast('Diagnóstico copiado: cole numa mensagem para quem cuida da extensão'); }
+          catch (e) { let ta = $('#adv-envio-diag-txt', cabEl); if (!ta) { cabEl.insertAdjacentHTML('beforeend', '<textarea id="adv-envio-diag-txt" class="adv-console" readonly rows="8" aria-label="Diagnóstico do envio"></textarea>'); ta = $('#adv-envio-diag-txt', cabEl); } ta.value = pn.diagnostico; ta.focus(); ta.select(); toast('Selecione e copie o diagnóstico (Ctrl+C)'); }
+        };
+      }
+    }
     const bs = $('#adv-sincronizar', el); if (bs) bs.disabled = ce.rodando;
   }
   pinta(envio, OP.linhasEnvio(hubSync, { nome: 'do Onvio' }), 'hubSincronizar');

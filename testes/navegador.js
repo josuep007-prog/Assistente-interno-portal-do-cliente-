@@ -1266,6 +1266,19 @@ await passo('app · Configurações → Avançado (0.69.0): cinco partes com o e
     assert.equal(await p.$$eval('#adv-gestta-enviar, #adv-gesttaAuto', e => e.length), 0, 'sem botão nem automático à parte para o Gestta');
     await p.click('#adv-cancelar');
     await p.waitForFunction(() => (window.__msgs || []).some(m => m.cmd === 'hubCancelar'));
+    // 0.94.0: o erro diz o que deixa sem atualizar no Hub; o envio que terminou com erro depois dos reenvios automáticos dá o diagnóstico para copiar
+    assert.match(await p.textContent('#adv-envio .adv-res li.adv-erro'), /Deixa sem atualizar no Hub: a ficha da empresa \(CNPJ e inscrições\)/);
+    assert.equal(await p.$('#adv-envio-diag'), null, 'enquanto envia, nada de diagnóstico');
+    await p.evaluate(() => chrome.storage.local.set({ hubEnvio: { id: 'e2', origem: 'auto', estado: 'parcial', fase: '', iniciouEm: new Date().toISOString(), terminouEm: new Date().toISOString(), pulso: Date.now(), abas: { hub: 'abriu', onvio: 'aberta', gestta: 'abriu' }, avisos: [], tentativas: 2, reenvios: { onvio: 2, gestta: 0 } } }));
+    await p.waitForSelector('#adv-envio-diag');
+    assert.match(await p.textContent('#adv-envio-cab'), /Ainda com erro depois de 2 reenvios automáticos/);
+    await p.evaluate(() => { navigator.clipboard.writeText = async (t) => { window.__copiado = t; }; });
+    await p.click('#adv-envio-diag');
+    await p.waitForFunction(() => !!window.__copiado);
+    const diag = await p.evaluate(() => window.__copiado);
+    assert.match(diag, /^Control Onvio · diagnóstico do envio ao Hub/);
+    assert.match(diag, /Clientes de CND \(clientes-cnd\): sem-resposta · alimenta: a ficha da empresa/);
+    assert.doesNotMatch(diag, /ABCDEF123456/, 'sem o código de pareamento');
     if (process.env.CAP) await (await p.$('#adv-envio')).screenshot({ path: process.env.CAP + '/avancado-envio-' + estilo + '.png' });
     // dados pessoais pedem confirmação antes de ligar
     await p.click('.adv-cat input[data-cat="pessoais"]');

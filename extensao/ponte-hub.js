@@ -63,7 +63,10 @@
       const id = String(d.id).slice(0, 60), acao = ['atualizar', 'cancelar', 'estado'].includes(d.acao) ? d.acao : 'estado', origem = e.source;
       hub.em = Date.now();
       try {
-        chrome.runtime.sendMessage({ cmd: 'hubPedido', acao }).then(r => {
+        // Hub 340: "só o que falta" vem como listas de nomes de conjuntos (o service worker confere cada nome)
+        const lst = v => Array.isArray(v) ? v.slice(0, 200).map(x => String(x).slice(0, 80)) : [];
+        const alvo = acao === 'atualizar' && d.alvo && typeof d.alvo === 'object' ? { onvio: lst(d.alvo.onvio), gestta: lst(d.alvo.gestta) } : undefined;
+        chrome.runtime.sendMessage({ cmd: 'hubPedido', acao, alvo }).then(r => {
           try { origem.postMessage(Object.assign({ ctlhub: 1, de: 'ext', tipo: 'pedidoAck', id }, r || { ok: false, motivo: 'sem-resposta' }), '*'); } catch (x) { /* quadro fechado */ }
         }).catch(() => {});
       } catch (x) { /* extensão atualizada */ }

@@ -45,6 +45,12 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
 
+## Novidades da v0.94.0 (11/11/2026): o erro se refaz sozinho, e o Hub diz o que está velho
+
+- **Reenvio automático.** Quando um conjunto dá erro no envio ao Hub, a extensão tenta de novo sozinha, só aquele conjunto, até 2 vezes (depois de 15 s e de 30 s). Erro que não muda tentando de novo (código errado, extensão antiga, login sem acesso, sem sessão) não é repetido. O "Último envio" diz quantos reenvios houve.
+- **O que o erro deixa sem atualizar.** Cada erro diz o que ele alimenta no Hub (por exemplo, "Clientes de NF-e: o certificado digital e o apelido do Onvio de cada empresa"), na extensão e na Entrada de dados.
+- **Diagnóstico para copiar.** Se o erro continuar depois dos reenvios, aparece **Copiar diagnóstico**: um texto com versão, abas, cada conjunto com erro, o motivo e o que ele alimenta, para colar numa mensagem. Só nomes de conjuntos, estados e motivos, nunca dado de cliente nem o código de pareamento.
+- **No Hub (340), "Pode estar desatualizado".** A Entrada de dados lista os conjuntos que não chegam há mais de 26 horas (a folha, 8 dias), os que vieram incompletos e os que deram erro no último envio, com o que cada um alimenta. O botão **Atualizar só o que falta** (coordenação, com a extensão neste Chrome) pede à extensão só esses conjuntos, abrindo e fechando o que precisar.
 ## Novidades da v0.93.0 (11/11/2026): trabalhar no Gestta pela extensão e o envio ao Hub sem o limite de 80 partes
 
 - Pedido do Josué: "tá na hora da extensão conseguir interagir com o Gestta igual acontece no Onvio e o analista consiga trabalhar por cima". Aprovadas quatro ações, mapeadas na empresa de teste em 11/11/2026 (`mapeamento/gestta-2026-11-04.md`, "Ações mapeadas").
@@ -58,6 +64,7 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 - **A confirmar no Gestta real:** o envio de arquivo pela tela do Gestta leva um cabeçalho próprio (`__setxhr_`) que a extensão não manda; se o Gestta recusar o arquivo, a mensagem aparece no painel.
 - **Sem o limite de 80 partes (já valendo no Hub):** Pedido do Josué: "pode deixar sem limite, bote pra ler tudo que tiver". O envio ao Control Hub cortava cada conjunto em 80 partes (cerca de 11 MB); a lista de tarefas do Gestta já ocupava 47. Agora o limite é de 1.000 partes (cerca de 140 MB) na extensão (`HUB_PARTES_MAX` no `core.js`, `HUB_GESTTA_PARTES_MAX` no `gestta.js`) e no Hub (`ING_PARTES_MAX`, Hub 332; a Entrada de dados abre até 1.000 partes). Na prática é ler tudo: o número só protege de um envio sem fim.
 - Cada parte é um documento no banco do Hub (limite de 5.000); conjuntos muito grandes ocupam mais. O "Uso do banco" mostra quanto.
+
 
 ## Novidades da v0.92.0 (11/11/2026): um envio só ao Hub, pedido de qualquer lado
 
