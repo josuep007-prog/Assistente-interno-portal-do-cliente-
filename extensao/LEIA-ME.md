@@ -45,6 +45,13 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
 
+## Novidades da v0.93.0 (11/11/2026): o erro se refaz sozinho, e o Hub diz o que está velho
+
+- **Reenvio automático.** Quando um conjunto dá erro no envio ao Hub, a extensão tenta de novo sozinha, só aquele conjunto, até 2 vezes (depois de 15 s e de 30 s). Erro que não muda tentando de novo (código errado, extensão antiga, login sem acesso, sem sessão) não é repetido. O "Último envio" diz quantos reenvios houve.
+- **O que o erro deixa sem atualizar.** Cada erro diz o que ele alimenta no Hub (por exemplo, "Clientes de NF-e: o certificado digital e o apelido do Onvio de cada empresa"), na extensão e na Entrada de dados.
+- **Diagnóstico para copiar.** Se o erro continuar depois dos reenvios, aparece **Copiar diagnóstico**: um texto com versão, abas, cada conjunto com erro, o motivo e o que ele alimenta, para colar numa mensagem. Só nomes de conjuntos, estados e motivos, nunca dado de cliente nem o código de pareamento.
+- **No Hub (340), "Pode estar desatualizado".** A Entrada de dados lista os conjuntos que não chegam há mais de 26 horas (a folha, 8 dias), os que vieram incompletos e os que deram erro no último envio, com o que cada um alimenta. O botão **Atualizar só o que falta** (coordenação, com a extensão neste Chrome) pede à extensão só esses conjuntos, abrindo e fechando o que precisar.
+
 ## Novidades da v0.92.0 (11/11/2026): um envio só ao Hub, pedido de qualquer lado
 
 - **Onvio e Gestta num envio só.** Em Configurações › Avançado › Control Hub, o botão **Atualizar o Hub agora** leva o resumo, o Onvio e o Gestta juntos. Não há mais o botão nem o automático à parte do Gestta (os conjuntos do Gestta continuam escolhidos ali).
