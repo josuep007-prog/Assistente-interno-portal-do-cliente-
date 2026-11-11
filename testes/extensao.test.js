@@ -601,7 +601,13 @@ test('manifesto: painel só no Portal do Cliente, sem painel lateral do Chrome, 
   assert.equal(painelPages.length, 1);
   assert.deepEqual(painelPages[0].matches, ['https://onvio.com.br/br-portal-do-cliente/*'], 'painel só no Portal do Cliente (nada de /staff/)');
   // Onvio, e no Gestta (0.72.0) só a camada das Tarefas do Gestta
-  for (const c of m.content_scripts) for (const u of c.matches) assert.ok(u.startsWith('https://onvio.com.br/') || (u === 'https://app.gestta.com.br/*' && c.js.join() === 'shell-gestta.js'), 'nenhum script fora do Onvio e do Gestta: ' + u);
+  // 0.91.0: o botão em qualquer site (botao-geral.js) é o único script em todos os sites e exclui o Portal e o Gestta
+  const geral = m.content_scripts.filter(c => c.js.includes('botao-geral.js'));
+  assert.equal(geral.length, 1);
+  assert.deepEqual(geral[0].matches, ['https://*/*', 'http://*/*']);
+  assert.deepEqual(geral[0].exclude_matches, ['https://onvio.com.br/br-portal-do-cliente/*', 'https://app.gestta.com.br/*']);
+  assert.deepEqual(geral[0].js, ['botao-geral.js']);
+  for (const c of m.content_scripts.filter(c => !c.js.includes('botao-geral.js'))) for (const u of c.matches) assert.ok(u.startsWith('https://onvio.com.br/') || (u === 'https://app.gestta.com.br/*' && c.js.join() === 'shell-gestta.js'), 'nenhum script fora do Onvio e do Gestta: ' + u);
   const war = m.web_accessible_resources.flatMap(w => w.resources);
   for (const f of ['app/app.html', 'logo.svg']) assert.ok(war.includes(f), f + ' precisa ser acessível pela página');
   for (const w of m.web_accessible_resources) assert.ok(JSON.stringify(w.matches) === JSON.stringify(['https://onvio.com.br/*']) || (JSON.stringify(w.matches) === JSON.stringify(['https://app.gestta.com.br/*']) && w.resources.includes('app/gestta.html') && !w.resources.includes('app/app.html')), 'recursos só para o Onvio (e a tela do Gestta para o Gestta)');

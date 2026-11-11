@@ -518,6 +518,53 @@ assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br
   await gAba.close();
   assert.match((await tg()).linhas.join('\n'), /Nenhuma aba do Gestta aberta/);
   assert.ok(man.host_permissions.includes('https://app.gestta.com.br/*'), 'permissão do Gestta no manifesto');
+  // 0.91.0: o botão flutuante em qualquer site leva ao Onvio, ao Gestta ou aos dois, sem abrir a camada sozinha
+  for (const pg of ctx.pages()) if (/onvio\.com\.br|app\.gestta\.com\.br/.test(pg.url())) await pg.close();
+  await pagina.evaluate(() => chrome.storage.local.remove(['abrirPainelAoCarregar', 'botaoGeralOff', 'botaoGeralOcultos']));
+  const bg = await ctx.newPage();
+  await bg.route('https://exemplo.org/**', r => r.fulfill({ contentType: 'text/html; charset=utf-8', body: '<!doctype html><body>outro site</body>' }));
+  await bg.setViewportSize({ width: 1000, height: 700 });
+  await bg.goto('https://exemplo.org/');
+  const temBotao = () => bg.evaluate(() => !!document.getElementById('controlonvio-botao-geral'));
+  await esperarReal(temBotao, 10000);
+  const abrirMenu = async () => { await bg.bringToFront(); await bg.mouse.click(1000 - 18 - 22, 700 - 84 - 22); await sleepMs(250); };
+  const onvioAbas = () => ctx.pages().filter(pg => /onvio\.com\.br\/br-portal-do-cliente/.test(pg.url()));
+  const gesttaAbas = () => ctx.pages().filter(pg => /app\.gestta\.com\.br/.test(pg.url()));
+  // Onvio: abre uma guia no portal e a camada continua fechada (nunca abre sozinha)
+  await abrirMenu(); await bg.keyboard.press('Enter');
+  await esperarReal(() => onvioAbas().length > 0, 10000);
+  assert.equal(gesttaAbas().length, 0, 'só o Onvio');
+  await sleepMs(2500);
+  assert.equal(await cheia(onvioAbas()[0]), false, 'a camada do Onvio não abre sozinha');
+  // Gestta: a segunda opção abre o Gestta
+  await abrirMenu(); await bg.keyboard.press('ArrowDown'); await bg.keyboard.press('Enter');
+  await esperarReal(() => gesttaAbas().length > 0, 10000);
+  // reaproveita as guias: de novo "Os dois" não cria outras
+  const antesDe = ctx.pages().length;
+  await abrirMenu(); await bg.keyboard.press('ArrowDown'); await bg.keyboard.press('ArrowDown'); await bg.keyboard.press('Enter');
+  await sleepMs(1500);
+  assert.equal(ctx.pages().length, antesDe, '"Os dois" reaproveita as guias que já existem');
+  // "Os dois" do zero abre cada um na sua guia
+  for (const pg of [...onvioAbas(), ...gesttaAbas()]) await pg.close();
+  await abrirMenu(); await bg.keyboard.press('ArrowDown'); await bg.keyboard.press('ArrowDown'); await bg.keyboard.press('Enter');
+  await esperarReal(() => onvioAbas().length > 0 && gesttaAbas().length > 0, 10000);
+  // esconder neste site (último link do menu para cima) e mostrar de novo pela configuração
+  await abrirMenu(); await bg.keyboard.press('ArrowUp'); await bg.keyboard.press('ArrowUp'); await bg.keyboard.press('Enter');
+  await esperarReal(async () => !(await temBotao()), 8000);
+  assert.deepEqual((await pagina.evaluate(() => chrome.storage.local.get('botaoGeralOcultos'))).botaoGeralOcultos, ['exemplo.org']);
+  await pagina.evaluate(() => chrome.storage.local.remove('botaoGeralOcultos'));
+  await esperarReal(temBotao, 8000);
+  // desligado em todos os sites
+  await pagina.evaluate(() => chrome.storage.local.set({ botaoGeralOff: true }));
+  await esperarReal(async () => !(await temBotao()), 8000);
+  await pagina.evaluate(() => chrome.storage.local.remove('botaoGeralOff'));
+  await esperarReal(temBotao, 8000);
+  // no Portal do Cliente e no Gestta o botão geral não aparece (cada um tem o seu)
+  const portalQ = onvioAbas()[0], gesttaQ = gesttaAbas()[0];
+  assert.equal(await portalQ.evaluate(() => !!document.getElementById('controlonvio-botao-geral')), false, 'sem o botão geral no Portal do Cliente');
+  assert.equal(await gesttaQ.evaluate(() => !!document.getElementById('controlonvio-botao-geral')), false, 'sem o botão geral no Gestta');
+  await bg.close();
+  console.log('Botão em qualquer site: Onvio, Gestta ou os dois, sem abrir a camada; esconder e mostrar de novo');
   console.log('Gestta: leitura pela aba, só GET e a busca, token só na página');
 }
 
