@@ -367,7 +367,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     if (u.pathname.endsWith('/resumoVisualizarSalvarMsWordDoc')) { const n = u.searchParams.get('NrSolicitacao'); return r.fulfill({ headers: { 'content-type': 'application/msword; charset=windows-1252' }, body: Buffer.from(`<label class="textogrupo">Salários</label><label class="tituloClausula"><b>CLÁUSULA PRIMEIRA - PISO ${n}</b></label><label class="descricaoClausula">Piso de R$ 1.000,00.</label><label class="tituloClausula"><b>CLÁUSULA SEGUNDA - DATA-BASE</b></label><label class="descricaoClausula">Data-base em 1º de maio.</label>`, 'latin1') }); }
     return r.fulfill({ status: 404, body: '' });
   });
-  const pedirMed = (acao, extra, ms) => f6().evaluate(([a, x, t]) => new Promise(ok => { const id = 'm' + Math.random().toString(36).slice(2); window.acks[id] = ok; top.postMessage(Object.assign({ ctlhub: 1, de: 'hub', tipo: 'pedido', id, acao }, x), '*'); setTimeout(() => ok({ ok: false, motivo: 'sem-extensao' }), t); }), [acao, extra, ms || 4000]);
+  const pedirMed = (acao, extra, ms) => f6().evaluate(([a, x, t]) => new Promise(ok => { const id = 'm' + Math.random().toString(36).slice(2); window.acks[id] = ok; top.postMessage(Object.assign({ ctlhub: 1, de: 'hub', tipo: 'pedido', id, acao: a }, x), '*'); setTimeout(() => ok({ ok: false, motivo: 'sem-extensao' }), t); }), [acao, extra, ms || 4000]);
   assert.equal((await pedirMed('mediadorCnpjs', { cnpjs: ['11.222.333/0001-81', '123', '<x>'] })).ok, true);
   assert.deepEqual((await opc.evaluate(() => chrome.storage.local.get('mediadorCfg'))).mediadorCfg.cnpjs, ['11222333000181'], 'só CNPJs válidos ficam guardados');
   const nM = (await f6().evaluate(() => window.lotes)).length;
