@@ -246,7 +246,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   assert.deepEqual([...new Set(lg.map(x => x.tipoDado))].sort(), ['gestta-cartela', 'gestta-clientes', 'gestta-contatos', 'gestta-empresas-ativas', 'gestta-envios-onvio-erro', 'gestta-equipe', 'gestta-setores', 'gestta-tarefas', 'gestta-templates-sem-pasta']);
   assert.deepEqual([...new Set(lg.map(x => x.categoria))].sort(), ['alertas', 'cadastros', 'tarefas']);
   assert.ok(lg.every(x => x.token === TOKEN && /^g[a-z0-9]+$/.test(x.ciclo) && x.versaoExt), 'mesmo protocolo em partes');
-  const gtxt = JSON.stringify(lg);
+  const gtxt = JSON.stringify(lg).replace(/\d{4}-\d{2}-\d{2}T[\d:.]+Z/g, '');      // sem os carimbos de hora (".777Z" não é o valor simulado)
   for (const sx of ['SEGREDO-GESTTA', 'eyJ', 'coord@exemplo', 'ana@exemplo', '(27)', '777', '999', 'CONTROLTAX', 'last_login', 'permissions']) assert.ok(!gtxt.includes(sx), 'não vai ao Hub: ' + sx);
   assert.match(lg.find(x => x.tipoDado === 'gestta-contatos').tabela, /\tFiscal\t[^\t]*\tContato Ficticio\tcontato\.ficticio@exemplo\.com\tsim\t/, '0.88.0: quem do cliente recebe cada setor, com o e-mail');
   const tg = lg.find(x => x.tipoDado === 'gestta-tarefas');
