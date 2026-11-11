@@ -3948,6 +3948,54 @@
     if (!hubSync || hubSync.estado === 'enviando') return [];
     return [...new Set((hubSync.resultados || []).filter(r => !r.ok && r.categoria !== 'escritorio').map(r => hubTarefaDoConjunto(r.id)).filter(Boolean))];
   }
+  /* ---------- envio único ao Hub (0.92.0, Josué 11/11/2026: acompanhar o envio, Onvio e Gestta juntos, iniciar pelo Hub, sem abrir nada à mão) ----------
+   * Endereço do Hub: só a página de um artefato no claude.ai (aprendido da aba onde o Hub provou o código), sem querystring nem fragmento. */
+  function hubUrlValida(u) {
+    try {
+      const x = new URL(String(u || ''));
+      if (x.protocol !== 'https:' || x.hostname !== 'claude.ai' || x.username || x.password) return '';
+      if (!/^\/(?:artifact|code\/artifact|public\/artifacts)\/[A-Za-z0-9_-]{6,80}\/?$/.test(x.pathname)) return '';
+      return x.origin + x.pathname.replace(/\/$/, '');
+    } catch (e) { return ''; }
+  }
+  // O andamento que vai ao Hub (e à tela da extensão): só estados, nomes de conjuntos, contagens e motivos curtos. Nunca dado lido.
+  const ENVIO_ESTADOS = ['preparando', 'enviando', 'ok', 'parcial', 'erro', 'cancelado', 'interrompido'];
+  function hubFontePainel(id, nome, st, ev) {
+    const t = x => String(x == null ? '' : x).replace(/\b[0-9A-F]{20,}\b/gi, '…').slice(0, 160);
+    const nada = { id, nome, estado: 'aguardando', etapa: '', detalhe: '', feito: 0, total: 0, motivo: '', conjuntos: [] };
+    if (!st) return nada;
+    // o andamento da fonte é deste envio só se começou depois dele (senão é o de um envio anterior)
+    if (ev && ev.iniciouEm && st.iniciouEm && st.iniciouEm < ev.iniciouEm) {
+      if (['ok', 'parcial', 'erro', 'cancelado', 'interrompido'].includes(ev.estado)) return Object.assign(nada, { estado: 'fora', motivo: t(ev.fontes && ev.fontes[id] && ev.fontes[id].motivo) });
+      return nada;
+    }
+    const preso = st.estado === 'enviando' && st.pulso && Date.now() - st.pulso > 240000;
+    return {
+      id, nome, estado: preso ? 'interrompido' : (st.estado || 'aguardando'), etapa: t(st.etapa), detalhe: t(st.detalhe), feito: Number(st.feito) || 0, total: Number(st.total) || 0,
+      motivo: t(st.motivo), iniciouEm: st.iniciouEm || '', terminouEm: st.terminouEm || '',
+      conjuntos: (st.resultados || []).slice(0, 80).map(r => ({ id: t(r.id), rotulo: t(r.rotulo), ok: r.ok !== false, igual: r.motivo === 'sem-mudanca', nota: !!r.nota, cortado: !!r.cortado, motivo: r.motivo === 'sem-mudanca' ? '' : t(r.motivo), linhas: Number(r.linhas) || 0 }))
+    };
+  }
+  function hubEnvioPainel(ev, hubSync, hubSyncGestta, versao) {
+    const e = ev || {};
+    const preso = (e.estado === 'enviando' || e.estado === 'preparando') && e.pulso && Date.now() - e.pulso > 240000;
+    const fontes = [hubFontePainel('onvio', 'Onvio', hubSync, ev), hubFontePainel('gestta', 'Gestta', hubSyncGestta, ev)];
+    return {
+      v: 1, versao: String(versao || ''), id: String(e.id || ''), origem: ['hub', 'extensao', 'auto'].includes(e.origem) ? e.origem : '',
+      estado: preso ? 'interrompido' : ENVIO_ESTADOS.includes(e.estado) ? e.estado : (ev ? 'erro' : 'nunca'),
+      fase: String(e.fase || ''), iniciouEm: e.iniciouEm || '', terminouEm: e.terminouEm || '', motivo: String(e.motivo || '').slice(0, 160),
+      abas: Object.fromEntries(['hub', 'onvio', 'gestta'].map(k => [k, ['aberta', 'abriu', 'falhou', 'sem-sessao'].includes(e.abas && e.abas[k]) ? e.abas[k] : ''])),
+      avisos: (e.avisos || []).slice(0, 6).map(a => String(a).slice(0, 200)), fontes
+    };
+  }
+  // Resultado geral de um envio único pelo que cada fonte deu.
+  function hubEnvioEstado(rOnvio, rGestta, cancelado) {
+    if (cancelado) return 'cancelado';
+    const ok = r => r && (r.estado === 'ok' || (r.ok && !r.estado)), meio = r => r && r.estado === 'parcial';
+    if (ok(rOnvio) && ok(rGestta)) return 'ok';
+    if (ok(rOnvio) || ok(rGestta) || meio(rOnvio) || meio(rGestta)) return 'parcial';
+    return 'erro';
+  }
   // Executa o plano: lê cada tarefa, partilha cada conjunto e entrega pelo callback enviar(conjunto, partes).
   async function hubExecutar(fetcher, escolhidas, ctx, enviar, aoProgredir) {
     const tarefas = hubPlano(escolhidas).filter(t => !ctx.soTarefas || ctx.soTarefas.includes(t.id)), resultados = [];          // soTarefas: "Enviar só a folha" (0.70.1)
@@ -3982,5 +4030,5 @@
     return resultados;
   }
 
-  g.OC = { hubTarefaDoConjunto, hubParaReenviar, testarEmpregadosEmpresa, extratoContribuintes, lerFolhaContribuintes, resumoFolha, tipoCalculo, competenciaMinima, FOLHA_V, FOLHA_MESES_QUADRO, testarFolhaEmpresa, PASTA_PESSOAL, testarFolha, competenciaDoNome, FOLHA_COLUNAS, negritoUnicode, aplicarDestaques, ehEscritorioProprio, sondarEmpregados, montarLoteHub, HUB_CATEGORIAS, tabelaAnaliseSolicitacoes, tabelaAnaliseEquipe, hubPlano, hubExecutar, hubPartesDe, partirTabela, tabelaLista, tabelaPessoais, tabelaCnd, tabelaNfe, lerEscritorio, lerDocumentos, lerNoticias, slugHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, SETOR_NOMES, setoresVistos, filtrarVisao, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, dentroDoHorario, planoDistribuicaoAuto, acaoConcluir, agruparSugestoes, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, acaoAnalise, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, mensagensProntas, marcadoresPendentes, observacoesFaltantes, avisosResposta, situacaoEquivalente, despersonalizar, previsaoPorEmpresa, lerMovimentadas, soConcluidas, grupoConclusao, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { hubUrlValida, hubEnvioPainel, hubEnvioEstado, hubTarefaDoConjunto, hubParaReenviar, testarEmpregadosEmpresa, extratoContribuintes, lerFolhaContribuintes, resumoFolha, tipoCalculo, competenciaMinima, FOLHA_V, FOLHA_MESES_QUADRO, testarFolhaEmpresa, PASTA_PESSOAL, testarFolha, competenciaDoNome, FOLHA_COLUNAS, negritoUnicode, aplicarDestaques, ehEscritorioProprio, sondarEmpregados, montarLoteHub, HUB_CATEGORIAS, tabelaAnaliseSolicitacoes, tabelaAnaliseEquipe, hubPlano, hubExecutar, hubPartesDe, partirTabela, tabelaLista, tabelaPessoais, tabelaCnd, tabelaNfe, lerEscritorio, lerDocumentos, lerNoticias, slugHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, SETOR_NOMES, setoresVistos, filtrarVisao, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, dentroDoHorario, planoDistribuicaoAuto, acaoConcluir, agruparSugestoes, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, acaoAnalise, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, mensagensProntas, marcadoresPendentes, observacoesFaltantes, avisosResposta, situacaoEquivalente, despersonalizar, previsaoPorEmpresa, lerMovimentadas, soConcluidas, grupoConclusao, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);
