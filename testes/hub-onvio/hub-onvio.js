@@ -113,7 +113,13 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await page.waitForFunction(() => [...document.querySelectorAll('#dp-painel-grid .pn-card')].some(c => /^\s*Onvio/.test(c.textContent) && /6\s*Pendentes/.test(c.textContent) && /5\s*Vez do escritório/.test(c.textContent)), null, { timeout: 8000 });
     const t = await page.$eval('#dp-painel-grid', e => [...e.querySelectorAll('.pn-card')].map(c => c.textContent.replace(/\s+/g, ' ')).find(x => /^\s*Onvio/.test(x)));
     assert.match(t, /6\s*Pendentes/); assert.match(t, /5\s*Vez do escritório/); assert.match(t, /2\s*Prazos legais em 7 dias/);
-    assert.match(await page.textContent('#dp-painel-kpis'), /Alertas de pessoal.*|2/s);
+    // Hub 344 (Josué, 11/11/2026: "tira esses cards"; "deixe essa caixa horizontal"): sem os cartões do topo, e Carteiras larga, em colunas
+    assert.equal(await page.isHidden('#dp-painel-kpis'), true, 'sem os cartões do topo do Painel');
+    const cart = page.locator('#dp-painel-grid .pn-card.pn-wide:has(h3:text-is("Carteiras"))');
+    assert.equal(await cart.count(), 1, 'Carteiras ocupa a largura toda');
+    assert.ok(await cart.locator('.vbars .vbar .vbar-fill').count() >= 1, 'uma coluna por analista');
+    const hv = await cart.locator('.vbar-fill').first().evaluate((e) => e.style.height);
+    assert.match(hv, /%$/, 'a altura da coluna é a proporção de empresas');
     const al = await page.evaluate(() => window.__hubApi.api('dp').consultar('atrasos', {}));
     assert.ok(al && al.linhas !== undefined);
     if (CAP) await page.screenshot({ path: path.join(CAP, 'painel-claro.png') });
