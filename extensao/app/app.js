@@ -2,7 +2,7 @@
  * Rotas (#/inicio, #/fila, #/equipe, #/distribuir, #/lembretes, #/config, #/busca?q=),
  * trilho lateral, cabeçalho do módulo (título, abas, ao vivo, sino, Ver Onvio), busca em janela central
  * (/ ou Ctrl+K) e as janelas de detalhe e de lembrete. */
-import { estado, iniciarEstado, aoMudar, enviar, itens, minhas, marcarAlertasVistos } from './estado.js';
+import { estado, iniciarEstado, aoMudar, enviar, itens, minhas, marcarAlertasVistos, reaplicarVisao } from './estado.js';
 import { $, $$, esc, relativo, fmtHoraS, toast, normal, iniciais, pillSituacao, simples } from './util.js';
 import { abrirDetalhe, fecharDetalhe, detalheAberto } from './views/detalhe.js';
 import { abrirLembrete, fecharLembrete, lembreteAberto } from './views/lembrete-dlg.js';
@@ -326,9 +326,19 @@ async function atualizar() {
       return;
     }
     fecharVer(); fecharFoco(); fecharAnexos(); fecharLote(); fecharDetalhe(); fecharLembrete(); fecharNova(); desenhar(); });
+  // 0.92.0 (Josué, 11/11/2026: "ao mudar uma configuração, na aba separada ela não atualiza automaticamente se as abas do Gestta e do Onvio
+  // estiverem abertas e não aparece nenhum aviso"): o que muda na guia de Configurações vale aqui na hora, com um aviso curto
+  let avisoCfg = 0;
+  const avisarCfg = () => { if (SO_CONFIG) return; clearTimeout(avisoCfg); avisoCfg = setTimeout(() => toast('Configurações atualizadas: já valem nesta tela'), 400); };
+  addEventListener('storage', e => {
+    if (e.key === 'controlonvio-theme' && e.newValue) { document.documentElement.setAttribute('data-theme', e.newValue === 'dark' ? 'dark' : 'light'); iconeTema(); if (aoRedim) aoRedim(); if (SO_CONFIG) redesenharMantendo(); avisarCfg(); }
+    else if (e.key === 'controlonvio-estilo' && e.newValue) { document.documentElement.setAttribute('data-estilo', e.newValue === 'atual' ? 'atual' : 'simples'); redesenharMantendo(); aoVivo(); if (aoRedim) aoRedim(); avisarCfg(); }
+    else if (e.key === 'controlonvio-setor-visao') { reaplicarVisao(); avisarCfg(); }
+  });
   aoMudar(quais => {
+    if (quais.includes('usuario')) avisarCfg();
     const ocupado = detalheAberto() || anexosAbertos() || verAberto() || loteAberto() || lembreteAberto() || novaAberta() || !$('#cmdk').hidden || document.activeElement.matches('input, select, textarea') || document.querySelector('#vista details.menu[open]');
-    const relevante = quais.some(q => ['snap', 'settings', 'regras', 'lembretes', 'serie', 'eventos', 'excecoes', 'sugIgnoradas', 'distAuto', 'distLog'].includes(q)) && AO_VIVO.has(rota.nome);
+    const relevante = quais.some(q => ['snap', 'usuario', 'regras', 'lembretes', 'serie', 'eventos', 'excecoes', 'sugIgnoradas', 'distAuto', 'distLog'].includes(q)) && AO_VIVO.has(rota.nome);
     if (relevante && ocupado) redesenharDepois = true;
     if (relevante && !ocupado) {
       redesenharDepois = false;

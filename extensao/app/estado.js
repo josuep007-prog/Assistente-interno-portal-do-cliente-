@@ -29,6 +29,11 @@ export function escolherVisao(chave) {
 }
 // o service worker filtra as notificações pelo setor (só a chave do setor vai para o armazenamento da extensão)
 function gravarVisaoNoFundo() { try { chrome.storage.local.set({ visaoSetor: estado.visao || '' }); } catch (e) { /* fora da extensão */ } }
+// 0.92.0: o setor escolhido na guia de Configurações (outra guia, o mesmo armazenamento do navegador) vale aqui na hora
+export function reaplicarVisao() {
+  aplicar({});
+  ouvintes.forEach(fn => { try { fn(['snap']); } catch (e) { console.error(e); } });
+}
 export function aoMudar(fn) { ouvintes.add(fn); return () => ouvintes.delete(fn); }
 
 function aplicar(d) {
