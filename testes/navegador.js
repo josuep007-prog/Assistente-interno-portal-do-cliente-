@@ -2779,7 +2779,8 @@ function gtTarefas() {
 }
 const gtResp = (total, itens) => ({ gesttaTarefas: { ok: true, ano: new Date().getFullYear(), mes: new Date().getMonth() + 1, quem: 'eu', perfil: { id: GT_EU, papelNome: total ? 'Administrador' : 'Analista', total, setores: [{ id: 's1', nome: 'Fiscal' }] }, itens: itens || gtTarefas(), dia: itens || gtTarefas(), total: 8, cortado: false, lidoEm: new Date().toISOString() },
   gesttaEquipe: { ok: true, pessoas: [{ id: GT_EU, nome: 'Eu Mesmo' }, { id: GT_B, nome: 'Pessoa Beta' }] },
-  gesttaTarefa: { ok: true, tarefa: { _id: 'f00000000000000000000001', name: 'DCTF WEB', company_department: { name: 'Fiscal' }, owner: { name: 'Eu Mesmo' }, legal_date: new Date().toISOString(), customer_task_steps: [{ name: 'Conferir', order: 1, done: true }, { name: 'Transmitir', order: 2, done: false, required: true }], company_documents: [{ name: 'Recibo' }] } },
+  gesttaTarefa: { ok: true, tarefa: { _id: 'f00000000000000000000001', name: 'DCTF WEB', company_department: { name: 'Fiscal' }, owner: { name: 'Eu Mesmo' }, legal_date: new Date().toISOString(), customer_task_steps: [{ _id: 'e00000000000000000000001', name: 'Conferir', order: 1, done: true }, { _id: 'e00000000000000000000002', name: 'Transmitir', order: 2, done: false, required: true }], company_documents: [{ _id: 'd00000000000000000000001', name: 'Recibo', has_documents_integration: true, temArquivo: false }] } },
+  gesttaAcao: { ok: true, tarefa: { _id: 'f00000000000000000000001', status: 'OPEN' } },
   gesttaHistorico: { ok: true, total: 4, paginas: 1, eventos: [
     { quando: new Date().toISOString(), rot: 'Documento não foi ao portal', tom: 'alerta', doc: 'Recibo DCTF', motivo: 'a pasta do portal não está configurada', quem: null, texto: '', auto: true },
     { quando: new Date(Date.now() - 36e5).toISOString(), rot: 'O cliente baixou o documento', tom: 'cliente', doc: 'Guia', motivo: '', quem: { nome: 'Contato Ficticio', cliente: true }, texto: '' },
@@ -2964,6 +2965,73 @@ await passo('Gestta · Tarefas (0.77.0): Meu dia com o detalhe ao lado e a linha
   await fr.click('.gl-r [data-abrir="f00000000000000000000001"]');
   await p.waitForFunction(() => location.hash === '#/sidebar/task/overview/dashboard/f00000000000000000000001');
   assert.deepEqual(p.erros, []);
+});
+await passo('Gestta · Tarefas (0.92.0): no detalhe, marcar etapa, impedimento com motivo, comentário interno e enviar arquivo, sempre com confirmação; Esc fecha só a confirmação', async () => {
+  for (const estilo of ['simples', 'atual']) {
+    const { p, fr } = await abrirGestta(gtResp(true), { estilo });
+    const acoes = () => fr.evaluate(() => (window.__msgs || []).filter(m => m.cmd === 'gesttaAcao'));
+    await fr.waitForSelector('#gd-det [data-gp-etapa]');
+    assert.deepEqual(await fr.$$eval('#gd-det [data-gp-acao]', l => l.map(b => b.textContent.trim())), ['Concluir tarefa', 'Registrar impedimento'], 'tarefa aberta: concluir ou impedir');
+    // etapa: clicar abre a confirmação; nada sai antes de confirmar
+    await fr.click('#gd-det [data-gp-etapa="e00000000000000000000002"]');
+    await fr.waitForSelector('#gd-det .gp-conf');
+    assert.match(await fr.textContent('#gd-det .gp-conf'), /Marcar a etapa “Transmitir” como feita\?/);
+    assert.equal((await acoes()).length, 0, 'nada sai antes de confirmar');
+    // Esc fecha só a confirmação (o painel continua)
+    await fr.press('#gd-det #gp-conf-ok', 'Escape');
+    await fr.waitForSelector('#gd-det .gp-conf', { state: 'detached' });
+    assert.ok(await fr.$('#gd-det .gp-passos'), 'o detalhe continua aberto');
+    await fr.click('#gd-det [data-gp-etapa="e00000000000000000000002"]');
+    if (process.env.CAP) await p.screenshot({ path: path.join(process.env.CAP, 'gestta-acao-confirmar-' + estilo + '.png') });
+    await fr.click('#gd-det #gp-conf-ok');
+    await fr.waitForSelector('#gd-det .gp-aviso.ok');
+    assert.deepEqual((await acoes()).map(m => [m.acao, m.id, m.etapa, m.feita]), [['etapa', 'f00000000000000000000001', 'e00000000000000000000002', true]]);
+    assert.match(await fr.textContent('#gd-det .gp-aviso'), /Etapa marcada como feita no Gestta/);
+    if (process.env.CAP) await p.screenshot({ path: path.join(process.env.CAP, 'gestta-acao-feita-' + estilo + '.png') });
+    if (process.env.CAP) { await fr.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark')); await fr.click('#gd-det [data-gp-acao="impedir"]'); await fr.waitForSelector('#gd-det #gp-conf-campo'); await p.screenshot({ path: path.join(process.env.CAP, 'gestta-acao-escuro-' + estilo + '.png') }); await fr.click('#gd-det #gp-conf-nao'); await fr.evaluate(() => document.documentElement.setAttribute('data-theme', 'light')); }
+    // impedimento: o motivo é obrigatório
+    await fr.click('#gd-det [data-gp-acao="impedir"]');
+    await fr.waitForSelector('#gd-det #gp-conf-campo');
+    await fr.click('#gd-det #gp-conf-ok');
+    await fr.waitForSelector('#gd-det .gp-conf-falta');
+    assert.equal((await acoes()).length, 1, 'sem motivo, nada sai');
+    await fr.fill('#gd-det #gp-conf-campo', 'Aguardando o extrato do banco');
+    await fr.click('#gd-det #gp-conf-ok');
+    await fr.waitForFunction(() => (window.__msgs || []).filter(m => m.cmd === 'gesttaAcao').length === 2);
+    assert.deepEqual((await acoes())[1], { cmd: 'gesttaAcao', id: 'f00000000000000000000001', acao: 'impedir', motivo: 'Aguardando o extrato do banco' });
+    // comentário interno: o botão só liga com texto; a confirmação diz que o cliente não vê
+    await fr.waitForSelector('#gd-det .gp-aviso.ok');
+    assert.equal(await fr.$eval('#gd-det #gp-comentar', b => b.disabled), true);
+    await fr.fill('#gd-det #gp-com', 'Conferido com o extrato');
+    await fr.click('#gd-det #gp-comentar');
+    assert.match(await fr.textContent('#gd-det .gp-conf'), /Gravar este comentário.*Conferido com o extrato.*o cliente não vê/s);
+    await fr.click('#gd-det #gp-conf-ok');
+    await fr.waitForFunction(() => (window.__msgs || []).filter(m => m.cmd === 'gesttaAcao').length === 3);
+    assert.deepEqual((await acoes())[2], { cmd: 'gesttaAcao', id: 'f00000000000000000000001', acao: 'comentar', texto: 'Conferido com o extrato' });
+    await fr.waitForSelector('#gd-det .gp-aviso.ok');
+    assert.equal(await fr.$eval('#gd-det #gp-com', t => t.value), '', 'o rascunho some depois de gravar');
+    // documento: escolher o arquivo, conferir o aviso do portal e confirmar; vai o arquivo em base64 com nome e tipo
+    assert.match(await fr.textContent('#gd-det .gp-doc'), /Recibo.*vai ao Portal do Cliente.*Enviar arquivo/s);
+    const [fc] = await Promise.all([p.waitForEvent('filechooser'), fr.click('#gd-det [data-gp-doc="d00000000000000000000001"]')]);
+    await fc.setFiles({ name: 'recibo.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 teste') });
+    await fr.waitForSelector('#gd-det .gp-conf');
+    assert.match(await fr.textContent('#gd-det .gp-conf'), /Enviar “recibo\.pdf” \(1 KB\) no documento “Recibo”\?.*vai ao Portal do Cliente.*pode concluir a tarefa sozinho/s);
+    await fr.click('#gd-det #gp-conf-ok');
+    await fr.waitForFunction(() => (window.__msgs || []).filter(m => m.cmd === 'gesttaAcao').length === 4);
+    const doc = (await acoes())[3];
+    assert.deepEqual([doc.acao, doc.documento, doc.arquivo.nome, doc.arquivo.tipo, Buffer.from(doc.arquivo.base64, 'base64').toString()], ['documento', 'd00000000000000000000001', 'recibo.pdf', 'application/pdf', '%PDF-1.4 teste']);
+    // depois de cada ação, o detalhe e a lista são relidos
+    assert.ok((await fr.evaluate(() => (window.__msgs || []).filter(m => m.cmd === 'gesttaTarefas').length)) >= 2, 'a lista foi relida');
+    // erro do Gestta aparece no painel
+    await fr.evaluate(() => { window.__respostas.gesttaAcao = { ok: false, erro: 'Seu acesso do Gestta não permite esta ação nesta tarefa.' }; });
+    await fr.waitForSelector('#gd-det [data-gp-acao="concluir"]');
+    await fr.click('#gd-det [data-gp-acao="concluir"]');
+    assert.match(await fr.textContent('#gd-det .gp-conf'), /Ainda há etapas não marcadas.*Ainda há documento sem arquivo/s);
+    await fr.click('#gd-det #gp-conf-ok');
+    await fr.waitForSelector('#gd-det .gp-aviso.erro');
+    assert.match(await fr.textContent('#gd-det .gp-aviso.erro'), /não permite esta ação/);
+    await p.close();
+  }
 });
 await passo('Gestta · Tarefas (0.87.0): atalhos com ?, densidade compacta, Fechamento filtrado pelos números, abrir pelo Meu dia e voltar ao mesmo ponto', async () => {
   const { p, fr } = await abrirGestta(gtResp(true));

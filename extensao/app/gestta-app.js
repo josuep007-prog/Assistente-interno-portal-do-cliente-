@@ -437,6 +437,8 @@ addEventListener('message', e => {
 });
 setInterval(() => { if (E.visivel && !E.carregando && document.visibilityState === 'visible') ler(true); }, ATUALIZA_MIN * 60e3);
 setInterval(aoVivo, 30e3);
+// 0.92.0: depois de uma ação no painel (etapa, concluir, impedimento, comentário, documento), a lista é relida em silêncio
+addEventListener('gt-tarefa-mudou', () => { if (!E.carregando) ler(true); });
 document.documentElement.dataset.densidade = E.dens;
 quemRot();
 iconeTema();

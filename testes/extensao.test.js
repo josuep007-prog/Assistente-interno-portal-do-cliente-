@@ -3832,7 +3832,7 @@ test('Gestta · fechamento (0.75.0): o relatório em qualquer formato aceito, as
   assert.deepEqual(plano(OCG.filtrarTarefas(T, { analista: 'Ana' }, H).map(t => t._id)), ['a1', 'c1']);
   // detalhe: etapas internas e documentos, nunca arquivo, valor nem apontamento
   const det = OCG.limpar('tarefaDetalhe', { _id: 't', value: 9, timesheet: [1], customer_task_steps: [{ name: 'Conferir', order: 1, done: true, extra: 1 }], company_documents: [{ name: 'Recibo', file: 'BINARIO', disconsidered: false }], document_request: { active: true, requested_documents: [{ name: 'Extrato' }], notify_email: 'x@y' } });
-  assert.deepEqual(plano(det), { _id: 't', customer_task_steps: [{ name: 'Conferir', order: 1, done: true }], company_documents: [{ name: 'Recibo', disconsidered: false }], document_request: { active: true, requested_documents: [{ name: 'Extrato' }] } });
+  assert.deepEqual(plano(det), { _id: 't', customer_task_steps: [{ name: 'Conferir', order: 1, done: true }], company_documents: [{ name: 'Recibo', disconsidered: false, temArquivo: true }], document_request: { active: true, requested_documents: [{ name: 'Extrato' }] } });   // 0.92.0: só o sim/não do arquivo
   const pf = OCG.PEDIDOS.fechamento({ ano: 2026, mes: 11 });
   assert.equal(pf.tipo, 'fechamento'); assert.equal(pf.corpo.type, 'CUSTOMER_TASK'); assert.equal(OCG.leituraPermitida(pf.metodo, pf.url, pf.corpo).ok, true);
 });
@@ -4156,3 +4156,54 @@ test('0.89.0 · distribuição por setor: a Geral do Fiscal não vai para o DP q
   assert.equal(OC.creditarQuemConcluiu(conc, { c1: { a: 'Dani DP' } }, S)[0].resp, 'Fabio Fiscal', 'Dani só é conhecida no Pessoal');
 });
 
+
+/* ---------- Gestta (0.92.0): as quatro ações aprovadas em 11/11/2026 ---------- */
+test('Gestta (0.92.0): só as ações aprovadas, com o endereço, o método e os campos exatos do mapeamento; o resto é recusado', () => {
+  const E = OCG.escritaPermitida, A = 'https://api.gestta.com.br', T = '5f1e2d3c4b5a69788796a5b4', S = '6a5b4c3d2e1f00112233aabb';
+  // os pedidos montados pelo núcleo passam na regra
+  const casos = [
+    [{ acao: 'etapa', id: T, etapa: S, feita: true }, 'PUT', '/core/customer/task/' + T + '/step/' + S + '/done', { done: true }],
+    [{ acao: 'etapa', id: T, etapa: S, feita: false }, 'PUT', '/core/customer/task/' + T + '/step/' + S + '/done', { done: false }],
+    [{ acao: 'concluir', id: T }, 'PUT', '/es/task/' + T + '/status', { status: 'DONE' }],
+    [{ acao: 'reabrir', id: T }, 'PUT', '/es/task/' + T + '/status', { status: 'OPEN' }],
+    [{ acao: 'liberar', id: T }, 'PUT', '/es/task/' + T + '/status', { status: 'OPEN' }],
+    [{ acao: 'impedir', id: T, motivo: '  Aguardando o cliente  ' }, 'PUT', '/es/task/' + T + '/status', { status: 'IMPEDIMENT', justification: 'Aguardando o cliente' }],
+    [{ acao: 'comentar', id: T, texto: 'Conferido' }, 'POST', '/core/customer/task/' + T + '/history/comment', { message: 'Conferido', external: false, mentions: [], cc_mentions: [], files: [] }]
+  ];
+  for (const [o, m, cam, corpo] of casos) {
+    const p = OCG.pedidoAcao(o);
+    assert.equal(p.metodo, m, o.acao); assert.equal(new URL(p.url).pathname, cam, o.acao); assert.deepEqual(plano(p.corpo), corpo, o.acao);
+    assert.equal(E(p.metodo, p.url, p.corpo).ok, true, 'aceita: ' + o.acao);
+    assert.equal(OCG.leituraPermitida(p.metodo, p.url, p.corpo).ok, false, 'a regra de leitura continua recusando a escrita: ' + o.acao);
+  }
+  const doc = OCG.pedidoAcao({ acao: 'documento', id: T, documento: S, arquivo: { nome: 'recibo.pdf', tipo: 'application/pdf', base64: Buffer.from('%PDF-1').toString('base64') } });
+  assert.equal(doc.metodo, 'POST'); assert.equal(new URL(doc.url).pathname, '/es/upload/direct'); assert.equal(E(doc.metodo, doc.url, doc.corpo).ok, true, 'documento');
+  // o que nunca passa
+  const nao = [
+    ['DELETE', A + '/core/customer/task/' + T, {}], ['PUT', A + '/core/customer/task/' + T, { status: 'DONE' }],
+    ['POST', A + '/core/customer/task/' + T + '/step', { name: 'x', order: '1' }], ['POST', A + '/core/customer/task/service-order/template', { name: 'x' }],
+    ['PUT', A + '/core/customer/task/' + T + '/step/' + S + '/done', { done: 'sim' }], ['PUT', A + '/core/customer/task/' + T + '/step/' + S + '/done', { done: true, name: 'x' }],
+    ['PATCH', A + '/es/task/' + T + '/status', { status: 'DONE' }], ['PUT', A + '/es/task/' + T + '/status', { status: 'CANCELED' }], ['PUT', A + '/es/task/' + T + '/status', { status: 'IGNORED' }],
+    ['PUT', A + '/es/task/' + T + '/status', { status: 'IMPEDIMENT' }], ['PUT', A + '/es/task/' + T + '/status', { status: 'IMPEDIMENT', justification: '   ' }], ['PUT', A + '/es/task/' + T + '/status', { status: 'DONE', justification: 'x' }],
+    ['PUT', A + '/es/task/' + T + '/status?x=1', { status: 'DONE' }], ['PUT', 'https://outro.com/es/task/' + T + '/status', { status: 'DONE' }], ['PUT', A + '/es/task/abc/status', { status: 'DONE' }],
+    ['POST', A + '/core/customer/task/' + T + '/history/comment', { message: 'x', external: true, mentions: [], cc_mentions: [], files: [] }],
+    ['POST', A + '/core/customer/task/' + T + '/history/comment', { message: 'x', external: false, mentions: ['u'], cc_mentions: [], files: [] }],
+    ['POST', A + '/core/customer/task/' + T + '/history/comment', { message: 'x', external: false, mentions: [], cc_mentions: [], files: [{}] }],
+    ['POST', A + '/core/customer/task/' + T + '/history/comment', { message: 'x'.repeat(4001), external: false, mentions: [], cc_mentions: [], files: [] }],
+    ['POST', A + '/es/upload/direct', { customer_task: T, company_document: 'x', arquivo: { nome: 'a', tipo: '', base64: 'QQ==' } }],
+    ['POST', A + '/es/upload/direct', { customer_task: T, company_document: S, arquivo: { nome: '', tipo: '', base64: 'QQ==' } }],
+    ['POST', A + '/es/upload/direct', { customer_task: T, company_document: S, arquivo: { nome: 'a.pdf', tipo: '', base64: 'A'.repeat(21 * 1024 * 1024) } }],
+    ['POST', A + '/es/upload/multiple', { customer_task: T, company_document: S, arquivo: { nome: 'a.pdf', tipo: '', base64: 'QQ==' } }]
+  ];
+  for (const [m, u, c] of nao) assert.equal(E(m, u, c).ok, false, 'recusa: ' + m + ' ' + u + ' ' + JSON.stringify(c).slice(0, 60));
+  // a tela não consegue montar um pedido sem o que ele precisa
+  assert.ok(OCG.pedidoAcao({ acao: 'impedir', id: T }).erro); assert.ok(OCG.pedidoAcao({ acao: 'comentar', id: T, texto: ' ' }).erro);
+  assert.ok(OCG.pedidoAcao({ acao: 'etapa', id: T, etapa: 'x' }).erro); assert.ok(OCG.pedidoAcao({ acao: 'concluir', id: 'x' }).erro); assert.ok(OCG.pedidoAcao({ acao: 'excluir', id: T }).erro);
+});
+test('Gestta (0.92.0): o detalhe traz o id das etapas e dos documentos e se o documento tem arquivo (nunca o arquivo); depois da ação sai só o resumo', () => {
+  const det = OCG.limpar('tarefaDetalhe', { _id: 't1', customer_task_steps: [{ _id: 's1', name: 'Conferir', order: 1, done: true, created_at: 'x' }],
+    company_documents: [{ _id: 'd1', name: 'Recibo', has_documents_integration: true, file: { name: 'segredo.pdf', url: 'https://x' } }, { _id: 'd2', name: 'Guia' }] });
+  assert.deepEqual(plano(det.customer_task_steps), [{ _id: 's1', name: 'Conferir', order: 1, done: true }]);
+  assert.deepEqual(plano(det.company_documents), [{ _id: 'd1', name: 'Recibo', has_documents_integration: true, temArquivo: true }, { _id: 'd2', name: 'Guia', temArquivo: false }]);
+  assert.ok(!JSON.stringify(det).includes('segredo'));
+});

@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.91.0)
+# Control Onvio · ControlTax (v0.92.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,18 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.92.0 (11/11/2026): trabalhar no Gestta pela extensão
+
+- Pedido do Josué: "tá na hora da extensão conseguir interagir com o Gestta igual acontece no Onvio e o analista consiga trabalhar por cima". Aprovadas quatro ações, mapeadas na empresa de teste em 11/11/2026 (`mapeamento/gestta-2026-11-04.md`, "Ações mapeadas").
+- No detalhe da tarefa (Tarefas do Gestta, por cima ou ao lado no Meu dia):
+  - **etapas**: clicar numa etapa marca como feita ou desmarca;
+  - **Concluir tarefa**, **Reabrir tarefa** e **Registrar impedimento** (com o motivo, obrigatório) ou **Retirar impedimento**, conforme a situação da tarefa;
+  - **Comentário interno**: fica só para a equipe (o cliente não vê);
+  - **Enviar arquivo** em cada documento da tarefa (até 15 MB). Avisa quando o documento vai ao Portal do Cliente e que, se for o último que falta, o Gestta pode concluir a tarefa sozinho.
+- Toda ação passa por uma **confirmação no próprio painel** antes de ir ao Gestta (Esc cancela só a confirmação). Depois, o detalhe e a lista são relidos.
+- Segurança: a lista do que pode ser gravado é fechada (`OCG.escritaPermitida`: o método, o endereço e os campos exatos do mapeamento; nunca excluir, nunca comentário externo, nunca outro status), conferida no service worker e de novo dentro da aba; o token do Gestta continua só na página; só a tela da extensão pode pedir uma ação; nada é guardado (nem o texto, nem o arquivo, nem a resposta).
+- **A confirmar no Gestta real:** o envio de arquivo pela tela do Gestta leva um cabeçalho próprio (`__setxhr_`) que a extensão não manda; se o Gestta recusar o arquivo, a mensagem aparece no painel.
 
 ## Novidades da v0.91.0 (10/11/2026): o envio ao Hub sem o limite de 80 partes (Hub 332)
 

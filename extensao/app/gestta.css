@@ -240,6 +240,30 @@
 .gp-passos li.ok .gp-ck{background:var(--gt-mk-feita); border-color:var(--gt-mk-feita); color:var(--gt-mk-feita-tx)}
 .gp-docs li{font-size:13px; color:var(--ink); padding-left:14px; position:relative} .gp-docs li::before{content:""; position:absolute; left:2px; top:8px; width:5px; height:5px; border-radius:50%; background:var(--ink-3)}
 .gp-pe{display:flex; gap:8px; padding:12px 18px; border-top:1px solid var(--rule)}
+/* 0.92.0: ações na tarefa (botões, confirmação, etapas clicáveis, documentos e comentário) */
+.gp-acoes{display:flex; flex-wrap:wrap; gap:8px; margin-top:2px}
+.gp-conf{border:1px solid var(--blue-deep); border-left-width:4px; border-radius:var(--r); background:color-mix(in srgb, var(--blue-pale) 55%, var(--surface)); padding:12px 14px; display:flex; flex-direction:column; gap:8px}
+.gp-conf.perigo{border-color:var(--sit-sem)}
+.gp-conf-tx{margin:0; font-size:13.5px; font-weight:600; color:var(--ink); line-height:1.45}
+.gp-conf-lab{font-size:12px; font-weight:600; color:var(--ink-2)}
+.gp-conf textarea, .gp-com textarea{width:100%; box-sizing:border-box; font:inherit; font-size:13px; color:var(--ink); background:var(--surface); border:1px solid var(--rule); border-radius:var(--r); padding:8px 10px; resize:vertical; min-height:56px}
+.gp-conf textarea[aria-invalid="true"]{border-color:var(--sit-sem)}
+.gp-conf textarea::placeholder, .gp-com textarea::placeholder{color:var(--ink-3)}
+.gp-conf-falta{font-size:12px; color:var(--sit-sem-tx)}
+.gp-conf-extra{margin:0; padding-left:18px; font-size:12.5px; color:var(--ink-2); display:flex; flex-direction:column; gap:3px}
+.gp-conf-bt{display:flex; gap:8px; flex-wrap:wrap}
+.gp-aviso{display:flex; align-items:center; gap:8px; padding:9px 10px 9px 12px; border-radius:var(--r); font-size:13px; font-weight:600}
+.gp-aviso span{flex:1}
+.gp-aviso.ok{background:var(--ok-bg); color:var(--sit-cliente-tx); border:1px solid color-mix(in srgb, var(--sit-cliente) 40%, var(--surface))}
+.gp-aviso.erro{background:var(--late-bg); color:var(--sit-sem-tx); border:1px solid color-mix(in srgb, var(--sit-sem) 40%, var(--surface))}
+.gp-passos li:has(.gp-passo){padding:0}
+.gp-passo{all:unset; box-sizing:border-box; display:flex; align-items:center; gap:10px; width:100%; padding:7px 10px; cursor:pointer; border-radius:var(--r); color:var(--ink)}
+.gp-passo:hover{background:var(--surface-2)} .gp-passo:hover .gp-ck{border-color:var(--blue-deep)}
+.gp-passo:focus-visible{outline:2px solid var(--blue-deep); outline-offset:1px}
+.gp-docs li.gp-doc{display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap}
+.gp-doc-nome{min-width:0} .gp-doc-ok{color:var(--sit-cliente-tx); font-weight:600}
+.gp-com-pe{display:flex; justify-content:flex-end; margin-top:6px}
+
 .gt-esq{display:flex; flex-direction:column; gap:8px} .gt-esq i{display:block; height:14px; border-radius:3px; background:linear-gradient(90deg, var(--surface-3), var(--surface-2), var(--surface-3)); background-size:200% 100%; animation:gtEsq 1.2s linear infinite}
 .gt-esq i:nth-child(2){width:80%} .gt-esq i:nth-child(3){width:60%} .gt-esq i:nth-child(4){width:70%}
 @keyframes gtEsq{to{background-position:-200% 0}}
@@ -585,3 +609,9 @@
 .gp-nav{min-width:0} .gp-cab{gap:8px}
 /* o cabeçalho fica acima do topo e do detalhe, para as janelinhas da competência e do "de quem" não ficarem por baixo */
 .gt-pagina .mod-cab{position:relative; z-index:30}
+/* Simplificado (0.92.0): ações na tarefa sem borda grossa nem fundo tingido; a confirmação é um cartão comum com a linha azul no topo */
+:root[data-estilo="simples"] .gp-conf{border:1px solid var(--rule); border-top:3px solid var(--blue-deep); background:var(--surface); padding:10px 12px}
+:root[data-estilo="simples"] .gp-conf.perigo{border-top-color:var(--sit-sem)}
+:root[data-estilo="simples"] .gp-aviso{font-weight:500; padding:8px 10px}
+:root[data-estilo="simples"] .gp-acoes{gap:6px}
+:root[data-estilo="simples"] .gp-passo:hover{background:transparent; text-decoration:underline}
