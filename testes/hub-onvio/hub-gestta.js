@@ -151,10 +151,28 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     assert.ok(!d.some(x => x[2] === 'empresa' && x[0] === 'dp' && x[1] === '33'), 'Legalização não é módulo do Hub');
   });
 
-  await passo('Referência absoluta: empresa sem tarefa no Gestta some do DP, do Contábil, do Portal e do cadastro; analista fora da equipe sai da carteira; a lista do Gestta faltando não esconde nada', async () => {
-    const dp = () => page.evaluate(() => window.__hubApi.api('dp').listar().map(e => [e.nome, e.analista]).sort());
-    await page.waitForFunction(() => !window.__hubApi.api('dp').listar().some(e => /VELHA/.test(e.nome)), null, { timeout: 8000 });
-    assert.deepEqual(await dp(), [['ALFA COMERCIO LTDA FILIAL', ''], ['ALFA COMERCIO LTDA', ''], ['BETA SERVICOS LTDA', 'Carla Souza'], ['DELTA MEI', ''], ['DELTA MEI', ''], ['GAMA INDUSTRIA', ''], ['MARIA EMPREGADORA DOMESTICA', '']], 'VELHA, a sem CNPJ nem tarefa e (Hub 329) a com empregado ativo sem tarefa no Gestta escondidas; filial, sem CNPJ, CNPJ diferente e doméstica ficam; Marcos Lima (inativo no Gestta) sai da DELTA');
+  await passo('Referência absoluta: no DP, empresa sem tarefa do Pessoal no CNPJ dela ou sem funcionário ativo fica Inativa (à vista, nada gravado, Hub 337); some do Contábil e do Portal; analista fora da equipe sai da carteira; a lista do Gestta faltando não muda nada', async () => {
+    const dp = () => page.evaluate(() => window.__hubApi.api('dp').listar().map(e => [e.nome, e.analista, e.situacao, e.motivoInativa]).sort((a, b) => (a[0] + a[3]).localeCompare(b[0] + b[3])));
+    await page.waitForFunction(() => window.__hubApi.api('dp').listar().some(e => /VELHA/.test(e.nome) && /sem tarefa do Pessoal/.test(e.motivoInativa)) && !window.__hubApi.api('dp').listar().some(e => e.analista === 'Marcos Lima'), null, { timeout: 8000 });      // o Gestta chegou (empresas e equipe)
+    // Hub 337 (Josué, 11/11/2026: "empresas sem funcionário/tarefa ativa deve contar como inativa"): só a ALFA tem tarefa do Pessoal no CNPJ dela,
+    // e não tem funcionário; a filial não fica pela raiz; nome igual não segura empresa cuja raiz o Gestta conhece
+    assert.deepEqual(await dp(), [
+      ['ALFA COMERCIO LTDA FILIAL', '', 'Inativa', 'filial sem tarefa do Pessoal no CNPJ dela'],
+      ['ALFA COMERCIO LTDA', '', 'Inativa', 'sem funcionário ativo'],
+      ['BETA SERVICOS LTDA', 'Carla Souza', 'Inativa', 'só tem tarefa de outro setor no Gestta'],
+      ['DELTA MEI', '', 'Inativa', 'CNPJ sem tarefa do Pessoal no Gestta'],
+      ['DELTA MEI', '', 'Inativa', 'só tem tarefa de outro setor no Gestta'],
+      ['GAMA INDUSTRIA', '', 'Inativa', 'sem CNPJ e o nome não está no Gestta'],
+      ['MARIA EMPREGADORA DOMESTICA', '', 'Inativa', 'CPF sem tarefa do Pessoal no Gestta'],
+      ['OUTRA SEM CNPJ NEM TAREFA', '', 'Inativa', 'sem CNPJ e o nome não está no Gestta'],
+      ['VELHA SEM TAREFA LTDA', 'Carla Souza', 'Inativa', 'CNPJ sem tarefa do Pessoal no Gestta'],
+      ['ZULU COM FOLHA LTDA', '', 'Inativa', 'CNPJ sem tarefa do Pessoal no Gestta']]);
+    // com funcionário ativo e tarefa do Pessoal, a ALFA volta a Ativa; o que está gravado nunca muda
+    const alfa0 = await page.evaluate(() => window.__db.ler('dp_empresas/e-alfa'));
+    await semear('dp_empresas/e-alfa', Object.assign({}, alfa0, { funcionarios: [{ id: 'a1', nome: 'Empregado Ficticio', admissao: '2024-01-02', situacao: 'Ativo' }] }));
+    await page.waitForFunction(() => window.__hubApi.api('dp').listar().some(e => e.nome === 'ALFA COMERCIO LTDA' && e.situacao === 'Ativa'), null, { timeout: 8000 });
+    assert.equal(await page.evaluate(() => window.__db.ler('dp_empresas/e-velha').situacao), 'Ativa', 'a Inativa é só da tela: nada é gravado');
+    await semear('dp_empresas/e-alfa', alfa0);
     assert.deepEqual(await page.evaluate(() => window.__hubApi.cfg.dp.equipe()), ['Carla Mendes Souza'], 'a equipe do DP é a do Gestta');
     const cad = await page.evaluate(([v, a]) => [window.__cadastro.ativa('ctb', 'c' + v, v), window.__cadastro.ativa('ctb', 'c' + a, a), window.__cadastro.ativa('portal', 'p-velha', v), window.__cadastro.analistaAtivo('Marcos Lima'), window.__cadastro.analistaAtivo('Carla Souza'), window.__cadastro.analistaGestta('Carla Souza'), window.__cadastro.analistas('ctb')], [C.velha, C.alfa]);
     assert.deepEqual(cad, [false, true, false, false, true, 'Carla Mendes Souza', ['Rui Teixeira', 'Zélia Desconhecida']]);
@@ -162,15 +180,16 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     assert.equal(await page.evaluate(() => window.__db.ler('dp_empresas/e-delta').responsavel), 'Marcos Lima', 'o nome gravado fica');
     await esperar();
     const ref = await api((g) => g.referencia());
-    assert.deepEqual([ref.empresas.ok, ref.empresas.n, ref.analistas.ok, ref.fora.dp, ref.fora.contabil, ref.fora.portal], [true, 5, true, ['OUTRA SEM CNPJ NEM TAREFA · sem CNPJ e o nome não está no Gestta', 'VELHA SEM TAREFA LTDA · 77.777.777/0001-07 · CNPJ sem tarefa no Gestta', 'ZULU COM FOLHA LTDA · 88.888.888/0001-08 · CNPJ sem tarefa no Gestta'], ['VELHA SEM TAREFA LTDA · 77.777.777/0001-07 · CNPJ sem tarefa no Gestta'], ['VELHA SEM TAREFA LTDA · 77.777.777/0001-07 · CNPJ sem tarefa no Gestta']]);
+    assert.deepEqual([ref.empresas.ok, ref.empresas.n, ref.analistas.ok, ref.fora.contabil, ref.fora.portal], [true, 5, true, ['VELHA SEM TAREFA LTDA · 77.777.777/0001-07 · CNPJ sem tarefa do Contábil no Gestta'], ['VELHA SEM TAREFA LTDA · 77.777.777/0001-07 · CNPJ sem tarefa no Gestta']]);
+    assert.equal(ref.fora.dp.length, 10); assert.ok(ref.fora.dp.includes('VELHA SEM TAREFA LTDA · 77.777.777/0001-07 · inativa: CNPJ sem tarefa do Pessoal no Gestta'), ref.fora.dp.join(' | '));
     assert.ok(ref.analistasFora.some(a => a.nome === 'Marcos Lima'), JSON.stringify(ref.analistasFora));
     // trava: lista velha (mais de 72 h) não esconde nada
     const man = await page.evaluate(() => window.__db.ler('ing_dados/gestta~gestta-empresas-ativas'));
     await semear('ing_dados/gestta~gestta-empresas-ativas', Object.assign({}, man, { recebidoEm: Date.now() - 80 * 3600e3 }));
-    await page.waitForFunction(() => window.__hubApi.api('dp').listar().some(e => /VELHA/.test(e.nome)), null, { timeout: 8000 });
+    await page.waitForFunction(() => window.__hubApi.api('dp').listar().some(e => /VELHA/.test(e.nome) && e.motivoInativa === 'sem funcionário ativo'), null, { timeout: 8000 });      // sem a lista do Gestta, só o funcionário conta
     assert.equal(await page.evaluate((v) => window.__cadastro.ativa('ctb', 'c' + v, v), C.velha), true);
     await semear('ing_dados/gestta~gestta-empresas-ativas', man);
-    await page.waitForFunction(() => !window.__hubApi.api('dp').listar().some(e => /VELHA/.test(e.nome)), null, { timeout: 8000 });
+    await page.waitForFunction(() => window.__hubApi.api('dp').listar().some(e => /VELHA/.test(e.nome) && /sem tarefa do Pessoal/.test(e.motivoInativa)), null, { timeout: 8000 });
   });
 
   await passo('Entrada de dados: a seção do Gestta mostra as diferenças por empresa, filtra por módulo e nada é gravado antes de confirmar', async () => {
