@@ -580,6 +580,36 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await fr.locator('#envioBox').waitFor();
   });
 
+  await passo('Carteira (Hub 338): a carteira escolhida aparece numa faixa em todas as abas do DP, não fica lembrada e o clique num analista da Cartela filtra só a Cartela', async () => {
+    await page.evaluate(() => document.querySelectorAll('dialog[open]').forEach((d) => d.close()));
+    await page.evaluate(() => window.__hubApi.abrirModulo('dp'));
+    await page.evaluate(() => window.__hubApi.api('dp').irPara('empresas'));
+    const op = await page.$$eval('#dp-carteira option', (os) => os.map((o) => o.value).filter(Boolean)[0]);
+    assert.ok(op, 'há analista para escolher');
+    assert.equal(await page.locator('#dp-cart-faixa').isVisible().catch(() => false), false, 'sem carteira, sem faixa');
+    await page.selectOption('#dp-carteira', op);
+    await page.locator('#dp-cart-faixa').waitFor({ state: 'visible', timeout: 5000 });
+    assert.match(await page.textContent('#dp-cart-faixa'), new RegExp('Mostrando só (a carteira de ' + op + '|as empresas sem responsável) · \\d+ empresas? ativas?'));
+    assert.equal(await page.evaluate(() => document.querySelector('#dp-carteira').classList.contains('filtro-on')), true, 'a caixinha fica destacada');
+    if (CAP) for (const t of ['light', 'dark']) { await page.evaluate((x) => { document.documentElement.dataset.theme = x; }, t); await page.waitForTimeout(150); await page.screenshot({ path: path.join(CAP, 'carteira-faixa-' + t + '.png'), clip: { x: 0, y: 0, width: 1360, height: 200 } }); }
+    if (CAP) await page.evaluate(() => { document.documentElement.dataset.theme = 'light'; });
+    await page.evaluate(() => window.__hubApi.api('dp').irPara('funcionarios'));
+    assert.equal(await page.locator('#dp-cart-faixa').isVisible(), true, 'a faixa acompanha as abas');
+    assert.equal(await page.evaluate(() => (JSON.parse(localStorage.getItem('controlhub-prefs') || '{}').dpCarteira || '')), '', 'não fica lembrada para a próxima visita');
+    await page.click('#dp-cart-faixa [data-cart-limpar]');
+    await page.waitForFunction(() => document.querySelector('#dp-cart-faixa').hidden && document.querySelector('#dp-carteira').value === '');
+    // na Cartela, o clique num analista filtra só a tabela da Cartela
+    await page.evaluate(() => window.__hubApi.api('dp').irPara('cartela'));
+    const an = page.locator(`#ct-side [data-ct-an="${op}"]`);
+    if (await an.count()) {
+      await an.first().click();
+      await page.waitForFunction((o) => (document.querySelector('#ct-count').textContent || '').includes(o), op, { timeout: 5000 });
+      assert.equal(await page.inputValue('#dp-carteira'), '', 'o módulo continua na equipe toda');
+      assert.equal(await page.evaluate(() => document.querySelector('#dp-cart-faixa').hidden), true);
+      await page.locator('#ct-side [data-ct-an=""]').first().click();
+    }
+  });
+
   await passo('Folha (Extrato Mensal, extensão 0.68.0): as remessas se acumulam pelo documento e a ficha mostra os meses de cada contribuinte (ativo só nos meses em que aparece)', async () => {
     const cfg = await page.evaluate(() => window.__db.ler('ing_config/cfg'));
     await page.evaluate(() => { window.__msgs = window.__msgs || []; if (!window.__ouveAck) { window.__ouveAck = 1; window.addEventListener('message', (e) => { if (e.data && e.data.ctlhub === 1 && e.data.de === 'hub') window.__msgs.push(e.data); }); } });
