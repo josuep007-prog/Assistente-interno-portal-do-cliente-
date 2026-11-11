@@ -1617,7 +1617,7 @@ async function gesttaHubSincronizar(manual, so) {
  * e o texto (por cláusula) da convenção vigente e dos aditivos dela; o resto abre no Hub buscado na hora (mediadorTexto, mediadorAnexo).
  * A extensão guarda só os CNPJs (mediadorCfg), o andamento (mediadorEnvio: estados e contagens) e um resumo numérico (mediadorHash). */
 const MEDIADOR_ORIGENS = ['https://mediador.trabalho.gov.br/*', 'https://www3.mte.gov.br/*', 'http://www3.mte.gov.br/*'];
-const MEDIADOR_SEMANA = 7 * 24 * 3600e3, MEDIADOR_PAUSA = 3000, MEDIADOR_MAX_CNPJS = 100;
+const MEDIADOR_PAUSA = 3000, MEDIADOR_MAX_CNPJS = 100;
 let mediadorRodando = null, mediadorAbaPropria = null, mediadorFecharTimer = null;
 async function mediadorPermitido() { try { return await chrome.permissions.contains({ origins: MEDIADOR_ORIGENS }); } catch (e) { return false; } }
 async function mediadorCfg() { const { mediadorCfg } = await chrome.storage.local.get('mediadorCfg'); return Object.assign({ cnpjs: [], em: '', ultimaBusca: '' }, mediadorCfg || {}); }
@@ -1770,9 +1770,8 @@ async function mediadorPainel() {
 }
 // A rodada semanal (dentro do envio completo): só com a permissão, com sindicatos e com mais de 7 dias desde a última busca
 async function mediadorSemanal() {
-  const c = await mediadorCfg();
-  if (!c.cnpjs.length || !(await mediadorPermitido())) return null;
-  if (c.ultimaBusca && Date.now() - Date.parse(c.ultimaBusca) < MEDIADOR_SEMANA) return null;
+  const c = await mediadorCfg(), { mediadorEnvio } = await chrome.storage.local.get('mediadorEnvio');
+  if (!OCM.semanalDevida(c, mediadorEnvio) || !(await mediadorPermitido())) return null;      // 0.95.1: depois de uma falha, só 24 h depois
   return mediadorBuscar('auto');
 }
 
