@@ -1207,16 +1207,23 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await semearConjunto('escritorio-funcionarios', { categoria: 'escritorio', colunas: eq.colunas, linhas: [] }, 'cE2');
   });
 
-  await passo('Cartela → Onvio (resumo antigo) continua igual e ganha o CNPJ completo dos clientes de CND/NF-e', async () => {
+  await passo('Cartela sem a aba Onvio (Hub 342, Josué 11/11/2026: "retire essa sessão Onvio daqui, está sem utilidade"): o selo "N no Onvio" abre a ficha da empresa na aba Onvio', async () => {
     const cols = ['Lista', 'Nº', 'Situação', 'Vez', 'Cliente', 'Responsável', 'Aberta em', 'Última movimentação', 'Dias parado', 'Gravidade'];
-    // o cliente do resumo tem outro nome que o do DP, mas o final do CNPJ (0001-81) e o nome do cadastro de CND batem
     await page.evaluate(([c]) => window.__db.semear('ing_lotes/onvio~solicitacoes', { fonte: 'onvio', tipoDado: 'solicitacoes', colunas: c, tabela: ['Geral\t901\tSem análise\tescritório\tORION COMERCIO LTDA | 0001-81\tAna Teste\t2026-10-20\t2026-10-20\t5\t1'].join('\n'), nLinhas: 1, totalNaOrigem: 1, cortado: false, recebidoEm: Date.now(), usuario: 'Ana Teste' }), [cols]);
+    await page.evaluate(() => document.querySelectorAll('dialog[open]').forEach((d) => d.close()));
     await page.evaluate(() => window.__hubApi.abrirModulo('dp'));
     await page.evaluate(() => window.__hubApi.api('dp').irPara('cartela'));
-    await page.click('#ct-modo [data-ct-modo="onvio"]');
-    await page.waitForSelector('#ct-pane-onvio .ct-ov-tab tbody tr');
-    assert.match(await page.textContent('#ct-pane-onvio .ct-ov-tab'), /ORION \| 0001-81/);
-    assert.match(await page.textContent('#ct-pane-onvio .ct-ov-tab'), /901/);
+    await page.waitForSelector('#ct-modo [data-ct-modo="cartela"]');
+    assert.equal(await page.locator('#ct-modo [data-ct-modo="onvio"]').count(), 0, 'sem o botão Onvio');
+    assert.deepEqual(await page.$$eval('#ct-modo [data-ct-modo]', (b) => b.map((x) => x.textContent.trim())), ['Cartela', 'Ausências', 'Movimentações']);
+    assert.equal(await page.isHidden('#ct-pane-onvio'), true);
+    const selo = page.locator('#ct-table [data-ct-ov]').first();
+    if (await selo.count()) {
+      await selo.click();
+      await page.waitForSelector('#dlg-dp-detail[open]');
+      assert.equal(await page.getAttribute('#dp-dtabs [data-dtab="onvio"]', 'aria-selected') === 'true' || await page.isVisible('[data-dpanel="onvio"]'), true, 'a ficha abre na aba Onvio');
+      await page.evaluate(() => document.querySelectorAll('dialog[open]').forEach((d) => d.close()));
+    }
   });
 
   await passo('Empresas do escritório (ControlTax, Dynexa, Oficina, Diskcontador): não aparecem em nada no Hub, nem as já cadastradas no DP nem as que vêm do Onvio', async () => {
