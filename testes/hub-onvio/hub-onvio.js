@@ -547,6 +547,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     assert.equal(sem.motivo, 'sem-extensao'); assert.ok(Date.now() - t0 < 6000);
     // a Entrada de dados: conectado, o andamento por fonte, o erro à vista, o botão da coordenação
     await page.evaluate(() => window.__hubApi.abrirModulo('fontes'));
+    await page.evaluate(() => { const f = document.querySelector('#fontes-frame'); document.querySelectorAll('dialog[open]').forEach((d) => d.close()); if (f && f.contentDocument) f.contentDocument.querySelectorAll('dialog[open]').forEach((d) => d.close()); });     // janela que um passo anterior deixou aberta (no Hub ou na Entrada de dados)
     await page.waitForSelector('#fontes-frame', { state: 'visible' });
     const box = fr.locator('#envioBox');
     await box.locator('.env-f').first().waitFor({ timeout: 8000 });
