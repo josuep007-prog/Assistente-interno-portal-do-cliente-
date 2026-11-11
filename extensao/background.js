@@ -371,6 +371,35 @@ async function gesttaHistorico(msg, sender) {
   if (!x || x.status !== 200 || !x.dados) return { ok: false, erro: x && x.status === 403 ? 'Seu acesso não inclui o histórico desta tarefa.' : 'Não consegui ler o histórico (' + ((x && (x.erro || x.status)) || 'sem resposta') + ').' };
   return { ok: true, eventos: OCG.eventosDaTarefa(x.dados.itens || []), total: x.dados.total, paginas: x.dados.paginas };
 }
+// Ações no Gestta (0.93.0, aprovadas pelo Josué em 11/11/2026 e mapeadas na empresa de teste): etapa feita ou não, concluir,
+// reabrir, impedimento, comentário interno e envio de documento. A tela só chama depois da confirmação da pessoa. O pedido é
+// montado aqui (OCG.pedidoAcao), conferido aqui e de novo na página (OCG.escritaPermitida) e feito de dentro da aba do Gestta,
+// com o token só lá. Nada é guardado: nem o texto, nem o arquivo, nem a resposta (volta só o resumo da tarefa).
+async function gesttaAcao(msg, sender) {
+  // só as telas da extensão pedem ação (nunca um script de conteúdo, como a ponte do Hub no claude.ai)
+  if (!String((sender && sender.url) || '').startsWith(chrome.runtime.getURL('app/'))) return { ok: false, erro: 'Ação recusada: só a tela das Tarefas do Gestta pode pedir.' };
+  const p = OCG.pedidoAcao(msg);
+  if (p.erro) return { ok: false, erro: p.erro.charAt(0).toUpperCase() + p.erro.slice(1) + '.' };
+  const perm = OCG.escritaPermitida(p.metodo, p.url, p.corpo);
+  if (!perm.ok) return { ok: false, erro: 'A extensão recusou a ação (' + perm.motivo + ').' };
+  const tab = await tabDoGestta(sender);
+  if (!tab) return { ok: false, erro: 'Abra o Gestta numa aba, já logado.' };
+  let x = null;
+  try {
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', files: ['gestta.js'] });
+    const [res] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', func: (ped) => (self.OCG ? self.OCG.agirNaPagina(ped) : { ok: false, erro: 'núcleo do Gestta não carregou na aba' }), args: [p] });
+    x = res && res.result;
+  } catch (e) { return { ok: false, erro: 'A aba do Gestta não respondeu (' + String(e && e.message || e).slice(0, 80) + ').' }; }
+  if (!x) return { ok: false, erro: 'A aba do Gestta não respondeu.' };
+  if (x.ok) return { ok: true, acao: msg.acao, tarefa: x.tarefa || null };
+  if (x.recusado) return { ok: false, erro: 'A extensão recusou a ação (' + x.recusado + ').' };
+  const st = x.status;
+  return { ok: false, status: st, erro: st === 401 ? 'A sessão do Gestta acabou: faça login de novo na aba e tente outra vez.'
+    : st === 403 ? 'Seu acesso do Gestta não permite esta ação nesta tarefa.'
+    : st === 404 ? 'A tarefa (ou a etapa, ou o documento) não existe mais no Gestta.'
+    : st === 413 ? 'O Gestta recusou o arquivo por ser grande demais.'
+    : 'O Gestta não aceitou (' + (x.erro || ('erro ' + st)) + ').' };
+}
 // Para a coordenação escolher de quem ver as tarefas: só id e nome da equipe ativa.
 async function gesttaEquipe(msg, sender) {
   const tab = await tabDoGestta(sender);
@@ -1230,6 +1259,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'gesttaFechamento') { reply(await gesttaFechamento(msg, sender)); }
       else if (msg.cmd === 'gesttaTarefa') { reply(await gesttaTarefa(msg, sender)); }
       else if (msg.cmd === 'gesttaHistorico') { reply(await gesttaHistorico(msg, sender)); }
+      else if (msg.cmd === 'gesttaAcao') { reply(await gesttaAcao(msg, sender)); }
       else if (msg.cmd === 'irPara') { reply(await irPara(msg.destino)); }
       else if (msg.cmd === 'abrirConfig') { reply(await abrirGuiaConfig(msg.params)); }
       else if (msg.cmd === 'fecharPainel') { if (sender.tab && sender.tab.id != null) await mensagemParaPainel(sender.tab.id, 'fechar').catch(() => {}); reply({ ok: true }); }
@@ -1656,7 +1686,7 @@ async function hubIniciar(origem, alvo) {
   hubAtualizar(origem, a).catch(() => {});
   return { ok: true, iniciado: true };
 }
-// 0.93.0 (Josué, 11/11/2026: "a extensão deve já reenviar automaticamente tudo que der erro, e caso o erro persistir dar o copiar para colar do
+// 0.94.0 (Josué, 11/11/2026: "a extensão deve já reenviar automaticamente tudo que der erro, e caso o erro persistir dar o copiar para colar do
 // diagnóstico do erro e dizer qual informação esse erro iria alimentar"): depois de cada fonte, o que deu erro é refeito sozinho até 2 vezes
 // (pausa de 15 s e de 30 s), sem reler o que já foi aceito; o que continuar com erro fica no resultado com o que alimenta e o diagnóstico.
 // Erros que não adianta repetir (código, versão antiga, acesso de cliente, acesso parcial do Gestta, leitura do escritório) não são refeitos.

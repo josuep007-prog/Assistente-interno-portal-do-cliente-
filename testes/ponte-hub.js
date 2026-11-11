@@ -313,7 +313,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   assert.equal(evH.abas.hub, 'abriu', JSON.stringify(evH)); assert.ok(['ok', 'parcial'].includes(evH.estado), JSON.stringify(evH).slice(0, 300));
   assert.equal(ctx.pages().filter(p => p.url().includes('/artifact/HUBTESTE01')).length, 0, 'a aba do Hub aberta pela extensão fechou no fim');
   console.log('envio único: o Hub pede e acompanha, o impostor não começa nada, Hub e Gestta fechados abrem e fecham sozinhos');
-  // ---- 0.93.0: o que deu erro é reenviado sozinho; o que continua com erro traz o diagnóstico; o Hub pede só o que falta ----
+  // ---- 0.94.0: o que deu erro é reenviado sozinho; o que continua com erro traz o diagnóstico; o Hub pede só o que falta ----
   const hub6 = await ctx.newPage(); await hub6.goto('https://claude.ai/artifact/HUBTESTE01'); await opc.bringToFront();
   const f6 = () => hub6.frames().find(f => /\/hub/.test(f.url()));
   for (let i = 0; i < 20 && !(await f6().evaluate(() => window.conectado).catch(() => null)); i++) await sleep(400);

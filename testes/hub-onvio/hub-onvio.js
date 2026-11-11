@@ -590,7 +590,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await page.evaluate(() => document.querySelectorAll('dialog[open]').forEach((d) => d.close()));
     await page.evaluate(() => window.__hubApi.abrirModulo('fontes'));
     await page.waitForSelector('#fontes-frame', { state: 'visible' });
-    await page.evaluate(() => window.postMessage({ ctlhub: 1, de: 'ext', tipo: 'conectado', versao: '0.93.0' }, '*'));
+    await page.evaluate(() => window.postMessage({ ctlhub: 1, de: 'ext', tipo: 'conectado', versao: '0.94.0' }, '*'));
     const box = fr.locator('#desatBox');
     await box.waitFor({ timeout: 8000 });
     await fr.locator('#desatBox li:has-text("Clientes")').first().waitFor({ timeout: 8000 });
@@ -604,7 +604,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     const ped = await page.evaluate(() => window.__msgs.find((m) => m.tipo === 'pedido' && m.alvo));
     assert.ok(ped.alvo.onvio.includes('clientes-cnd'), JSON.stringify(ped.alvo));
     // o fim do envio confere o conjunto (enviado ou sem mudança): sai da lista
-    const fim = { v: 1, versao: '0.93.0', id: 'e340', origem: 'hub', estado: 'ok', fase: '', iniciouEm: new Date().toISOString(), terminouEm: new Date().toISOString(), abas: {}, avisos: [], tentativas: 0,
+    const fim = { v: 1, versao: '0.94.0', id: 'e340', origem: 'hub', estado: 'ok', fase: '', iniciouEm: new Date().toISOString(), terminouEm: new Date().toISOString(), abas: {}, avisos: [], tentativas: 0,
       fontes: [{ id: 'onvio', nome: 'Onvio', estado: 'ok', conjuntos: [{ id: 'clientes-cnd', rotulo: 'Clientes de CND', ok: true, igual: true }] }, { id: 'gestta', nome: 'Gestta', estado: 'fora', conjuntos: [] }] };
     await page.evaluate(([e, t]) => window.postMessage({ ctlhub: 1, de: 'ext', tipo: 'progresso', token: t, envio: Object.assign({}, e, { estado: 'enviando', terminouEm: '' }) }, '*'), [fim, cfg.token]);
     await page.waitForTimeout(300);

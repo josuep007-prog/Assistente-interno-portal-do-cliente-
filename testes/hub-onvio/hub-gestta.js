@@ -61,6 +61,11 @@ const TAREFAS = { colunas: ['Mês', 'Id', 'Tarefa', 'Setor', 'Responsável', 'Si
   ['2026-11', 't5', 'PGDAS-D', 'Fiscal', 'Paula Nunes', 'Aberta', C.gama, 'GAMA INDUSTRIA LTDA'],
   ['2026-11', 't6', 'Alvará', 'Legalização', 'Rui Teixeira', 'Aberta', C.gama, 'GAMA INDUSTRIA LTDA'],
   ['2026-11', 't7', 'Balancete', 'Contábil', 'Zélia Desconhecida', 'Aberta', C.delta, 'DELTA MEI']] };
+// Hub 331: o Portal só muda a demanda com o mês atual e o anterior na lista de tarefas; as tarefas do teste acompanham a data de hoje
+const MES_AT = (() => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); })();
+const MES_ANT = (() => { const d = new Date(); const a = new Date(d.getFullYear(), d.getMonth() - 1, 1); return a.getFullYear() + '-' + String(a.getMonth() + 1).padStart(2, '0'); })();
+TAREFAS.linhas.forEach(l => { l[0] = MES_AT; });
+TAREFAS.linhas.push([MES_ANT, 't0', 'Visita', 'Comercial', 'Rui Teixeira', 'Concluída', C.gama, 'GAMA INDUSTRIA LTDA']);
 const EQUIPE = { colunas: ['Id', 'Nome', 'Papel', 'Ativo', 'Setores', 'Tem tarefas atreladas'], linhas: [
   ['u1', 'Carla Mendes Souza', 'Analista', 'sim', 'Departamento Pessoal', 'sim'], ['u2', 'Rui Teixeira', 'Analista', 'sim', 'Contábil | Legalização', 'sim'],
   ['u3', 'Paula Nunes', 'Analista', 'sim', 'Fiscal', 'sim'], ['u9', 'Zélia Desconhecida', 'Analista', 'sim', 'Contábil', 'sim'], ['u7', 'Marcos Lima', 'Analista', 'não', 'Contábil', 'não']] };
@@ -414,7 +419,7 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     await semear('ing_partes/gestta~gestta-equipe~a0', { ciclo: 'g3', parte: 0, tabela: tab(eq) });
     const manE = await page.evaluate(() => window.__db.ler('ing_dados/gestta~gestta-equipe'));
     await semear('ing_dados/gestta~gestta-equipe', Object.assign({}, manE, { ciclo: 'g3', partes: 1, nLinhas: eq.length, totalNaOrigem: eq.length }));
-    const cart = CARTELA.linhas.concat([['g3', '3', 'GAMA INDUSTRIA LTDA', C.gama, 'Contábil', 's2', 'Thais Exemplo', 'u10']]);
+    const cart = CARTELA.linhas.concat([['g4', '4', 'DELTA MEI', C.delta, 'Contábil', 's2', 'Só Setor', 'u11']]);
     await semear('ing_partes/gestta~gestta-cartela~a0', { ciclo: 'g3', parte: 0, tabela: tab(cart) });
     const manC = await page.evaluate(() => window.__db.ler('ing_dados/gestta~gestta-cartela'));
     await semear('ing_dados/gestta~gestta-cartela', Object.assign({}, manC, { ciclo: 'g3', partes: 1, nLinhas: cart.length, totalNaOrigem: cart.length }));
@@ -431,8 +436,9 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
       t('a5', 'Departamento Pessoal', 'Empresa Fora', A, FORA, 'EMPRESA FORA DO GESTTA LTDA'),         // empresa que não é cliente ativo
       t('a6', 'Fiscal', 'So Fiscal', A, C.alfa, 'ALFA COMERCIO LTDA'),                                 // tarefa do Fiscal, não do Pessoal
       t('a7', 'Fiscal', 'Paula Nunes', A, C.alfa, 'ALFA COMERCIO LTDA')];
-    await semear('ing_partes/gestta~gestta-tarefas~a0', { ciclo: 'g322', parte: 0, tabela: tab(linhas) });
     const manT0 = await page.evaluate(() => window.__db.ler('ing_dados/gestta~gestta-tarefas'));
+    const parteT0 = await page.evaluate((m) => window.__db.ler('ing_partes/gestta~gestta-tarefas~' + m.slot + '0'), manT0);
+    await semear('ing_partes/gestta~gestta-tarefas~a0', { ciclo: 'g322', parte: 0, tabela: tab(linhas) });
     await semear('ing_dados/gestta~gestta-tarefas', Object.assign({}, manT0, { colunas: cols, ciclo: 'g322', partes: 1, nLinhas: linhas.length, totalNaOrigem: linhas.length, recebidoEm: Date.now(), cortado: false }));
     await page.waitForFunction(() => (window.__cadastro.analistas('ctb') || []).includes('Thais Exemplo'), null, { timeout: 10000 });
     const lst = await page.evaluate(() => ({ ctb: window.__cadastro.analistas('ctb'), dp: window.__cadastro.analistas('dp'), fis: window.__cadastro.analistas('fis') }));
@@ -466,6 +472,9 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     await semear('ing_partes/gestta~gestta-tarefas~a0', { ciclo: 'g322', parte: 0, tabela: tab(linhas) });
     await semear('ing_dados/gestta~gestta-tarefas', Object.assign({}, manT0, { colunas: cols, ciclo: 'g322', partes: 1, nLinhas: linhas.length, totalNaOrigem: linhas.length, recebidoEm: Date.now(), cortado: false }));
     await page.waitForFunction(() => !(window.__cadastro.analistas('dp') || []).includes('Empresa Fora'), null, { timeout: 10000 });
+    // devolve as tarefas de antes para os passos seguintes (Hub 331, 333, 335)
+    await semear('ing_partes/gestta~gestta-tarefas~' + manT0.slot + '0', parteT0);
+    await semear('ing_dados/gestta~gestta-tarefas', manT0);
   });
 
   await passo('Hub 325: Fiscal e Contábil pelo Gestta: tarefa concluída marca sozinha a obrigação e a etapa vazias, a manual fica, desfazer não volta, a atrasada aparece e dado velho não marca', async () => {
@@ -479,7 +488,10 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
       ['2026-11', 't12b', 'Alvará', 'Legalização', 'Rui Teixeira', 'Aberta', '2026-11-20', '', 'não', 'não', C.alfa, 'ALFA COMERCIO LTDA', CP],     // o mês atual na lista (sem setor de módulo: não muda demanda)
       ['2026-10', 't13', 'Conciliação bancária', 'Contábil', 'Rui Teixeira', 'Concluída', '2026-10-25', '2026-10-28 15:00', 'sim', 'não', C.alfa, 'ALFA COMERCIO LTDA', CP],
       ['2026-10', 't14', 'Tarefa esquisita XYZ', 'Fiscal', 'Paula Nunes', 'Concluída', '2026-10-25', '2026-10-25 10:00', 'não', 'não', C.alfa, 'ALFA COMERCIO LTDA', CP],
-      ['2026-10', 't15', 'DCTFWeb', 'Fiscal', 'Paula Nunes', 'Concluída', '2026-10-15', '2026-10-15 10:00', 'não', 'não', C.esc, 'CONTROLTAX CONTABILIDADE', CP]];
+      ['2026-10', 't15', 'DCTFWeb', 'Fiscal', 'Paula Nunes', 'Concluída', '2026-10-15', '2026-10-15 10:00', 'não', 'não', C.esc, 'CONTROLTAX CONTABILIDADE', CP],
+      // Hub 331: o mês atual e o anterior presentes na lista (setor fora dos módulos, não muda nada)
+      [MES_AT, 't16', 'Visita', 'Comercial', 'Rui Teixeira', 'Aberta', '', '', 'não', 'não', C.gama, 'GAMA INDUSTRIA LTDA', CP],
+      [MES_ANT, 't17', 'Visita', 'Comercial', 'Rui Teixeira', 'Concluída', '', '', 'não', 'não', C.gama, 'GAMA INDUSTRIA LTDA', CP]];
     const fisDoc = 'fis_comp/' + CP + '~' + balde('c' + C.alfa, 4), ctbDoc = 'ctb_comp/' + CP + '~' + balde('c' + C.alfa, 4);
     await semear(fisDoc, { ['c' + C.alfa]: { ob: { reinf: ['r', '2026-10-10', 'u-manual'] } } });       // marcação manual: o Gestta não troca
     await semear('ing_partes/gestta~gestta-tarefas~a0', { ciclo: 'g9', parte: 0, tabela: tab(linhas) });
@@ -660,6 +672,113 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
   await passo('Uso do banco mede também o histórico do Gestta e o login', async () => {
     const cols = await page.evaluate(() => window.__hubApi.usoColecoes ? window.__hubApi.usoColecoes().map(c => c.path) : null);
     if (cols) assert.ok(['gt_hist', 'auth_log', 'hub_log'].every(c => cols.includes(c)), cols.join(', '));
+  });
+
+  await passo('Hub 331: no Portal, a demanda da matriz conta as tarefas das filiais ligadas a ela (tarefa no CNPJ da filial liga a frente do grupo)', async () => {
+    // DELTA (matriz no Portal, sem tarefa do Pessoal) ganha uma filial ligada; no Gestta a folha está no CNPJ da filial
+    const fil = '44444444000285';
+    await semear('empresas/p-delta2', { nome: 'DELTA MEI FILIAL', cnpj: fmt(fil), matrizId: 'p-delta', setoresDemanda: {} });
+    const manCli = await page.evaluate(() => window.__db.ler('ing_dados/gestta~gestta-clientes'));
+    const cli = CLIENTES.linhas.concat([['g4f', '4f', 'DELTA MEI FILIAL', '', fil, 'sim', 'MEI', '', 'SP', 'Santos', '', 'não']]);
+    await semear('ing_partes/gestta~gestta-clientes~a0', { ciclo: 'g31', parte: 0, tabela: tab(cli) });
+    await semear('ing_dados/gestta~gestta-clientes', Object.assign({}, manCli, { ciclo: 'g31', partes: 1, nLinhas: cli.length, totalNaOrigem: cli.length, recebidoEm: Date.now() }));
+    const manT = await page.evaluate(() => window.__db.ler('ing_dados/gestta~gestta-tarefas'));
+    const tAnt = (await page.evaluate((s) => { const m = window.__db.ler('ing_dados/gestta~gestta-tarefas'); return window.__db.ler('ing_partes/gestta~gestta-tarefas~' + m.slot + '0'); })).tabela;
+    const ext = [['2026-11', 't31', 'Folha', 'Departamento Pessoal', 'Carla Mendes Souza', 'Aberta', '2026-11-20', '', 'não', 'não', fil, 'DELTA MEI FILIAL', '2026-10']];
+    await semear('ing_partes/gestta~gestta-tarefas~a0', { ciclo: 'g31', parte: 0, tabela: tAnt + '\n' + tab(ext) });
+    await semear('ing_dados/gestta~gestta-tarefas', Object.assign({}, manT, { slot: 'a', ciclo: 'g31', partes: 1, nLinhas: manT.nLinhas + 1, totalNaOrigem: manT.nLinhas + 1, recebidoEm: Date.now() }));
+    await api((g) => g.garantir(true)); await page.waitForTimeout(500);
+    await api((g) => g.portalAgora()); await page.waitForTimeout(800);
+    const d = await page.evaluate(() => window.__db.ler('empresas/p-delta'));
+    assert.equal(!!(d.setoresDemanda || {}).pessoal, true, 'a frente Pessoal do grupo liga pela tarefa da filial: ' + JSON.stringify(d.setoresDemanda));
+    assert.ok(!(await api((g) => g.difs().some(x => x.mod === 'portal' && x.campo === 'demanda-pessoal' && x.empNome === 'DELTA MEI' && x.acao === 'corrigir'))), 'e não aparece para desligar');
+  });
+
+  await passo('Hub 331: lista de tarefas sem o mês anterior não liga, desliga nem cadastra nada no Portal, e a Entrada de dados diz por quê', async () => {
+    // só as tarefas do mês atual: a filial da DELTA sai (a folha dela era a única do Pessoal no grupo), mas sem o mês anterior nada muda
+    const manT = await page.evaluate(() => window.__db.ler('ing_dados/gestta~gestta-tarefas'));
+    const parteAnt = await page.evaluate((m) => window.__db.ler('ing_partes/gestta~gestta-tarefas~' + m.slot + '0'), manT);
+    const so = TAREFAS.linhas.filter(l => l[0] === MES_AT);
+    await semear('ing_partes/gestta~gestta-tarefas~a0', { ciclo: 'g32', parte: 0, tabela: tab(so) });
+    await semear('ing_dados/gestta~gestta-tarefas', Object.assign({}, manT, { slot: 'a', ciclo: 'g32', partes: 1, colunas: TAREFAS.colunas, nLinhas: so.length, totalNaOrigem: so.length, recebidoEm: Date.now() }));
+    await api((g) => g.garantir(true)); await page.waitForTimeout(500);
+    await api((g) => g.portalAgora()); await page.waitForTimeout(800);
+    assert.equal(!!(await page.evaluate(() => window.__db.ler('empresas/p-delta'))).setoresDemanda.pessoal, true, 'a frente não desliga');
+    assert.ok(!(await api((g) => g.difs().some(d => d.mod === 'portal' && (/^demanda-/.test(d.campo) || d.campo === 'empresa')))), 'nenhuma demanda nem empresa nova para decidir');
+    const tr = await api((g) => g.portal().travas);
+    assert.ok(tr.some(t => /chegou sem/.test(t)), 'travas: ' + tr.join(' | '));
+    await semear('ing_partes/gestta~gestta-tarefas~' + manT.slot + '0', parteAnt);
+    await semear('ing_dados/gestta~gestta-tarefas', manT);
+  });
+
+  await passo('Hub 333: pessoa repetida na equipe do Portal (cadastrada mais de uma vez pelo Gestta) é juntada numa só, com as frentes; quem foi cadastrado à mão fica', async () => {
+    const obs = 'Cadastrado(a) a partir do Gestta em 09/11/2026 (Entrada de dados).';
+    await semear('funcionarios/gtx1', { nome: 'Ana Repetida', setor: 'fiscal', statusTreinamento: 'pendente', observacoes: obs, criadoEm: '2026-11-09T10:00:00.000Z' });
+    await semear('funcionarios/gtx2', { nome: 'Ana Repetida', setor: 'fiscal', statusTreinamento: 'pendente', observacoes: obs, criadoEm: '2026-11-09T10:00:01.000Z' });
+    await semear('funcionarios/gtx3', { nome: 'Ana Repetida', setor: 'fiscal', statusTreinamento: 'pendente', observacoes: obs, criadoEm: '2026-11-09T10:00:02.000Z' });
+    await semear('empresaSetores/p-alfa_fiscal', Object.assign({}, await page.evaluate(() => window.__db.ler('empresaSetores/p-alfa_fiscal')), { analistaId: 'gtx2', analistaNome: 'Ana Repetida' }));
+    await semear('funcionarios/man1', { nome: 'Bia Manual', setor: 'pessoal', statusTreinamento: 'pendente', observacoes: '' });
+    await semear('funcionarios/gtx4', { nome: 'Bia Manual', setor: 'pessoal', statusTreinamento: 'pendente', observacoes: obs });
+    await api((g) => g.garantir(true)); await page.waitForTimeout(300);
+    await api((g) => g.portalAgora()); await page.waitForTimeout(800);
+    const fs = await page.evaluate(() => window.__db.listar('funcionarios').filter(f => /Repetida|Manual/.test(f.nome)).map(f => f.id).sort());
+    assert.deepEqual(fs, ['gtx2', 'man1'], 'fica a Ana com a frente e a Bia cadastrada à mão: ' + fs.join(', '));
+    assert.equal((await page.evaluate(() => window.__db.ler('empresaSetores/p-alfa_fiscal'))).analistaId, 'gtx2');
+  });
+
+  await passo('Hub 335: no Portal matriz e filiais são uma empresa só (com o nome da matriz): o Gestta não cadastra a filial à parte e o Portal junta sozinho a filial solta', async () => {
+    // dois grupos novos no Gestta: OMEGA (matriz e filial, nada no Portal) e SIGMA (matriz e duas filiais já soltas no Portal, uma desvinculada de propósito)
+    const om = '12121212000150', of = '12121212000231', sm = '13131313000100', sf = '13131313000290', sd = '13131313000370';
+    const manCli = await page.evaluate(() => window.__db.ler('ing_dados/gestta~gestta-clientes'));
+    const cliAnt = (await page.evaluate((m) => window.__db.ler('ing_partes/gestta~gestta-clientes~' + m.slot + '0'), manCli)).tabela;
+    const linhaCli = (id, nome, k) => manCli.colunas.map(c => ({ Id: id, 'Código': id, Nome: nome, CNPJ: k, Ativo: 'sim', Regime: 'Simples Nacional', UF: 'SP' })[c] || '');
+    const novosCli = [linhaCli('go1', 'OMEGA LTDA', om), linhaCli('go2', 'OMEGA LTDA FILIAL', of), linhaCli('gs1', 'SIGMA LTDA', sm), linhaCli('gs2', 'SIGMA LTDA FILIAL', sf), linhaCli('gs3', 'SIGMA LTDA OUTRA', sd)];
+    await semear('ing_partes/gestta~gestta-clientes~' + manCli.slot + '0', { ciclo: 'g35', parte: 0, tabela: cliAnt + '\n' + tab(novosCli) });
+    await semear('ing_dados/gestta~gestta-clientes', Object.assign({}, manCli, { ciclo: 'g35', partes: 1, nLinhas: manCli.nLinhas + 5, totalNaOrigem: manCli.nLinhas + 5, recebidoEm: Date.now() }));
+    const manA = await page.evaluate(() => window.__db.ler('ing_dados/gestta~gestta-empresas-ativas'));
+    const aAnt = (await page.evaluate((m) => window.__db.ler('ing_partes/gestta~gestta-empresas-ativas~' + m.slot + '0'), manA)).tabela;
+    const novasA = [[om, 'OMEGA LTDA'], [of, 'OMEGA LTDA FILIAL'], [sm, 'SIGMA LTDA'], [sf, 'SIGMA LTDA FILIAL'], [sd, 'SIGMA LTDA OUTRA']].map(([k, n]) => manA.colunas.map(c => ({ CNPJ: k, Cliente: n, Tarefas: 1, 'Último mês': MES_AT })[c] ?? ''));
+    await semear('ing_partes/gestta~gestta-empresas-ativas~' + manA.slot + '0', { ciclo: 'g35', parte: 0, tabela: aAnt + '\n' + tab(novasA) });
+    await semear('ing_dados/gestta~gestta-empresas-ativas', Object.assign({}, manA, { ciclo: 'g35', partes: 1, nLinhas: manA.nLinhas + 5, totalNaOrigem: manA.nLinhas + 5, recebidoEm: Date.now() }));
+    const manT = await page.evaluate(() => window.__db.ler('ing_dados/gestta~gestta-tarefas'));
+    const tAnt = (await page.evaluate((m) => window.__db.ler('ing_partes/gestta~gestta-tarefas~' + m.slot + '0'), manT)).tabela;
+    const linhaT = (id, setor, k, cli) => manT.colunas.map(c => ({ 'Mês': MES_AT, Id: id, Tarefa: 'Rotina', Setor: setor, 'Responsável': 'Paula Nunes', 'Situação': 'Aberta', CNPJ: k, Cliente: cli, 'Competência': MES_ANT })[c] || '');
+    const novasT = [linhaT('to1', 'Contábil', om, 'OMEGA LTDA'), linhaT('to2', 'Fiscal', of, 'OMEGA LTDA FILIAL'), linhaT('ts1', 'Fiscal', sm, 'SIGMA LTDA'), linhaT('ts2', 'Fiscal', sf, 'SIGMA LTDA FILIAL'), linhaT('ts3', 'Fiscal', sd, 'SIGMA LTDA OUTRA')];
+    await semear('ing_partes/gestta~gestta-tarefas~' + manT.slot + '0', { ciclo: 'g35', parte: 0, tabela: tAnt + '\n' + tab(novasT) });
+    await semear('ing_dados/gestta~gestta-tarefas', Object.assign({}, manT, { ciclo: 'g35', partes: 1, nLinhas: manT.nLinhas + 5, totalNaOrigem: manT.nLinhas + 5, recebidoEm: Date.now() }));
+    // SIGMA no Portal: a matriz e duas filiais soltas (uma com a frente Fiscal; a outra desvinculada à mão antes)
+    await semear('empresas/p-sm', { nome: 'SIGMA LTDA', cnpj: fmt(sm), setoresDemanda: { fiscal: true } });
+    await semear('empresas/p-sf', { nome: 'SIGMA LTDA FILIAL', cnpj: fmt(sf), setoresDemanda: { fiscal: true } });
+    await semear('empresaSetores/p-sf_fiscal', { empresaId: 'p-sf', empresaNome: 'SIGMA LTDA FILIAL', setor: 'fiscal', analistaId: '', analistaNome: '', etapas: { habilitacaoDominio: { status: 'concluido', data: '2026-10-01' } } });
+    await semear('empresas/p-sd', { nome: 'SIGMA LTDA OUTRA', cnpj: fmt(sd), setoresDemanda: { fiscal: true }, desvinculadaEm: '2026-11-01T10:00:00Z' });
+    await api((g) => g.garantir(true)); await page.waitForTimeout(500);
+    // o Gestta: uma empresa nova só para OMEGA, com as frentes da matriz e da filial; nada para as filiais nem para SIGMA
+    const novas = await api((g) => g.difs().filter(d => d.mod === 'portal' && d.campo === 'empresa' && /^1[23]/.test(d.k)).map(d => d.k + ' ' + d.rot));
+    assert.deepEqual(novas, ['12121212000150 Empresa nova no Portal (Contábil, Fiscal) · com 1 filial'], novas.join(' | '));
+    assert.ok(!(await api((g) => g.difs().some(d => d.mod === 'portal' && ['p-sf', 'p-sd'].includes(d.empId)))), 'a filial solta não recebe diferença');
+    await api((g) => g.portalAgora()); await page.waitForTimeout(800);
+    assert.ok(await page.evaluate(() => !!window.__db.ler('empresas/gt12121212000150')), 'OMEGA entrou');
+    assert.equal(await page.evaluate(() => window.__db.existe('empresas/gt12121212000231')), false, 'a filial da OMEGA não entrou à parte');
+    // o Portal aberto pela coordenação junta a filial solta da SIGMA à matriz; a desvinculada de propósito fica
+    await page.evaluate(() => window.__hubApi.abrirModulo('portal'));
+    await page.waitForFunction(() => (window.__db.ler('empresas/p-sf') || {}).matrizId === 'p-sm', null, { timeout: 15000 });
+    assert.ok(await page.evaluate(() => !!window.__db.ler('empresaSetores/p-sm_fiscal')), 'a frente da filial passou para a matriz');
+    assert.equal(await page.evaluate(() => window.__db.existe('empresaSetores/p-sf_fiscal')), false);
+    assert.ok(!(await page.evaluate(() => window.__db.ler('empresas/p-sd').matrizId)), 'a desvinculada de propósito não é juntada');
+  });
+
+  await passo('Hub 334: empresa nova no DP pelo Gestta não é cadastrada de novo se outro navegador já a gravou (pelo Onvio, onv-<CNPJ>)', async () => {
+    const alfa = await page.evaluate(() => window.__db.ler('dp_empresas/e-alfa'));
+    await semear('dp_empresas/e-alfa', Object.assign({}, alfa, { cnpj: fmt('10101010000110') }));      // some do DP desta tela
+    await api((g) => g.garantir(true));
+    await page.waitForFunction(() => window.__hubApi.api('gestta').difs().some(d => d.mod === 'dp' && d.acao === 'novo' && d.k === '11111111000101'), null, { timeout: 8000 });
+    const chave = await api((g) => g.difs().find(d => d.mod === 'dp' && d.acao === 'novo' && d.k === '11111111000101').chave);
+    await page.evaluate(() => window.__db.silencioso('dp_empresas/onv-11111111000101', { nome: 'ALFA COMERCIO LTDA', cnpj: '11.111.111/0001-01', situacao: 'Ativa', funcionarios: [], historico: [] }));
+    const r = await api((g, c) => g.aplicar('11111111000101', c), chave);
+    assert.equal(r.ok, false, 'recusa: ' + JSON.stringify(r));
+    assert.match(r.erro, /cadastrada há pouco/);
+    assert.equal(await page.evaluate(() => window.__db.existe('dp_empresas/gt-11111111000101')), false, 'nenhuma gt-<CNPJ> criada');
+    await semear('dp_empresas/e-alfa', alfa);
   });
 
   await passo('sem erros de página', async () => { assert.deepEqual(erros, []); });

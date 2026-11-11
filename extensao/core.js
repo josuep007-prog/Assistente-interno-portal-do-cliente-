@@ -3115,7 +3115,7 @@
     { id: 'pessoais', nome: 'Dados pessoais', ajuda: 'CPF, salário, nomes de empregados, a lista completa de empregados de cada empresa (uma leitura por empresa), assunto e descrição de todas as solicitações, dados completos e trâmites das pendentes, comunicações e os contribuintes de cada mês na folha (Extrato Mensal do portal de documentos: código, nome e vínculo). Fica no banco do Hub, visível a quem acessa o Hub.', pessoal: true, padrao: false }
   ];
   const HUB_PARTE_CHARS = 140000;        // o Hub aceita até 150 mil por parte
-  const HUB_PARTES_MAX = 80;
+  const HUB_PARTES_MAX = 1000;   // 0.93.0 (Josué, 10/11/2026: "pode deixar sem limite, bote pra ler tudo que tiver"): era 80; 1.000 partes (~140 MB) só protege de um envio sem fim
   const HUB_PENDENTES_MAX = 300;         // detalhes e trâmites: no máximo N pendentes por envio (1 leitura cada)
   const celulaHub = (v, max) => String(v == null ? '' : v).replace(/[\t\r\n\u2028\u2029]+/g, ' ').replace(/ {2,}/g, ' ').trim().slice(0, max || 300);
   const simNao = v => v === true ? 'sim' : v === false ? 'não' : '';
@@ -3988,11 +3988,11 @@
       avisos: (e.avisos || []).slice(0, 6).map(a => String(a).slice(0, 200)), fontes, tentativas: Number(e.tentativas) || 0,
       alvo: e.alvo ? true : false
     };
-    // 0.93.0: terminou com erro (depois dos reenvios automáticos): o diagnóstico para copiar vai junto
+    // 0.94.0: terminou com erro (depois dos reenvios automáticos): o diagnóstico para copiar vai junto
     if (!['preparando', 'enviando', 'nunca'].includes(p.estado) && fontes.some(f => (f.conjuntos || []).some(c => !c.ok))) p.diagnostico = hubDiagnostico(p);
     return p;
   }
-  // 0.93.0 (Josué, 11/11/2026: "dizer qual informação esse erro iria alimentar"): o que cada conjunto alimenta no Hub. O id pode vir do
+  // 0.94.0 (Josué, 11/11/2026: "dizer qual informação esse erro iria alimentar"): o que cada conjunto alimenta no Hub. O id pode vir do
   // conjunto ('lista-geral') ou da tarefa do plano ('lista:geral'), por isso [-:]. Só texto fixo, nunca dado lido.
   const HUB_ALIMENTA = [
     [/^solicitacoes$/, 'o resumo das pendentes (Cartela › Onvio do DP e o cartão Onvio do Painel)'],

@@ -98,7 +98,7 @@
       x = x.replace(/falhou: ((?:[^·;]+?, )+[^·;]+?)(?= ·|;|$)/, (m, l) => 'falhou em ' + l.split(', ').length + ' leituras'); return x.length > 160 ? x.slice(0, 157) + '…' : x; };
     mal.forEach(r => linhas.push(r.categoria === 'escritorio'
       ? { tom: 'aviso', rotulo: r.rotulo, texto: 'o Onvio não liberou esta leitura para o seu login (não atrapalha o resto)', dica: r.motivo }
-      : { tom: 'erro', rotulo: r.rotulo, texto: curto(MOTIVOS_HUB[r.motivo] || r.motivo), dica: r.motivo, alimenta: OC && OC.hubAlimenta ? OC.hubAlimenta(r.id) : '' }));      // 0.93.0: o que esse erro deixa de alimentar no Hub
+      : { tom: 'erro', rotulo: r.rotulo, texto: curto(MOTIVOS_HUB[r.motivo] || r.motivo), dica: r.motivo, alimenta: OC && OC.hubAlimenta ? OC.hubAlimenta(r.id) : '' }));      // 0.94.0: o que esse erro deixa de alimentar no Hub
     ok.filter(x => x.cortado).forEach(r => linhas.push({ tom: 'aviso', rotulo: r.rotulo, texto: curto('veio incompleto' + (r.porque ? ': ' + r.porque : ' (cortado)') + (r.linhas ? ' · ' + r.linhas.toLocaleString('pt-BR') + ' linhas enviadas' : '')), dica: r.porque || '' }));
     ok.filter(x => x.motivo && !x.cortado).forEach(r => linhas.push({ tom: r.motivo === 'sem-mudanca' ? 'igual' : r.nota ? 'nota' : 'aviso', rotulo: r.rotulo, texto: r.motivo === 'sem-mudanca' ? 'sem mudança' : curto(MOTIVOS_HUB[r.motivo] || r.motivo) }));
     ok.filter(x => !x.motivo && !x.cortado).forEach(r => linhas.push({ tom: 'ok', rotulo: r.rotulo, texto: (r.linhas || 0).toLocaleString('pt-BR') + ' linhas' }));

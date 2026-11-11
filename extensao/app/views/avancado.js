@@ -209,7 +209,7 @@ async function estadoHub(el) {
     cabEl.innerHTML = '<div class="adv-resumo-l"><p class="adv-msg' + (['erro', 'interrompido'].includes(ce.estado) ? ' adv-msg-erro' : '') + '">' + esc(ce.texto) + '</p>' + (ce.rodando ? '<button type="button" class="btn btn-sm" id="adv-cancelar">Cancelar</button>' : '') + '</div>' +
       (ce.abas ? '<p class="fraco adv-abas">' + esc(ce.abas) + '</p>' : '') + (ce.avisos || []).map(a => '<p class="adv-msg adv-msg-erro">' + esc(a) + '</p>').join('');
     const bc = $('#adv-cancelar', cabEl); if (bc) bc.onclick = async () => { bc.disabled = true; const r = await enviar({ cmd: 'hubCancelar' }); toast(r && r.ok ? 'Cancelando: o envio para no próximo conjunto' : OP.msgHub(r)); };
-    // 0.93.0: o erro continuou depois dos reenvios automáticos: o diagnóstico para copiar (só nomes, estados e motivos)
+    // 0.94.0: o erro continuou depois dos reenvios automáticos: o diagnóstico para copiar (só nomes, estados e motivos)
     if (!ce.rodando && hubEnvio) {
       const { hubSync: hs, hubSyncGestta: hg } = await ler(['hubSync', 'hubSyncGestta']);
       const pn = OC.hubEnvioPainel(hubEnvio, hs, hg, chrome.runtime.getManifest().version);
