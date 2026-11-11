@@ -1550,6 +1550,34 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await page.waitForFunction(() => /Buscando: lendo os instrumentos 1\/2/.test(document.querySelector('#cv-med').textContent), null, { timeout: 5000 });
   });
 
+  await passo('Hub 346: na Cartela, o número de funcionários da empresa sai da folha mensal mais recente do portal de documentos (cada pessoa uma vez, com pró-labore e RPA); sem essa folha, o cadastro, marcado com *', async () => {
+    const mes = (n) => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); };
+    const lq = (doc, comp, cod, nome, vinc, contrib, calc) => [doc, 'c-orion', '900', 'ORION COMERCIO LTDA', comp, comp + '-05', cod, nome, vinc, calc || 'Folha Mensal', 'completo', contrib ? 'sim' : 'não'].join('\t');
+    // outro passo deixa uma segunda empresa com o mesmo nome (e-orion-dup): com dois nomes iguais a folha não se liga a nenhuma (certo); aqui ela muda de nome
+    const dup = await page.evaluate(() => window.__db.ler('dp_empresas/e-orion-dup'));
+    if (dup) await page.evaluate((d) => window.__db.semear('dp_empresas/e-orion-dup', Object.assign({}, d, { nome: 'OUTRA EMPRESA DE TESTE LTDA' })), dup);
+    // a folha deste mês tem 2 empregados e 1 sócia (o mesmo empregado aparece em dois extratos do mês); o adiantamento e o mês anterior não contam
+    await semearConjunto('pessoais-folha-contribuintes', { categoria: 'pessoais', colunas: D.OC.FOLHA_COLUNAS, linhas: [
+      lq('n1', mes(0), '101', 'MARIA SOUZA', 'Celetista'), lq('n1', mes(0), '202', 'BELTRANO SILVA', 'Celetista'), lq('n1', mes(0), '15', 'SOCIA FICTICIA', 'Diretor', true),
+      lq('n2', mes(0), '0101', 'MARIA SOUZA', 'Celetista'),
+      lq('n3', mes(0), '303', 'SO NO ADIANTAMENTO', 'Celetista', false, 'Adiantamento'),
+      lq('n4', mes(1), '404', 'SO NO MES PASSADO', 'Celetista'), lq('n4', mes(1), '101', 'MARIA SOUZA', 'Celetista')] }, 'c346');
+    await page.evaluate(() => window.__hubApi.api('dp').irPara('cartela'));
+    await page.evaluate(() => { const b = document.querySelector('[data-ct-sit="todas"]'); if (b) b.click(); });
+    const celula = (id) => page.evaluate((id) => { const tr = document.querySelector('#ct-table tbody tr[data-ct-id="' + id + '"]'); if (!tr) return null; const c = [...tr.querySelectorAll('td.num')][0]; return c ? { n: c.textContent.trim(), title: c.getAttribute('title') } : null; }, id);
+    await page.waitForFunction(() => /^pela folha/.test((document.querySelector('#ct-table tbody tr[data-ct-id="e-orion"] td.num') || {}).title || ''), null, { timeout: 8000 }).catch(() => {});
+    const orion = await celula('e-orion');
+    assert.equal(orion.n, '3', JSON.stringify(orion));
+    assert.match(orion.title, /^pela folha de .+ \(portal de documentos\), 1 de pró-labore\/RPA$/);
+    // empresa sem folha lida: o número do cadastro, marcado com * e com o porquê
+    const vega = await celula('e-vega');
+    assert.ok(vega && /\*$/.test(vega.n) && /pelo cadastro do DP/.test(vega.title), JSON.stringify(vega));
+    const regra = await page.evaluate(() => (document.querySelector('#ct-regra') || {}).textContent || '');
+    assert.match(regra, /Funcionários: pela folha mensal mais recente lida do portal de documentos/);
+    await page.evaluate(() => { const b = document.querySelector('[data-ct-sit=""]'); if (b) b.click(); });
+    if (dup) await page.evaluate((d) => window.__db.semear('dp_empresas/e-orion-dup', d), dup);
+  });
+
   await passo('sem erros de página', async () => { assert.deepEqual(erros, []); });
 
   await browser.close(); servidor.close();
