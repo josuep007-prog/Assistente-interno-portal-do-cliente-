@@ -51,6 +51,7 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 - **Nada para abrir à mão.** O que estiver fechado (o Hub, o Portal do Cliente, o Gestta) abre numa aba em segundo plano, sem tirar você do que está fazendo, e fecha no fim. A aba em que você clicar durante o envio fica aberta. O automático (a cada 6 horas) faz o mesmo, com o Chrome aberto e as sessões do Onvio e do Gestta logadas. Para a extensão saber o endereço do Hub, abra o Hub uma vez com ela conectada.
 - **Pelo Hub.** Na Entrada de dados, o painel **Atualizar o Hub** mostra se o Control Onvio está conectado naquele Chrome, o andamento ao vivo (por fonte, com a etapa e os erros), o último envio e quem pediu. A coordenação inicia ou cancela por ali; quem não tem a extensão acompanha.
 - **Acompanhar.** Na extensão, "Último envio" diz quem pediu, as abas que abriu, o resultado do Onvio e do Gestta e tem o botão **Cancelar** enquanto roda.
+- **Configurações valem na hora.** O que você muda na guia de Configurações (tema, estilo, setor, prazos, avisos) passa a valer na hora nas telas do Onvio e do Gestta que estão abertas, com o aviso "Configurações atualizadas". Antes, a tela aberta só mudava depois de recarregar.
 - A confirmar no Chrome do Josué: o Hub abrindo em segundo plano carrega e responde como numa aba visível.
 
 ## Novidades da v0.91.0 (11/11/2026): o botão em qualquer site
