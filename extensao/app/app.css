@@ -1769,3 +1769,9 @@ body.setor-fora .trilho [data-rota="equipe"], body.setor-fora .trilho [data-rota
 .so-config .app{padding-left:0}
 .so-config .trilho, .so-config #btn-busca, .so-config #btn-sino, .so-config #btn-ver-onvio, .so-config .mod-div{display:none}
 .so-config .principal{max-width:1180px; margin:0 auto}
+
+/* 0.91.0: cartão "Botão em outros sites" nas Configurações › Aparência */
+.cfg-chk{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:13px;color:var(--ink);cursor:pointer}
+.cfg-chk input{width:16px;height:16px}
+.bg-lista{margin:6px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px;font-size:13px}
+.bg-lista li{display:flex;align-items:center;justify-content:space-between;gap:10px;color:var(--ink)}

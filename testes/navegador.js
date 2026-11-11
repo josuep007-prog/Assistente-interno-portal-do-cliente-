@@ -2715,6 +2715,7 @@ await passo('app · contraste: nenhum texto abaixo de 4,5:1 (WCAG AA) nas telas 
     ['Configurações · Meu setor', '#/config?aba=setor', async () => {}],
     // 0.89.0: o Hoje e as Solicitações no setor Fiscal (modo enxuto, só a Geral), com a linha "Setor: Fiscal"
     ['Hoje no Fiscal', '#/inicio', async p => { await p.evaluate(() => { localStorage.setItem('controlonvio-setor-visao', 'todos'); }); await p.goto(URL_APP + '#/config?aba=setor'); await p.waitForSelector('[data-setor-op]'); const f = await p.$('[data-setor-op="fiscal"]'); if (f) { await f.click(); } await p.goto(URL_APP + '#/inicio'); await p.waitForTimeout(400); }],
+    ['Configurações · Aparência com o botão em outros sites (0.91.0)', '#/config', async p => { await p.waitForSelector('#bg-on'); }],
     ['Guia das Configurações (0.90.0)', '?janela=config#/config?aba=setor', async p => { await p.waitForSelector('[data-setor-op]'); }],
     ['Configurações · Prazos', '#/config?aba=prazos', async () => {}],
     ['Configurações · Feriados', '#/config?aba=feriados', async () => {}],
@@ -2736,6 +2737,27 @@ await passo('app · contraste: nenhum texto abaixo de 4,5:1 (WCAG AA) nas telas 
     await p.context().close();
   }
   assert.deepEqual(ruins.slice(0, 12), [], 'texto com pouco contraste (' + ruins.length + ')');
+});
+
+await passo('Configurações › Aparência: botão em outros sites (0.91.0): ligar e desligar, e mostrar de novo os sites escondidos', async () => {
+  const CAP = process.env.CAPTURAS;
+  for (const estilo of ['simples', 'atual']) for (const tema of ['light', 'dark']) {
+    const p = await abrirApp('#/config', { settings: { __v: 2 }, botaoGeralOcultos: ['exemplo.org', 'intranet.local'] }, undefined, { estilo });
+    await p.evaluate(t => { document.documentElement.setAttribute('data-theme', t); }, tema);
+    await p.waitForSelector('#bg-on');
+    assert.equal(await p.isChecked('#bg-on'), true, 'ligado de fábrica');
+    assert.match(await p.textContent('.bg-lista'), /exemplo\.org[\s\S]*intranet\.local/);
+    const lerArm = () => p.evaluate(() => new Promise(r => chrome.storage.local.get(['botaoGeralOff', 'botaoGeralOcultos'], r)));
+    await p.click('#bg-on');
+    assert.equal((await lerArm()).botaoGeralOff, true, 'desligado em todos os sites');
+    await p.click('#bg-on');
+    assert.equal((await lerArm()).botaoGeralOff, false);
+    await p.click('[data-mostrar="exemplo.org"]');
+    await p.waitForFunction(() => !/exemplo\.org/.test(document.querySelector('.bg-lista').textContent));
+    assert.deepEqual((await lerArm()).botaoGeralOcultos, ['intranet.local']);
+    if (CAP) await p.screenshot({ path: require('node:path').join(CAP, 'botao-geral-config-' + estilo + '-' + tema + '.png') });
+    await p.context().close();
+  }
 });
 
 await passo('Configurações numa guia à parte (0.90.0): só a tela Configurações, sem o trilho nem a busca; outra rota fica nas Configurações', async () => {

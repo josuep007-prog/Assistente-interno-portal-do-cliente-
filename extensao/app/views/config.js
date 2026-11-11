@@ -113,6 +113,27 @@ function aparencia(el, ctx) {
     '</div></div>';
   $$('[data-estilo-op]', el).forEach(b => b.onclick = () => { if (b.dataset.estiloOp !== est) ctx.definirEstilo(b.dataset.estiloOp); });
   $$('[data-tema-op]', el).forEach(b => b.onclick = () => { if (b.dataset.temaOp !== tema) ctx.definirTema(b.dataset.temaOp); });
+  botaoGeral(el);
+}
+
+/* ---------- Botão flutuante nos outros sites (0.91.0, Josué 10/11/2026) ----------
+ * O botão que leva ao Onvio, ao Gestta ou aos dois aparece em qualquer site (menos no Portal do Cliente e no Gestta, que têm o seu).
+ * Aqui a pessoa desliga em todos os sites ou volta a mostrar nos que escondeu pelo menu do botão. Só neste Chrome. */
+function botaoGeral(el) {
+  const col = el.querySelector('.cfg-col'); if (!col) return;
+  const cartao = document.createElement('section'); cartao.className = 'cfg-card'; col.appendChild(cartao);
+  const ler = () => new Promise(res => { try { chrome.storage.local.get(['botaoGeralOff', 'botaoGeralOcultos'], r => res(r || {})); } catch (e) { res({}); } });
+  const desenhar = async () => {
+    const r = await ler(), off = !!r.botaoGeralOff, ocultos = Array.isArray(r.botaoGeralOcultos) ? r.botaoGeralOcultos : [];
+    cartao.innerHTML = '<h3><svg class="ic"><use href="#i-link"/></svg>Botão em outros sites</h3>' +
+      '<p class="fraco">Um botão arrastável em qualquer site leva ao Onvio, ao Gestta ou aos dois. Ele só leva às guias: a tela por cima nunca abre sozinha.</p>' +
+      '<label class="cfg-chk"><input type="checkbox" id="bg-on"' + (off ? '' : ' checked') + '> Mostrar o botão nos outros sites</label>' +
+      (ocultos.length ? '<p class="fraco" style="margin-top:10px">Escondido em ' + ocultos.length + (ocultos.length === 1 ? ' site' : ' sites') + ':</p><ul class="bg-lista">' +
+        ocultos.map(h => '<li><span>' + esc(h) + '</span> <button type="button" class="linkish" data-mostrar="' + esc(h) + '">Mostrar de novo</button></li>').join('') + '</ul>' : '');
+    $('#bg-on', cartao).onchange = e => { chrome.storage.local.set({ botaoGeralOff: !e.target.checked }); };
+    $$('[data-mostrar]', cartao).forEach(b => b.onclick = () => { chrome.storage.local.set({ botaoGeralOcultos: ocultos.filter(x => x !== b.dataset.mostrar) }); desenhar(); });
+  };
+  desenhar();
 }
 
 /* ---------- Meu setor (0.89.0, Josué 09/11/2026): a escolha do setor saiu do topo das telas ----------
