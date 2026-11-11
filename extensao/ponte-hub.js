@@ -8,6 +8,8 @@
  * 0.92.0 (envio único): Hub -> {tipo:'pedido', id, acao: 'atualizar'|'cancelar'|'estado'} (só da janela que já provou o código) e
  *   aqui -> {tipo:'pedidoAck', id, ok, motivo, envio} | {tipo:'progresso', token, envio} (o andamento: estados, nomes e contagens) |
  *   {tipo:'conectado', versao} (logo depois da prova, para o Hub saber que há extensão neste Chrome).
+ * 0.95.0 (Mediador): pedido com acao 'mediador' (cnpjs: buscar), 'mediadorCnpjs' (cnpjs: guardar a lista para a busca semanal),
+ *   'mediadorTexto' (solicitacao: o texto por cláusula) e 'mediadorAnexo' (url: o PDF em base64); a resposta vem no pedidoAck.
  * Quem é o Hub (0.54.0): qualquer janela da página do claude.ai pode dizer "ola", então ninguém vira "o Hub" só por isso. Cada janela
  * que se anuncia recebe um desafio ({tipo:'busca', nonce}) e só vale se responder com a prova HMAC-SHA256(token, nonce), que o service
  * worker confere com o código de pareamento guardado. O token só sai desta ponte para uma janela que provou conhecê-lo. */
@@ -60,13 +62,18 @@
     }
     // O Hub pede (atualizar, cancelar ou o estado do envio): só a janela que provou o código, e o service worker confere de novo a aba
     if (d.tipo === 'pedido' && d.id && hub && e.source === hub.win && vivo()) {
-      const id = String(d.id).slice(0, 60), acao = ['atualizar', 'cancelar', 'estado'].includes(d.acao) ? d.acao : 'estado', origem = e.source;
+      const id = String(d.id).slice(0, 60), acao = ['atualizar', 'cancelar', 'estado', 'mediador', 'mediadorCnpjs', 'mediadorTexto', 'mediadorAnexo'].includes(d.acao) ? d.acao : 'estado', origem = e.source;
       hub.em = Date.now();
       try {
         // Hub 340: "só o que falta" vem como listas de nomes de conjuntos (o service worker confere cada nome)
         const lst = v => Array.isArray(v) ? v.slice(0, 200).map(x => String(x).slice(0, 80)) : [];
         const alvo = acao === 'atualizar' && d.alvo && typeof d.alvo === 'object' ? { onvio: lst(d.alvo.onvio), gestta: lst(d.alvo.gestta) } : undefined;
-        chrome.runtime.sendMessage({ cmd: 'hubPedido', acao, alvo }).then(r => {
+        // 0.95.0, Mediador: só CNPJs (dígitos), o Nº da Solicitação e o endereço do anexo (o service worker confere cada um de novo)
+        const extra = {};
+        if (acao === 'mediador' || acao === 'mediadorCnpjs') extra.cnpjs = Array.isArray(d.cnpjs) ? d.cnpjs.slice(0, 200).map(x => String(x).replace(/\D/g, '').slice(0, 14)) : [];
+        if (acao === 'mediadorTexto') extra.solicitacao = String(d.solicitacao || '').slice(0, 20);
+        if (acao === 'mediadorAnexo') extra.url = String(d.url || '').slice(0, 300);
+        chrome.runtime.sendMessage(Object.assign({ cmd: 'hubPedido', acao, alvo }, extra)).then(r => {
           try { origem.postMessage(Object.assign({ ctlhub: 1, de: 'ext', tipo: 'pedidoAck', id }, r || { ok: false, motivo: 'sem-resposta' }), '*'); } catch (x) { /* quadro fechado */ }
         }).catch(() => {});
       } catch (x) { /* extensão atualizada */ }

@@ -2,7 +2,7 @@
  * Lê o Onvio de tempos em tempos, guarda um resumo e avisa o usuário.
  * Fase 1: somente leitura. Nada é gravado no Onvio.
  */
-importScripts('core.js', 'gestta.js');
+importScripts('core.js', 'gestta.js', 'mediador.js');
 
 const ALARME = 'controlOnvio.coleta';
 const ALARME_DIST = 'controlOnvio.distribuicao';
@@ -1162,9 +1162,16 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         if (!sender || !sender.tab || !(sender.tab.url || '').startsWith('https://claude.ai/')) reply({ ok: false, motivo: 'origem' });
         else if (msg.acao === 'atualizar') reply(await hubIniciar('hub', msg.alvo));          // Hub 340: alvo = só o que falta
         else if (msg.acao === 'cancelar') reply(hubCancelarEnvio());
+        // 0.95.0, Mediador: buscar (os CNPJs dos sindicatos do Hub), guardar a lista para a semanal, texto e anexo na hora
+        else if (msg.acao === 'mediador') { if (mediadorRodando || envioRodando) reply({ ok: true, jaRodando: true }); else if (!(await mediadorPermitido())) reply({ ok: false, motivo: 'sem-permissao-mediador' }); else if (!mediadorLimparCnpjs(msg.cnpjs).length) reply({ ok: false, motivo: 'sem-sindicatos' }); else { mediadorBuscar('hub', msg.cnpjs).catch(() => {}); reply({ ok: true, iniciado: true }); } }
+        else if (msg.acao === 'mediadorCnpjs') reply({ ok: true, sindicatos: (await mediadorGuardarCnpjs(msg.cnpjs)).length, mediador: await mediadorPainel() });
+        else if (msg.acao === 'mediadorTexto') reply(await mediadorTexto(msg.solicitacao));
+        else if (msg.acao === 'mediadorAnexo') reply(await mediadorAnexo(msg.url));
         else reply({ ok: true, envio: await hubPainelAtual() });
       }
       else if (msg.cmd === 'hubCancelar') reply(hubCancelarEnvio());
+      else if (msg.cmd === 'mediadorStatus') reply(Object.assign({ ok: true }, await mediadorPainel()));
+      else if (msg.cmd === 'mediadorBuscar') { if (!sender || !(sender.url || '').startsWith(chrome.runtime.getURL(''))) reply({ ok: false, motivo: 'origem' }); else if (mediadorRodando || envioRodando) reply({ ok: true, jaRodando: true }); else if (!(await mediadorPermitido())) reply({ ok: false, motivo: 'sem-permissao-mediador' }); else if (!(await mediadorCfg()).cnpjs.length) reply({ ok: false, motivo: 'sem-sindicatos' }); else { mediadorBuscar('extensao').catch(() => {}); reply({ ok: true, iniciado: true }); } }
       else if (msg.cmd === 'hubReiniciar') { await hubRetomarDepoisDeReinicio(); reply({ ok: true }); }          // o mesmo que a extensão faz ao iniciar (usado no teste)
       else if (msg.cmd === 'hubProva') { const ok = await hubProvaConfere(msg.nonce, msg.prova); if (ok) await hubLembrarEndereco(msg.url, sender && sender.tab); reply({ ok, versao: chrome.runtime.getManifest().version }); }      // a ponte pergunta se a janela que se diz Hub conhece o código de pareamento
       else if (msg.cmd === 'hubRegistrar') reply(await hubRegistrar());
@@ -1603,6 +1610,172 @@ async function gesttaHubSincronizar(manual, so) {
   })().finally(() => { gesttaHubRodando = null; });
   return gesttaHubRodando;
 }
+/* ---------- Mediador do MTE para o módulo Convenções (0.95.0, autorizado pelo Josué em 11/11/2026) ----------
+ * Só leitura de dados públicos de sindicato e convenção, numa aba do próprio Mediador (o reCAPTCHA invisível do site trabalha ali;
+ * nada é contornado). Os CNPJs são os dos sindicatos cadastrados no Hub (dado público), mandados pelo próprio Hub. Busca pelo botão
+ * "Buscar no Mediador" (pedido do Hub) e uma vez por semana junto com o envio completo. Vão ao Hub a lista de todos os instrumentos
+ * e o texto (por cláusula) da convenção vigente e dos aditivos dela; o resto abre no Hub buscado na hora (mediadorTexto, mediadorAnexo).
+ * A extensão guarda só os CNPJs (mediadorCfg), o andamento (mediadorEnvio: estados e contagens) e um resumo numérico (mediadorHash). */
+const MEDIADOR_ORIGENS = ['https://mediador.trabalho.gov.br/*', 'https://www3.mte.gov.br/*', 'http://www3.mte.gov.br/*'];
+const MEDIADOR_SEMANA = 7 * 24 * 3600e3, MEDIADOR_PAUSA = 3000, MEDIADOR_MAX_CNPJS = 100;
+let mediadorRodando = null, mediadorAbaPropria = null, mediadorFecharTimer = null;
+async function mediadorPermitido() { try { return await chrome.permissions.contains({ origins: MEDIADOR_ORIGENS }); } catch (e) { return false; } }
+async function mediadorCfg() { const { mediadorCfg } = await chrome.storage.local.get('mediadorCfg'); return Object.assign({ cnpjs: [], em: '', ultimaBusca: '' }, mediadorCfg || {}); }
+const mediadorLimparCnpjs = l => [...new Set((Array.isArray(l) ? l : []).map(OCM.soDig).filter(OCM.cnpjValido))].slice(0, MEDIADOR_MAX_CNPJS);
+async function mediadorGuardarCnpjs(lista) {
+  const cnpjs = mediadorLimparCnpjs(lista), c = await mediadorCfg();
+  if (cnpjs.join() !== c.cnpjs.join()) await chrome.storage.local.set({ mediadorCfg: Object.assign(c, { cnpjs, em: new Date().toISOString() }) });
+  return cnpjs;
+}
+// A aba do Mediador: uma que a pessoa já tem aberta (para texto e anexo) ou uma própria, aberta em segundo plano e fechada depois de 3 min parada
+async function mediadorAba(paraBuscar) {
+  if (mediadorFecharTimer) { clearTimeout(mediadorFecharTimer); mediadorFecharTimer = null; }
+  if (mediadorAbaPropria != null) { try { const t = await chrome.tabs.get(mediadorAbaPropria); if (t) return t; } catch (e) { mediadorAbaPropria = null; } }
+  if (!paraBuscar) { const abas = await chrome.tabs.query({ url: 'https://mediador.trabalho.gov.br/*' }).catch(() => []); if (abas[0]) return abas[0]; }
+  const t = await abrirEmSegundoPlano(OCM.URL_CONSULTA);
+  if (t) { mediadorAbaPropria = t.id; abasDoEnvio.delete(t.id); }               // a aba do Mediador fecha pelo próprio relógio, não no fim do envio
+  return t;
+}
+function mediadorSoltarAba() {
+  if (mediadorFecharTimer) clearTimeout(mediadorFecharTimer);
+  mediadorFecharTimer = setTimeout(async () => {
+    mediadorFecharTimer = null; const id = mediadorAbaPropria; mediadorAbaPropria = null;
+    if (id != null && !mediadorRodando) { try { const t = await chrome.tabs.get(id); if (!t.active) await chrome.tabs.remove(id); } catch (e) { /* já fechada */ } }
+  }, 180000);
+}
+async function mediadorNaPagina(tab, func, args) {
+  await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', files: ['mediador.js'] });
+  const [res] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', func, args }).catch(e => [{ result: { ok: false, motivo: 'aba', erro: String(e && e.message || e).slice(0, 120) } }]);
+  return (res && res.result) || { ok: false, motivo: 'aba' };
+}
+// Uma busca: recarrega a consulta (tela limpa), preenche e clica em Pesquisar pela página, e lê a exportação
+async function mediadorBuscarUm(tab, cnpj, tipo) {
+  await chrome.tabs.update(tab.id, { url: OCM.URL_CONSULTA });
+  await dormir(500);
+  await esperarAte(async () => (await chrome.tabs.get(tab.id)).status === 'complete', 45000, 700);
+  return mediadorNaPagina(tab, (c, t) => (self.OCM ? self.OCM.buscarNaPagina({ cnpj: c, tipo: t }) : { ok: false, motivo: 'núcleo do Mediador não carregou' }), [cnpj, tipo]);
+}
+async function mediadorTexto(sol, tab) {
+  if (!OCM.urlTexto(sol)) return { ok: false, motivo: 'solicitacao' };
+  if (!(await mediadorPermitido())) return { ok: false, motivo: 'sem-permissao-mediador' };
+  const aba = tab || await mediadorAba(false);
+  if (!aba) return { ok: false, motivo: 'sem-aba-mediador' };
+  const r = await mediadorNaPagina(aba, s => (self.OCM ? self.OCM.textoNaPagina(s) : { ok: false, motivo: 'núcleo' }), [sol]);
+  if (!tab) mediadorSoltarAba();
+  return r;
+}
+// O anexo é http (o site do MTE): a página https não pode buscar, então quem busca é o service worker (com a permissão do MTE), https primeiro
+async function mediadorAnexo(url) {
+  if (!OCM.leituraPermitida('GET', url)) return { ok: false, motivo: 'recusado' };
+  if (!(await mediadorPermitido())) return { ok: false, motivo: 'sem-permissao-mediador' };
+  const u = new URL(url), tentativas = u.protocol === 'http:' ? ['https://' + u.host + u.pathname, url] : [url];
+  let st = 0;
+  for (const t of tentativas) {
+    try {
+      const r = await fetch(t, { credentials: 'omit' });
+      st = r.status; if (!r.ok) continue;
+      const b = new Uint8Array(await r.arrayBuffer());
+      if (b.length > PDF_MAX) return { ok: false, motivo: 'grande' };
+      if (!(b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46)) { st = 415; continue; }          // %PDF
+      let s = ''; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
+      return { ok: true, base64: btoa(s), tipo: 'application/pdf', tamanho: b.length };
+    } catch (e) { /* tenta o próximo */ }
+  }
+  return { ok: false, motivo: st ? 'http-' + st : 'rede' };
+}
+// A busca completa: para cada CNPJ, as convenções e os aditivos; depois o texto do que é vigente; entrega ao Hub (fonte "mediador")
+async function mediadorBuscar(origem, cnpjsPedidos) {
+  if (mediadorRodando) return mediadorRodando;
+  mediadorRodando = (async () => {
+    if (!envioRodando) hubCancelar = false;
+    const ev = { estado: 'buscando', origem, iniciouEm: new Date().toISOString(), etapa: 'abrindo o Mediador', feito: 0, total: 0, instrumentos: 0, textos: 0, erros: [], pulso: Date.now() };
+    const grava = () => { ev.pulso = Date.now(); return chrome.storage.local.set({ mediadorEnvio: ev }).catch(() => {}).then(() => hubProgresso()); };
+    await grava();
+    let tab = null;
+    try {
+      const c = await hubCfg();
+      if (!c.token) throw Object.assign(new Error('sem-codigo'), { motivo: 'sem-codigo' });
+      if (!(await mediadorPermitido())) throw Object.assign(new Error('sem-permissao-mediador'), { motivo: 'sem-permissao-mediador' });
+      const cnpjs = cnpjsPedidos ? await mediadorGuardarCnpjs(cnpjsPedidos) : (await mediadorCfg()).cnpjs;
+      if (!cnpjs.length) throw Object.assign(new Error('sem-sindicatos'), { motivo: 'sem-sindicatos' });
+      tab = await mediadorAba(true);
+      if (!tab) throw Object.assign(new Error('sem-aba-mediador'), { motivo: 'sem-aba-mediador' });
+      const tipos = Object.keys(OCM.TIPOS), itens = [];
+      ev.total = cnpjs.length * tipos.length; ev.etapa = 'lendo os instrumentos'; await grava();
+      let formato = 0;
+      for (const cnpj of cnpjs) {
+        for (const tipo of tipos) {
+          if (hubCancelar) throw Object.assign(new Error('cancelado'), { motivo: 'cancelado' });
+          const r = await mediadorBuscarUm(tab, cnpj, tipo);
+          if (r && r.ok) itens.push(...r.itens);
+          else { ev.erros.push({ cnpj: cnpj.slice(0, 8) + '…', tipo, motivo: String((r && (r.erro || r.motivo)) || 'erro').slice(0, 160) }); if (r && r.motivo === 'formato') formato++; }
+          ev.feito++; ev.instrumentos = itens.length; await grava();
+          if (formato >= 2) throw Object.assign(new Error((r && r.erro) || 'a tela do Mediador mudou'), { motivo: 'formato' });     // falha visível, nunca número errado
+          await dormir(MEDIADOR_PAUSA);
+        }
+      }
+      // o texto da convenção vigente e dos aditivos dela
+      const sols = OCM.escolherTextos(itens), textos = [], porSol = new Map(itens.map(i => [i.solicitacao, i]));
+      ev.etapa = 'lendo os textos'; ev.feito = 0; ev.total = sols.length; await grava();
+      for (const s of sols) {
+        if (hubCancelar) throw Object.assign(new Error('cancelado'), { motivo: 'cancelado' });
+        const t = await mediadorTexto(s, tab);
+        if (t && t.ok) textos.push(Object.assign(t, { solicitacao: s, registro: (porSol.get(s) || {}).registro || '' }));
+        else ev.erros.push({ solicitacao: s, motivo: String((t && (t.erro || t.motivo)) || 'erro').slice(0, 160) });
+        ev.feito++; ev.textos = textos.length; await grava();
+        await dormir(1500);
+      }
+      // ao Hub (só se mudou desde a última entrega aceita, salvo pedido da pessoa)
+      ev.etapa = 'entregando ao Hub'; await grava();
+      const versao = chrome.runtime.getManifest().version, { mediadorHash } = await chrome.storage.local.get('mediadorHash'), hashes = Object.assign({}, mediadorHash);
+      const conjuntos = [
+        { tipoDado: 'mediador-instrumentos', titulo: 'Mediador · instrumentos coletivos', colunas: OCM.COLS_INSTRUMENTOS, linhas: OCM.linhasInstrumentos(itens), total: itens.length, cortado: ev.erros.some(e => e.cnpj) },
+        { tipoDado: 'mediador-clausulas', titulo: 'Mediador · texto da convenção vigente e aditivos', colunas: OCM.COLS_CLAUSULAS, linhas: OCM.linhasClausulas(textos), total: textos.length, cortado: ev.erros.some(e => e.solicitacao) },
+      ];
+      for (const conj of conjuntos) {
+        const p = OC.hubPartesDe({ linhas: conj.linhas, cortado: conj.cortado }), hash = hashTexto(p.partes.join('\u0001'));
+        if (origem === 'auto' && hashes[conj.tipoDado] === hash) continue;
+        const ciclo = 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+        for (let i = 0; i < p.partes.length; i++) {
+          const tabela = p.partes[i];
+          const lote = { id: 'mediador-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), token: c.token, fonte: 'mediador', tipoDado: conj.tipoDado, categoria: 'convencoes', titulo: conj.titulo,
+            extraidoEm: new Date().toISOString(), usuario: 'Mediador (MTE)', colunas: conj.colunas, tabela, nLinhas: tabela ? tabela.split('\n').length : 0, nLinhasTotal: p.nLinhasTotal, totalNaOrigem: conj.total,
+            cortado: p.cortado, partes: p.partes.length, parte: i, ciclo, porTipo: { cnpjs: cnpjs.length }, versaoExt: versao };
+          let r = await entregarLote(lote);
+          if (!r.ok && r.motivo === 'sem-resposta') r = await entregarLote(Object.assign({}, lote, { id: lote.id + 'r' }));
+          if (!r.ok) throw Object.assign(new Error(r.mensagem || r.motivo || 'o Hub recusou'), { motivo: r.motivo || 'erro' });
+        }
+        hashes[conj.tipoDado] = hash;
+        await chrome.storage.local.set({ mediadorHash: hashes });
+      }
+      ev.estado = ev.erros.length ? 'parcial' : 'ok';
+      await chrome.storage.local.set({ mediadorCfg: Object.assign(await mediadorCfg(), { ultimaBusca: new Date().toISOString() }) });
+    } catch (e) {
+      ev.estado = (e && e.motivo) === 'cancelado' ? 'cancelado' : 'erro';
+      ev.motivo = (e && e.motivo) || 'erro'; ev.mensagem = String((e && e.message) || e).slice(0, 200);
+    }
+    ev.etapa = ''; ev.terminouEm = new Date().toISOString();
+    if (tab) mediadorSoltarAba();
+    await grava();
+    return { ok: ev.estado === 'ok' || ev.estado === 'parcial', estado: ev.estado, motivo: ev.motivo || '' };
+  })().finally(() => { mediadorRodando = null; });
+  return mediadorRodando;
+}
+// O andamento da busca no Mediador para o Hub e a tela: só estados, contagens e motivos (nunca dado lido)
+async function mediadorPainel() {
+  const { mediadorEnvio: e } = await chrome.storage.local.get('mediadorEnvio'), c = await mediadorCfg();
+  return { permitido: await mediadorPermitido(), rodando: !!mediadorRodando, sindicatos: c.cnpjs.length, ultimaBusca: c.ultimaBusca || '',
+    envio: e ? { estado: e.estado, origem: e.origem, etapa: e.etapa || '', feito: e.feito || 0, total: e.total || 0, instrumentos: e.instrumentos || 0, textos: e.textos || 0,
+      erros: (e.erros || []).length, motivo: e.motivo || '', mensagem: e.mensagem || '', iniciouEm: e.iniciouEm || '', terminouEm: e.terminouEm || '' } : null };
+}
+// A rodada semanal (dentro do envio completo): só com a permissão, com sindicatos e com mais de 7 dias desde a última busca
+async function mediadorSemanal() {
+  const c = await mediadorCfg();
+  if (!c.cnpjs.length || !(await mediadorPermitido())) return null;
+  if (c.ultimaBusca && Date.now() - Date.parse(c.ultimaBusca) < MEDIADOR_SEMANA) return null;
+  return mediadorBuscar('auto');
+}
+
 /* ---------- envio único ao Hub (0.92.0, pedido do Josué em 11/11/2026) ----------
  * "Acompanhar o envio, a divisão entre o que é do Gestta e o que não é, não poder iniciar por dentro do Hub, ter de abrir o Gestta e o
  * Onvio à mão": um envio só leva o resumo, o Onvio e o Gestta, nessa ordem. Pode começar pela extensão, pelo Hub (cmd hubPedido, que a
@@ -1622,6 +1795,7 @@ async function hubPainelAtual() {
   const { hubEnvio, hubSync, hubSyncGestta } = await chrome.storage.local.get(['hubEnvio', 'hubSync', 'hubSyncGestta']);
   const p = OC.hubEnvioPainel(hubEnvio, hubSync, hubSyncGestta, chrome.runtime.getManifest().version);
   p.rodando = !!envioRodando || !!hubSincRodando || !!gesttaHubRodando;
+  p.mediador = await mediadorPainel();
   return p;
 }
 // Manda o andamento às abas do claude.ai (a ponte entrega só à janela do Hub que provou o código). No máximo 1 vez a cada 1,5 s.
@@ -1637,7 +1811,7 @@ function hubProgresso(forca) {
   })().catch(() => {});
 }
 function hubCancelarEnvio() {
-  if (!envioRodando && !hubSincRodando && !gesttaHubRodando) return { ok: false, motivo: 'nada-rodando' };
+  if (!envioRodando && !hubSincRodando && !gesttaHubRodando && !mediadorRodando) return { ok: false, motivo: 'nada-rodando' };
   hubCancelar = true;
   return { ok: true };
 }
@@ -1751,6 +1925,8 @@ async function hubAtualizar(origem, alvo) {
         if (rG && rG.motivo) ev.fontes.gestta = { motivo: rG.motivo };
         if (!(rG && NAO_REPETE.includes(rG.motivo))) await reenviar('gestta', 'hubSyncGestta', OCG.paraReenviar, so => gesttaHubSincronizar(true, so));
       }
+      // 6) o Mediador, uma vez por semana, só no envio completo (0.95.0)
+      if (!alvo && !hubCancelar && !parar) { ev.fase = 'mediador'; await grava(); const rM = await mediadorSemanal().catch(() => null); if (rM && !rM.ok && rM.motivo !== 'cancelado') ev.avisos.push('O Mediador não foi lido nesta semana (' + rM.motivo + '): tente de novo pelo botão Buscar no Mediador, em Convenções.'); }
       // o resultado sai do estado final de cada fonte (depois dos reenvios); a fonte que não foi pedida não pesa
       const fim = await chrome.storage.local.get(['hubSync', 'hubSyncGestta']);
       const estFonte = (quer, ok, r, st) => !quer ? { estado: 'ok' } : !ok ? null : st && st.iniciouEm >= ev.iniciouEm ? { estado: st.estado } : r;

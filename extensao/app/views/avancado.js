@@ -43,6 +43,7 @@ export async function avancado(el, params) {
   // um ouvinte só, registrado uma vez: atualiza a tela que estiver aberta (o estado muda pelo service worker, por exemplo no envio ao Hub)
   if (!ouvindo) { ouvindo = true; chrome.storage.onChanged.addListener((mud, area) => {
     if (area !== 'local' || !elAtual || !elAtual.isConnected) return;
+    if ('mediadorEnvio' in mud || 'mediadorCfg' in mud) estadoMediador(elAtual);
     if (['hubSync', 'hubSyncGestta', 'hubEnvio', 'hubCfg', 'regrasEscritorio', 'aprender', 'aprendizado', 'snapshot', 'status'].some(k => k in mud)) atualizar(elAtual);
   }); }
   clearInterval(timer);
@@ -57,6 +58,20 @@ async function verHub(el) {
   atualizar(el);
 }
 
+const MED_MOTIVOS = { 'sem-permissao-mediador': 'Falta permitir o Mediador (botão acima).', 'sem-sindicatos': 'Nenhum sindicato com CNPJ veio do Hub ainda: abra o Hub em Convenções com a extensão conectada.',
+  'sem-codigo': 'Conecte ao Control Hub primeiro.', 'formato': 'A tela do Mediador mudou: a leitura parou para não trazer dado errado.', 'sem-aba-mediador': 'Não consegui abrir o Mediador numa aba.', 'cancelado': 'Busca cancelada.' };
+const MED_ESTADO = { buscando: ['neutro', 'Buscando'], ok: ['ok', 'Última busca ok'], parcial: ['aviso', 'Última busca com falhas'], erro: ['erro', 'Última busca com erro'], cancelado: ['neutro', 'Cancelada'] };
+async function estadoMediador(el) {
+  const pils = $('#adv-med-pils', el); if (!pils) return;
+  const r = await enviar({ cmd: 'mediadorStatus' }); if (!r || r.ok === false) return;
+  const e = r.envio, est = e && MED_ESTADO[e.estado];
+  $('#adv-med-permitir', el).hidden = !!r.permitido;
+  $('#adv-med-buscar', el).disabled = !r.permitido || !r.sindicatos || r.rodando;
+  pils.innerHTML = pilula(r.permitido ? 'ok' : 'aviso', r.permitido ? 'Mediador permitido' : 'Mediador não permitido') + pilula(r.sindicatos ? 'neutro' : 'aviso', r.sindicatos + ' sindicato' + (r.sindicatos === 1 ? '' : 's') + ' do Hub') +
+    (est ? pilula(est[0], est[1] + (e.estado === 'buscando' ? ' · ' + (e.etapa || '') + ' ' + e.feito + '/' + e.total : ' · ' + e.instrumentos + ' instrumentos, ' + e.textos + ' textos')) : '') +
+    (r.ultimaBusca ? pilula('neutro', 'Lido em ' + new Date(r.ultimaBusca).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })) : '');
+  if (e && e.estado === 'erro') { const m = $('#adv-med-msg', el); if (m && !m.textContent) { m.textContent = MED_MOTIVOS[e.motivo] || e.mensagem || e.motivo; m.classList.add('adv-msg-erro'); } }
+}
 // Redesenha só o que mostra estado (os cartões do topo e as partes "vivas"), sem perder o que a pessoa está digitando
 let atualizando = null;
 function atualizar(el) {
@@ -115,6 +130,13 @@ function parteHub(corpo, d, el) {
     '<section class="cfg-card adv-card" id="adv-gestta"><h3><svg class="ic"><use href="#i-layers"/></svg>Gestta no Hub</h3>' +
       '<p class="fraco ajuda">Vai junto em todo envio, com o Gestta logado com acesso de coordenação. Nada fica guardado na extensão; nunca vão valor, mensalidade, pontuação, e-mail, telefone ou senhas, nem as empresas do escritório.</p>' +
       '<div class="adv-cats" id="adv-gestta-cats"></div>' +
+    '</section>' +
+    // 0.95.0: o Mediador do MTE para o módulo Convenções (só leitura de dados públicos, autorizado pelo Josué em 11/11/2026)
+    '<section class="cfg-card adv-card" id="adv-mediador"><h3><svg class="ic"><use href="#i-search"/></svg>Mediador (Convenções)</h3>' +
+      '<p class="fraco ajuda">Procura no Mediador do MTE as convenções e os aditivos dos sindicatos cadastrados no Hub e manda ao módulo Convenções a lista e o texto da convenção vigente. Abre o Mediador numa aba em segundo plano; só dados públicos. Vai junto no envio completo uma vez por semana, ou pelo botão Buscar no Mediador, em Convenções.</p>' +
+      '<div class="adv-pils" id="adv-med-pils"></div>' +
+      '<div class="adv-acoes"><button type="button" class="btn btn-sm" id="adv-med-permitir" hidden>Permitir o Mediador</button><button type="button" class="btn btn-sm" id="adv-med-buscar">Buscar agora</button></div>' +
+      '<p class="adv-msg" id="adv-med-msg" role="status"></p>' +
     '</section>';
   // conjuntos: cartões com chave
   const cats = $('#adv-cats', corpo);
@@ -168,9 +190,21 @@ function parteHub(corpo, d, el) {
     if (r && r.ok === false) { $('#adv-envio-cab', corpo).innerHTML = '<p class="adv-msg adv-msg-erro">' + esc(OP.msgHub(r)) + '</p>'; return; }
     if (r && r.jaRodando) toast('Já há um envio em andamento: acompanhe em "Último envio"');
   };
+  const MED_ORIGENS = ['https://mediador.trabalho.gov.br/*', 'https://www3.mte.gov.br/*', 'http://www3.mte.gov.br/*'];
+  const medMsg = (t, erro) => { const m = $('#adv-med-msg', corpo); m.textContent = t; m.classList.toggle('adv-msg-erro', !!erro); };
+  $('#adv-med-permitir', corpo).onclick = async () => {
+    const ok = await chrome.permissions.request({ origins: MED_ORIGENS }).catch(() => false);
+    medMsg(ok ? 'Mediador permitido.' : 'Permissão recusada: sem ela a extensão não lê o Mediador.', !ok); estadoMediador(el);
+  };
+  $('#adv-med-buscar', corpo).onclick = async () => {
+    const r = await enviar({ cmd: 'mediadorBuscar' });
+    medMsg(r && r.ok ? (r.jaRodando ? 'Já há uma busca ou um envio em andamento.' : 'Buscando no Mediador…') : (MED_MOTIVOS[r && r.motivo] || 'Não foi possível: ' + ((r && r.motivo) || 'erro')), !(r && r.ok));
+    estadoMediador(el);
+  };
   $('#adv-sincronizar', corpo).onclick = () => sincronizar(false);
   $('#adv-so-folha', corpo).onclick = () => sincronizar(true);
   estadoHub(el);
+  estadoMediador(el);
 }
 async function estadoHub(el) {
   const pils = $('#adv-hub-pils', el), envio = $('#adv-envio', el); if (!pils || !envio) return;

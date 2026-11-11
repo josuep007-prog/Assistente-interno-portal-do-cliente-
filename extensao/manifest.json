@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Control Onvio · ControlTax",
   "short_name": "Control Onvio",
-  "version": "0.94.0",
+  "version": "0.95.0",
   "description": "Página de trabalho por cima do Onvio Portal do Cliente: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores.",
   "permissions": [
     "storage",
@@ -100,7 +100,8 @@
   ],
   "minimum_chrome_version": "114",
   "optional_host_permissions": [
-    "https://*/*"
+    "https://*/*",
+    "http://www3.mte.gov.br/*"
   ],
   "commands": {
     "alternar-painel": {

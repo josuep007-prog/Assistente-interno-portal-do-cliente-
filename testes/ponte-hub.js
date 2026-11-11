@@ -12,17 +12,17 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const copia = fs.mkdtempSync(path.join(os.tmpdir(), 'controlonvio-ext-'));
   fs.cpSync(path.join(__dirname, '..', 'extensao'), copia, { recursive: true });
   const mf = JSON.parse(fs.readFileSync(path.join(copia, 'manifest.json'), 'utf8'));
-  mf.host_permissions.push('https://claude.ai/*');
+  mf.host_permissions.push('https://claude.ai/*', 'https://mediador.trabalho.gov.br/*', 'https://www3.mte.gov.br/*', 'http://www3.mte.gov.br/*');      // 0.95.0: o Mediador já permitido
   fs.writeFileSync(path.join(copia, 'manifest.json'), JSON.stringify(mf));
   const ctx = await chromium.launchPersistentContext(fs.mkdtempSync(path.join(os.tmpdir(), 'controlonvio-')), {
     headless: false, channel: 'chromium',
     // nada sai para a rede de verdade: o que não é simulado não resolve (0.92.0: as abas que a extensão abre sozinha carregam a 1ª vez
     // sem a simulação do Playwright, então caem no erro e o vigia abaixo recarrega, já simulado)
-    args: ['--headless=new', '--disable-extensions-except=' + copia, '--load-extension=' + copia, '--no-sandbox', '--host-resolver-rules=MAP claude.ai 0.0.0.0, MAP app.gestta.com.br 0.0.0.0, MAP api.gestta.com.br 0.0.0.0, MAP onvio.com.br 0.0.0.0']
+    args: ['--headless=new', '--disable-extensions-except=' + copia, '--load-extension=' + copia, '--no-sandbox', '--host-resolver-rules=MAP claude.ai 0.0.0.0, MAP app.gestta.com.br 0.0.0.0, MAP api.gestta.com.br 0.0.0.0, MAP onvio.com.br 0.0.0.0, MAP mediador.trabalho.gov.br 0.0.0.0, MAP www3.mte.gov.br 0.0.0.0']
   });
   const recarregadas = new WeakSet();
-  const vigia = setInterval(() => { for (const p of ctx.pages()) { const u = p.url(); if (recarregadas.has(p) || !/^https:\/\/(app\.gestta\.com\.br|claude\.ai\/artifact)\//.test(u)) continue;
-    p.evaluate(() => document.title).then(t => { if (!/hub|viewer|Gestta/i.test(t || '') && !recarregadas.has(p)) { recarregadas.add(p); p.reload().catch(() => {}); } }).catch(() => {}); } }, 600);
+  const vigia = setInterval(() => { for (const p of ctx.pages()) { const u = p.url(); if (recarregadas.has(p) || !/^https:\/\/(app\.gestta\.com\.br|claude\.ai\/artifact|mediador\.trabalho\.gov\.br)\//.test(u)) continue;
+    p.evaluate(() => document.title).then(t => { if (!/hub|viewer|Gestta|Mediador/i.test(t || '') && !recarregadas.has(p)) { recarregadas.add(p); p.reload().catch(() => {}); } }).catch(() => {}); } }, 600);
   const sw = ctx.serviceWorkers()[0] || await ctx.waitForEvent('serviceworker', { timeout: 15000 });
   const id = new URL(sw.url()).host;
   const iso = n => new Date(Date.now() - n * 864e5).toISOString().replace(/\.\d+Z$/, '');
@@ -348,6 +348,53 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const soA = [...new Set((await f6().evaluate(() => window.lotes)).slice(nL).map(x => x.tipoDado || 'resumo'))].sort();
   assert.deepEqual(soA, ['clientes-cnd', 'gestta-equipe', 'gestta-setores'], 'só o que foi pedido (a etapa do Gestta lê equipe e setores juntos): ' + soA);
   assert.equal((await f6().evaluate(() => window.pedir('atualizar', { onvio: ['<x>'], gestta: ['outra'] }))).motivo, 'nada-reenviar', 'pedido sem conjunto conhecido não começa nada');
+  // 0.95.0: o Mediador do MTE (simulado). O Hub manda os CNPJs, pede a busca; a extensão abre o Mediador numa aba, faz a busca pela página,
+  // lê a exportação e o texto da convenção vigente e entrega ao Hub com a fonte "mediador"; texto antigo e anexo vêm na hora pelo pedido.
+  const MED_CONSULTA = `<!doctype html><title>Mediador</title><input type="checkbox" id="chkNRCNPJ"><input id="txtNRCNPJ"><select id="cboTPRequerimento"><option value="convencao">C</option><option value="termoAditivoConvecao">A</option></select><select id="cboSTVigencia"><option value="1">V</option><option value="2">T</option></select><input type="button" value="Pesquisar" id="b"><script>
+    document.getElementById('b').onclick = () => setTimeout(() => { const x = new XMLHttpRequest(); x.open('POST', '/sistemas/mediador/ConsultarInstColetivo/getConsultaAvancada'); x.send('nrCnpj=' + document.getElementById('txtNRCNPJ').value + '&tpRequerimento=' + document.getElementById('cboTPRequerimento').value + '&recaptchaToken=t'); }, 100);<\/script>`;
+  let medTipo = '';
+  const medLinha = (reg, sol, tipo, ini, fim) => `<tr><td>${reg}</td><td>10000.000001/2026-11</td><td>${sol}</td><td>${tipo}</td><td>${ini} a ${fim}</td><td>11.222.333/0001-81</td><td>SINDICATO EXEMPLO DOS EMPREGADOS</td><td>11.444.777/0001-61</td><td>SINDICATO EXEMPLO PATRONAL</td><td>1</td><td>1</td></tr>`;
+  const medCab = '<tr><td>Nº do Registro</td><td>Nº do Processo</td><td>Nº da Solicitação</td><td>Tipo de Instrumento Coletivo</td><td>Vigência</td><td>CNPJ Trabalhador</td><td>Trabalhador</td><td>CNPJ Empregador</td><td>Empregador</td><td>a</td><td>b</td></tr>';
+  const medPedidos = [];
+  await ctx.route('https://mediador.trabalho.gov.br/**', async r => {
+    const u = new URL(r.request().url());
+    if (u.pathname === '/sistemas/mediador/ConsultarInstColetivo') return r.fulfill({ contentType: 'text/html; charset=utf-8', body: MED_CONSULTA });
+    if (u.pathname.endsWith('/getConsultaAvancada')) { const corpo = r.request().postData() || ''; medPedidos.push(corpo); medTipo = (corpo.match(/tpRequerimento=(\w+)/) || [])[1] || ''; return r.fulfill({ contentType: 'text/html', body: '<p>ok</p>' }); }
+    if (u.pathname.endsWith('/exportarConsultaAvancada')) {
+      const linhas = medTipo === 'convencao' ? medLinha('XX000111/2024', 'MR000111/2024', 'Convenção Coletiva', '01/05/2024', '30/04/2025') + medLinha('XX000333/2026', 'MR000333/2026', 'Convenção Coletiva', '01/05/2026', '30/04/2027') : medLinha('XX000444/2026', 'MR000444/2026', 'Termo Aditivo de Convenção Coletiva', '01/08/2026', '30/04/2027');
+      return r.fulfill({ headers: { 'content-type': 'application/ms-excel; charset=iso-8859-1' }, body: Buffer.from('<table>' + medCab + linhas + '</table>', 'latin1') });
+    }
+    if (u.pathname.endsWith('/resumoVisualizarSalvarMsWordDoc')) { const n = u.searchParams.get('NrSolicitacao'); return r.fulfill({ headers: { 'content-type': 'application/msword; charset=windows-1252' }, body: Buffer.from(`<label class="textogrupo">Salários</label><label class="tituloClausula"><b>CLÁUSULA PRIMEIRA - PISO ${n}</b></label><label class="descricaoClausula">Piso de R$ 1.000,00.</label><label class="tituloClausula"><b>CLÁUSULA SEGUNDA - DATA-BASE</b></label><label class="descricaoClausula">Data-base em 1º de maio.</label>`, 'latin1') }); }
+    return r.fulfill({ status: 404, body: '' });
+  });
+  const pedirMed = (acao, extra, ms) => f6().evaluate(([a, x, t]) => new Promise(ok => { const id = 'm' + Math.random().toString(36).slice(2); window.acks[id] = ok; top.postMessage(Object.assign({ ctlhub: 1, de: 'hub', tipo: 'pedido', id, acao }, x), '*'); setTimeout(() => ok({ ok: false, motivo: 'sem-extensao' }), t); }), [acao, extra, ms || 4000]);
+  assert.equal((await pedirMed('mediadorCnpjs', { cnpjs: ['11.222.333/0001-81', '123', '<x>'] })).ok, true);
+  assert.deepEqual((await opc.evaluate(() => chrome.storage.local.get('mediadorCfg'))).mediadorCfg.cnpjs, ['11222333000181'], 'só CNPJs válidos ficam guardados');
+  const nM = (await f6().evaluate(() => window.lotes)).length;
+  const rM = await pedirMed('mediador', { cnpjs: ['11222333000181'] });
+  assert.equal(rM.iniciado, true, JSON.stringify(rM));
+  let medFim = null;
+  for (let i = 0; i < 160 && !medFim; i++) { await sleep(500); const x = (await opc.evaluate(() => chrome.storage.local.get('mediadorEnvio'))).mediadorEnvio; if (x && x.terminouEm) medFim = x; }
+  assert.ok(medFim, 'a busca no Mediador terminou');
+  assert.equal(medFim.estado, 'ok', JSON.stringify(medFim));
+  assert.equal(medPedidos.length, 2, 'uma busca por tipo, feita pela página: ' + medPedidos.join(' | '));
+  assert.ok(medPedidos.every(c => /nrCnpj=11222333000181/.test(c) && /recaptchaToken=t/.test(c)));
+  const lm = (await f6().evaluate(() => window.lotes)).slice(nM).filter(l => l.fonte === 'mediador');
+  const ins = lm.find(l => l.tipoDado === 'mediador-instrumentos'), cl = lm.find(l => l.tipoDado === 'mediador-clausulas');
+  assert.ok(ins && cl, 'os dois conjuntos foram ao Hub');
+  assert.equal(ins.categoria, 'convencoes'); assert.equal(ins.nLinhas, 3);
+  assert.match(ins.tabela, /XX000333\/2026\tMR000333\/2026|XX000333\/2026\t10000/);
+  assert.match(cl.tabela, /PISO MR000333_2026/); assert.match(cl.tabela, /PISO MR000444_2026/, 'o aditivo da vigente também');
+  assert.doesNotMatch(cl.tabela, /MR000111/, 'a convenção antiga não ocupa o banco');
+  assert.match(cl.tabela, /\tMaio\t/, 'a data-base sai da cláusula');
+  // texto antigo e anexo: na hora, pelo pedido (nada guardado)
+  const tx = await pedirMed('mediadorTexto', { solicitacao: 'MR000111/2024' }, 60000);
+  assert.equal(tx.ok, true, JSON.stringify(tx).slice(0, 300)); assert.match(tx.clausulas[0].titulo, /PISO MR000111_2024/);
+  assert.equal((await pedirMed('mediadorTexto', { solicitacao: 'MR1&x=2' })).motivo, 'solicitacao');
+  assert.equal((await pedirMed('mediadorAnexo', { url: 'https://exemplo.com/a.pdf' })).motivo, 'recusado', 'anexo só do endereço do MTE');
+  const guardadoMed = JSON.stringify(await opc.evaluate(() => chrome.storage.local.get(null)));
+  assert.doesNotMatch(guardadoMed, /PISO|SINDICATO EXEMPLO|XX000333/, 'a extensão não guarda nada lido do Mediador');
+  console.log('Mediador (0.95.0): busca pela página, exportação, texto da vigente ao Hub, texto antigo na hora: ok');
   await hub6.close();
   console.log('reenvio automático do que deu erro, diagnóstico no fim e "só o que falta" pedido pelo Hub: ok');
   // caminho de reserva: o resumo copiável não leva o código de pareamento
