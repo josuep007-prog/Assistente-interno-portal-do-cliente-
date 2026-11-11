@@ -521,6 +521,64 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     assert.equal((await envia({ ...lote('z1', 'z2', 0), fonte: 'gestta', tipoDado: 'gestta-x', categoria: 'inventada', partes: 1 })).motivo, 'categoria');
   });
 
+  await passo('Envio único (Hub 336, extensão 0.92.0): a extensão avisa que está conectada, o andamento só vale com o código e fica em ing_envio para todos; o Hub pede o envio; a Entrada de dados mostra o andamento e só a coordenação inicia', async () => {
+    const cfg = await page.evaluate(() => window.__db.ler('ing_config/cfg'));
+    await page.evaluate(() => { if (!window.__msgs) { window.__msgs = []; window.addEventListener('message', (e) => { if (e.data && e.data.ctlhub === 1 && e.data.de === 'hub') window.__msgs.push(e.data); }); } window.__msgs.length = 0; });
+    await page.evaluate(() => window.postMessage({ ctlhub: 1, de: 'ext', tipo: 'conectado', versao: '0.92.0' }, '*'));
+    await page.waitForFunction(() => window.__hubEnvio.estado().ext && window.__hubEnvio.estado().ext.versao === '0.92.0', null, { timeout: 5000 });
+    const envio = { v: 1, versao: '0.92.0', id: 'e1', origem: 'hub', estado: 'enviando', fase: 'onvio', iniciouEm: new Date().toISOString(), abas: { hub: 'aberta', onvio: 'aberta', gestta: 'abriu' }, avisos: [],
+      fontes: [{ id: 'onvio', nome: 'Onvio', estado: 'enviando', etapa: 'Listas', detalhe: 'empresa 3 de 9', feito: 2, total: 9, conjuntos: [{ id: 'clientes-cnd', rotulo: 'Clientes de CND', ok: false, motivo: 'sem-resposta' }, { id: 'lista-geral', rotulo: 'Geral', ok: true, linhas: 120 }] },
+        { id: 'gestta', nome: 'Gestta', estado: 'aguardando', feito: 0, total: 0, conjuntos: [] }] };
+    await page.evaluate((e) => window.postMessage({ ctlhub: 1, de: 'ext', tipo: 'progresso', token: 'ERRADO', envio: e }, '*'), envio);
+    await page.waitForTimeout(400);
+    assert.equal(await page.evaluate(() => window.__hubEnvio.estado().envio), null, 'andamento com o código errado não vale');
+    await page.evaluate(([e, t]) => window.postMessage({ ctlhub: 1, de: 'ext', tipo: 'progresso', token: t, envio: e }, '*'), [envio, cfg.token]);
+    await page.waitForFunction(() => window.__db.existe('ing_envio/atual'), null, { timeout: 6000 });
+    const at = await page.evaluate(() => window.__db.ler('ing_envio/atual'));
+    assert.equal(at.estado, 'enviando'); assert.equal(at.fontes[0].feito, 2); assert.ok(!JSON.stringify(at).includes(cfg.token), 'o código não vai ao banco');
+    // o Hub pede o envio à extensão (pela ponte, na janela de cima) e espera a resposta
+    const pr = page.evaluate(() => window.__hubEnvio.pedir('atualizar'));
+    await page.waitForFunction(() => window.__msgs.some((m) => m.tipo === 'pedido' && m.acao === 'atualizar'), null, { timeout: 3000 });
+    const idp = await page.evaluate(() => window.__msgs.find((m) => m.tipo === 'pedido').id);
+    await page.evaluate((id) => window.postMessage({ ctlhub: 1, de: 'ext', tipo: 'pedidoAck', id, ok: true, iniciado: true }, '*'), idp);
+    const rp = await pr; assert.equal(rp.ok, true); assert.equal(rp.iniciado, true);
+    // sem extensão neste Chrome: o pedido não fica pendurado
+    const t0 = Date.now(); const sem = await page.evaluate(() => window.__hubEnvio.pedir('estado'));
+    assert.equal(sem.motivo, 'sem-extensao'); assert.ok(Date.now() - t0 < 6000);
+    // a Entrada de dados: conectado, o andamento por fonte, o erro à vista, o botão da coordenação
+    await page.evaluate(() => window.__hubApi.abrirModulo('fontes'));
+    await page.waitForSelector('#fontes-frame', { state: 'visible' });
+    const box = fr.locator('#envioBox');
+    await box.locator('.env-f').first().waitFor({ timeout: 8000 });
+    // a extensão responde ao "estado" do painel (simulada aqui) para o Hub saber que há extensão neste Chrome
+    await page.evaluate(() => { window.addEventListener('message', (e) => { const d = e.data; if (d && d.ctlhub === 1 && d.de === 'hub' && d.tipo === 'pedido') { window.__pedidos = (window.__pedidos || []).concat(d.acao); window.postMessage({ ctlhub: 1, de: 'ext', tipo: 'pedidoAck', id: d.id, ok: true, jaRodando: d.acao === 'atualizar' && window.__rodando, iniciado: d.acao === 'atualizar' }, '*'); } }); });
+    await page.evaluate(() => window.postMessage({ ctlhub: 1, de: 'ext', tipo: 'conectado', versao: '0.92.0' }, '*'));
+    await fr.locator('#envioBox .env-st:has-text("conectado neste Chrome")').waitFor({ timeout: 8000 });
+    assert.match(await box.textContent(), /Atualizando · Onvio · pedido pelo Hub/);
+    assert.match(await box.textContent(), /Gestta: abriu em segundo plano/);
+    assert.match(await box.locator('.env-f').first().textContent(), /Onvio.*enviando.*Listas · empresa 3 de 9 \(etapa 3 de 9\)/);
+    assert.equal(await box.locator('.env-f').first().locator('li.erro').count(), 1, 'o erro à vista; o resto recolhido');
+    assert.equal(await box.locator('#envCancelar').count(), 1, 'durante o envio, Cancelar');
+    if (CAP) await (await page.$('#fontes-frame')).screenshot({ path: path.join(CAP, 'entrada-envio-andamento.png') });
+    // terminou: o resultado e o botão de atualizar; o clique pede à extensão
+    await page.evaluate(([e, t]) => window.postMessage({ ctlhub: 1, de: 'ext', tipo: 'progresso', token: t, envio: Object.assign({}, e, { estado: 'parcial', fase: '', terminouEm: new Date().toISOString(), fontes: [Object.assign({}, e.fontes[0], { estado: 'parcial' }), Object.assign({}, e.fontes[1], { estado: 'ok', conjuntos: [{ id: 'gestta-tarefas', rotulo: 'Tarefas', ok: true, linhas: 40 }] })] }) }, '*'), [envio, cfg.token]);
+    await fr.locator('#envAtualizar').waitFor({ timeout: 8000 });
+    assert.match(await box.textContent(), /Último envio: parte aceita · pedido pelo Hub/);
+    await fr.locator('#envAtualizar').click();
+    await page.waitForFunction(() => (window.__pedidos || []).includes('atualizar'), null, { timeout: 4000 });
+    await page.waitForFunction(() => (window.__db.ler('ing_envio/atual') || {}).estado === 'parcial', null, { timeout: 6000 });
+    // quem não é coordenação só acompanha
+    await page.evaluate(() => { window.__canEdit = false; });
+    await page.evaluate(() => { const f = document.querySelector('#fontes-frame'); f.contentWindow.location.reload(); });
+    await fr.locator('#envioBox .env-f').first().waitFor({ timeout: 8000 });
+    await page.waitForTimeout(800);
+    assert.equal(await fr.locator('#envAtualizar, #envCancelar').count(), 0);
+    assert.match(await fr.locator('#envioBox').textContent(), /Só a coordenação inicia o envio/);
+    await page.evaluate(() => { window.__canEdit = true; });
+    await page.evaluate(() => { const f = document.querySelector('#fontes-frame'); f.contentWindow.location.reload(); });
+    await fr.locator('#envioBox').waitFor();
+  });
+
   await passo('Folha (Extrato Mensal, extensão 0.68.0): as remessas se acumulam pelo documento e a ficha mostra os meses de cada contribuinte (ativo só nos meses em que aparece)', async () => {
     const cfg = await page.evaluate(() => window.__db.ler('ing_config/cfg'));
     await page.evaluate(() => { window.__msgs = window.__msgs || []; if (!window.__ouveAck) { window.__ouveAck = 1; window.addEventListener('message', (e) => { if (e.data && e.data.ctlhub === 1 && e.data.de === 'hub') window.__msgs.push(e.data); }); } });

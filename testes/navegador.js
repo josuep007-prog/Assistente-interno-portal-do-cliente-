@@ -1214,6 +1214,7 @@ await passo('app · Configurações: prazos com efeito na fila antes de salvar, 
 
 // dados do Avançado: Hub conectado com um envio completo que teve a folha só informativa, um erro e um conjunto aceito
 const AV_ESTADO = {
+  hubEnvio: { id: 'e1', origem: 'hub', estado: 'enviando', fase: 'onvio', iniciouEm: new Date().toISOString(), pulso: Date.now(), abas: { hub: 'aberta', onvio: 'aberta', gestta: 'abriu' }, avisos: [] },
   hubCfg: { token: 'ABCDEF123456ABCDEF123456', auto: true, syncAuto: true, syncHoras: 6, envio: { listas: true } },
   hubSync: { estado: 'parcial', terminouEm: new Date().toISOString(), resultados: [
     { id: 'lista-geral', rotulo: 'Solicitações · Geral (todas)', ok: true, linhas: 120 },
@@ -1257,6 +1258,14 @@ await passo('app · Configurações → Avançado (0.69.0): cinco partes com o e
     assert.equal(await p.isVisible('details.adv-todos .adv-igual'), false, 'o que deu certo fica recolhido');
     assert.match(await p.textContent('details.adv-todos > summary'), /Ver os outros 3 conjuntos/);
     assert.match(await p.textContent('#adv-envio [data-reenviar]'), /^Reenviar o que deu erro \(1\)$/, '0.84.0: com erro, o botão de reenviar só o que deu erro');
+    // 0.92.0: envio único: a linha de cima diz quem pediu, a fase e as abas que a extensão abriu; Cancelar enquanto roda; Onvio e Gestta no mesmo cartão
+    assert.match(await p.textContent('#adv-envio-cab'), /Atualizando o Hub \(pedido pelo Hub\)… Onvio/);
+    assert.match(await p.textContent('#adv-envio-cab .adv-abas'), /Gestta: abriu em segundo plano/);
+    assert.equal(await p.isDisabled('#adv-sincronizar'), true, 'um envio por vez');
+    assert.deepEqual(await p.$$eval('.adv-fonte', e => e.map(x => x.textContent)), ['Onvio', 'Gestta']);
+    assert.equal(await p.$$eval('#adv-gestta-enviar, #adv-gesttaAuto', e => e.length), 0, 'sem botão nem automático à parte para o Gestta');
+    await p.click('#adv-cancelar');
+    await p.waitForFunction(() => (window.__msgs || []).some(m => m.cmd === 'hubCancelar'));
     if (process.env.CAP) await (await p.$('#adv-envio')).screenshot({ path: process.env.CAP + '/avancado-envio-' + estilo + '.png' });
     // dados pessoais pedem confirmação antes de ligar
     await p.click('.adv-cat input[data-cat="pessoais"]');
