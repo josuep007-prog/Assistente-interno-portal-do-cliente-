@@ -2847,6 +2847,28 @@ async function abrirGestta(resp, o) {
   await fr.waitForSelector('.gt-topo, .faixa');
   return { p, fr };
 }
+await passo('app · 0.92.0: mudança feita na guia de Configurações vale na hora nas telas do Onvio e do Gestta, com um aviso (tema, estilo, setor e prazos)', async () => {
+  const p = await abrirApp('#/fila', {}, '', { estilo: 'simples' });
+  await p.waitForSelector('#vista .c-item, #vista .fila-vazia, #vista');
+  // tema e estilo moram no armazenamento do navegador: a outra guia avisa pelo evento "storage"
+  await p.evaluate(() => window.dispatchEvent(new StorageEvent('storage', { key: 'controlonvio-theme', newValue: 'dark' })));
+  await p.waitForFunction(() => document.documentElement.getAttribute('data-theme') === 'dark');
+  await p.waitForFunction(() => /Configurações atualizadas/.test(document.querySelector('#toast').textContent) && document.querySelector('#toast').classList.contains('show'));
+  await p.evaluate(() => window.dispatchEvent(new StorageEvent('storage', { key: 'controlonvio-estilo', newValue: 'atual' })));
+  await p.waitForFunction(() => document.documentElement.getAttribute('data-estilo') === 'atual');
+  // prazos e o resto das configurações: chegam pelo armazenamento da extensão, redesenham a tela e avisam
+  await p.evaluate(() => { document.querySelector('#toast').classList.remove('show'); document.querySelector('#vista').dataset.marca = 'antes'; });
+  await p.evaluate(() => chrome.storage.local.set({ settings: { __v: 2, admissaoAviso: 7 } }));
+  await p.waitForFunction(() => document.querySelector('#toast').classList.contains('show') && /Configurações atualizadas/.test(document.querySelector('#toast').textContent));
+  await p.close();
+  // a tela das Tarefas do Gestta também
+  const { p: pg, fr } = await abrirGestta(gtResp(true));
+  await fr.evaluate(() => window.dispatchEvent(new StorageEvent('storage', { key: 'controlonvio-theme', newValue: 'dark' })));
+  await fr.waitForFunction(() => document.documentElement.getAttribute('data-theme') === 'dark');
+  await fr.waitForFunction(() => /Configurações atualizadas/.test((document.querySelector('#toast') || {}).textContent || ''));
+  await pg.close();
+});
+
 await passo('Gestta · Tarefas (0.77.0): Meu dia com o detalhe ao lado e a linha do tempo, Empresas com a ficha e a trilha, Lista densa, Obrigações, calendário, Fechamento e abrir no Gestta', async () => {
   const { p, fr } = await abrirGestta(gtResp(true));
   const sit = k => fr.$eval('.gt-sit[data-grupo="' + k + '"] b', e => e.textContent);
