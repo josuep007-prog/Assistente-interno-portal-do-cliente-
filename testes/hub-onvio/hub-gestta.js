@@ -408,7 +408,7 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     assert.ok(ids.length <= 150 && !ids.includes('velho') && ids.includes('r0'), ids.length + ' pontos');
   });
 
-  await passo('Hub 322 e Hub 332: analista sem setor no cadastro entra pelas tarefas; só conta tarefa do setor, de empresa ativa e das duas últimas competências', async () => {
+  await passo('Hub 322, 332 e 339: analista sem setor no cadastro entra pelas tarefas; só conta tarefa do setor, de empresa ativa (no DP, ativa no próprio DP) e das duas últimas competências, com o porquê', async () => {
     const eq = EQUIPE.linhas.concat([['u10', 'Thais Exemplo', 'Analista', 'sim', '', 'sim'], ['u11', 'Sem Cartela', 'Analista', 'sim', '', 'sim'],
       ['u12', 'Competencia Antiga', 'Analista', 'sim', 'Departamento Pessoal', 'sim'], ['u13', 'Empresa Fora', 'Analista', 'sim', 'Departamento Pessoal', 'sim'], ['u14', 'So Fiscal', 'Analista', 'sim', 'Departamento Pessoal', 'sim']]);
     await semear('ing_partes/gestta~gestta-equipe~a0', { ciclo: 'g3', parte: 0, tabela: tab(eq) });
@@ -442,6 +442,28 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     // trava: com a lista de tarefas velha (mais de 72 h) vale o cadastro do Gestta de antes
     await semear('ing_dados/gestta~gestta-tarefas', Object.assign({}, manT0, { colunas: cols, ciclo: 'g322', partes: 1, nLinhas: linhas.length, totalNaOrigem: linhas.length, recebidoEm: Date.now() - 80 * 3600e3, cortado: false }));
     await page.waitForFunction(() => (window.__cadastro.analistas('dp') || []).includes('Empresa Fora'), null, { timeout: 10000 });
+    await semear('ing_dados/gestta~gestta-tarefas', Object.assign({}, manT0, { colunas: cols, ciclo: 'g322', partes: 1, nLinhas: linhas.length, totalNaOrigem: linhas.length, recebidoEm: Date.now(), cortado: false }));
+    await page.waitForFunction(() => !(window.__cadastro.analistas('dp') || []).includes('Empresa Fora'), null, { timeout: 10000 });
+    // Hub 339 (Josué, 11/11/2026: "pq a Hingryd ainda aparece aqui"): na lista do DP só quem tem tarefa do Pessoal em empresa ativa no DP.
+    // A Thais passa a ter tarefa do Pessoal só na BETA (sem funcionário: Inativa no DP) e sai; a Carla tem a ALFA, agora com funcionário, e fica.
+    const alfa0 = await page.evaluate(() => window.__db.ler('dp_empresas/e-alfa'));
+    await semear('dp_empresas/e-alfa', Object.assign({}, alfa0, { funcionarios: [{ id: 'a1', nome: 'Empregado Ficticio', admissao: '2024-01-02', situacao: 'Ativo' }] }));
+    const l2 = linhas.concat([t('a8', 'Departamento Pessoal', 'Thais Exemplo', A, C.beta, 'BETA SERVICOS LTDA')]);
+    await semear('ing_partes/gestta~gestta-tarefas~a0', { ciclo: 'g339', parte: 0, tabela: tab(l2) });
+    await semear('ing_dados/gestta~gestta-tarefas', Object.assign({}, manT0, { colunas: cols, ciclo: 'g339', partes: 1, nLinhas: l2.length, totalNaOrigem: l2.length, recebidoEm: Date.now(), cortado: false }));
+    await page.waitForFunction(() => window.__hubApi.api('dp').listar().some((e) => e.nome === 'ALFA COMERCIO LTDA' && e.situacao === 'Ativa'), null, { timeout: 10000 });
+    await page.waitForFunction(() => JSON.stringify(window.__cadastro.analistas('dp')) === JSON.stringify(['Carla Mendes Souza']), null, { timeout: 10000 });
+    const ref9 = await api((g) => g.referencia());
+    assert.equal(ref9.analistas.porTarefa, true);
+    assert.match(ref9.analistas.dp.find((x) => x.nome === 'Carla Mendes Souza').porque, /^2 tarefas do Pessoal no Gestta \(competências \d{4}-\d{2} e \d{4}-\d{2}\) em 1 empresa, 1 ativa no DP\.$/);
+    // a lista de tarefas velha: a regra das tarefas não vale e o porquê diz isso
+    await semear('ing_dados/gestta~gestta-tarefas', Object.assign({}, manT0, { colunas: cols, ciclo: 'g339', partes: 1, nLinhas: l2.length, totalNaOrigem: l2.length, recebidoEm: Date.now() - 80 * 3600e3, cortado: false }));
+    await page.waitForFunction(() => (window.__cadastro.analistas('dp') || []).includes('Empresa Fora'), null, { timeout: 10000 });
+    const ref9b = await api((g) => g.referencia());
+    assert.equal(ref9b.analistas.porTarefa, false);
+    assert.match(ref9b.analistas.dp[0].porque, /^Na lista pelo cadastro de equipe do Gestta \(setor Pessoal\): a lista de tarefas tem mais de 72 horas/);
+    await semear('dp_empresas/e-alfa', alfa0);
+    await semear('ing_partes/gestta~gestta-tarefas~a0', { ciclo: 'g322', parte: 0, tabela: tab(linhas) });
     await semear('ing_dados/gestta~gestta-tarefas', Object.assign({}, manT0, { colunas: cols, ciclo: 'g322', partes: 1, nLinhas: linhas.length, totalNaOrigem: linhas.length, recebidoEm: Date.now(), cortado: false }));
     await page.waitForFunction(() => !(window.__cadastro.analistas('dp') || []).includes('Empresa Fora'), null, { timeout: 10000 });
   });
