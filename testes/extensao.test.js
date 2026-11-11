@@ -4292,3 +4292,91 @@ test('Gestta (0.93.0): o detalhe traz o id das etapas e dos documentos e se o do
   assert.deepEqual(plano(det.company_documents), [{ _id: 'd1', name: 'Recibo', has_documents_integration: true, temArquivo: true }, { _id: 'd2', name: 'Guia', temArquivo: false }]);
   assert.ok(!JSON.stringify(det).includes('segredo'));
 });
+
+// ---- Mediador do MTE (0.95.0): núcleo OCM, com HTML simulado no formato mapeado em 11/11/2026 ----
+function carregarMediador() {
+  const ctx = { console, URL, URLSearchParams, TextDecoder };
+  ctx.self = ctx; vm.createContext(ctx); vm.runInContext(src('mediador.js'), ctx); return ctx.OCM;
+}
+const OCM = carregarMediador();
+const EXP_SIM = `<html><body><table><tr><td>CNPJ</td><td>00000000000191</td></tr><tr><td>Tipo</td><td>Convenção Coletiva</td></tr></table>
+<table><tr><th>N&ordm; do Registro</th><th>N&ordm; do Processo</th><th>N&ordm; da Solicita&ccedil;&atilde;o</th><th>Tipo de Instrumento Coletivo</th><th>Vig&ecirc;ncia</th><th>CNPJ Trabalhador</th><th>Trabalhador</th><th>CNPJ Empregador</th><th>Empregador</th><th>N&ordm; Trab. Entidade(s)</th><th>N&ordm; Trab. Negocia&ccedil;&atilde;o</th></tr>
+<tr><td>XX000111/2024</td><td>10000.000001/2024-11</td><td>MR000111/2024</td><td>Convenção Coletiva</td><td>01/05/2024 a 30/04/2025</td><td>00.000.000/0001-91</td><td>SINDICATO EXEMPLO DOS EMPREGADOS</td><td>11.111.111/0001-11</td><td>SINDICATO EXEMPLO PATRONAL</td><td>100</td><td>100</td></tr>
+<tr><td>XX000222/2025</td><td>10000.000002/2025-22</td><td>MR000222/2025</td><td>Convenção Coletiva</td><td>01/05/2025 a 30/04/2026</td><td>00.000.000/0001-91</td><td>SINDICATO EXEMPLO DOS EMPREGADOS</td><td>11.111.111/0001-11</td><td>SINDICATO EXEMPLO PATRONAL</td><td>100</td><td>100</td></tr>
+<tr><td>XX000333/2026</td><td>10000.000003/2026-33</td><td>MR000333/2026</td><td>Convenção Coletiva</td><td>01/05/2026 a 30/04/2027</td><td>00.000.000/0001-91</td><td>SINDICATO EXEMPLO DOS EMPREGADOS</td><td>11.111.111/0001-11</td><td>SINDICATO EXEMPLO PATRONAL</td><td>100</td><td>100</td></tr>
+</table></body></html>`;
+const TXT_SIM = `<html><body><table class="titulo"><tr><td class="titulo">Convenção Coletiva De Trabalho</td></tr></table><div class="Section2">
+<center><b><label class="textogrupo">Salários, Reajustes e Pagamento</label></b></center>
+<label class="textosubgrupo">Piso Salarial</label>
+<table><tr><td class="texto"><label class="tituloClausula"><b>CLÁUSULA TERCEIRA - PISO SALARIAL</b></label></td></tr></table>
+<label class="descricaoClausula">Fica assegurado piso de R$ 1.850,00<br>a partir de 1º de maio.</label>
+<label class="tituloClausula"><b>CLÁUSULA DÉCIMA - PRIMEIRA - VIGÊNCIA E DATA-BASE</b></label>
+<label class="descricaoClausula">As partes fixam a data-base da categoria em 1º de maio.</label>
+<a href="http://www3.mte.gov.br/sistemas/mediador/imagemAnexo/MR000333_2026_20260501.pdf">Anexo (PDF)</a>
+<label class="textonome">FULANO EXEMPLO</label></div></body></html>`;
+
+test('Mediador (0.95.0): lista fechada, só GET e só os endereços mapeados', () => {
+  const ok = (u, m) => OCM.leituraPermitida(m || 'GET', u);
+  assert.ok(ok('https://mediador.trabalho.gov.br/sistemas/mediador/ConsultarInstColetivo/exportarConsultaAvancada'));
+  assert.ok(ok('https://mediador.trabalho.gov.br/sistemas/mediador/Resumo/resumoVisualizarSalvarMsWordDoc?NrSolicitacao=MR000333_2026'));
+  assert.ok(ok('http://www3.mte.gov.br/sistemas/mediador/imagemAnexo/MR000333_2026_20260501.pdf'));
+  assert.ok(!ok('https://mediador.trabalho.gov.br/sistemas/mediador/ConsultarInstColetivo/getConsultaAvancada', 'POST'), 'a busca nunca é montada pela extensão');
+  assert.ok(!ok('https://mediador.trabalho.gov.br/sistemas/mediador/ConsultarInstColetivo/exportarConsultaAvancada', 'POST'));
+  assert.ok(!ok('https://mediador.trabalho.gov.br/sistemas/mediador/ConsultarInstColetivo/GenerateSecurityToken'));
+  assert.ok(!ok('https://mediador.trabalho.gov.br/sistemas/mediador/ConsultarInstColetivo/exportarConsultaAvancada?x=1'));
+  assert.ok(!ok('https://mediador.trabalho.gov.br/sistemas/mediador/Resumo/resumoVisualizarSalvarMsWordDoc?NrSolicitacao=MR1_2026&y=2'));
+  assert.ok(!ok('http://mediador.trabalho.gov.br/sistemas/mediador/ConsultarInstColetivo/exportarConsultaAvancada'), 'o Mediador só por https');
+  assert.ok(!ok('https://www3.mte.gov.br/sistemas/mediador/imagemAnexo/../x.pdf'));
+  assert.ok(!ok('https://exemplo.com/sistemas/mediador/imagemAnexo/MR1_2026.pdf'));
+  assert.equal(OCM.urlTexto('MR000333/2026'), 'https://mediador.trabalho.gov.br/sistemas/mediador/Resumo/resumoVisualizarSalvarMsWordDoc?NrSolicitacao=MR000333_2026');
+  assert.equal(OCM.urlTexto('MR1/26'), '');
+  assert.equal(OCM.urlTexto('x&y=1'), '');
+});
+
+test('Mediador (0.95.0): a exportação vira a lista de instrumentos (tabela com o cabeçalho, entidades decodificadas)', () => {
+  const r = OCM.lerExportacao(EXP_SIM);
+  assert.equal(r.ok, true);
+  assert.equal(r.itens.length, 3);
+  assert.deepEqual(plano(r.itens[2]), { registro: 'XX000333/2026', processo: '10000.000003/2026-33', solicitacao: 'MR000333/2026', tipo: 'Convenção Coletiva',
+    vigIni: '2026-05-01', vigFim: '2027-04-30', cnpjTrab: '00.000.000/0001-91', trabalhador: 'SINDICATO EXEMPLO DOS EMPREGADOS', cnpjEmp: '11.111.111/0001-11', empregador: 'SINDICATO EXEMPLO PATRONAL' });
+  const ruim = OCM.lerExportacao('<table><tr><td>Outra coisa</td></tr></table>');
+  assert.equal(ruim.ok, false); assert.equal(ruim.motivo, 'formato', 'formato desconhecido falha de forma visível');
+});
+
+test('Mediador (0.95.0): o texto sai por cláusula, com grupo, subgrupo, título, data-base e anexo', () => {
+  const t = OCM.lerTexto(TXT_SIM);
+  assert.equal(t.ok, true);
+  assert.equal(t.titulo, 'Convenção Coletiva De Trabalho');
+  assert.equal(t.clausulas.length, 2);
+  assert.deepEqual(plano(t.clausulas[0]), { grupo: 'Salários, Reajustes e Pagamento', subgrupo: 'Piso Salarial', titulo: 'CLÁUSULA TERCEIRA - PISO SALARIAL', texto: 'Fica assegurado piso de R$ 1.850,00\na partir de 1º de maio.' });
+  assert.equal(t.clausulas[1].titulo, 'CLÁUSULA DÉCIMA - PRIMEIRA - VIGÊNCIA E DATA-BASE', 'numeração irregular vem do rótulo, não de regex');
+  assert.equal(t.dataBase, 'Maio');
+  assert.deepEqual(plano(t.anexos), ['http://www3.mte.gov.br/sistemas/mediador/imagemAnexo/MR000333_2026_20260501.pdf']);
+  const sem = OCM.lerTexto('<p>Texto sem as marcações</p>');
+  assert.equal(sem.ok, true); assert.equal(sem.semMarcacao, true); assert.equal(sem.clausulas.length, 1);
+});
+
+test('Mediador (0.95.0): guarda o texto só da convenção vigente e dos aditivos dela', () => {
+  const ex = OCM.lerExportacao(EXP_SIM).itens.map(i => Object.assign(i, { cnpj: '00000000000191', busca: 'convencao' }));
+  const adit = [
+    { cnpj: '00000000000191', busca: 'termoAditivoConvecao', tipo: 'Termo Aditivo de Convenção Coletiva', solicitacao: 'MR000444/2026', vigIni: '2026-08-01', vigFim: '2027-04-30' },
+    { cnpj: '00000000000191', busca: 'termoAditivoConvecao', tipo: 'Termo Aditivo de Convenção Coletiva', solicitacao: 'MR000555/2025', vigIni: '2025-06-01', vigFim: '2026-04-30' },
+  ];
+  assert.deepEqual(plano(OCM.escolherTextos(ex.concat(adit), '2026-11-11')), ['MR000333/2026', 'MR000444/2026']);
+  // sem convenção cobrindo hoje: a mais recente
+  assert.deepEqual(plano(OCM.escolherTextos(ex.slice(0, 2), '2026-11-11')), ['MR000222/2025']);
+});
+
+test('Mediador (0.95.0): linhas para o Hub sem tabulação nem quebra que estrague a tabela', () => {
+  const ex = OCM.lerExportacao(EXP_SIM).itens.map(i => Object.assign(i, { cnpj: '00.000.000/0001-91', busca: 'convencao' }));
+  const li = OCM.linhasInstrumentos(ex);
+  assert.equal(li.length, 3);
+  assert.equal(li[0].split('\t').length, OCM.COLS_INSTRUMENTOS.length);
+  assert.equal(li[0].split('\t')[0], '00000000000191');
+  const t = Object.assign(OCM.lerTexto(TXT_SIM), { solicitacao: 'MR000333/2026', registro: 'XX000333/2026' });
+  const lc = OCM.linhasClausulas([t]);
+  assert.equal(lc.length, 2);
+  lc.forEach(l => assert.equal(l.split('\t').length, OCM.COLS_CLAUSULAS.length));
+  assert.match(lc[0], /1\.850,00 ¶ a partir/);
+  assert.match(lc[0].split('\t')[7], /^Maio$/);
+});
