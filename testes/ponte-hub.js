@@ -44,7 +44,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const TOKEN = 'TESTE1234567890TESTE1234';
   const hubFalso = `<!doctype html><title>hub</title><script>
     window.lotes = []; window.progresso = []; window.acks = {}; window.conectado = null;
-    window.pedir = (acao) => new Promise(ok => { const id = 'p' + Math.random().toString(36).slice(2); window.acks[id] = ok; top.postMessage({ ctlhub: 1, de: 'hub', tipo: 'pedido', id, acao }, '*'); setTimeout(() => ok({ ok: false, motivo: 'sem-extensao' }), 4000); });
+    window.pedir = (acao, alvo) => new Promise(ok => { const id = 'p' + Math.random().toString(36).slice(2); window.acks[id] = ok; top.postMessage(Object.assign({ ctlhub: 1, de: 'hub', tipo: 'pedido', id, acao }, alvo ? { alvo } : {}), '*'); setTimeout(() => ok({ ok: false, motivo: 'sem-extensao' }), 4000); });
     // como o Hub real: em segundo plano (aba escondida) não avisa; as mensagens continuam chegando
     // (o Hub publicado em 26/10/2026, versão 267: o aviso periódico só com a aba visível; o pedido "busca" da ponte responde sempre)
     if (location.search.includes('oculto')) window.__oculto = true;
@@ -78,7 +78,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   });
   const GT_TOKEN = 'JWT eyJhbGciOiJIUzI1NiJ9.' + Buffer.from(JSON.stringify({ exp: 1893456000 })).toString('base64url') + '.SEGREDO-GESTTA';
   const GCORS = { 'access-control-allow-origin': 'https://app.gestta.com.br', 'access-control-allow-headers': 'authorization,content-type,accept', 'access-control-allow-methods': 'GET,POST,OPTIONS' };
-  let gPapel = 'ROLE_ADMIN'; const gPedidos = [];
+  let gPapel = 'ROLE_ADMIN', gFalhar = 0; const gPedidos = [];
   await ctx.route('https://app.gestta.com.br/**', r => r.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Gestta</title><body>Gestta</body>' }));
   await ctx.route('https://api.gestta.com.br/**', async r => {
     const q = r.request(), u = new URL(q.url()), p = u.pathname;
@@ -92,7 +92,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
       return json({ docs: c.date_type === 'COMPETENCE_DATE' ? [{ _id: id(7), name: 'DAS', status: 'OPEN', competence_date: k + '-01T03:00:00.000Z', due_date: k + '-20T03:00:00.000Z', customer: { _id: id(2), name: 'GAMA GESTTA LTDA' } }] : [], total: 1, pages: 1, page: 1 }); }
     if (p === '/admin/customer') return json({ docs: [{ _id: id(2), code: '10', name: 'GAMA GESTTA LTDA', cnpj: '11.111.111/0001-11', active: true, monthly_payment: 777, phone: '(27) 90000-0000' }], totalDocs: 1, totalPages: 1 });
     if (p === '/admin/company/user') return json({ docs: [{ _id: id(3), name: 'Ana', role: 'ROLE_USER', active: true, email: 'ana@exemplo.com', phone_number: '(27) 91111-1111', permissions: ['X'], last_login: '2026-11-05' }], totalDocs: 1, totalPages: 1 });
-    if (p === '/admin/company/department') return json([{ _id: id(4), name: 'Fiscal' }]);
+    if (p === '/admin/company/department') { if (gFalhar > 0) { gFalhar--; return r.fulfill({ status: 500, headers: GCORS, body: '{}' }); } return json([{ _id: id(4), name: 'Fiscal' }]); }
     if (p === '/es/file/onvio') return json({ docs: [{ _id: id(5), status: 'ERROR', error: 'Pasta de destino não configurada', customer_task: { _id: id(7), name: 'DAS', customer: { _id: id(2), name: 'GAMA GESTTA LTDA', cnpj: '1' } } }], totalDocs: 1 });
     if (p === '/admin/company/document') return json({ docs: [{ _id: id(6), name: 'RECIBO', documents_integration: { pathName: [] } }], totalDocs: 1, totalPages: 1 });
     if (/^\/admin\/customer\/c+2\/responsible$/.test(p)) return json([{ company_department: { _id: id(4), name: 'Fiscal' }, company_user: { _id: id(3), name: 'Ana', phone_number: '9' } }]);
@@ -230,7 +230,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   assert.deepEqual([...new Set(soNovos.map(x => x.tipoDado))], ['clientes-cnd'], 'só o que deu erro foi reenviado');
   assert.equal(hR.reenvio, true); assert.ok(hR.resultados.find(r => r.id === 'clientes-cnd').ok, 'o que falhou agora foi aceito');
   assert.equal(hR.resultados.length, hOk.resultados.length, 'o resto do envio anterior continua no resultado');
-  assert.equal(hR.completoAnterior, hOk.terminouEm, 'o reenvio não conta como envio completo para o automático');
+  assert.equal(hR.completoAnterior, hOk.completoAnterior || hOk.terminouEm, 'o reenvio não conta como envio completo para o automático');
   console.log('reenviar o que deu erro (Onvio): ok');
   // ---- Gestta no Hub (0.79.0): conjuntos lidos na aba do Gestta, fonte "gestta", só com acesso de coordenação ----
   const gAba = await ctx.newPage(); await gAba.goto('https://app.gestta.com.br/#/sidebar/task/list');
@@ -313,6 +313,43 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   assert.equal(evH.abas.hub, 'abriu', JSON.stringify(evH)); assert.ok(['ok', 'parcial'].includes(evH.estado), JSON.stringify(evH).slice(0, 300));
   assert.equal(ctx.pages().filter(p => p.url().includes('/artifact/HUBTESTE01')).length, 0, 'a aba do Hub aberta pela extensão fechou no fim');
   console.log('envio único: o Hub pede e acompanha, o impostor não começa nada, Hub e Gestta fechados abrem e fecham sozinhos');
+  // ---- 0.93.0: o que deu erro é reenviado sozinho; o que continua com erro traz o diagnóstico; o Hub pede só o que falta ----
+  const hub6 = await ctx.newPage(); await hub6.goto('https://claude.ai/artifact/HUBTESTE01'); await opc.bringToFront();
+  const f6 = () => hub6.frames().find(f => /\/hub/.test(f.url()));
+  for (let i = 0; i < 20 && !(await f6().evaluate(() => window.conectado).catch(() => null)); i++) await sleep(400);
+  const esperarEnvio = async () => { await sleep(500); for (let i = 0; i < 300; i++) { await sleep(500); const x = await envioParado(); if (x && x.hubEnvio && x.hubEnvio.terminouEm) return x.hubEnvio; } throw new Error('envio não terminou'); };
+  // um erro passageiro (os setores do Gestta falham 1 vez): o reenvio automático resolve, sem ninguém clicar
+  gFalhar = 1;
+  assert.equal((await f6().evaluate(() => window.pedir('atualizar'))).iniciado, true);
+  const evR = await esperarEnvio();
+  const hsR = (await opc.evaluate(() => chrome.storage.local.get('hubSync'))).hubSync;
+  assert.equal(evR.reenvios.gestta, 1, 'um reenvio automático no Gestta: ' + JSON.stringify(evR).slice(0, 300) + ' · Onvio com erro: ' + JSON.stringify(hsR.resultados.filter(r => !r.ok).map(r => [r.id, r.motivo])));
+  const hgR2 = (await opc.evaluate(() => chrome.storage.local.get('hubSyncGestta'))).hubSyncGestta;
+  assert.ok(hgR2.resultados.find(r => r.id === 'gestta-setores').ok, 'depois do reenvio os setores chegaram');
+  assert.ok(['ok', 'parcial'].includes(evR.estado));
+  // um erro que continua (3 falhas): 2 reenvios, e o fim do envio no Hub traz o diagnóstico e o que o conjunto alimenta
+  gFalhar = 3;
+  const nP = (await f6().evaluate(() => window.progresso)).length;
+  assert.equal((await f6().evaluate(() => window.pedir('atualizar'))).iniciado, true);
+  const evP = await esperarEnvio(); await sleep(1800);
+  assert.equal(evP.reenvios.gestta, 2, 'no máximo 2 reenvios'); assert.equal(evP.tentativas, 2); assert.equal(evP.estado, 'parcial');
+  const fimD = (await f6().evaluate(() => window.progresso)).slice(nP).pop();
+  assert.equal(fimD.tentativas, 2);
+  const cs = fimD.fontes.find(f => f.id === 'gestta').conjuntos.find(c => c.id === 'gestta-setores');
+  assert.equal(cs.ok, false); assert.ok(cs.alimenta && cs.alimenta.length > 5, 'diz o que o conjunto alimenta');
+  assert.match(fimD.diagnostico, /diagnóstico do envio ao Hub[\s\S]*reenvios automáticos: 2[\s\S]*gestta-setores/);
+  assert.doesNotMatch(fimD.diagnostico, /GAMA GESTTA|ACME|João|SEGREDO|TESTE1234567890TESTE1234|eyJ/, 'o diagnóstico não leva dado lido, código nem token');
+  // o Hub pede só o que falta: só esses conjuntos saem, sem o resto do Onvio nem do Gestta
+  gFalhar = 0;
+  const nL = (await f6().evaluate(() => window.lotes)).length;
+  assert.equal((await f6().evaluate(() => window.pedir('atualizar', { onvio: ['clientes-cnd'], gestta: ['gestta-setores'] }))).iniciado, true);
+  const evA = await esperarEnvio();
+  assert.ok(evA.alvo, 'o envio sabe que é só o que falta'); assert.equal(evA.reenvios.gestta, 0);
+  const soA = [...new Set((await f6().evaluate(() => window.lotes)).slice(nL).map(x => x.tipoDado || 'resumo'))].sort();
+  assert.deepEqual(soA, ['clientes-cnd', 'gestta-equipe', 'gestta-setores'], 'só o que foi pedido (a etapa do Gestta lê equipe e setores juntos): ' + soA);
+  assert.equal((await f6().evaluate(() => window.pedir('atualizar', { onvio: ['<x>'], gestta: ['outra'] }))).motivo, 'nada-reenviar', 'pedido sem conjunto conhecido não começa nada');
+  await hub6.close();
+  console.log('reenvio automático do que deu erro, diagnóstico no fim e "só o que falta" pedido pelo Hub: ok');
   // caminho de reserva: o resumo copiável não leva o código de pareamento
   const r = await msg('hubLote'); assert.ok(r.ok && !('token' in r.lote));
   // desconectar tira o script e a permissão

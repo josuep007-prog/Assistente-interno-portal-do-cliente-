@@ -3677,6 +3677,43 @@ test('Hub 0.92.0: a ponte só repassa pedido da janela que provou o código, e o
   assert.doesNotMatch(bg, /function hubSincAuto|function gesttaHubAuto/, 'um automático só');
 });
 
+test('Hub 0.93.0: o que cada conjunto alimenta, o pedido de "só o que falta" e o diagnóstico para copiar', () => {
+  assert.match(OC.hubAlimenta('lista-geral'), /solicitações de cada empresa/);
+  assert.match(OC.hubAlimenta('clientes-nfe'), /certificado digital/);
+  assert.match(OC.hubAlimenta('gestta-cartela'), /analista/i);
+  assert.match(OC.hubAlimenta('gestta-tarefas'), /analistas ativos/);
+  assert.equal(OC.hubAlimenta('conjunto-desconhecido'), '');
+  // o alvo vem do Hub: só nomes de conjunto, deduplicados, sem nada estranho; o resumo à parte; o Onvio pela tarefa do plano
+  const a = OC.hubAlvo({ onvio: ['solicitacoes', 'clientes-cnd', 'clientes-cnd', 'lista-geral', '<script>', 5], gestta: ['gestta-cartela', 'outra-coisa', 'gestta-tarefas'] });
+  assert.equal(a.resumo, true);
+  assert.ok(a.onvio.length >= 1 && a.onvio.every(x => typeof x === 'string'), JSON.stringify(a));
+  assert.equal(new Set(a.onvio).size, a.onvio.length, 'sem repetição');
+  assert.deepEqual(JSON.parse(JSON.stringify(a.gestta)), ['gestta-cartela', 'gestta-tarefas'], 'no Gestta só conjuntos do Gestta');
+  assert.equal(OC.hubAlvo(null), null, 'sem alvo = envio completo');
+  // o painel do fim traz o diagnóstico só quando sobrou erro; o texto não leva dado lido
+  const fim = new Date().toISOString();
+  const ev = { id: 'e9', origem: 'auto', estado: 'parcial', fase: '', iniciouEm: fim, terminouEm: fim, pulso: Date.now(), abas: { hub: 'abriu', onvio: 'aberta' }, avisos: [], tentativas: 2 };
+  const sync = { estado: 'parcial', iniciouEm: fim, terminouEm: fim, resultados: [{ id: 'lista-geral', rotulo: 'Geral', ok: true, linhas: 3, segredo: 'Férias do João' }, { id: 'clientes-nfe', rotulo: 'Clientes de NF-e', ok: false, motivo: 'sem-resposta' }] };
+  const p = OC.hubEnvioPainel(ev, sync, null, '0.93.0');
+  assert.equal(p.tentativas, 2);
+  const c = p.fontes[0].conjuntos.find(x => x.id === 'clientes-nfe');
+  assert.match(c.alimenta, /certificado digital/);
+  assert.match(p.diagnostico, /^Control Onvio · diagnóstico do envio ao Hub/);
+  assert.match(p.diagnostico, /reenvios automáticos: 2/);
+  assert.match(p.diagnostico, /Clientes de NF-e \(clientes-nfe\): sem-resposta · alimenta: o certificado digital/);
+  assert.doesNotMatch(p.diagnostico, /João|segredo/);
+  assert.ok(p.diagnostico.length <= 6000);
+  assert.equal(OC.hubEnvioPainel(Object.assign({}, ev, { estado: 'enviando', terminouEm: '' }), Object.assign({}, sync, { estado: 'enviando' })).diagnostico, undefined, 'durante o envio, nada de diagnóstico');
+  assert.equal(OC.hubEnvioPainel(Object.assign({}, ev, { estado: 'ok' }), Object.assign({}, sync, { estado: 'ok', resultados: [sync.resultados[0]] })).diagnostico, undefined, 'sem erro, nada de diagnóstico');
+  // o service worker reenvia sozinho o que deu erro (até 2 vezes, com pausa), sem repetir erro que não muda sozinho
+  const bg = src('background.js');
+  assert.match(bg, /const HUB_REENVIOS = 2/);
+  assert.match(bg, /NAO_REPETE = \[[^\]]*'versao-antiga'[^\]]*'acesso-parcial'/);
+  assert.match(bg, /reenviar\('onvio', 'hubSync', OC\.hubParaReenviar/);
+  assert.match(bg, /reenviar\('gestta', 'hubSyncGestta', OCG\.paraReenviar/);
+  assert.match(src('ponte-hub.js'), /cmd: 'hubPedido', acao(: [^,}]+)?, alvo/, 'a ponte repassa o alvo do Hub');
+});
+
 test('Hub: conjunto incompleto diz o porquê (empresa que falhou, lista de tamanho redondo) e a tela mostra', async () => {
   const base = apiHub();
   const f = async url => { const u = new URL(url); if (/clients\/c2\/employees/.test(u.pathname)) { const e = new Error('HTTP 500'); e.status = 500; throw e; }
