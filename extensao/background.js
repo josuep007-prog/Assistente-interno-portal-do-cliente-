@@ -1131,7 +1131,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'hubAtualizar') reply(await hubIniciar(msg.origem === 'hub' ? 'hub' : 'extensao'));
       else if (msg.cmd === 'hubPedido') {
         if (!sender || !sender.tab || !(sender.tab.url || '').startsWith('https://claude.ai/')) reply({ ok: false, motivo: 'origem' });
-        else if (msg.acao === 'atualizar') reply(await hubIniciar('hub'));
+        else if (msg.acao === 'atualizar') reply(await hubIniciar('hub', msg.alvo));          // Hub 340: alvo = só o que falta
         else if (msg.acao === 'cancelar') reply(hubCancelarEnvio());
         else reply({ ok: true, envio: await hubPainelAtual() });
       }
@@ -1645,21 +1645,31 @@ async function gesttaPronto() {
   return !!(r && r.ok);
 }
 // Começa o envio único e responde na hora (é longo: as telas acompanham pelo hubEnvio e o Hub pelo progresso).
-async function hubIniciar(origem) {
+async function hubIniciar(origem, alvo) {
   if (envioRodando || hubSincRodando || gesttaHubRodando) return { ok: true, jaRodando: true };
   const c = await hubCfg();
   if (!c.token) return { ok: false, motivo: 'sem-codigo' };
   if (!(await hubPermitido())) return { ok: false, motivo: 'sem-permissao' };
-  if (origem !== 'auto') await hubGuardar({ envioConfirmado: true });           // a pessoa pediu o envio completo: vale como confirmação do que vai
-  hubAtualizar(origem).catch(() => {});
+  const a = OC.hubAlvo(alvo);
+  if (a && !a.resumo && !a.onvio.length && !a.gestta.length) return { ok: false, motivo: 'nada-reenviar' };
+  if (origem !== 'auto' && !a) await hubGuardar({ envioConfirmado: true });           // a pessoa pediu o envio completo: vale como confirmação do que vai
+  hubAtualizar(origem, a).catch(() => {});
   return { ok: true, iniciado: true };
 }
-async function hubAtualizar(origem) {
+// 0.93.0 (Josué, 11/11/2026: "a extensão deve já reenviar automaticamente tudo que der erro, e caso o erro persistir dar o copiar para colar do
+// diagnóstico do erro e dizer qual informação esse erro iria alimentar"): depois de cada fonte, o que deu erro é refeito sozinho até 2 vezes
+// (pausa de 15 s e de 30 s), sem reler o que já foi aceito; o que continuar com erro fica no resultado com o que alimenta e o diagnóstico.
+// Erros que não adianta repetir (código, versão antiga, acesso de cliente, acesso parcial do Gestta, leitura do escritório) não são refeitos.
+const HUB_REENVIOS = 2, NAO_REPETE = ['token', 'sem-hub', 'somente-leitura', 'sem-config', 'versao-antiga', 'visao-cliente', 'acesso-parcial', 'sem-sessao-gestta', 'sem-gestta', 'cancelado'];
+async function hubAtualizar(origem, alvo) {
   if (envioRodando) return envioRodando;
   envioRodando = (async () => {
     hubCancelar = false;
     const manual = origem !== 'auto';
-    const ev = { id: 'e' + Date.now().toString(36), origem, estado: 'preparando', fase: 'abas', iniciouEm: new Date().toISOString(), pulso: Date.now(), abas: {}, avisos: [], fontes: {} };
+    // alvo (Hub 340, "só o que falta"): só as fontes e os conjuntos pedidos; não conta como envio completo
+    const catsAlvo = alvo ? [...new Set(alvo.gestta.map(id => OCG.catDoConjunto(id)).filter(Boolean))] : null;
+    const querOnvio = !alvo || alvo.resumo || alvo.onvio.length > 0, querGestta = !alvo || catsAlvo.length > 0;
+    const ev = { id: 'e' + Date.now().toString(36), origem, estado: 'preparando', fase: 'abas', iniciouEm: new Date().toISOString(), pulso: Date.now(), abas: {}, avisos: [], fontes: {}, tentativas: 0, reenvios: { onvio: 0, gestta: 0 }, alvo: alvo ? { onvio: alvo.onvio.length + (alvo.resumo ? 1 : 0), gestta: catsAlvo.length } : null };
     const grava = () => { ev.pulso = Date.now(); return chrome.storage.local.set({ hubEnvio: ev }).catch(() => {}).then(() => hubProgresso()); };
     await grava();
     const batida = setInterval(grava, 20000);
@@ -1676,23 +1686,47 @@ async function hubAtualizar(origem) {
       }
       await grava();
       // 2) o Onvio e o Gestta: abre o que faltar (os dois carregam juntos) e espera a sessão de cada um
-      const precisaOnvio = !(await abaOnvio()), precisaGestta = !(await abaGestta());
+      const precisaOnvio = querOnvio && !(await abaOnvio()), precisaGestta = querGestta && !(await abaGestta());
       const [tO, tG] = await Promise.all([precisaOnvio ? abrirEmSegundoPlano(OC.PORTAL + 'service-requesting/general') : null, precisaGestta ? abrirEmSegundoPlano(GESTTA_URL) : null]);
-      ev.abas.onvio = precisaOnvio ? (tO ? 'abriu' : 'falhou') : 'aberta';
-      ev.abas.gestta = precisaGestta ? (tG ? 'abriu' : 'falhou') : 'aberta';
+      if (querOnvio) ev.abas.onvio = precisaOnvio ? (tO ? 'abriu' : 'falhou') : 'aberta';
+      if (querGestta) ev.abas.gestta = precisaGestta ? (tG ? 'abriu' : 'falhou') : 'aberta';
       await grava();
-      const [okO, okG] = await Promise.all([esperarAte(onvioPronto, precisaOnvio ? 40000 : 8000, 2500), esperarAte(gesttaPronto, precisaGestta ? 40000 : 8000, 2500)]);
-      if (!okO) { ev.abas.onvio = 'sem-sessao'; ev.fontes.onvio = { motivo: 'sem-sessao-onvio' }; }
-      if (!okG) { ev.abas.gestta = 'sem-sessao'; ev.fontes.gestta = { motivo: 'sem-sessao-gestta' }; }
+      const [okO, okG] = await Promise.all([querOnvio ? esperarAte(onvioPronto, precisaOnvio ? 40000 : 8000, 2500) : false, querGestta ? esperarAte(gesttaPronto, precisaGestta ? 40000 : 8000, 2500) : false]);
+      if (querOnvio && !okO) { ev.abas.onvio = 'sem-sessao'; ev.fontes.onvio = { motivo: 'sem-sessao-onvio' }; }
+      if (querGestta && !okG) { ev.abas.gestta = 'sem-sessao'; ev.fontes.gestta = { motivo: 'sem-sessao-gestta' }; }
       ev.estado = 'enviando'; await grava();
+      // refaz o que deu erro (até HUB_REENVIOS vezes), lendo de novo só esses conjuntos
+      const reenviar = async (fonte, chave, paraReenviar, sincronizar) => {
+        for (let t = 1; t <= HUB_REENVIOS && !hubCancelar; t++) {
+          const st = (await chrome.storage.local.get(chave))[chave];
+          if (!st || NAO_REPETE.includes(st.motivo)) return;
+          const so = paraReenviar(st); if (!so.length) return;
+          ev.fase = 'reenvio-' + fonte; ev.reenvios[fonte] = t; ev.tentativas = Math.max(ev.reenvios.onvio, ev.reenvios.gestta); await grava();      // tentativas = rodadas de reenvio (no máximo HUB_REENVIOS)
+          await dormir(t * 15000); if (hubCancelar) return;
+          await sincronizar(so);
+        }
+      };
       // 3) o resumo das pendentes, 4) o Onvio, 5) o Gestta
-      if (okO && !hubCancelar) { ev.fase = 'resumo'; await grava(); await enviarAoHub(null, manual).catch(() => {}); }
-      if (okO && !hubCancelar) { ev.fase = 'onvio'; await grava(); rO = await hubSincronizar(manual); if (rO && rO.motivo) ev.fontes.onvio = { motivo: rO.motivo }; }
+      if (okO && !hubCancelar && (!alvo || alvo.resumo)) { ev.fase = 'resumo'; await grava(); await enviarAoHub(null, manual).catch(() => {}); }
+      if (okO && !hubCancelar && (!alvo || alvo.onvio.length)) {
+        ev.fase = 'onvio'; await grava();
+        rO = alvo ? await hubSincronizar(true, false, alvo.onvio) : await hubSincronizar(manual);
+        if (rO && rO.motivo) ev.fontes.onvio = { motivo: rO.motivo };
+        if (!(rO && NAO_REPETE.includes(rO.motivo))) await reenviar('onvio', 'hubSync', OC.hubParaReenviar, so => hubSincronizar(true, false, so));
+      }
       const parar = rO && ['token', 'sem-hub', 'somente-leitura', 'sem-config', 'versao-antiga', 'visao-cliente'].includes(rO.motivo);
-      if (okG && !hubCancelar && !parar) { ev.fase = 'gestta'; await grava(); rG = await gesttaHubSincronizar(manual); if (rG && rG.motivo) ev.fontes.gestta = { motivo: rG.motivo }; }
-      ev.estado = OC.hubEnvioEstado(rO, rG, hubCancelar);
-      if (!okO) ev.avisos.push('O Onvio não estava com a sessão aberta: entre no Portal do Cliente e atualize de novo.');
-      if (!okG) ev.avisos.push('O Gestta não estava com a sessão aberta: entre no Gestta e atualize de novo.');
+      if (okG && !hubCancelar && !parar && querGestta) {
+        ev.fase = 'gestta'; await grava();
+        rG = await gesttaHubSincronizar(manual || !!alvo, catsAlvo || undefined);
+        if (rG && rG.motivo) ev.fontes.gestta = { motivo: rG.motivo };
+        if (!(rG && NAO_REPETE.includes(rG.motivo))) await reenviar('gestta', 'hubSyncGestta', OCG.paraReenviar, so => gesttaHubSincronizar(true, so));
+      }
+      // o resultado sai do estado final de cada fonte (depois dos reenvios); a fonte que não foi pedida não pesa
+      const fim = await chrome.storage.local.get(['hubSync', 'hubSyncGestta']);
+      const estFonte = (quer, ok, r, st) => !quer ? { estado: 'ok' } : !ok ? null : st && st.iniciouEm >= ev.iniciouEm ? { estado: st.estado } : r;
+      ev.estado = OC.hubEnvioEstado(estFonte(querOnvio && (!alvo || alvo.onvio.length || alvo.resumo), okO, rO, fim.hubSync), estFonte(querGestta, okG, rG, fim.hubSyncGestta), hubCancelar);
+      if (querOnvio && !okO) ev.avisos.push('O Onvio não estava com a sessão aberta: entre no Portal do Cliente e atualize de novo.');
+      if (querGestta && !okG) ev.avisos.push('O Gestta não estava com a sessão aberta: entre no Gestta e atualize de novo.');
       if (parar) ev.motivo = rO.motivo;
     } catch (e) {
       if (e && e.cliente) await bloquearVisaoCliente(e);
@@ -1715,7 +1749,7 @@ async function hubAutoUnico() {
   if (!c.token || !c.auto || c.syncAuto === false || !c.envioConfirmado || envioRodando || hubSincRodando || gesttaHubRodando) return;
   if (!(await hubPermitido())) return;
   const { hubEnvio, hubSync } = await chrome.storage.local.get(['hubEnvio', 'hubSync']);
-  const completo = e => e && e.terminouEm && ['ok', 'parcial'].includes(e.estado) ? Date.parse(e.terminouEm) || 0 : 0;
+  const completo = e => e && !e.alvo && e.terminouEm && ['ok', 'parcial'].includes(e.estado) ? Date.parse(e.terminouEm) || 0 : 0;      // "só o que falta" não é envio completo
   const ult = Math.max(completo(hubEnvio), hubSync && !hubSync.soFolha && !hubSync.reenvio ? completo(hubSync) : 0);
   if (ult && Date.now() - ult < Math.max(1, Number(c.syncHoras) || 6) * 3600e3) return;
   const tentou = hubEnvio && hubEnvio.iniciouEm ? Date.parse(hubEnvio.iniciouEm) || 0 : 0;
