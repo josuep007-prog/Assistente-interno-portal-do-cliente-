@@ -1207,6 +1207,32 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await semearConjunto('escritorio-funcionarios', { categoria: 'escritorio', colunas: eq.colunas, linhas: [] }, 'cE2');
   });
 
+  await passo('Empresas do DP (Hub 343, Josué 11/11/2026: "por padrão deve aparecer apenas as empresas ativas", "adicione o nome do analista no card"): abre só com as ativas, o chip Ativas mostra as outras, e o cartão traz o analista', async () => {
+    await page.evaluate(() => document.querySelectorAll('dialog[open]').forEach((d) => d.close()));
+    await page.evaluate(() => window.__hubApi.abrirModulo('dp'));
+    await page.evaluate(() => window.__hubApi.api('dp').irPara('empresas'));
+    await page.waitForSelector('#dp-emp-faixa [data-emp-faixa="ativas"]');
+    await page.evaluate(() => { const b = document.querySelector('#dp-emp-modo [data-emp-modo="cards"]'); if (b) b.click(); });
+    await page.waitForSelector('#dp-emp-cards .emp-card');
+    const chip = page.locator('#dp-emp-faixa [data-emp-faixa="ativas"]');
+    assert.equal(await chip.getAttribute('aria-pressed'), 'true', 'de fábrica só as ativas');
+    assert.equal(await page.locator('#dp-emp-cards .emp-card.inativa').count(), 0, 'nenhuma inativa à vista');
+    assert.equal(await page.isHidden('#dp-filtros-n'), true, 'as ativas de fábrica não contam como filtro');
+    const r = await page.$$eval('#dp-emp-cards .emp-card', (cs) => cs.map((c) => (c.querySelector('.emp-resp') || {}).textContent || ''));
+    assert.ok(r.length && r.every((t) => t.trim()), 'cada cartão diz o analista (ou "Sem responsável"): ' + JSON.stringify(r));
+    const comResp = await page.evaluate(() => (window.__hubApi.api('dp').listar() || []).find((e) => e.situacao === 'Ativa' && e.analista));
+    assert.ok(comResp, 'a base de teste tem empresa ativa com analista');
+    assert.ok(r.some((t) => t.includes(comResp.analista)), 'o nome do analista aparece: ' + comResp.analista + ' em ' + JSON.stringify(r));
+    if (CAP) { await page.waitForTimeout(1500); await page.screenshot({ path: path.join(CAP, 'dp-empresas-ativas.png') }); }
+    const nAtivas = await page.locator('#dp-emp-cards .emp-card').count();
+    const temInativa = await page.evaluate(() => (window.__hubApi.api('dp').listar() || []).some((e) => e.situacao !== 'Ativa'));
+    await chip.click();
+    assert.equal(await chip.getAttribute('aria-pressed'), 'false');
+    if (temInativa) { await page.waitForFunction((n) => document.querySelectorAll('#dp-emp-cards .emp-card').length > n, nAtivas, { timeout: 5000 }); }
+    await chip.click();
+    await page.waitForFunction((n) => document.querySelectorAll('#dp-emp-cards .emp-card').length === n, nAtivas, { timeout: 5000 });
+  });
+
   await passo('Cartela sem a aba Onvio (Hub 342, Josué 11/11/2026: "retire essa sessão Onvio daqui, está sem utilidade"): o selo "N no Onvio" abre a ficha da empresa na aba Onvio', async () => {
     const cols = ['Lista', 'Nº', 'Situação', 'Vez', 'Cliente', 'Responsável', 'Aberta em', 'Última movimentação', 'Dias parado', 'Gravidade'];
     await page.evaluate(([c]) => window.__db.semear('ing_lotes/onvio~solicitacoes', { fonte: 'onvio', tipoDado: 'solicitacoes', colunas: c, tabela: ['Geral\t901\tSem análise\tescritório\tORION COMERCIO LTDA | 0001-81\tAna Teste\t2026-10-20\t2026-10-20\t5\t1'].join('\n'), nLinhas: 1, totalNaOrigem: 1, cortado: false, recebidoEm: Date.now(), usuario: 'Ana Teste' }), [cols]);
