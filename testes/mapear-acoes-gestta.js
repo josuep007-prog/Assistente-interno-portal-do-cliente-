@@ -97,6 +97,8 @@ const CORS = { 'access-control-allow-origin': 'https://app.gestta.com.br', 'acce
   await passo('o passo a passo traz a mesma cópia do roteiro', async () => {
     const md = fs.readFileSync(path.join(__dirname, '..', 'mapeamento', 'prompt-mapear-acoes-gestta.md'), 'utf8');
     assert.ok(md.includes(ROTEIRO.trimEnd()), 'mapeamento/prompt-mapear-acoes-gestta.md está desatualizado');
+    const txt = fs.readFileSync(path.join(__dirname, '..', 'mapeamento', 'prompt-claude-chrome-acoes-gestta.txt'), 'utf8');
+    assert.ok(txt.includes(ROTEIRO.trimEnd()), 'mapeamento/prompt-claude-chrome-acoes-gestta.txt está desatualizado');
   });
 
   await browser.close();

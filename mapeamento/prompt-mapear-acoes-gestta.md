@@ -33,6 +33,8 @@ O Josué aprovou em 11/11/2026 quatro ações do Gestta para a extensão: **conc
 
 Se uma ação não existir na tela, pule e diga qual foi. Se der erro, mande a mensagem.
 
+Para o **Claude in Chrome** fazer tudo sozinho, cole o texto de `mapeamento/prompt-claude-chrome-acoes-gestta.txt` (já traz as regras, as ações e o roteiro; troque `[EMPRESA DE TESTE]` pelo nome da empresa de teste).
+
 ## O que vem depois
 
 Com o resultado, cada ação entra na extensão do mesmo jeito que as do Onvio: um pedido montado só para aquele endereço e aquele método, uma regra no código que recusa todo o resto (`OCG.leituraPermitida` ganha a lista das escritas aprovadas), um teste com o Gestta simulado e, na tela, sempre a confirmação da pessoa antes de gravar.
