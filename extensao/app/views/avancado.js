@@ -43,7 +43,7 @@ export async function avancado(el, params) {
   // um ouvinte só, registrado uma vez: atualiza a tela que estiver aberta (o estado muda pelo service worker, por exemplo no envio ao Hub)
   if (!ouvindo) { ouvindo = true; chrome.storage.onChanged.addListener((mud, area) => {
     if (area !== 'local' || !elAtual || !elAtual.isConnected) return;
-    if (['hubSync', 'hubSyncGestta', 'hubCfg', 'regrasEscritorio', 'aprender', 'aprendizado', 'snapshot', 'status'].some(k => k in mud)) atualizar(elAtual);
+    if (['hubSync', 'hubSyncGestta', 'hubEnvio', 'hubCfg', 'regrasEscritorio', 'aprender', 'aprendizado', 'snapshot', 'status'].some(k => k in mud)) atualizar(elAtual);
   }); }
   clearInterval(timer);
   timer = setInterval(() => { if (!el.isConnected) { clearInterval(timer); timer = null; return; } verHub(el); }, 15000);
@@ -98,9 +98,10 @@ function parteHub(corpo, d, el) {
         '<div class="adv-acoes"><button type="button" class="btn btn-sm" id="adv-hub-enviar">Enviar resumo agora</button><button type="button" class="btn btn-sm" id="adv-hub-copiar" title="Se a ponte não funcionar: copia o resumo para colar em Entrada de dados no Hub"><svg class="ic"><use href="#i-copy"/></svg>Copiar resumo</button></div>' +
         '<p class="adv-msg" id="adv-hub-msg" role="status"></p>' +
       '</section>' +
-      '<section class="cfg-card adv-card"><h3><svg class="ic"><use href="#i-download"/></svg>Envio completo</h3>' +
-        '<label class="cfg-sw"><input type="checkbox" id="adv-syncAuto"' + (c.syncAuto !== false ? ' checked' : '') + '><span class="cfg-tx"><b>Automático</b><small class="ajuda">Só com o Hub aberto numa aba.</small></span></label>' +
-        '<div class="adv-linha"><span class="adv-rot">A cada</span><div class="cfg-num"><input type="number" id="adv-syncHoras" min="1" max="48" step="1" value="' + (c.syncHoras || 6) + '"></div><span class="cfg-un">horas</span><span class="adv-espaco"></span><button type="button" class="btn btn-primary btn-sm" id="adv-sincronizar">Enviar tudo agora</button></div>' +
+      '<section class="cfg-card adv-card"><h3><svg class="ic"><use href="#i-download"/></svg>Atualizar o Hub</h3>' +
+        '<p class="fraco ajuda">Um envio só leva o resumo, o Onvio e o Gestta. O que estiver fechado (o Hub, o Onvio ou o Gestta) abre numa aba em segundo plano e fecha no fim. Também dá para começar pelo Hub, em Entrada de dados.</p>' +
+        '<label class="cfg-sw"><input type="checkbox" id="adv-syncAuto"' + (c.syncAuto !== false ? ' checked' : '') + '><span class="cfg-tx"><b>Automático</b><small class="ajuda">Com o Chrome aberto e as sessões do Onvio e do Gestta logadas.</small></span></label>' +
+        '<div class="adv-linha"><span class="adv-rot">A cada</span><div class="cfg-num"><input type="number" id="adv-syncHoras" min="1" max="48" step="1" value="' + (c.syncHoras || 6) + '"></div><span class="cfg-un">horas</span><span class="adv-espaco"></span><button type="button" class="btn btn-primary btn-sm" id="adv-sincronizar">Atualizar o Hub agora</button></div>' +
         '<div class="adv-linha"><span class="adv-rot" style="flex:1">Só a folha (Extrato Mensal): bem mais rápido, sem as listas nem a lista de empregados.</span><button type="button" class="btn btn-sm" id="adv-so-folha" title="Lê só os extratos novos ou que faltam (até 1.500 PDFs por vez) e manda ao Hub. Não conta como envio completo.">Enviar só a folha</button></div>' +
       '</section>' +
     '</div>' +
@@ -108,14 +109,12 @@ function parteHub(corpo, d, el) {
       '<div class="adv-alerta" id="adv-pessoais-aviso" hidden><b>Dados pessoais no Hub.</b> Com esta opção vão para o banco do Hub (no claude.ai) CPF, salário, nomes de empregados, assunto e descrição de todas as solicitações, dados completos e trâmites das pendentes, a folha (contribuintes por competência) e comunicações. Quem acessa o Hub passa a poder ver. Só ligue se o escritório decidiu isso.' +
         '<div class="adv-acoes"><button type="button" class="btn btn-primary btn-sm" id="adv-pessoais-sim">Entendi, enviar dados pessoais</button><button type="button" class="btn btn-sm" id="adv-pessoais-nao">Cancelar</button></div></div>' +
     '</section>' +
-    '<section class="cfg-card adv-card"><h3><svg class="ic"><use href="#i-clock"/></svg>Último envio</h3><div id="adv-envio"></div></section>' +
+    '<section class="cfg-card adv-card"><h3><svg class="ic"><use href="#i-clock"/></svg>Último envio</h3><div id="adv-envio-cab"></div>' +
+      '<h4 class="adv-fonte">Onvio</h4><div id="adv-envio"></div><h4 class="adv-fonte">Gestta</h4><div id="adv-gestta-envio"></div></section>' +
     // 0.79.0: o Gestta no Hub (tarefas, clientes, equipe e setores, alertas e a cartela 1 vez por dia), lido na aba do Gestta
     '<section class="cfg-card adv-card" id="adv-gestta"><h3><svg class="ic"><use href="#i-layers"/></svg>Gestta no Hub</h3>' +
-      '<p class="fraco ajuda">Com o Gestta aberto numa aba e logado com acesso de coordenação, a extensão lê os conjuntos marcados e entrega ao Hub, junto com o envio automático. Nada fica guardado na extensão; nunca vão valor, mensalidade, pontuação, e-mail, telefone ou senhas, nem as empresas do escritório.</p>' +
-      '<label class="cfg-sw"><input type="checkbox" id="adv-gesttaAuto"' + (c.gesttaAuto !== false ? ' checked' : '') + '><span class="cfg-tx"><b>Junto com o envio automático</b><small class="ajuda">A cada ' + (c.syncHoras || 6) + ' horas, com o Hub e o Gestta abertos.</small></span></label>' +
+      '<p class="fraco ajuda">Vai junto em todo envio, com o Gestta logado com acesso de coordenação. Nada fica guardado na extensão; nunca vão valor, mensalidade, pontuação, e-mail, telefone ou senhas, nem as empresas do escritório.</p>' +
       '<div class="adv-cats" id="adv-gestta-cats"></div>' +
-      '<div class="adv-acoes"><button type="button" class="btn btn-primary btn-sm" id="adv-gestta-enviar">Enviar o Gestta agora</button></div>' +
-      '<div id="adv-gestta-envio"></div>' +
     '</section>';
   // conjuntos: cartões com chave
   const cats = $('#adv-cats', corpo);
@@ -129,14 +128,6 @@ function parteHub(corpo, d, el) {
     const { hubCfg } = await ler('hubCfg'); const n = Object.assign({}, hubCfg || {}); n.gestta = Object.assign({}, n.gestta || {}, { [inp.dataset.gcat]: inp.checked }); await chrome.storage.local.set({ hubCfg: n });
     const k = G.HUB_GESTTA.find(x => x.id === inp.dataset.gcat); toast(inp.checked ? '“' + k.nome + '” vai ao Hub' : '“' + k.nome + '” fora do envio');
   });
-  $('#adv-gesttaAuto', corpo).addEventListener('change', async e => { const { hubCfg } = await ler('hubCfg'); await chrome.storage.local.set({ hubCfg: Object.assign({}, hubCfg || {}, { gesttaAuto: e.target.checked }) }); });
-  $('#adv-gestta-enviar', corpo).onclick = async () => {
-    await salvar();
-    $('#adv-gestta-envio', corpo).innerHTML = '<p class="adv-msg">Iniciando…</p>';
-    const r = await enviar({ cmd: 'gesttaHubSync' });
-    if (r && r.ok === false) { $('#adv-gestta-envio', corpo).innerHTML = '<p class="adv-msg adv-msg-erro">' + esc(OP.msgHub(r)) + '</p>'; return; }
-    if (r && r.jaRodando) toast('Já há um envio do Gestta em andamento');
-  };
   const salvar = async () => {
     const { hubCfg } = await ler('hubCfg'), token = $('#adv-hubCodigo', corpo).value.replace(/\s+/g, '').toUpperCase();
     const horas = Math.min(48, Math.max(1, Number($('#adv-syncHoras', corpo).value) || 6));
@@ -172,9 +163,9 @@ function parteHub(corpo, d, el) {
   };
   const sincronizar = async (soFolha) => {
     await salvar();
-    $('#adv-envio', corpo).innerHTML = '<p class="adv-msg">Iniciando…</p>';
-    const r = await enviar({ cmd: 'hubSincronizar', soFolha });
-    if (r && r.ok === false) { $('#adv-envio', corpo).innerHTML = '<p class="adv-msg adv-msg-erro">' + esc(OP.msgHub(r)) + '</p>'; return; }
+    $('#adv-envio-cab', corpo).innerHTML = '<p class="adv-msg">Iniciando…</p>';
+    const r = await enviar(soFolha ? { cmd: 'hubSincronizar', soFolha } : { cmd: 'hubAtualizar' });
+    if (r && r.ok === false) { $('#adv-envio-cab', corpo).innerHTML = '<p class="adv-msg adv-msg-erro">' + esc(OP.msgHub(r)) + '</p>'; return; }
     if (r && r.jaRodando) toast('Já há um envio em andamento: acompanhe em "Último envio"');
   };
   $('#adv-sincronizar', corpo).onclick = () => sincronizar(false);
@@ -187,7 +178,7 @@ async function estadoHub(el) {
   const dz = $('#adv-desconectar', el); if (dz) dz.hidden = !c.token;
   pils.innerHTML = !c.token ? pilula('neutro', 'Sem código: cole o código e clique em Conectar') : !st ? pilula('neutro', 'Verificando a ponte…') :
     pilula(st.permitido ? 'ok' : 'aviso', st.permitido ? 'claude.ai permitido' : 'claude.ai não permitido') +
-    pilula(st.hubAberto ? 'ok' : 'aviso', st.hubAberto ? (st.hubSegundoPlano ? 'Hub aberto em segundo plano' : 'Hub aberto e respondendo') : 'Hub não encontrado numa aba') +
+    pilula(st.hubAberto ? 'ok' : c.hubUrl ? 'neutro' : 'aviso', st.hubAberto ? (st.hubSegundoPlano ? 'Hub aberto em segundo plano' : 'Hub aberto e respondendo') : c.hubUrl ? 'Hub fechado: abre sozinho no envio' : 'Hub não encontrado: abra o Hub uma vez') +
     pilula(!u ? 'neutro' : u.ok ? 'ok' : 'erro', !u ? 'Nenhum resumo enviado' : u.ok ? 'Resumo aceito em ' + OP.quando(u.em) + ' (' + u.linhas + ' de ' + u.total + ')' : 'Resumo recusado: ' + OP.msgHub(u));
   const ICO = { ok: '✓', erro: '✕', aviso: '⚠', nota: '•', igual: '=' }, ordem = { erro: 0, aviso: 1, nota: 2, ok: 3, igual: 4 };
   // 0.83.0: o resumo numa linha; à vista só o que pede atenção (erro e aviso); o resto recolhido
@@ -211,7 +202,16 @@ async function estadoHub(el) {
       toast(r && r.jaRodando ? 'Já há um envio em andamento: espere ele terminar' : 'Reenviando ' + (r && r.n ? r.n + (r.n === 1 ? ' conjunto' : ' conjuntos') : 'o que deu erro'));
     };
   };
-  pinta(envio, OP.linhasEnvio(hubSync), 'hubSincronizar');
+  // 0.92.0: a linha do envio único (quem pediu, abas abertas, resultado) e o botão Cancelar enquanto roda
+  const cabEl = $('#adv-envio-cab', el);
+  if (cabEl) {
+    const { hubEnvio } = await ler('hubEnvio'), ce = OP.cabEnvio(hubEnvio);
+    cabEl.innerHTML = '<div class="adv-resumo-l"><p class="adv-msg' + (['erro', 'interrompido'].includes(ce.estado) ? ' adv-msg-erro' : '') + '">' + esc(ce.texto) + '</p>' + (ce.rodando ? '<button type="button" class="btn btn-sm" id="adv-cancelar">Cancelar</button>' : '') + '</div>' +
+      (ce.abas ? '<p class="fraco adv-abas">' + esc(ce.abas) + '</p>' : '') + (ce.avisos || []).map(a => '<p class="adv-msg adv-msg-erro">' + esc(a) + '</p>').join('');
+    const bc = $('#adv-cancelar', cabEl); if (bc) bc.onclick = async () => { bc.disabled = true; const r = await enviar({ cmd: 'hubCancelar' }); toast(r && r.ok ? 'Cancelando: o envio para no próximo conjunto' : OP.msgHub(r)); };
+    const bs = $('#adv-sincronizar', el); if (bs) bs.disabled = ce.rodando;
+  }
+  pinta(envio, OP.linhasEnvio(hubSync, { nome: 'do Onvio' }), 'hubSincronizar');
   const ge = $('#adv-gestta-envio', el);
   if (ge) { const { hubSyncGestta, gesttaCartelaEm } = await ler(['hubSyncGestta', 'gesttaCartelaEm']); pinta(ge, OP.linhasEnvio(hubSyncGestta, { nome: 'do Gestta', cartelaEm: gesttaCartelaEm }), 'gesttaHubSync'); }
 }

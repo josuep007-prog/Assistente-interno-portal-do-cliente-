@@ -17,7 +17,9 @@
     'sem-pessoais': 'A folha vai junto com "Dados pessoais": ligue esse conjunto em "O que vai no envio completo".',
     'sem-gestta': 'Abra o Gestta numa aba do Chrome, já logado, e envie de novo.', 'sem-sessao-gestta': 'O Gestta está sem sessão nesta aba: faça login e envie de novo.',
     'acesso-parcial': 'O Gestta está com um login de analista: o envio ao Hub só sai com o acesso da coordenação, que vê todos os setores.',
-    'interrompido': 'O envio foi interrompido no meio.', 'nada-reenviar': 'Nada deu erro no último envio: não há o que reenviar.'
+    'interrompido': 'O envio foi interrompido no meio.', 'nada-reenviar': 'Nada deu erro no último envio: não há o que reenviar.',
+    'sem-endereco-hub': 'A extensão ainda não sabe o endereço do Hub: abra o Control Hub uma vez com a extensão conectada e atualize de novo.',
+    'sem-sessao-onvio': 'O Onvio estava sem sessão: entre no Portal do Cliente e atualize de novo.', 'cancelado': 'Envio cancelado.', 'nada-rodando': 'Não há envio em andamento.'
   };
   const msgHub = r => (r && (r.mensagem || MOTIVOS_HUB[r.motivo] || r.motivo)) || 'Não foi possível enviar.';
   const quando = d => (d ? new Date(d).toLocaleString('pt-BR') : '—');
@@ -105,5 +107,19 @@
     return { cab, estado: est, linhas, feito: hubSync.feito, total: hubSync.total, resumo: { ok: conta('ok'), igual: conta('igual'), aviso: conta('aviso'), erro: conta('erro') } };
   }
 
-  g.OCOpcoes = { MOTIVOS_HUB, msgHub, quando, diagnostico, APRENDER_MAX_MS, aprenderAtivo, aprenderResta, textoAprendido, ROTEIRO_APRENDER, linhasEnvio, URL_REGRAS_CLIENTE: 'https://raw.githubusercontent.com/josuep007-prog/assistente-portal-regras/main/regras.json', HUB_ORIGENS: ['https://claude.ai/*'] };
+  // 0.92.0: a linha de cima do envio único (Onvio e Gestta juntos): quem pediu, as abas que a extensão abriu e o resultado geral.
+  function cabEnvio(ev) {
+    if (!ev) return { estado: 'nunca', texto: 'Nenhum envio ainda.', abas: '' };
+    const preso = ['enviando', 'preparando'].includes(ev.estado) && ev.pulso && Date.now() - ev.pulso > 240000, est = preso ? 'interrompido' : ev.estado;
+    const quem = { hub: 'pedido pelo Hub', extensao: 'pedido aqui', auto: 'automático' }[ev.origem] || '';
+    const FASE = { abas: 'abrindo o que faltava', resumo: 'resumo das pendentes', onvio: 'Onvio', gestta: 'Gestta' };
+    const ROT = { ok: 'tudo aceito', parcial: 'parte aceita', erro: 'não concluído', cancelado: 'cancelado', interrompido: 'interrompido' };
+    const texto = est === 'preparando' || est === 'enviando' ? 'Atualizando o Hub (' + quem + ')… ' + (FASE[ev.fase] || '')
+      : 'Último envio (' + quem + '): ' + (ROT[est] || est) + ' em ' + quando(ev.terminouEm) + (ev.motivo ? ' · ' + (MOTIVOS_HUB[ev.motivo] || ev.motivo) : '');
+    const NA = { abriu: 'abriu em segundo plano', aberta: 'já estava aberto', falhou: 'não consegui abrir', 'sem-sessao': 'sem sessão' };
+    const abas = ['hub', 'onvio', 'gestta'].filter(k => ev.abas && ev.abas[k]).map(k => ({ hub: 'Hub', onvio: 'Onvio', gestta: 'Gestta' })[k] + ': ' + NA[ev.abas[k]]).join(' · ');
+    return { estado: est, texto, abas, avisos: ev.avisos || [], rodando: est === 'preparando' || est === 'enviando' };
+  }
+
+  g.OCOpcoes = { cabEnvio, MOTIVOS_HUB, msgHub, quando, diagnostico, APRENDER_MAX_MS, aprenderAtivo, aprenderResta, textoAprendido, ROTEIRO_APRENDER, linhasEnvio, URL_REGRAS_CLIENTE: 'https://raw.githubusercontent.com/josuep007-prog/assistente-portal-regras/main/regras.json', HUB_ORIGENS: ['https://claude.ai/*'] };
 })(typeof self !== 'undefined' ? self : this);
