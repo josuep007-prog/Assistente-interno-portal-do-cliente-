@@ -7,11 +7,11 @@
  * Tudo sai das tarefas já lidas (cmd gesttaTarefas): nada é guardado; abrir só navega no próprio Gestta. */
 import { $, $$, esc, num, plural, lerPref, gravarPref } from './util.js';
 import { abrirPainel, aoPassarPainel, abrirNoGestta, trilhaTempo, cabecalhoTempo, linhaDoHoje } from './gestta-trilha.js';
-import { LOTE, caixaLinha, caixaCab, barraLote, ligarLote } from './gestta-lote.js';
+import { LOTE, caixaLinha, caixaCab, barraLote, ligarLote, grupoEmLote, marcarGrupo, barraGrupo, ligarGrupo } from './gestta-lote.js';
 const G = window.OCG;
 const MARCA = { feita: '✓', multa: '!', atrasada: '!', impedimento: '', hoje: '', afazer: '' };
 const EST = { feita: 'feita', multa: 'multa', atrasada: 'atrasada', impedimento: 'impedimento', hoje: 'hoje', proximas: 'afazer', depois: 'afazer', desconsiderada: 'afazer' };
-const COR = { multa: 'multa', atrasada: 'atraso', impedimento: 'imped', hoje: 'hoje', proximas: 'prox', depois: 'depois', feita: 'feita', desconsiderada: 'depois' };
+const COR = { multa: 'multa', atrasada: 'atraso', impedimento: 'imped', hoje: 'hoje', proximas: 'prox', depois: 'depois', feita: 'feita', desconsiderada: 'desc' };
 const TIPO = { RECURRENT: 'Recorrente', SERVICE_ORDER: 'OS', ACCOUNTING: 'Contábil' };
 const ddmm = s => s ? s.slice(8, 10) + '/' + s.slice(5, 7) : '';
 const dataDe = t => { const d = G.diaLocal(t && t.due_date); return d ? G.ymd(d) : ''; };
@@ -49,7 +49,8 @@ export function vistaDia(el, x) {
   const linha = t => { n++; const est = estadoDe(t, x.hoje); return '<li class="gd-it gt-c-' + COR[G.grupoTarefa(t, x.hoje)] + '" role="option" tabindex="-1" data-id="' + esc(t._id) + '" aria-selected="false"><span class="gd-num">' + n + '</span>' + marca(est) +
     '<span class="gd-tx"><b>' + esc(t.name || 'Tarefa sem nome') + '</b><span>' + cliHtml(t.customer) + '</span></span><span class="gd-prazo' + (est === 'multa' || est === 'atrasada' ? ' alerta' : '') + '">' + esc(G.prazoTexto(t, x.hoje)) + '</span>' +
     '<button type="button" class="icon-btn gd-abrir" data-abrir="' + esc(t._id) + '" tabindex="-1" title="Abrir no Gestta" aria-label="Abrir no Gestta"><svg class="ic ic-sm"><use href="#i-ext"/></svg></button></li>'; };
-  const bloco = b => '<section class="gd-bloco gt-c-' + b[4] + (b[0] === 'adiante' ? ' gd-adiante' : '') + '"><h3><i class="gt-ponto"></i>' + esc(b[1]) + '<span class="gt-n">' + b[3].length + '</span><small>' + esc(b[2]) + '</small></h3><ol class="gd-ol" role="listbox" aria-label="' + esc(b[1]) + '">' + b[3].map(linha).join('') + '</ol></section>';
+  const bloco = b => '<section class="gd-bloco gt-c-' + b[4] + (b[0] === 'adiante' ? ' gd-adiante' : '') + '"><h3><i class="gt-ponto"></i>' + esc(b[1]) + '<span class="gt-n">' + b[3].length + '</span><small>' + esc(b[2]) + '</small>' +
+    (b[3].length > 1 ? '<button type="button" class="gt-lote-btn' + (grupoEmLote('dia:' + b[0]) ? ' on' : '') + '" data-gd-lote="' + b[0] + '" title="Marcar as tarefas deste bloco para agir de uma vez">Agir em lote</button>' : '') + '</h3><ol class="gd-ol" role="listbox" aria-label="' + esc(b[1]) + '">' + b[3].map(linha).join('') + '</ol></section>';
   const principal = blocos.filter(b => b[3].length).map(bloco).join('');                        // antes, para a numeração seguir a ordem
   const adiante = (md.adiante || []).length ? bloco(['adiante', 'Mais adiante', 'as próximas metas depois disso', md.adiante, 'depois']) : '';
   // 0.87.0: com a fila vazia, o dia livre comemora e mostra o que vem depois (para adiantar)
@@ -61,9 +62,14 @@ export function vistaDia(el, x) {
         '<header class="gd-cab cfg-card"><div class="gd-anel">' + anel(pctHoje, 56, 7) + '<b>' + md.feitasHoje + '/' + md.totalHoje + '</b></div><div class="gd-cab-tx"><b>' + esc(dataTx.replace(/^./, c => c.toUpperCase())) + '</b><span>' +
           (md.totalHoje ? md.feitasHoje + ' de ' + md.totalHoje + ' com meta hoje concluídas' : 'Nenhuma tarefa com meta hoje') + '</span><small>' + plural(fila.length, 'tarefa', 'tarefas') + ' na fila' + (md.agora.length ? ' · ' + md.agora.length + ' para resolver agora' : '') + '</small></div>' +
           '<span class="gd-teclas ajuda" aria-hidden="true"><kbd>↑</kbd><kbd>↓</kbd> mudar · <kbd>Enter</kbd> abrir no Gestta</span></header>' +
+        (LOTE.grupo && LOTE.grupo.startsWith('dia:') ? barraGrupo(LOTE.grupo, grupoDia(LOTE.grupo)) : '') +
         '<div class="gd-lista" id="gd-lista">' + lista + '</div></section>' +
       '<aside class="gd-det cfg-card" id="gd-det" aria-label="Detalhe da tarefa">' + (fila.length ? '' : '<p class="fraco gd-det-vazio">Escolha uma tarefa para ver o detalhe.</p>') + '</aside>' +
     '</div>';
+  // 0.104.0: lote por bloco do Meu dia
+  function grupoDia(chave) { const b = blocos.concat([['adiante', '', '', md.adiante || []]]).find(z => 'dia:' + z[0] === chave); return b ? b[3] : []; }
+  $$('[data-gd-lote]', el).forEach(bt => bt.onclick = e => { e.stopPropagation(); const k = 'dia:' + bt.dataset.gdLote; if (grupoEmLote(k)) { LOTE.grupo = null; LOTE.sel.clear(); } else marcarGrupo(k, grupoDia(k)); vistaDia(el, x); });
+  if (LOTE.grupo && LOTE.grupo.startsWith('dia:')) ligarGrupo(el, grupoDia(LOTE.grupo), () => vistaDia(el, x));
   const escolher = (id, foco) => {
     const i = fila.findIndex(t => t._id === id); if (i < 0) return;
     D.sel = id;
@@ -129,7 +135,9 @@ function fichaHtml(e, x) {
   const kanban = colsK.map(([rot, cor, l]) => '<section class="gk-col gt-c-' + cor + '"><h4><i class="gt-ponto"></i>' + rot + '<span class="gt-n">' + l.length + '</span></h4>' + l.map(t => cartao(t, x.hoje, k)).join('') + '</section>').join('');
   const modo = (m, ic, rot) => '<button type="button" class="' + (EM.trilha === m ? 'on' : '') + '" data-gf-trilha="' + m + '" aria-pressed="' + (EM.trilha === m) + '"><svg class="ic ic-sm"><use href="#' + ic + '"/></svg>' + rot + '</button>';
   return '<header class="gf-cab"><div class="gf-tit"><h2>' + esc(e.nome) + '</h2><p>' + (e.codigo ? '<span class="gt-cod">' + esc(e.codigo) + '</span>' : '') + plural(e.n, 'tarefa', 'tarefas') + ' na competência' + (setores.length ? ' · ' + esc(setores.join(', ')) : '') + '</p></div>' +
-      '<div class="gf-prog">' + anel(tr.pct, 64, 8) + '<div><b>' + tr.pct + '%</b><span>' + num(tr.feitas) + ' de ' + num(tr.total) + ' concluídas</span></div></div></header>' +
+      '<div class="gf-prog">' + anel(tr.pct, 64, 8) + '<div><b>' + tr.pct + '%</b><span>' + num(tr.feitas) + ' de ' + num(tr.total) + ' concluídas</span></div></div>' +
+      (e.tarefas.length > 1 ? '<button type="button" class="gt-lote-btn' + (grupoEmLote('emp:' + k) ? ' on' : '') + '" data-gf-lote title="Marcar as tarefas desta empresa para agir de uma vez">Agir em lote</button>' : '') + '</header>' +
+    barraGrupo('emp:' + k, e.tarefas) +
     '<div class="gf-stats">' + stat('multa', e.multa, 'gerando multa') + stat('atrasada', e.atrasada, 'atrasadas') + stat('impedimento', e.impedimento, 'impedimento') + stat('hoje', e.hoje, 'vencem hoje') + stat('afazer', Math.max(0, e.abertas - e.multa - e.atrasada - e.impedimento - e.hoje), 'a fazer') + stat('feita', e.feitas, 'concluídas') + '</div>' +
     (prox ? '<button type="button" class="gf-prox gt-c-' + COR[prox.grupo] + '" data-et="' + esc(prox.t._id) + '" data-emp="' + esc(k) + '"><span class="gf-prox-rot">Próxima etapa</span>' + marca(prox.estado) + '<b>' + esc(prox.t.name || 'Tarefa') + '</b><span>' + esc(prox.prazo) + '</span><svg class="ic ic-sm"><use href="#i-chev-r"/></svg></button>'
       : tr.total ? '<div class="gf-prox gf-fechado"><span class="ge-ok" aria-hidden="true">✓</span><b>Competência fechada</b><span>todas as tarefas concluídas</span></div>' : '') +
@@ -154,6 +162,9 @@ export function vistaEmpresas(el, x) {
     $('#ge-ficha', el).innerHTML = fichaHtml(e, x);
     $$('.ge-emp', el).forEach(li => { const on = li.dataset.emp === EM.sel; li.classList.toggle('on', on); li.setAttribute('aria-selected', String(on)); li.tabIndex = on ? 0 : -1; });
     $$('[data-gf-trilha]', el).forEach(b => b.onclick = () => { EM.trilha = b.dataset.gfTrilha; gravarPref('gt.trilha', EM.trilha); ficha(); });
+    // 0.104.0: lote com as tarefas da empresa
+    const bl = $('[data-gf-lote]', el); if (bl) bl.onclick = () => { const k = 'emp:' + e.id; if (grupoEmLote(k)) { LOTE.grupo = null; LOTE.sel.clear(); } else marcarGrupo(k, e.tarefas); ficha(); };
+    ligarGrupo($('#ge-ficha', el), e.tarefas, ficha);
     requestAnimationFrame(() => { const st = $('.gf-step', el), p = st && st.querySelector('.proxima'); if (p && st.scrollWidth > st.clientWidth) st.scrollLeft = Math.max(0, p.offsetLeft - 60); });
   };
   const escolher = (id, foco) => { EM.sel = id; ficha(); if (foco) { const li = $$('.ge-emp', el).find(l => l.dataset.emp === id); if (li) { li.focus({ preventScroll: true }); li.scrollIntoView({ block: 'nearest' }); } } };
