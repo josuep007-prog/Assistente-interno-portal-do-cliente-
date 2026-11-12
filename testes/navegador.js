@@ -3162,6 +3162,44 @@ await passo('Gestta · Tarefas: no Meu dia, Enter abre a tarefa escolhida no Ges
   assert.deepEqual(ruins.slice(0, 12), [], 'texto com pouco contraste (' + ruins.length + ')');
 });
 
+await passo('Gestta · Envios ao portal (0.96.0): erro para reenviar, sem pasta por template com o "deveria ir" pelo padrão do Gestta e o risco sem erro; nada é escrito', async () => {
+  const tpl = (id, name, pasta) => ({ _id: id, name, valid: true, documents_integration: { pathName: pasta ? pasta.split(' › ') : [] } });
+  const env = (id, tid, tnome, erro) => ({ _id: id, status: 'ERROR', error: erro, retry_count: 1, created_at: new Date(Date.now() - 3 * 864e5).toISOString(), updated_at: new Date().toISOString(),
+    customer_task: { _id: 'f0000000000000000000000' + id.slice(-1), name: 'FOLHA MENSAL', customer: { name: 'CLIENTE FICTICIO ' + id, cnpj: '00.000.000/0001-0' + id.slice(-1) }, company_department: { name: 'Pessoal' }, owner: { name: 'Eu Mesmo' }, _competence_date: '2026-10-01' },
+    customer_task_file: { company_document: { _id: tid, name: tnome }, file_name: 'arquivo-' + id + '.pdf' } });
+  const resp = Object.assign(gtResp(true, gtTarefas()), { gesttaEnvios: { ok: true, lidoEm: new Date().toISOString(), total: 4, cortado: false,
+    envios: [env('e1', 't2', 'Folha de Pagamento Filial', 'NO_FOLDER_CONFIGURED'), env('e2', 't2', 'Folha de Pagamento Filial', 'NO_FOLDER_CONFIGURED'), env('e3', 't3', 'Recibo Interno', 'NO_FOLDER_CONFIGURED'), env('e4', 't1', 'Folha de Pagamento', 'UPLOAD_ERROR')],
+    templates: [tpl('t1', 'Folha de Pagamento', 'Pessoal › Folha'), tpl('t2', 'Folha de Pagamento Filial', ''), tpl('t3', 'Recibo Interno', ''), tpl('t4', 'Guia FGTS', 'Pessoal › Guias'), tpl('t5', 'Guia FGTS Rescisório', '')] } });
+  for (const [estilo, tema] of [['simples', 'light'], ['atual', 'dark']]) {
+    const { p, fr } = await abrirGestta(resp, { estilo });
+    await fr.evaluate(t => document.documentElement.setAttribute('data-theme', t), tema);
+    await fr.click('#abas [data-aba="envios"]');
+    await fr.waitForSelector('.gte-topo');
+    const txt = await fr.textContent('#vista');
+    assert.match(txt, /Para reenviar[\s\S]*Erro ao enviar o arquivo[\s\S]*Cliente Ficticio E4[\s\S]*UPLOAD_ERROR/i);
+    assert.match(txt, /Provavelmente deveria ir ao portal[\s\S]*Folha de Pagamento Filial[\s\S]*2 documentos parados[\s\S]*Parecido com “Folha de Pagamento”, que vai para Pessoal › Folha/);
+    assert.match(txt, /Provavelmente não vai ao portal[\s\S]*Recibo Interno/);
+    assert.match(txt, /Templates em risco[\s\S]*Guia FGTS Rescisório[\s\S]*parecido com[\s\S]*Guia FGTS/);
+    // os números filtram; ver os documentos de um template
+    await fr.click('[data-gte-f="deve"]');
+    assert.ok(!(await fr.$('.gte-tpl.nao')) && !(await fr.textContent('#vista')).includes('Erro ao enviar o arquivo'), 'só os que deveriam ir');
+    await fr.click('[data-gte-abrir="t2"]');
+    await fr.waitForSelector('.gte-tpl.deve .gte-tab');
+    assert.match(await fr.textContent('.gte-tpl.deve'), /arquivo-e1\.pdf[\s\S]*arquivo-e2\.pdf/);
+    await fr.click('[data-gte-f="deve"]');
+    // busca
+    await fr.fill('#gte-q', 'recibo');
+    await fr.waitForFunction(() => !/Folha de Pagamento Filial/.test(document.querySelector('#vista').textContent));
+    await fr.fill('#gte-q', '');
+    // tecla 7 leva à aba; nada de escrita foi pedido
+    assert.ok((await fr.evaluate(() => (window.__msgs || []).filter(m => m.cmd === 'gesttaEnvios').length)) >= 1);
+    assert.ok(!(await fr.evaluate(() => (window.__msgs || []).some(m => m.cmd === 'gesttaAcao'))), 'nada é escrito no Gestta');
+    assert.ok(await fr.evaluate(() => document.documentElement.scrollWidth - window.innerWidth <= 2), 'sem rolagem lateral');
+    if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/gestta-envios-' + estilo + '-' + tema + '.png' });
+    await p.close();
+  }
+});
+
 await navegador.close();
 console.log(falhas.length ? '\nFALHARAM: ' + falhas.join(' | ') : '\ntodos os testes de navegador passaram');
 process.exit(falhas.length ? 1 : 0);

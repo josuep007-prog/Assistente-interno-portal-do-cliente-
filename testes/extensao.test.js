@@ -4392,3 +4392,31 @@ test('Mediador (0.95.1): a rodada semanal espera a semana e, depois de uma busca
   assert.equal(OCM.semanalDevida(cfg, { estado: 'buscando', pulso: agora - 60e3 }, agora), false, 'já buscando');
   assert.equal(OCM.semanalDevida(cfg, { estado: 'parcial', iniciouEm: h(6) }, agora), true, 'parcial não segura (a última busca completa vale)');
 });
+
+test('Gestta (0.96.0) · Envios ao portal: erro de envio para reenviar, sem pasta por template com o "deveria ir" pelo padrão já configurado, e o risco sem erro', () => {
+  const tpl = (id, name, pasta) => ({ _id: id, name, valid: true, documents_integration: { pathName: pasta ? pasta.split(' › ') : [] } });
+  const templates = [tpl('t1', 'Folha de Pagamento', 'Pessoal › Folha'), tpl('t2', 'Folha de Pagamento Filial', ''), tpl('t3', 'Recibo de Entrega Interno', ''),
+    tpl('t4', 'Guia FGTS', 'Pessoal › Guias'), tpl('t5', 'Guia FGTS Rescisório', ''), tpl('t6', 'Guia DAS', 'Fiscal › Guias'), tpl('t7', 'Guia INSS', ''), tpl('t8', 'Extrato Mensal', '')];
+  const env = (id, tid, tnome, erro, extra) => Object.assign({ _id: id, status: 'ERROR', error: erro, retry_count: 2, created_at: '2026-11-01T10:00:00Z', updated_at: '2026-11-10T10:00:00Z',
+    customer_task: { _id: 'k' + id, name: 'Tarefa ' + id, customer: { name: 'CLIENTE FICTICIO ' + id, cnpj: '00.000.000/0001-0' + id.slice(-1) }, company_department: { name: 'Pessoal' }, owner: { name: 'Analista' }, _competence_date: '2026-10-01' },
+    customer_task_file: { company_document: { _id: tid, name: tnome }, file_name: 'arquivo-' + id + '.pdf' } }, extra || {});
+  const envios = [env('e1', 't2', 'Folha de Pagamento Filial', 'NO_FOLDER_CONFIGURED'), env('e2', 't2', 'Folha de Pagamento Filial', 'NO_FOLDER_CONFIGURED'),
+    env('e3', 't3', 'Recibo de Entrega Interno', 'NO_FOLDER_CONFIGURED'), env('e4', 't1', 'Folha de Pagamento', 'UPLOAD_ERROR', { error_detail: 'falha ao enviar' }),
+    env('e5', 't4', 'Guia FGTS', 'NO_FOLDER_CONFIGURED')];      // e5: o template já ganhou pasta depois do erro: só falta reenviar
+  const J = (x) => JSON.parse(JSON.stringify(x)), A = J(OCG.enviosPortal(envios, templates));
+  assert.deepEqual(A.reenviar.map(x => [x.id, x.pastaJa]), [['e5', true], ['e4', false]], 'primeiro os que já têm pasta, depois os erros de envio');
+  assert.equal(A.reenviar[1].erroTexto, 'UPLOAD_ERROR'); assert.equal(A.reenviar[1].detalhe, 'falha ao enviar'); assert.equal(A.reenviar[0].pasta, 'Pessoal › Guias');
+  assert.deepEqual(A.semPasta.map(g => [g.template, g.itens.length, g.classe]), [['Folha de Pagamento Filial', 2, 'deve'], ['Recibo de Entrega Interno', 1, 'naoVai']]);
+  assert.match(A.semPasta[0].motivo, /Parecido com “Folha de Pagamento”, que vai para Pessoal › Folha/);
+  assert.equal(A.semPasta[0].nClientes, 2);
+  // risco: sem pasta, sem erro agora, parecido com um que vai (Guia INSS não é parecido com Guia FGTS nem com Guia DAS; Extrato Mensal não tem par)
+  assert.deepEqual(A.risco.map(r => [r.template, r.parecido.nome]), [['Guia FGTS Rescisório', 'Guia FGTS']]);
+  assert.deepEqual([A.totais.erros, A.totais.reenviar, A.totais.pastaJa, A.totais.semPasta, A.totais.deve, A.totais.risco], [5, 2, 1, 3, 1, 1]);
+  // a semelhança não junta siglas diferentes nem um nome de uma palavra só
+  assert.ok(OCG.semelhanca('Guia FGTS', 'Guia DAS') < 0.6);
+  assert.ok(OCG.semelhanca('Guia', 'Guia FGTS') < 0.6);
+  // a leitura da fila para a tela continua só GET e só na fila do portal
+  const p = OCG.PEDIDOS.filaOnvioTela({ limit: 50, skip: 100 });
+  assert.equal(p.metodo, 'GET'); assert.ok(OCG.leituraPermitida(p.metodo, p.url, null).ok);
+  assert.match(p.url, /\/es\/file\/onvio\?.*status=ERROR/);
+});
