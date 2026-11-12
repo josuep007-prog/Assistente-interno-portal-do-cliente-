@@ -4538,3 +4538,23 @@ test('Gestta (0.100.2) · Envios ao portal: só vai ao portal documento de taref
   const B = OCG.enviosPortal(envios, templates);
   assert.deepEqual(JSON.parse(JSON.stringify(B.reenviar.map(x => x.id).sort())), ['e1', 'e2']);
 });
+
+test('Gestta (0.100.3) · Envios ao portal: só vale a pasta montada a partir da empresa 9999', () => {
+  const M = 'c'.repeat(24), OUT = '9'.repeat(24);
+  const tpl = (id, name, pasta, cli) => ({ _id: id, name, valid: true, documents_integration: pasta ? { customer_id: cli, id: 'p' + id, path: pasta.split(' › '), pathName: pasta.split(' › ') } : { pathName: [] } });
+  const templates = [tpl('t1', 'Folha de Pagamento', 'Pessoal › Folha', OUT), tpl('t2', 'Folha de Pagamento Filial', ''), tpl('t3', 'Guia FGTS', 'Pessoal › Guias', M), tpl('t4', 'Guia FGTS Filial', '')];
+  const env = (id, tid, tnome, erro) => ({ _id: id, status: 'ERROR', error: erro, customer_task: { _id: 'k' + id, name: 'T', customer: { name: 'CLIENTE FICTICIO', cnpj: '1' } }, customer_task_file: { company_document: { _id: tid, name: tnome } } });
+  const A = JSON.parse(JSON.stringify(OCG.enviosPortal([env('e1', 't1', 'Folha de Pagamento', 'UPLOAD_ERROR'), env('e2', 't2', 'Folha de Pagamento Filial', 'NO_FOLDER_CONFIGURED')], templates, null, M)));
+  assert.deepEqual(A.reenviar, [], 'o erro de envio de pasta fora da 9999 não é reenviado');
+  const g1 = A.semPasta.find(g => g.templateId === 't1');
+  assert.equal(g1.classe, 'naoVai'); assert.equal(g1.fora, true); assert.match(g1.motivo, /não foi montada a partir da empresa 9999/);
+  const g2 = A.semPasta.find(g => g.templateId === 't2');
+  assert.equal(g2.classe, 'naoVai', 'o parecido com pasta fora da 9999 não serve de modelo');
+  assert.deepEqual(A.pastaFora.map(x => [x.templateId, x.docs]), [['t1', 1]]);
+  assert.deepEqual(A.risco.map(r => [r.templateId, r.parecido.id]), [['t4', 't3']], 'o risco só sugere pasta da 9999');
+  assert.equal(OCG.urlTemplate('6577714ee4d9100006d238ec'), 'https://app.gestta.com.br/admin/#/sidebar/document/edit/6577714ee4d9100006d238ec/details');
+  assert.equal(OCG.urlTemplate('x'), '');
+  // sem a 9999 achada, toda pasta vale (como antes)
+  const B = OCG.enviosPortal([env('e1', 't1', 'Folha de Pagamento', 'UPLOAD_ERROR')], templates);
+  assert.equal(B.reenviar.length, 1); assert.equal(B.pastaFora.length, 0);
+});

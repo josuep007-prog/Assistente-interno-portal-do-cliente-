@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.100.2)
+# Control Onvio · ControlTax (v0.100.3)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Trabalha também por cima do **Gestta** (Tarefas do Gestta: Meu dia, Empresas, Lista, Obrigações, Calendário e Fechamento do mês, com concluir, impedimento, comentário e envio de documento) e alimenta o **Control Hub** (opcional). Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,13 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.100.3 (12/11/2026): Envios ao portal com um destino por documento
+
+- **Um destino só para cada documento com erro** (Josué: "a parte de reenviar está confusa"): **1 · Reenviar** (a tarefa notifica o cliente e o template tem a pasta da 9999; um botão para todos), **2 · Corrigir a pasta no Gestta** (deveria ir, mas o template está sem pasta: "Usar a pasta" do parecido ou "Abrir o template no Gestta"; depois passa para o bloco 1) e **3 · Tirar da lista** (não vai ao portal). O botão de reenviar por linha saiu.
+- **Só vale a pasta montada a partir da empresa 9999** (o código 9999 no Gestta; a extensão acha o id dela na lista de clientes). Template com pasta montada a partir de outra empresa: os documentos dele com erro vão para Tirar da lista, ele aparece em **Pastas fora da empresa 9999** com o botão **Tirar a pasta no Gestta**, não serve de modelo para "Usar a pasta" (o service worker também recusa) e não é sugerido no risco. Sem achar a 9999, a tela avisa e toda pasta conta como válida.
+- **Abrir o template no Gestta** (cadastro do template, `admin/#/sidebar/document/edit/{id}/details`) em cada template para corrigir, nos em risco e nos de pasta fora da 9999.
+- **Tirar a pasta pela extensão ainda não:** o mapeamento de 12/11/2026 anotou `DELETE /admin/company/document/integration/documents/{id da integração}`, mas não qual id é esse; até confirmar, a pasta se tira no cadastro do template, pelo botão.
 
 ## Novidades da v0.100.2 (12/11/2026): só vai ao portal o que notifica o cliente
 

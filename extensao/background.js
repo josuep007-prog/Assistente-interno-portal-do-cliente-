@@ -418,6 +418,7 @@ async function gesttaPasta(msg, sender) {
   if (pastaDe(d).length) return { ok: false, erro: 'Este template já tem pasta (' + pastaDe(d).join(' › ') + '): nada foi mudado.' };
   const integ = m.documents_integration || {};
   if (!pastaDe(m).length || !integ.customer_id || !integ.id || !Array.isArray(integ.path)) return { ok: false, erro: 'O template modelo não tem a pasta completa no Gestta.' };
+  if (modelo9999 && String(integ.customer_id) !== String(modelo9999.id)) return { ok: false, erro: 'A pasta do template modelo não foi montada a partir da empresa 9999: nada foi mudado.' };   // 0.100.3
   const agir = async (pedido) => {
     if (pedido.erro) return { ok: false, erro: pedido.erro };
     if (!OCG.escritaPermitida(pedido.metodo, pedido.url, pedido.corpo).ok) return { ok: false, erro: 'a extensão recusou a ação' };
@@ -440,7 +441,7 @@ async function gesttaTirar(msg, sender) {
   if (!pedidos.length) return { ok: false, erro: 'Nenhum documento para tirar da lista.' };
   const lido = await gesttaEnvios(msg, sender);
   if (!lido.ok) return lido;
-  const A = OCG.enviosPortal(lido.envios, lido.templates, lido.notifica);
+  const A = OCG.enviosPortal(lido.envios, lido.templates, lido.notifica, lido.modelo && lido.modelo.id);
   const podem = new Set(A.semPasta.filter(g => g.classe === 'naoVai').flatMap(g => g.itens.map(i => i.id)));
   const ids = pedidos.filter(v => podem.has(v)), ignorados = pedidos.length - ids.length;
   if (!ids.length) return { ok: false, erro: 'Nenhum destes documentos está mais como "sem pasta, não vai ao portal": nada foi tirado.' };
@@ -477,7 +478,7 @@ async function gesttaEquipe(msg, sender) {
 }
 // 0.96.0: aba Envios ao portal. A fila de envios ao Portal do Cliente com erro (de 50 em 50, até 2.000) e os templates de documento
 // (com a pasta no portal). Lido na hora e entregue à tela: nada fica no armazenamento.
-const notificaCache = new Map(), NOTIFICA_MAX = 3000;
+const notificaCache = new Map(), NOTIFICA_MAX = 3000; let modelo9999 = null;
 async function gesttaEnvios(msg, sender) {
   const tab = await tabDoGestta(sender);
   if (!tab) return { ok: false, erro: 'Abra o Gestta numa aba, já logado.' };
@@ -530,7 +531,19 @@ async function gesttaEnvios(msg, sender) {
     });
   }
   Object.keys(notifica).forEach(k => { if (notifica[k] === null) { delete notifica[k]; naoLidas++; } });
-  return { ok: true, lidoEm: new Date().toISOString(), total, lidos: envios.length, cortado, envios, templates, notifica, naoLidas };
+  // 0.100.3: o id da empresa 9999 no Gestta (a única pasta válida é a montada a partir dela). Só o id e o nome, na memória por 6 h.
+  let modelo = modelo9999 && Date.now() - modelo9999.em < 6 * 3600e3 ? modelo9999 : null;
+  if (!modelo) {
+    for (let p = 1; p <= 30 && !modelo; p++) {
+      const { r } = await lerGestta([OCG.PEDIDOS.clientes({ limit: 200, page: p })], { tab });
+      const x = r && r.resultados && r.resultados[0];
+      if (!x || x.status !== 200 || !x.dados) break;
+      const c = (x.dados.itens || []).find(i => i && String(i.code || '').trim() === '9999');
+      if (c) modelo = modelo9999 = { id: c._id, nome: String(c.name || ''), em: Date.now() };
+      if (!(x.dados.itens || []).length || (x.dados.paginas && p >= x.dados.paginas)) break;
+    }
+  }
+  return { ok: true, lidoEm: new Date().toISOString(), total, lidos: envios.length, cortado, envios, templates, notifica, naoLidas, modelo: modelo ? { id: modelo.id, nome: modelo.nome } : null };
 }
 // Configurações › Avançado: quem está logado, o perfil e uma leitura de prova de cada fonte (só contagens).
 async function testarGestta() {
