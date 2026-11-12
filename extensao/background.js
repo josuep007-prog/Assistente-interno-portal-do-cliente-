@@ -288,14 +288,25 @@ async function gesttaTarefas(msg, sender) {
   const padrao = OCG.competenciaPadrao(new Date());
   const ano = Number(msg.ano) || padrao.ano, mes = Number(msg.mes) || padrao.mes;
   let quem = String(msg.quem || 'eu');
-  if (!pf.total || !(quem === 'eu' || quem === 'sem' || /^[0-9a-f]{24}$/i.test(quem))) quem = 'eu';
-  const base = { limit: OCG.LIMITE_BUSCA, status: ['OPEN', 'IMPEDIMENT', 'DONE'] };
-  if (quem === 'sem') base.semDono = true; else base.companyUser = quem === 'eu' ? pf.id : quem;
+  if (!pf.total || !(quem === 'eu' || quem === 'sem' || /^[0-9a-f]{24}$/i.test(quem) || /^setor:.{1,80}$/.test(quem))) quem = 'eu';
+  // 0.103.0: as desconsideradas (IGNORED/DISCONSIDERED) só são lidas quando a pessoa pede essa situação
+  const base = { limit: OCG.LIMITE_BUSCA, status: ['OPEN', 'IMPEDIMENT', 'DONE'].concat(msg.desconsideradas ? ['IGNORED', 'DISCONSIDERED'] : []) };
+  let setorPessoas = 0;
+  if (quem.startsWith('setor:')) {
+    // 0.103.0 (Josué, 12/11/2026: "filtrar todas as tarefas de um determinado setor"): a busca não traz o setor, então lê as tarefas
+    // de todas as pessoas do setor de uma vez (company_user[], já usado pela busca); a tela separa pelo setor quando o relatório está lido
+    const nome = quem.slice(6), eq = await lerEquipeGestta(tab);
+    if (!eq.ok) return { ok: false, erro: eq.erro };
+    const sem = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    const ids = eq.pessoas.filter(p => (p.setores || []).some(s => sem(s) === sem(nome))).map(p => p.id);
+    if (!ids.length) return { ok: false, erro: 'Ninguém da equipe do Gestta está no setor ' + nome + '.' };
+    base.companyUsers = ids; setorPessoas = ids.length;
+  } else if (quem === 'sem') base.semDono = true; else base.companyUser = quem === 'eu' ? pf.id : quem;
   const comp = await tarefasDaCompetencia(tab, base, ano, mes);
   if (!comp.ok) return { ok: false, erro: comp.erro };
   // Meu dia: pelo vencimento (escolha do Josué em 06/11/2026), as metas do mês corrente, de qualquer competência
   const h = new Date(), dia = await buscarTodasGestta(tab, Object.assign({}, base, { ano: h.getFullYear(), mes: h.getMonth() + 1 }));
-  return { ok: true, ano, mes, quem, perfil: { id: pf.id, papelNome: pf.papelNome, total: pf.total, setores: pf.setores }, itens: comp.itens, total: comp.total, cortado: comp.cortado, modoCompetencia: comp.modo,
+  return { ok: true, ano, mes, quem, setorPessoas, desconsideradas: !!msg.desconsideradas, perfil: { id: pf.id, papelNome: pf.papelNome, total: pf.total, setores: pf.setores }, itens: comp.itens, total: comp.total, cortado: comp.cortado, modoCompetencia: comp.modo,
     dia: dia.ok ? dia.itens : null, diaErro: dia.ok ? '' : dia.erro, diaCortado: !!dia.cortado, validade: r1.validade || null, lidoEm: new Date().toISOString() };
 }
 // Fechamento do mês (0.73.0): o relatório CUSTOMER_TASK do mês, lido sob demanda e guardado SÓ na memória do Chrome
@@ -357,8 +368,21 @@ async function gesttaTarefa(msg, sender) {
   const x = r && r.resultados && r.resultados[0];
   if (!r || !r.ok) return { ok: false, erro: (r && r.motivo) || 'A aba do Gestta não respondeu.' };
   if (!x || x.status !== 200 || !x.dados) return { ok: false, erro: x && x.status === 403 ? 'Seu acesso não inclui esta tarefa.' : x && x.status === 404 ? 'A tarefa não foi encontrada no Gestta.' : 'Não consegui ler a tarefa (' + ((x && (x.erro || x.status)) || 'sem resposta') + ').' };
-  return { ok: true, tarefa: x.dados };
+  // 0.103.0 (Josué, 12/11/2026: "o CNPJ … já tem dentro da própria tarefa do Gestta"): se o detalhe não traz o CNPJ, lê o cliente
+  // da tarefa (um GET, como o botão de informações da tarefa) e junta só o CNPJ; guardado só na memória deste service worker
+  const t = x.dados, c = t && t.customer;
+  if (c && c._id && !c.cnpj) {
+    if (cnpjPorCliente.has(c._id)) c.cnpj = cnpjPorCliente.get(c._id);
+    else {
+      const { r: r2 } = await lerGestta([OCG.PEDIDOS.cliente({ id: c._id })], { tab });
+      const y = r2 && r2.resultados && r2.resultados[0];
+      const cnpj = y && y.status === 200 && y.dados ? String(y.dados.cnpj || '').replace(/\D/g, '') : '';
+      if (cnpj) { c.cnpj = cnpj; cnpjPorCliente.set(c._id, cnpj); }
+    }
+  } else if (c && c._id && c.cnpj) cnpjPorCliente.set(c._id, String(c.cnpj).replace(/\D/g, ''));
+  return { ok: true, tarefa: t };
 }
+const cnpjPorCliente = new Map();
 // Linha do tempo da tarefa (0.77.0): a 1ª página do histórico, só tipo, situação, data, quem e nome do documento; nada é guardado.
 async function gesttaHistorico(msg, sender) {
   const id = String(msg.id || '');
@@ -516,6 +540,12 @@ async function gesttaClientesCnpj(msg, sender) {
   if (!quer.length) return { ok: true, clientes: [] };
   const tab = await tabDoGestta(sender);
   if (!tab) return { ok: false, erro: 'Abra o Gestta numa aba, já logado.' };
+  const c = await clientesGestta(tab);
+  if (!c.ok) return c;
+  return { ok: true, clientes: c.l.filter(x => quer.includes(x.cnpj)) };
+}
+// 0.103.0: o CNPJ de cada empresa das tarefas (a busca não traz), pela lista de clientes já usada pelo Express, na memória por 6 h
+async function clientesGestta(tab) {
   if (!clientesGesttaCache || Date.now() - clientesGesttaCache.em > 6 * 3600e3) {
     const l = [];
     for (let p = 1; p <= 30; p++) {
@@ -527,12 +557,35 @@ async function gesttaClientesCnpj(msg, sender) {
     }
     clientesGesttaCache = { l, em: Date.now() };
   }
-  return { ok: true, clientes: clientesGesttaCache.l.filter(c => quer.includes(c.cnpj)) };
+  return { ok: true, l: clientesGesttaCache.l };
 }
-// Para a coordenação escolher de quem ver as tarefas: só id e nome da equipe ativa.
+async function gesttaCnpjs(msg, sender) {
+  const ids = new Set((Array.isArray(msg.ids) ? msg.ids : []).map(String).filter(x => /^[0-9a-f]{24}$/i.test(x)));
+  if (!ids.size) return { ok: true, cnpjs: {} };
+  const tab = await tabDoGestta(sender);
+  if (!tab) return { ok: false, erro: 'Abra o Gestta numa aba, já logado.' };
+  const cnpjs = {};
+  ids.forEach(id => { if (cnpjPorCliente.has(id)) { cnpjs[id] = cnpjPorCliente.get(id); ids.delete(id); } });
+  if (!ids.size) return { ok: true, cnpjs };
+  const c = await clientesGestta(tab);
+  if (c.ok) { c.l.forEach(x => { if (ids.has(x.id) && x.cnpj) { cnpjs[x.id] = x.cnpj; cnpjPorCliente.set(x.id, x.cnpj); } }); return { ok: true, cnpjs }; }
+  // sem acesso à lista de clientes: um cliente por vez (o mesmo do botão de informações da tarefa), até 60 por leitura
+  for (const id of [...ids].slice(0, 60)) {
+    const { r } = await lerGestta([OCG.PEDIDOS.cliente({ id })], { tab });
+    const y = r && r.resultados && r.resultados[0];
+    if (!y || y.status === 401 || y.status === 403) break;
+    const cnpj = y.status === 200 && y.dados ? String(y.dados.cnpj || '').replace(/\D/g, '') : '';
+    if (cnpj) { cnpjs[id] = cnpj; cnpjPorCliente.set(id, cnpj); }
+  }
+  return { ok: true, cnpjs };
+}
+// Para a coordenação escolher de quem ver as tarefas: só id, nome e setores da equipe ativa.
 async function gesttaEquipe(msg, sender) {
   const tab = await tabDoGestta(sender);
   if (!tab) return { ok: false, erro: 'Abra o Gestta numa aba, já logado.' };
+  return lerEquipeGestta(tab);
+}
+async function lerEquipeGestta(tab) {
   const pessoas = [];
   for (let p = 1; p <= 5; p++) {
     const { r } = await lerGestta([OCG.PEDIDOS.equipe({ limit: 200, page: p })], { tab });
@@ -1496,6 +1549,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'testarGestta') { reply({ ok: true, linhas: await testarGestta() }); }
       else if (msg.cmd === 'gesttaTarefas') { reply(await gesttaTarefas(msg, sender)); }
       else if (msg.cmd === 'gesttaEquipe') { reply(await gesttaEquipe(msg, sender)); }
+      else if (msg.cmd === 'gesttaCnpjs') { reply(await gesttaCnpjs(msg, sender)); }
       else if (msg.cmd === 'gesttaEnvios') { reply(await gesttaEnvios(msg, sender)); }
       else if (msg.cmd === 'gesttaPasta') { reply(await gesttaPasta(msg, sender)); }
       else if (msg.cmd === 'gesttaTirarPasta') { reply(await gesttaTirarPasta(msg, sender)); }

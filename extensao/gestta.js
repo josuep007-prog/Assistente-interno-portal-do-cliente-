@@ -102,7 +102,7 @@
     tarefa: { _id: true, name: true, customer: { _id: true, name: true, code: true }, type: true, subtype: true, status: true, fine: true, overdue: true, done_overdue: true, done_fine: true, total_step: true, done_step: true, created_at: true, due_date: true, competence_date: true },
     // detalhe da tarefa: sem valor, apontamento, aprovadores e documentos anexos
     tarefaDetalhe: { _id: true, name: true, type: true, subtype: true, status: true, overdue: true, fine: true, created_at: true, legal_date: true, due_date: true, competence_date: true, conclusion_date: true,
-      company_task: { _id: true, name: true, active: true }, company_department: SETOR, customer: { _id: true, name: true, code: true, active: true }, owner: { _id: true, name: true, active: true },
+      company_task: { _id: true, name: true, active: true }, company_department: SETOR, customer: { _id: true, name: true, code: true, active: true, cnpj: true }, owner: { _id: true, name: true, active: true },
       customer_has_documents_integration: true, notify_customer: true, total_step: true, done_step: true,
       // 0.73.0: o que há dentro da tarefa (etapas e documentos), nunca o arquivo
       // 0.93.0: o id de cada etapa e de cada documento (as ações precisam dele); has_documents_integration = o documento vai ao portal
@@ -259,11 +259,13 @@
     me: () => ({ id: 'me', tipo: 'me', metodo: 'GET', url: url('/core/company/user/me') }),
     setores: () => ({ id: 'setores', tipo: 'setor', metodo: 'GET', url: url('/admin/company/department') }),
     equipe: (o) => ({ id: 'equipe', tipo: 'equipe', metodo: 'GET', url: url('/admin/company/user', { active: true, limit: (o && o.limit) || 200, page: (o && o.page) || 1 }) }),
+    // 0.103.0: um cliente só (o mesmo que o (i) da tarefa mostra), para o CNPJ da tarefa aberta
+    cliente: (o) => ({ id: 'cliente', tipo: 'cliente', metodo: 'GET', url: url('/admin/customer/' + encodeURIComponent(o.id)) }),
     clientes: (o) => ({ id: 'clientes', tipo: 'cliente', metodo: 'GET', url: url('/admin/customer', { active: true, limit: (o && o.limit) || 200, page: (o && o.page) || 1 }) }),
     cartela: (o) => ({ id: 'cartela', tipo: 'cartela', metodo: 'GET', url: url('/admin/customer/' + encodeURIComponent(o.cliente) + '/responsible') }),
     contatos: (o) => ({ id: 'contatos', tipo: 'contatos', metodo: 'GET', url: url('/admin/customer/' + encodeURIComponent(o.cliente) + '/accountable') }),
     buscaTarefas: (o) => ({ id: 'buscaTarefas', tipo: 'tarefa', metodo: 'POST', url: url('/core/customer/task/search'),
-      corpo: Object.assign({ page: o.page || 1, limit: o.limit || 100, type: o.type || ['RECURRENT', 'SERVICE_ORDER', 'ACCOUNTING'], status: o.status || ['OPEN', 'IMPEDIMENT'], date_type: o.dataTipo === 'COMPETENCE_DATE' ? 'COMPETENCE_DATE' : 'DUE_DATE' }, janelaDoMes(o.ano, o.mes), o.companyUser ? { company_user: [o.companyUser] } : {}, o.semDono ? { no_owner: true } : {}) }),
+      corpo: Object.assign({ page: o.page || 1, limit: o.limit || 100, type: o.type || ['RECURRENT', 'SERVICE_ORDER', 'ACCOUNTING'], status: o.status || ['OPEN', 'IMPEDIMENT'], date_type: o.dataTipo === 'COMPETENCE_DATE' ? 'COMPETENCE_DATE' : 'DUE_DATE' }, janelaDoMes(o.ano, o.mes), o.companyUsers && o.companyUsers.length ? { company_user: o.companyUsers.slice(0, 300) } : o.companyUser ? { company_user: [o.companyUser] } : {}, o.semDono ? { no_owner: true } : {}) }),
     tarefa: (o) => ({ id: 'tarefa', tipo: 'tarefaDetalhe', metodo: 'GET', url: url('/core/customer/task/' + encodeURIComponent(o.id)) }),
     historico: (o) => ({ id: 'historico', tipo: 'historico', metodo: 'GET', url: url('/core/customer/task/' + encodeURIComponent(o.id) + '/history', { page: o.page || 1 }) }),
     relatorio: (o) => { const j = janelaDoMes(o.ano, o.mes); return { id: 'relatorio', tipo: 'relatorio', metodo: 'POST', url: url('/core/customer/task/report'), corpo: { type: 'CUSTOMER_TASK', filter: o.filtro != null ? String(o.filtro) : filtroRelOk, dates: { startDate: j.start_date, endDate: j.end_date } } }; },
@@ -634,6 +636,17 @@
     if (+d === +h) return 'hoje';
     return diasUteis(h, d) <= 5 ? 'proximas' : 'depois';
   }
+  // 0.103.0: na tela, a desconsiderada (IGNORED/DISCONSIDERED) tem um grupo próprio, só quando a pessoa pede essa situação;
+  // nas contas (progresso, empresas, obrigações, Hub) ela continua de fora, como antes (grupoTarefa devolve null)
+  const DESCONSIDERADA = new Set(['IGNORED', 'DISCONSIDERED']);
+  const grupoTela = (t, hoje) => grupoTarefa(t, hoje) || (DESCONSIDERADA.has(String(t && t.status || '')) ? 'desconsiderada' : null);
+  const GRUPOS_TELA = GRUPOS.concat([{ k: 'desconsiderada', rot: 'Desconsideradas', dica: 'desconsideradas ou ignoradas no Gestta' }]);
+  // Situação no Gestta (filtro): aberta, impedimento, concluída, desconsiderada
+  const SITUACOES_FILTRO = [{ k: 'aberta', rot: 'Aberta' }, { k: 'impedimento', rot: 'Impedimento' }, { k: 'concluida', rot: 'Concluída' }, { k: 'desconsiderada', rot: 'Desconsiderada' }];
+  const situacaoDe = t => { const st = String(t && t.status || ''); return st === 'DONE' ? 'concluida' : st === 'IMPEDIMENT' ? 'impedimento' : st === 'OPEN' ? 'aberta' : DESCONSIDERADA.has(st) ? 'desconsiderada' : ''; };
+  // 0.103.0 (Josué, 12/11/2026: "nomear as empresas acompanhado do final do CNPJ"): 12.345.678/0001-90 → "0001-90"
+  const fimCnpj = c => { const d = String(c || '').replace(/\D/g, ''); return d.length === 14 ? d.slice(8, 12) + '-' + d.slice(12) : ''; };
+  const cnpjFormatado = c => { const d = String(c || '').replace(/\D/g, ''); return d.length === 14 ? d.replace(/^(\d\d)(\d{3})(\d{3})(\d{4})(\d\d)$/, '$1.$2.$3/$4-$5') : String(c || ''); };
   function prazoTexto(t, hoje) {
     const d = diaLocal(t && t.due_date), h = diaLocal(hoje || new Date());
     if (String(t && t.status) === 'DONE') return 'Concluída';
@@ -688,9 +701,12 @@
     f = f || {};
     const termos = semAcento(f.q || '').split(/\s+/).filter(Boolean);
     const grupos = f.grupos && f.grupos.length ? new Set(f.grupos) : null, tipos = f.tipos && f.tipos.length ? new Set(f.tipos) : null;
+    const sits = f.situacoes && f.situacoes.length ? new Set(f.situacoes) : null;
     return (lista || []).filter(t => {
-      const k = grupoTarefa(t, hoje); if (!k) return false;
-      if (k === 'feita' && !f.feitas && !(grupos && grupos.has('feita'))) return false;
+      const k = grupoTela(t, hoje); if (!k) return false;
+      if (sits) { if (!sits.has(situacaoDe(t))) return false; }        // 0.103.0: a situação escolhida manda (inclusive concluídas)
+      else if (k === 'desconsiderada') return false;
+      else if (k === 'feita' && !f.feitas && !(grupos && grupos.has('feita'))) return false;
       if (grupos && !grupos.has(k)) return false;
       if (tipos && !tipos.has(t.type)) return false;
       if (f.dia && ymd(diaLocal(t.due_date)) !== f.dia) return false;
@@ -701,7 +717,7 @@
       const c = t.customer || {}, alvo = semAcento([t.name, c.name, c.code, c.cnpj, TIPOS_TAREFA[t.type], setorDe(t), respDe(t)].join(' '));
       return termos.every(x => alvo.includes(x));
     }).sort((a, b) => {
-      const ga = GRUPOS.findIndex(x => x.k === grupoTarefa(a, hoje)), gb = GRUPOS.findIndex(x => x.k === grupoTarefa(b, hoje));
+      const ga = GRUPOS_TELA.findIndex(x => x.k === grupoTela(a, hoje)), gb = GRUPOS_TELA.findIndex(x => x.k === grupoTela(b, hoje));
       return ga - gb || String(a.due_date || '').localeCompare(String(b.due_date || '')) || String((a.customer || {}).name || '').localeCompare(String((b.customer || {}).name || ''), 'pt-BR');
     });
   }
@@ -1202,7 +1218,7 @@
       templatesSemPasta: semPasta.length, naoVai: semPasta.filter(g => g.classe === 'naoVai').length, semNotificar: itens.filter(i => i.notifica === false).length, conferidas: itens.filter(i => i.notifica !== null).length, deve: semPasta.filter(g => g.classe === 'deve').length, risco: risco.length, templatesComPasta: comPasta.length } };
   }
 
-  g.OCG = { enviosPortal, lerExpress, cnpjsDoTexto, cnpjValido, competenciasDoTexto, notaDocumento, sugerirDestinos, pastaForaDe, urlTemplate: (id) => /^[0-9a-f]{24}$/i.test(String(id || '')) ? 'https://app.gestta.com.br/admin/#/sidebar/document/edit/' + id + '/details' : '', semelhanca, parecidoComPasta, palavrasNome, ERROS_ENVIO, API, APP, PAUSA_MS, LIMITE_BUSCA, JANELA_MAX_DIAS, POST_LEITURA, RELATORIO_TIPOS, COLUNAS_RELATORIO, MOLDES, APPS,
+  g.OCG = { grupoTela, GRUPOS_TELA, SITUACOES_FILTRO, situacaoDe, fimCnpj, cnpjFormatado, enviosPortal, lerExpress, cnpjsDoTexto, cnpjValido, competenciasDoTexto, notaDocumento, sugerirDestinos, pastaForaDe, urlTemplate: (id) => /^[0-9a-f]{24}$/i.test(String(id || '')) ? 'https://app.gestta.com.br/admin/#/sidebar/document/edit/' + id + '/details' : '', semelhanca, parecidoComPasta, palavrasNome, ERROS_ENVIO, API, APP, PAUSA_MS, LIMITE_BUSCA, JANELA_MAX_DIAS, POST_LEITURA, RELATORIO_TIPOS, COLUNAS_RELATORIO, MOLDES, APPS,
     caminhoDe, leituraPermitida, escritaPermitida, pedidoAcao, agirNaPagina, ARQ_MAX, appDe, escolher, limpar, limparRelatorio, perfil, expiraEm, janelaDoMes, PEDIDOS, lerNaPagina, linhasDoTeste,
     GRUPOS, TIPOS_TAREFA, SITUACOES_TAREFA, MAX_PAGINAS_TAREFAS, diasUteis, grupoTarefa, prazoTexto, contarGrupos, porEmpresa, porDia, filtrarTarefas, urlTarefa, ymd, diaLocal,
     COLUNAS_FECHAMENTO, linhasDoRelatorio, tarefasDoRelatorio, trilhaDaEmpresa, fechamento, ESTADOS, setorDe, respDe, ehEscritorioProprio,

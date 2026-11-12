@@ -1,0 +1,147 @@
+Abra uma aba do Gestta (app.gestta.com.br) que já está logada. Vamos mapear como a tela do Gestta DESCONSIDERA UM ITEM (documento) de uma tarefa, para a extensão Control Onvio fazer o mesmo ao concluir uma tarefa: "para concluir uma tarefa, seja individualmente ou em lote, a extensão deve clicar para desconsiderar os itens de cada uma que não possuir anexo" (Josué, 12/11/2026). Siga estas regras:
+
+REGRAS
+- Use SÓ uma tarefa da empresa de teste [EMPRESA DE TESTE], aberta, com pelo menos dois itens (documentos) SEM anexo. Se não houver, pare e pergunte ao Josué qual tarefa usar.
+- Não conclua a tarefa, não anexe nada, não mexa em outra tarefa ou empresa.
+- Se a ação não existir na tela, pule e anote.
+
+PASSO 1. Abra a tarefa de teste no Gestta. Abra o console do navegador nessa aba, cole o roteiro do fim deste texto exatamente como está e rode. Deve aparecer "mapeamento ligado". O roteiro não grava nada no Gestta: só escuta as chamadas que a tela faz e anota a forma delas (nunca valores, nomes, CNPJ, token ou cookies). Se a página recarregar, rode o roteiro de novo.
+
+PASSO 2. Para cada linha, PRIMEIRO rode no console o comando da esquerda, DEPOIS faça a ação na tela:
+1. gtMapa.marcar('abrir tarefa')  -> recarregue a tarefa (F5 ou feche e abra de novo), para pegar a leitura do detalhe
+2. gtMapa.marcar('desconsiderar um item')  -> no primeiro item sem anexo, use a opção da tela de desconsiderar o item (anote o nome exato do botão ou do menu e o texto da confirmação, se houver)
+3. gtMapa.marcar('reconsiderar o item')  -> desfaça: volte o mesmo item a valer (anote o nome da opção). Se não houver como desfazer, pule e anote
+4. gtMapa.marcar('desconsiderar vários')  -> se a tela deixar escolher vários itens de uma vez, desconsidere os dois itens sem anexo; se não deixar, só anote que não existe
+5. gtMapa.marcar('reconsiderar vários')  -> desfaça o passo 4, se existir
+
+PASSO 3. Responda também, só olhando (sem concluir):
+- O botão Concluir da tarefa fica bloqueado enquanto há item sem anexo que não foi desconsiderado? E enquanto há etapa (checkbox) não marcada?
+- Desconsiderar o item muda alguma coisa para o cliente (aviso, e-mail, portal)?
+- Item com "pede validação" pode ser desconsiderado?
+
+PASSO 4. Rode no console: gtMapa.resultado()
+Copie TODO o texto que ele imprimir (começa com { e termina com }) e me devolva inteiro, junto com as respostas do PASSO 3 e o que foi pulado. Depois rode gtMapa.parar().
+
+ROTEIRO (cole no console exatamente como está):
+
+/* Mapeamento das ações do Gestta (aprovadas pelo Josué em 11/11/2026: concluir tarefa e etapas, impedimento, comentário e
+ * envio de documento). Rodar no console de uma aba do Gestta já logada (app.gestta.com.br).
+ *
+ * ESTE ROTEIRO NÃO CHAMA A API. Ele só escuta as chamadas que a própria tela do Gestta faz enquanto a pessoa executa cada
+ * ação, à mão, numa EMPRESA DE TESTE. Anota, para cada chamada: método, endereço com {id} no lugar dos ids, nomes dos
+ * parâmetros, nomes e tipos dos campos enviados e recebidos, a situação HTTP e os códigos de situação em maiúsculas
+ * (DONE, OPEN, IMPEDIMENT…). Nunca anota valores (nome, CNPJ, texto de comentário, motivo, nome de arquivo), nem o token,
+ * nem cookies. As anotações ficam só nesta aba (sessionStorage) até a pessoa copiar o resultado.
+ *
+ * Uso:
+ *   1. Cole este roteiro no console e tecle Enter. Aparece "mapeamento ligado".
+ *   2. Antes de cada ação, rode  gtMapa.marcar('nome da ação')  (ex.: gtMapa.marcar('concluir etapa')).
+ *   3. Faça a ação na tela do Gestta, numa empresa de teste.
+ *   4. No fim, rode  gtMapa.resultado()  : o texto vai para a área de transferência. Cole na conversa do Claude Code.
+ *   Se a página recarregar (ou abrir o Express), rode o roteiro de novo: o que já foi anotado continua guardado.
+ *   gtMapa.parar() desliga a escuta; gtMapa.limpar() apaga as anotações. */
+(() => {
+  const CHAVE = 'gtMapa.v1', MAX = 400;
+  if (window.gtMapa && window.gtMapa.ligado) { console.log('mapeamento já está ligado nesta página (' + window.gtMapa.n() + ' anotações)'); return; }
+  let notas = [];
+  try { notas = JSON.parse(sessionStorage.getItem(CHAVE) || '[]'); } catch (e) { notas = []; }
+  const guardar = () => { try { sessionStorage.setItem(CHAVE, JSON.stringify(notas.slice(-MAX))); } catch (e) {} };
+  let acao = (notas.filter(n => n.marca).slice(-1)[0] || {}).marca || '';
+
+  // ---- só a forma, nunca o valor ----
+  // código de situação: palavra em maiúsculas, partes separadas por _ (DONE, SERVICE_ORDER, ONBOARDING_V3). Campo de identificação
+  // (id, code, cnpj, nome, e-mail…) nunca vira código, mesmo em maiúsculas (v2: um external_id tinha saído com o valor).
+  const CODIGO = /^[A-Z]{2,}(_[A-Z0-9]+)*$/, IDENT = /id$|code|cnpj|cpf|name|nome|mail|phone|fone|document|number|protocol|key|token|picture/i;
+  const tipoTexto = (s, k) => /^\d{4}-\d\d-\d\d(T|$)/.test(s) ? 'data' : /^[0-9a-f]{24}$/i.test(s) ? 'id' : s.length <= 40 && CODIGO.test(s) && !IDENT.test(k || '') ? 'código ' + s : 'texto';
+  const forma = (v, prof, k) => {
+    if (v == null) return 'vazio';
+    if (Array.isArray(v)) return v.length ? [forma(v[0], prof + 1, k), 'itens: ' + v.length] : ['lista vazia'];
+    if (typeof Blob !== 'undefined' && v instanceof Blob) return 'arquivo (' + (v.type || 'sem tipo') + ', ' + Math.round(v.size / 1024) + ' KB)';
+    if (typeof v === 'object') {
+      if (prof > 5) return 'objeto';
+      const o = {};
+      for (const c of Object.keys(v).sort()) o[c] = forma(v[c], prof + 1, c);
+      return o;
+    }
+    if (typeof v === 'string') return tipoTexto(v, k);
+    return typeof v === 'number' ? 'número' : typeof v === 'boolean' ? 'booleano' : typeof v;
+  };
+  const caminho = (url) => {
+    let u; try { u = new URL(url, location.href); } catch (e) { return { host: '?', caminho: '?', parametros: [] }; }
+    const segs = u.pathname.split('/').map(s => /^[0-9a-f]{24}$/i.test(s) ? '{id}' : /^\d+$/.test(s) ? '{n}'
+      : /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(s) ? '{uuid}' : s.length > 40 ? '{longo}' : s);
+    return { host: u.hostname, caminho: segs.join('/'), parametros: [...new Set([...u.searchParams.keys()])].sort() };
+  };
+  const corpoForma = (b) => {
+    if (b == null || b === '') return 'sem corpo';
+    if (typeof FormData !== 'undefined' && b instanceof FormData) {
+      const o = {}; for (const [k, v] of b.entries()) o[k] = typeof v === 'string' ? tipoTexto(v, k) : forma(v, 0, k);
+      return { formulário: o };
+    }
+    if (typeof Blob !== 'undefined' && b instanceof Blob) return forma(b, 0);
+    if (typeof URLSearchParams !== 'undefined' && b instanceof URLSearchParams) return { 'campos de formulário': [...b.keys()].sort() };
+    if (typeof b === 'string') { try { return forma(JSON.parse(b), 0); } catch (e) { return 'texto (' + b.length + ' caracteres)'; } }
+    return typeof b;
+  };
+  const respostaForma = (texto, tipo) => {
+    if (!texto) return 'vazia';
+    if (/json/.test(tipo || '') || /^[[{]/.test(String(texto).trim())) { try { return forma(JSON.parse(texto), 0); } catch (e) {} }
+    return (tipo || 'sem tipo') + ', ' + Math.round(String(texto).length / 1024) + ' KB';
+  };
+  // GET entra na hora do envio, só como endereço (sem corpo nem resposta) e uma vez seguida; as escritas entram ao voltar,
+  // inteiras, com a ação marcada quando saíram
+  const anotar = (n, acaoNoEnvio) => {
+    if (n.metodo === 'GET') { const u = notas[notas.length - 1]; if (u && u.metodo === 'GET' && u.caminho === n.caminho) return; }
+    n.acao = acaoNoEnvio || '(sem marca)'; n.quando = new Date().toISOString().slice(11, 19);
+    notas.push(n); if (notas.length > MAX) notas = notas.slice(-MAX); guardar();
+    if (n.metodo !== 'GET') console.log('%c[mapa] ' + n.metodo + ' ' + n.caminho + ' → ' + n.status, 'color:#0a7');
+  };
+
+  // ---- escuta: XMLHttpRequest (AngularJS) e fetch (Express) ----
+  const XO = XMLHttpRequest.prototype.open, XS = XMLHttpRequest.prototype.send, XH = XMLHttpRequest.prototype.setRequestHeader;
+  XMLHttpRequest.prototype.open = function (m, url) { this.__gtm = { metodo: String(m || 'GET').toUpperCase(), url: String(url), cab: [] }; return XO.apply(this, arguments); };
+  XMLHttpRequest.prototype.setRequestHeader = function (k) { if (this.__gtm) this.__gtm.cab.push(String(k).toLowerCase()); return XH.apply(this, arguments); };
+  XMLHttpRequest.prototype.send = function (b) {
+    const r = this.__gtm;
+    if (r && r.metodo === 'GET') anotar(Object.assign(caminho(r.url), { via: 'xhr', metodo: 'GET', cabecalhos: [...new Set(r.cab)].sort() }), acao);
+    else if (r) {
+      const envio = corpoForma(b), naHora = acao;
+      this.addEventListener('loadend', () => {
+        let resposta = 'não lida';
+        try { resposta = (this.responseType === '' || this.responseType === 'text') ? respostaForma(this.responseText, this.getResponseHeader('content-type')) : (this.responseType === 'json' ? forma(this.response, 0) : this.responseType); } catch (e) {}
+        anotar(Object.assign(caminho(r.url), { via: 'xhr', metodo: r.metodo, cabecalhos: [...new Set(r.cab)].sort(), envio, status: this.status, resposta }), naHora);
+      });
+    }
+    return XS.apply(this, arguments);
+  };
+  const F = window.fetch;
+  window.fetch = async function (entrada, op) {
+    const url = typeof entrada === 'string' ? entrada : (entrada && entrada.url) || String(entrada);
+    const metodo = String((op && op.method) || (entrada && entrada.method) || 'GET').toUpperCase();
+    const cab = []; try { new Headers((op && op.headers) || (entrada && entrada.headers) || {}).forEach((v, k) => cab.push(k)); } catch (e) {}
+    if (metodo === 'GET') { anotar(Object.assign(caminho(url), { via: 'fetch', metodo, cabecalhos: cab.sort() }), acao); return F.apply(this, arguments); }
+    const envio = corpoForma(op && op.body), naHora = acao;
+    const res = await F.apply(this, arguments);
+    let resposta = 'não lida';
+    try { resposta = respostaForma(await res.clone().text(), res.headers.get('content-type')); } catch (e) {}
+    anotar(Object.assign(caminho(url), { via: 'fetch', metodo, cabecalhos: cab.sort(), envio, status: res.status, resposta }), naHora);
+    return res;
+  };
+
+  window.gtMapa = {
+    ligado: true,
+    n: () => notas.length,
+    marcar(nome) { acao = String(nome || '').slice(0, 60); notas.push({ marca: acao, quando: new Date().toISOString().slice(11, 19) }); guardar(); console.log('[mapa] próxima ação: ' + acao); },
+    resultado() {
+      const saida = { roteiro: 'mapear-acoes-gestta v2', pagina: location.pathname + location.hash.replace(/[0-9a-f]{24}/gi, '{id}'), quando: new Date().toISOString().slice(0, 16), anotacoes: notas };
+      const texto = JSON.stringify(saida, null, 1);
+      try { navigator.clipboard.writeText(texto); } catch (e) {}
+      try { copy(texto); } catch (e) {}
+      console.log(texto); console.log('pronto: ' + notas.length + ' anotações (o texto também foi copiado)');
+      return notas.length;
+    },
+    parar() { XMLHttpRequest.prototype.open = XO; XMLHttpRequest.prototype.send = XS; XMLHttpRequest.prototype.setRequestHeader = XH; window.fetch = F; this.ligado = false; console.log('mapeamento desligado (as anotações continuam guardadas nesta aba)'); },
+    limpar() { notas = []; acao = ''; guardar(); console.log('anotações apagadas'); },
+  };
+  console.log('mapeamento ligado (' + notas.length + ' anotações já guardadas). Antes de cada ação: gtMapa.marcar("nome"). No fim: gtMapa.resultado()');
+})();
