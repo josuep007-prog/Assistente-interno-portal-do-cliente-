@@ -2,6 +2,15 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.96.0 (12/11/2026): Envios ao portal no Gestta
+
+- **Aba nova nas Tarefas do Gestta: Envios ao portal** (tecla 7). Lê na hora a fila de envios ao Portal do Cliente com erro (a mesma da tela Status da integração do Gestta) e os templates de documento, e separa em três blocos:
+  - **Para reenviar:** erro ao enviar o arquivo e, primeiro, os que deram "sem pasta" num template que já ganhou pasta (só falta reenviar).
+  - **Sem pasta, por template:** um template por linha, com quantos documentos estão parados e em quantos clientes. Como não há registro de "vai ou não vai", a extensão segue o padrão já configurado no Gestta: template com nome parecido com um que tem pasta **provavelmente deveria ir** (e diz qual pasta usar); sem nada parecido, **provavelmente não vai**.
+  - **Em risco, ainda sem erro:** templates sem pasta parecidos com os que vão ao portal, antes de algum documento parar.
+- Os números do topo filtram, há busca por cliente, documento, arquivo e tarefa, e a tarefa abre no Gestta. Nada fica guardado.
+- **Reenviar e configurar a pasta pela extensão** foram aprovados e chegam depois do mapeamento (roteiro em `mapeamento/prompt-claude-chrome-envios-portal-gestta.txt`). Por enquanto, os botões abrem a tela certa no Gestta.
+
 ## Novidades da v0.95.1 (11/11/2026): o Mediador não insiste depois de uma falha
 
 - A busca semanal no Mediador, depois de uma busca com erro, só tenta de novo 24 horas depois (antes, tentava a cada envio completo ao Hub e abria uma aba toda vez). O botão **Buscar no Mediador** continua valendo na hora.
