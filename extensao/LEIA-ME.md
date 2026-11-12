@@ -50,7 +50,7 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 
 Itens que dependem da tela real e só podem ser conferidos numa sessão com o Chrome do Josué. Os de versões mais antigas estão em cada versão do [`HISTORICO.md`](HISTORICO.md) (procure "A confirmar" e "A conferir"); conferido um item, tire-o daqui e anote no histórico.
 
-- **Envios ao portal (0.97.0):** conferir no Gestta real o Reenviar pela extensão (um documento com erro de envio) e o Usar a pasta (no template "TESTE MAPEAMENTO - NAO USAR"); se a semelhança de nomes acerta com os templates reais. Tirar da lista (0.98.0): conferir com um documento que ele sai da lista de erros e que o arquivo continua na tarefa, e se o id mandado é o do item da fila (se não for, o Gestta responde com falha e o documento continua na lista).
+- **Envios ao portal (0.97.0):** conferir no Gestta real o Reenviar pela extensão (um documento com erro de envio) e o Usar a pasta (no template "TESTE MAPEAMENTO - NAO USAR"); se a semelhança de nomes acerta com os templates reais. Tirar da lista (0.98.0): conferir com um documento que ele sai da lista de erros e se o id mandado é o do item da fila (a tarefa não é afetada, confirmado pelo Josué) (se não for, o Gestta responde com falha e o documento continua na lista).
 - **A conferir no Mediador real:** o preenchimento do CNPJ e o clique em Pesquisar, se o texto traz o link do anexo e se o PDF abre dentro do Hub.
 - **A confirmar no Gestta real:** o envio de arquivo pela tela do Gestta leva um cabeçalho próprio (`__setxhr_`) que a extensão não manda; se o Gestta recusar o arquivo, a mensagem aparece no painel.
 - A confirmar no Chrome do Josué: o Hub abrindo em segundo plano carrega e responde como numa aba visível.
