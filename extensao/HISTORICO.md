@@ -2,6 +2,13 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.101.0 (12/11/2026): arrastar arquivo no documento da tarefa
+
+- Josué: "também dê só de arrastar o arquivo, podendo arrastar mais de uma vez"; "se o analista arrastar o documento direto no item de uma tarefa, não precisa passar pelo leitor do Express". No detalhe da tarefa (Tarefas do Gestta), **arraste um ou mais arquivos em cima de um documento** da tarefa: o item fica destacado ("Soltar em …"), aparece **uma confirmação** com a lista dos arquivos e eles vão **um por vez** para aquele documento, pelo mesmo envio do botão Enviar arquivo (`POST /es/upload/direct`, já aprovado). Arquivo acima de 15 MB fica de fora, com o aviso. Pode arrastar de novo quantas vezes quiser.
+- O botão **Enviar arquivo** também aceita vários arquivos de uma vez.
+- Soltar um arquivo fora de um documento não abre mais o arquivo por cima da tela.
+- Próximos passos (esperando o mapeamento do Express): soltar na tarefa ou em qualquer lugar da tela e o Express escolher o item; a leitura do documento pela extensão quando o Express não ler; e o e-mail pronto no Zimbra para o analista escolher a gestão do departamento ou o setor do Portal do Cliente.
+
 ## Novidades da v0.100.7 (12/11/2026): a fila de erros inteira e o número vermelho do Gestta
 
 - A leitura da fila de erros não para mais no "total" da resposta: anda até uma página sem nada novo (a fila é uma lista sem total; a tela do Gestta pede de 20 em 20, mapeado em 12/11/2026).

@@ -3107,6 +3107,27 @@ await passo('Gestta · Tarefas (0.93.0): no detalhe, marcar etapa, impedimento c
     assert.deepEqual([doc.acao, doc.documento, doc.arquivo.nome, doc.arquivo.tipo, Buffer.from(doc.arquivo.base64, 'base64').toString()], ['documento', 'd00000000000000000000001', 'recibo.pdf', 'application/pdf', '%PDF-1.4 teste']);
     // depois de cada ação, o detalhe e a lista são relidos
     assert.ok((await fr.evaluate(() => (window.__msgs || []).filter(m => m.cmd === 'gesttaTarefas').length)) >= 2, 'a lista foi relida');
+    // 0.101.0: arrastar dois arquivos em cima do documento: destaca o item, pede uma confirmação só e envia um por vez no mesmo documento
+    await fr.waitForSelector('#gd-det [data-gp-drop="d00000000000000000000001"]');
+    await fr.evaluate(() => {
+      const li = document.querySelector('#gd-det [data-gp-drop="d00000000000000000000001"]'), dt = new DataTransfer();
+      dt.items.add(new File(['%PDF-1.4 um'], 'guia-1.pdf', { type: 'application/pdf' })); dt.items.add(new File(['%PDF-1.4 dois'], 'guia-2.pdf', { type: 'application/pdf' }));
+      window.__dt = dt;
+      li.dispatchEvent(new DragEvent('dragenter', { bubbles: true, cancelable: true, dataTransfer: dt }));
+    });
+    assert.ok(await fr.$('#gd-det .gp-doc.gp-drop-on'), 'o item fica destacado ao arrastar por cima');
+    if (process.env.CAP) { await fr.evaluate(t => document.documentElement.setAttribute('data-theme', t), estilo === 'atual' ? 'dark' : 'light'); await p.screenshot({ path: process.env.CAP + '/gestta-arrastar-' + estilo + '.png' }); await fr.evaluate(() => document.documentElement.setAttribute('data-theme', 'light')); }
+    await fr.evaluate(() => { const li = document.querySelector('#gd-det [data-gp-drop="d00000000000000000000001"]'); li.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: window.__dt })); });
+    await fr.waitForSelector('#gd-det .gp-conf');
+    assert.match(await fr.textContent('#gd-det .gp-conf'), /Enviar 2 arquivos no documento “Recibo”\? Vão um por vez\.[\s\S]*guia-1\.pdf[\s\S]*guia-2\.pdf/);
+    assert.equal((await acoes()).length, 4, 'nada sai antes de confirmar');
+    await fr.click('#gd-det #gp-conf-ok');
+    await fr.waitForFunction(() => (window.__msgs || []).filter(m => m.cmd === 'gesttaAcao').length === 6);
+    assert.deepEqual((await acoes()).slice(4).map(m => [m.acao, m.documento, m.arquivo.nome]), [['documento', 'd00000000000000000000001', 'guia-1.pdf'], ['documento', 'd00000000000000000000001', 'guia-2.pdf']]);
+    await fr.waitForSelector('#gd-det .gp-aviso.ok');
+    assert.match(await fr.textContent('#gd-det .gp-aviso.ok'), /2 arquivos enviados no documento “Recibo”/);
+    // soltar fora de um item não abre o arquivo na tela
+    assert.equal(await fr.evaluate(() => { const ev = new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: window.__dt }); document.body.dispatchEvent(ev); return ev.defaultPrevented; }), true);
     // erro do Gestta aparece no painel
     await fr.evaluate(() => { window.__respostas.gesttaAcao = { ok: false, erro: 'Seu acesso do Gestta não permite esta ação nesta tarefa.' }; });
     await fr.waitForSelector('#gd-det [data-gp-acao="concluir"]');
