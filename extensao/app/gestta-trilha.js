@@ -302,10 +302,10 @@ function ligarAcoes(el, t, passos, docs) {
     const a = b.dataset.gpAcao;
     if (a === 'concluir') {
       const abertas = etapasAbertas(P.dados), semAnexo = itensSemAnexo(P.dados);
-      pedirConfirmacao({ msg: { acao: 'concluir' }, texto: 'Concluir a tarefa ' + nomeT + ' no Gestta?', botao: abertas.length ? 'Marcar as etapas e concluir' : 'Concluir tarefa',
-        feito: abertas.length ? 'Etapas marcadas e tarefa concluída no Gestta.' : 'Tarefa concluída no Gestta.',
+      pedirConfirmacao({ msg: { acao: 'concluir' }, texto: 'Concluir a tarefa ' + nomeT + ' no Gestta?', botao: abertas.length || semAnexo.length ? 'Preparar e concluir' : 'Concluir tarefa',
+        feito: abertas.length || semAnexo.length ? 'Tarefa preparada e concluída no Gestta.' : 'Tarefa concluída no Gestta.',
         extra: (abertas.length ? ['Antes, marca ' + (abertas.length === 1 ? 'a etapa' : 'as ' + abertas.length + ' etapas') + ' que falta' + (abertas.length === 1 ? '' : 'm') + ': ' + abertas.map(p => p.name || 'Etapa').join(', ') + '.'] : [])
-          .concat(semAnexo.length ? [(semAnexo.length === 1 ? '1 item sem anexo fica' : semAnexo.length + ' itens sem anexo ficam') + ' como está' + (semAnexo.length === 1 ? '' : 'ão') + ': desconsiderar o item pela extensão chega depois do mapeamento.'] : []) });
+          .concat(semAnexo.length ? ['Antes, desconsidera ' + (semAnexo.length === 1 ? 'o item sem anexo' : 'os ' + semAnexo.length + ' itens sem anexo') + ': ' + semAnexo.map(x => x.name || 'Documento').join(', ') + '.'] : []) });
     }
     else if (a === 'reabrir') pedirConfirmacao({ msg: { acao: 'reabrir' }, texto: 'Reabrir a tarefa ' + nomeT + '? Ela volta a ficar aberta no Gestta.', botao: 'Reabrir tarefa', feito: 'Tarefa reaberta no Gestta.', perigo: true });
     else if (a === 'impedir') pedirConfirmacao({ msg: { acao: 'impedir' }, campo: 'motivo', rotCampo: 'Motivo do impedimento', texto: 'Registrar um impedimento na tarefa ' + nomeT + '?', botao: 'Registrar impedimento', feito: 'Impedimento registrado no Gestta.' });

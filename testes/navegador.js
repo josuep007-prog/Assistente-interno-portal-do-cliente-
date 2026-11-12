@@ -3135,8 +3135,8 @@ await passo('Gestta · Tarefas (0.93.0): no detalhe, marcar etapa, impedimento c
     await fr.evaluate(() => { window.__respostas.gesttaAcao = { ok: false, erro: 'Seu acesso do Gestta não permite esta ação nesta tarefa.' }; });
     await fr.waitForSelector('#gd-det [data-gp-acao="concluir"]');
     await fr.click('#gd-det [data-gp-acao="concluir"]');
-    assert.match(await fr.textContent('#gd-det .gp-conf'), /Antes, marca a etapa que falta: Transmitir[\s\S]*1 item sem anexo fica como está/);
-    assert.equal((await fr.textContent('#gd-det #gp-conf-ok')).trim(), 'Marcar as etapas e concluir');
+    assert.match(await fr.textContent('#gd-det .gp-conf'), /Antes, marca a etapa que falta: Transmitir[\s\S]*Antes, desconsidera o item sem anexo: Recibo/);
+    assert.equal((await fr.textContent('#gd-det #gp-conf-ok')).trim(), 'Preparar e concluir');
     await fr.click('#gd-det #gp-conf-ok');
     await fr.waitForSelector('#gd-det .gp-aviso.erro');
     assert.match(await fr.textContent('#gd-det .gp-aviso.erro'), /etapa “Transmitir”[\s\S]*não permite esta ação[\s\S]*não foi concluída/);
@@ -3148,7 +3148,7 @@ await passo('Gestta · Tarefas (0.93.0): no detalhe, marcar etapa, impedimento c
     await fr.click('#gd-det [data-gp-acao="concluir"]');
     await fr.click('#gd-det #gp-conf-ok');
     await fr.waitForFunction(() => window.__msgs.some(m => m.cmd === 'gesttaAcao' && m.acao === 'concluir'));
-    assert.deepEqual(await fr.evaluate(() => window.__msgs.filter(m => m.cmd === 'gesttaAcao').map(m => [m.acao, m.etapa || ''])), [['etapa', 'e00000000000000000000002'], ['concluir', '']]);
+    assert.deepEqual(await fr.evaluate(() => window.__msgs.filter(m => m.cmd === 'gesttaAcao').map(m => [m.acao, m.etapa || m.documento || ''])), [['etapa', 'e00000000000000000000002'], ['desconsiderar', 'd00000000000000000000001'], ['concluir', '']]);
     await p.close();
   }
 });
@@ -3383,8 +3383,8 @@ await passo('Gestta · Lista (0.99.0): marcar tarefas e agir em lote (concluir, 
     assert.equal((await acoes()).length, 0, 'nada sai antes de confirmar');
     await fr.click('#gl-lote-ok');
     await fr.waitForFunction(() => (window.__msgs || []).some(m => m.cmd === 'gesttaAcao' && m.acao === 'concluir'));
-    // 0.103.0: antes de concluir, lê a tarefa e marca a etapa que falta
-    assert.deepEqual(await acoes(), [['etapa', 'f00000000000000000000001', ''], ['concluir', 'f00000000000000000000001', '']]);
+    // 0.103.0/0.105.0: antes de concluir, lê a tarefa, marca a etapa que falta e desconsidera o item sem anexo
+    assert.deepEqual(await acoes(), [['etapa', 'f00000000000000000000001', ''], ['desconsiderar', 'f00000000000000000000001', ''], ['concluir', 'f00000000000000000000001', '']]);
     // Impedimento pede o motivo, o mesmo para todas
     await fr.waitForSelector('.gl-r');
     await fr.check('[data-gl-sel="f00000000000000000000002"]');
@@ -3394,8 +3394,8 @@ await passo('Gestta · Lista (0.99.0): marcar tarefas e agir em lote (concluir, 
     await fr.waitForSelector('#gl-lote-campo[aria-invalid="true"]');
     await fr.fill('#gl-lote-campo', 'Aguardando o cliente');
     await fr.click('#gl-lote-ok');
-    await fr.waitForFunction(() => (window.__msgs || []).filter(m => m.cmd === 'gesttaAcao').length === 4, null, { timeout: 8000 });
-    assert.deepEqual((await acoes()).slice(2), [['impedir', 'f00000000000000000000002', 'Aguardando o cliente'], ['impedir', 'f00000000000000000000004', 'Aguardando o cliente']]);
+    await fr.waitForFunction(() => (window.__msgs || []).filter(m => m.cmd === 'gesttaAcao').length === 5, null, { timeout: 8000 });
+    assert.deepEqual((await acoes()).slice(3), [['impedir', 'f00000000000000000000002', 'Aguardando o cliente'], ['impedir', 'f00000000000000000000004', 'Aguardando o cliente']]);
     // marcar todas e comentar
     await fr.waitForSelector('#gl-sel-todas:not([disabled])');
     await fr.check('#gl-sel-todas');
