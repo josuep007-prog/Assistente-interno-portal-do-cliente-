@@ -118,6 +118,10 @@
     filaOnvio: { _id: true, status: true, error: true, retry_count: true, created_at: true, updated_at: true,
       customer_task: { _id: true, name: true, customer: { _id: true, name: true, cnpj: true }, company_department: SETOR, owner: REF, _due_date: true, _competence_date: true },
       customer_task_file: { company_document: REF } },
+    // 0.96.0: a fila de envios ao portal para a aba Envios ao portal (só na memória da tela): o nome do arquivo e o detalhe do erro
+    filaOnvioTela: { _id: true, status: true, error: true, error_detail: true, retry_count: true, created_at: true, updated_at: true,
+      customer_task: { _id: true, name: true, customer: { _id: true, name: true, cnpj: true }, company_department: SETOR, owner: REF, _due_date: true, _competence_date: true },
+      customer_task_file: { company_document: REF, file_name: true } },
     contagem: { fine: true, approve: true, email_not_sent: true, count: true },
     // 0.79.0: template de documento com o destino no portal (só nomes de pasta; nunca o arquivo modelo)
     templateDoc: { _id: true, name: true, automation_type: true, valid: true, bypass: true, documents_integration: { pathName: [true] } },
@@ -246,6 +250,7 @@
     historico: (o) => ({ id: 'historico', tipo: 'historico', metodo: 'GET', url: url('/core/customer/task/' + encodeURIComponent(o.id) + '/history', { page: o.page || 1 }) }),
     relatorio: (o) => { const j = janelaDoMes(o.ano, o.mes); return { id: 'relatorio', tipo: 'relatorio', metodo: 'POST', url: url('/core/customer/task/report'), corpo: { type: 'CUSTOMER_TASK', filter: o.filtro != null ? String(o.filtro) : filtroRelOk, dates: { startDate: j.start_date, endDate: j.end_date } } }; },
     fechamento: (o) => Object.assign(PEDIDOS.relatorio(o), { id: 'fechamento', tipo: 'fechamento' }),
+    filaOnvioTela: (o) => ({ id: 'filaOnvioTela', tipo: 'filaOnvioTela', metodo: 'GET', url: url('/es/file/onvio', { status: 'ERROR', limit: (o && o.limit) || 50, skip: (o && o.skip) || 0 }) }),
     filaOnvioErro: (o) => ({ id: 'filaOnvioErro', tipo: 'filaOnvio', metodo: 'GET', url: url('/es/file/onvio', { status: 'ERROR', limit: (o && o.limit) || 50, skip: (o && o.skip) || 0 }) }),
     multas: (o) => { const j = janelaDoMes(o.ano, o.mes); return { id: 'multas', tipo: 'contagem', metodo: 'GET', url: url('/core/dashboard/attention/fine/all', j) }; },
     templatesDocumento: () => ({ id: 'templatesDocumento', tipo: 'template', metodo: 'GET', url: url('/admin/company/document', { limit: 1, page: 1 }) }),
@@ -939,7 +944,67 @@
   }
   const MAX_PAGINAS_TAREFAS = 15;      // 15 × 1000: bem acima do que uma pessoa tem num mês; passou disso, a tela avisa que cortou
 
-  g.OCG = { API, APP, PAUSA_MS, LIMITE_BUSCA, JANELA_MAX_DIAS, POST_LEITURA, RELATORIO_TIPOS, COLUNAS_RELATORIO, MOLDES, APPS,
+  /* ---------- 0.96.0: Envios ao portal (Josué, 12/11/2026: "documentos que deram erro no envio ao portal do cliente … existem documentos que
+     devem ir pro portal e outros não; os que não devem ficaram sem pasta configurada, só que corre o risco de ser um template novo do mesmo
+     tipo dos que já vão; os que deram erro de envio precisam ser reenviados") ----------
+     Não há registro de "vai ou não vai": a regra sai do padrão que já está configurado no Gestta. Template com pasta = vai ao portal.
+     Template sem pasta e com nome parecido com um que tem pasta = provavelmente deveria ir (o risco). Sem nada parecido = provavelmente não vai. */
+  const ERROS_ENVIO = { NO_FOLDER_CONFIGURED: 'Sem pasta configurada no template' };
+  const SEM_PASTA = /NO_FOLDER/i;
+  const VAZIAS = new Set(['de', 'da', 'do', 'dos', 'e', 'a', 'o', 'as', 'os', 'em', 'no', 'na', 'para', 'com', 'por', 'ao', 'um', 'uma',
+    'filial', 'matriz', 'novo', 'nova', 'copia', 'modelo', 'template', 'doc', 'documento', 'documentos', 'arquivo', 'v', 'versao']);
+  const pastaDe = (t) => { const p = t && t.documents_integration && Array.isArray(t.documents_integration.pathName) ? t.documents_integration.pathName.filter(Boolean) : []; return p.join(' › '); };
+  const palavrasNome = (n) => [...new Set(String(n || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').split(' ')
+    .filter(w => w && !VAZIAS.has(w) && !/^\d+$/.test(w)))];
+  // semelhança entre dois nomes de template: palavras em comum (Jaccard); um contido no outro conta como parecido
+  function semelhanca(a, b) {
+    const A = palavrasNome(a), B = palavrasNome(b); if (!A.length || !B.length) return 0;
+    const sb = new Set(B), comum = A.filter(w => sb.has(w)).length, uniao = new Set(A.concat(B)).size;
+    const j = comum / uniao, contido = comum === Math.min(A.length, B.length) && comum >= 2;   // "Guia" sozinho não segura "Guia FGTS"
+    return contido ? Math.max(j, 0.75) : j;
+  }
+  // o template com pasta mais parecido (a partir de 0,6), com a pasta dele
+  function parecidoComPasta(nome, comPasta) {
+    let m = null;
+    for (const t of comPasta) { const v = semelhanca(nome, t.name); if (v >= 0.6 && (!m || v > m.nota)) m = { id: t._id, nome: t.name, pasta: pastaDe(t), nota: Math.round(v * 100) / 100 }; }
+    return m;
+  }
+  const erroTexto = (x) => ERROS_ENVIO[x.error] || (x.error ? String(x.error) : 'Erro sem código');
+  function itemEnvio(x) {
+    const t = x.customer_task || {}, c = t.customer || {}, f = x.customer_task_file || {}, d = f.company_document || {};
+    return { id: x._id, erro: x.error || '', erroTexto: erroTexto(x), detalhe: String(x.error_detail || '').slice(0, 300), tentativas: Number(x.retry_count) || 0,
+      criado: x.created_at || '', atualizado: x.updated_at || '', tarefa: t.name || '', tarefaId: t._id || '', cliente: c.name || '', cnpj: c.cnpj || '',
+      setor: (t.company_department && t.company_department.name) || '', responsavel: (t.owner && t.owner.name) || '', competencia: t._competence_date || '', meta: t._due_date || '',
+      templateId: d._id || '', template: d.name || '', arquivo: f.file_name || '' };
+  }
+  // envios: a fila com erro; templates: a lista de templates de documento (com a pasta). Devolve os três blocos da aba.
+  function enviosPortal(envios, templates) {
+    const tpl = (templates || []).filter(t => t && t._id), porId = new Map(tpl.map(t => [t._id, t]));
+    const comPasta = tpl.filter(t => pastaDe(t)), itens = (envios || []).filter(Boolean).map(itemEnvio);
+    const reenviar = [], porTemplate = new Map();
+    for (const it of itens) {
+      const t = porId.get(it.templateId), pasta = pastaDe(t);
+      if (SEM_PASTA.test(it.erro) && !pasta) {
+        const k = it.templateId || 'n:' + it.template;
+        if (!porTemplate.has(k)) porTemplate.set(k, { templateId: it.templateId, template: it.template || 'Documento sem template', itens: [], clientes: new Set() });
+        const g = porTemplate.get(k); g.itens.push(it); g.clientes.add(it.cnpj || it.cliente);
+      } else reenviar.push(Object.assign(it, { pastaJa: SEM_PASTA.test(it.erro) && !!pasta, pasta }));
+    }
+    const semPasta = [...porTemplate.values()].map(g => {
+      const p = parecidoComPasta(g.template, comPasta);
+      return { templateId: g.templateId, template: g.template, itens: g.itens, nClientes: g.clientes.size, classe: p ? 'deve' : 'naoVai', parecido: p,
+        motivo: p ? `Parecido com “${p.nome}”, que vai para ${p.pasta}` : 'Nenhum template parecido vai ao portal' };
+    }).sort((a, b) => (a.classe === b.classe ? 0 : a.classe === 'deve' ? -1 : 1) || b.itens.length - a.itens.length || a.template.localeCompare(b.template, 'pt-BR'));
+    // o risco que ainda não deu erro: template sem pasta, parecido com um que tem pasta, sem documento parado agora
+    const comErro = new Set(semPasta.map(g => g.templateId));
+    const risco = tpl.filter(t => !pastaDe(t) && !comErro.has(t._id) && t.valid !== false).map(t => ({ templateId: t._id, template: t.name, parecido: parecidoComPasta(t.name, comPasta) }))
+      .filter(x => x.parecido).sort((a, b) => b.parecido.nota - a.parecido.nota || a.template.localeCompare(b.template, 'pt-BR'));
+    reenviar.sort((a, b) => (a.pastaJa === b.pastaJa ? 0 : a.pastaJa ? -1 : 1) || String(a.erro).localeCompare(String(b.erro)) || String(b.atualizado).localeCompare(String(a.atualizado)));
+    return { reenviar, semPasta, risco, totais: { erros: itens.length, reenviar: reenviar.length, pastaJa: reenviar.filter(x => x.pastaJa).length, semPasta: semPasta.reduce((n, g) => n + g.itens.length, 0),
+      templatesSemPasta: semPasta.length, deve: semPasta.filter(g => g.classe === 'deve').length, risco: risco.length, templatesComPasta: comPasta.length } };
+  }
+
+  g.OCG = { enviosPortal, semelhanca, parecidoComPasta, palavrasNome, ERROS_ENVIO, API, APP, PAUSA_MS, LIMITE_BUSCA, JANELA_MAX_DIAS, POST_LEITURA, RELATORIO_TIPOS, COLUNAS_RELATORIO, MOLDES, APPS,
     caminhoDe, leituraPermitida, escritaPermitida, pedidoAcao, agirNaPagina, ARQ_MAX, appDe, escolher, limpar, limparRelatorio, perfil, expiraEm, janelaDoMes, PEDIDOS, lerNaPagina, linhasDoTeste,
     GRUPOS, TIPOS_TAREFA, SITUACOES_TAREFA, MAX_PAGINAS_TAREFAS, diasUteis, grupoTarefa, prazoTexto, contarGrupos, porEmpresa, porDia, filtrarTarefas, urlTarefa, ymd, diaLocal,
     COLUNAS_FECHAMENTO, linhasDoRelatorio, tarefasDoRelatorio, trilhaDaEmpresa, fechamento, ESTADOS, setorDe, respDe, ehEscritorioProprio,

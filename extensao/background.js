@@ -414,6 +414,31 @@ async function gesttaEquipe(msg, sender) {
   }
   return { ok: true, pessoas: pessoas.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')) };
 }
+// 0.96.0: aba Envios ao portal. A fila de envios ao Portal do Cliente com erro (de 50 em 50, até 2.000) e os templates de documento
+// (com a pasta no portal). Lido na hora e entregue à tela: nada fica no armazenamento.
+async function gesttaEnvios(msg, sender) {
+  const tab = await tabDoGestta(sender);
+  if (!tab) return { ok: false, erro: 'Abra o Gestta numa aba, já logado.' };
+  const falha = (x, oque) => ({ ok: false, status: x && x.status, erro: !x ? 'A aba do Gestta não respondeu.' : x.status === 401 ? 'A sessão do Gestta acabou: faça login de novo.' : x.status === 403 ? 'Seu acesso do Gestta não inclui ' + oque + '.' : 'Não consegui ler ' + oque + ' (HTTP ' + x.status + ').' });
+  const envios = []; let total = null, cortado = false;
+  for (let k = 0; k < 40; k++) {
+    const { r } = await lerGestta([OCG.PEDIDOS.filaOnvioTela({ limit: 50, skip: k * 50 })], { tab });
+    const x = r && r.resultados && r.resultados[0];
+    if (!x || x.status !== 200 || !x.dados) return falha(x, 'a fila de envios ao portal');
+    if (total == null && x.dados.total != null) total = x.dados.total;
+    const l = x.dados.itens || []; envios.push(...l);
+    if (l.length < 50) break; if (k === 39) cortado = true;
+  }
+  const templates = [];
+  for (let p = 1; p <= 20; p++) {
+    const { r } = await lerGestta([OCG.PEDIDOS.templatesLista({ limit: 200, page: p })], { tab });
+    const x = r && r.resultados && r.resultados[0];
+    if (!x || x.status !== 200 || !x.dados) return falha(x, 'os templates de documento');
+    templates.push(...(x.dados.itens || []));
+    if (!x.dados.paginas || p >= x.dados.paginas) break;
+  }
+  return { ok: true, lidoEm: new Date().toISOString(), total, cortado, envios, templates };
+}
 // Configurações › Avançado: quem está logado, o perfil e uma leitura de prova de cada fonte (só contagens).
 async function testarGestta() {
   const tab = await abaGestta();
@@ -1263,6 +1288,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'testarGestta') { reply({ ok: true, linhas: await testarGestta() }); }
       else if (msg.cmd === 'gesttaTarefas') { reply(await gesttaTarefas(msg, sender)); }
       else if (msg.cmd === 'gesttaEquipe') { reply(await gesttaEquipe(msg, sender)); }
+      else if (msg.cmd === 'gesttaEnvios') { reply(await gesttaEnvios(msg, sender)); }
       else if (msg.cmd === 'gesttaFechamento') { reply(await gesttaFechamento(msg, sender)); }
       else if (msg.cmd === 'gesttaTarefa') { reply(await gesttaTarefa(msg, sender)); }
       else if (msg.cmd === 'gesttaHistorico') { reply(await gesttaHistorico(msg, sender)); }
