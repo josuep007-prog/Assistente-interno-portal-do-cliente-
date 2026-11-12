@@ -1,0 +1,20 @@
+Você vai me ajudar a mapear como o Express do Gestta (app.gestta.com.br/express/#/upload) recebe um documento e o vincula à tarefa certa. Só observe as chamadas que a própria tela faz. Não anote nome de cliente, CNPJ, nome de arquivo real, token nem cookie: só método, endereço (troque ids por {id} e diga de onde cada id veio), nomes e tipos dos campos, códigos de situação e números.
+
+Regras:
+- Use SÓ a empresa de teste 9999 (EMPRESA EXEMPLO). Crie no computador dois arquivos fictícios, sem dado de ninguém: um PDF qualquer com o texto "TESTE CONTROL ONVIO" e o CNPJ da empresa 9999 (o que o Express costuma ler para achar a empresa), e outro PDF em branco (para ver o caso de "não lido").
+- Se o Express pedir para escolher empresa, competência ou tipo de documento, escolha a empresa 9999 e anote quais escolhas a tela pede.
+- Não envie nada para cliente de verdade. Se, em algum passo, o Express for vincular o documento a uma tarefa que não seja da 9999, PARE e me avise antes de confirmar.
+
+Passos:
+1. Abra o DevTools (F12) > Network, filtro Fetch/XHR, marque "Preserve log".
+2. Abra https://app.gestta.com.br/express/#/upload. Anote as chamadas que a tela faz ao abrir (método e endereço).
+3. Arraste o PDF com o CNPJ da 9999 para a tela do Express. Anote cada chamada que sai, na ordem:
+   - método e endereço;
+   - o corpo: se for formulário (multipart), os nomes dos campos e o tipo de cada um (arquivo, texto, id); se for JSON, os nomes e tipos dos campos;
+   - a resposta: nomes das chaves, os códigos de situação (ex.: SUCCESS, NOT_FOUND, PROCESSING) e, se houver, onde aparecem a empresa e a tarefa escolhidas (só o nome do campo, não o valor) e se vem mais de uma tarefa.
+4. Diga o que a tela mostrou: achou a empresa? achou a tarefa e o documento (item) dentro dela? pediu confirmação? Se pediu, anote a chamada que sai ao confirmar (como no passo 3).
+5. Repita os passos 3 e 4 com o PDF em branco (o caso "não lido") e anote a resposta e a mensagem que a tela mostra.
+6. Se a tela permitir arrastar vários arquivos de uma vez, arraste os dois juntos e diga se sai uma chamada por arquivo ou uma só.
+7. No fim, abra a tarefa da 9999 que recebeu o documento e diga em qual item (documento) da tarefa ele ficou. Se puder, remova o arquivo de teste pela própria tela da tarefa (só o arquivo de teste).
+
+Me devolva um resumo em texto com os itens 2 a 7.
