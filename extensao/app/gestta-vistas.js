@@ -7,6 +7,7 @@
  * Tudo sai das tarefas já lidas (cmd gesttaTarefas): nada é guardado; abrir só navega no próprio Gestta. */
 import { $, $$, esc, num, plural, lerPref, gravarPref } from './util.js';
 import { abrirPainel, aoPassarPainel, abrirNoGestta, trilhaTempo, cabecalhoTempo, linhaDoHoje } from './gestta-trilha.js';
+import { LOTE, caixaLinha, caixaCab, barraLote, ligarLote } from './gestta-lote.js';
 const G = window.OCG;
 const MARCA = { feita: '✓', multa: '!', atrasada: '!', impedimento: '', hoje: '', afazer: '' };
 const EST = { feita: 'feita', multa: 'multa', atrasada: 'atrasada', impedimento: 'impedimento', hoje: 'hoje', proximas: 'afazer', depois: 'afazer' };
@@ -198,7 +199,7 @@ export function vistaLista(el, x) {
       tipo: '<span class="gl-c gl-tipo" role="cell">' + esc(TIPO[t.type] || '') + '</span>',
       etapas: '<span class="gl-c gl-et" role="cell">' + (etapasMini(t) || '<span class="fraco">—</span>') + '</span>'
     };
-    return '<div class="gl-r gt-c-' + COR[g] + '" role="row" tabindex="0" data-id="' + esc(t._id) + '">' + cols.map(c => cel[c.k]).join('') +
+    return '<div class="gl-r gt-c-' + COR[g] + (LOTE.sel.has(t._id) ? ' gl-marcada' : '') + '" role="row" tabindex="0" data-id="' + esc(t._id) + '">' + caixaLinha(t) + cols.map(c => cel[c.k]).join('') +
       '<span class="gl-c gl-ac" role="cell"><button type="button" class="icon-btn" data-abrir="' + esc(t._id) + '" title="Abrir no Gestta" aria-label="Abrir no Gestta"><svg class="ic ic-sm"><use href="#i-ext"/></svg></button></span></div>';
   };
   // grupos: por prazo (na ordem de urgência), por empresa (na ordem de risco) ou nenhum
@@ -208,17 +209,21 @@ export function vistaLista(el, x) {
   else if (L.agrupar === 'empresa') G.porEmpresa(ord, x.hoje).forEach(e => { const l = ord.filter(t => e.tarefas.includes(t)); partes.push(cabGrupo(e.nome, l.length, 'gl-g-emp', '<small>' + num(e.feitas) + '/' + num(e.n) + ' concluídas' + (e.multa + e.atrasada ? ' · ' + (e.multa + e.atrasada) + ' com multa ou atraso' : '') + '</small>' + barraEmpresa(e))); l.forEach(t => { partes.push(linha(t)); seq.push(t); }); });
   else ord.forEach(t => { partes.push(linha(t)); seq.push(t); });
   if (!seq.length) { el.innerHTML = x.vazio(); return; }
-  const grid = cols.map(c => ({ tarefa: 'minmax(220px,2.2fr)', empresa: 'minmax(180px,1.6fr)', meta: '62px', situacao: 'minmax(130px,1fr)', setor: 'minmax(90px,.8fr)', tipo: '84px', etapas: '96px' })[c.k]).join(' ') + ' 40px';
+  const grid = '34px ' + cols.map(c => ({ tarefa: 'minmax(220px,2.2fr)', empresa: 'minmax(180px,1.6fr)', meta: '62px', situacao: 'minmax(130px,1fr)', setor: 'minmax(90px,.8fr)', tipo: '84px', etapas: '96px' })[c.k]).join(' ') + ' 40px';
   el.innerHTML = '<div class="gl-barra"><div class="seg gt-modos" role="group" aria-label="Agrupar">' + [['prazo', 'Por prazo'], ['empresa', 'Por empresa'], ['nada', 'Sem grupo']].map(([k, r]) => '<button type="button" class="' + (L.agrupar === k ? 'on' : '') + '" data-gl-grupo="' + k + '" aria-pressed="' + (L.agrupar === k) + '">' + r + '</button>').join('') + '</div><span class="gt-cont">' + plural(seq.length, 'tarefa', 'tarefas') + '</span></div>' +
-    '<div class="gl cfg-card" role="table" aria-label="Tarefas" style="--gl-cols:' + grid + '"><div class="gl-h" role="row">' +
+    '<div id="gl-lote-host">' + barraLote(seq) + '</div>' +
+    '<div class="gl cfg-card" role="table" aria-label="Tarefas" style="--gl-cols:' + grid + '"><div class="gl-h" role="row">' + caixaCab(seq) +
       cols.map(c => '<button type="button" role="columnheader" class="' + (L.col === c.k ? 'on' + (L.desc ? ' desc' : '') : '') + '" data-gl-col="' + c.k + '" aria-sort="' + (L.col === c.k ? (L.desc ? 'descending' : 'ascending') : 'none') + '">' + c.rot + '</button>').join('') + '<span></span></div>' +
       '<div class="gl-corpo" id="gl-corpo"></div></div>';
   emBlocos($('#gl-corpo', el), partes, 250);
   $$('[data-gl-grupo]', el).forEach(b => b.onclick = () => { L.agrupar = b.dataset.glGrupo; gravarPref('gt.lista.grupo', L.agrupar); vistaLista(el, x); });
   $$('[data-gl-col]', el).forEach(b => b.onclick = () => { if (L.col === b.dataset.glCol) { if (L.desc) { L.col = ''; L.desc = false; } else L.desc = true; } else { L.col = b.dataset.glCol; L.desc = false; } vistaLista(el, x); });
+  // 0.99.0: marcar tarefas e agir em lote (gestta-lote.js); a seleção some quando a tarefa sai da lista
+  for (const id of [...LOTE.sel]) if (!seq.some(t => t._id === id)) LOTE.sel.delete(id);
+  ligarLote(el, seq, () => vistaLista(el, x));
   const abrir = r => { const i = seq.findIndex(t => t._id === r.dataset.id); if (i >= 0) abrirPainel(seq, i, x.paraPai); };
   const corpo = $('#gl-corpo', el);
-  corpo.addEventListener('click', e => { const a = e.target.closest('[data-abrir]'); if (a) { e.stopPropagation(); x.paraPai({ controlGestta: 'abrirTarefa', id: a.dataset.abrir }); return; } const r = e.target.closest('.gl-r'); if (r) abrir(r); });
+  corpo.addEventListener('click', e => { if (e.target.closest('.gl-sel')) return; const a = e.target.closest('[data-abrir]'); if (a) { e.stopPropagation(); x.paraPai({ controlGestta: 'abrirTarefa', id: a.dataset.abrir }); return; } const r = e.target.closest('.gl-r'); if (r) abrir(r); });
   corpo.addEventListener('keydown', e => {
     const r = e.target.closest('.gl-r'); if (!r) return;
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrir(r); }
