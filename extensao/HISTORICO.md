@@ -2,6 +2,12 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.105.0 (12/11/2026): concluir desconsidera os itens sem anexo
+
+- **Concluir, na tarefa e em lote,** agora prepara a tarefa inteira antes: marca as etapas (checkbox) que faltam e **desconsidera cada item (documento) sem anexo**, como o ⊘ "Desconsiderar" da tela do Gestta (`PUT /es/task/{id}/document/{doc}/file/disconsider`, corpo vazio, mapeado em 12/11/2026 na empresa 9999). Um item por vez; se algum for recusado, a tarefa não é concluída. A confirmação lista as etapas e os itens; o botão diz "Preparar e concluir".
+- Reconsiderar um item não está na extensão (só pelo Gestta).
+- **A conferir no Gestta real:** se o Gestta bloqueia o concluir com item sem anexo ou etapa aberta (não testado no mapeamento), se desconsiderar avisa o cliente numa tarefa que notifica, e um item que pede validação.
+
 ## Novidades da v0.104.0 (12/11/2026): as melhorias de uso nas Tarefas do Gestta
 
 - **Situação no Gestta à vista**, numa faixa logo abaixo do topo (Aberta · Impedimento · Concluída · Desconsiderada), com o que está sendo mostrado; saiu do menu Filtros.
