@@ -4642,3 +4642,20 @@ test('Gestta (0.102.0) · quando o Express não acha: CNPJ e competência do tex
   assert.match(bg, /async function gesttaTextoDoc/); assert.match(bg, /async function gesttaClientesCnpj/);
   assert.doesNotMatch(bg.slice(bg.indexOf('async function gesttaTextoDoc'), bg.indexOf('// Para a coordenação escolher')), /storage\.(local|session)/, 'o texto lido nunca é guardado');
 });
+
+/* ---------- Gestta (0.103.0): setor, situação no Gestta e o final do CNPJ ---------- */
+test('Gestta (0.103.0): busca de um setor com as pessoas dele, situação filtra (inclusive desconsiderada) e o CNPJ formatado', () => {
+  const p = OCG.PEDIDOS.buscaTarefas({ ano: 2026, mes: 10, companyUsers: ['a1', 'b2'], status: ['OPEN', 'IGNORED'] });
+  assert.deepEqual(plano(p.corpo.company_user), ['a1', 'b2']); assert.deepEqual(plano(p.corpo.status), ['OPEN', 'IGNORED']);
+  assert.equal(OCG.leituraPermitida(p.metodo, p.url, p.corpo).ok, true);
+  assert.equal(OCG.fimCnpj('12.345.678/0001-90'), '0001-90'); assert.equal(OCG.fimCnpj('123'), '');
+  assert.equal(OCG.cnpjFormatado('12345678000190'), '12.345.678/0001-90');
+  const l = [{ _id: '1', status: 'OPEN', due_date: '2099-01-10' }, { _id: '2', status: 'IMPEDIMENT' }, { _id: '3', status: 'DONE' }, { _id: '4', status: 'IGNORED' }, { _id: '5', status: 'DISCONSIDERED' }];
+  const ids = f => OCG.filtrarTarefas(l, f, new Date('2099-01-01')).map(t => t._id).sort().join(',');
+  assert.equal(ids({}), '1,2', 'de fábrica: sem concluída e sem desconsiderada');
+  assert.equal(ids({ feitas: true }), '1,2,3');
+  assert.equal(ids({ situacoes: ['desconsiderada'] }), '4,5');
+  assert.equal(ids({ situacoes: ['aberta', 'concluida'] }), '1,3');
+  assert.equal(OCG.contarGrupos(l, new Date('2099-01-01')).total, 3, 'as desconsideradas continuam fora das contas');
+  assert.equal(OCG.grupoTela(l[3]), 'desconsiderada'); assert.equal(OCG.grupoTarefa(l[3]), null);
+});
