@@ -4503,7 +4503,8 @@ test('Gestta (0.100.1): a fila de envios com erro é lida inteira mesmo com o Ge
   const skips = [];
   const ler = async ps => ps.map(p => {
     const id = p.id.split(':')[0];
-    if (id === 'filaOnvioErro') { const sk = +new URL(p.url).searchParams.get('skip'); skips.push(sk); return { id: p.id, status: 200, dados: { itens: fila.slice(sk, sk + 20), total: fila.length } }; }
+    // 0.100.7: o Gestta devolve como "total" o tamanho da página (no real, 15 com 3.156 na fila): não pode servir para parar
+    if (id === 'filaOnvioErro') { const sk = +new URL(p.url).searchParams.get('skip'); skips.push(sk); const pg = fila.slice(sk, sk + 20); return { id: p.id, status: 200, dados: { itens: pg, total: pg.length } }; }
     if (id === 'templatesLista') return { id: p.id, status: 200, dados: { itens: [], total: 0 } };
     return { id: p.id, status: 200, dados: { itens: [] } };
   });
@@ -4511,8 +4512,7 @@ test('Gestta (0.100.1): a fila de envios com erro é lida inteira mesmo com o Ge
   await OCG.hubExecutarGestta(ler, ['alertas'], { hoje: new Date(2026, 10, 12) }, async (conj, p) => { enviados[conj.tipoDado] = { conj, p }; return { ok: true }; });
   const e = enviados['gestta-envios-onvio-erro'];
   assert.ok(e, 'o conjunto saiu');
-  assert.deepEqual(skips, [0, 20, 40, 60], 'anda pelo que veio, não de 50 em 50');
-  assert.equal(e.conj.totalNaOrigem, 73);
+  assert.deepEqual(skips, [0, 20, 40, 60, 73], 'anda pelo que veio, não de 50 em 50, até a página vazia (o total da página não para a leitura)');
   const txt = e.p.partes.join('\n');
   assert.ok(txt.includes('CLIENTE FICTICIO 72'), 'o último também veio');
 });
@@ -4591,4 +4591,14 @@ test('Gestta (0.100.6) · Envios ao portal: o risco só mostra template ligado a
   const p = OCG.PEDIDOS.docsTemplateTarefa({ id: A }), q = OCG.PEDIDOS.templatesTarefa({});
   assert.ok(OCG.leituraPermitida(p.metodo, p.url, null).ok && OCG.leituraPermitida(q.metodo, q.url, null).ok);
   assert.equal(new URL(p.url).pathname, '/admin/company/task/' + A + '/document');
+});
+
+test('Gestta (0.100.7): a contagem da fila do portal (o número vermelho do Gestta) em qualquer forma conhecida', () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(OCG.limpar('contagemFila', 3156))), { n: 3156 });
+  assert.deepEqual(JSON.parse(JSON.stringify(OCG.limpar('contagemFila', { count: 12 }))), { n: 12 });
+  assert.equal(OCG.limpar('contagemFila', { algo: 'x' }), null);
+  const p = OCG.PEDIDOS.contagemFila();
+  assert.equal(p.metodo, 'GET'); assert.ok(OCG.leituraPermitida(p.metodo, p.url, null).ok);
+  const bg = fs.readFileSync(path.join(__dirname, '..', 'extensao', 'background.js'), 'utf8');
+  assert.match(bg, /if \(contagemGestta != null && envios\.length < contagemGestta\) cortado = true;/, 'menos que a contagem do Gestta = a tela avisa');
 });

@@ -523,10 +523,20 @@ async function gesttaEnvios(msg, sender) {
     if (x.dados.total != null) total = x.dados.total;
     const l = (x.dados.itens || []).filter(i => i && !vistos.has(i._id));
     l.forEach(i => vistos.add(i._id)); envios.push(...l);
-    if (!l.length || (total != null && envios.length >= total)) break;
+    // 0.100.7: o "total" da resposta não serve para parar (o Gestta devolve o total da página, ex.: 15, com 3.156 erros na fila);
+    // só para quando a página não traz nada novo
+    if (!l.length) break;
     if (k === 399) cortado = true;
   }
-  if (total != null && envios.length < total) cortado = true;
+  // a contagem do próprio Gestta (o número vermelho da aba Integração Portal do Cliente), para conferir se a fila veio inteira
+  let contagemGestta = null;
+  try {
+    const { r } = await lerGestta([OCG.PEDIDOS.contagemFila()], { tab });
+    const x = r && r.resultados && r.resultados[0];
+    if (x && x.status === 200 && x.dados && x.dados.n != null) contagemGestta = x.dados.n;
+  } catch (e) { contagemGestta = null; }
+  if (contagemGestta != null && envios.length < contagemGestta) cortado = true;
+  if (contagemGestta != null) total = Math.max(total || 0, contagemGestta);
   // os templates: a mesma coisa (sem o total de páginas, parava na primeira, e template com pasta fora dela parecia "sem pasta")
   const templates = [], tvistos = new Set();
   for (let p = 1; p <= 50; p++) {

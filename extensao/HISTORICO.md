@@ -2,6 +2,12 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.100.7 (12/11/2026): a fila de erros inteira, de novo
+
+- Josué: "3156 é o número total de itens que deu erro; esse número maior só libera a contagem quando clica em carregar mais". A aba Envios ao portal (e o envio ao Hub) parava a leitura no "total" que o Gestta devolve, que é o tamanho da página (15), e não o da fila. Agora só para quando uma página não traz nada novo.
+- A extensão lê também a contagem do próprio Gestta (o número vermelho da aba, `GET es/file/count-pending/onvio`) e, se leu menos do que ela, a tela avisa "Lidos N de M: a fila não veio inteira".
+- **A conferir no Gestta real:** como o "Carregar mais" pagina (roteiro em `mapeamento/prompt-claude-chrome-carregar-mais-envios-gestta.txt`) e o endereço da contagem.
+
 ## Novidades da v0.100.6 (12/11/2026): o risco só com templates em tarefa ativa
 
 - Josué: "o template só deve vir para essa lista se ele estiver vinculado a alguma tarefa ativa". **Templates em risco** mostra só o template de documento que está em algum **template de tarefa ativo** do Gestta (lidos por `GET admin/company/task` e `GET admin/company/task/{id}/document`, só os ids, na memória por 6 horas). Se essa leitura não fechar, a tela avisa e mostra todos os parecidos, como antes.

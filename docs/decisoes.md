@@ -128,3 +128,7 @@ A extensão vai também ao **Gestta** (`app.gestta.com.br`, admin em AngularJS; 
 
 - "Essas são tudo filial, por que não estão unificadas com a matriz? Tanto no módulo contábil quanto no portal é tudo pela matriz, a filial fica fundida e não aparece de forma separada." Causa: a matriz tinha sido arquivada à mão (05/11) e as filiais entraram pelo Gestta (09/11); a junção automática pulava matriz arquivada e só via a matriz se ela tivesse tarefa própria no Gestta.
 - Decidido: "junta e mantém arquivada; em caso de ter demanda em uma filial e em outra não, considera que todas têm e segue a marcação de progresso de forma unificada". `ligarFiliaisSozinho` não pula mais matriz arquivada, `gruposSugeridos` olha todas as empresas do banco e, em `aplicarGrupos`, a matriz com alguma filial ativa no Gestta não é escondida. Teste: passo "Hub 335" de `testes/hub-onvio/hub-gestta.js` (KAPA).
+
+## 12/11/2026 · Envios ao portal: a fila inteira (0.100.7)
+
+- "Acho que a extensão ainda não está lendo todos os erros, aparece uma quantidade pequena sendo que no Gestta tem mais de 3000"; "3156 é o número total de itens que deu erro, esse número maior só libera a contagem quando clica em carregar mais". O "total" da resposta da fila é o da página: a leitura parava nele. Agora para só na página sem nada novo e confere com a contagem do Gestta.
