@@ -10,8 +10,8 @@ import { abrirPainel, aoPassarPainel, abrirNoGestta, trilhaTempo, cabecalhoTempo
 import { LOTE, caixaLinha, caixaCab, barraLote, ligarLote } from './gestta-lote.js';
 const G = window.OCG;
 const MARCA = { feita: '✓', multa: '!', atrasada: '!', impedimento: '', hoje: '', afazer: '' };
-const EST = { feita: 'feita', multa: 'multa', atrasada: 'atrasada', impedimento: 'impedimento', hoje: 'hoje', proximas: 'afazer', depois: 'afazer' };
-const COR = { multa: 'multa', atrasada: 'atraso', impedimento: 'imped', hoje: 'hoje', proximas: 'prox', depois: 'depois', feita: 'feita' };
+const EST = { feita: 'feita', multa: 'multa', atrasada: 'atrasada', impedimento: 'impedimento', hoje: 'hoje', proximas: 'afazer', depois: 'afazer', desconsiderada: 'afazer' };
+const COR = { multa: 'multa', atrasada: 'atraso', impedimento: 'imped', hoje: 'hoje', proximas: 'prox', depois: 'depois', feita: 'feita', desconsiderada: 'depois' };
 const TIPO = { RECURRENT: 'Recorrente', SERVICE_ORDER: 'OS', ACCOUNTING: 'Contábil' };
 const ddmm = s => s ? s.slice(8, 10) + '/' + s.slice(5, 7) : '';
 const dataDe = t => { const d = G.diaLocal(t && t.due_date); return d ? G.ymd(d) : ''; };
@@ -176,7 +176,7 @@ const COLS = [
   { k: 'tarefa', rot: 'Tarefa', v: t => String(t.name || '') },
   { k: 'empresa', rot: 'Empresa', v: t => String((t.customer || {}).name || '') },
   { k: 'meta', rot: 'Meta', v: t => String(t.due_date || '9') },
-  { k: 'situacao', rot: 'Situação', v: (t, h) => G.GRUPOS.findIndex(gr => gr.k === G.grupoTarefa(t, h)) },
+  { k: 'situacao', rot: 'Situação', v: (t, h) => G.GRUPOS_TELA.findIndex(gr => gr.k === G.grupoTela(t, h)) },
   { k: 'setor', rot: 'Setor', v: t => G.setorDe(t) },
   { k: 'tipo', rot: 'Tipo', v: t => TIPO[t.type] || '' },
   { k: 'etapas', rot: 'Etapas', v: t => Number(t.total_step) ? (t.done_step || 0) / t.total_step : -1 }
@@ -189,12 +189,12 @@ export function vistaLista(el, x) {
   const col = cols.find(c => c.k === L.col);
   const ord = col ? x.itens.slice().sort((a, b) => { const p = col.v(a, x.hoje), q = col.v(b, x.hoje); const r = p < q ? -1 : p > q ? 1 : 0; return L.desc ? -r : r; }) : x.itens;
   const linha = t => {
-    const g = G.grupoTarefa(t, x.hoje), est = EST[g];
+    const g = G.grupoTela(t, x.hoje), est = EST[g];
     const cel = {
       tarefa: '<span class="gl-c gl-nome" role="cell">' + marca(est) + '<b>' + esc(t.name || 'Tarefa sem nome') + '</b></span>',
       empresa: '<span class="gl-c gl-emp" role="cell">' + cliHtml(t.customer) + '</span>',
       meta: '<span class="gl-c gl-meta" role="cell">' + esc(ddmm(dataDe(t)) || '—') + '</span>',
-      situacao: '<span class="gl-c gl-sit' + (est === 'multa' || est === 'atrasada' ? ' alerta' : '') + '" role="cell">' + esc(est === 'feita' ? 'Concluída' : G.prazoTexto(t, x.hoje).replace(/ \(\d\d\/\d\d\)$/, '')) + '</span>',
+      situacao: '<span class="gl-c gl-sit' + (est === 'multa' || est === 'atrasada' ? ' alerta' : '') + '" role="cell">' + esc(g === 'desconsiderada' ? 'Desconsiderada' : est === 'feita' ? 'Concluída' : G.prazoTexto(t, x.hoje).replace(/ \(\d\d\/\d\d\)$/, '')) + '</span>',
       setor: '<span class="gl-c gl-setor" role="cell">' + esc(G.setorDe(t) || '—') + '</span>',
       tipo: '<span class="gl-c gl-tipo" role="cell">' + esc(TIPO[t.type] || '') + '</span>',
       etapas: '<span class="gl-c gl-et" role="cell">' + (etapasMini(t) || '<span class="fraco">—</span>') + '</span>'
@@ -205,7 +205,7 @@ export function vistaLista(el, x) {
   // grupos: por prazo (na ordem de urgência), por empresa (na ordem de risco) ou nenhum
   let partes = [], seq = [];
   const cabGrupo = (rot, n, cls, extra) => '<div class="gl-g ' + (cls || '') + '" role="row"><span role="cell"><i class="gt-ponto"></i><b>' + esc(rot) + '</b><span class="gt-n">' + num(n) + '</span>' + (extra || '') + '</span></div>';
-  if (L.agrupar === 'prazo') G.GRUPOS.forEach(gr => { const l = ord.filter(t => G.grupoTarefa(t, x.hoje) === gr.k); if (!l.length) return; partes.push(cabGrupo(gr.rot, l.length, 'gt-c-' + COR[gr.k])); l.forEach(t => { partes.push(linha(t)); seq.push(t); }); });
+  if (L.agrupar === 'prazo') G.GRUPOS_TELA.forEach(gr => { const l = ord.filter(t => G.grupoTela(t, x.hoje) === gr.k); if (!l.length) return; partes.push(cabGrupo(gr.rot, l.length, 'gt-c-' + COR[gr.k])); l.forEach(t => { partes.push(linha(t)); seq.push(t); }); });
   else if (L.agrupar === 'empresa') G.porEmpresa(ord, x.hoje).forEach(e => { const l = ord.filter(t => e.tarefas.includes(t)); partes.push(cabGrupo(e.nome, l.length, 'gl-g-emp', '<small>' + num(e.feitas) + '/' + num(e.n) + ' concluídas' + (e.multa + e.atrasada ? ' · ' + (e.multa + e.atrasada) + ' com multa ou atraso' : '') + '</small>' + barraEmpresa(e))); l.forEach(t => { partes.push(linha(t)); seq.push(t); }); });
   else ord.forEach(t => { partes.push(linha(t)); seq.push(t); });
   if (!seq.length) { el.innerHTML = x.vazio(); return; }

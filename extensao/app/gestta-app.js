@@ -24,7 +24,7 @@ const E = {
   ano: comp0.ano, mes: comp0.mes, quem: 'eu', calMes: '',
   dados: null, carregando: false, erro: null, lidoEm: null, equipe: null,
   feitas: lerPref('gt.feitas', '0') === '1',
-  q: '', grupos: new Set(), tipos: new Set(), dia: '', abertas: new Set(), visivel: true,
+  q: '', grupos: new Set(), tipos: new Set(), sits: new Set(), cnpjs: {}, dia: '', abertas: new Set(), visivel: true,
   aba: (a => ABAS.includes(a) ? a : 'dia')(lerPref('gt.aba', 'dia')), soPendEmp: false, trilha: lerPref('gt.trilha', 'seq'), setor: '',
   fech: null, fechTarefas: [], setorPorId: null, fechCarregando: false, fechErro: null, fq: '', fsetor: '', fanal: '', soPend: false,
   empMap: new Map(), listaAtual: [],
@@ -32,6 +32,23 @@ const E = {
 };
 // 0.87.0: nomes em CAIXA ALTA do Gestta ficam legíveis (siglas mantidas); a busca continua sem acento e sem diferenciar maiúsculas
 const legivel = t => t ? Object.assign({}, t, { name: G.nomeLegivel(t.name), customer: t.customer ? Object.assign({}, t.customer, { name: G.nomeLegivel(t.customer.name) }) : t.customer }) : t;
+// 0.103.0 (Josué, 12/11/2026): o nome da empresa vem com o final do CNPJ ("Cliente Alfa · 0001-90"), que separa matriz e filiais
+const comCnpj = t => {
+  const c = t && t.customer, cnpj = c && E.cnpjs[c._id];
+  if (!cnpj || c.cnpj) return t;
+  const fim = G.fimCnpj(cnpj);
+  return Object.assign({}, t, { customer: Object.assign({}, c, { cnpj, nomeBase: c.name, name: fim ? c.name + ' · ' + fim : c.name }) });
+};
+function aplicarCnpjs() { if (!E.dados) return; E.dados.itens = (E.dados.itens || []).map(comCnpj); if (E.dados.dia) E.dados.dia = E.dados.dia.map(comCnpj); }
+async function carregarCnpjs() {
+  const todos = ((E.dados && E.dados.itens) || []).concat((E.dados && E.dados.dia) || []);
+  const faltam = [...new Set(todos.map(t => t.customer && t.customer._id).filter(id => id && !(id in E.cnpjs)))];
+  if (!faltam.length) return;
+  const r = await enviar({ cmd: 'gesttaCnpjs', ids: faltam.slice(0, 3000) });
+  if (!r || !r.ok) return;                                  // sem acesso à lista de clientes: fica só o nome
+  faltam.forEach(id => { E.cnpjs[id] = (r.cnpjs || {})[id] || ''; });
+  aplicarCnpjs(); desenhar();
+}
 const MES3 = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 // 0.87.0: voltar ao mesmo ponto quando a camada reabre (aba, competência, pessoa, filtros e rolagem), por 30 minutos, só nesta sessão do navegador
 const SALVO = 'gt.estado';
@@ -53,8 +70,10 @@ function salvarEstado(agora) {
 const salvo = restaurar();
 // as tarefas da busca ganham o setor quando o relatório do mês já está na memória (cruzando pelo id)
 const comSetor = l => E.setorPorId ? l.map(t => Object.assign({}, t, { setor: E.setorPorId.get(t._id) || '' })) : l;
-const lista = () => comSetor((E.dados && E.dados.itens) || []);
-const listaDia = () => comSetor((E.dados && E.dados.dia) || []);          // o que vence no mês corrente, de qualquer competência
+// 0.103.0: na visão de um setor, sai a tarefa cujo setor (do relatório) é outro; a que o relatório não conhece fica
+const doSetor = l => { const s = E.quem && E.quem.startsWith('setor:') ? E.quem.slice(6) : ''; return s && E.setorPorId ? l.filter(t => !t.setor || t.setor === s) : l; };
+const lista = () => doSetor(comSetor((E.dados && E.dados.itens) || []));
+const listaDia = () => doSetor(comSetor((E.dados && E.dados.dia) || []));          // o que vence no mês corrente, de qualquer competência
 const nomeMes = () => 'Competência ' + MESES[E.mes - 1] + ' de ' + E.ano;
 const rotMes = () => '<small>Competência</small><b>' + MES3[E.mes - 1] + '/' + E.ano + '</b>';
 // o mês de meta para as grades (calendário e linha do tempo): o escolhido no calendário ou onde mais tarefas da competência vencem
@@ -62,7 +81,7 @@ function mesDeMeta(tarefas) {
   const ms = G.mesesDeMeta(tarefas), esc = ms.find(m => G.mesTexto(m.ano, m.mes) === E.calMes);
   return esc || ms[0] || (E.mes === 12 ? { ano: E.ano + 1, mes: 1 } : { ano: E.ano, mes: E.mes + 1 });
 }
-const filtroAtivo = () => !!(E.q || E.grupos.size || E.tipos.size || E.dia || E.setor || E.soPendEmp);
+const filtroAtivo = () => !!(E.q || E.grupos.size || E.tipos.size || E.sits.size || E.dia || E.setor || E.soPendEmp);
 const paraPai = m => { if (m && m.controlGestta === 'abrirTarefa') { E.ultimaAberta = m.id; salvarEstado(true); } try { window.parent.postMessage(Object.assign({}, m), 'https://app.gestta.com.br'); } catch (e) {} };
 
 /* ---------- leitura ---------- */
@@ -71,12 +90,13 @@ async function ler(silencioso) {
   const meu = ++pedido;
   E.carregando = true; if (!silencioso) E.erro = null;
   aoVivo(); if (!E.dados || !silencioso) desenhar();
-  const r = await enviar({ cmd: 'gesttaTarefas', ano: E.ano, mes: E.mes, quem: E.quem });
+  const r = await enviar({ cmd: 'gesttaTarefas', ano: E.ano, mes: E.mes, quem: E.quem, desconsideradas: E.sits.has('desconsiderada') });
   if (meu !== pedido) return;                       // trocou de mês ou de pessoa no meio: vale a leitura mais nova
   E.carregando = false;
   if (r && r.ok) {
     r.itens = (r.itens || []).map(legivel); if (r.dia) r.dia = r.dia.map(legivel);
-    E.dados = r; E.erro = null; E.lidoEm = r.lidoEm || new Date().toISOString();
+    E.dados = r; E.erro = null; E.lidoEm = r.lidoEm || new Date().toISOString(); aplicarCnpjs(); carregarCnpjs();
+    if (setorDaVisao() && !E.setorPorId && !E.fechCarregando) lerFech(false);      // 0.103.0: o setor de cada tarefa sai do relatório
     if (r.perfil && r.perfil.total && !E.equipe) carregarEquipe();
     if (E.quem === 'eu' && r.dia) { const c = G.contarGrupos(r.dia, new Date()).n; paraPai({ controlGestta: 'contagem', atencao: c.multa + c.atrasada + c.hoje, multa: c.multa, atrasada: c.atrasada, hoje: c.hoje }); }
   } else { E.erro = r || { erro: 'sem resposta' }; if (!silencioso) E.dados = null; }
@@ -101,11 +121,15 @@ async function carregarEquipe() {
 }
 // 0.87.0: "De quem" é um botão com o nome e uma lista com busca (iniciais de cada pessoa), no lugar da lista larga
 const iniciais = n => String(n || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
-const quemNome = () => E.quem === 'eu' ? 'Minhas' : E.quem === 'sem' ? 'Sem responsável' : ((E.equipe || []).find(p => p.id === E.quem) || {}).nome || 'Outra pessoa';
-function quemRot() { const b = $('#gt-quem-btn'); if (b) b.innerHTML = '<span class="gt-quem-av" aria-hidden="true">' + esc(E.quem === 'eu' ? 'Eu' : E.quem === 'sem' ? '—' : iniciais(quemNome())) + '</span><span>' + esc(quemNome()) + '</span><svg class="ic ic-sm"><use href="#i-chev-d"/></svg>'; }
+const setorDaVisao = () => E.quem.startsWith('setor:') ? E.quem.slice(6) : '';
+const quemNome = () => E.quem === 'eu' ? 'Minhas' : E.quem === 'sem' ? 'Sem responsável' : setorDaVisao() ? 'Setor ' + setorDaVisao() : ((E.equipe || []).find(p => p.id === E.quem) || {}).nome || 'Outra pessoa';
+function quemRot() { const b = $('#gt-quem-btn'); if (b) b.innerHTML = '<span class="gt-quem-av" aria-hidden="true">' + esc(E.quem === 'eu' ? 'Eu' : E.quem === 'sem' ? '—' : setorDaVisao() ? '▦' : iniciais(quemNome())) + '</span><span>' + esc(quemNome()) + '</span><svg class="ic ic-sm"><use href="#i-chev-d"/></svg>'; }
 function quemLista(f) {
   const n = String(f || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-  const pessoas = [{ id: 'eu', nome: 'Minhas', av: 'Eu' }, { id: 'sem', nome: 'Sem responsável', av: '—' }].concat((E.equipe || []).filter(p => !E.dados || p.id !== E.dados.perfil.id).map(p => ({ id: p.id, nome: p.nome, av: iniciais(p.nome) })));
+  // 0.103.0: os setores primeiro (todas as tarefas de quem é do setor), depois as pessoas
+  const setores = [...new Set((E.equipe || []).flatMap(p => p.setores || []).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'))
+    .map(s => ({ id: 'setor:' + s, nome: 'Setor ' + s + ' · todas as tarefas', av: '▦' }));
+  const pessoas = [{ id: 'eu', nome: 'Minhas', av: 'Eu' }, { id: 'sem', nome: 'Sem responsável', av: '—' }].concat(setores,(E.equipe || []).filter(p => !E.dados || p.id !== E.dados.perfil.id).map(p => ({ id: p.id, nome: p.nome, av: iniciais(p.nome) })));
   const l = pessoas.filter(p => !n || p.nome.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().includes(n));
   $('#gt-quem-lista').innerHTML = l.length ? l.map(p => '<li><button type="button" role="option" data-quem="' + esc(p.id) + '" aria-selected="' + (E.quem === p.id) + '" class="' + (E.quem === p.id ? 'on' : '') + '"><span class="gt-quem-av" aria-hidden="true">' + esc(p.av) + '</span>' + esc(p.nome) + '</button></li>').join('') : '<li class="fraco gt-quem-nada">Ninguém com esse nome</li>';
 }
@@ -160,7 +184,7 @@ function cabecalho(c) {
 }
 
 /* ---------- peças ---------- */
-const COR = { multa: 'multa', atrasada: 'atraso', impedimento: 'imped', hoje: 'hoje', proximas: 'prox', depois: 'depois', feita: 'feita' };
+const COR = { multa: 'multa', atrasada: 'atraso', impedimento: 'imped', hoje: 'hoje', proximas: 'prox', depois: 'depois', feita: 'feita', desconsiderada: 'depois' };
 const PILL = { multa: 'pill-late', atrasada: 'pill-late', impedimento: 'pill-today', hoje: 'pill-today', feita: 'pill-ok' };
 function anel(pct, tam) {
   const r = (tam - 10) / 2, c = 2 * Math.PI * r, v = Math.max(0, Math.min(100, pct));
@@ -174,14 +198,16 @@ function topoHtml(c) {
   const sitAgora = (agora || agoraOn) ? '<button type="button" class="gt-sit gt-sit-agora gt-c-multa' + (agoraOn ? ' on' : '') + '" data-grupo="agora" aria-pressed="' + agoraOn + '" title="' + esc('Resolver agora: ' + c.n.multa + ' gerando multa e ' + c.n.atrasada + ' com a meta vencida') + '"><span class="gt-sit-ic" aria-hidden="true">!</span>Resolver agora<b>' + num(agora) + '</b></button>' : '';
   const sit = gr => (gr.k === 'multa' || gr.k === 'atrasada') ? '' : (c.n[gr.k] || E.grupos.has(gr.k)) ? '<button type="button" class="gt-sit gt-c-' + COR[gr.k] + (E.grupos.has(gr.k) ? ' on' : '') + '" data-grupo="' + gr.k + '" aria-pressed="' + E.grupos.has(gr.k) + '" title="' + esc(gr.rot + ': ' + gr.dica) + '"><i class="gt-ponto"></i>' + esc(SIT_CURTO[gr.k] || gr.rot) + '<b>' + num(c.n[gr.k]) + '</b></button>' : '';
   const tipo = k => '<button type="button" class="gt-chip' + (E.tipos.has(k) ? ' on' : '') + '" data-tipo="' + k + '" aria-pressed="' + E.tipos.has(k) + '">' + esc(G.TIPOS_TAREFA[k]) + '</button>';
-  const nf = E.tipos.size + (E.setor ? 1 : 0) + (E.soPendEmp && (E.aba === 'empresas' || E.aba === 'quadro') ? 1 : 0) + (E.feitas && (E.aba === 'lista' || E.aba === 'calendario') ? 1 : 0);
+  const sitChip = s => '<button type="button" class="gt-chip' + (E.sits.has(s.k) ? ' on' : '') + '" data-sit="' + s.k + '" aria-pressed="' + E.sits.has(s.k) + '">' + esc(s.rot) + '</button>';
+  const nf = E.sits.size + E.tipos.size + (E.setor ? 1 : 0) + (E.soPendEmp && (E.aba === 'empresas' || E.aba === 'quadro') ? 1 : 0) + (E.feitas && (E.aba === 'lista' || E.aba === 'calendario') ? 1 : 0);
   return '<div class="gt-topo">' +
     '<div class="gt-topo-prog" title="' + num(c.feitas) + ' de ' + num(c.total) + (E.aba === 'dia' ? ' tarefas com meta neste mês' : ' tarefas da competência') + ' concluídas">' + anel(c.pctFeitas, 52) + '<span><b>' + c.pctFeitas + '%</b><small>' + num(c.feitas) + ' de ' + num(c.total) + ' concluídas</small></span></div>' +
     '<div class="gt-sits" role="group" aria-label="Filtrar pela situação">' + sitAgora + G.GRUPOS.map(sit).join('') + '</div>' +
     '<div class="gt-topo-dir">' +
       '<label class="gt-busca"><svg class="ic"><use href="#i-search"/></svg><input type="search" id="gt-q" placeholder="Buscar tarefa, empresa ou código" autocomplete="off" aria-label="Buscar tarefa, empresa ou código" value="' + esc(E.q) + '"><kbd>/</kbd></label>' +
       '<details class="menu gt-filtros" id="gt-filtros"><summary class="btn btn-sm' + (nf ? ' filtro-on' : '') + '"><svg class="ic ic-sm"><use href="#i-filter"/></svg>Filtros' + (nf ? ' <span class="menu-n">' + nf + '</span>' : '') + '</summary>' +
-        '<div class="menu-list form gt-filtros-menu"><span class="gt-f-rot">Tipo</span><div class="gt-chips" role="group" aria-label="Tipo">' + Object.keys(G.TIPOS_TAREFA).map(tipo).join('') + '</div>' +
+        '<div class="menu-list form gt-filtros-menu"><span class="gt-f-rot">Situação no Gestta</span><div class="gt-chips" role="group" aria-label="Situação no Gestta">' + G.SITUACOES_FILTRO.map(sitChip).join('') + '</div>' +
+          '<span class="gt-f-rot">Tipo</span><div class="gt-chips" role="group" aria-label="Tipo">' + Object.keys(G.TIPOS_TAREFA).map(tipo).join('') + '</div>' +
           setorSelHtml() +
           (E.aba === 'empresas' || E.aba === 'quadro' ? '<label class="gt-feitas"><input type="checkbox" id="gt-pend-emp"' + (E.soPendEmp ? ' checked' : '') + '> Só empresas com pendência</label>' : '') +
           (E.aba === 'lista' || E.aba === 'calendario' ? '<label class="gt-feitas"><input type="checkbox" id="gt-feitas"' + (E.feitas ? ' checked' : '') + '> Mostrar concluídas</label>' : '') +
@@ -200,7 +226,7 @@ const modoTrilhaHtml = () => '<div class="seg gt-modos" role="group" aria-label=
 const legendaTrilha = () => '<p class="gt-leg" aria-hidden="true"><span><i class="gt-et gt-e-feita"><span class="gt-et-mk">✓</span></i>concluída</span><span><i class="gt-et gt-e-multa"><span class="gt-et-mk">!</span></i>multa ou atraso</span><span><i class="gt-et gt-e-impedimento"><span class="gt-et-mk"></span></i>impedimento</span><span><i class="gt-et gt-e-hoje"><span class="gt-et-mk"></span></i>vence hoje</span><span><i class="gt-et gt-e-afazer"><span class="gt-et-mk"></span></i>a fazer</span><span class="fraco">clique numa etapa para ver o detalhe</span></p>';
 const tipoCurto = { RECURRENT: 'Recorrente', SERVICE_ORDER: 'OS', ACCOUNTING: 'Contábil' };
 function linhaTarefa(t, hoje, semCliente) {
-  const k = G.grupoTarefa(t, hoje), c = t.customer || {};
+  const k = G.grupoTela(t, hoje), c = t.customer || {};
   const etapas = Number(t.total_step) > 0 ? '<span class="gt-etapas" title="' + num(t.done_step || 0) + ' de ' + num(t.total_step) + ' etapas"><i style="--p:' + Math.round((t.done_step || 0) / t.total_step * 100) + '%"></i>' + num(t.done_step || 0) + '/' + num(t.total_step) + '</span>' : '';
   const marca = k === 'multa' ? '<span class="pill pill-late">Multa</span>' : k === 'impedimento' ? '<span class="pill pill-today">Impedimento</span>' : '';
   return '<li class="gt-t gt-c-' + COR[k] + '" data-id="' + esc(t._id) + '">' +
@@ -259,13 +285,13 @@ function desenhar() {
   }
   const hoje = new Date(), todos = E.aba === 'dia' && E.dados.dia ? listaDia() : lista(), c = G.contarGrupos(todos, hoje), vm = mesDeMeta(lista());
   cabecalho(c);
-  const f = { q: E.q, grupos: [...E.grupos], tipos: [...E.tipos], feitas: E.aba === 'lista' || E.aba === 'calendario' ? E.feitas : true, dia: E.aba === 'calendario' ? E.dia : '', setor: E.setor };
+  const f = { q: E.q, grupos: [...E.grupos], tipos: [...E.tipos], situacoes: [...E.sits], feitas: E.aba === 'lista' || E.aba === 'calendario' ? E.feitas : true, dia: E.aba === 'calendario' ? E.dia : '', setor: E.setor };
   const filtrados = G.filtrarTarefas(todos, f, hoje);
   const base = G.filtrarTarefas(todos, Object.assign({}, f, { dia: '', feitas: true }), hoje);
   const aviso = (E.erro ? '<div class="faixa"><svg class="ic"><use href="#i-alert"/></svg><div><b>A última atualização falhou.</b> ' + esc(E.erro.erro || '') + ' Mostrando a leitura anterior.</div></div>' : '') +
     ((E.aba === 'dia' ? E.dados.diaCortado : E.dados.cortado) ? '<div class="faixa"><svg class="ic"><use href="#i-alert"/></svg><div><b>Lista cortada.</b> Passou de ' + num(G.MAX_PAGINAS_TAREFAS * G.LIMITE_BUSCA) + ' tarefas: a tela mostra as primeiras. Escolha uma pessoa para ver tudo dela.</div></div>' : '') +
     (E.aba === 'dia' && !E.dados.dia ? '<div class="faixa"><svg class="ic"><use href="#i-alert"/></svg><div><b>Não consegui ler as metas deste mês</b>' + (E.dados.diaErro ? ': ' + esc(E.dados.diaErro) : '') + '. O Meu dia mostra as tarefas da competência escolhida.</div></div>' : '') +
-    (E.quem !== 'eu' ? '<p class="gt-outra">Vendo ' + (E.quem === 'sem' ? 'as tarefas <b>sem responsável</b>' : 'as tarefas de <b>' + esc(quemNome()) + '</b>') + '. <button type="button" class="linkish" id="gt-voltar-eu">Voltar às minhas</button></p>' : '');
+    (E.quem !== 'eu' ? '<p class="gt-outra">Vendo ' + (E.quem === 'sem' ? 'as tarefas <b>sem responsável</b>' : setorDaVisao() ? 'todas as tarefas do setor <b>' + esc(setorDaVisao()) + '</b>' + (E.dados.setorPessoas ? ' (' + plural(E.dados.setorPessoas, 'pessoa', 'pessoas') + ')' : '') + (E.setorPorId ? '' : E.fechCarregando ? ', separando pelo setor…' : ', inclusive as de outro setor de quem está em mais de um') : 'as tarefas de <b>' + esc(quemNome()) + '</b>') + '. <button type="button" class="linkish" id="gt-voltar-eu">Voltar às minhas</button></p>' : '');
   const foco = document.activeElement && document.activeElement.id === 'gt-q' ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null;
   const menuAberto = $('#gt-filtros') && $('#gt-filtros').open;
   v.innerHTML = aviso + topoHtml(c) + '<div class="gt-conteudo gt-aba-' + E.aba + '" id="gt-conteudo"></div>';
@@ -362,6 +388,8 @@ function ligar(v) {
   $$('[data-dens]', v).forEach(b => b.onclick = () => { E.dens = b.dataset.dens; gravarPref('gt.dens', E.dens); document.documentElement.dataset.densidade = E.dens; desenhar(); });
   $$('[data-grupo="agora"]', v).forEach(b => b.onclick = () => { const on = E.grupos.has('multa') && E.grupos.has('atrasada'); ['multa', 'atrasada'].forEach(k => on ? E.grupos.delete(k) : E.grupos.add(k)); desenhar(); });
   $$('[data-grupo]:not([data-grupo="agora"])', v).forEach(b => b.onclick = () => { const k = b.dataset.grupo; if (E.grupos.has(k)) E.grupos.delete(k); else E.grupos.add(k); if (k === 'feita' && E.grupos.has('feita')) E.feitas = true; desenhar(); });
+  // 0.103.0: situação no Gestta; a desconsiderada só é lida quando pedida (liga ou desliga = lê de novo)
+  $$('[data-sit]', v).forEach(b => b.onclick = () => { const k = b.dataset.sit; if (E.sits.has(k)) E.sits.delete(k); else E.sits.add(k); if (k === 'desconsiderada') ler(); else desenhar(); });
   $$('[data-tipo]', v).forEach(b => b.onclick = () => { const k = b.dataset.tipo; if (E.tipos.has(k)) E.tipos.delete(k); else E.tipos.add(k); desenhar(); });
   $$('[data-dia]', v).forEach(b => b.onclick = () => { E.dia = E.dia === b.dataset.dia ? '' : b.dataset.dia; desenhar(); });
   $$('[data-calmes]', v).forEach(b => b.onclick = () => { E.calMes = b.dataset.calmes; E.dia = ''; desenhar(); });
@@ -372,7 +400,7 @@ function ligar(v) {
   $$('.gt-t .gt-t-main', v).forEach(m => { m.tabIndex = 0; m.setAttribute('role', 'button'); m.title = 'Ver o detalhe'; });
   const q = $('#gt-q', v); if (q) q.oninput = () => { E.q = q.value; desenhar(); };
   const fe = $('#gt-feitas', v); if (fe) fe.onchange = () => { E.feitas = fe.checked; if (!fe.checked) E.grupos.delete('feita'); gravarPref('gt.feitas', E.feitas ? '1' : '0'); desenhar(); };
-  const lp = $('#gt-limpar', v); if (lp) lp.onclick = () => { E.q = ''; E.grupos.clear(); E.tipos.clear(); E.dia = ''; E.setor = ''; E.soPendEmp = false; desenhar(); };
+  const lp = $('#gt-limpar', v); if (lp) lp.onclick = () => { const rele = E.sits.has('desconsiderada'); E.q = ''; E.grupos.clear(); E.tipos.clear(); E.sits.clear(); if (rele) ler(); E.dia = ''; E.setor = ''; E.soPendEmp = false; desenhar(); };
   const ds = $('#gt-dia-sair', v); if (ds) ds.onclick = () => { E.dia = ''; desenhar(); };
   const ve = $('#gt-voltar-eu', v); if (ve) ve.onclick = () => trocarQuem('eu');
 }
