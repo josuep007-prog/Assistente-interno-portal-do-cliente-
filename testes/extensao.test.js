@@ -4325,12 +4325,12 @@ test('Gestta (0.98.0): tirar da lista de erros (lixeira) só com uma lista de id
   const R = A + '/es/file/onvio/remove/batch';
   for (const [m, u, c] of [['PATCH', R, []], ['PATCH', R, [T, T]], ['PATCH', R, [{ id: T }]], ['PATCH', R, { ids: [T] }], ['POST', R, [T]], ['DELETE', A + '/es/file/onvio/' + T, {}], ['PATCH', R + '?x=1', [T]]])
     assert.equal(E(m, u, c).ok, false, 'recusa: ' + m + ' ' + u + ' ' + JSON.stringify(c));
-  // quem pode sair da lista: só os sem pasta de template sem pasta e sem parecido que vá ao portal
+  // quem pode sair da lista: os de template sem pasta (0.100.5: a pasta é a regra, mesmo com um parecido que vá ao portal)
   const tpl = (id, name, pasta) => ({ _id: id, name, documents_integration: pasta ? { pathName: [pasta] } : { pathName: [] } });
   const env = (id, tid, tn, erro) => ({ _id: id, error: erro, customer_task_file: { company_document: { _id: tid, name: tn } } });
   const a = OCG.enviosPortal([env('a1', 't2', 'Folha de Pagamento Filial', 'NO_FOLDER_CONFIGURED'), env('a2', 't3', 'Recibo Interno', 'NO_FOLDER_CONFIGURED'), env('a3', 't1', 'Folha de Pagamento', 'UPLOAD_ERROR')],
     [tpl('t1', 'Folha de Pagamento', 'Pessoal'), tpl('t2', 'Folha de Pagamento Filial', ''), tpl('t3', 'Recibo Interno', '')]);
-  assert.deepEqual(plano(a.semPasta.filter(g => g.classe === 'naoVai').flatMap(g => g.itens.map(i => i.id))), ['a2']);
+  assert.deepEqual(plano(a.semPasta.filter(g => g.classe === 'naoVai').flatMap(g => g.itens.map(i => i.id)).sort()), ['a1', 'a2']);
 });
 test('Gestta (0.93.0): o detalhe traz o id das etapas e dos documentos e se o documento tem arquivo (nunca o arquivo); depois da ação sai só o resumo', () => {
   const det = OCG.limpar('tarefaDetalhe', { _id: 't1', customer_task_steps: [{ _id: 's1', name: 'Conferir', order: 1, done: true, created_at: 'x' }],
@@ -4481,12 +4481,14 @@ test('Gestta (0.96.0) · Envios ao portal: erro de envio para reenviar, sem past
   const J = (x) => JSON.parse(JSON.stringify(x)), A = J(OCG.enviosPortal(envios, templates));
   assert.deepEqual(A.reenviar.map(x => [x.id, x.pastaJa]), [['e5', true], ['e4', false]], 'primeiro os que já têm pasta, depois os erros de envio');
   assert.equal(A.reenviar[1].erroTexto, 'UPLOAD_ERROR'); assert.equal(A.reenviar[1].detalhe, 'falha ao enviar'); assert.equal(A.reenviar[0].pasta, 'Pessoal › Guias');
-  assert.deepEqual(A.semPasta.map(g => [g.template, g.itens.length, g.classe]), [['Folha de Pagamento Filial', 2, 'deve'], ['Recibo de Entrega Interno', 1, 'naoVai']]);
-  assert.match(A.semPasta[0].motivo, /Parecido com “Folha de Pagamento”, que vai para Pessoal › Folha/);
+  // 0.100.5: a pasta é a regra: template sem pasta não vai (com o parecido como saída, se for um template novo que deveria ir)
+  assert.deepEqual(A.semPasta.map(g => [g.template, g.itens.length, g.classe, !!g.semPasta]), [['Folha de Pagamento Filial', 2, 'naoVai', true], ['Recibo de Entrega Interno', 1, 'naoVai', true]]);
+  assert.match(A.semPasta[0].motivo, /não tem pasta no Portal do Cliente\. Parecido com “Folha de Pagamento”, que vai para Pessoal › Folha/);
+  assert.equal(A.semPasta[0].parecido.id, 't1');
   assert.equal(A.semPasta[0].nClientes, 2);
   // risco: sem pasta, sem erro agora, parecido com um que vai (Guia INSS não é parecido com Guia FGTS nem com Guia DAS; Extrato Mensal não tem par)
   assert.deepEqual(A.risco.map(r => [r.template, r.parecido.nome]), [['Guia FGTS Rescisório', 'Guia FGTS']]);
-  assert.deepEqual([A.totais.erros, A.totais.reenviar, A.totais.pastaJa, A.totais.semPasta, A.totais.deve, A.totais.risco], [5, 2, 1, 3, 1, 1]);
+  assert.deepEqual([A.totais.erros, A.totais.reenviar, A.totais.pastaJa, A.totais.semPasta, A.totais.deve, A.totais.risco], [5, 2, 1, 3, 0, 1]);
   // a semelhança não junta siglas diferentes nem um nome de uma palavra só
   assert.ok(OCG.semelhanca('Guia FGTS', 'Guia DAS') < 0.6);
   assert.ok(OCG.semelhanca('Guia', 'Guia FGTS') < 0.6);
@@ -4524,16 +4526,16 @@ test('Gestta (0.100.2) · Envios ao portal: só vai ao portal documento de taref
   const T1 = 'a'.repeat(24), T2 = 'b'.repeat(24), T3 = 'd'.repeat(24), T4 = 'e'.repeat(24);
   const envios = [env('e1', T1, 't1', 'Folha de Pagamento', 'UPLOAD_ERROR'),          // notifica: reenviar
     env('e2', T2, 't1', 'Folha de Pagamento', 'UPLOAD_ERROR'),                         // não notifica: não vai, mesmo com pasta
-    env('e3', T3, 't3', 'Recibo Interno', 'NO_FOLDER_CONFIGURED'),                     // notifica e sem pasta: deveria ir (nada parecido)
+    env('e3', T3, 't3', 'Recibo Interno', 'NO_FOLDER_CONFIGURED'),                     // notifica e sem pasta: 0.100.5, a pasta é a regra = não vai
     env('e4', T4, 't2', 'Folha de Pagamento Filial', 'NO_FOLDER_CONFIGURED')];         // tarefa não lida: vale o nome
   const A = JSON.parse(JSON.stringify(OCG.enviosPortal(envios, templates, { [T1]: true, [T2]: false, [T3]: true })));
   assert.deepEqual(A.reenviar.map(x => x.id), ['e1']);
   const g = (id) => A.semPasta.find(x => x.itens.some(i => i.id === id));
   assert.equal(g('e2').classe, 'naoVai'); assert.match(g('e2').motivo, /não notifica o cliente/); assert.match(g('e2').motivo, /tem a pasta Pessoal › Folha/);
-  assert.equal(g('e3').classe, 'deve'); assert.equal(g('e3').porTarefa, true); assert.match(g('e3').motivo, /notifica o cliente/);
-  assert.equal(g('e4').classe, 'deve'); assert.equal(g('e4').porTarefa, false); assert.match(g('e4').motivo, /não deu para ler a tarefa/);
+  assert.equal(g('e3').classe, 'naoVai'); assert.equal(g('e3').semPasta, true); assert.match(g('e3').motivo, /não tem pasta no Portal do Cliente/);
+  assert.equal(g('e4').classe, 'naoVai'); assert.equal(g('e4').semPasta, true); assert.equal(g('e4').parecido.id, 't1', 'a saída: a pasta do parecido');
   assert.equal(new Set(A.semPasta.map(x => x.chave)).size, A.semPasta.length, 'cada grupo tem a sua chave');
-  assert.equal(A.totais.semNotificar, 1); assert.equal(A.totais.conferidas, 3); assert.equal(A.totais.naoVai, 1);
+  assert.equal(A.totais.semNotificar, 1); assert.equal(A.totais.conferidas, 3); assert.equal(A.totais.naoVai, 3); assert.equal(A.totais.deve, 0);
   // sem a leitura das tarefas, tudo como antes
   const B = OCG.enviosPortal(envios, templates);
   assert.deepEqual(JSON.parse(JSON.stringify(B.reenviar.map(x => x.id).sort())), ['e1', 'e2']);

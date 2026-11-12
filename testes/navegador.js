@@ -3246,23 +3246,24 @@ await passo('Gestta · Envios ao portal (0.96.0, 0.100.3): um destino por docume
     await fr.click('#abas [data-aba="envios"]');
     await fr.waitForSelector('.gte-topo');
     const txt = await fr.textContent('#vista');
-    assert.match(txt, /1 · Reenviar[\s\S]*Cliente Ficticio E4[\s\S]*UPLOAD_ERROR[\s\S]*2 · Corrigir a pasta no Gestta/i);
-    assert.match(txt, /2 · Corrigir a pasta[\s\S]*Provavelmente deveria ir ao portal[\s\S]*Folha de Pagamento Filial[\s\S]*2 documentos parados[\s\S]*Parecido com “Folha de Pagamento”, que vai para Pessoal › Folha/);
-    assert.match(txt, /3 · Tirar da lista[\s\S]*Recibo Interno/); assert.match(txt, /3 · Tirar da lista[\s\S]*Pasta fora da 9999[\s\S]*Contrato Social[\s\S]*não foi montada a partir da empresa 9999/);
+    assert.match(txt, /1 · Reenviar[\s\S]*Cliente Ficticio E4[\s\S]*UPLOAD_ERROR[\s\S]*2 · Tirar da lista/i);
+    assert.ok(!/Corrigir a pasta/.test(txt), '0.100.5: a pasta é a regra, sem o bloco Corrigir a pasta');
+    assert.match(txt, /2 · Tirar da lista[\s\S]*Template sem pasta[\s\S]*Folha de Pagamento Filial[\s\S]*2 documentos parados[\s\S]*não tem pasta no Portal do Cliente\. Parecido com “Folha de Pagamento”, que vai para Pessoal › Folha[\s\S]*Deveria ir\?[\s\S]*Usar a pasta Pessoal › Folha[\s\S]*Pôr a pasta no Gestta/);
+    assert.match(txt, /2 · Tirar da lista[\s\S]*Recibo Interno/); assert.match(txt, /2 · Tirar da lista[\s\S]*Pasta fora da 9999[\s\S]*Contrato Social[\s\S]*não foi montada a partir da empresa 9999/);
     assert.match(txt, /Pastas fora da empresa 9999[\s\S]*Empresa Exemplo[\s\S]*Contrato Social[\s\S]*Legal › Contratos/);
-    assert.ok(!/Cliente Ficticio E5[\s\S]*2 · Corrigir/i.test(txt), 'o erro de envio de pasta fora da 9999 não fica para reenviar');
+    assert.ok(!/1 · Reenviar[\s\S]*Cliente Ficticio E5[\s\S]*2 · Tirar/i.test(txt), 'o erro de envio de pasta fora da 9999 não fica para reenviar');
     assert.match(txt, /Templates em risco[\s\S]*Guia FGTS Rescisório[\s\S]*parecido com[\s\S]*Guia FGTS/);
     // 0.100.3: o botão leva ao cadastro do template no Gestta
-    assert.equal(await fr.getAttribute('.gte-tpl.deve a[href*="/sidebar/document/edit/"]', 'href'), 'https://app.gestta.com.br/admin/#/sidebar/document/edit/' + T2 + '/details');
+    assert.equal(await fr.getAttribute('.gte-tpl.nao a[href$="' + T2 + '/details"]', 'href'), 'https://app.gestta.com.br/admin/#/sidebar/document/edit/' + T2 + '/details');
     assert.ok(await fr.$('.gte-risco a[href$="/sidebar/document/edit/e00000000000000000000005/details"]'), 'o risco abre o template');
     assert.ok(await fr.$('.gte-risco a[href$="/sidebar/document/edit/e00000000000000000000007/details"]'), 'a pasta fora da 9999 abre o template');
     // os números filtram; ver os documentos de um template
-    await fr.click('[data-gte-f="deve"]');
-    assert.ok(!(await fr.$('.gte-tpl.nao')) && !(await fr.textContent('#vista')).includes('1 · Reenviar'), 'só os que deveriam ir');
+    await fr.click('[data-gte-f="naoVai"]');
+    assert.ok(!(await fr.textContent('#vista')).includes('1 · Reenviar'), 'o número filtra');
     await fr.click('[data-gte-abrir^="' + T2 + '|"]');
-    await fr.waitForSelector('.gte-tpl.deve .gte-tab');
-    assert.match(await fr.textContent('.gte-tpl.deve'), /arquivo-e1\.pdf[\s\S]*arquivo-e2\.pdf/);
-    await fr.click('[data-gte-f="deve"]');
+    await fr.waitForSelector('.gte-tpl.nao .gte-tab');
+    assert.match((await fr.$$eval('.gte-tpl.nao', l => l.map(x => x.textContent))).join(' | '), /arquivo-e1\.pdf[\s\S]*arquivo-e2\.pdf/);
+    await fr.click('[data-gte-f="naoVai"]');
     // busca
     await fr.fill('#gte-q', 'recibo');
     await fr.waitForFunction(() => !/Folha de Pagamento Filial/.test(document.querySelector('#vista').textContent));
@@ -3270,19 +3271,19 @@ await passo('Gestta · Envios ao portal (0.96.0, 0.100.3): um destino por docume
     await fr.waitForFunction(() => /Folha de Pagamento Filial/.test(document.querySelector('#vista').textContent));
     // os que não vão: só pelo número do topo, sem Reenviar nem Usar a pasta
     await fr.click('[data-gte-f="naoVai"]');
-    assert.match((await fr.$$eval('.gte-tpl.nao', l => l.map(x => x.textContent))).join(' | '), /Não vai ao portal[\s\S]*Recibo Interno/);
-    assert.ok(!(await fr.$('.gte-tpl.nao [data-gte-pasta]')) && !(await fr.$('.gte-tpl.nao [data-gte-reenviar]')), 'nem pasta nem reenviar para quem não vai');
+    assert.match((await fr.$$eval('.gte-tpl.nao', l => l.map(x => x.textContent))).join(' | '), /Template sem pasta[\s\S]*Recibo Interno/);
+    assert.ok(!(await fr.$('.gte-tpl.nao [data-gte-reenviar]')), 'nunca reenviar quem não vai');
     assert.ok(await fr.$('.gte-tpl.nao [data-gte-tirar]') && await fr.$('[data-gte-tirar-todos]'), 'tirar da lista, por template e todos');
     if (estilo === 'simples') {
       // 0.98.0: tirar da lista pede confirmação e manda só os ids da fila dos que não vão (o service worker confere de novo)
       await fr.click('[data-gte-tirar-todos]');
       await fr.waitForSelector('.gte-conf');
-      assert.match(await fr.textContent('.gte-conf'), /Tirar 2 documentos da lista de erros do portal\?[\s\S]*2 templates e não vão ao portal/);
+      assert.match(await fr.textContent('.gte-conf'), /Tirar 4 documentos da lista de erros do portal\?[\s\S]*3 templates e não vão ao portal/);
       if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/gestta-envios-tirar.png' });
       assert.ok(!(await fr.evaluate(() => (window.__msgs || []).some(m => m.cmd === 'gesttaTirar'))), 'nada sai antes de confirmar');
       await fr.click('[data-gte-confirmar]');
       await fr.waitForFunction(() => (window.__msgs || []).some(m => m.cmd === 'gesttaTirar'));
-      assert.deepEqual(await fr.evaluate(() => window.__msgs.find(m => m.cmd === 'gesttaTirar').ids.slice().sort()), ['c00000000000000000000003', 'c00000000000000000000005']);
+      assert.deepEqual(await fr.evaluate(() => window.__msgs.find(m => m.cmd === 'gesttaTirar').ids.slice().sort()), ['c00000000000000000000001', 'c00000000000000000000002', 'c00000000000000000000003', 'c00000000000000000000005']);
       await fr.waitForSelector('.gte-topo');
       // 0.100.4: tirar a pasta fora da 9999: confirmação, primeiro os documentos saem da lista, depois a pasta sai do template
       await fr.waitForSelector('[data-gte-tirarpasta="e00000000000000000000007"]:not([disabled])');

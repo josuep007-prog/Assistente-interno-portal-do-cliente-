@@ -1055,7 +1055,7 @@
   // 0.100.2 (Josué, 12/11/2026: "só deve ser enviado ao portal templates de tarefas que enviam documentos ao cliente"; na tarefa,
   // "Notificar cliente via e-mail: Sim/Não" = notify_customer): notifica = { idDaTarefa: true|false } lido das tarefas da fila. Tarefa que
   // não notifica o cliente: o documento não vai ao portal (sai da lista de erros, nunca é reenviado nem ganha pasta), qualquer que seja o erro.
-  // Tarefa que notifica e template sem pasta: deveria ir. Sem a leitura da tarefa, vale o padrão de antes (nome parecido com um que vai).
+  // Template sem pasta (0.100.5): não vai, qualquer que seja a tarefa.
   // 0.100.3 (Josué, 12/11/2026: "o único esquema de pasta válido é o já configurado da empresa 9999; qualquer pasta destino que não esteja
   // nessa empresa precisa ser excluída e desvinculado todo documento que está pra ir pra ela"): modelo = o id do cliente 9999 no Gestta.
   // Pasta montada a partir de outro cliente (documents_integration.customer_id) não vale: não serve de modelo para "Usar a pasta" e os
@@ -1082,9 +1082,11 @@
       const base = { chave: g.chave, templateId: g.templateId, template: g.template, itens: g.itens, nClientes: g.clientes.size, parecido: p, porTarefa: g.bal !== '?', fora: g.bal === 'fora', pasta: g.pasta };
       if (g.bal === 'fora') return Object.assign(base, { classe: 'naoVai', motivo: `A pasta do template (${g.pasta}) não foi montada a partir da empresa 9999: tire a pasta no Gestta` });
       if (g.bal === 'nao') return Object.assign(base, { classe: 'naoVai', motivo: 'A tarefa não notifica o cliente por e-mail' + (g.temPasta ? ` (o template tem a pasta ${g.pasta})` : '') });
-      if (g.bal === 'sim') return Object.assign(base, { classe: 'deve', motivo: 'A tarefa notifica o cliente por e-mail' + (p ? `; parecido com “${p.nome}”, que vai para ${p.pasta}` : '; nenhum template parecido tem pasta para copiar') });
-      return Object.assign(base, { classe: p ? 'deve' : 'naoVai', motivo: (p ? `Parecido com “${p.nome}”, que vai para ${p.pasta}` : 'Nenhum template parecido vai ao portal') + ' (não deu para ler a tarefa)' });
-    }).sort((a, b) => (a.classe === b.classe ? 0 : a.classe === 'deve' ? -1 : 1) || b.itens.length - a.itens.length || a.template.localeCompare(b.template, 'pt-BR'));
+      // 0.100.5 (Josué, 12/11/2026: "existem documentos que são enviados ao cliente que não vão pro portal"; decidido: "a pasta é a regra"):
+      // template sem pasta não vai ao portal, mesmo de tarefa que notifica o cliente. Fica em Tirar da lista, com a saída para o caso de
+      // ser um template novo que deveria ir (semPasta + o parecido com pasta da 9999, se houver).
+      return Object.assign(base, { classe: 'naoVai', semPasta: true, motivo: 'O template não tem pasta no Portal do Cliente' + (p ? `. Parecido com “${p.nome}”, que vai para ${p.pasta}` : '') });
+    }).sort((a, b) => (a.fora === b.fora ? 0 : a.fora ? -1 : 1) || b.itens.length - a.itens.length || a.template.localeCompare(b.template, 'pt-BR'));
     // o risco que ainda não deu erro: template sem pasta, parecido com um que tem pasta, sem documento parado agora
     const comErro = new Set(semPasta.map(g => g.templateId));
     // todos os templates com a pasta fora da 9999 (com ou sem documento parado), para tirar a pasta no Gestta

@@ -2,6 +2,12 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.100.5 (12/11/2026): a pasta é a regra
+
+- Josué: "existem documentos que são enviados ao cliente que não vão pro portal"; decidido: **a pasta é a regra**. O "Notificar cliente via e-mail: Sim" não basta: documento de template **sem pasta** não vai ao portal e fica em **Tirar da lista** ("Template sem pasta"), mesmo de tarefa que notifica o cliente. O bloco "Corrigir a pasta no Gestta" saiu; a tela tem **1 · Reenviar** e **2 · Tirar da lista**.
+- Para o template sem pasta que é novo e deveria ir: no próprio cartão, **Deveria ir?** com **Usar a pasta …** (de um template parecido da 9999, quando há) ou **Pôr a pasta no Gestta**; com a pasta posta, os documentos passam para Reenviar.
+- Tarefa com "Notificar cliente: Não" continua não indo, mesmo com pasta.
+
 ## Novidades da v0.100.4 (12/11/2026): tirar a pasta fora da 9999 pela extensão
 
 - **Tirar a pasta** (Josué: "tem que tirar a pasta e excluir o erro da lista"; mapeado no mesmo dia na empresa de teste): em **Pastas fora da empresa 9999**, um por template ou **Tirar as N pastas**, e, no bloco 3, **Tirar a pasta e os documentos**. Uma confirmação; depois, um template por vez: primeiro os documentos dele com erro saem da lista, depois a pasta sai do template (`DELETE admin/company/document/integration/documents/{id do template}` e o Salvar do template, como a tela do Gestta; os outros templates da mesma pasta não mudam). Antes de cada um a extensão relê o template e só tira se a pasta continua fora da 9999; no fim confere que ficou sem pasta.
