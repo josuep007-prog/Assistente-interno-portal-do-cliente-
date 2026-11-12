@@ -1,0 +1,149 @@
+Abra uma aba do Gestta (app.gestta.com.br) que já está logada. Vamos mapear como a tela do Gestta faz duas ações ligadas aos envios ao Portal do Cliente, para depois a extensão Control Onvio fazer o mesmo (aprovadas pelo Josué em 12/11/2026): REENVIAR um documento que deu erro e CONFIGURAR A PASTA do portal num template de documento. As ações são de verdade, então siga estas regras:
+
+REGRAS
+- Configurar a pasta: use SÓ um template de teste. Procure em Cadastros > Documentos um template chamado "TESTE MAPEAMENTO - NAO USAR". Se não existir, crie um com esse nome (o mais simples possível, sem regra de reconhecimento) e use ele. Nunca mexa na pasta de um template de verdade.
+- Reenviar: use SÓ um documento da empresa de teste [EMPRESA DE TESTE] na tela Status da integração > Portal do Cliente (https://app.gestta.com.br/dominio-integration/#/error-status). Se não houver nenhum da empresa de teste, NÃO reenvie nada: pare e pergunte ao Josué se pode reenviar um documento real com erro (é o que ele faria à mão) e qual.
+- Nunca use a lixeira, nunca exclua nada, nunca mexa em outra empresa, tarefa ou configuração.
+- Se uma ação não existir na tela, pule e anote qual foi.
+
+PASSO 1. Abra Cadastros > Documentos (https://app.gestta.com.br/admin/#/sidebar/document/list). Abra o console do navegador nessa aba, cole o roteiro do fim deste texto exatamente como está e rode. Deve aparecer "mapeamento ligado". O roteiro não grava nada no Gestta: só escuta as chamadas que a tela faz e anota a forma delas (nunca valores, nomes, CNPJ, token ou cookies).
+
+PASSO 2. Para cada linha abaixo, PRIMEIRO rode no console o comando da esquerda, DEPOIS faça a ação na tela, clicando como uma pessoa faria. Espere a tela terminar de salvar antes da próxima linha.
+1. gtMapa.marcar('abrir template')  -> abra o template "TESTE MAPEAMENTO - NAO USAR" (a tela de edição dele)
+2. gtMapa.marcar('ver pastas do portal')  -> abra a escolha da pasta do Portal do Cliente nesse template (a lista ou árvore de pastas), sem escolher ainda
+3. gtMapa.marcar('configurar pasta')  -> escolha uma pasta qualquer e salve
+4. gtMapa.marcar('trocar pasta')  -> troque por outra pasta e salve
+5. gtMapa.marcar('tirar pasta')  -> tire a pasta e salve, se a tela permitir (o template volta a ficar sem pasta)
+Se a página recarregar no meio, cole e rode o roteiro de novo: o que já foi anotado continua guardado nesta aba.
+
+PASSO 3. Na MESMA aba, vá para https://app.gestta.com.br/dominio-integration/#/error-status. Rode o roteiro de novo se a página recarregar (o que já foi anotado continua guardado).
+6. gtMapa.marcar('abrir status')  -> deixe a lista de erros carregar; se houver filtro por cliente, filtre pela empresa de teste
+7. gtMapa.marcar('reenviar um')  -> clique em Reenviar num documento da empresa de teste (veja as REGRAS se não houver nenhum)
+8. gtMapa.marcar('depois do reenvio')  -> espere uns 30 segundos e atualize a lista, para ver se o documento saiu do erro
+
+PASSO 4. Rode no console: gtMapa.resultado()
+Copie TODO o texto que ele imprimir (começa com { e termina com }) e me devolva inteiro, junto com: a lista do que foi pulado e por quê; se o reenvio deu certo; se a tela tem um "Reenviar todos" ou seleção de vários (só descreva, não use). Depois rode gtMapa.parar().
+
+ROTEIRO (cole no console exatamente como está):
+
+/* Mapeamento das ações do Gestta (aprovadas pelo Josué em 11/11/2026: concluir tarefa e etapas, impedimento, comentário e
+ * envio de documento). Rodar no console de uma aba do Gestta já logada (app.gestta.com.br).
+ *
+ * ESTE ROTEIRO NÃO CHAMA A API. Ele só escuta as chamadas que a própria tela do Gestta faz enquanto a pessoa executa cada
+ * ação, à mão, numa EMPRESA DE TESTE. Anota, para cada chamada: método, endereço com {id} no lugar dos ids, nomes dos
+ * parâmetros, nomes e tipos dos campos enviados e recebidos, a situação HTTP e os códigos de situação em maiúsculas
+ * (DONE, OPEN, IMPEDIMENT…). Nunca anota valores (nome, CNPJ, texto de comentário, motivo, nome de arquivo), nem o token,
+ * nem cookies. As anotações ficam só nesta aba (sessionStorage) até a pessoa copiar o resultado.
+ *
+ * Uso:
+ *   1. Cole este roteiro no console e tecle Enter. Aparece "mapeamento ligado".
+ *   2. Antes de cada ação, rode  gtMapa.marcar('nome da ação')  (ex.: gtMapa.marcar('concluir etapa')).
+ *   3. Faça a ação na tela do Gestta, numa empresa de teste.
+ *   4. No fim, rode  gtMapa.resultado()  : o texto vai para a área de transferência. Cole na conversa do Claude Code.
+ *   Se a página recarregar (ou abrir o Express), rode o roteiro de novo: o que já foi anotado continua guardado.
+ *   gtMapa.parar() desliga a escuta; gtMapa.limpar() apaga as anotações. */
+(() => {
+  const CHAVE = 'gtMapa.v1', MAX = 400;
+  if (window.gtMapa && window.gtMapa.ligado) { console.log('mapeamento já está ligado nesta página (' + window.gtMapa.n() + ' anotações)'); return; }
+  let notas = [];
+  try { notas = JSON.parse(sessionStorage.getItem(CHAVE) || '[]'); } catch (e) { notas = []; }
+  const guardar = () => { try { sessionStorage.setItem(CHAVE, JSON.stringify(notas.slice(-MAX))); } catch (e) {} };
+  let acao = (notas.filter(n => n.marca).slice(-1)[0] || {}).marca || '';
+
+  // ---- só a forma, nunca o valor ----
+  // código de situação: palavra em maiúsculas, partes separadas por _ (DONE, SERVICE_ORDER, ONBOARDING_V3). Campo de identificação
+  // (id, code, cnpj, nome, e-mail…) nunca vira código, mesmo em maiúsculas (v2: um external_id tinha saído com o valor).
+  const CODIGO = /^[A-Z]{2,}(_[A-Z0-9]+)*$/, IDENT = /id$|code|cnpj|cpf|name|nome|mail|phone|fone|document|number|protocol|key|token|picture/i;
+  const tipoTexto = (s, k) => /^\d{4}-\d\d-\d\d(T|$)/.test(s) ? 'data' : /^[0-9a-f]{24}$/i.test(s) ? 'id' : s.length <= 40 && CODIGO.test(s) && !IDENT.test(k || '') ? 'código ' + s : 'texto';
+  const forma = (v, prof, k) => {
+    if (v == null) return 'vazio';
+    if (Array.isArray(v)) return v.length ? [forma(v[0], prof + 1, k), 'itens: ' + v.length] : ['lista vazia'];
+    if (typeof Blob !== 'undefined' && v instanceof Blob) return 'arquivo (' + (v.type || 'sem tipo') + ', ' + Math.round(v.size / 1024) + ' KB)';
+    if (typeof v === 'object') {
+      if (prof > 5) return 'objeto';
+      const o = {};
+      for (const c of Object.keys(v).sort()) o[c] = forma(v[c], prof + 1, c);
+      return o;
+    }
+    if (typeof v === 'string') return tipoTexto(v, k);
+    return typeof v === 'number' ? 'número' : typeof v === 'boolean' ? 'booleano' : typeof v;
+  };
+  const caminho = (url) => {
+    let u; try { u = new URL(url, location.href); } catch (e) { return { host: '?', caminho: '?', parametros: [] }; }
+    const segs = u.pathname.split('/').map(s => /^[0-9a-f]{24}$/i.test(s) ? '{id}' : /^\d+$/.test(s) ? '{n}'
+      : /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(s) ? '{uuid}' : s.length > 40 ? '{longo}' : s);
+    return { host: u.hostname, caminho: segs.join('/'), parametros: [...new Set([...u.searchParams.keys()])].sort() };
+  };
+  const corpoForma = (b) => {
+    if (b == null || b === '') return 'sem corpo';
+    if (typeof FormData !== 'undefined' && b instanceof FormData) {
+      const o = {}; for (const [k, v] of b.entries()) o[k] = typeof v === 'string' ? tipoTexto(v, k) : forma(v, 0, k);
+      return { formulário: o };
+    }
+    if (typeof Blob !== 'undefined' && b instanceof Blob) return forma(b, 0);
+    if (typeof URLSearchParams !== 'undefined' && b instanceof URLSearchParams) return { 'campos de formulário': [...b.keys()].sort() };
+    if (typeof b === 'string') { try { return forma(JSON.parse(b), 0); } catch (e) { return 'texto (' + b.length + ' caracteres)'; } }
+    return typeof b;
+  };
+  const respostaForma = (texto, tipo) => {
+    if (!texto) return 'vazia';
+    if (/json/.test(tipo || '') || /^[[{]/.test(String(texto).trim())) { try { return forma(JSON.parse(texto), 0); } catch (e) {} }
+    return (tipo || 'sem tipo') + ', ' + Math.round(String(texto).length / 1024) + ' KB';
+  };
+  // GET entra na hora do envio, só como endereço (sem corpo nem resposta) e uma vez seguida; as escritas entram ao voltar,
+  // inteiras, com a ação marcada quando saíram
+  const anotar = (n, acaoNoEnvio) => {
+    if (n.metodo === 'GET') { const u = notas[notas.length - 1]; if (u && u.metodo === 'GET' && u.caminho === n.caminho) return; }
+    n.acao = acaoNoEnvio || '(sem marca)'; n.quando = new Date().toISOString().slice(11, 19);
+    notas.push(n); if (notas.length > MAX) notas = notas.slice(-MAX); guardar();
+    if (n.metodo !== 'GET') console.log('%c[mapa] ' + n.metodo + ' ' + n.caminho + ' → ' + n.status, 'color:#0a7');
+  };
+
+  // ---- escuta: XMLHttpRequest (AngularJS) e fetch (Express) ----
+  const XO = XMLHttpRequest.prototype.open, XS = XMLHttpRequest.prototype.send, XH = XMLHttpRequest.prototype.setRequestHeader;
+  XMLHttpRequest.prototype.open = function (m, url) { this.__gtm = { metodo: String(m || 'GET').toUpperCase(), url: String(url), cab: [] }; return XO.apply(this, arguments); };
+  XMLHttpRequest.prototype.setRequestHeader = function (k) { if (this.__gtm) this.__gtm.cab.push(String(k).toLowerCase()); return XH.apply(this, arguments); };
+  XMLHttpRequest.prototype.send = function (b) {
+    const r = this.__gtm;
+    if (r && r.metodo === 'GET') anotar(Object.assign(caminho(r.url), { via: 'xhr', metodo: 'GET', cabecalhos: [...new Set(r.cab)].sort() }), acao);
+    else if (r) {
+      const envio = corpoForma(b), naHora = acao;
+      this.addEventListener('loadend', () => {
+        let resposta = 'não lida';
+        try { resposta = (this.responseType === '' || this.responseType === 'text') ? respostaForma(this.responseText, this.getResponseHeader('content-type')) : (this.responseType === 'json' ? forma(this.response, 0) : this.responseType); } catch (e) {}
+        anotar(Object.assign(caminho(r.url), { via: 'xhr', metodo: r.metodo, cabecalhos: [...new Set(r.cab)].sort(), envio, status: this.status, resposta }), naHora);
+      });
+    }
+    return XS.apply(this, arguments);
+  };
+  const F = window.fetch;
+  window.fetch = async function (entrada, op) {
+    const url = typeof entrada === 'string' ? entrada : (entrada && entrada.url) || String(entrada);
+    const metodo = String((op && op.method) || (entrada && entrada.method) || 'GET').toUpperCase();
+    const cab = []; try { new Headers((op && op.headers) || (entrada && entrada.headers) || {}).forEach((v, k) => cab.push(k)); } catch (e) {}
+    if (metodo === 'GET') { anotar(Object.assign(caminho(url), { via: 'fetch', metodo, cabecalhos: cab.sort() }), acao); return F.apply(this, arguments); }
+    const envio = corpoForma(op && op.body), naHora = acao;
+    const res = await F.apply(this, arguments);
+    let resposta = 'não lida';
+    try { resposta = respostaForma(await res.clone().text(), res.headers.get('content-type')); } catch (e) {}
+    anotar(Object.assign(caminho(url), { via: 'fetch', metodo, cabecalhos: cab.sort(), envio, status: res.status, resposta }), naHora);
+    return res;
+  };
+
+  window.gtMapa = {
+    ligado: true,
+    n: () => notas.length,
+    marcar(nome) { acao = String(nome || '').slice(0, 60); notas.push({ marca: acao, quando: new Date().toISOString().slice(11, 19) }); guardar(); console.log('[mapa] próxima ação: ' + acao); },
+    resultado() {
+      const saida = { roteiro: 'mapear-acoes-gestta v2', pagina: location.pathname + location.hash.replace(/[0-9a-f]{24}/gi, '{id}'), quando: new Date().toISOString().slice(0, 16), anotacoes: notas };
+      const texto = JSON.stringify(saida, null, 1);
+      try { navigator.clipboard.writeText(texto); } catch (e) {}
+      try { copy(texto); } catch (e) {}
+      console.log(texto); console.log('pronto: ' + notas.length + ' anotações (o texto também foi copiado)');
+      return notas.length;
+    },
+    parar() { XMLHttpRequest.prototype.open = XO; XMLHttpRequest.prototype.send = XS; XMLHttpRequest.prototype.setRequestHeader = XH; window.fetch = F; this.ligado = false; console.log('mapeamento desligado (as anotações continuam guardadas nesta aba)'); },
+    limpar() { notas = []; acao = ''; guardar(); console.log('anotações apagadas'); },
+  };
+  console.log('mapeamento ligado (' + notas.length + ' anotações já guardadas). Antes de cada ação: gtMapa.marcar("nome"). No fim: gtMapa.resultado()');
+})();

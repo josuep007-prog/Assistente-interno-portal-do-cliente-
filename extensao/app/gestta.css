@@ -615,3 +615,75 @@
 :root[data-estilo="simples"] .gp-aviso{font-weight:500; padding:8px 10px}
 :root[data-estilo="simples"] .gp-acoes{gap:6px}
 :root[data-estilo="simples"] .gp-passo:hover{background:transparent; text-decoration:underline}
+
+/* ============ 0.96.0: aba Envios ao portal ============ */
+.gte-topo{display:flex; flex-direction:column; gap:12px; margin-bottom:14px}
+.gte-tit h2{margin:0; font-size:18px; color:var(--ink)}
+.gte-tit p{margin:4px 0 0; max-width:90ch; color:var(--ink-2); font-size:13px}
+.gte-kpis{display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:8px}
+.gte-kpi{all:unset; box-sizing:border-box; cursor:pointer; display:flex; flex-direction:column; gap:2px; padding:10px 12px 10px 15px; border:1px solid var(--rule); border-radius:var(--r); background:var(--surface); position:relative}
+.gte-kpi::before{content:""; position:absolute; left:0; top:8px; bottom:8px; width:3px; border-radius:2px; background:var(--kc, var(--rule-strong))}
+.gte-kpi b{font-size:22px; line-height:1.1; color:var(--ink); font-variant-numeric:tabular-nums}
+.gte-kpi span{font-size:12px; color:var(--ink-2); font-weight:600}
+.gte-kpi:hover{border-color:var(--rule-strong)}
+.gte-kpi:focus-visible{outline:2px solid var(--blue-deep); outline-offset:1px}
+.gte-kpi.on{border-color:var(--blue-deep); box-shadow:0 0 0 1px var(--blue-deep)}
+.gte-k-erro{--kc:var(--brand-red)} .gte-k-deve{--kc:var(--status-warn)} .gte-k-risco{--kc:var(--blue-deep)} .gte-k-neutro{--kc:var(--rule-strong)}
+.gte-barra{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:0 0 12px}
+.gte-barra input{flex:1 1 260px; max-width:420px}
+.gte-aviso{font-size:12px; font-weight:600; color:var(--ink)}
+.gte-sec{background:var(--surface); border:1px solid var(--rule); border-radius:var(--r); padding:12px 14px; margin-bottom:12px}
+.gte-sec-h{display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-bottom:6px}
+.gte-sec h3{margin:0; font-size:15px; color:var(--ink); display:flex; align-items:center; gap:8px}
+.gte-sec h4{margin:12px 0 6px; font-size:13px; color:var(--ink); display:flex; align-items:center; gap:8px}
+.gte-n{display:inline-block; min-width:20px; padding:0 6px; border-radius:9px; background:var(--surface-3); color:var(--ink); font-size:11.5px; font-weight:700; text-align:center; line-height:1.6}
+.gte-dica{margin:0 0 8px; font-size:12.5px; color:var(--ink-2)}
+.gte-vazio{margin:6px 0 2px; font-size:13px; color:var(--ink-2); display:flex; align-items:center; gap:6px}
+.gte-tab-wrap{overflow-x:auto; border:1px solid var(--rule); border-radius:var(--r); margin-top:6px}
+.gte-tab{width:100%; border-collapse:collapse; font-size:12.5px}
+.gte-tab th{text-align:left; font-size:12px; color:var(--ink-2); font-weight:700; background:var(--surface-2); padding:7px 10px; border-bottom:1px solid var(--rule); white-space:nowrap}
+.gte-tab td{padding:7px 10px; border-top:1px solid var(--rule); vertical-align:top; color:var(--ink); max-width:260px}
+.gte-tab td small{display:block; color:var(--ink-2); font-size:11.5px; margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.gte-tab .num{text-align:right; font-variant-numeric:tabular-nums}
+.gte-link{all:unset; cursor:pointer; color:var(--ink); font-weight:600; text-decoration:underline; text-decoration-color:var(--rule-strong); text-underline-offset:3px}
+.gte-link:hover, .gte-link:focus-visible{color:var(--blue-deep); text-decoration-color:currentColor}
+.gte-tag{display:inline-flex; align-items:center; gap:4px; padding:1px 7px; border-radius:3px; border:1px solid currentColor; font-size:11.5px; font-weight:700; line-height:1.55; white-space:nowrap}
+.gte-erro{color:var(--brand-red)} .gte-ok{color:var(--status-green)} .gte-deve{color:var(--status-warn)} .gte-neutro{color:var(--ink-2)}
+.gte-tpls, .gte-risco{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px}
+.gte-tpl{border:1px solid var(--rule); border-left:3px solid var(--rule-strong); border-radius:var(--r); padding:9px 12px}
+.gte-tpl.deve{border-left-color:var(--status-warn)}
+.gte-tpl-h{display:flex; align-items:center; gap:8px 10px; flex-wrap:wrap}
+.gte-tpl-h b{font-size:13.5px; color:var(--ink)}
+.gte-cont{font-size:12px; color:var(--ink-2); margin-left:auto}
+.gte-motivo{margin:5px 0 6px; font-size:12.5px; color:var(--ink-2)}
+.gte-risco li{display:flex; flex-wrap:wrap; gap:4px 10px; font-size:13px; color:var(--ink); padding:6px 0; border-top:1px dashed var(--rule)}
+.gte-risco li:first-child{border-top:0}
+.gte-risco li span{color:var(--ink-2)}
+:root[data-estilo="simples"] .gte-sec, :root[data-estilo="simples"] .gte-kpi{box-shadow:none}
+@media (max-width:640px){ .gte-cont{margin-left:0} .gte-kpis{grid-template-columns:1fr 1fr} }
+/* 0.97.0: ações dos envios ao portal */
+.gte-acoes{display:flex; gap:8px; flex-wrap:wrap; align-items:center}
+.gte-conf{position:sticky; top:0; z-index:3}
+.gte-conf .btn{flex:none}
+.gte-usar{margin:2px 12px 6px 0}
+.gte-risco li .btn{margin-left:auto}
+.gte-tab .sr{position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0)}
+.gte-info b{color:var(--ink)}
+
+/* 0.99.0: ações em lote na Lista */
+.gl-sel{display:flex; align-items:center; justify-content:center}
+.gl-sel input{width:16px; height:16px; margin:0; cursor:pointer; accent-color:var(--blue-deep)}
+.gl-r.gl-marcada{background:var(--blue-pale)}
+.gl-lote{display:flex; align-items:center; gap:8px 10px; flex-wrap:wrap; margin:0 0 10px; padding:9px 12px; border:1px solid var(--blue-deep); border-left-width:3px; border-radius:var(--r); background:var(--surface); font-size:13px; color:var(--ink)}
+.gl-lote > b{margin-right:4px}
+.gl-lote-conf{display:block}
+.gl-lote-conf p{margin:0 0 6px}
+.gl-lote-l{margin:0 0 8px; padding-left:18px; font-size:12.5px}
+.gl-lote-l small{color:var(--ink-2)}
+.gl-lote-conf label{display:block; font-weight:600; margin:4px 0}
+.gl-lote-conf textarea{width:100%; max-width:640px; font:inherit; font-size:13px}
+.gl-lote-bt{display:flex; gap:8px; margin-top:8px}
+.gl-lote-erro{color:var(--late); font-size:12.5px; font-weight:600}
+@media (max-width:900px){ .gl-h, .gl-r{grid-template-columns:34px minmax(0,1fr) 62px 40px} }
+.gte-conf-l{margin:6px 0; padding-left:18px; font-size:12.5px}
+.gte-conf-l small{color:var(--ink-2)}

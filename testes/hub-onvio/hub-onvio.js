@@ -1489,7 +1489,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await page.evaluate(() => window.__hubApi.inicio());
   });
 
-  await passo('Mediador (Hub 347, Josué 11/11/2026: "o módulo convenções hoje está 100% manual"): o bloco em Convenções mostra o que é novo no Mediador, Cadastrar abre a convenção preenchida, o texto abre dentro do Hub (guardado ou buscado na hora pela extensão), Ignorar some e Buscar pede à extensão', async () => {
+  await passo('Mediador (Hub 347, Josué 11/11/2026: "o módulo convenções hoje está 100% manual"): e Hub 350 ("toda a estrutura deveria ser repensada"): a convenção e o aditivo do Mediador entram sozinhos, as abas Empresas, Novidades, Textos e Sindicatos, o piso sugerido pelo texto, o texto dentro do Hub, a convenção excluída não volta e Buscar pede à extensão', async () => {
     const OCM = require(path.join(__dirname, '..', '..', 'extensao', 'mediador.js'));
     const SIND = '11222333000181', PATR = '11444777000161';     // CNPJs válidos de exemplo (não são de cliente)
     const linha = (reg, sol, tipo, ini, fim) => `<tr><td>${reg}</td><td>10000.000001/2026-11</td><td>${sol}</td><td>${tipo}</td><td>${ini} a ${fim}</td><td>11.222.333/0001-81</td><td>SINDICATO EXEMPLO DOS EMPREGADOS</td><td>11.444.777/0001-61</td><td>SINDICATO EXEMPLO PATRONAL</td><td>1</td><td>1</td></tr>`;
@@ -1520,40 +1520,95 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     });
     await page.evaluate(() => document.querySelectorAll('dialog[open]').forEach((d) => d.close()));
     await page.evaluate(() => window.__hubApi.abrirModulo('dp'));
+    // Hub 350: uma empresa no sindicato do Mediador (com empregado ativo) e outra num sindicato sem CNPJ
+    const sinds2 = (await page.evaluate(() => window.__db.ler('dp_config/sindicatos').itens)) || [];
+    await page.evaluate(([l]) => window.__db.semear('dp_config/sindicatos', { itens: l }), [sinds2.concat([{ id: 'sd-semcnpj', cod: '902', nome: 'SINDICATO SEM CNPJ EXEMPLO', cnpj: '' }])]);
+    await page.evaluate(() => window.__db.semear('dp_empresas/e-sindmed', { nome: 'EMPRESA DO SINDICATO EXEMPLO LTDA', cnpj: '21.987.654/0001-12', situacao: 'Ativa', estabelecimentos: [{ id: 'es1', nome: 'Matriz', codSind: '901' }], funcionarios: [{ id: 'm1', nome: 'Empregado Exemplo', admissao: '2024-01-02', situacao: 'Ativo' }], historico: [] }));
+    await page.evaluate(() => window.__db.semear('dp_empresas/e-semcnpj', { nome: 'EMPRESA SEM CNPJ NO SINDICATO LTDA', cnpj: '22.987.654/0001-12', situacao: 'Ativa', estabelecimentos: [{ id: 'es2', nome: 'Matriz', codSind: '902' }], funcionarios: [{ id: 'm2', nome: 'Empregado Exemplo Dois', admissao: '2024-01-02', situacao: 'Ativo' }], historico: [] }));
     await page.evaluate(() => window.__hubApi.api('dp').irPara('sindicatos'));
+    // a convenção e o aditivo do Mediador entram sozinhos (a de 2024/2025 acabou e começou há mais de 18 meses: fica de fora)
+    await page.waitForFunction(() => { const l = (window.__db.ler('dp_config/ccts') || {}).itens || []; return l.some(c => c.registro === 'XX000333/2026') && l.some(c => c.registro === 'XX000444/2026'); }, null, { timeout: 15000 });
+    const ccts = await page.evaluate(() => window.__db.ler('dp_config/ccts').itens);
+    const cct = ccts.find(c => c.registro === 'XX000333/2026'), ad = ccts.find(c => c.registro === 'XX000444/2026');
+    assert.deepEqual([cct.origem, cct.tipo, cct.status, cct.vigIni, cct.vigFim, cct.dataBase, cct.medSol], ['mediador', 'cct', 'registrada', '2026-05-01', '2027-04-30', 'Maio', 'MR000333/2026']);
+    assert.match(cct.partes.map(p => p.cnpj + ' ' + p.papel).join(','), /11\.222\.333\/0001-81 laboral/);
+    assert.deepEqual([ad.origem, ad.tipo, ad.mae], ['mediador', 'aditivo', cct.id], 'o aditivo se liga à convenção-mãe');
+    assert.ok(!ccts.some(c => c.registro === 'XX000111/2024'), 'a antiga fica de fora');
+    // as abas: abre em Empresas, com a convenção de cada empresa e o porquê de quem está sem
+    await page.waitForSelector('#cv-abas [data-cv-aba-mod="empresas"].on');
+    await page.waitForFunction(() => /EMPRESA DO SINDICATO EXEMPLO/.test((document.querySelector('#cv-nova') || {}).textContent || ''), null, { timeout: 8000 });
+    let emp = await page.textContent('#cv-nova');
+    assert.match(emp, /EMPRESA DO SINDICATO EXEMPLO[\s\S]*CCT Sind\. Exemplo 2026\/2027[\s\S]*XX000333\/2026 · Mediador[\s\S]*Maio[\s\S]*conferir/);
+    assert.match(emp, /EMPRESA SEM CNPJ NO SINDICATO[\s\S]*Sindicato sem CNPJ: o Mediador não consegue procurar/);
+    if (CAP) await page.screenshot({ path: path.join(CAP, 'hub350-empresas-claro.png') });
+    // tema escuro e tela estreita: a aba Empresas sem rolagem para o lado
+    const vp350 = page.viewportSize();
+    await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
+    if (CAP) { await page.waitForTimeout(300); await page.screenshot({ path: path.join(CAP, 'hub350-empresas-escuro.png') }); }
+    await page.setViewportSize({ width: 390, height: 844 }); await page.waitForTimeout(400);
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth <= 2), 'Empresas sem rolagem lateral no celular');
+    if (CAP) await page.screenshot({ path: path.join(CAP, 'hub350-empresas-celular.png') });
+    await page.setViewportSize(vp350); await page.evaluate(() => { document.documentElement.dataset.theme = 'light'; });
+    // Novidades: o que entrou sozinho, o que conferir e o bloco do Mediador
+    await page.click('#cv-abas [data-cv-aba-mod="novidades"]');
+    await page.waitForFunction(() => /Entraram sozinhas pelo Mediador[\s\S]*XX000333\/2026/.test(document.querySelector('#cv-nova').textContent), null, { timeout: 5000 });
     const box = page.locator('#cv-med');
-    await page.waitForFunction(() => /Novas no Mediador/.test((document.querySelector('#cv-med') || {}).textContent || ''), null, { timeout: 8000 });
-    const txt = await box.textContent();
-    assert.match(txt, /Mediador do MTE/);
-    assert.match(txt, /3 instrumento\(s\)/, txt);
-    const novos = await box.locator('.med-novo').count();
-    assert.equal(novos, 2, 'a de 2024/2025 já acabou e começou há mais de 18 meses; ficam a CCT 2026 e o aditivo');
-    if (CAP) for (const tm of ['light', 'dark']) { await page.evaluate((x) => { document.documentElement.dataset.theme = x; }, tm); await page.waitForTimeout(200); await box.screenshot({ path: path.join(CAP, 'mediador-bloco-' + tm + '.png') }); }
-    if (CAP) await page.evaluate(() => { document.documentElement.dataset.theme = 'light'; });
+    assert.ok(await box.isVisible(), 'o bloco do Mediador mora nas Novidades');
+    assert.match(await box.textContent(), /Mediador do MTE[\s\S]*3 instrumento\(s\)/);
+    assert.equal(await box.locator('.med-novo').count(), 0, 'nada fica "novo para cadastrar": entrou sozinho');
+    assert.match(await page.textContent('#cv-nova'), /Reajuste e piso para conferir[\s\S]*piso R\$ 1\.000,00/);
+    if (CAP) await page.screenshot({ path: path.join(CAP, 'hub350-novidades-claro.png') });
+    // todos os instrumentos, por sindicato (recolhido de fábrica)
+    await box.locator('.med-todos > summary').click();
+    await box.locator('[data-med-sind]').first().click();
+    await box.locator('[data-med-texto="MR000444/2026"]').first().waitFor();
     // o texto guardado: por cláusula, com a busca
     await box.locator('[data-med-texto="MR000333/2026"]').first().click();
     await page.waitForSelector('#dlg-med-texto[open] .med-cl');
     assert.match(await page.textContent('#dlg-med-texto'), /Data-base: Maio[\s\S]*PISO SALARIAL[\s\S]*Piso de R\$ 1\.000,00/);
     await page.fill('#med-dlg-q', 'piso');
     assert.equal(await page.locator('#dlg-med-texto .med-cl:visible').count(), 1, 'a busca deixa só a cláusula do piso');
-    if (CAP) await page.screenshot({ path: path.join(CAP, 'mediador-texto.png') });
     await page.click('#dlg-med-texto [data-med-fechar]');
     // o texto que não está guardado: pedido à extensão, na hora
     await box.locator('[data-med-texto="MR000444/2026"]').first().click();
     await page.waitForFunction(() => /Texto lido na hora pela extensão/.test(document.querySelector('#dlg-med-texto').textContent), null, { timeout: 8000 });
     assert.ok(await page.evaluate(() => window.__medPed.some((p) => p.acao === 'mediadorTexto' && p.solicitacao === 'MR000444/2026')));
     await page.click('#dlg-med-texto [data-med-fechar]');
-    // Cadastrar: o formulário da convenção já preenchido
-    await box.locator('[data-med-cad="MR000333/2026"]').click();
-    await page.waitForSelector('#dlg-cct[open]');
-    const f = await page.evaluate(() => { const e = document.querySelector('#dlg-cct form, form#form-cct') || document.querySelector('#dlg-cct').querySelector('form'); const el = e.elements; return { reg: el.registro.value, st: el.status.value, tp: el.tipo.value, ini: el.vigIni.value, fim: el.vigFim.value, db: el.dataBase.value, partes: el.partes.value }; });
-    assert.deepEqual([f.reg, f.st, f.tp, f.ini, f.fim, f.db], ['XX000333/2026', 'registrada', 'cct', '2026-05-01', '2027-04-30', 'Maio']);
-    assert.match(f.partes, /11\.222\.333\/0001-81 \| SINDICATO EXEMPLO DOS EMPREGADOS \| laboral/);
-    await page.evaluate(() => document.querySelector('#dlg-cct').close());
-    // Ignorar: deixa de ser novo (gravado em med_config)
-    await box.locator('[data-med-ign="XX000444/2026"]').click();
-    await page.waitForFunction(() => document.querySelectorAll('#cv-med .med-novo').length === 1, null, { timeout: 5000 });
-    assert.deepEqual(await page.evaluate(() => window.__db.ler('med_config/cfg').ignorar), ['XX000444/2026']);
+    // o piso sugerido pelo texto: a pessoa confere o trecho e usa
+    await page.locator('#cv-nova .cvs-sec .cvs-conv[data-cv-abrir="' + cct.id + '"]').first().click();
+    await page.waitForSelector('#cv-painel:not([hidden]) .cvs-sug', { timeout: 5000 });
+    assert.match(await page.textContent('#cv-painel'), /Sugerido pelo texto[\s\S]*Piso: R\$ 1\.000,00[\s\S]*PISO SALARIAL[\s\S]*Piso de R\$ 1\.000,00/);
+    assert.match(await page.textContent('#cv-painel'), /Mediador/);
+    if (CAP) await page.screenshot({ path: path.join(CAP, 'hub350-sugestao-claro.png') });
+    await page.click('#cv-painel [data-cvs-usar="' + cct.id + '|pisos"]');
+    await page.waitForFunction((id) => ((window.__db.ler('dp_config/ccts').itens.find(c => c.id === id) || {}).pisos || []).some(p => p.valor === '1.000,00'), cct.id, { timeout: 5000 });
+    await page.waitForFunction(() => !document.querySelector('#cv-painel .cvs-sug'), null, { timeout: 5000 });
+    await page.click('#cv-painel [data-cv-fechar]');
+    // Textos: a busca em todas as cláusulas
+    await page.click('#cv-abas [data-cv-aba-mod="textos"]');
+    await page.fill('#cvs-txt-q', 'piso salarial');
+    await page.waitForFunction(() => document.querySelectorAll('#cv-nova .cvs-res li').length === 1, null, { timeout: 5000 });
+    assert.match(await page.textContent('#cv-nova .cvs-res'), /PISO SALARIAL[\s\S]*Piso de R\$ 1\.000,00/);
+    assert.ok(await page.$('#cv-nova .cvs-res mark'), 'o termo aparece marcado');
+    // Sindicatos: o cadastro de sempre e quem está sem CNPJ
+    await page.click('#cv-abas [data-cv-aba-mod="sindicatos"]');
+    await page.waitForSelector('#cv-cad:not([hidden]) #cvs-semcnpj:not([hidden])');
+    assert.match(await page.textContent('#cvs-semcnpj'), /sindicato\(s\) em uso sem CNPJ[\s\S]*902[\s\S]*SINDICATO SEM CNPJ EXEMPLO/);
+    // Empresas de novo: o piso conferido aparece
+    await page.click('#cv-abas [data-cv-aba-mod="empresas"]');
+    await page.waitForFunction(() => /R\$ 1\.000,00/.test(document.querySelector('#cv-nova').textContent), null, { timeout: 5000 });
+    // excluir uma convenção que veio do Mediador: ela não volta sozinha
+    await page.evaluate(() => window.__hubApi.api('dp').irPara('sindicatos'));
+    await page.click('#cv-abas [data-cv-aba-mod="convencoes"]');
+    await page.evaluate((id) => { const b = document.createElement('button'); b.dataset.cvAbrir = id; document.querySelector('#cv-main').appendChild(b); b.click(); b.remove(); }, ad.id);
+    await page.click('#cv-painel [data-cv-editar]');
+    await page.click('#btn-cct-excluir');
+    await page.click('#ask-actions .btn-danger');
+    await page.waitForFunction((id) => !window.__db.ler('dp_config/ccts').itens.some(c => c.id === id), ad.id, { timeout: 5000 });
+    await page.waitForFunction(() => ((window.__db.ler('med_config/cfg') || {}).ignorar || []).includes('XX000444/2026'), null, { timeout: 5000 });
+    await page.waitForTimeout(1500);
+    assert.ok(!(await page.evaluate(() => window.__db.ler('dp_config/ccts').itens.some(c => c.registro === 'XX000444/2026'))), 'o aditivo excluído não volta');
+    await page.click('#cv-abas [data-cv-aba-mod="novidades"]');
     // Buscar no Mediador: a extensão recebe os CNPJs dos sindicatos
     await box.locator('[data-med-buscar]').click();
     await page.waitForFunction(() => window.__medPed.some((p) => p.acao === 'mediador'), null, { timeout: 5000 });

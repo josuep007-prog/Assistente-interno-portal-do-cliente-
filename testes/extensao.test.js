@@ -4285,6 +4285,53 @@ test('Gestta (0.93.0): só as ações aprovadas, com o endereço, o método e os
   assert.ok(OCG.pedidoAcao({ acao: 'impedir', id: T }).erro); assert.ok(OCG.pedidoAcao({ acao: 'comentar', id: T, texto: ' ' }).erro);
   assert.ok(OCG.pedidoAcao({ acao: 'etapa', id: T, etapa: 'x' }).erro); assert.ok(OCG.pedidoAcao({ acao: 'concluir', id: 'x' }).erro); assert.ok(OCG.pedidoAcao({ acao: 'excluir', id: T }).erro);
 });
+/* ---------- Gestta (0.97.0): reenviar e pasta do template, mapeados em 12/11/2026 ---------- */
+test('Gestta (0.97.0): reenviar e pôr a pasta num template só com a forma do mapeamento; tirar a pasta e a lixeira continuam recusadas', () => {
+  const E = OCG.escritaPermitida, A = 'https://api.gestta.com.br', T = '5f1e2d3c4b5a69788796a5b4', C = '6a5b4c3d2e1f00112233aabb';
+  const it = { usuario: T, cliente: C, tarefa: T, arquivo: C };
+  const r = OCG.pedidoAcao({ acao: 'reenviar', itens: [it, it] });
+  assert.equal(r.metodo, 'POST'); assert.equal(new URL(r.url).pathname, '/es/file/onvio/resend');
+  assert.deepEqual(plano(r.corpo), [{ company_user: T, customer: C, customer_task: T, customer_task_file: C }, { company_user: T, customer: C, customer_task: T, customer_task_file: C }]);
+  assert.equal(E(r.metodo, r.url, r.corpo).ok, true);
+  assert.ok(OCG.pedidoAcao({ acao: 'reenviar', itens: [] }).erro);
+  assert.ok(OCG.pedidoAcao({ acao: 'reenviar', itens: Array(51).fill(it) }).erro, 'no máximo 50 por vez');
+  assert.ok(OCG.pedidoAcao({ acao: 'reenviar', itens: [{ usuario: T, cliente: C, tarefa: T }] }).erro, 'sem os quatro ids não monta');
+  const pz = { customer_id: C, id: 'abc123', path: ['Pessoal', 'Folha'], pathName: ['Pessoal', 'Folha'] };
+  const pa = OCG.pedidoAcao({ acao: 'pasta', template: T, pasta: pz });
+  assert.equal(pa.metodo, 'PATCH'); assert.equal(new URL(pa.url).pathname, '/admin/company/document/integration/documents/batch');
+  assert.equal(E(pa.metodo, pa.url, pa.corpo).ok, true);
+  const tp = OCG.pedidoAcao({ acao: 'templateSalvar', template: T, bypass: false, nome: 'Folha', prazo: true });
+  assert.equal(tp.metodo, 'PUT'); assert.equal(new URL(tp.url).pathname, '/admin/company/document/' + T);
+  assert.deepEqual(plano(tp.corpo), { bypass: false, name: 'Folha', send_documents_due_date: true });
+  assert.equal(E(tp.metodo, tp.url, tp.corpo).ok, true);
+  const R = A + '/es/file/onvio/resend', B = A + '/admin/company/document/integration/documents/batch';
+  const nao = [
+    ['POST', R, []], ['POST', R, Array(51).fill(r.corpo[0])], ['POST', R, [Object.assign({}, r.corpo[0], { extra: 1 })]], ['POST', R, [{ company_user: T, customer: C, customer_task: T, customer_task_file: 'x' }]], ['POST', R, r.corpo[0]],
+    ['DELETE', A + '/es/file/onvio/' + T, {}], ['DELETE', A + '/admin/company/document/integration/documents/abc123', {}], ['DELETE', A + '/admin/company/document/' + T, {}],
+    ['PATCH', B, Object.assign({}, pa.corpo, { company_document_ids: [T, C] })], ['PATCH', B, Object.assign({}, pa.corpo, { extra: 1 })], ['PATCH', B, Object.assign({}, pa.corpo, { path: [] })],
+    ['PATCH', B, Object.assign({}, pa.corpo, { pathName: ['Pessoal'] })], ['PATCH', B, Object.assign({}, pa.corpo, { customer_id: 'x' })], ['PATCH', B, Object.assign({}, pa.corpo, { id: 'a b' })],
+    ['PUT', A + '/admin/company/document/' + T, { bypass: false, name: 'x', send_documents_due_date: true, automation_type: 'X' }], ['PUT', A + '/admin/company/document/' + T, { bypass: 'nao', name: 'x', send_documents_due_date: true }],
+    ['POST', A + '/admin/company/document', { bypass: false, name: 'x', send_documents_due_date: false }]
+  ];
+  for (const [m, u, c] of nao) assert.equal(E(m, u, c).ok, false, 'recusa: ' + m + ' ' + u + ' ' + JSON.stringify(c).slice(0, 80));
+});
+test('Gestta (0.98.0): tirar da lista de erros (lixeira) só com uma lista de ids da fila; a ação direta pela tela não passa', () => {
+  const E = OCG.escritaPermitida, A = 'https://api.gestta.com.br', T = '5f1e2d3c4b5a69788796a5b4', C = '6a5b4c3d2e1f00112233aabb';
+  const p = OCG.pedidoAcao({ acao: 'tirarDaLista', ids: [T, C, T] });
+  assert.equal(p.metodo, 'PATCH'); assert.equal(new URL(p.url).pathname, '/es/file/onvio/remove/batch'); assert.deepEqual(plano(p.corpo), [T, C]);
+  assert.equal(E(p.metodo, p.url, p.corpo).ok, true);
+  assert.ok(OCG.pedidoAcao({ acao: 'tirarDaLista', ids: [] }).erro); assert.ok(OCG.pedidoAcao({ acao: 'tirarDaLista', ids: ['x'] }).erro);
+  assert.ok(OCG.pedidoAcao({ acao: 'tirarDaLista', ids: Array.from({ length: 51 }, (_, i) => T.slice(0, 22) + String(i).padStart(2, '0')) }).erro);
+  const R = A + '/es/file/onvio/remove/batch';
+  for (const [m, u, c] of [['PATCH', R, []], ['PATCH', R, [T, T]], ['PATCH', R, [{ id: T }]], ['PATCH', R, { ids: [T] }], ['POST', R, [T]], ['DELETE', A + '/es/file/onvio/' + T, {}], ['PATCH', R + '?x=1', [T]]])
+    assert.equal(E(m, u, c).ok, false, 'recusa: ' + m + ' ' + u + ' ' + JSON.stringify(c));
+  // quem pode sair da lista: só os sem pasta de template sem pasta e sem parecido que vá ao portal
+  const tpl = (id, name, pasta) => ({ _id: id, name, documents_integration: pasta ? { pathName: [pasta] } : { pathName: [] } });
+  const env = (id, tid, tn, erro) => ({ _id: id, error: erro, customer_task_file: { company_document: { _id: tid, name: tn } } });
+  const a = OCG.enviosPortal([env('a1', 't2', 'Folha de Pagamento Filial', 'NO_FOLDER_CONFIGURED'), env('a2', 't3', 'Recibo Interno', 'NO_FOLDER_CONFIGURED'), env('a3', 't1', 'Folha de Pagamento', 'UPLOAD_ERROR')],
+    [tpl('t1', 'Folha de Pagamento', 'Pessoal'), tpl('t2', 'Folha de Pagamento Filial', ''), tpl('t3', 'Recibo Interno', '')]);
+  assert.deepEqual(plano(a.semPasta.filter(g => g.classe === 'naoVai').flatMap(g => g.itens.map(i => i.id))), ['a2']);
+});
 test('Gestta (0.93.0): o detalhe traz o id das etapas e dos documentos e se o documento tem arquivo (nunca o arquivo); depois da ação sai só o resumo', () => {
   const det = OCG.limpar('tarefaDetalhe', { _id: 't1', customer_task_steps: [{ _id: 's1', name: 'Conferir', order: 1, done: true, created_at: 'x' }],
     company_documents: [{ _id: 'd1', name: 'Recibo', has_documents_integration: true, file: { name: 'segredo.pdf', url: 'https://x' } }, { _id: 'd2', name: 'Guia' }] });
@@ -4391,4 +4438,32 @@ test('Mediador (0.95.1): a rodada semanal espera a semana e, depois de uma busca
   assert.equal(OCM.semanalDevida(cfg, { estado: 'erro', iniciouEm: h(30) }, agora), true, 'falhou há 30 h: tenta de novo');
   assert.equal(OCM.semanalDevida(cfg, { estado: 'buscando', pulso: agora - 60e3 }, agora), false, 'já buscando');
   assert.equal(OCM.semanalDevida(cfg, { estado: 'parcial', iniciouEm: h(6) }, agora), true, 'parcial não segura (a última busca completa vale)');
+});
+
+test('Gestta (0.96.0) · Envios ao portal: erro de envio para reenviar, sem pasta por template com o "deveria ir" pelo padrão já configurado, e o risco sem erro', () => {
+  const tpl = (id, name, pasta) => ({ _id: id, name, valid: true, documents_integration: { pathName: pasta ? pasta.split(' › ') : [] } });
+  const templates = [tpl('t1', 'Folha de Pagamento', 'Pessoal › Folha'), tpl('t2', 'Folha de Pagamento Filial', ''), tpl('t3', 'Recibo de Entrega Interno', ''),
+    tpl('t4', 'Guia FGTS', 'Pessoal › Guias'), tpl('t5', 'Guia FGTS Rescisório', ''), tpl('t6', 'Guia DAS', 'Fiscal › Guias'), tpl('t7', 'Guia INSS', ''), tpl('t8', 'Extrato Mensal', '')];
+  const env = (id, tid, tnome, erro, extra) => Object.assign({ _id: id, status: 'ERROR', error: erro, retry_count: 2, created_at: '2026-11-01T10:00:00Z', updated_at: '2026-11-10T10:00:00Z',
+    customer_task: { _id: 'k' + id, name: 'Tarefa ' + id, customer: { name: 'CLIENTE FICTICIO ' + id, cnpj: '00.000.000/0001-0' + id.slice(-1) }, company_department: { name: 'Pessoal' }, owner: { name: 'Analista' }, _competence_date: '2026-10-01' },
+    customer_task_file: { company_document: { _id: tid, name: tnome }, file_name: 'arquivo-' + id + '.pdf' } }, extra || {});
+  const envios = [env('e1', 't2', 'Folha de Pagamento Filial', 'NO_FOLDER_CONFIGURED'), env('e2', 't2', 'Folha de Pagamento Filial', 'NO_FOLDER_CONFIGURED'),
+    env('e3', 't3', 'Recibo de Entrega Interno', 'NO_FOLDER_CONFIGURED'), env('e4', 't1', 'Folha de Pagamento', 'UPLOAD_ERROR', { error_detail: 'falha ao enviar' }),
+    env('e5', 't4', 'Guia FGTS', 'NO_FOLDER_CONFIGURED')];      // e5: o template já ganhou pasta depois do erro: só falta reenviar
+  const J = (x) => JSON.parse(JSON.stringify(x)), A = J(OCG.enviosPortal(envios, templates));
+  assert.deepEqual(A.reenviar.map(x => [x.id, x.pastaJa]), [['e5', true], ['e4', false]], 'primeiro os que já têm pasta, depois os erros de envio');
+  assert.equal(A.reenviar[1].erroTexto, 'UPLOAD_ERROR'); assert.equal(A.reenviar[1].detalhe, 'falha ao enviar'); assert.equal(A.reenviar[0].pasta, 'Pessoal › Guias');
+  assert.deepEqual(A.semPasta.map(g => [g.template, g.itens.length, g.classe]), [['Folha de Pagamento Filial', 2, 'deve'], ['Recibo de Entrega Interno', 1, 'naoVai']]);
+  assert.match(A.semPasta[0].motivo, /Parecido com “Folha de Pagamento”, que vai para Pessoal › Folha/);
+  assert.equal(A.semPasta[0].nClientes, 2);
+  // risco: sem pasta, sem erro agora, parecido com um que vai (Guia INSS não é parecido com Guia FGTS nem com Guia DAS; Extrato Mensal não tem par)
+  assert.deepEqual(A.risco.map(r => [r.template, r.parecido.nome]), [['Guia FGTS Rescisório', 'Guia FGTS']]);
+  assert.deepEqual([A.totais.erros, A.totais.reenviar, A.totais.pastaJa, A.totais.semPasta, A.totais.deve, A.totais.risco], [5, 2, 1, 3, 1, 1]);
+  // a semelhança não junta siglas diferentes nem um nome de uma palavra só
+  assert.ok(OCG.semelhanca('Guia FGTS', 'Guia DAS') < 0.6);
+  assert.ok(OCG.semelhanca('Guia', 'Guia FGTS') < 0.6);
+  // a leitura da fila para a tela continua só GET e só na fila do portal
+  const p = OCG.PEDIDOS.filaOnvioTela({ limit: 50, skip: 100 });
+  assert.equal(p.metodo, 'GET'); assert.ok(OCG.leituraPermitida(p.metodo, p.url, null).ok);
+  assert.match(p.url, /\/es\/file\/onvio\?.*status=ERROR/);
 });
