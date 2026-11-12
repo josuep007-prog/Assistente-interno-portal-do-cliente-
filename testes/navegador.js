@@ -3165,10 +3165,10 @@ await passo('Gestta · Tarefas: no Meu dia, Enter abre a tarefa escolhida no Ges
 await passo('Gestta · Envios ao portal (0.96.0): erro para reenviar, sem pasta por template com o "deveria ir" pelo padrão do Gestta e o risco sem erro; nada é escrito', async () => {
   const T1 = 'e00000000000000000000001', T2 = 'e00000000000000000000002', T3 = 'e00000000000000000000003';
   const tpl = (id, name, pasta) => ({ _id: id, name, valid: true, documents_integration: pasta ? { customer_id: 'c00000000000000000000001', id: 'pasta' + id, path: pasta.split(' › '), pathName: pasta.split(' › ') } : { pathName: [] } });
-  const env = (id, tid, tnome, erro) => ({ _id: id, company_user: { _id: 'a00000000000000000000001' }, customer: { _id: 'b0000000000000000000000' + id.slice(-1) }, status: 'ERROR', error: erro, retry_count: 1, created_at: new Date(Date.now() - 3 * 864e5).toISOString(), updated_at: new Date().toISOString(),
+  const env = (id, tid, tnome, erro) => ({ _id: 'c0000000000000000000000' + id.slice(-1), company_user: { _id: 'a00000000000000000000001' }, customer: { _id: 'b0000000000000000000000' + id.slice(-1) }, status: 'ERROR', error: erro, retry_count: 1, created_at: new Date(Date.now() - 3 * 864e5).toISOString(), updated_at: new Date().toISOString(),
     customer_task: { _id: 'f0000000000000000000000' + id.slice(-1), name: 'FOLHA MENSAL', customer: { name: 'CLIENTE FICTICIO ' + id, cnpj: '00.000.000/0001-0' + id.slice(-1) }, company_department: { name: 'Pessoal' }, owner: { name: 'Eu Mesmo' }, _competence_date: '2026-10-01' },
     customer_task_file: { _id: 'd0000000000000000000000' + id.slice(-1), company_document: { _id: tid, name: tnome }, file_name: 'arquivo-' + id + '.pdf' } });
-  const resp = Object.assign(gtResp(true, gtTarefas()), { gesttaAcao: { ok: true, resumo: { success: 1, failed: 0, blocked: 0 } }, gesttaPasta: { ok: true, pasta: 'Pessoal › Folha' }, gesttaEnvios: { ok: true, lidoEm: new Date().toISOString(), total: 4, cortado: false,
+  const resp = Object.assign(gtResp(true, gtTarefas()), { gesttaAcao: { ok: true, resumo: { success: 1, failed: 0, blocked: 0 } }, gesttaPasta: { ok: true, pasta: 'Pessoal › Folha' }, gesttaTirar: { ok: true, success: 1, failed: 0, ignorados: 0 }, gesttaEnvios: { ok: true, lidoEm: new Date().toISOString(), total: 4, cortado: false,
     envios: [env('e1', T2, 'Folha de Pagamento Filial', 'NO_FOLDER_CONFIGURED'), env('e2', T2, 'Folha de Pagamento Filial', 'NO_FOLDER_CONFIGURED'), env('e3', T3, 'Recibo Interno', 'NO_FOLDER_CONFIGURED'), env('e4', T1, 'Folha de Pagamento', 'UPLOAD_ERROR')],
     templates: [tpl(T1, 'Folha de Pagamento', 'Pessoal › Folha'), tpl(T2, 'Folha de Pagamento Filial', ''), tpl(T3, 'Recibo Interno', ''), tpl('e00000000000000000000004', 'Guia FGTS', 'Pessoal › Guias'), tpl('e00000000000000000000005', 'Guia FGTS Rescisório', '')] } });
   for (const [estilo, tema] of [['simples', 'light'], ['atual', 'dark']]) {
@@ -3197,7 +3197,20 @@ await passo('Gestta · Envios ao portal (0.96.0): erro para reenviar, sem pasta 
     // os que não vão: só pelo número do topo, sem Reenviar nem Usar a pasta
     await fr.click('[data-gte-f="naoVai"]');
     assert.match(await fr.textContent('.gte-tpl.nao'), /sai da lista de erros[\s\S]*Recibo Interno/);
-    assert.ok(!(await fr.$('.gte-tpl.nao [data-gte-pasta]')) && !(await fr.$('.gte-tpl.nao [data-gte-reenviar]')), 'sem ação para quem não vai');
+    assert.ok(!(await fr.$('.gte-tpl.nao [data-gte-pasta]')) && !(await fr.$('.gte-tpl.nao [data-gte-reenviar]')), 'nem pasta nem reenviar para quem não vai');
+    assert.ok(await fr.$('.gte-tpl.nao [data-gte-tirar]') && await fr.$('[data-gte-tirar-todos]'), 'tirar da lista, por template e todos');
+    if (estilo === 'simples') {
+      // 0.98.0: tirar da lista pede confirmação e manda só os ids da fila dos que não vão (o service worker confere de novo)
+      await fr.click('[data-gte-tirar-todos]');
+      await fr.waitForSelector('.gte-conf');
+      assert.match(await fr.textContent('.gte-conf'), /Tirar 1 documento da lista de erros do portal\?[\s\S]*Recibo Interno/);
+      if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/gestta-envios-tirar.png' });
+      assert.ok(!(await fr.evaluate(() => (window.__msgs || []).some(m => m.cmd === 'gesttaTirar'))), 'nada sai antes de confirmar');
+      await fr.click('[data-gte-confirmar]');
+      await fr.waitForFunction(() => (window.__msgs || []).some(m => m.cmd === 'gesttaTirar'));
+      assert.deepEqual(await fr.evaluate(() => window.__msgs.find(m => m.cmd === 'gesttaTirar').ids), ['c00000000000000000000003']);
+      await fr.waitForSelector('.gte-topo');
+    }
     await fr.click('[data-gte-f="naoVai"]');
     // nada sai sem confirmar
     assert.ok(!(await fr.evaluate(() => (window.__msgs || []).some(m => m.cmd === 'gesttaAcao' || m.cmd === 'gesttaPasta'))), 'nada é escrito sem confirmar');
