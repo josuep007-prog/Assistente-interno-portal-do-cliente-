@@ -3,6 +3,7 @@
  * Cada tarefa do mês é uma etapa: na trilha, na ordem da meta, com o traço cheio até onde está concluído; na linha do
  * tempo, no dia da meta, com a linha do hoje. O detalhe é lido na hora (cmd gesttaTarefa) e nunca guardado. */
 import { $, $$, esc, num, toast } from './util.js';
+import { concluirComEtapas, etapasAbertas, itensSemAnexo } from './gestta-concluir.js';
 const G = window.OCG;
 const enviar = msg => new Promise(res => { try { chrome.runtime.sendMessage(msg, r => res(r || { ok: false, erro: 'sem resposta' })); } catch (e) { res({ ok: false, erro: String(e.message || e) }); } });
 const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
@@ -154,7 +155,8 @@ async function confirmar() {
   if (c.campo) msg[c.campo] = campo;
   try { if (c.arquivo) msg.arquivo = { nome: c.arquivo.name, tipo: c.arquivo.type || '', base64: await lerBase64(c.arquivo) }; }
   catch (e) { msg = null; }
-  const r = msg ? await enviar(msg) : { ok: false, erro: 'Não consegui ler o arquivo escolhido.' };
+  // 0.103.0: concluir marca antes as etapas que faltam (concluirComEtapas), com o detalhe já lido
+  const r = !msg ? { ok: false, erro: 'Não consegui ler o arquivo escolhido.' } : c.msg.acao === 'concluir' ? await concluirComEtapas(enviar, t._id, P.dados) : await enviar(msg);
   if (!P || !P.lista[P.i] || P.lista[P.i]._id !== t._id) { if (!(r && r.ok)) toast((r && r.erro) || 'O Gestta não respondeu.', true); else { toast(c.feito); try { window.dispatchEvent(new CustomEvent('gt-tarefa-mudou', { detail: { id: t._id } })); } catch (e) {} } return; }
   P.agindo = false; P.conf = null;
   if (r && r.ok) {
@@ -240,7 +242,7 @@ function desenharPainel() {
   // 0.87.0: o detalhe lido na hora vem em maiúsculas como o Gestta guarda; mostra no mesmo jeito legível da lista
   t.name = G.nomeLegivel(t.name || ''); t.customer.name = G.nomeLegivel(t.customer.name || '');
   const prox = P.lista[P.i + 1], cnpj = t.customer.cnpj || t.customer.document || '';
-  const copiar = (v, rot) => v ? '<button type="button" class="gp-copiar" data-copiar="' + esc(v) + '" title="Copiar ' + esc(rot) + '"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg>' + esc(rot === 'o código' ? v : 'CNPJ') + '</button>' : '';
+  const copiar = (v, rot) => v ? '<button type="button" class="gp-copiar" data-copiar="' + esc(v) + '" title="Copiar ' + esc(rot) + '"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg>' + esc(rot === 'o código' ? v : G.cnpjFormatado(v)) + '</button>' : '';
   const g = G.grupoTarefa(t, hoje), est = { feita: 'feita', multa: 'multa', atrasada: 'atrasada', impedimento: 'impedimento', hoje: 'hoje' }[g] || 'afazer';
   const pill = { feita: 'pill-ok', multa: 'pill-late', atrasada: 'pill-late', impedimento: 'pill-today', hoje: 'pill-today' }[est] || '';
   const campo = (k, v) => v ? '<div><dt>' + esc(k) + '</dt><dd>' + esc(v) + '</dd></div>' : '';
@@ -264,7 +266,8 @@ function desenharPainel() {
       '<section class="gp-sec gp-com"><h3><label for="gp-com">Comentário interno</label></h3><textarea id="gp-com" rows="2" maxlength="4000" placeholder="Escreva um comentário para a equipe (o cliente não vê)">' + esc(P.rasc.com) + '</textarea><div class="gp-com-pe"><button type="button" class="btn btn-sm" id="gp-comentar"' + (P.rasc.com.trim() ? '' : ' disabled') + '>Comentar</button></div></section>';
   // 0.93.0: o que dá para fazer com a tarefa, pela situação dela no Gestta
   const st = String(d.status || base.status || '').toUpperCase();
-  const acoesTarefa = P.carregando || P.erro ? '' : '<div class="gp-acoes" role="group" aria-label="Ações na tarefa">' +
+  const desc = st === 'IGNORED' || st === 'DISCONSIDERED';          // 0.103.0: desconsiderada não tem ação pela extensão
+  const acoesTarefa = P.carregando || P.erro || desc ? '' : '<div class="gp-acoes" role="group" aria-label="Ações na tarefa">' +
     (st === 'DONE' ? '<button type="button" class="btn btn-sm" data-gp-acao="reabrir"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-undo"/></svg>Reabrir tarefa</button>'
       : st === 'IMPEDIMENT' ? '<button type="button" class="btn btn-sm btn-primary" data-gp-acao="liberar"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-check"/></svg>Retirar impedimento</button>'
       : '<button type="button" class="btn btn-sm btn-primary" data-gp-acao="concluir"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-check"/></svg>Concluir tarefa</button><button type="button" class="btn btn-sm" data-gp-acao="impedir"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-alert"/></svg>Registrar impedimento</button>') + '</div>';
@@ -273,7 +276,7 @@ function desenharPainel() {
   el.innerHTML = '<header class="gp-cab"><div class="gp-nav"><button type="button" class="icon-btn" id="gp-ant" aria-label="Tarefa anterior"' + (P.i ? '' : ' disabled') + '><svg class="ic"><use href="#i-chev-l"/></svg></button><span class="fraco">' + (P.i + 1) + ' de ' + P.lista.length + '</span><button type="button" class="icon-btn" id="gp-prox" aria-label="Próxima tarefa"' + (P.i < P.lista.length - 1 ? '' : ' disabled') + '><svg class="ic"><use href="#i-chev-r"/></svg></button>' +
       (prox ? '<span class="gp-prox-nome" title="' + esc('Próxima: ' + G.nomeLegivel(prox.name || 'Tarefa')) + '">Próxima: ' + esc(G.nomeLegivel(prox.name || 'Tarefa')) + '</span>' : '') + '</div>' +
       (P.alvo ? '' : '<button type="button" class="icon-btn" id="gp-fechar" aria-label="Fechar (Esc)"><svg class="ic"><use href="#i-x"/></svg></button>') + '</header>' +
-    '<div class="gp-corpo"><div class="gp-topo"><span class="pill ' + pill + '">' + esc(G.ESTADOS[est]) + '</span>' + (nPassos ? '<span class="gp-etapas-mini" title="Etapas da tarefa">' + fPassos + '/' + nPassos + ' etapas</span>' : '') + '</div>' +
+    '<div class="gp-corpo"><div class="gp-topo"><span class="pill ' + (desc ? '' : pill) + '">' + esc(desc ? 'Desconsiderada' : G.ESTADOS[est]) + '</span>' + (nPassos ? '<span class="gp-etapas-mini" title="Etapas da tarefa">' + fPassos + '/' + nPassos + ' etapas</span>' : '') + '</div>' +
       '<h2 class="gp-tit">' + esc(t.name || 'Tarefa') + '</h2><p class="gp-cli">' + esc(t.customer.name || '') + (t.customer.code || cnpj ? ' <span class="gp-copias">' + copiar(t.customer.code, 'o código') + copiar(cnpj, 'o CNPJ') + '</span>' : '') + '</p>' +
       acoesTarefa + confHtml() +
       '<dl class="gp-dl">' + campo('Meta', fmt(t.due_date) + ' · ' + G.prazoTexto(t, hoje)) + campo('Data legal', fmt(t.legal_date)) + campo('Competência', fmt(t.competence_date)) + campo('Setor', setor) + campo('Responsável', resp) + campo('Concluída em', fmt(t.conclusion_date)) + campo('Modelo', d.company_task && d.company_task.name) + '</dl>' +
@@ -295,8 +298,13 @@ function ligarAcoes(el, t, passos, docs) {
   const nomeT = '“' + (t.name || 'Tarefa') + '”';
   $$('[data-gp-acao]', el).forEach(b => b.onclick = () => {
     const a = b.dataset.gpAcao;
-    if (a === 'concluir') pedirConfirmacao({ msg: { acao: 'concluir' }, texto: 'Concluir a tarefa ' + nomeT + ' no Gestta?', botao: 'Concluir tarefa', feito: 'Tarefa concluída no Gestta.',
-      extra: (passos.some(p => !p.done) ? ['Ainda há etapas não marcadas.'] : []).concat(docs.some(x => !x.temArquivo) ? ['Ainda há documento sem arquivo.'] : []) });
+    if (a === 'concluir') {
+      const abertas = etapasAbertas(P.dados), semAnexo = itensSemAnexo(P.dados);
+      pedirConfirmacao({ msg: { acao: 'concluir' }, texto: 'Concluir a tarefa ' + nomeT + ' no Gestta?', botao: abertas.length ? 'Marcar as etapas e concluir' : 'Concluir tarefa',
+        feito: abertas.length ? 'Etapas marcadas e tarefa concluída no Gestta.' : 'Tarefa concluída no Gestta.',
+        extra: (abertas.length ? ['Antes, marca ' + (abertas.length === 1 ? 'a etapa' : 'as ' + abertas.length + ' etapas') + ' que falta' + (abertas.length === 1 ? '' : 'm') + ': ' + abertas.map(p => p.name || 'Etapa').join(', ') + '.'] : [])
+          .concat(semAnexo.length ? [(semAnexo.length === 1 ? '1 item sem anexo fica' : semAnexo.length + ' itens sem anexo ficam') + ' como está' + (semAnexo.length === 1 ? '' : 'ão') + ': desconsiderar o item pela extensão chega depois do mapeamento.'] : []) });
+    }
     else if (a === 'reabrir') pedirConfirmacao({ msg: { acao: 'reabrir' }, texto: 'Reabrir a tarefa ' + nomeT + '? Ela volta a ficar aberta no Gestta.', botao: 'Reabrir tarefa', feito: 'Tarefa reaberta no Gestta.', perigo: true });
     else if (a === 'impedir') pedirConfirmacao({ msg: { acao: 'impedir' }, campo: 'motivo', rotCampo: 'Motivo do impedimento', texto: 'Registrar um impedimento na tarefa ' + nomeT + '?', botao: 'Registrar impedimento', feito: 'Impedimento registrado no Gestta.' });
     else if (a === 'liberar') pedirConfirmacao({ msg: { acao: 'liberar' }, texto: 'Retirar o impedimento da tarefa ' + nomeT + '? Ela volta a ficar aberta.', botao: 'Retirar impedimento', feito: 'Impedimento retirado: a tarefa voltou a ficar aberta.' });
