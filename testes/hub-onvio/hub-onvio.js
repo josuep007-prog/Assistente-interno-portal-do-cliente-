@@ -265,7 +265,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
 
   const fr = page.frameLocator('#fontes-frame');
   // passos posteriores (Carteira, Painel…) trocam de módulo: quem usa o quadro da Entrada de dados a reabre antes
-  const abrirFontes = async () => { await page.evaluate(() => document.querySelectorAll('dialog[open]').forEach((d) => d.close())); await page.evaluate(() => window.__hubApi.abrirModulo('fontes')); await page.waitForSelector('#fontes-frame', { state: 'visible' }); await fr.locator('#secCadastro, #cadro').first().waitFor({ timeout: 10000 }).catch(() => {}); };
+  const abrirFontes = async () => { await page.evaluate(() => document.querySelectorAll('dialog[open]').forEach((d) => d.close())); await page.evaluate(() => window.__hubApi.abrirModulo('fontes')); await page.waitForSelector('#fontes-frame', { state: 'visible' }); await fr.locator('[data-aba-btn="decidir"]').click().catch(() => {}); await fr.locator('[data-dec="onvio"]').click({ timeout: 3000 }).catch(() => {}); await fr.locator('#secCadastro, #cadro').first().waitFor({ timeout: 10000 }).catch(() => {}); };      // na aba Para decidir, na parte do Onvio (Hub 318)
   const aplicarNoQuadro = async (linha, botao) => { await fr.locator(`#cadro tr[data-emp]:has-text("${linha}") ${botao}`).click(); await fr.locator('#dlgConf[open]').waitFor(); };
 
   await passo('Funcionários do DP: cartões por empresa (sem lista completa), busca pelo nome, só ativos, sem alertas, evolução e abrir a empresa', async () => {
@@ -1362,7 +1362,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     assert.ok(m.orion && m.orion.origem === 'onvio' && m.orion.situacao === 'ativa' && m.orion.apelido === 'ORION', 'cliente do Onvio na base');
     assert.deepEqual(m.orion.vinculos.dp, ['e-orion', 'e-orion-dup'], 'DP: a empresa com funcionários vem primeiro'); assert.deepEqual(m.orion.vinculos.ctb, ['c11222333000181']); assert.deepEqual(m.orion.vinculos.portal, ['orion-comercio-ltda']);
     assert.ok(m.so && m.so.origem === 'hub' && m.so.situacao === 'fora-do-onvio'); assert.equal(m.ct, null, 'ControlTax não entra');
-    assert.equal(m.nome, 'ORION | 0001-81');
+    assert.equal(m.nome, 'ORION Comercio | 0001-81');
     // nada dos módulos foi alterado
     assert.equal(await page.evaluate(() => window.__db.ler('empresas/orion-comercio-ltda').nome), 'ORION COMERCIO LTDA');
     assert.equal(await page.evaluate(() => Object.keys(window.__db.ler('ctb_emp/b0')).length), 2);
@@ -1411,6 +1411,8 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
   });
 
   await passo('Tema escuro e tela estreita: ficha e diferenças legíveis, sem rolagem horizontal', async () => {
+    await page.evaluate(() => document.querySelectorAll('dialog[open]').forEach((d) => d.close()));
+    await page.evaluate(() => window.__hubApi.abrirModulo('dp'));                              // o passo anterior termina noutro módulo
     await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
     await page.evaluate(() => window.__hubApi.api('dp').abrirEmpresa('e-orion', 'onvio'));
     await page.waitForSelector('#dp-section-onvio .ov-tab');
