@@ -12,7 +12,7 @@ const NUCLEO = fs.readFileSync(path.join(__dirname, '..', 'extensao', 'gestta.js
 const TOKEN = 'JWT eyJ-SEGREDO-GESTTA-789';
 const T = '5f1e2d3c4b5a69788796a5b4', S = '6a5b4c3d2e1f00112233aabb', D = '7b6c5d4e3f2a10213243bbcc';
 const SEGREDOS = [TOKEN, 'SEGREDO-GESTTA', 'EMPRESA SIGILO LTDA', '12.345.678/0001-90', 'fulana@exemplo.com', 'ESCRITORIO SIGILO', 'CIRCULAR_WRITE'];
-const CORS = { 'access-control-allow-origin': 'https://app.gestta.com.br', 'access-control-allow-headers': 'authorization,content-type,accept', 'access-control-allow-methods': 'GET,POST,PUT,OPTIONS' };
+const CORS = { 'access-control-allow-origin': 'https://app.gestta.com.br', 'access-control-allow-headers': 'authorization,content-type,accept', 'access-control-allow-methods': 'GET,POST,PUT,PATCH,OPTIONS' };
 // a resposta do Gestta traz a tarefa inteira, o cliente, o escritório e o usuário (como no mapeamento)
 const tarefa = (status, feita) => ({ _id: T, status, done_step: feita ? 1 : 0, total_step: 1, conclusion_date: status === 'DONE' ? '2026-11-11T15:00:00.000Z' : null,
   customer: { _id: D, name: 'EMPRESA SIGILO LTDA', cnpj: '12.345.678/0001-90' }, owner: { _id: S, name: 'Fulana', email: 'fulana@exemplo.com' },
@@ -33,6 +33,11 @@ const tarefa = (status, feita) => ({ _id: T, status, done_step: feita ? 1 : 0, t
     if (u.pathname.endsWith('/done')) { const c = JSON.parse(bruto); return json(tarefa('OPEN', c.done)); }
     if (u.pathname === '/es/task/' + T + '/status') { const c = JSON.parse(bruto); return c.status === 'DONE' && c.forcar403 ? json({ message: 'sem permissão' }, 403) : json(tarefa(c.status, true)); }
     if (u.pathname.endsWith('/history/comment')) return json({ _id: D, type: 'COMMENT', status: 'ADD', accomplished_by: { name: 'Fulana', email: 'fulana@exemplo.com', permissions: ['CIRCULAR_WRITE'] }, customer_task: tarefa('OPEN', true) }, 201);
+    // 0.97.0: envios ao portal (como no mapeamento de 12/11/2026)
+    if (u.pathname === '/es/file/onvio/resend') return json({ success: JSON.parse(bruto).length, failed: 0, blocked: 0, blocked_items: [] });
+    if (u.pathname === '/es/file/onvio/remove/batch') return json({ success: JSON.parse(bruto).length, failed: 0 });
+    if (u.pathname === '/admin/company/document/integration/documents/batch') return r.fulfill({ status: 200, headers: CORS, body: '' });
+    if (u.pathname === '/admin/company/document/' + D && req.method() === 'PUT') return json({ _id: D, name: 'TESTE MAPEAMENTO', bypass: false, send_documents_due_date: false, company: { name: 'ESCRITORIO SIGILO' }, created_by: { email: 'fulana@exemplo.com' }, documents_integration: { customer_id: S, id: 'abc123def456', path: ['Pessoal'], pathName: ['Pessoal'] } });
     if (u.pathname === '/es/upload/direct') return json({ company_document: { _id: D, name: 'Recibo' }, customer_task: tarefa('DONE', true) });
     return json({ message: 'não mapeado' }, 404);
   });
@@ -81,13 +86,47 @@ const tarefa = (status, feita) => ({ _id: T, status, done_step: feita ? 1 : 0, t
     assert.match(c.corpo, /name="file"; filename="recibo.pdf"\r\nContent-Type: application\/pdf\r\n\r\n%PDF-1.4 conteudo de teste/);
     assert.equal(r.tarefa.status, 'DONE', 'o Gestta pode concluir a tarefa ao receber o documento'); semSegredos(r);
   });
+  await passo('0.97.0 · reenviar: POST /es/file/onvio/resend com a lista dos quatro ids de cada documento, e volta só o resumo', async () => {
+    const it = { usuario: S, cliente: D, tarefa: T, arquivo: S };
+    const r = await agir({ acao: 'reenviar', itens: [it, it] });
+    assert.equal(r.ok, true, JSON.stringify(r));
+    assert.deepEqual([ultima().metodo, ultima().caminho, ultima().corpo], ['POST', '/es/file/onvio/resend', [{ company_user: S, customer: D, customer_task: T, customer_task_file: S }, { company_user: S, customer: D, customer_task: T, customer_task_file: S }]]);
+    assert.deepEqual(r.resumo, { success: 2, failed: 0, blocked: 0 });
+  });
+  await passo('0.97.0 · pasta: PATCH …/integration/documents/batch com um template, o cliente modelo, o id e o caminho; depois o Salvar do template (PUT com os mesmos valores)', async () => {
+    let r = await agir({ acao: 'pasta', template: D, pasta: { customer_id: S, id: 'abc123def456', path: ['Pessoal'], pathName: ['Pessoal'] } });
+    assert.equal(r.ok, true, JSON.stringify(r));
+    assert.deepEqual([ultima().metodo, ultima().caminho, ultima().corpo], ['PATCH', '/admin/company/document/integration/documents/batch', { company_document_ids: [D], customer_id: S, id: 'abc123def456', path: ['Pessoal'], pathName: ['Pessoal'] }]);
+    r = await agir({ acao: 'templateSalvar', template: D, nome: 'TESTE MAPEAMENTO', bypass: false, prazo: false });
+    assert.deepEqual([ultima().metodo, ultima().caminho, ultima().corpo], ['PUT', '/admin/company/document/' + D, { bypass: false, name: 'TESTE MAPEAMENTO', send_documents_due_date: false }]);
+    assert.deepEqual(r.template.documents_integration.pathName, ['Pessoal']);
+    semSegredos(r);
+  });
+  await passo('0.98.0 · tirar da lista (lixeira): PATCH /es/file/onvio/remove/batch com a lista de ids da fila, e volta só o resumo', async () => {
+    const r = await agir({ acao: 'tirarDaLista', ids: [S, D, S] });
+    assert.equal(r.ok, true, JSON.stringify(r));
+    assert.deepEqual([ultima().metodo, ultima().caminho, ultima().corpo], ['PATCH', '/es/file/onvio/remove/batch', [S, D]]);
+    assert.deepEqual(r.resumo, { success: 2, failed: 0 });
+  });
   await passo('pedido adulterado não sai: outro endereço, DELETE, comentário externo, status fora da lista', async () => {
     const antes = chamadas.length;
     const ruins = [
       { metodo: 'DELETE', url: 'https://api.gestta.com.br/core/customer/task/' + T, corpo: {} },
       { metodo: 'PUT', url: 'https://api.gestta.com.br/es/task/' + T + '/status', corpo: { status: 'CANCELED' } },
       { metodo: 'POST', url: 'https://api.gestta.com.br/core/customer/task/' + T + '/history/comment', corpo: { message: 'x', external: true, mentions: [], cc_mentions: [], files: [] } },
-      { metodo: 'POST', url: 'https://api.gestta.com.br/core/customer/task/' + T + '/step', corpo: { name: 'x', order: '1' } }
+      { metodo: 'POST', url: 'https://api.gestta.com.br/core/customer/task/' + T + '/step', corpo: { name: 'x', order: '1' } },
+      // 0.97.0: a lixeira e o DELETE da pasta continuam fora; reenviar e pasta só com a forma exata
+      { metodo: 'DELETE', url: 'https://api.gestta.com.br/admin/company/document/integration/documents/abc', corpo: {} },
+      { metodo: 'POST', url: 'https://api.gestta.com.br/es/file/onvio/resend', corpo: [{ company_user: S, customer: D, customer_task: T, customer_task_file: S, extra: 1 }] },
+      { metodo: 'POST', url: 'https://api.gestta.com.br/es/file/onvio/resend', corpo: [] },
+      { metodo: 'PATCH', url: 'https://api.gestta.com.br/admin/company/document/integration/documents/batch', corpo: { company_document_ids: [D, T], customer_id: S, id: 'x', path: ['A'], pathName: ['A'] } },
+      { metodo: 'PUT', url: 'https://api.gestta.com.br/admin/company/document/' + D, corpo: { bypass: false, name: 'x', send_documents_due_date: false, automation_type: 'OUTRO' } },
+      // 0.98.0: a lixeira só com uma lista de ids da fila, sem repetidos; nunca DELETE na fila
+      { metodo: 'PATCH', url: 'https://api.gestta.com.br/es/file/onvio/remove/batch', corpo: [] },
+      { metodo: 'PATCH', url: 'https://api.gestta.com.br/es/file/onvio/remove/batch', corpo: [S, S] },
+      { metodo: 'PATCH', url: 'https://api.gestta.com.br/es/file/onvio/remove/batch', corpo: [{ id: S }] },
+      { metodo: 'PATCH', url: 'https://api.gestta.com.br/es/file/onvio/remove/batch', corpo: { ids: [S] } },
+      { metodo: 'DELETE', url: 'https://api.gestta.com.br/es/file/onvio/' + S, corpo: {} }
     ];
     for (const p of ruins) { const r = await page.evaluate((p) => self.OCG.agirNaPagina(p), p); assert.equal(r.ok, false); assert.ok(r.recusado, JSON.stringify(r)); }
     assert.equal(chamadas.length, antes, 'nenhuma chamada saiu');
@@ -100,7 +139,8 @@ const tarefa = (status, feita) => ({ _id: T, status, done_step: feita ? 1 : 0, t
   });
   await passo('nenhuma chamada levou querystring; só PUT e POST nos endereços mapeados', async () => {
     assert.ok(chamadas.every(c => !c.busca), 'querystring');
-    const ok = [/^PUT \/core\/customer\/task\/[0-9a-f]{24}\/step\/[0-9a-f]{24}\/done$/, /^PUT \/es\/task\/[0-9a-f]{24}\/status$/, /^POST \/core\/customer\/task\/[0-9a-f]{24}\/history\/comment$/, /^POST \/es\/upload\/direct$/];
+    const ok = [/^PUT \/core\/customer\/task\/[0-9a-f]{24}\/step\/[0-9a-f]{24}\/done$/, /^PUT \/es\/task\/[0-9a-f]{24}\/status$/, /^POST \/core\/customer\/task\/[0-9a-f]{24}\/history\/comment$/, /^POST \/es\/upload\/direct$/,
+      /^POST \/es\/file\/onvio\/resend$/, /^PATCH \/admin\/company\/document\/integration\/documents\/batch$/, /^PUT \/admin\/company\/document\/[0-9a-f]{24}$/, /^PATCH \/es\/file\/onvio\/remove\/batch$/];
     for (const c of chamadas) assert.ok(ok.some(re => re.test(c.metodo + ' ' + c.caminho)), c.metodo + ' ' + c.caminho);
   });
 

@@ -717,6 +717,25 @@ await passo('app · Hoje: sugestões em lote por tipo (Geral em um passo, Cadast
   assert.deepEqual(p.erros, []);
 });
 
+await passo('app · Solicitações (0.99.0): Concluir em lote as que estão com o cliente, com lista para desmarcar e uma confirmação', async () => {
+  const base = { nivel: 0, grav: 0, motivos: [], resp: 'Ana Teste', mine: true, lado: 'cli', parado: 20, created: agoraIso(40), last: agoraIso(20), apelido: 'ZETA', cliente: 'ZETA' };
+  const g = (n, d) => Object.assign({}, base, { k: 'geral:g' + n, type: 'geral', typeLabel: 'Geral', id: 'g' + n, num: 900 + n, code: 4, status: 'Respondido', detalhe: d });
+  const itens = [g(1, 'Docs A'), g(2, 'Docs B'), g(3, 'Docs C')];
+  const p = await abrirApp('#/fila?escopo=resolvidas', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens, resolvidas: [] }), settings: { __v: 2, desfazerSeg: 0 } });
+  await p.evaluate(() => { window.__respostas = Object.assign(window.__respostas || {}, { acao: { ok: true, acao: 'tramite', anexos: 0 } }); });
+  await p.waitForSelector('#f-concluir-lote:not([hidden])');
+  assert.equal((await p.textContent('#f-concluir-lote')).trim(), 'Concluir (3)');
+  await p.click('#f-concluir-lote');
+  await p.waitForSelector('#dlg-lote [data-lt-k]');
+  assert.match(await p.textContent('#dlg-lote .lote-resumo'), /Como não tivemos retorno do cliente/);
+  assert.equal(await p.evaluate(() => (window.__msgs || []).some(m => m.cmd === 'acao')), false, 'abrir a lista não envia nada');
+  await p.uncheck('#dlg-lote [data-lt-k="geral:g2"]');
+  await p.click('#lt-ir');
+  await p.waitForFunction(() => document.querySelectorAll('#dlg-lote .lote-st.ok').length === 2, null, { timeout: 8000 });
+  assert.deepEqual(await p.evaluate(() => window.__msgs.filter(m => m.cmd === 'acao').map(m => [m.num, m.situacao])), [['901', '5'], ['903', '5']]);
+  assert.deepEqual(p.erros, []);
+});
+
 await passo('app · Hoje: lote com erro mostra qual falhou e deixa as outras seguirem', async () => {
   const base = { nivel: 0, grav: 0, motivos: [], resp: 'Ana Teste', mine: true, lado: 'cli', parado: 20, created: agoraIso(40), last: agoraIso(20), apelido: 'ZETA', cliente: 'ZETA' };
   const g = (n, d) => Object.assign({}, base, { k: 'geral:g' + n, type: 'geral', typeLabel: 'Geral', id: 'g' + n, num: 900 + n, code: 4, status: 'Respondido', detalhe: d });
@@ -3160,6 +3179,147 @@ await passo('Gestta · Tarefas: no Meu dia, Enter abre a tarefa escolhida no Ges
     await p.context().close();
   }
   assert.deepEqual(ruins.slice(0, 12), [], 'texto com pouco contraste (' + ruins.length + ')');
+});
+
+await passo('Gestta · Lista (0.99.0): marcar tarefas e agir em lote (concluir, impedimento com motivo, comentário), só onde a ação cabe, com uma confirmação', async () => {
+  for (const estilo of ['simples', 'atual']) {
+    const { p, fr } = await abrirGestta(gtResp(true), { estilo });
+    const acoes = () => fr.evaluate(() => (window.__msgs || []).filter(m => m.cmd === 'gesttaAcao').map(m => [m.acao, m.id, m.motivo || m.texto || '']));
+    await fr.click('#abas [data-aba="lista"]');
+    await fr.waitForSelector('.gl-r');
+    assert.ok(!(await fr.$('.gl-lote')), 'sem marcar, sem barra');
+    // marcar a 1 (aberta), a 3 (impedimento) e a 7 (concluída não aparece por padrão? marca as visíveis)
+    await fr.check('[data-gl-sel="f00000000000000000000001"]');
+    await fr.check('[data-gl-sel="f00000000000000000000003"]');
+    await fr.waitForSelector('.gl-lote');
+    assert.match(await fr.textContent('.gl-lote'), /2 tarefas marcadas/);
+    assert.ok(!(await fr.$('#gt-painel .gp-cab')), 'marcar não abre o detalhe');
+    // Concluir: só a aberta entra; a de impedimento fica de fora
+    await fr.click('[data-gl-lote="concluir"]');
+    await fr.waitForSelector('.gl-lote-conf');
+    assert.match(await fr.textContent('.gl-lote-conf'), /Concluir em 1 tarefa no Gestta\?[\s\S]*1 marcada fica de fora/);
+    if (process.env.CAP) await p.screenshot({ path: path.join(process.env.CAP, 'gestta-lote-' + estilo + '.png') });
+    assert.equal((await acoes()).length, 0, 'nada sai antes de confirmar');
+    await fr.click('#gl-lote-ok');
+    await fr.waitForFunction(() => (window.__msgs || []).filter(m => m.cmd === 'gesttaAcao').length === 1);
+    assert.deepEqual(await acoes(), [['concluir', 'f00000000000000000000001', '']]);
+    // Impedimento pede o motivo, o mesmo para todas
+    await fr.waitForSelector('.gl-r');
+    await fr.check('[data-gl-sel="f00000000000000000000002"]');
+    await fr.check('[data-gl-sel="f00000000000000000000004"]');
+    await fr.click('[data-gl-lote="impedir"]');
+    await fr.click('#gl-lote-ok');
+    await fr.waitForSelector('#gl-lote-campo[aria-invalid="true"]');
+    await fr.fill('#gl-lote-campo', 'Aguardando o cliente');
+    await fr.click('#gl-lote-ok');
+    await fr.waitForFunction(() => (window.__msgs || []).filter(m => m.cmd === 'gesttaAcao').length === 3, null, { timeout: 8000 });
+    assert.deepEqual((await acoes()).slice(1), [['impedir', 'f00000000000000000000002', 'Aguardando o cliente'], ['impedir', 'f00000000000000000000004', 'Aguardando o cliente']]);
+    // marcar todas e comentar
+    await fr.waitForSelector('#gl-sel-todas:not([disabled])');
+    await fr.check('#gl-sel-todas');
+    await fr.click('[data-gl-lote="comentar"]');
+    await fr.fill('#gl-lote-campo', 'Conferido em lote');
+    await fr.click('#gl-lote-ok');
+    await fr.waitForFunction(() => (window.__msgs || []).filter(m => m.cmd === 'gesttaAcao' && m.acao === 'comentar').length >= 5, null, { timeout: 10000 });
+    if (estilo === 'simples') {
+      await fr.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
+      await fr.waitForSelector('#gl-sel-todas:not([disabled])');
+      await fr.check('[data-gl-sel="f00000000000000000000005"]');
+      if (process.env.CAP) await p.screenshot({ path: path.join(process.env.CAP, 'gestta-lote-escuro.png') });
+    }
+    await p.close();
+  }
+});
+
+await passo('Gestta · Envios ao portal (0.96.0): erro para reenviar, sem pasta por template com o "deveria ir" pelo padrão do Gestta e o risco sem erro; nada é escrito', async () => {
+  const T1 = 'e00000000000000000000001', T2 = 'e00000000000000000000002', T3 = 'e00000000000000000000003';
+  const tpl = (id, name, pasta) => ({ _id: id, name, valid: true, documents_integration: pasta ? { customer_id: 'c00000000000000000000001', id: 'pasta' + id, path: pasta.split(' › '), pathName: pasta.split(' › ') } : { pathName: [] } });
+  const env = (id, tid, tnome, erro) => ({ _id: 'c0000000000000000000000' + id.slice(-1), company_user: { _id: 'a00000000000000000000001' }, customer: { _id: 'b0000000000000000000000' + id.slice(-1) }, status: 'ERROR', error: erro, retry_count: 1, created_at: new Date(Date.now() - 3 * 864e5).toISOString(), updated_at: new Date().toISOString(),
+    customer_task: { _id: 'f0000000000000000000000' + id.slice(-1), name: 'FOLHA MENSAL', customer: { name: 'CLIENTE FICTICIO ' + id, cnpj: '00.000.000/0001-0' + id.slice(-1) }, company_department: { name: 'Pessoal' }, owner: { name: 'Eu Mesmo' }, _competence_date: '2026-10-01' },
+    customer_task_file: { _id: 'd0000000000000000000000' + id.slice(-1), company_document: { _id: tid, name: tnome }, file_name: 'arquivo-' + id + '.pdf' } });
+  const resp = Object.assign(gtResp(true, gtTarefas()), { gesttaAcao: { ok: true, resumo: { success: 1, failed: 0, blocked: 0 } }, gesttaPasta: { ok: true, pasta: 'Pessoal › Folha' }, gesttaTirar: { ok: true, success: 1, failed: 0, ignorados: 0 }, gesttaEnvios: { ok: true, lidoEm: new Date().toISOString(), total: 4, cortado: false,
+    envios: [env('e1', T2, 'Folha de Pagamento Filial', 'NO_FOLDER_CONFIGURED'), env('e2', T2, 'Folha de Pagamento Filial', 'NO_FOLDER_CONFIGURED'), env('e3', T3, 'Recibo Interno', 'NO_FOLDER_CONFIGURED'), env('e4', T1, 'Folha de Pagamento', 'UPLOAD_ERROR')],
+    templates: [tpl(T1, 'Folha de Pagamento', 'Pessoal › Folha'), tpl(T2, 'Folha de Pagamento Filial', ''), tpl(T3, 'Recibo Interno', ''), tpl('e00000000000000000000004', 'Guia FGTS', 'Pessoal › Guias'), tpl('e00000000000000000000005', 'Guia FGTS Rescisório', ''), tpl('e00000000000000000000006', 'Guia FGTS Mensal Filial', '')] } });
+  for (const [estilo, tema] of [['simples', 'light'], ['atual', 'dark']]) {
+    const { p, fr } = await abrirGestta(resp, { estilo });
+    await fr.evaluate(t => document.documentElement.setAttribute('data-theme', t), tema);
+    await fr.click('#abas [data-aba="envios"]');
+    await fr.waitForSelector('.gte-topo');
+    const txt = await fr.textContent('#vista');
+    assert.match(txt, /Para reenviar[\s\S]*Erro ao enviar o arquivo[\s\S]*Cliente Ficticio E4[\s\S]*UPLOAD_ERROR/i);
+    assert.match(txt, /Provavelmente deveria ir ao portal[\s\S]*Folha de Pagamento Filial[\s\S]*2 documentos parados[\s\S]*Parecido com “Folha de Pagamento”, que vai para Pessoal › Folha/);
+    assert.match(txt, /1 template sem pasta não vai ao portal: os documentos deles saem da lista de erros/);
+    assert.ok(!/Recibo Interno/.test(txt), 'os que não vão ficam recolhidos sem filtro');
+    assert.match(txt, /Templates em risco[\s\S]*Guia FGTS Rescisório[\s\S]*parecido com[\s\S]*Guia FGTS/);
+    // os números filtram; ver os documentos de um template
+    await fr.click('[data-gte-f="deve"]');
+    assert.ok(!(await fr.$('.gte-tpl.nao')) && !(await fr.textContent('#vista')).includes('Erro ao enviar o arquivo'), 'só os que deveriam ir');
+    await fr.click('[data-gte-abrir="' + T2 + '"]');
+    await fr.waitForSelector('.gte-tpl.deve .gte-tab');
+    assert.match(await fr.textContent('.gte-tpl.deve'), /arquivo-e1\.pdf[\s\S]*arquivo-e2\.pdf/);
+    await fr.click('[data-gte-f="deve"]');
+    // busca
+    await fr.fill('#gte-q', 'recibo');
+    await fr.waitForFunction(() => !/Folha de Pagamento Filial/.test(document.querySelector('#vista').textContent));
+    await fr.fill('#gte-q', '');
+    await fr.waitForFunction(() => /Folha de Pagamento Filial/.test(document.querySelector('#vista').textContent));
+    // os que não vão: só pelo número do topo, sem Reenviar nem Usar a pasta
+    await fr.click('[data-gte-f="naoVai"]');
+    assert.match(await fr.textContent('.gte-tpl.nao'), /sai da lista de erros[\s\S]*Recibo Interno/);
+    assert.ok(!(await fr.$('.gte-tpl.nao [data-gte-pasta]')) && !(await fr.$('.gte-tpl.nao [data-gte-reenviar]')), 'nem pasta nem reenviar para quem não vai');
+    assert.ok(await fr.$('.gte-tpl.nao [data-gte-tirar]') && await fr.$('[data-gte-tirar-todos]'), 'tirar da lista, por template e todos');
+    if (estilo === 'simples') {
+      // 0.98.0: tirar da lista pede confirmação e manda só os ids da fila dos que não vão (o service worker confere de novo)
+      await fr.click('[data-gte-tirar-todos]');
+      await fr.waitForSelector('.gte-conf');
+      assert.match(await fr.textContent('.gte-conf'), /Tirar 1 documento da lista de erros do portal\?[\s\S]*Recibo Interno/);
+      if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/gestta-envios-tirar.png' });
+      assert.ok(!(await fr.evaluate(() => (window.__msgs || []).some(m => m.cmd === 'gesttaTirar'))), 'nada sai antes de confirmar');
+      await fr.click('[data-gte-confirmar]');
+      await fr.waitForFunction(() => (window.__msgs || []).some(m => m.cmd === 'gesttaTirar'));
+      assert.deepEqual(await fr.evaluate(() => window.__msgs.find(m => m.cmd === 'gesttaTirar').ids), ['c00000000000000000000003']);
+      await fr.waitForSelector('.gte-topo');
+    }
+    await fr.click('[data-gte-f="naoVai"]');
+    // nada sai sem confirmar
+    assert.ok(!(await fr.evaluate(() => (window.__msgs || []).some(m => m.cmd === 'gesttaAcao' || m.cmd === 'gesttaPasta'))), 'nada é escrito sem confirmar');
+    if (estilo === 'simples') {
+      // Reenviar: só o erro de envio (o "sem pasta" sem pasta nunca tem o botão); pede confirmação e manda os quatro ids
+      assert.equal(await fr.$$eval('[data-gte-reenviar]', b => b.length), 1);
+      await fr.click('[data-gte-reenviar-todos]');
+      await fr.waitForSelector('.gte-conf');
+      assert.match(await fr.textContent('.gte-conf'), /Reenviar 1 documento ao Portal do Cliente\?/);
+      await fr.click('[data-gte-confirmar]');
+      await fr.waitForFunction(() => (window.__msgs || []).some(m => m.cmd === 'gesttaAcao' && m.acao === 'reenviar'));
+      const m = await fr.evaluate(() => window.__msgs.find(m => m.cmd === 'gesttaAcao' && m.acao === 'reenviar'));
+      assert.deepEqual(m.itens, [{ usuario: 'a00000000000000000000001', cliente: 'b00000000000000000000004', tarefa: 'f00000000000000000000004', arquivo: 'd00000000000000000000004' }]);
+      // Usar a pasta do parecido: confirmação com a pasta e os dois templates
+      await fr.waitForSelector('[data-gte-pasta="' + T2 + '"]:not([disabled])');
+      await fr.click('[data-gte-pasta="' + T2 + '"]');
+      await fr.waitForSelector('.gte-conf');
+      assert.match(await fr.textContent('.gte-conf'), /Usar a pasta Pessoal › Folha no template “Folha de Pagamento Filial”\?[\s\S]*“Folha de Pagamento”/);
+      if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/gestta-envios-confirmar.png' });
+      await fr.click('[data-gte-confirmar]');
+      await fr.waitForFunction((t) => (window.__msgs || []).some(m => m.cmd === 'gesttaPasta' && m.template === t), T2);
+      const mp = await fr.evaluate((t) => window.__msgs.find(m => m.cmd === 'gesttaPasta' && m.template === t), T2);
+      assert.equal(mp.modelo, T1, 'a pasta vem do template parecido, relida no service worker');
+      // 0.99.0: risco com mais de um template ganha "Usar as pastas sugeridas" (um por vez, uma confirmação)
+      await fr.waitForSelector('[data-gte-pastas="risco"]:not([disabled])');
+      assert.match(await fr.textContent('[data-gte-pastas="risco"]'), /Usar as pastas sugeridas \(2\)/);
+      await fr.click('[data-gte-pastas="risco"]');
+      await fr.waitForSelector('.gte-conf');
+      assert.match(await fr.textContent('.gte-conf'), /Usar a pasta sugerida em 2 templates\?[\s\S]*Guia FGTS Mensal Filial” → Pessoal › Guias[\s\S]*Guia FGTS Rescisório” → Pessoal › Guias/);
+      const antes = await fr.evaluate(() => window.__msgs.filter(m => m.cmd === 'gesttaPasta').length);
+      await fr.click('[data-gte-confirmar]');
+      await fr.waitForFunction((n) => window.__msgs.filter(m => m.cmd === 'gesttaPasta').length === n + 2, antes, { timeout: 8000 });
+      assert.deepEqual(await fr.evaluate(() => window.__msgs.filter(m => m.cmd === 'gesttaPasta').slice(-2).map(m => [m.template, m.modelo])), [['e00000000000000000000006', 'e00000000000000000000004'], ['e00000000000000000000005', 'e00000000000000000000004']]);
+      await fr.waitForSelector('.gte-topo');
+    }
+    assert.ok((await fr.evaluate(() => (window.__msgs || []).filter(m => m.cmd === 'gesttaEnvios').length)) >= 1);
+    assert.ok(await fr.evaluate(() => document.documentElement.scrollWidth - window.innerWidth <= 2), 'sem rolagem lateral');
+    if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/gestta-envios-' + estilo + '-' + tema + '.png' });
+    await p.close();
+  }
 });
 
 await navegador.close();

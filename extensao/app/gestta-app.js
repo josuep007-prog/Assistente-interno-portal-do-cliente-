@@ -9,12 +9,13 @@
 import { $, $$, esc, toast, simples, lerPref, gravarPref, num, plural } from './util.js';
 import { listaEmpresas, abrirPainel, fecharPainel, painelAberto, passarPainel, abrirNoGestta } from './gestta-trilha.js';
 import { vistaDia, vistaEmpresas, vistaLista, vistaQuadro } from './gestta-vistas.js';
+import { desenharEnvios, lerEnvios, ligarEnvios, estadoEnvios } from './gestta-envios.js';
 const G = window.OCG;
 const enviar = msg => new Promise(res => { try { chrome.runtime.sendMessage(msg, r => res(r || { ok: false, erro: (chrome.runtime.lastError && chrome.runtime.lastError.message) || 'sem resposta' })); } catch (e) { res({ ok: false, erro: String(e.message || e) }); } });
 const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 const SEMANA = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
 const ATUALIZA_MIN = 10;
-const ABAS = ['dia', 'empresas', 'lista', 'quadro', 'calendario', 'fech'];               // com a camada aberta e visível, relê sozinho a cada 10 minutos
+const ABAS = ['dia', 'empresas', 'lista', 'quadro', 'calendario', 'fech', 'envios'];               // com a camada aberta e visível, relê sozinho a cada 10 minutos
 
 const hoje0 = new Date(), comp0 = G.competenciaPadrao(hoje0);
 // 0.85.0 (Josué, 06/11/2026): a tela é da competência (de fábrica a do mês anterior, a que está sendo fechada); o Meu dia segue o vencimento
@@ -119,6 +120,14 @@ function aoVivo() {
   const el = $('#aovivo'), tx = $('#aovivo-tx');
   el.classList.remove('ok', 'parado', 'erro');
   $('#btn-atualizar').classList.toggle('girando', E.carregando);
+  if (E.aba === 'envios') {   // 0.96.0
+    const S = estadoEnvios(); $('#btn-atualizar').classList.toggle('girando', S.carregando);
+    if (S.carregando) { tx.textContent = 'Lendo os envios…'; return; }
+    if (S.erro) { el.classList.add('erro'); tx.textContent = 'Falha na leitura'; return; }
+    if (!S.dados) { tx.textContent = 'Aguardando'; return; }
+    const he = new Date(S.dados.lidoEm), hme = String(he.getHours()).padStart(2, '0') + ':' + String(he.getMinutes()).padStart(2, '0');
+    el.classList.add('ok'); tx.textContent = simples() ? hme : 'Lido às ' + hme; el.title = 'Envios ao portal lidos às ' + hme; return;
+  }
   if (E.aba === 'fech') {
     $('#btn-atualizar').classList.toggle('girando', E.fechCarregando);
     if (E.fechCarregando) { tx.textContent = 'Lendo o relatório…'; return; }
@@ -228,11 +237,16 @@ const esqueleto = rot => '<div class="gt-esq-tela" role="status" aria-label="' +
 /* ---------- desenho ---------- */
 function abas() {
   $$('#abas [data-aba]').forEach(b => { const on = b.dataset.aba === E.aba; b.classList.toggle('on', on); b.setAttribute('aria-selected', String(on)); });
-  const qw = $('#gt-quem-wrap'); if (qw) qw.classList.toggle('gt-so-minhas', E.aba === 'fech');
+  const qw = $('#gt-quem-wrap'); if (qw) qw.classList.toggle('gt-so-minhas', E.aba === 'fech' || E.aba === 'envios');
 }
 function desenhar() {
   abas();
   if (E.aba === 'fech') return desenharFech();
+  if (E.aba === 'envios') {   // 0.96.0: Envios ao portal (lidos na hora, só na memória da tela)
+    const S = estadoEnvios(); desenharEnvios($('#vista'), t => { $('#subtitulo').textContent = t; });
+    if (!S.dados && !S.carregando && !S.erro) lerEnvios(enviar, () => { aoVivo(); desenhar(); });
+    return;
+  }
   const v = $('#vista'), topo = v.scrollTop;
   if (!E.dados) {
     cabecalho(null);
@@ -378,7 +392,8 @@ addEventListener('storage', e => {
   clearTimeout(avisoCfg); avisoCfg = setTimeout(() => toast('Configurações atualizadas: já valem nesta tela'), 400);
 });
 $('#vista').addEventListener('scroll', () => salvarEstado(), { passive: true });
-$('#btn-atualizar').onclick = () => E.aba === 'fech' ? lerFech(true) : ler();
+$('#btn-atualizar').onclick = () => E.aba === 'fech' ? lerFech(true) : E.aba === 'envios' ? lerEnvios(enviar, () => { aoVivo(); desenhar(); }) : ler();
+ligarEnvios($('#vista'), () => { aoVivo(); desenhar(); }, paraPai);
 function trocarAba(a) { if (!ABAS.includes(a) || a === E.aba) return; E.aba = a; gravarPref('gt.aba', E.aba); salvarEstado(); fecharPainel(); aoVivo(); desenhar(); $('#vista').scrollTop = 0; }
 $$('#abas [data-aba]').forEach(b => b.onclick = () => trocarAba(b.dataset.aba));
 // uma etapa (trilha ou linha do tempo) ou uma tarefa da lista abre o detalhe ao lado
@@ -432,8 +447,8 @@ addEventListener('keydown', e => {
   if (e.key === '?' && !digitando) { e.preventDefault(); atalhos(true); return; }
   if (painelAberto()) { if (e.key === 'Escape') { e.preventDefault(); fecharPainel(); return; } if (!digitando && e.key === 'ArrowLeft') { passarPainel(-1); return; } if (!digitando && e.key === 'ArrowRight') { passarPainel(1); return; } }
   if (e.key === '/' && !digitando) { const q = $('#gt-q') || $('#gt-fq'); if (q) { e.preventDefault(); q.focus(); } return; }
-  if (!digitando && !e.ctrlKey && !e.metaKey && !e.altKey && teclaVista && E.aba !== 'fech' && teclaVista(e)) { e.preventDefault(); return; }
-  const n = '123456'.indexOf(e.key);
+  if (!digitando && !e.ctrlKey && !e.metaKey && !e.altKey && teclaVista && E.aba !== 'fech' && E.aba !== 'envios' && teclaVista(e)) { e.preventDefault(); return; }
+  const n = '1234567'.indexOf(e.key);
   if (!digitando && n >= 0 && !e.ctrlKey && !e.metaKey && !e.altKey) { trocarAba(ABAS[n]); return; }
   if (e.key === 'Escape') { if (digitando && e.target.id === 'gt-q' && E.q) { E.q = ''; desenhar(); return; } if (!digitando) paraPai({ controlGestta: 'fechar' }); }
 });
