@@ -4380,3 +4380,15 @@ test('Mediador (0.95.0): linhas para o Hub sem tabulação nem quebra que estrag
   assert.match(lc[0], /1\.850,00 ¶ a partir/);
   assert.match(lc[0].split('\t')[7], /^Maio$/);
 });
+
+test('Mediador (0.95.1): a rodada semanal espera a semana e, depois de uma busca com erro, 24 h', () => {
+  const agora = Date.parse('2026-11-20T12:00:00Z'), h = (n) => new Date(agora - n * 3600e3).toISOString();
+  const cfg = { cnpjs: ['11222333000181'], ultimaBusca: h(8 * 24) };
+  assert.equal(OCM.semanalDevida(cfg, null, agora), true);
+  assert.equal(OCM.semanalDevida({ cnpjs: [] }, null, agora), false, 'sem sindicatos, nada');
+  assert.equal(OCM.semanalDevida(Object.assign({}, cfg, { ultimaBusca: h(24) }), null, agora), false, 'lido há 1 dia');
+  assert.equal(OCM.semanalDevida(cfg, { estado: 'erro', iniciouEm: h(6) }, agora), false, 'falhou há 6 h: espera');
+  assert.equal(OCM.semanalDevida(cfg, { estado: 'erro', iniciouEm: h(30) }, agora), true, 'falhou há 30 h: tenta de novo');
+  assert.equal(OCM.semanalDevida(cfg, { estado: 'buscando', pulso: agora - 60e3 }, agora), false, 'já buscando');
+  assert.equal(OCM.semanalDevida(cfg, { estado: 'parcial', iniciouEm: h(6) }, agora), true, 'parcial não segura (a última busca completa vale)');
+});

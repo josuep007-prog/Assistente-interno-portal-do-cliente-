@@ -157,6 +157,18 @@
   const linhasInstrumentos = (itens) => itens.map(i => [soDig(i.cnpj), i.busca, i.registro, i.processo, i.solicitacao, i.tipo, i.vigIni, i.vigFim, soDig(i.cnpjTrab), i.trabalhador, soDig(i.cnpjEmp), i.empregador].map(v => cel(v, 300)).join('\t'));
   const linhasClausulas = (textos) => textos.flatMap(t => t.clausulas.map((c, n) => [t.solicitacao, t.registro || '', n + 1, c.grupo, c.subgrupo, c.titulo, c.texto, n === 0 ? (t.dataBase || '') : '', n === 0 ? (t.anexos || []).join(' ') : ''].map((v, k) => cel(v, k === 6 ? MAX_CLAUSULA : 600)).join('\t')));
 
+  // ---- a rodada semanal (0.95.1): uma vez por semana e, depois de uma busca com erro, só 24 h depois (sem abrir uma aba a cada envio) ----
+  const SEMANA_MS = 7 * 24 * 3600e3, PAUSA_ERRO_MS = 24 * 3600e3;
+  function semanalDevida(cfg, envio, agora) {
+    const t = agora || Date.now(), c = cfg || {};
+    if (!Array.isArray(c.cnpjs) || !c.cnpjs.length) return false;
+    if (c.ultimaBusca && t - Date.parse(c.ultimaBusca) < SEMANA_MS) return false;
+    const e = envio || null;
+    if (e && e.estado === 'buscando' && t - (Number(e.pulso) || 0) < 10 * 60e3) return false;
+    if (e && ['erro', 'cancelado'].includes(e.estado) && e.iniciouEm && t - Date.parse(e.iniciouEm) < PAUSA_ERRO_MS) return false;
+    return true;
+  }
+
   // ---- dentro da aba do Mediador (mundo da página) ----
   const dormir = (ms) => new Promise(r => setTimeout(r, ms));
   async function lerBytes(url) {
@@ -218,7 +230,7 @@
   }
 
   const OCM = { HOST, URL_CONSULTA, URL_EXPORTAR, TIPOS, SOL, solParam, urlTexto, leituraPermitida, textoDe, tabelasDe, lerExportacao, lerTexto, dataBaseDe,
-    escolherTextos, ehAditivo, COLS_INSTRUMENTOS, COLS_CLAUSULAS, linhasInstrumentos, linhasClausulas, buscarNaPagina, textoNaPagina, anexoNaPagina, soDig, cnpjValido };
+    escolherTextos, ehAditivo, semanalDevida, COLS_INSTRUMENTOS, COLS_CLAUSULAS, linhasInstrumentos, linhasClausulas, buscarNaPagina, textoNaPagina, anexoNaPagina, soDig, cnpjValido };
   g.OCM = OCM;
   if (typeof module !== 'undefined' && module.exports) module.exports = OCM;
 })(typeof self !== 'undefined' ? self : globalThis);
