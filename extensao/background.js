@@ -391,7 +391,7 @@ async function gesttaAcao(msg, sender) {
     x = res && res.result;
   } catch (e) { return { ok: false, erro: 'A aba do Gestta não respondeu (' + String(e && e.message || e).slice(0, 80) + ').' }; }
   if (!x) return { ok: false, erro: 'A aba do Gestta não respondeu.' };
-  if (x.ok) return { ok: true, acao: msg.acao, tarefa: x.tarefa || null };
+  if (x.ok) return { ok: true, acao: msg.acao, tarefa: x.tarefa || null, resumo: x.resumo || null };
   if (x.recusado) return { ok: false, erro: 'A extensão recusou a ação (' + x.recusado + ').' };
   const st = x.status;
   return { ok: false, status: st, erro: st === 401 ? 'A sessão do Gestta acabou: faça login de novo na aba e tente outra vez.'
@@ -399,6 +399,35 @@ async function gesttaAcao(msg, sender) {
     : st === 404 ? 'A tarefa (ou a etapa, ou o documento) não existe mais no Gestta.'
     : st === 413 ? 'O Gestta recusou o arquivo por ser grande demais.'
     : 'O Gestta não aceitou (' + (x.erro || ('erro ' + st)) + ').' };
+}
+// 0.97.0: configurar a pasta do portal num template, usando a mesma pasta de um template parecido (aprovado pelo Josué em 12/11/2026,
+// mapeado no mesmo dia). Relê os dois templates na hora (nunca confia na tela), só grava se o destino ainda está sem pasta e o
+// modelo tem a pasta inteira, faz o par da tela do Gestta (PATCH da pasta e o Salvar do template, com os mesmos valores) e confere depois.
+async function gesttaPasta(msg, sender) {
+  if (!String((sender && sender.url) || '').startsWith(chrome.runtime.getURL('app/'))) return { ok: false, erro: 'Ação recusada: só a tela das Tarefas do Gestta pode pedir.' };
+  const destino = String(msg.template || ''), modelo = String(msg.modelo || '');
+  if (!/^[0-9a-f]{24}$/i.test(destino) || !/^[0-9a-f]{24}$/i.test(modelo) || destino === modelo) return { ok: false, erro: 'Template inválido.' };
+  const tab = await tabDoGestta(sender);
+  if (!tab) return { ok: false, erro: 'Abra o Gestta numa aba, já logado.' };
+  const ler = async (id) => { const { r } = await lerGestta([OCG.PEDIDOS.template({ id })], { tab }); const x = r && r.resultados && r.resultados[0]; return x && x.status === 200 ? x.dados : null; };
+  const pastaDe = (t) => t && t.documents_integration && Array.isArray(t.documents_integration.pathName) ? t.documents_integration.pathName.filter(Boolean) : [];
+  const d = await ler(destino), m = await ler(modelo);
+  if (!d || !m) return { ok: false, erro: 'Não consegui ler os templates no Gestta.' };
+  if (pastaDe(d).length) return { ok: false, erro: 'Este template já tem pasta (' + pastaDe(d).join(' › ') + '): nada foi mudado.' };
+  const integ = m.documents_integration || {};
+  if (!pastaDe(m).length || !integ.customer_id || !integ.id || !Array.isArray(integ.path)) return { ok: false, erro: 'O template modelo não tem a pasta completa no Gestta.' };
+  const agir = async (pedido) => {
+    if (pedido.erro) return { ok: false, erro: pedido.erro };
+    if (!OCG.escritaPermitida(pedido.metodo, pedido.url, pedido.corpo).ok) return { ok: false, erro: 'a extensão recusou a ação' };
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', files: ['gestta.js'] });
+    const [res] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', func: (ped) => (self.OCG ? self.OCG.agirNaPagina(ped) : { ok: false, erro: 'núcleo do Gestta não carregou na aba' }), args: [pedido] });
+    return (res && res.result) || { ok: false, erro: 'a aba do Gestta não respondeu' };
+  };
+  const a = await agir(OCG.pedidoAcao({ acao: 'pasta', template: destino, pasta: { customer_id: integ.customer_id, id: integ.id, path: integ.path, pathName: integ.pathName } }));
+  if (!a.ok) return { ok: false, status: a.status, erro: a.status === 403 ? 'Seu acesso do Gestta não permite mudar templates.' : 'O Gestta não aceitou a pasta (' + (a.erro || a.recusado || 'erro') + ').' };
+  const b = await agir(OCG.pedidoAcao({ acao: 'templateSalvar', template: destino, bypass: !!d.bypass, nome: d.name, prazo: !!d.send_documents_due_date }));
+  const conf = await ler(destino);
+  return { ok: !!(conf && pastaDe(conf).length), salvou: !!b.ok, pasta: conf ? pastaDe(conf).join(' › ') : '', erro: conf && pastaDe(conf).length ? '' : 'A pasta foi enviada, mas o Gestta não a mostra no template. Confira na tela do Gestta.' };
 }
 // Para a coordenação escolher de quem ver as tarefas: só id e nome da equipe ativa.
 async function gesttaEquipe(msg, sender) {
@@ -1289,6 +1318,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'gesttaTarefas') { reply(await gesttaTarefas(msg, sender)); }
       else if (msg.cmd === 'gesttaEquipe') { reply(await gesttaEquipe(msg, sender)); }
       else if (msg.cmd === 'gesttaEnvios') { reply(await gesttaEnvios(msg, sender)); }
+      else if (msg.cmd === 'gesttaPasta') { reply(await gesttaPasta(msg, sender)); }
       else if (msg.cmd === 'gesttaFechamento') { reply(await gesttaFechamento(msg, sender)); }
       else if (msg.cmd === 'gesttaTarefa') { reply(await gesttaTarefa(msg, sender)); }
       else if (msg.cmd === 'gesttaHistorico') { reply(await gesttaHistorico(msg, sender)); }

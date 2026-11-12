@@ -120,11 +120,14 @@
       customer_task_file: { company_document: REF } },
     // 0.96.0: a fila de envios ao portal para a aba Envios ao portal (só na memória da tela): o nome do arquivo e o detalhe do erro
     filaOnvioTela: { _id: true, status: true, error: true, error_detail: true, retry_count: true, created_at: true, updated_at: true,
+      company_user: { _id: true }, customer: { _id: true },        // 0.97.0: os ids que o Reenviar do Gestta manda
       customer_task: { _id: true, name: true, customer: { _id: true, name: true, cnpj: true }, company_department: SETOR, owner: REF, _due_date: true, _competence_date: true },
-      customer_task_file: { company_document: REF, file_name: true } },
+      customer_task_file: { _id: true, company_document: REF, file_name: true } },
     contagem: { fine: true, approve: true, email_not_sent: true, count: true },
+    templateUm: null,   // definido logo abaixo (o mesmo molde do templateDoc)
     // 0.79.0: template de documento com o destino no portal (só nomes de pasta; nunca o arquivo modelo)
-    templateDoc: { _id: true, name: true, automation_type: true, valid: true, bypass: true, documents_integration: { pathName: [true] } },
+    templateDoc: { _id: true, name: true, automation_type: true, valid: true, bypass: true, send_documents_due_date: true,
+      documents_integration: { customer_id: true, id: true, path: [true], pathName: [true] } },   // 0.97.0: a pasta inteira, para usar a mesma num template parecido
     // 0.77.0: o histórico da tarefa para a linha do tempo do painel (lido na hora, nunca guardado). Fora o email_log
     // (destinatários e servidores), o arquivo e o upload: só o tipo, a situação, o motivo, a data, quem fez e o nome do documento.
     historico: { _id: true, type: true, status: true, reason: true, accomplished_at: true, created_at: true, accomplished_by: { name: true },
@@ -150,7 +153,7 @@
       if (t && Array.isArray(t.company_documents) && dados && Array.isArray(dados.company_documents)) t.company_documents.forEach((d, i) => { const o = dados.company_documents[i]; d.temArquivo = !!(o && o.file); });
       return t;
     }
-    if (tipo === 'me' || tipo === 'contagem') return escolher(dados, molde) || null;
+    if (tipo === 'me' || tipo === 'contagem' || tipo === 'templateUm') return escolher(dados, molde) || null;
     const o = Object.assign({ itens: lista(dados).map(x => escolher(x, molde)) }, pagina(dados));
     if (dados && dados.documents_without_destination != null) o.semPasta = Number(dados.documents_without_destination) || 0;
     return o;
@@ -255,6 +258,7 @@
     multas: (o) => { const j = janelaDoMes(o.ano, o.mes); return { id: 'multas', tipo: 'contagem', metodo: 'GET', url: url('/core/dashboard/attention/fine/all', j) }; },
     templatesDocumento: () => ({ id: 'templatesDocumento', tipo: 'template', metodo: 'GET', url: url('/admin/company/document', { limit: 1, page: 1 }) }),
     // 0.79.0: a lista inteira de templates de documento, com a pasta de destino no portal (para achar os que não têm pasta)
+    template: (o) => ({ id: 'template', tipo: 'templateUm', metodo: 'GET', url: url('/admin/company/document/' + encodeURIComponent(o.id)) }),
     templatesLista: (o) => ({ id: 'templatesLista', tipo: 'templateDoc', metodo: 'GET', url: url('/admin/company/document', { limit: (o && o.limit) || 200, page: (o && o.page) || 1 }) })
   };
 
@@ -265,12 +269,19 @@
   const ID24 = /^[0-9a-f]{24}$/i;
   const TEXTO_MAX = 4000;                       // comentário e motivo do impedimento
   const ARQ_MAX = 15 * 1024 * 1024;             // como os anexos do Onvio
+  MOLDES.templateUm = MOLDES.templateDoc;
   const ESCRITAS = [
     { acao: 'etapa', metodo: 'PUT', re: /^\/core\/customer\/task\/[0-9a-f]{24}\/step\/[0-9a-f]{24}\/done$/i },
     { acao: 'situacao', metodo: 'PUT', re: /^\/es\/task\/[0-9a-f]{24}\/status$/i },
     { acao: 'comentario', metodo: 'POST', re: /^\/core\/customer\/task\/[0-9a-f]{24}\/history\/comment$/i },
-    { acao: 'documento', metodo: 'POST', re: /^\/es\/upload\/direct$/ }
+    { acao: 'documento', metodo: 'POST', re: /^\/es\/upload\/direct$/ },
+    // 0.97.0 (aprovadas pelo Josué em 12/11/2026, mapeadas no mesmo dia: mapeamento/gestta-2026-11-04.md, "Envios ao portal"):
+    { acao: 'reenviar', metodo: 'POST', re: /^\/es\/file\/onvio\/resend$/ },
+    { acao: 'pasta', metodo: 'PATCH', re: /^\/admin\/company\/document\/integration\/documents\/batch$/ },
+    { acao: 'template', metodo: 'PUT', re: /^\/admin\/company\/document\/[0-9a-f]{24}$/i }
   ];
+  const REENVIO_MAX = 50, PASTA_ITENS_MAX = 10;
+  const textoCurto = (v, n) => typeof v === 'string' && v.trim().length > 0 && v.length <= n;
   const soChaves = (o, ks) => { const a = Object.keys(o).sort(), b = ks.slice().sort(); return a.length === b.length && a.every((k, i) => k === b[i]); };
   const textoOk = (v) => typeof v === 'string' && v.trim().length > 0 && v.length <= TEXTO_MAX;
   const listaVazia = (v) => Array.isArray(v) && v.length === 0;
@@ -282,9 +293,24 @@
     if (/\?/.test(String(u))) return { ok: false, motivo: 'ação sem querystring' };
     const e = ESCRITAS.find(x => x.metodo === m && x.re.test(p));
     if (!e) return { ok: false, motivo: 'ação não autorizada no Gestta (' + m + ')' };
+    if (e.acao === 'reenviar') {   // uma lista: cada documento só com os quatro ids que a tela do Gestta manda
+      return Array.isArray(corpo) && corpo.length >= 1 && corpo.length <= REENVIO_MAX && corpo.every(x => x && typeof x === 'object' && !Array.isArray(x)
+        && soChaves(x, ['company_user', 'customer', 'customer_task', 'customer_task_file']) && ['company_user', 'customer', 'customer_task', 'customer_task_file'].every(k => ID24.test(String(x[k]))))
+        ? { ok: true, acao: e.acao } : { ok: false, motivo: 'reenviar: de 1 a ' + REENVIO_MAX + ' documentos, só com os ids' };
+    }
     const c = corpo && typeof corpo === 'object' && !Array.isArray(corpo) ? corpo : null;
     if (!c) return { ok: false, motivo: 'corpo inválido' };
     const ok = { ok: true, acao: e.acao };
+    if (e.acao === 'pasta') {      // a pasta do portal num template: a mesma forma do "Selecionar pasta" da tela (nunca o DELETE)
+      const lista = (v) => Array.isArray(v) && v.length >= 1 && v.length <= PASTA_ITENS_MAX && v.every(x => textoCurto(x, 200));
+      return soChaves(c, ['company_document_ids', 'customer_id', 'id', 'path', 'pathName']) && Array.isArray(c.company_document_ids) && c.company_document_ids.length === 1
+        && ID24.test(String(c.company_document_ids[0])) && ID24.test(String(c.customer_id)) && /^[\w-]{1,64}$/.test(String(c.id)) && lista(c.path) && lista(c.pathName) && c.path.length === c.pathName.length
+        ? ok : { ok: false, motivo: 'pasta: um template, o cliente modelo, o id e o caminho da pasta' };
+    }
+    if (e.acao === 'template') {   // o "Salvar" do template, com os mesmos valores que ele já tinha
+      return soChaves(c, ['bypass', 'name', 'send_documents_due_date']) && typeof c.bypass === 'boolean' && typeof c.send_documents_due_date === 'boolean' && textoCurto(c.name, 300)
+        ? ok : { ok: false, motivo: 'template: só bypass, name e send_documents_due_date' };
+    }
     if (e.acao === 'etapa') return soChaves(c, ['done']) && typeof c.done === 'boolean' ? ok : { ok: false, motivo: 'etapa: só { done }' };
     if (e.acao === 'situacao') {
       if (c.status === 'IMPEDIMENT') return soChaves(c, ['status', 'justification']) && textoOk(c.justification) ? ok : { ok: false, motivo: 'impedimento pede o motivo' };
@@ -304,6 +330,25 @@
   // acao: 'etapa' | 'concluir' | 'reabrir' | 'impedir' | 'liberar' | 'comentar' | 'documento'. Erro = { erro }.
   function pedidoAcao(o) {
     const x = o || {}, id = String(x.id || '');
+    // 0.97.0: envios ao portal (não são de uma tarefa)
+    if (x.acao === 'reenviar') {
+      const itens = (Array.isArray(x.itens) ? x.itens : []).map(i => ({ company_user: String(i && i.usuario || ''), customer: String(i && i.cliente || ''), customer_task: String(i && i.tarefa || ''), customer_task_file: String(i && i.arquivo || '') }));
+      if (!itens.length) return { erro: 'nenhum documento para reenviar' };
+      if (itens.length > REENVIO_MAX) return { erro: 'no máximo ' + REENVIO_MAX + ' documentos por vez' };
+      if (!itens.every(i => Object.values(i).every(v => ID24.test(v)))) return { erro: 'documento sem os ids do Gestta' };
+      return { id: 'reenviar', acao: 'reenviar', metodo: 'POST', url: url('/es/file/onvio/resend'), corpo: itens };
+    }
+    if (x.acao === 'pasta') {
+      const t = String(x.template || ''), pz = x.pasta || {};
+      if (!ID24.test(t)) return { erro: 'template inválido' };
+      return { id: 'pasta', acao: 'pasta', metodo: 'PATCH', url: url('/admin/company/document/integration/documents/batch'),
+        corpo: { company_document_ids: [t], customer_id: String(pz.customer_id || ''), id: String(pz.id || ''), path: (pz.path || []).map(String), pathName: (pz.pathName || []).map(String) } };
+    }
+    if (x.acao === 'templateSalvar') {
+      const t = String(x.template || '');
+      if (!ID24.test(t)) return { erro: 'template inválido' };
+      return { id: 'template', acao: 'template', metodo: 'PUT', url: url('/admin/company/document/' + t), corpo: { bypass: !!x.bypass, name: String(x.nome || ''), send_documents_due_date: !!x.prazo } };
+    }
     if (!ID24.test(id)) return { erro: 'tarefa inválida' };
     const base = (acao, metodo, caminho, corpo) => ({ id: acao, acao, metodo, url: url(caminho), corpo });
     switch (x.acao) {
@@ -346,6 +391,9 @@
         const msg = dados && typeof dados === 'object' ? String(dados.message || dados.error || '').slice(0, 160) : '';
         return { ok: false, status: r.status, erro: msg || ('erro ' + r.status) };
       }
+      if (perm.acao === 'reenviar') { const d = dados && typeof dados === 'object' ? dados : {}; return { ok: true, status: r.status, acao: perm.acao, resumo: { success: Number(d.success) || 0, failed: Number(d.failed) || 0, blocked: Number(d.blocked) || 0 } }; }
+      if (perm.acao === 'pasta') return { ok: true, status: r.status, acao: perm.acao };
+      if (perm.acao === 'template') return { ok: true, status: r.status, acao: perm.acao, template: dados && typeof dados === 'object' ? escolher(dados, MOLDES.templateDoc) : null };
       const t = perm.acao === 'documento' ? dados && dados.customer_task : perm.acao === 'comentario' ? null : dados;
       return { ok: true, status: r.status, acao: perm.acao, tarefa: t && typeof t === 'object' ? escolher(t, MOLDES.tarefaApos) : null };
     } catch (e) { return { ok: false, status: 0, erro: 'sem resposta do Gestta (' + String(e && e.message || e).slice(0, 80) + ')' }; }
@@ -966,7 +1014,7 @@
   // o template com pasta mais parecido (a partir de 0,6), com a pasta dele
   function parecidoComPasta(nome, comPasta) {
     let m = null;
-    for (const t of comPasta) { const v = semelhanca(nome, t.name); if (v >= 0.6 && (!m || v > m.nota)) m = { id: t._id, nome: t.name, pasta: pastaDe(t), nota: Math.round(v * 100) / 100 }; }
+    for (const t of comPasta) { const v = semelhanca(nome, t.name); if (v >= 0.6 && (!m || v > m.nota)) m = { id: t._id, nome: t.name, pasta: pastaDe(t), integracao: t.documents_integration || null, nota: Math.round(v * 100) / 100 }; }
     return m;
   }
   const erroTexto = (x) => ERROS_ENVIO[x.error] || (x.error ? String(x.error) : 'Erro sem código');
@@ -975,7 +1023,8 @@
     return { id: x._id, erro: x.error || '', erroTexto: erroTexto(x), detalhe: String(x.error_detail || '').slice(0, 300), tentativas: Number(x.retry_count) || 0,
       criado: x.created_at || '', atualizado: x.updated_at || '', tarefa: t.name || '', tarefaId: t._id || '', cliente: c.name || '', cnpj: c.cnpj || '',
       setor: (t.company_department && t.company_department.name) || '', responsavel: (t.owner && t.owner.name) || '', competencia: t._competence_date || '', meta: t._due_date || '',
-      templateId: d._id || '', template: d.name || '', arquivo: f.file_name || '' };
+      templateId: d._id || '', template: d.name || '', arquivo: f.file_name || '',
+      ids: { usuario: (x.company_user && x.company_user._id) || '', cliente: (x.customer && x.customer._id) || c._id || '', tarefa: t._id || '', arquivo: f._id || '' } };
   }
   // envios: a fila com erro; templates: a lista de templates de documento (com a pasta). Devolve os três blocos da aba.
   function enviosPortal(envios, templates) {

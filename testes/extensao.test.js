@@ -4285,6 +4285,36 @@ test('Gestta (0.93.0): só as ações aprovadas, com o endereço, o método e os
   assert.ok(OCG.pedidoAcao({ acao: 'impedir', id: T }).erro); assert.ok(OCG.pedidoAcao({ acao: 'comentar', id: T, texto: ' ' }).erro);
   assert.ok(OCG.pedidoAcao({ acao: 'etapa', id: T, etapa: 'x' }).erro); assert.ok(OCG.pedidoAcao({ acao: 'concluir', id: 'x' }).erro); assert.ok(OCG.pedidoAcao({ acao: 'excluir', id: T }).erro);
 });
+/* ---------- Gestta (0.97.0): reenviar e pasta do template, mapeados em 12/11/2026 ---------- */
+test('Gestta (0.97.0): reenviar e pôr a pasta num template só com a forma do mapeamento; tirar a pasta e a lixeira continuam recusadas', () => {
+  const E = OCG.escritaPermitida, A = 'https://api.gestta.com.br', T = '5f1e2d3c4b5a69788796a5b4', C = '6a5b4c3d2e1f00112233aabb';
+  const it = { usuario: T, cliente: C, tarefa: T, arquivo: C };
+  const r = OCG.pedidoAcao({ acao: 'reenviar', itens: [it, it] });
+  assert.equal(r.metodo, 'POST'); assert.equal(new URL(r.url).pathname, '/es/file/onvio/resend');
+  assert.deepEqual(plano(r.corpo), [{ company_user: T, customer: C, customer_task: T, customer_task_file: C }, { company_user: T, customer: C, customer_task: T, customer_task_file: C }]);
+  assert.equal(E(r.metodo, r.url, r.corpo).ok, true);
+  assert.ok(OCG.pedidoAcao({ acao: 'reenviar', itens: [] }).erro);
+  assert.ok(OCG.pedidoAcao({ acao: 'reenviar', itens: Array(51).fill(it) }).erro, 'no máximo 50 por vez');
+  assert.ok(OCG.pedidoAcao({ acao: 'reenviar', itens: [{ usuario: T, cliente: C, tarefa: T }] }).erro, 'sem os quatro ids não monta');
+  const pz = { customer_id: C, id: 'abc123', path: ['Pessoal', 'Folha'], pathName: ['Pessoal', 'Folha'] };
+  const pa = OCG.pedidoAcao({ acao: 'pasta', template: T, pasta: pz });
+  assert.equal(pa.metodo, 'PATCH'); assert.equal(new URL(pa.url).pathname, '/admin/company/document/integration/documents/batch');
+  assert.equal(E(pa.metodo, pa.url, pa.corpo).ok, true);
+  const tp = OCG.pedidoAcao({ acao: 'templateSalvar', template: T, bypass: false, nome: 'Folha', prazo: true });
+  assert.equal(tp.metodo, 'PUT'); assert.equal(new URL(tp.url).pathname, '/admin/company/document/' + T);
+  assert.deepEqual(plano(tp.corpo), { bypass: false, name: 'Folha', send_documents_due_date: true });
+  assert.equal(E(tp.metodo, tp.url, tp.corpo).ok, true);
+  const R = A + '/es/file/onvio/resend', B = A + '/admin/company/document/integration/documents/batch';
+  const nao = [
+    ['POST', R, []], ['POST', R, Array(51).fill(r.corpo[0])], ['POST', R, [Object.assign({}, r.corpo[0], { extra: 1 })]], ['POST', R, [{ company_user: T, customer: C, customer_task: T, customer_task_file: 'x' }]], ['POST', R, r.corpo[0]],
+    ['DELETE', A + '/es/file/onvio/' + T, {}], ['DELETE', A + '/admin/company/document/integration/documents/abc123', {}], ['DELETE', A + '/admin/company/document/' + T, {}],
+    ['PATCH', B, Object.assign({}, pa.corpo, { company_document_ids: [T, C] })], ['PATCH', B, Object.assign({}, pa.corpo, { extra: 1 })], ['PATCH', B, Object.assign({}, pa.corpo, { path: [] })],
+    ['PATCH', B, Object.assign({}, pa.corpo, { pathName: ['Pessoal'] })], ['PATCH', B, Object.assign({}, pa.corpo, { customer_id: 'x' })], ['PATCH', B, Object.assign({}, pa.corpo, { id: 'a b' })],
+    ['PUT', A + '/admin/company/document/' + T, { bypass: false, name: 'x', send_documents_due_date: true, automation_type: 'X' }], ['PUT', A + '/admin/company/document/' + T, { bypass: 'nao', name: 'x', send_documents_due_date: true }],
+    ['POST', A + '/admin/company/document', { bypass: false, name: 'x', send_documents_due_date: false }]
+  ];
+  for (const [m, u, c] of nao) assert.equal(E(m, u, c).ok, false, 'recusa: ' + m + ' ' + u + ' ' + JSON.stringify(c).slice(0, 80));
+});
 test('Gestta (0.93.0): o detalhe traz o id das etapas e dos documentos e se o documento tem arquivo (nunca o arquivo); depois da ação sai só o resumo', () => {
   const det = OCG.limpar('tarefaDetalhe', { _id: 't1', customer_task_steps: [{ _id: 's1', name: 'Conferir', order: 1, done: true, created_at: 'x' }],
     company_documents: [{ _id: 'd1', name: 'Recibo', has_documents_integration: true, file: { name: 'segredo.pdf', url: 'https://x' } }, { _id: 'd2', name: 'Guia' }] });
