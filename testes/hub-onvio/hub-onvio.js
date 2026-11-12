@@ -264,6 +264,8 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
   });
 
   const fr = page.frameLocator('#fontes-frame');
+  // passos posteriores (Carteira, Painel…) trocam de módulo: quem usa o quadro da Entrada de dados a reabre antes
+  const abrirFontes = async () => { await page.evaluate(() => document.querySelectorAll('dialog[open]').forEach((d) => d.close())); await page.evaluate(() => window.__hubApi.abrirModulo('fontes')); await page.waitForSelector('#fontes-frame', { state: 'visible' }); await fr.locator('#secCadastro, #cadro').first().waitFor({ timeout: 10000 }).catch(() => {}); };
   const aplicarNoQuadro = async (linha, botao) => { await fr.locator(`#cadro tr[data-emp]:has-text("${linha}") ${botao}`).click(); await fr.locator('#dlgConf[open]').waitFor(); };
 
   await passo('Funcionários do DP: cartões por empresa (sem lista completa), busca pelo nome, só ativos, sem alertas, evolução e abrir a empresa', async () => {
@@ -707,6 +709,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
   });
 
   await passo('Folha inteira de cada empresa: quem nunca teve solicitação vira cadastro novo; desligado sem solicitação não; cliente só da folha aparece para cadastrar', async () => {
+    await abrirFontes();
     await page.evaluate(() => { const d = window.__db.ler('dp_empresas/e-vega'); d.funcionarios.push({ id: 'f-antiga', nome: 'Antiga Colega', cargo: '', codigo: '', admissao: '2020-02-02', status: 'Ativo', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '', salario: '', obs: '' }); window.__db.semear('dp_empresas/e-vega', d); });
     await semearConjunto('pessoais-empregados', await D.empregados(), 'c2');
     await page.waitForFunction(() => window.__hubApi.api('onvio').difs().some(d => d.nome === 'Carlos Sem Pedido'), null, { timeout: 8000 });
@@ -729,6 +732,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
   });
 
   await passo('Regras de diferença: contribuinte autônomo não vira funcionário; as férias comparadas são as em curso (não uma de 2027); "Desligado" converge; cobertura da folha à vista', async () => {
+    await abrirFontes();
     const it = D.itens(), base = (id, n, cli, extra) => Object.assign({ id, identifier: n, genericStatus: 1, created: D.dia(-3) + 'T10:00:00', changed: D.dia(-1) + 'T10:00:00', lastUpdated: D.dia(-1) + 'T10:00:00', requestWay: 'PORTAL', clientExpanded: cli, staffResponsibleExpanded: { id: 'u-ana', name: 'Ana Teste' }, departmentId: 'dep-1', requesterExpanded: { name: 'Contato' } }, extra);
     it.cadContribuinte = [base('cc1', 720, D.CLI.lira, { admissionDate: D.dia(5), name: 'Autonomo Teste', clientEmployeeExpanded: undefined, subject: 'Contribuinte' })];
     it.avisoFerias.push(
@@ -779,6 +783,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
   });
 
   await passo('Folha decide quem é ativo (Josué, 04/11/2026: "a folha é absoluta"): fora da folha mais recente vira Inativo (Hub 306) com a saída no último mês em que apareceu; férias seguram; folha que não casa com a lista do Onvio não decide', async () => {
+    await abrirFontes();
     const cfg = await page.evaluate(() => window.__db.ler('ing_config/cfg'));
     await page.evaluate(() => { window.__msgs = window.__msgs || []; if (!window.__ouveAck) { window.__ouveAck = 1; window.addEventListener('message', (e) => { if (e.data && e.data.ctlhub === 1 && e.data.de === 'hub') window.__msgs.push(e.data); }); } });
     const envia = async (l) => { await page.evaluate((l) => { window.__msgs.length = 0; window.postMessage(l, '*'); }, l); await page.waitForFunction((id) => window.__msgs.some(m => m.tipo === 'ack' && m.id === id), l.id, { timeout: 5000 }); return page.evaluate((id) => window.__msgs.find(m => m.tipo === 'ack' && m.id === id), l.id); };
@@ -788,6 +793,8 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     const lq = (doc, comp, cod, nome, vinc, contrib, quadro) => [doc, 'c-orion', '900', 'ORION COMERCIO LTDA', comp, comp + '-05', cod, nome, vinc, 'Folha Mensal', quadro || 'completo', cod ? (contrib ? 'sim' : 'não') : ''].join('\t');
     const lote = (id, ciclo, linhas) => ({ ctlhub: 1, de: 'ext', tipo: 'lote', id, token: cfg.token, fonte: 'onvio', tipoDado: 'pessoais-folha-contribuintes', categoria: 'pessoais', titulo: 'Folha', colunas: COL, tabela: linhas.join('\n'), nLinhas: linhas.length, nLinhasTotal: linhas.length, totalNaOrigem: 1, cortado: false, partes: 1, parte: 0, ciclo, porTipo: {}, versaoExt: VEXT, acumular: 'Documento' });
     const antes = await page.evaluate(() => JSON.parse(JSON.stringify(window.__db.ler('dp_empresas/e-orion'))));
+    // a rescisão do Beltrano foi aplicada no lote da Entrada de dados (desligado não sai da folha de novo): aqui ele volta a ativo; o fim do passo restaura
+    await page.evaluate(() => { const d = window.__db.ler('dp_empresas/e-orion'); d.funcionarios.forEach(f => { if (f.nome === 'Beltrano Silva') { f.rescisao = ''; f.status = 'Ativo'; } }); window.__db.semear('dp_empresas/e-orion', d); });
     // mês passado: Maria e Beltrano; este mês: só Maria (Beltrano saiu) e uma sócia (contribuinte não conta para o quadro)
     assert.equal((await envia(lote('q1', 'cQ1', [lq('q1', mes(1), '101', 'MARIA SOUZA', 'Celetista'), lq('q1', mes(1), '202', 'BELTRANO SILVA', 'Celetista')]))).ok, true);
     assert.equal((await envia(lote('q0', 'cQ0', [lq('q0', mes(0), '101', 'MARIA SOUZA', 'Celetista'), lq('q0', mes(0), '15', 'SOCIA FICTICIA', 'Contribuinte', true)]))).ok, true);
@@ -841,6 +848,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
   });
 
   await passo('Folha sem a lista do Onvio (Hub 312, Josué 04/11/2026: "mesmo não puxando do Onvio a leitura deveria ter pego"): a folha decide sozinha, conferida pelo cadastro do DP', async () => {
+    await abrirFontes();
     const cfg = await page.evaluate(() => window.__db.ler('ing_config/cfg'));
     await page.evaluate(() => { window.__msgs = window.__msgs || []; if (!window.__ouveAck) { window.__ouveAck = 1; window.addEventListener('message', (e) => { if (e.data && e.data.ctlhub === 1 && e.data.de === 'hub') window.__msgs.push(e.data); }); } });
     const envia = async (l) => { await page.evaluate((l) => { window.__msgs.length = 0; window.postMessage(l, '*'); }, l); await page.waitForFunction((id) => window.__msgs.some(m => m.tipo === 'ack' && m.id === id), l.id, { timeout: 5000 }); return page.evaluate((id) => window.__msgs.find(m => m.tipo === 'ack' && m.id === id), l.id); };
@@ -876,6 +884,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
   });
 
   await passo('Folha só com pró-labore (Hub 312, Clear 04/11/2026): sem lista do Onvio e sem empregados no cadastro, o sócio da folha entra como cadastro novo', async () => {
+    await abrirFontes();
     const cfg = await page.evaluate(() => window.__db.ler('ing_config/cfg'));
     await page.evaluate(() => { window.__msgs = window.__msgs || []; if (!window.__ouveAck) { window.__ouveAck = 1; window.addEventListener('message', (e) => { if (e.data && e.data.ctlhub === 1 && e.data.de === 'hub') window.__msgs.push(e.data); }); } });
     const envia = async (l) => { await page.evaluate((l) => { window.__msgs.length = 0; window.postMessage(l, '*'); }, l); await page.waitForFunction((id) => window.__msgs.some(m => m.tipo === 'ack' && m.id === id), l.id, { timeout: 5000 }); return page.evaluate((id) => window.__msgs.find(m => m.tipo === 'ack' && m.id === id), l.id); };
@@ -925,6 +934,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
   });
 
   await passo('Folha · lista fiel (Hub 306): vínculo pela folha, pró-labore e RPA em grupos à parte (entram e saem pela folha), Inativo fora da contagem, e o automático não para por conjunto cortado', async () => {
+    await abrirFontes();
     const cfg = await page.evaluate(() => window.__db.ler('ing_config/cfg'));
     await page.evaluate(() => { window.__msgs = window.__msgs || []; if (!window.__ouveAck) { window.__ouveAck = 1; window.addEventListener('message', (e) => { if (e.data && e.data.ctlhub === 1 && e.data.de === 'hub') window.__msgs.push(e.data); }); } });
     const envia = async (l) => { await page.evaluate((l) => { window.__msgs.length = 0; window.postMessage(l, '*'); }, l); await page.waitForFunction((id) => window.__msgs.some(m => m.tipo === 'ack' && m.id === id), l.id, { timeout: 5000 }); return page.evaluate((id) => window.__msgs.find(m => m.tipo === 'ack' && m.id === id), l.id); };
@@ -947,7 +957,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     if (process.env.DEPURA) console.log(JSON.stringify(ds.map(d => [d.nome, d.tipo, d.acao, d.depois, d.confirmar])));
 
     assert.equal(de('Socia Ficticia', 'vinculo').depois, 'Pró-labore', 'o vínculo vem da folha (Diretor = pró-labore)');
-    assert.equal(de('Maria Souza', 'vinculo').depois, 'Empregado');
+    assert.equal(de('Maria Souza', 'vinculo') ? de('Maria Souza', 'vinculo').depois : (await page.evaluate(() => (window.__db.ler('dp_empresas/e-orion').funcionarios.find(f => f.nome === 'Maria Souza') || {}).vinculo)), 'Empregado', 'Empregado: pela folha ou já aplicado no lote da Entrada de dados');
     assert.equal(de('Pedreiro Avulso', 'situacao').depois, 'Inativo', 'RPA sem folha no mês: inativo');
     const antigo = de('Ex Garcom Antigo', 'situacao');
     assert.ok(antigo, 'Hub 307: empregado do cadastro que não está na lista do Onvio nem na folha também sai (antes ficava preso na regra de ausência)');
@@ -1090,6 +1100,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
   });
 
   await passo('Aplicação automática: liga com confirmação, aplica sozinho sem perguntar, registra "automaticamente" no histórico e só cadastra empresas se for escolhido', async () => {
+    await abrirFontes();
     const antes = await page.evaluate(() => window.__db.listar('dp_empresas').length);
     await page.evaluate(() => window.__hubApi.api('onvio').garantir());                    // depois do passo da consulta, relê os conjuntos (sem isso o interruptor espera o próximo ciclo da tela)
     await fr.locator('#autoLigar:not([disabled])').waitFor({ timeout: 20000 });          // o interruptor só habilita depois que todos os conjuntos carregam
