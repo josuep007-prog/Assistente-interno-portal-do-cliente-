@@ -149,6 +149,7 @@ async function confirmar() {
   const campo = c.campo ? String(($('#gp-conf-campo', P.alvo || $('#gt-painel')) || {}).value || '').trim() : '';
   if (c.campo && !campo) { P.conf.falta = true; desenharPainel(); return; }
   P.agindo = true; desenharPainel();
+  if (c.arquivos && c.arquivos.length) return enviarVarios(c, t);
   let msg = Object.assign({ cmd: 'gesttaAcao', id: t._id }, c.msg);
   if (c.campo) msg[c.campo] = campo;
   try { if (c.arquivo) msg.arquivo = { nome: c.arquivo.name, tipo: c.arquivo.type || '', base64: await lerBase64(c.arquivo) }; }
@@ -166,6 +167,46 @@ async function confirmar() {
     desenharPainel(); recarregarQuieto();
     if (P.aba === 'tempo') carregarHist(true);
   } else { P.aviso = { ok: false, texto: (r && r.erro) || 'O Gestta não respondeu.' }; desenharPainel(); }
+}
+// 0.101.0 (Josué, 12/11/2026: "também dê só de arrastar o arquivo, podendo arrastar mais de uma vez"; "se o analista arrastar o
+// documento direto no item de uma tarefa, não precisa passar pelo leitor do Express"): vários arquivos no mesmo item da tarefa,
+// um por vez, pelo mesmo envio do "Enviar arquivo" (gesttaAcao documento), depois de uma confirmação só. Para no "sessão acabou".
+async function enviarVarios(c, t) {
+  let ok = 0; const falhas = [];
+  for (const f of c.arquivos) {
+    let r;
+    try { r = await enviar(Object.assign({ cmd: 'gesttaAcao', id: t._id }, c.msg, { arquivo: { nome: f.name, tipo: f.type || '', base64: await lerBase64(f) } })); }
+    catch (e) { r = { ok: false, erro: 'Não consegui ler o arquivo.' }; }
+    if (r && r.ok) { ok++; if (r.tarefa && r.tarefa.status) t.status = r.tarefa.status; }
+    else { falhas.push('“' + f.name + '”: ' + ((r && r.erro) || 'o Gestta não respondeu')); if (r && (r.status === 401 || /sess[aã]o/i.test(r.erro || ''))) break; }
+  }
+  const texto = (ok ? (ok === 1 ? '1 arquivo enviado' : ok + ' arquivos enviados') + ' no documento “' + c.docNome + '”.' : 'Nenhum arquivo foi enviado.') + (falhas.length ? ' Não foram: ' + falhas.join(' · ') : '');
+  if (!P || !P.lista[P.i] || P.lista[P.i]._id !== t._id) { toast(texto, !!falhas.length); if (ok) try { window.dispatchEvent(new CustomEvent('gt-tarefa-mudou', { detail: { id: t._id } })); } catch (e) {} return; }
+  P.agindo = false; P.conf = null; P.aviso = { ok: !falhas.length, texto };
+  if (ok) { HIST.delete(t._id); try { window.dispatchEvent(new CustomEvent('gt-tarefa-mudou', { detail: { id: t._id } })); } catch (e) {} }
+  desenharPainel(); if (ok) { recarregarQuieto(); if (P.aba === 'tempo') carregarHist(true); }
+}
+// Confirmação de um ou vários arquivos para um documento (item) da tarefa: escolhidos no botão ou arrastados em cima do item
+function confirmarArquivos(doc, lista) {
+  const fs = Array.from(lista || []).filter(f => f && f.size != null);
+  if (!fs.length || !doc) return;
+  const grandes = fs.filter(f => f.size > ARQ_MAX), vao = fs.filter(f => f.size <= ARQ_MAX);
+  if (!vao.length) { P.aviso = { ok: false, texto: grandes.map(f => '“' + f.name + '” tem ' + tamanho(f.size)).join(' · ') + ': o limite é 15 MB por arquivo.' }; desenharPainel(); return; }
+  const nome = doc.name || 'Documento';
+  const extra = (vao.length > 1 ? vao.map(f => f.name + ' (' + tamanho(f.size) + ')') : [])
+    .concat(grandes.length ? ['Ficam de fora (acima de 15 MB): ' + grandes.map(f => f.name).join(', ')] : [])
+    .concat(doc.has_documents_integration ? ['O arquivo vai ao Portal do Cliente.'] : [])
+    .concat(['Se este for o último documento que falta, o Gestta pode concluir a tarefa sozinho.'])
+    .concat(doc.temArquivo ? ['O documento já tem arquivo: ' + (vao.length > 1 ? 'estes serão mais.' : 'este será mais um.')] : []);
+  if (vao.length === 1) return pedirConfirmacao({ msg: { acao: 'documento', documento: doc._id }, arquivo: vao[0], texto: 'Enviar “' + vao[0].name + '” (' + tamanho(vao[0].size) + ') no documento “' + nome + '”?', extra, botao: 'Enviar arquivo', feito: 'Arquivo enviado no Gestta.' });
+  pedirConfirmacao({ msg: { acao: 'documento', documento: doc._id }, arquivos: vao, docNome: nome, texto: 'Enviar ' + vao.length + ' arquivos no documento “' + nome + '”? Vão um por vez.', extra, botao: 'Enviar ' + vao.length + ' arquivos', feito: '' });
+}
+// Arrastar arquivo para fora de um item não abre o arquivo na tela (o navegador abriria o PDF por cima de tudo)
+const temArquivos = e => !!(e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files'));
+if (typeof document !== 'undefined' && !document.__gtSoltar) {
+  document.__gtSoltar = true;
+  document.addEventListener('dragover', e => { if (temArquivos(e) && !e.target.closest('[data-gp-drop]')) { e.preventDefault(); e.dataTransfer.dropEffect = 'none'; } });
+  document.addEventListener('drop', e => { if (temArquivos(e) && !e.target.closest('[data-gp-drop]')) e.preventDefault(); });
 }
 // Relê o detalhe sem o esqueleto (depois de uma ação)
 async function recarregarQuieto() {
@@ -221,8 +262,8 @@ function desenharPainel() {
         // 0.93.0: com o id da etapa, clicar marca ou desmarca (com confirmação)
         return '<li class="' + (p.done ? 'ok' : '') + '">' + (p._id ? '<button type="button" class="gp-passo" data-gp-etapa="' + esc(p._id) + '" aria-pressed="' + !!p.done + '" title="' + (p.done ? 'Desmarcar esta etapa' : 'Marcar esta etapa como feita') + '">' + conteudo + '</button>' : conteudo) + '</li>';
       }).join('') + '</ul></section>' : '<p class="fraco">Esta tarefa não tem etapas internas.</p>') +
-      (docs.length ? '<section class="gp-sec"><h3>Documentos da tarefa</h3><ul class="gp-docs">' + docs.map(x => '<li class="gp-doc"><span class="gp-doc-nome">' + esc(x.name || 'Documento') + (x.validation_required ? ' <small class="fraco">pede validação</small>' : '') + (x.temArquivo ? ' <small class="gp-doc-ok">✓ com arquivo</small>' : '') + (x.has_documents_integration ? ' <small class="fraco">vai ao Portal do Cliente</small>' : '') + '</span>' +
-        (x._id ? '<button type="button" class="btn btn-sm" data-gp-doc="' + esc(x._id) + '"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-upload"/></svg>' + (x.temArquivo ? 'Enviar outro arquivo' : 'Enviar arquivo') + '</button>' : '') + '</li>').join('') + '</ul><input type="file" id="gp-arq" hidden></section>' : '') +
+      (docs.length ? '<section class="gp-sec"><h3>Documentos da tarefa</h3>' + (docs.some(x => x._id) ? '<p class="gp-dica-arrastar ajuda">Arraste um ou mais arquivos em cima do documento para enviar nele.</p>' : '') + '<ul class="gp-docs">' + docs.map(x => '<li class="gp-doc"' + (x._id ? ' data-gp-drop="' + esc(x._id) + '" data-gp-drop-rot="Soltar em “' + esc(x.name || 'Documento') + '”"' : '') + '><span class="gp-doc-nome">' + esc(x.name || 'Documento') + (x.validation_required ? ' <small class="fraco">pede validação</small>' : '') + (x.temArquivo ? ' <small class="gp-doc-ok">✓ com arquivo</small>' : '') + (x.has_documents_integration ? ' <small class="fraco">vai ao Portal do Cliente</small>' : '') + '</span>' +
+        (x._id ? '<button type="button" class="btn btn-sm" data-gp-doc="' + esc(x._id) + '"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-upload"/></svg>' + (x.temArquivo ? 'Enviar outro arquivo' : 'Enviar arquivo') + '</button>' : '') + '</li>').join('') + '</ul><input type="file" id="gp-arq" multiple hidden></section>' : '') +
       (pedidos.length ? '<section class="gp-sec"><h3>Pedidos ao cliente' + (d.document_request && d.document_request.active ? ' <span class="pill pill-today">cobrança ativa</span>' : '') + '</h3><ul class="gp-docs">' + pedidos.map(x => '<li>' + esc(x.name || 'Documento') + '</li>').join('') + '</ul></section>' : '') +
       // 0.93.0: comentário interno (fica só para a equipe; nunca vai ao cliente)
       '<section class="gp-sec gp-com"><h3><label for="gp-com">Comentário interno</label></h3><textarea id="gp-com" rows="2" maxlength="4000" placeholder="Escreva um comentário para a equipe (o cliente não vê)">' + esc(P.rasc.com) + '</textarea><div class="gp-com-pe"><button type="button" class="btn btn-sm" id="gp-comentar"' + (P.rasc.com.trim() ? '' : ' disabled') + '>Comentar</button></div></section>';
@@ -277,13 +318,19 @@ function ligarAcoes(el, t, passos, docs) {
     pedirConfirmacao({ msg: { acao: 'comentar', texto: tx }, texto: 'Gravar este comentário na tarefa ' + nomeT + '?', extra: ['“' + (tx.length > 160 ? tx.slice(0, 160) + '…' : tx) + '”', 'Fica só para a equipe: o cliente não vê.'], botao: 'Gravar comentário', feito: 'Comentário gravado no Gestta.' }); };
   const arq = $('#gp-arq', el);
   $$('[data-gp-doc]', el).forEach(b => b.onclick = () => { if (!arq) return; arq.dataset.doc = b.dataset.gpDoc; arq.value = ''; arq.click(); });
-  if (arq) arq.onchange = () => {
-    const f = arq.files && arq.files[0], doc = docs.find(x => x._id === arq.dataset.doc); if (!f || !doc) return;
-    if (f.size > ARQ_MAX) { P.aviso = { ok: false, texto: '“' + f.name + '” tem ' + tamanho(f.size) + ': o limite é 15 MB.' }; desenharPainel(); return; }
-    pedirConfirmacao({ msg: { acao: 'documento', documento: doc._id }, arquivo: f, texto: 'Enviar “' + f.name + '” (' + tamanho(f.size) + ') no documento “' + (doc.name || 'Documento') + '”?',
-      extra: (doc.has_documents_integration ? ['O arquivo vai ao Portal do Cliente.'] : []).concat(['Se este for o último documento que falta, o Gestta pode concluir a tarefa sozinho.']).concat(doc.temArquivo ? ['O documento já tem arquivo: este será mais um.'] : []),
-      botao: 'Enviar arquivo', feito: 'Arquivo enviado no Gestta.' });
-  };
+  if (arq) arq.onchange = () => { const doc = docs.find(x => x._id === arq.dataset.doc); if (arq.files && arq.files.length) confirmarArquivos(doc, arq.files); };
+  // 0.101.0: arrastar e soltar em cima do documento (um ou vários arquivos, quantas vezes quiser)
+  $$('[data-gp-drop]', el).forEach(li => {
+    let n = 0;
+    li.addEventListener('dragenter', e => { if (!temArquivos(e) || P.agindo || P.conf) return; e.preventDefault(); n++; li.classList.add('gp-drop-on'); });
+    li.addEventListener('dragover', e => { if (!temArquivos(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = P.agindo || P.conf ? 'none' : 'copy'; });
+    li.addEventListener('dragleave', () => { n = Math.max(0, n - 1); if (!n) li.classList.remove('gp-drop-on'); });
+    li.addEventListener('drop', e => {
+      if (!temArquivos(e)) return; e.preventDefault(); n = 0; li.classList.remove('gp-drop-on');
+      if (P.agindo || P.conf) { P.aviso = { ok: false, texto: 'Termine (ou cancele) a confirmação aberta antes de soltar outro arquivo.' }; desenharPainel(); return; }
+      confirmarArquivos(docs.find(x => x._id === li.dataset.gpDrop), e.dataTransfer.files);
+    });
+  });
   const ok = $('#gp-conf-ok', el), nao = $('#gp-conf-nao', el), ax = $('#gp-aviso-x', el), cf = $('.gp-conf', el);
   if (ok) ok.onclick = confirmar;
   if (nao) nao.onclick = () => { P.conf = null; desenharPainel(); };

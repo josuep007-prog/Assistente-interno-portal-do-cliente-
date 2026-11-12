@@ -687,3 +687,10 @@
 @media (max-width:900px){ .gl-h, .gl-r{grid-template-columns:34px minmax(0,1fr) 62px 40px} }
 .gte-conf-l{margin:6px 0; padding-left:18px; font-size:12.5px}
 .gte-conf-l small{color:var(--ink-2)}
+
+/* 0.101.0: arrastar arquivo em cima do documento da tarefa */
+.gp-dica-arrastar{margin:0 0 6px; font-size:12px; color:var(--ink-2)}
+.gp-docs li.gp-doc[data-gp-drop]{border:1px dashed transparent; border-radius:var(--r); padding:4px 6px 4px 14px; transition:border-color .12s, background .12s}
+.gp-docs li.gp-doc.gp-drop-on{outline:2px dashed var(--blue-deep, #3C659B); outline-offset:1px; background:color-mix(in srgb, var(--blue-deep, #3C659B) 14%, transparent)}
+.gp-docs li.gp-doc.gp-drop-on::after{content:attr(data-gp-drop-rot); flex-basis:100%; font-size:12px; font-weight:600; color:var(--ink)}
+:root[data-estilo="simples"] .gp-docs li.gp-doc.gp-drop-on{outline-style:solid}
