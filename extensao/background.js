@@ -380,6 +380,7 @@ async function gesttaAcao(msg, sender) {
   if (!String((sender && sender.url) || '').startsWith(chrome.runtime.getURL('app/'))) return { ok: false, erro: 'Ação recusada: só a tela das Tarefas do Gestta pode pedir.' };
   // tirar da lista de erros só pelo gesttaTirar, que relê a fila e confere cada documento antes
   if (msg.acao === 'tirarDaLista') return { ok: false, erro: 'Ação recusada: tirar da lista passa pela conferência dos envios.' };
+  if (['tirarPasta', 'pasta', 'templateSalvar'].includes(msg.acao)) return { ok: false, erro: 'Ação recusada: a pasta do template passa pela conferência dos envios.' };   // 0.100.4
   const p = OCG.pedidoAcao(msg);
   if (p.erro) return { ok: false, erro: p.erro.charAt(0).toUpperCase() + p.erro.slice(1) + '.' };
   const perm = OCG.escritaPermitida(p.metodo, p.url, p.corpo);
@@ -431,6 +432,34 @@ async function gesttaPasta(msg, sender) {
   const b = await agir(OCG.pedidoAcao({ acao: 'templateSalvar', template: destino, bypass: !!d.bypass, nome: d.name, prazo: !!d.send_documents_due_date }));
   const conf = await ler(destino);
   return { ok: !!(conf && pastaDe(conf).length), salvou: !!b.ok, pasta: conf ? pastaDe(conf).join(' › ') : '', erro: conf && pastaDe(conf).length ? '' : 'A pasta foi enviada, mas o Gestta não a mostra no template. Confira na tela do Gestta.' };
+}
+// 0.100.4: tirar a pasta de um template montada fora da empresa 9999 (Josué, 12/11/2026; mapeado no mesmo dia: DELETE
+// admin/company/document/integration/documents/{id do template}, 204, só aquele template; depois o Salvar do template, como a tela).
+// Relê o template na hora e só tira se ele ainda tem pasta e ela não é da 9999 (com a 9999 conhecida); confere no fim.
+async function gesttaTirarPasta(msg, sender) {
+  if (!String((sender && sender.url) || '').startsWith(chrome.runtime.getURL('app/'))) return { ok: false, erro: 'Ação recusada: só a tela das Tarefas do Gestta pode pedir.' };
+  const t = String(msg.template || '');
+  if (!/^[0-9a-f]{24}$/i.test(t)) return { ok: false, erro: 'Template inválido.' };
+  if (!modelo9999) return { ok: false, erro: 'A empresa 9999 não foi achada no Gestta: sem ela não dá para conferir a pasta. Nada foi mudado.' };
+  const tab = await tabDoGestta(sender);
+  if (!tab) return { ok: false, erro: 'Abra o Gestta numa aba, já logado.' };
+  const ler = async () => { const { r } = await lerGestta([OCG.PEDIDOS.template({ id: t })], { tab }); const x = r && r.resultados && r.resultados[0]; return x && x.status === 200 ? x.dados : null; };
+  const d = await ler();
+  if (!d) return { ok: false, erro: 'Não consegui ler o template no Gestta.' };
+  if (!OCG.pastaForaDe(d, modelo9999.id)) return { ok: false, erro: 'Este template não tem mais pasta fora da 9999: nada foi mudado.' };
+  const agir = async (pedido) => {
+    if (pedido.erro) return { ok: false, erro: pedido.erro };
+    if (!OCG.escritaPermitida(pedido.metodo, pedido.url, pedido.corpo).ok) return { ok: false, erro: 'a extensão recusou a ação' };
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', files: ['gestta.js'] });
+    const [res] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', func: (ped) => (self.OCG ? self.OCG.agirNaPagina(ped) : { ok: false, erro: 'núcleo do Gestta não carregou na aba' }), args: [pedido] });
+    return (res && res.result) || { ok: false, erro: 'a aba do Gestta não respondeu' };
+  };
+  const a = await agir(OCG.pedidoAcao({ acao: 'tirarPasta', template: t }));
+  if (!a.ok) return { ok: false, status: a.status, erro: a.status === 401 ? 'A sessão do Gestta acabou: faça login de novo.' : a.status === 403 ? 'Seu acesso do Gestta não permite mudar templates.' : 'O Gestta não tirou a pasta (' + (a.erro || a.recusado || 'erro') + ').' };
+  const b = await agir(OCG.pedidoAcao({ acao: 'templateSalvar', template: t, bypass: !!d.bypass, nome: d.name, prazo: !!d.send_documents_due_date }));
+  const conf = await ler();
+  const semPasta = !!conf && !(conf.documents_integration && Array.isArray(conf.documents_integration.pathName) && conf.documents_integration.pathName.filter(Boolean).length);
+  return { ok: semPasta, salvou: !!b.ok, erro: semPasta ? '' : 'O Gestta respondeu, mas o template ainda mostra a pasta. Confira na tela do Gestta.' };
 }
 // 0.98.0: tirar da lista de erros os documentos sem pasta que não vão ao portal (Josué, 12/11/2026: "devem ser excluídos em lote da lista
 // de erros"; a lixeira mapeada no mesmo dia: PATCH es/file/onvio/remove/batch). Relê a fila e os templates na hora e só tira o que, agora,
@@ -1397,6 +1426,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'gesttaEquipe') { reply(await gesttaEquipe(msg, sender)); }
       else if (msg.cmd === 'gesttaEnvios') { reply(await gesttaEnvios(msg, sender)); }
       else if (msg.cmd === 'gesttaPasta') { reply(await gesttaPasta(msg, sender)); }
+      else if (msg.cmd === 'gesttaTirarPasta') { reply(await gesttaTirarPasta(msg, sender)); }
       else if (msg.cmd === 'gesttaTirar') { reply(await gesttaTirar(msg, sender)); }
       else if (msg.cmd === 'gesttaFechamento') { reply(await gesttaFechamento(msg, sender)); }
       else if (msg.cmd === 'gesttaTarefa') { reply(await gesttaTarefa(msg, sender)); }

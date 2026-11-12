@@ -4558,3 +4558,19 @@ test('Gestta (0.100.3) · Envios ao portal: só vale a pasta montada a partir da
   const B = OCG.enviosPortal([env('e1', 't1', 'Folha de Pagamento', 'UPLOAD_ERROR')], templates);
   assert.equal(B.reenviar.length, 1); assert.equal(B.pastaFora.length, 0);
 });
+
+test('Gestta (0.100.4): tirar a pasta de um template é um DELETE só no endereço mapeado, com o id do template e corpo vazio', () => {
+  const T = '6577714ee4d9100006d238ec';
+  const p = OCG.pedidoAcao({ acao: 'tirarPasta', template: T });
+  assert.equal(p.metodo, 'DELETE'); assert.equal(p.url, 'https://api.gestta.com.br/admin/company/document/integration/documents/' + T);
+  assert.deepEqual(JSON.parse(JSON.stringify(p.corpo)), {});
+  assert.ok(OCG.escritaPermitida(p.metodo, p.url, p.corpo).ok);
+  assert.ok(!OCG.escritaPermitida('DELETE', p.url, { x: 1 }).ok, 'corpo com algo é recusado');
+  assert.ok(!OCG.escritaPermitida('DELETE', 'https://api.gestta.com.br/admin/company/document/' + T, {}).ok, 'apagar o template, nunca');
+  assert.ok(!OCG.escritaPermitida('DELETE', 'https://api.gestta.com.br/core/customer/task/' + T, {}).ok, 'apagar tarefa, nunca');
+  assert.ok(!OCG.escritaPermitida('DELETE', 'https://api.gestta.com.br/admin/company/document/integration/documents/batch', {}).ok);
+  assert.ok(OCG.pedidoAcao({ acao: 'tirarPasta', template: 'x' }).erro);
+  const bg = fs.readFileSync(path.join(__dirname, '..', 'extensao', 'background.js'), 'utf8');
+  assert.match(bg, /if \(\['tirarPasta', 'pasta', 'templateSalvar'\]\.includes\(msg\.acao\)\) return \{ ok: false/, 'gesttaAcao não faz a pasta direto');
+  assert.match(bg, /if \(!OCG\.pastaForaDe\(d, modelo9999\.id\)\) return \{ ok: false/, 'só tira pasta fora da 9999, relida na hora');
+});

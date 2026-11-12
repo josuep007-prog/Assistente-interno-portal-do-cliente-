@@ -2,6 +2,36 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.100.4 (12/11/2026): tirar a pasta fora da 9999 pela extensão
+
+- **Tirar a pasta** (Josué: "tem que tirar a pasta e excluir o erro da lista"; mapeado no mesmo dia na empresa de teste): em **Pastas fora da empresa 9999**, um por template ou **Tirar as N pastas**, e, no bloco 3, **Tirar a pasta e os documentos**. Uma confirmação; depois, um template por vez: primeiro os documentos dele com erro saem da lista, depois a pasta sai do template (`DELETE admin/company/document/integration/documents/{id do template}` e o Salvar do template, como a tela do Gestta; os outros templates da mesma pasta não mudam). Antes de cada um a extensão relê o template e só tira se a pasta continua fora da 9999; no fim confere que ficou sem pasta.
+
+## Novidades da v0.100.3 (12/11/2026): Envios ao portal com um destino por documento
+
+- **Um destino só para cada documento com erro** (Josué: "a parte de reenviar está confusa"): **1 · Reenviar** (a tarefa notifica o cliente e o template tem a pasta da 9999; um botão para todos), **2 · Corrigir a pasta no Gestta** (deveria ir, mas o template está sem pasta: "Usar a pasta" do parecido ou "Abrir o template no Gestta"; depois passa para o bloco 1) e **3 · Tirar da lista** (não vai ao portal). O botão de reenviar por linha saiu.
+- **Só vale a pasta montada a partir da empresa 9999** (o código 9999 no Gestta; a extensão acha o id dela na lista de clientes). Template com pasta montada a partir de outra empresa: os documentos dele com erro vão para Tirar da lista, ele aparece em **Pastas fora da empresa 9999** com o botão **Tirar a pasta no Gestta**, não serve de modelo para "Usar a pasta" (o service worker também recusa) e não é sugerido no risco. Sem achar a 9999, a tela avisa e toda pasta conta como válida.
+- **Abrir o template no Gestta** (cadastro do template, `admin/#/sidebar/document/edit/{id}/details`) em cada template para corrigir, nos em risco e nos de pasta fora da 9999.
+- **Tirar a pasta pela extensão ainda não:** o mapeamento de 12/11/2026 anotou `DELETE /admin/company/document/integration/documents/{id da integração}`, mas não qual id é esse; até confirmar, a pasta se tira no cadastro do template, pelo botão.
+
+## Novidades da v0.100.2 (12/11/2026): só vai ao portal o que notifica o cliente
+
+- Regra do Josué: só vai ao Portal do Cliente documento de tarefa que notifica o cliente ("Notificar cliente via e-mail: Sim" na tarefa, `notify_customer`). A aba Envios ao portal lê esse campo em cada tarefa da fila de erros (um GET por tarefa, só o sim/não, na memória por 30 min). Documento de tarefa que **não** notifica vai para "Não vai ao portal: sai da lista de erros", qualquer que seja o erro e mesmo que o template tenha pasta (nunca é reenviado). Tarefa que notifica e template sem pasta: "Deveria ir ao portal". Tarefa que não deu para ler: vale o nome do template, como antes, e a tela avisa quantas.
+- **A conferir no Gestta real:** se `notify_customer` é mesmo o "Notificar cliente via e-mail" da tela.
+
+## Novidades da v0.100.1 (12/11/2026): Envios ao portal lê a fila inteira
+
+- A aba Envios ao portal (e o conjunto de envios com erro do Hub) parava de ler na primeira página com menos de 50 documentos; como o Gestta pode devolver menos por página, parte dos erros ficava de fora sem aviso. Agora a leitura segue até a fila acabar ou chegar ao total que o Gestta informa, e, se não chegar, a tela diz "Lidos N de M: a fila não veio inteira". A lista de templates tinha o mesmo risco (template com pasta fora da 1ª página parecia "sem pasta") e foi corrigida junto.
+
+## Novidades da v0.100.0 (12/11/2026): a convenção acompanhada (Hub 351)
+
+- **Hub 352 (12/11/2026):** "sindicatos não devem ser registrados nem acompanhados, apenas convenções". Convenções perdeu a aba Sindicatos e o bloco do Mediador por sindicato; a agenda não tem mais eventos por sindicato; a empresa mostra a convenção vinculada (ou "Sem convenção"). A extensão não muda.
+
+- Pedido do Josué: "o analista cadastra o CNPJ da convenção e vincula quais empresas seguem aquela convenção; clica num botão para o buscador trazer os dados mais recentes e salva no módulo; a partir disso o módulo controla os prazos e busca sozinho a partir da data-base até achar a nova; se quiser, manda buscar fora de época"; "a extensão deve buscar a convenção específica e não sindicatos isolados".
+- **A busca é por convenção:** o Hub pede à extensão uma convenção (o par **sindicato laboral × sindicato patronal**, os dois CNPJs obrigatórios). A extensão busca no Mediador pelo CNPJ laboral, fica só com os instrumentos em que o patronal também é parte, e devolve a convenção mais recente do par e os aditivos dela, com o texto. Nada disso fica na extensão: quem guarda é o Hub.
+- **Sem a varredura de todos os sindicatos:** a busca semanal de todos os sindicatos do cadastro parou (e, no Hub, o cadastro sozinho do Hub 350 também).
+- **No Hub (351), aba Acompanhar em Convenções:** Nova convenção (os dois CNPJs e as empresas que seguem ela) → busca no Mediador e salva no módulo; daí as empresas ligadas passam a ter a convenção (o vínculo é direto, começando do zero: o código do sindicato do estabelecimento não liga mais a empresa à convenção). Da data-base em diante, a busca é **diária** até achar a nova, que **espera o analista** clicar em Salvar no módulo (ou Ignorar). "Buscar no Mediador" vale a qualquer hora e salva na hora.
+- **A conferir no Mediador real:** a busca pelo CNPJ laboral traz as convenções com o patronal certo nas colunas de CNPJ do trabalhador e do empregador.
+
 ## Novidades da v0.99.0 (12/11/2026): tudo em lote
 
 - **Lista das Tarefas do Gestta:** uma caixa de marcar em cada tarefa (e no cabeçalho, para todas as da lista). Com tarefas marcadas aparece a barra **Concluir · Impedimento · Retirar impedimento · Reabrir · Comentar**, cada uma com quantas das marcadas cabem nela. Uma confirmação para o lote (o motivo do impedimento ou o comentário é o mesmo para todas), depois uma tarefa por vez; a tarefa em que a ação não cabe pela situação fica de fora e a confirmação diz quantas. Para no primeiro "sessão acabou"; as que falharam continuam marcadas.

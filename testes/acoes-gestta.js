@@ -12,7 +12,7 @@ const NUCLEO = fs.readFileSync(path.join(__dirname, '..', 'extensao', 'gestta.js
 const TOKEN = 'JWT eyJ-SEGREDO-GESTTA-789';
 const T = '5f1e2d3c4b5a69788796a5b4', S = '6a5b4c3d2e1f00112233aabb', D = '7b6c5d4e3f2a10213243bbcc';
 const SEGREDOS = [TOKEN, 'SEGREDO-GESTTA', 'EMPRESA SIGILO LTDA', '12.345.678/0001-90', 'fulana@exemplo.com', 'ESCRITORIO SIGILO', 'CIRCULAR_WRITE'];
-const CORS = { 'access-control-allow-origin': 'https://app.gestta.com.br', 'access-control-allow-headers': 'authorization,content-type,accept', 'access-control-allow-methods': 'GET,POST,PUT,PATCH,OPTIONS' };
+const CORS = { 'access-control-allow-origin': 'https://app.gestta.com.br', 'access-control-allow-headers': 'authorization,content-type,accept', 'access-control-allow-methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS' };
 // a resposta do Gestta traz a tarefa inteira, o cliente, o escritório e o usuário (como no mapeamento)
 const tarefa = (status, feita) => ({ _id: T, status, done_step: feita ? 1 : 0, total_step: 1, conclusion_date: status === 'DONE' ? '2026-11-11T15:00:00.000Z' : null,
   customer: { _id: D, name: 'EMPRESA SIGILO LTDA', cnpj: '12.345.678/0001-90' }, owner: { _id: S, name: 'Fulana', email: 'fulana@exemplo.com' },
@@ -38,6 +38,7 @@ const tarefa = (status, feita) => ({ _id: T, status, done_step: feita ? 1 : 0, t
     if (u.pathname === '/es/file/onvio/remove/batch') return json({ success: JSON.parse(bruto).length, failed: 0 });
     if (u.pathname === '/admin/company/document/integration/documents/batch') return r.fulfill({ status: 200, headers: CORS, body: '' });
     if (u.pathname === '/admin/company/document/' + D && req.method() === 'PUT') return json({ _id: D, name: 'TESTE MAPEAMENTO', bypass: false, send_documents_due_date: false, company: { name: 'ESCRITORIO SIGILO' }, created_by: { email: 'fulana@exemplo.com' }, documents_integration: { customer_id: S, id: 'abc123def456', path: ['Pessoal'], pathName: ['Pessoal'] } });
+    if (req.method() === 'DELETE' && /^\/admin\/company\/document\/integration\/documents\/[0-9a-f]{24}$/.test(u.pathname)) return r.fulfill({ status: 204, headers: CORS });
     if (u.pathname === '/es/upload/direct') return json({ company_document: { _id: D, name: 'Recibo' }, customer_task: tarefa('DONE', true) });
     return json({ message: 'não mapeado' }, 404);
   });
@@ -108,6 +109,12 @@ const tarefa = (status, feita) => ({ _id: T, status, done_step: feita ? 1 : 0, t
     assert.deepEqual([ultima().metodo, ultima().caminho, ultima().corpo], ['PATCH', '/es/file/onvio/remove/batch', [S, D]]);
     assert.deepEqual(r.resumo, { success: 2, failed: 0 });
   });
+  await passo('0.100.4 · tirar a pasta: DELETE …/integration/documents/{id do template}, corpo vazio, 204', async () => {
+    const r = await page.evaluate(async (t) => { const p = self.OCG.pedidoAcao({ acao: 'tirarPasta', template: t }); return self.OCG.agirNaPagina(p); }, D);
+    assert.equal(r.ok, true, JSON.stringify(r));
+    assert.deepEqual([ultima().metodo, ultima().caminho], ['DELETE', '/admin/company/document/integration/documents/' + D]);
+    assert.equal(ultima().auth, TOKEN); semSegredos(r);
+  });
   await passo('pedido adulterado não sai: outro endereço, DELETE, comentário externo, status fora da lista', async () => {
     const antes = chamadas.length;
     const ruins = [
@@ -140,7 +147,7 @@ const tarefa = (status, feita) => ({ _id: T, status, done_step: feita ? 1 : 0, t
   await passo('nenhuma chamada levou querystring; só PUT e POST nos endereços mapeados', async () => {
     assert.ok(chamadas.every(c => !c.busca), 'querystring');
     const ok = [/^PUT \/core\/customer\/task\/[0-9a-f]{24}\/step\/[0-9a-f]{24}\/done$/, /^PUT \/es\/task\/[0-9a-f]{24}\/status$/, /^POST \/core\/customer\/task\/[0-9a-f]{24}\/history\/comment$/, /^POST \/es\/upload\/direct$/,
-      /^POST \/es\/file\/onvio\/resend$/, /^PATCH \/admin\/company\/document\/integration\/documents\/batch$/, /^PUT \/admin\/company\/document\/[0-9a-f]{24}$/, /^PATCH \/es\/file\/onvio\/remove\/batch$/];
+      /^POST \/es\/file\/onvio\/resend$/, /^PATCH \/admin\/company\/document\/integration\/documents\/batch$/, /^PUT \/admin\/company\/document\/[0-9a-f]{24}$/, /^PATCH \/es\/file\/onvio\/remove\/batch$/, /^DELETE \/admin\/company\/document\/integration\/documents\/[0-9a-f]{24}$/];
     for (const c of chamadas) assert.ok(ok.some(re => re.test(c.metodo + ' ' + c.caminho)), c.metodo + ' ' + c.caminho);
   });
 

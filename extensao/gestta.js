@@ -280,7 +280,11 @@
     // 0.98.0: a lixeira da fila (mapeada em 12/11/2026): tira o documento só da lista de erros do portal. Só para os que não vão ao portal (cmd gesttaTirar).
     { acao: 'tirarDaLista', metodo: 'PATCH', re: /^\/es\/file\/onvio\/remove\/batch$/ },
     { acao: 'pasta', metodo: 'PATCH', re: /^\/admin\/company\/document\/integration\/documents\/batch$/ },
-    { acao: 'template', metodo: 'PUT', re: /^\/admin\/company\/document\/[0-9a-f]{24}$/i }
+    { acao: 'template', metodo: 'PUT', re: /^\/admin\/company\/document\/[0-9a-f]{24}$/i },
+    // 0.100.4 (Josué, 12/11/2026: "qualquer pasta destino que não esteja nessa empresa [9999] precisa ser excluída"; mapeado no mesmo dia,
+    // mapeamento/gestta-2026-11-04.md): tira a pasta de UM template; o id do endereço é o _id do template (não o da pasta) e não mexe nos
+    // outros templates da mesma pasta. Só pelo cmd gesttaTirarPasta, que só aceita template com a pasta fora da 9999.
+    { acao: 'tirarPasta', metodo: 'DELETE', re: /^\/admin\/company\/document\/integration\/documents\/[0-9a-f]{24}$/i }
   ];
   const REENVIO_MAX = 50, PASTA_ITENS_MAX = 10;
   const textoCurto = (v, n) => typeof v === 'string' && v.trim().length > 0 && v.length <= n;
@@ -306,6 +310,7 @@
     }
     const c = corpo && typeof corpo === 'object' && !Array.isArray(corpo) ? corpo : null;
     if (!c) return { ok: false, motivo: 'corpo inválido' };
+    if (e.acao === 'tirarPasta') return Object.keys(c).length === 0 ? { ok: true, acao: e.acao } : { ok: false, motivo: 'tirar a pasta: corpo vazio' };
     const ok = { ok: true, acao: e.acao };
     if (e.acao === 'pasta') {      // a pasta do portal num template: a mesma forma do "Selecionar pasta" da tela (nunca o DELETE)
       const lista = (v) => Array.isArray(v) && v.length >= 1 && v.length <= PASTA_ITENS_MAX && v.every(x => textoCurto(x, 200));
@@ -357,6 +362,11 @@
       return { id: 'pasta', acao: 'pasta', metodo: 'PATCH', url: url('/admin/company/document/integration/documents/batch'),
         corpo: { company_document_ids: [t], customer_id: String(pz.customer_id || ''), id: String(pz.id || ''), path: (pz.path || []).map(String), pathName: (pz.pathName || []).map(String) } };
     }
+    if (x.acao === 'tirarPasta') {
+      const t = String(x.template || '');
+      if (!ID24.test(t)) return { erro: 'template inválido' };
+      return { id: 'tirarPasta', acao: 'tirarPasta', metodo: 'DELETE', url: url('/admin/company/document/integration/documents/' + t), corpo: {} };
+    }
     if (x.acao === 'templateSalvar') {
       const t = String(x.template || '');
       if (!ID24.test(t)) return { erro: 'template inválido' };
@@ -405,7 +415,7 @@
         return { ok: false, status: r.status, erro: msg || ('erro ' + r.status) };
       }
       if (perm.acao === 'reenviar') { const d = dados && typeof dados === 'object' ? dados : {}; return { ok: true, status: r.status, acao: perm.acao, resumo: { success: Number(d.success) || 0, failed: Number(d.failed) || 0, blocked: Number(d.blocked) || 0 } }; }
-      if (perm.acao === 'pasta') return { ok: true, status: r.status, acao: perm.acao };
+      if (perm.acao === 'pasta' || perm.acao === 'tirarPasta') return { ok: true, status: r.status, acao: perm.acao };
       if (perm.acao === 'tirarDaLista') { const d = dados && typeof dados === 'object' ? dados : {}; return { ok: true, status: r.status, acao: perm.acao, resumo: { success: Number(d.success) || 0, failed: Number(d.failed) || 0 } }; }
       if (perm.acao === 'template') return { ok: true, status: r.status, acao: perm.acao, template: dados && typeof dados === 'object' ? escolher(dados, MOLDES.templateDoc) : null };
       const t = perm.acao === 'documento' ? dados && dados.customer_task : perm.acao === 'comentario' ? null : dados;

@@ -3237,7 +3237,7 @@ await passo('Gestta · Envios ao portal (0.96.0, 0.100.3): um destino por docume
   const env = (id, tid, tnome, erro) => ({ _id: 'c0000000000000000000000' + id.slice(-1), company_user: { _id: 'a00000000000000000000001' }, customer: { _id: 'b0000000000000000000000' + id.slice(-1) }, status: 'ERROR', error: erro, retry_count: 1, created_at: new Date(Date.now() - 3 * 864e5).toISOString(), updated_at: new Date().toISOString(),
     customer_task: { _id: 'f0000000000000000000000' + id.slice(-1), name: 'FOLHA MENSAL', customer: { name: 'CLIENTE FICTICIO ' + id, cnpj: '00.000.000/0001-0' + id.slice(-1) }, company_department: { name: 'Pessoal' }, owner: { name: 'Eu Mesmo' }, _competence_date: '2026-10-01' },
     customer_task_file: { _id: 'd0000000000000000000000' + id.slice(-1), company_document: { _id: tid, name: tnome }, file_name: 'arquivo-' + id + '.pdf' } });
-  const resp = Object.assign(gtResp(true, gtTarefas()), { gesttaAcao: { ok: true, resumo: { success: 1, failed: 0, blocked: 0 } }, gesttaPasta: { ok: true, pasta: 'Pessoal › Folha' }, gesttaTirar: { ok: true, success: 1, failed: 0, ignorados: 0 }, gesttaEnvios: { ok: true, lidoEm: new Date().toISOString(), total: 4, cortado: false,
+  const resp = Object.assign(gtResp(true, gtTarefas()), { gesttaAcao: { ok: true, resumo: { success: 1, failed: 0, blocked: 0 } }, gesttaPasta: { ok: true, pasta: 'Pessoal › Folha' }, gesttaTirar: { ok: true, success: 1, failed: 0, ignorados: 0 }, gesttaTirarPasta: { ok: true, salvou: true }, gesttaEnvios: { ok: true, lidoEm: new Date().toISOString(), total: 4, cortado: false,
     envios: [env('e1', T2, 'Folha de Pagamento Filial', 'NO_FOLDER_CONFIGURED'), env('e2', T2, 'Folha de Pagamento Filial', 'NO_FOLDER_CONFIGURED'), env('e3', T3, 'Recibo Interno', 'NO_FOLDER_CONFIGURED'), env('e4', T1, 'Folha de Pagamento', 'UPLOAD_ERROR'), env('e5', 'e00000000000000000000007', 'Contrato Social', 'UPLOAD_ERROR')], notifica: { f00000000000000000000004: true }, modelo: { id: 'c00000000000000000000001', nome: 'EMPRESA EXEMPLO' },
     templates: [tpl(T1, 'Folha de Pagamento', 'Pessoal › Folha'), tpl(T2, 'Folha de Pagamento Filial', ''), tpl(T3, 'Recibo Interno', ''), tpl('e00000000000000000000004', 'Guia FGTS', 'Pessoal › Guias'), tpl('e00000000000000000000007', 'Contrato Social', 'Legal › Contratos', 'c00000000000000000000099'), tpl('e00000000000000000000005', 'Guia FGTS Rescisório', ''), tpl('e00000000000000000000006', 'Guia FGTS Mensal Filial', '')] } });
   for (const [estilo, tema] of [['simples', 'light'], ['atual', 'dark']]) {
@@ -3283,6 +3283,18 @@ await passo('Gestta · Envios ao portal (0.96.0, 0.100.3): um destino por docume
       await fr.click('[data-gte-confirmar]');
       await fr.waitForFunction(() => (window.__msgs || []).some(m => m.cmd === 'gesttaTirar'));
       assert.deepEqual(await fr.evaluate(() => window.__msgs.find(m => m.cmd === 'gesttaTirar').ids.slice().sort()), ['c00000000000000000000003', 'c00000000000000000000005']);
+      await fr.waitForSelector('.gte-topo');
+      // 0.100.4: tirar a pasta fora da 9999: confirmação, primeiro os documentos saem da lista, depois a pasta sai do template
+      await fr.waitForSelector('[data-gte-tirarpasta="e00000000000000000000007"]:not([disabled])');
+      await fr.click('[data-gte-tirarpasta="e00000000000000000000007"]');
+      await fr.waitForSelector('.gte-conf');
+      assert.match(await fr.textContent('.gte-conf'), /Tirar a pasta de 1 template\?[\s\S]*Contrato Social”: pasta Legal › Contratos · 1 documento sai da lista/);
+      assert.ok(!(await fr.evaluate(() => (window.__msgs || []).some(m => m.cmd === 'gesttaTirarPasta'))), 'nada sai antes de confirmar');
+      const nTirar = await fr.evaluate(() => window.__msgs.filter(m => m.cmd === 'gesttaTirar').length);
+      await fr.click('[data-gte-confirmar]');
+      await fr.waitForFunction(() => (window.__msgs || []).some(m => m.cmd === 'gesttaTirarPasta'));
+      const seq = await fr.evaluate((n) => window.__msgs.filter(m => m.cmd === 'gesttaTirar' || m.cmd === 'gesttaTirarPasta').slice(n).map(m => [m.cmd, m.ids || m.template]), nTirar);
+      assert.deepEqual(seq, [['gesttaTirar', ['c00000000000000000000005']], ['gesttaTirarPasta', 'e00000000000000000000007']], 'documentos primeiro, depois a pasta');
       await fr.waitForSelector('.gte-topo');
     }
     await fr.click('[data-gte-f="naoVai"]');

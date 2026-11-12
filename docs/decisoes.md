@@ -114,3 +114,10 @@ A extensão vai também ao **Gestta** (`app.gestta.com.br`, admin em AngularJS; 
 - **12/11/2026, extensão 0.98.0 (mapeamento da lixeira devolvido pelo Josué):** "Tirar da lista" para os sem pasta que não vão ao portal, em lote, com confirmação e conferência no service worker (só a classe `naoVai` relida na hora).
 - **12/11/2026 (Josué: "excluir nessa sessão não interfere na tarefa"):** a lixeira da fila de envios ao portal só tira o documento da lista de erros; o arquivo continua na tarefa.
 - **12/11/2026, extensão 0.99.0 (Josué: "quero tudo com a possibilidade de fazer em lote já"):** lote na Lista do Gestta (concluir, impedimento, retirar impedimento, reabrir, comentário), "Usar as pastas sugeridas" nos Envios ao portal e "Concluir" em lote nas Solicitações do Onvio; todos com uma confirmação para o lote e um item por vez, pelas mesmas chamadas já aprovadas.
+
+## 12/11/2026 · Envios ao portal (extensão 0.100.1 a 0.100.4)
+
+- "Parece não estar lendo todos os envios ao portal com erro": a fila e os templates passam a ser lidos inteiros (0.100.1).
+- "Só deve ser enviado ao portal templates de tarefas que enviam documentos ao cliente" + a imagem do campo "Notificar cliente via e-mail: Sim/Não" da tarefa: só vai ao portal documento de tarefa com `notify_customer` (0.100.2).
+- "O único esquema de pasta válido é o já configurado da empresa 9999, qualquer pasta destino que não esteja nessa empresa precisa ser excluída e desvinculado todo documento que está pra ir pra ela" e "tem que tirar a pasta e excluir o erro da lista": pasta fora da 9999 não vale, os documentos saem da lista e a pasta sai do template (0.100.3 e 0.100.4, DELETE mapeado no mesmo dia).
+- "Os templates em risco ainda sem erro devem ter um botão que me redireciona ao cadastro de cada template dentro do Gestta" (endereço `admin/#/sidebar/document/edit/{id}/details`) e "a parte de reenviar está confusa; aprovo a sugestão": um destino por documento, 1 Reenviar, 2 Corrigir a pasta no Gestta, 3 Tirar da lista (0.100.3).
