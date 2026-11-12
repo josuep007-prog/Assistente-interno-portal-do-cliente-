@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.96.0)
+# Control Onvio · ControlTax (v0.97.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Trabalha também por cima do **Gestta** (Tarefas do Gestta: Meu dia, Empresas, Lista, Obrigações, Calendário e Fechamento do mês, com concluir, impedimento, comentário e envio de documento) e alimenta o **Control Hub** (opcional). Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -50,7 +50,7 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 
 Itens que dependem da tela real e só podem ser conferidos numa sessão com o Chrome do Josué. Os de versões mais antigas estão em cada versão do [`HISTORICO.md`](HISTORICO.md) (procure "A confirmar" e "A conferir"); conferido um item, tire-o daqui e anote no histórico.
 
-- **Envios ao portal (0.96.0):** rodar o roteiro `mapeamento/prompt-claude-chrome-envios-portal-gestta.txt` no Chrome (template e empresa de teste) para a extensão ganhar Reenviar e Configurar a pasta; conferir se a semelhança de nomes acerta com os templates reais e se o endereço dos templates no Gestta abre a lista certa.
+- **Envios ao portal (0.97.0):** conferir no Gestta real o Reenviar pela extensão (um documento com erro de envio) e o Usar a pasta (no template "TESTE MAPEAMENTO - NAO USAR"); se a semelhança de nomes acerta com os templates reais. Para a exclusão em lote dos que não vão ao portal, rodar `mapeamento/prompt-claude-chrome-lixeira-envios-gestta.txt` (um documento só).
 - **A conferir no Mediador real:** o preenchimento do CNPJ e o clique em Pesquisar, se o texto traz o link do anexo e se o PDF abre dentro do Hub.
 - **A confirmar no Gestta real:** o envio de arquivo pela tela do Gestta leva um cabeçalho próprio (`__setxhr_`) que a extensão não manda; se o Gestta recusar o arquivo, a mensagem aparece no painel.
 - A confirmar no Chrome do Josué: o Hub abrindo em segundo plano carrega e responde como numa aba visível.

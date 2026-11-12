@@ -2,6 +2,14 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.97.0 (12/11/2026): reenviar e pôr a pasta pela extensão
+
+- **Reenviar** na aba Envios ao portal: um por linha ou **Reenviar os N** do bloco, sempre com uma confirmação na tela. Vai em lotes de 50, com os mesmos dados que a tela do Gestta manda, e a lista é lida de novo no fim.
+- **Usar a pasta X:** no template sem pasta que é parecido com um que vai ao portal, um clique copia a pasta do parecido (com confirmação). A extensão relê os dois templates antes, recusa se o destino já tiver pasta, salva como a tela do Gestta (pasta e depois o template, com o nome e as opções que ele já tinha) e confere no fim.
+- O "sem pasta" de um template sem pasta não tem Reenviar: o mapeamento mostrou que o Gestta diz "reenviado com sucesso" e o documento continua em erro. Primeiro a pasta, depois o reenvio.
+- **Os que não vão ao portal** ficam recolhidos e marcados para sair da lista de erros. A exclusão em lote pela lixeira do Gestta foi pedida pelo Josué e entra depois do mapeamento (`mapeamento/prompt-claude-chrome-lixeira-envios-gestta.txt`).
+- Tirar a pasta de um template e a lixeira continuam fora da lista fechada.
+
 ## Novidades da v0.96.0 (12/11/2026): Envios ao portal no Gestta
 
 - **Aba nova nas Tarefas do Gestta: Envios ao portal** (tecla 7). Lê na hora a fila de envios ao Portal do Cliente com erro (a mesma da tela Status da integração do Gestta) e os templates de documento, e separa em três blocos:
