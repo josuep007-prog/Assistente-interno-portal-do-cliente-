@@ -958,7 +958,8 @@
         prog('Alertas');
         try {
           const itens = []; let total, cortado = false;
-          for (let k = 0; k < 20; k++) { const d = await um(PEDIDOS.filaOnvioErro({ limit: 50, skip: k * 50 })); if (total == null) total = d.total; itens.push(...(d.itens || [])); if ((d.itens || []).length < 50) break; if (k === 19) cortado = true; }
+          for (let k = 0; k < 400; k++) { const d = await um(PEDIDOS.filaOnvioErro({ limit: 50, skip: itens.length })); if (d.total != null) total = d.total; const l = d.itens || []; itens.push(...l); if (!l.length || (total != null && itens.length >= total)) break; if (k === 399) cortado = true; }   // 0.100.1: anda pelo que veio (o Gestta pode devolver menos de 50 por página)
+          if (total != null && itens.length < total) cortado = true;
           const ok = itens.filter(x => x && !ehEscritorioProprio(x.customer_task && x.customer_task.customer && x.customer_task.customer.name));
           await entregar({ tipoDado: 'gestta-envios-onvio-erro', categoria: 'alertas', titulo: 'Gestta · Envios ao Onvio com erro', colunas: COLS_ENVIOS_HUB, totalNaOrigem: total }, ok.map(linhaEnvio), { cortado });
         } catch (e) { falhou('gestta-envios-onvio-erro', 'Gestta · Envios ao Onvio com erro', 'alertas', e); }

@@ -4495,3 +4495,22 @@ test('Gestta (0.96.0) · Envios ao portal: erro de envio para reenviar, sem past
   assert.equal(p.metodo, 'GET'); assert.ok(OCG.leituraPermitida(p.metodo, p.url, null).ok);
   assert.match(p.url, /\/es\/file\/onvio\?.*status=ERROR/);
 });
+
+test('Gestta (0.100.1): a fila de envios com erro é lida inteira mesmo com o Gestta devolvendo menos de 50 por página', async () => {
+  const fila = Array.from({ length: 73 }, (_, i) => ({ _id: 'e' + i, status: 'ERROR', error: 'UPLOAD_ERROR', customer_task: { _id: 't' + i, name: 'Doc', customer: { name: 'CLIENTE FICTICIO ' + i, cnpj: '00.000.000/0001-' + i } } }));
+  const skips = [];
+  const ler = async ps => ps.map(p => {
+    const id = p.id.split(':')[0];
+    if (id === 'filaOnvioErro') { const sk = +new URL(p.url).searchParams.get('skip'); skips.push(sk); return { id: p.id, status: 200, dados: { itens: fila.slice(sk, sk + 20), total: fila.length } }; }
+    if (id === 'templatesLista') return { id: p.id, status: 200, dados: { itens: [], total: 0 } };
+    return { id: p.id, status: 200, dados: { itens: [] } };
+  });
+  const enviados = {};
+  await OCG.hubExecutarGestta(ler, ['alertas'], { hoje: new Date(2026, 10, 12) }, async (conj, p) => { enviados[conj.tipoDado] = { conj, p }; return { ok: true }; });
+  const e = enviados['gestta-envios-onvio-erro'];
+  assert.ok(e, 'o conjunto saiu');
+  assert.deepEqual(skips, [0, 20, 40, 60], 'anda pelo que veio, não de 50 em 50');
+  assert.equal(e.conj.totalNaOrigem, 73);
+  const txt = e.p.partes.join('\n');
+  assert.ok(txt.includes('CLIENTE FICTICIO 72'), 'o último também veio');
+});

@@ -481,24 +481,32 @@ async function gesttaEnvios(msg, sender) {
   const tab = await tabDoGestta(sender);
   if (!tab) return { ok: false, erro: 'Abra o Gestta numa aba, já logado.' };
   const falha = (x, oque) => ({ ok: false, status: x && x.status, erro: !x ? 'A aba do Gestta não respondeu.' : x.status === 401 ? 'A sessão do Gestta acabou: faça login de novo.' : x.status === 403 ? 'Seu acesso do Gestta não inclui ' + oque + '.' : 'Não consegui ler ' + oque + ' (HTTP ' + x.status + ').' });
-  const envios = []; let total = null, cortado = false;
-  for (let k = 0; k < 40; k++) {
-    const { r } = await lerGestta([OCG.PEDIDOS.filaOnvioTela({ limit: 50, skip: k * 50 })], { tab });
+  // 0.100.1 (Josué, 12/11/2026: "parece não estar lendo todos os envios ao portal com erro"): antes parava na primeira página com menos
+  // de 50, e o Gestta pode devolver menos do que o pedido por página (a tela dele mostra 20); agora anda pelo que veio (skip = já lidos)
+  // até a fila acabar (página vazia) ou chegar ao total que o Gestta diz, e conta a falta como cortado, nunca em silêncio.
+  const envios = [], vistos = new Set(); let total = null, cortado = false;
+  for (let k = 0; k < 400; k++) {
+    const { r } = await lerGestta([OCG.PEDIDOS.filaOnvioTela({ limit: 50, skip: envios.length })], { tab });
     const x = r && r.resultados && r.resultados[0];
     if (!x || x.status !== 200 || !x.dados) return falha(x, 'a fila de envios ao portal');
-    if (total == null && x.dados.total != null) total = x.dados.total;
-    const l = x.dados.itens || []; envios.push(...l);
-    if (l.length < 50) break; if (k === 39) cortado = true;
+    if (x.dados.total != null) total = x.dados.total;
+    const l = (x.dados.itens || []).filter(i => i && !vistos.has(i._id));
+    l.forEach(i => vistos.add(i._id)); envios.push(...l);
+    if (!l.length || (total != null && envios.length >= total)) break;
+    if (k === 399) cortado = true;
   }
-  const templates = [];
-  for (let p = 1; p <= 20; p++) {
+  if (total != null && envios.length < total) cortado = true;
+  // os templates: a mesma coisa (sem o total de páginas, parava na primeira, e template com pasta fora dela parecia "sem pasta")
+  const templates = [], tvistos = new Set();
+  for (let p = 1; p <= 50; p++) {
     const { r } = await lerGestta([OCG.PEDIDOS.templatesLista({ limit: 200, page: p })], { tab });
     const x = r && r.resultados && r.resultados[0];
     if (!x || x.status !== 200 || !x.dados) return falha(x, 'os templates de documento');
-    templates.push(...(x.dados.itens || []));
-    if (!x.dados.paginas || p >= x.dados.paginas) break;
+    const l = (x.dados.itens || []).filter(t => t && !tvistos.has(t._id));
+    l.forEach(t => tvistos.add(t._id)); templates.push(...l);
+    if (!l.length || (x.dados.paginas && p >= x.dados.paginas) || (x.dados.total != null && templates.length >= x.dados.total)) break;
   }
-  return { ok: true, lidoEm: new Date().toISOString(), total, cortado, envios, templates };
+  return { ok: true, lidoEm: new Date().toISOString(), total, lidos: envios.length, cortado, envios, templates };
 }
 // Configurações › Avançado: quem está logado, o perfil e uma leitura de prova de cada fonte (só contagens).
 async function testarGestta() {

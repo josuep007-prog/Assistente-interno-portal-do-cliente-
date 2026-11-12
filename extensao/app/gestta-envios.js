@@ -115,7 +115,7 @@ export function desenharEnvios(v, sub) {
     '<div class="faixa gt-faixa-info gte-info"><svg class="ic"><use href="#i-alert"/></svg><div><b>Documento “sem pasta” só sai do erro depois de a pasta ser configurada no template.</b> Reenviar antes disso não adianta: o Gestta diz que reenviou, mas ele continua aqui. Por isso o Reenviar só aparece para quem já tem pasta.</div></div>' +
     confHtml() +
     '<div class="gte-barra"><input type="search" id="gte-q" placeholder="Buscar cliente, documento, arquivo ou tarefa" value="' + esc(S.q) + '" autocomplete="off">' + (f ? '<button type="button" class="btn btn-sm" data-gte-f="">' + ic('x') + 'Ver tudo</button>' : '') +
-    (S.dados.cortado ? '<span class="gte-aviso">Lidos os 2.000 primeiros de ' + num(S.dados.total) + '</span>' : '') + '</div>';
+    (S.dados.cortado ? '<span class="gte-aviso">Lidos ' + num(S.dados.lidos != null ? S.dados.lidos : S.dados.envios.length) + (S.dados.total != null ? ' de ' + num(S.dados.total) : '') + ': a fila não veio inteira</span>' : '') + '</div>';
   if (mostra('reenviar')) {
     const pj = reenv.filter(x => x.pastaJa), err = reenv.filter(x => !x.pastaJa);
     const todos = reenv.filter(podeReenviar);
