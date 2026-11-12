@@ -440,7 +440,7 @@ async function gesttaTirar(msg, sender) {
   if (!pedidos.length) return { ok: false, erro: 'Nenhum documento para tirar da lista.' };
   const lido = await gesttaEnvios(msg, sender);
   if (!lido.ok) return lido;
-  const A = OCG.enviosPortal(lido.envios, lido.templates);
+  const A = OCG.enviosPortal(lido.envios, lido.templates, lido.notifica);
   const podem = new Set(A.semPasta.filter(g => g.classe === 'naoVai').flatMap(g => g.itens.map(i => i.id)));
   const ids = pedidos.filter(v => podem.has(v)), ignorados = pedidos.length - ids.length;
   if (!ids.length) return { ok: false, erro: 'Nenhum destes documentos está mais como "sem pasta, não vai ao portal": nada foi tirado.' };
@@ -477,6 +477,7 @@ async function gesttaEquipe(msg, sender) {
 }
 // 0.96.0: aba Envios ao portal. A fila de envios ao Portal do Cliente com erro (de 50 em 50, até 2.000) e os templates de documento
 // (com a pasta no portal). Lido na hora e entregue à tela: nada fica no armazenamento.
+const notificaCache = new Map(), NOTIFICA_MAX = 3000;
 async function gesttaEnvios(msg, sender) {
   const tab = await tabDoGestta(sender);
   if (!tab) return { ok: false, erro: 'Abra o Gestta numa aba, já logado.' };
@@ -506,7 +507,30 @@ async function gesttaEnvios(msg, sender) {
     l.forEach(t => tvistos.add(t._id)); templates.push(...l);
     if (!l.length || (x.dados.paginas && p >= x.dados.paginas) || (x.dados.total != null && templates.length >= x.dados.total)) break;
   }
-  return { ok: true, lidoEm: new Date().toISOString(), total, lidos: envios.length, cortado, envios, templates };
+  // 0.100.2: "Notificar cliente via e-mail" de cada tarefa da fila (notify_customer, no detalhe da tarefa, GET). Só o sim/não fica
+  // na memória do service worker por 30 min (nada no armazenamento); de 20 em 20, até NOTIFICA_MAX tarefas por leitura.
+  const notifica = {}, faltam = [];
+  const agora = Date.now();
+  for (const e of envios) {
+    const id = e && e.customer_task && e.customer_task._id;
+    if (!/^[0-9a-f]{24}$/i.test(id || '') || id in notifica) continue;
+    const c = notificaCache.get(id);
+    if (c && agora - c.em < 30 * 60000) notifica[id] = c.v; else { notifica[id] = null; faltam.push(id); }
+  }
+  let naoLidas = 0;
+  for (let i = 0; i < faltam.length && i < NOTIFICA_MAX; i += 20) {
+    const lote = faltam.slice(i, Math.min(i + 20, NOTIFICA_MAX));
+    const { r } = await lerGestta(lote.map(id => Object.assign(OCG.PEDIDOS.tarefa({ id }), { id: 'tarefa:' + id })), { tab, pausa: 150 });
+    const rs = (r && r.resultados) || [];
+    if (rs.some(x => x && x.status === 401)) break;
+    lote.forEach((id, j) => {
+      const x = rs[j], v = x && x.status === 200 && x.dados && typeof x.dados.notify_customer === 'boolean' ? x.dados.notify_customer : null;
+      if (v === null) return;
+      notifica[id] = v; notificaCache.set(id, { v, em: Date.now() });
+    });
+  }
+  Object.keys(notifica).forEach(k => { if (notifica[k] === null) { delete notifica[k]; naoLidas++; } });
+  return { ok: true, lidoEm: new Date().toISOString(), total, lidos: envios.length, cortado, envios, templates, notifica, naoLidas };
 }
 // Configurações › Avançado: quem está logado, o perfil e uma leitura de prova de cada fonte (só contagens).
 async function testarGestta() {

@@ -4514,3 +4514,27 @@ test('Gestta (0.100.1): a fila de envios com erro é lida inteira mesmo com o Ge
   const txt = e.p.partes.join('\n');
   assert.ok(txt.includes('CLIENTE FICTICIO 72'), 'o último também veio');
 });
+
+test('Gestta (0.100.2) · Envios ao portal: só vai ao portal documento de tarefa que notifica o cliente por e-mail', () => {
+  const tpl = (id, name, pasta) => ({ _id: id, name, valid: true, documents_integration: { pathName: pasta ? pasta.split(' › ') : [] } });
+  const templates = [tpl('t1', 'Folha de Pagamento', 'Pessoal › Folha'), tpl('t2', 'Folha de Pagamento Filial', ''), tpl('t3', 'Recibo Interno', '')];
+  const env = (id, tarefa, tid, tnome, erro) => ({ _id: id, status: 'ERROR', error: erro, retry_count: 1, company_user: { _id: 'u'.repeat(24) }, customer: { _id: 'c'.repeat(24) },
+    customer_task: { _id: tarefa, name: 'Tarefa ' + id, customer: { name: 'CLIENTE FICTICIO ' + id, cnpj: '00.000.000/0001-0' + id.length } },
+    customer_task_file: { _id: 'f'.repeat(24), company_document: { _id: tid, name: tnome }, file_name: 'arquivo.pdf' } });
+  const T1 = 'a'.repeat(24), T2 = 'b'.repeat(24), T3 = 'd'.repeat(24), T4 = 'e'.repeat(24);
+  const envios = [env('e1', T1, 't1', 'Folha de Pagamento', 'UPLOAD_ERROR'),          // notifica: reenviar
+    env('e2', T2, 't1', 'Folha de Pagamento', 'UPLOAD_ERROR'),                         // não notifica: não vai, mesmo com pasta
+    env('e3', T3, 't3', 'Recibo Interno', 'NO_FOLDER_CONFIGURED'),                     // notifica e sem pasta: deveria ir (nada parecido)
+    env('e4', T4, 't2', 'Folha de Pagamento Filial', 'NO_FOLDER_CONFIGURED')];         // tarefa não lida: vale o nome
+  const A = JSON.parse(JSON.stringify(OCG.enviosPortal(envios, templates, { [T1]: true, [T2]: false, [T3]: true })));
+  assert.deepEqual(A.reenviar.map(x => x.id), ['e1']);
+  const g = (id) => A.semPasta.find(x => x.itens.some(i => i.id === id));
+  assert.equal(g('e2').classe, 'naoVai'); assert.match(g('e2').motivo, /não notifica o cliente/); assert.match(g('e2').motivo, /tem a pasta Pessoal › Folha/);
+  assert.equal(g('e3').classe, 'deve'); assert.equal(g('e3').porTarefa, true); assert.match(g('e3').motivo, /notifica o cliente/);
+  assert.equal(g('e4').classe, 'deve'); assert.equal(g('e4').porTarefa, false); assert.match(g('e4').motivo, /não deu para ler a tarefa/);
+  assert.equal(new Set(A.semPasta.map(x => x.chave)).size, A.semPasta.length, 'cada grupo tem a sua chave');
+  assert.equal(A.totais.semNotificar, 1); assert.equal(A.totais.conferidas, 3); assert.equal(A.totais.naoVai, 1);
+  // sem a leitura das tarefas, tudo como antes
+  const B = OCG.enviosPortal(envios, templates);
+  assert.deepEqual(JSON.parse(JSON.stringify(B.reenviar.map(x => x.id).sort())), ['e1', 'e2']);
+});

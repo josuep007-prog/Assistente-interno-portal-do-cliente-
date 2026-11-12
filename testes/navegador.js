@@ -3254,7 +3254,7 @@ await passo('Gestta · Envios ao portal (0.96.0): erro para reenviar, sem pasta 
     // os números filtram; ver os documentos de um template
     await fr.click('[data-gte-f="deve"]');
     assert.ok(!(await fr.$('.gte-tpl.nao')) && !(await fr.textContent('#vista')).includes('Erro ao enviar o arquivo'), 'só os que deveriam ir');
-    await fr.click('[data-gte-abrir="' + T2 + '"]');
+    await fr.click('[data-gte-abrir^="' + T2 + '|"]');
     await fr.waitForSelector('.gte-tpl.deve .gte-tab');
     assert.match(await fr.textContent('.gte-tpl.deve'), /arquivo-e1\.pdf[\s\S]*arquivo-e2\.pdf/);
     await fr.click('[data-gte-f="deve"]');

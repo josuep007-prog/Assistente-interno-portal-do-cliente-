@@ -1042,22 +1042,32 @@
       ids: { usuario: (x.company_user && x.company_user._id) || '', cliente: (x.customer && x.customer._id) || c._id || '', tarefa: t._id || '', arquivo: f._id || '' } };
   }
   // envios: a fila com erro; templates: a lista de templates de documento (com a pasta). Devolve os três blocos da aba.
-  function enviosPortal(envios, templates) {
+  // 0.100.2 (Josué, 12/11/2026: "só deve ser enviado ao portal templates de tarefas que enviam documentos ao cliente"; na tarefa,
+  // "Notificar cliente via e-mail: Sim/Não" = notify_customer): notifica = { idDaTarefa: true|false } lido das tarefas da fila. Tarefa que
+  // não notifica o cliente: o documento não vai ao portal (sai da lista de erros, nunca é reenviado nem ganha pasta), qualquer que seja o erro.
+  // Tarefa que notifica e template sem pasta: deveria ir. Sem a leitura da tarefa, vale o padrão de antes (nome parecido com um que vai).
+  function enviosPortal(envios, templates, notifica) {
     const tpl = (templates || []).filter(t => t && t._id), porId = new Map(tpl.map(t => [t._id, t]));
+    const nt = notifica || {};
     const comPasta = tpl.filter(t => pastaDe(t)), itens = (envios || []).filter(Boolean).map(itemEnvio);
+    itens.forEach(it => { it.notifica = typeof nt[it.tarefaId] === 'boolean' ? nt[it.tarefaId] : null; });
     const reenviar = [], porTemplate = new Map();
     for (const it of itens) {
       const t = porId.get(it.templateId), pasta = pastaDe(t);
-      if (SEM_PASTA.test(it.erro) && !pasta) {
-        const k = it.templateId || 'n:' + it.template;
-        if (!porTemplate.has(k)) porTemplate.set(k, { templateId: it.templateId, template: it.template || 'Documento sem template', itens: [], clientes: new Set() });
+      const naoNotifica = it.notifica === false;
+      if (naoNotifica || (SEM_PASTA.test(it.erro) && !pasta)) {
+        const bal = naoNotifica ? 'nao' : it.notifica === true ? 'sim' : '?';
+        const k = (it.templateId || 'n:' + it.template) + '|' + bal;
+        if (!porTemplate.has(k)) porTemplate.set(k, { chave: k, templateId: it.templateId, template: it.template || 'Documento sem template', bal, temPasta: !!pasta, pasta, itens: [], clientes: new Set() });
         const g = porTemplate.get(k); g.itens.push(it); g.clientes.add(it.cnpj || it.cliente);
       } else reenviar.push(Object.assign(it, { pastaJa: SEM_PASTA.test(it.erro) && !!pasta, pasta }));
     }
     const semPasta = [...porTemplate.values()].map(g => {
-      const p = parecidoComPasta(g.template, comPasta);
-      return { templateId: g.templateId, template: g.template, itens: g.itens, nClientes: g.clientes.size, classe: p ? 'deve' : 'naoVai', parecido: p,
-        motivo: p ? `Parecido com “${p.nome}”, que vai para ${p.pasta}` : 'Nenhum template parecido vai ao portal' };
+      const p = g.bal === 'nao' ? null : parecidoComPasta(g.template, comPasta);
+      const base = { chave: g.chave, templateId: g.templateId, template: g.template, itens: g.itens, nClientes: g.clientes.size, parecido: p, porTarefa: g.bal !== '?' };
+      if (g.bal === 'nao') return Object.assign(base, { classe: 'naoVai', motivo: 'A tarefa não notifica o cliente por e-mail' + (g.temPasta ? ` (o template tem a pasta ${g.pasta})` : '') });
+      if (g.bal === 'sim') return Object.assign(base, { classe: 'deve', motivo: 'A tarefa notifica o cliente por e-mail' + (p ? `; parecido com “${p.nome}”, que vai para ${p.pasta}` : '; nenhum template parecido tem pasta para copiar') });
+      return Object.assign(base, { classe: p ? 'deve' : 'naoVai', motivo: (p ? `Parecido com “${p.nome}”, que vai para ${p.pasta}` : 'Nenhum template parecido vai ao portal') + ' (não deu para ler a tarefa)' });
     }).sort((a, b) => (a.classe === b.classe ? 0 : a.classe === 'deve' ? -1 : 1) || b.itens.length - a.itens.length || a.template.localeCompare(b.template, 'pt-BR'));
     // o risco que ainda não deu erro: template sem pasta, parecido com um que tem pasta, sem documento parado agora
     const comErro = new Set(semPasta.map(g => g.templateId));
@@ -1065,7 +1075,7 @@
       .filter(x => x.parecido).sort((a, b) => b.parecido.nota - a.parecido.nota || a.template.localeCompare(b.template, 'pt-BR'));
     reenviar.sort((a, b) => (a.pastaJa === b.pastaJa ? 0 : a.pastaJa ? -1 : 1) || String(a.erro).localeCompare(String(b.erro)) || String(b.atualizado).localeCompare(String(a.atualizado)));
     return { reenviar, semPasta, risco, totais: { erros: itens.length, reenviar: reenviar.length, pastaJa: reenviar.filter(x => x.pastaJa).length, semPasta: semPasta.reduce((n, g) => n + g.itens.length, 0),
-      templatesSemPasta: semPasta.length, deve: semPasta.filter(g => g.classe === 'deve').length, risco: risco.length, templatesComPasta: comPasta.length } };
+      templatesSemPasta: semPasta.length, naoVai: semPasta.filter(g => g.classe === 'naoVai').length, semNotificar: itens.filter(i => i.notifica === false).length, conferidas: itens.filter(i => i.notifica !== null).length, deve: semPasta.filter(g => g.classe === 'deve').length, risco: risco.length, templatesComPasta: comPasta.length } };
   }
 
   g.OCG = { enviosPortal, semelhanca, parecidoComPasta, palavrasNome, ERROS_ENVIO, API, APP, PAUSA_MS, LIMITE_BUSCA, JANELA_MAX_DIAS, POST_LEITURA, RELATORIO_TIPOS, COLUNAS_RELATORIO, MOLDES, APPS,

@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.100.1)
+# Control Onvio · ControlTax (v0.100.2)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Trabalha também por cima do **Gestta** (Tarefas do Gestta: Meu dia, Empresas, Lista, Obrigações, Calendário e Fechamento do mês, com concluir, impedimento, comentário e envio de documento) e alimenta o **Control Hub** (opcional). Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,11 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.100.2 (12/11/2026): só vai ao portal o que notifica o cliente
+
+- Regra do Josué: só vai ao Portal do Cliente documento de tarefa que notifica o cliente ("Notificar cliente via e-mail: Sim" na tarefa, `notify_customer`). A aba Envios ao portal lê esse campo em cada tarefa da fila de erros (um GET por tarefa, só o sim/não, na memória por 30 min). Documento de tarefa que **não** notifica vai para "Não vai ao portal: sai da lista de erros", qualquer que seja o erro e mesmo que o template tenha pasta (nunca é reenviado). Tarefa que notifica e template sem pasta: "Deveria ir ao portal". Tarefa que não deu para ler: vale o nome do template, como antes, e a tela avisa quantas.
+- **A conferir no Gestta real:** se `notify_customer` é mesmo o "Notificar cliente via e-mail" da tela.
 
 ## Novidades da v0.100.1 (12/11/2026): Envios ao portal lê a fila inteira
 
