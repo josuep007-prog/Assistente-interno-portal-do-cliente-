@@ -2,6 +2,13 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.99.0 (12/11/2026): tudo em lote
+
+- **Lista das Tarefas do Gestta:** uma caixa de marcar em cada tarefa (e no cabeçalho, para todas as da lista). Com tarefas marcadas aparece a barra **Concluir · Impedimento · Retirar impedimento · Reabrir · Comentar**, cada uma com quantas das marcadas cabem nela. Uma confirmação para o lote (o motivo do impedimento ou o comentário é o mesmo para todas), depois uma tarefa por vez; a tarefa em que a ação não cabe pela situação fica de fora e a confirmação diz quantas. Para no primeiro "sessão acabou"; as que falharam continuam marcadas.
+- **Envios ao portal:** **Usar as pastas sugeridas (N)** nos templates sem pasta que deveriam ir e nos em risco: cada um recebe a pasta do template parecido, um por vez, com uma confirmação que lista template → pasta.
+- **Solicitações do Onvio:** **Concluir (N)** em lote para as que estão com o cliente (o mesmo plano de 1 ou 2 passos do Concluir de cada uma), com a lista para desmarcar e uma confirmação, como o Pôr em análise em lote.
+- Já eram em lote: Reenviar e Tirar da lista (Envios ao portal), Pôr em análise (Solicitações), as Sugestões de ação do Hoje e o Atribuir todas do Distribuir.
+
 ## Novidades da v0.98.0 (12/11/2026): tirar da lista os que não vão ao portal
 
 - **Tirar da lista** na aba Envios ao portal: os documentos "sem pasta" de templates que não vão ao portal saem da lista de erros em lote, por template ou todos de uma vez ("Ver e tirar da lista"), sempre com confirmação. É a mesma lixeira da tela Status da integração do Gestta (`PATCH /es/file/onvio/remove/batch`, mapeada em 12/11/2026), de 50 em 50.
