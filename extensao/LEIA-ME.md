@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.100.4)
+# Control Onvio · ControlTax (v0.100.6)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Trabalha também por cima do **Gestta** (Tarefas do Gestta: Meu dia, Empresas, Lista, Obrigações, Calendário e Fechamento do mês, com concluir, impedimento, comentário e envio de documento) e alimenta o **Control Hub** (opcional). Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -51,6 +51,7 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 
 Itens que dependem da tela real e só podem ser conferidos numa sessão com o Chrome do Josué. Os de versões mais antigas estão em cada versão do [`HISTORICO.md`](HISTORICO.md) (procure "A confirmar" e "A conferir"); conferido um item, tire-o daqui e anote no histórico.
 
+- **Envios ao portal (0.100.6):** o formato de `admin/company/task` e `admin/company/task/{id}/document` (o risco só com templates em tarefa ativa; se não for lido, a tela avisa).
 - **Envios ao portal (0.100.x):** se a contagem da aba bate com a tela Status da integração do Gestta (a fila inteira); se `notify_customer` é o "Notificar cliente via e-mail" da tarefa; se a empresa 9999 é achada e as pastas boas são dela; o Tirar a pasta num template de teste com pasta fora da 9999.
 - **Envios ao portal (0.97.0):** conferir no Gestta real o Reenviar pela extensão (um documento com erro de envio) e o Usar a pasta (no template "TESTE MAPEAMENTO - NAO USAR"); se a semelhança de nomes acerta com os templates reais. Tirar da lista (0.98.0): conferir com um documento que ele sai da lista de erros e se o id mandado é o do item da fila (a tarefa não é afetada, confirmado pelo Josué) (se não for, o Gestta responde com falha e o documento continua na lista).
 - **A conferir no Mediador real:** o preenchimento do CNPJ e o clique em Pesquisar, se o texto traz o link do anexo e se o PDF abre dentro do Hub.

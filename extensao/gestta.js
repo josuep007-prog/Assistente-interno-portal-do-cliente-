@@ -124,7 +124,9 @@
       customer_task: { _id: true, name: true, customer: { _id: true, name: true, cnpj: true }, company_department: SETOR, owner: REF, _due_date: true, _competence_date: true },
       customer_task_file: { _id: true, company_document: REF, file_name: true } },
     contagem: { fine: true, approve: true, email_not_sent: true, count: true },
-    templateUm: null,   // definido logo abaixo (o mesmo molde do templateDoc)
+    templateUm: null,
+    templateTarefa: { _id: true, name: true, active: true, subtype: true },   // 0.100.6: os templates de tarefa, para saber quais documentos estão em tarefa ativa
+    docsTemplateTarefa: { _id: true },   // definido logo abaixo (o mesmo molde do templateDoc)
     // 0.79.0: template de documento com o destino no portal (só nomes de pasta; nunca o arquivo modelo)
     templateDoc: { _id: true, name: true, automation_type: true, valid: true, bypass: true, send_documents_due_date: true,
       documents_integration: { customer_id: true, id: true, path: [true], pathName: [true] } },   // 0.97.0: a pasta inteira, para usar a mesma num template parecido
@@ -154,6 +156,11 @@
       return t;
     }
     if (tipo === 'me' || tipo === 'contagem' || tipo === 'templateUm') return escolher(dados, molde) || null;
+    if (tipo === 'docsTemplateTarefa') {   // 0.100.6: só os ids dos templates de documento ligados ao template de tarefa
+      const l = Array.isArray(dados) ? dados : dados && Array.isArray(dados.docs) ? dados.docs : dados && Array.isArray(dados.company_documents) ? dados.company_documents : null;
+      if (!l) return null;
+      return { ids: l.map(x => x && (x.company_document && typeof x.company_document === 'object' ? x.company_document._id : typeof x.company_document === 'string' ? x.company_document : x._id)).filter(v => /^[0-9a-f]{24}$/i.test(String(v || ''))) };
+    }
     const o = Object.assign({ itens: lista(dados).map(x => escolher(x, molde)) }, pagina(dados));
     if (dados && dados.documents_without_destination != null) o.semPasta = Number(dados.documents_without_destination) || 0;
     return o;
@@ -259,6 +266,8 @@
     templatesDocumento: () => ({ id: 'templatesDocumento', tipo: 'template', metodo: 'GET', url: url('/admin/company/document', { limit: 1, page: 1 }) }),
     // 0.79.0: a lista inteira de templates de documento, com a pasta de destino no portal (para achar os que não têm pasta)
     template: (o) => ({ id: 'template', tipo: 'templateUm', metodo: 'GET', url: url('/admin/company/document/' + encodeURIComponent(o.id)) }),
+    templatesTarefa: (o) => ({ id: 'templatesTarefa', tipo: 'templateTarefa', metodo: 'GET', url: url('/admin/company/task', { limit: (o && o.limit) || 200, page: (o && o.page) || 1 }) }),
+    docsTemplateTarefa: (o) => ({ id: 'docsTemplateTarefa', tipo: 'docsTemplateTarefa', metodo: 'GET', url: url('/admin/company/task/' + encodeURIComponent(o.id) + '/document') }),
     templatesLista: (o) => ({ id: 'templatesLista', tipo: 'templateDoc', metodo: 'GET', url: url('/admin/company/document', { limit: (o && o.limit) || 200, page: (o && o.page) || 1 }) })
   };
 
@@ -1055,13 +1064,16 @@
   // 0.100.2 (Josué, 12/11/2026: "só deve ser enviado ao portal templates de tarefas que enviam documentos ao cliente"; na tarefa,
   // "Notificar cliente via e-mail: Sim/Não" = notify_customer): notifica = { idDaTarefa: true|false } lido das tarefas da fila. Tarefa que
   // não notifica o cliente: o documento não vai ao portal (sai da lista de erros, nunca é reenviado nem ganha pasta), qualquer que seja o erro.
-  // Tarefa que notifica e template sem pasta: deveria ir. Sem a leitura da tarefa, vale o padrão de antes (nome parecido com um que vai).
+  // Template sem pasta (0.100.5): não vai, qualquer que seja a tarefa.
   // 0.100.3 (Josué, 12/11/2026: "o único esquema de pasta válido é o já configurado da empresa 9999; qualquer pasta destino que não esteja
   // nessa empresa precisa ser excluída e desvinculado todo documento que está pra ir pra ela"): modelo = o id do cliente 9999 no Gestta.
   // Pasta montada a partir de outro cliente (documents_integration.customer_id) não vale: não serve de modelo para "Usar a pasta" e os
   // documentos dela saem da lista de erros. Sem o modelo (9999 não achada), toda pasta vale, como antes, e a tela avisa.
   const pastaForaDe = (t, modelo) => !!(modelo && pastaDe(t) && String((t.documents_integration || {}).customer_id || '') !== String(modelo));
-  function enviosPortal(envios, templates, notifica, modelo) {
+  // vinculados (0.100.6, Josué 12/11/2026: "o template só deve vir para essa lista se ele estiver vinculado a alguma tarefa ativa"): Set ou
+  // lista dos ids de template de documento usados por algum template de tarefa ativo; sem ele (leitura falhou), o risco mostra todos.
+  function enviosPortal(envios, templates, notifica, modelo, vinculados) {
+    const vinc = vinculados ? new Set(vinculados) : null;
     const tpl = (templates || []).filter(t => t && t._id), porId = new Map(tpl.map(t => [t._id, t]));
     const nt = notifica || {};
     const comPasta = tpl.filter(t => pastaDe(t) && !pastaForaDe(t, modelo)), itens = (envios || []).filter(Boolean).map(itemEnvio);
@@ -1082,16 +1094,18 @@
       const base = { chave: g.chave, templateId: g.templateId, template: g.template, itens: g.itens, nClientes: g.clientes.size, parecido: p, porTarefa: g.bal !== '?', fora: g.bal === 'fora', pasta: g.pasta };
       if (g.bal === 'fora') return Object.assign(base, { classe: 'naoVai', motivo: `A pasta do template (${g.pasta}) não foi montada a partir da empresa 9999: tire a pasta no Gestta` });
       if (g.bal === 'nao') return Object.assign(base, { classe: 'naoVai', motivo: 'A tarefa não notifica o cliente por e-mail' + (g.temPasta ? ` (o template tem a pasta ${g.pasta})` : '') });
-      if (g.bal === 'sim') return Object.assign(base, { classe: 'deve', motivo: 'A tarefa notifica o cliente por e-mail' + (p ? `; parecido com “${p.nome}”, que vai para ${p.pasta}` : '; nenhum template parecido tem pasta para copiar') });
-      return Object.assign(base, { classe: p ? 'deve' : 'naoVai', motivo: (p ? `Parecido com “${p.nome}”, que vai para ${p.pasta}` : 'Nenhum template parecido vai ao portal') + ' (não deu para ler a tarefa)' });
-    }).sort((a, b) => (a.classe === b.classe ? 0 : a.classe === 'deve' ? -1 : 1) || b.itens.length - a.itens.length || a.template.localeCompare(b.template, 'pt-BR'));
+      // 0.100.5 (Josué, 12/11/2026: "existem documentos que são enviados ao cliente que não vão pro portal"; decidido: "a pasta é a regra"):
+      // template sem pasta não vai ao portal, mesmo de tarefa que notifica o cliente. Fica em Tirar da lista, com a saída para o caso de
+      // ser um template novo que deveria ir (semPasta + o parecido com pasta da 9999, se houver).
+      return Object.assign(base, { classe: 'naoVai', semPasta: true, motivo: 'O template não tem pasta no Portal do Cliente' + (p ? `. Parecido com “${p.nome}”, que vai para ${p.pasta}` : '') });
+    }).sort((a, b) => (a.fora === b.fora ? 0 : a.fora ? -1 : 1) || b.itens.length - a.itens.length || a.template.localeCompare(b.template, 'pt-BR'));
     // o risco que ainda não deu erro: template sem pasta, parecido com um que tem pasta, sem documento parado agora
     const comErro = new Set(semPasta.map(g => g.templateId));
     // todos os templates com a pasta fora da 9999 (com ou sem documento parado), para tirar a pasta no Gestta
     const nPorTpl = new Map(); semPasta.forEach(g => nPorTpl.set(g.templateId, (nPorTpl.get(g.templateId) || 0) + g.itens.length));
     const pastaFora = tpl.filter(t => pastaForaDe(t, modelo)).map(t => ({ templateId: t._id, template: t.name, pasta: pastaDe(t), docs: nPorTpl.get(t._id) || 0 }))
       .sort((a, b) => b.docs - a.docs || String(a.template).localeCompare(String(b.template), 'pt-BR'));
-    const risco = tpl.filter(t => !pastaDe(t) && !comErro.has(t._id) && t.valid !== false).map(t => ({ templateId: t._id, template: t.name, parecido: parecidoComPasta(t.name, comPasta) }))
+    const risco = tpl.filter(t => (!vinc || vinc.has(t._id)) && !pastaDe(t) && !comErro.has(t._id) && t.valid !== false).map(t => ({ templateId: t._id, template: t.name, parecido: parecidoComPasta(t.name, comPasta) }))
       .filter(x => x.parecido).sort((a, b) => b.parecido.nota - a.parecido.nota || a.template.localeCompare(b.template, 'pt-BR'));
     reenviar.sort((a, b) => (a.pastaJa === b.pastaJa ? 0 : a.pastaJa ? -1 : 1) || String(a.erro).localeCompare(String(b.erro)) || String(b.atualizado).localeCompare(String(a.atualizado)));
     return { reenviar, semPasta, risco, pastaFora, modelo: modelo || null, totais: { pastaFora: pastaFora.length, erros: itens.length, reenviar: reenviar.length, pastaJa: reenviar.filter(x => x.pastaJa).length, semPasta: semPasta.reduce((n, g) => n + g.itens.length, 0),

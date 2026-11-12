@@ -772,12 +772,20 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     await api((g) => g.portalAgora()); await page.waitForTimeout(800);
     assert.ok(await page.evaluate(() => !!window.__db.ler('empresas/gt12121212000150')), 'OMEGA entrou');
     assert.equal(await page.evaluate(() => window.__db.existe('empresas/gt12121212000231')), false, 'a filial da OMEGA não entrou à parte');
+    // Hub 353: matriz arquivada à mão e duas filiais soltas, cada uma com demanda num setor: juntam, o grupo fica arquivado e a demanda é do grupo todo
+    await semear('empresas/p-km', { nome: 'KAPA LTDA', cnpj: fmt('15151515000100'), arquivada: true, arquivadaEm: '2026-11-05T12:00:00Z', setoresDemanda: {} });
+    await semear('empresas/p-kf1', { nome: 'KAPA LTDA FILIAL 2', cnpj: fmt('15151515000290'), setoresDemanda: { fiscal: true } });
+    await semear('empresas/p-kf2', { nome: 'KAPA LTDA FILIAL 3', cnpj: fmt('15151515000370'), setoresDemanda: { contabil: true } });
     // o Portal aberto pela coordenação junta a filial solta da SIGMA à matriz; a desvinculada de propósito fica
     await page.evaluate(() => window.__hubApi.abrirModulo('portal'));
     await page.waitForFunction(() => (window.__db.ler('empresas/p-sf') || {}).matrizId === 'p-sm', null, { timeout: 15000 });
     assert.ok(await page.evaluate(() => !!window.__db.ler('empresaSetores/p-sm_fiscal')), 'a frente da filial passou para a matriz');
     assert.equal(await page.evaluate(() => window.__db.existe('empresaSetores/p-sf_fiscal')), false);
     assert.ok(!(await page.evaluate(() => window.__db.ler('empresas/p-sd').matrizId)), 'a desvinculada de propósito não é juntada');
+    await page.waitForFunction(() => (window.__db.ler('empresas/p-kf1') || {}).matrizId === 'p-km' && (window.__db.ler('empresas/p-kf2') || {}).matrizId === 'p-km', null, { timeout: 15000 });
+    const km = await page.evaluate(() => window.__db.ler('empresas/p-km'));
+    assert.equal(km.arquivada, true, 'Hub 353: a matriz arquivada recebe as filiais e continua arquivada');
+    assert.ok(km.setoresDemanda && km.setoresDemanda.fiscal && km.setoresDemanda.contabil, 'a demanda de uma filial vale para o grupo todo: ' + JSON.stringify(km.setoresDemanda));
     // Hub 349: a filial juntada sozinha fica no histórico (aparece na aba Automático do Portal)
     await page.waitForFunction(() => window.__db.listar('gt_hist').flatMap(d => d.itens || []).some(x => x.mod === 'portal' && x.campo === 'filial' && x.auto && x.depois === 'SIGMA LTDA' && /SIGMA LTDA FILIAL/.test(x.antes)), null, { timeout: 10000 });
   });

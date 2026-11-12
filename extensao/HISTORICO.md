@@ -2,6 +2,17 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.100.6 (12/11/2026): o risco só com templates em tarefa ativa
+
+- Josué: "o template só deve vir para essa lista se ele estiver vinculado a alguma tarefa ativa". **Templates em risco** mostra só o template de documento que está em algum **template de tarefa ativo** do Gestta (lidos por `GET admin/company/task` e `GET admin/company/task/{id}/document`, só os ids, na memória por 6 horas). Se essa leitura não fechar, a tela avisa e mostra todos os parecidos, como antes.
+- **A conferir no Gestta real:** o formato das duas leituras (se o template de tarefa traz `active` e se a lista de documentos traz o id de cada um).
+
+## Novidades da v0.100.5 (12/11/2026): a pasta é a regra
+
+- Josué: "existem documentos que são enviados ao cliente que não vão pro portal"; decidido: **a pasta é a regra**. O "Notificar cliente via e-mail: Sim" não basta: documento de template **sem pasta** não vai ao portal e fica em **Tirar da lista** ("Template sem pasta"), mesmo de tarefa que notifica o cliente. O bloco "Corrigir a pasta no Gestta" saiu; a tela tem **1 · Reenviar** e **2 · Tirar da lista**.
+- Para o template sem pasta que é novo e deveria ir: no próprio cartão, **Deveria ir?** com **Usar a pasta …** (de um template parecido da 9999, quando há) ou **Pôr a pasta no Gestta**; com a pasta posta, os documentos passam para Reenviar.
+- Tarefa com "Notificar cliente: Não" continua não indo, mesmo com pasta.
+
 ## Novidades da v0.100.4 (12/11/2026): tirar a pasta fora da 9999 pela extensão
 
 - **Tirar a pasta** (Josué: "tem que tirar a pasta e excluir o erro da lista"; mapeado no mesmo dia na empresa de teste): em **Pastas fora da empresa 9999**, um por template ou **Tirar as N pastas**, e, no bloco 3, **Tirar a pasta e os documentos**. Uma confirmação; depois, um template por vez: primeiro os documentos dele com erro saem da lista, depois a pasta sai do template (`DELETE admin/company/document/integration/documents/{id do template}` e o Salvar do template, como a tela do Gestta; os outros templates da mesma pasta não mudam). Antes de cada um a extensão relê o template e só tira se a pasta continua fora da 9999; no fim confere que ficou sem pasta.
