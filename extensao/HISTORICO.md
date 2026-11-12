@@ -6,7 +6,7 @@ As novidades de cada versão, da mais nova para a mais antiga, como estavam no `
 
 - **Concluir, na tarefa e em lote,** agora prepara a tarefa inteira antes: marca as etapas (checkbox) que faltam e **desconsidera cada item (documento) sem anexo**, como o ⊘ "Desconsiderar" da tela do Gestta (`PUT /es/task/{id}/document/{doc}/file/disconsider`, corpo vazio, mapeado em 12/11/2026 na empresa 9999). Um item por vez; se algum for recusado, a tarefa não é concluída. A confirmação lista as etapas e os itens; o botão diz "Preparar e concluir".
 - Reconsiderar um item não está na extensão (só pelo Gestta).
-- **A conferir no Gestta real:** se o Gestta bloqueia o concluir com item sem anexo ou etapa aberta (não testado no mapeamento), se desconsiderar avisa o cliente numa tarefa que notifica, e um item que pede validação.
+- **Conferido pelo Josué (12/11/2026):** o Gestta **bloqueia** concluir com item sem anexo (por isso desconsiderar vem antes), **não bloqueia** com etapa aberta (as etapas são marcadas mesmo assim, como ele pediu) e desconsiderar **não avisa o cliente**. Falta só um item que pede validação.
 
 ## Novidades da v0.104.0 (12/11/2026): as melhorias de uso nas Tarefas do Gestta
 
