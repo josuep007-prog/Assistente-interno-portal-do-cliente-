@@ -507,7 +507,7 @@ async function gesttaEquipe(msg, sender) {
 }
 // 0.96.0: aba Envios ao portal. A fila de envios ao Portal do Cliente com erro (de 50 em 50, até 2.000) e os templates de documento
 // (com a pasta no portal). Lido na hora e entregue à tela: nada fica no armazenamento.
-const notificaCache = new Map(), NOTIFICA_MAX = 3000; let modelo9999 = null;
+const notificaCache = new Map(), NOTIFICA_MAX = 3000; let modelo9999 = null, vinculadosCache = null;
 async function gesttaEnvios(msg, sender) {
   const tab = await tabDoGestta(sender);
   if (!tab) return { ok: false, erro: 'Abra o Gestta numa aba, já logado.' };
@@ -572,7 +572,31 @@ async function gesttaEnvios(msg, sender) {
       if (!(x.dados.itens || []).length || (x.dados.paginas && p >= x.dados.paginas)) break;
     }
   }
-  return { ok: true, lidoEm: new Date().toISOString(), total, lidos: envios.length, cortado, envios, templates, notifica, naoLidas, modelo: modelo ? { id: modelo.id, nome: modelo.nome } : null };
+  // 0.100.6: os templates de documento que estão em algum template de tarefa ativo (admin/company/task e /{id}/document, só GET;
+  // só os ids, na memória por 6 h). Se a leitura não fechar, null: a tela avisa e o risco mostra todos.
+  let vinculados = vinculadosCache && Date.now() - vinculadosCache.em < 6 * 3600e3 ? vinculadosCache.ids : null;
+  if (!vinculados) {
+    try {
+      const tts = [];
+      for (let p = 1; p <= 30; p++) {
+        const { r } = await lerGestta([OCG.PEDIDOS.templatesTarefa({ limit: 200, page: p })], { tab });
+        const x = r && r.resultados && r.resultados[0];
+        if (!x || x.status !== 200 || !x.dados) throw new Error('lista');
+        const l = (x.dados.itens || []).filter(t => t && /^[0-9a-f]{24}$/i.test(t._id || '')); tts.push(...l);
+        if (!l.length || (x.dados.paginas && p >= x.dados.paginas) || (x.dados.total != null && tts.length >= x.dados.total)) break;
+      }
+      const ativos = tts.filter(t => t.active !== false), ids = new Set();
+      for (let i = 0; i < ativos.length; i += 20) {
+        const lote = ativos.slice(i, i + 20);
+        const { r } = await lerGestta(lote.map(t => Object.assign(OCG.PEDIDOS.docsTemplateTarefa({ id: t._id }), { id: 'docsTemplateTarefa:' + t._id })), { tab, pausa: 150 });
+        const rs = (r && r.resultados) || [];
+        if (rs.length !== lote.length || rs.some(x => !x || x.status !== 200 || !x.dados)) throw new Error('documentos');
+        rs.forEach(x => x.dados.ids.forEach(v => ids.add(v)));
+      }
+      if (ativos.length) { vinculados = [...ids]; vinculadosCache = { ids: vinculados, em: Date.now() }; }
+    } catch (e) { vinculados = null; }
+  }
+  return { ok: true, lidoEm: new Date().toISOString(), total, lidos: envios.length, cortado, envios, templates, notifica, naoLidas, modelo: modelo ? { id: modelo.id, nome: modelo.nome } : null, vinculados };
 }
 // Configurações › Avançado: quem está logado, o perfil e uma leitura de prova de cada fonte (só contagens).
 async function testarGestta() {

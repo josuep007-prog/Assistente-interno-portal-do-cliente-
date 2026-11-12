@@ -4576,3 +4576,19 @@ test('Gestta (0.100.4): tirar a pasta de um template é um DELETE só no endere�
   assert.match(bg, /if \(\['tirarPasta', 'pasta', 'templateSalvar'\]\.includes\(msg\.acao\)\) return \{ ok: false/, 'gesttaAcao não faz a pasta direto');
   assert.match(bg, /if \(!OCG\.pastaForaDe\(d, modelo9999\.id\)\) return \{ ok: false/, 'só tira pasta fora da 9999, relida na hora');
 });
+
+test('Gestta (0.100.6) · Envios ao portal: o risco só mostra template ligado a algum template de tarefa ativo', () => {
+  const tpl = (id, name, pasta) => ({ _id: id, name, valid: true, documents_integration: pasta ? { pathName: pasta.split(' › ') } : { pathName: [] } });
+  const templates = [tpl('t1', 'Guia FGTS', 'Pessoal › Guias'), tpl('t2', 'Guia FGTS Rescisório', ''), tpl('t3', 'Guia FGTS Mensal Filial', '')];
+  const J = (x) => JSON.parse(JSON.stringify(x));
+  assert.deepEqual(J(OCG.enviosPortal([], templates, null, null, ['t2']).risco.map(r => r.templateId)), ['t2'], 'só o que está numa tarefa ativa');
+  assert.deepEqual(J(OCG.enviosPortal([], templates).risco.map(r => r.templateId)).sort(), ['t2', 't3'], 'sem a leitura das tarefas, todos os parecidos');
+  // a leitura dos documentos de um template de tarefa: só os ids, em qualquer forma conhecida; forma desconhecida = falha visível
+  const A = '6577714ee4d9100006d238ec', B = '6577714ee4d9100006d238ed';
+  assert.deepEqual(J(OCG.limpar('docsTemplateTarefa', [{ _id: A, name: 'X' }, { company_document: { _id: B, name: 'Y' } }])), { ids: [A, B] });
+  assert.deepEqual(J(OCG.limpar('docsTemplateTarefa', { docs: [{ company_document: A }] })), { ids: [A] });
+  assert.equal(OCG.limpar('docsTemplateTarefa', { algo: 1 }), null);
+  const p = OCG.PEDIDOS.docsTemplateTarefa({ id: A }), q = OCG.PEDIDOS.templatesTarefa({});
+  assert.ok(OCG.leituraPermitida(p.metodo, p.url, null).ok && OCG.leituraPermitida(q.metodo, q.url, null).ok);
+  assert.equal(new URL(p.url).pathname, '/admin/company/task/' + A + '/document');
+});

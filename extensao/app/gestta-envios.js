@@ -24,7 +24,7 @@ export async function lerEnvios(enviar, redesenhar) {
   S.carregando = true; S.erro = null; aoMudar();
   const r = await enviar({ cmd: 'gesttaEnvios' });
   S.carregando = false;
-  if (r && r.ok) { S.dados = r; S.analise = G.enviosPortal(r.envios, r.templates, r.notifica, r.modelo && r.modelo.id); }
+  if (r && r.ok) { S.dados = r; S.analise = G.enviosPortal(r.envios, r.templates, r.notifica, r.modelo && r.modelo.id, r.vinculados); }
   else S.erro = r || { erro: 'sem resposta' };
   aoMudar();
 }
@@ -164,7 +164,8 @@ export function desenharEnvios(v, sub) {
   }
   if (mostra('risco')) {
     h += '<section class="gte-sec"><div class="gte-sec-h"><h3>Templates em risco, ainda sem erro <span class="gte-n">' + num(risco.length) + '</span></h3>' + (pastasDe(risco).length > 1 ? '<span class="gte-acoes"><button type="button" class="btn btn-sm btn-primary" data-gte-pastas="risco"' + dis + '>' + ic('check') + 'Usar as pastas sugeridas (' + num(pastasDe(risco).length) + ')</button></span>' : '') + '</div>' +
-      '<p class="gte-dica">Sem pasta no portal, mas com nome parecido com um template que vai. Se for de tarefa que notifica o cliente, quando um documento chegar vai parar aqui como erro.</p>' +
+      '<p class="gte-dica">Sem pasta no portal, ligados a algum template de tarefa ativo e com nome parecido com um template que vai. Quando um documento deles chegar, cai em Tirar da lista; se deveria ir, ponha a pasta antes.</p>' +
+      (!S.dados.vinculados ? '<p class="gte-aviso">Não deu para conferir quais templates estão em tarefas ativas: a lista mostra todos os parecidos.</p>' : '') +
       (risco.length ? '<ul class="gte-risco">' + risco.map(r => '<li><b>' + esc(nome(r.template)) + '</b><span>parecido com <b>' + esc(nome(r.parecido.nome)) + '</b>, que vai para ' + esc(r.parecido.pasta) + '</span>' +
         (r.parecido.integracao ? '<button type="button" class="btn btn-sm gte-usar" data-gte-pasta="' + esc(r.templateId) + '" data-gte-modelo="' + esc(r.parecido.id) + '"' + dis + '>Usar a mesma pasta</button> ' : '') + abrirTpl(r.templateId) + '</li>').join('') + '</ul>' : '<p class="gte-vazio">' + ic('check') + 'Nenhum template em risco.</p>') + '</section>';
   }
