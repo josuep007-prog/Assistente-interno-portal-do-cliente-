@@ -2,6 +2,11 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.98.0 (12/11/2026): tirar da lista os que não vão ao portal
+
+- **Tirar da lista** na aba Envios ao portal: os documentos "sem pasta" de templates que não vão ao portal saem da lista de erros em lote, por template ou todos de uma vez ("Ver e tirar da lista"), sempre com confirmação. É a mesma lixeira da tela Status da integração do Gestta (`PATCH /es/file/onvio/remove/batch`, mapeada em 12/11/2026), de 50 em 50.
+- Antes de tirar, a extensão relê a fila e os templates no Gestta e só tira o que continua "sem pasta, não vai ao portal". Erro de envio de verdade e os que deveriam ir nunca têm o botão, e o pedido direto pela tela é recusado.
+
 ## Novidades da v0.97.0 (12/11/2026): reenviar e pôr a pasta pela extensão
 
 - **Reenviar** na aba Envios ao portal: um por linha ou **Reenviar os N** do bloco, sempre com uma confirmação na tela. Vai em lotes de 50, com os mesmos dados que a tela do Gestta manda, e a lista é lida de novo no fim.
