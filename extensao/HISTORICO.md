@@ -2,6 +2,11 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.100.7 (12/11/2026): a fila de erros inteira e o número vermelho do Gestta
+
+- A leitura da fila de erros não para mais no "total" da resposta: anda até uma página sem nada novo (a fila é uma lista sem total; a tela do Gestta pede de 20 em 20, mapeado em 12/11/2026).
+- **O número vermelho da aba Integração Portal do Cliente (≈3.200) não é o de erros:** é o de **todos os pendentes** de envio ao portal (`GET es//file/count-pending/onvio`, `{ count }`). No mapeamento, com 3.227 pendentes, a lista com o filtro "Erro" tinha 48 (o contador da tela só sobe ao clicar em "Carregar mais"). A aba Envios ao portal mostra os dois: "No Gestta, N pendentes de envio ao todo; com erro: M".
+
 ## Novidades da v0.100.6 (12/11/2026): o risco só com templates em tarefa ativa
 
 - Josué: "o template só deve vir para essa lista se ele estiver vinculado a alguma tarefa ativa". **Templates em risco** mostra só o template de documento que está em algum **template de tarefa ativo** do Gestta (lidos por `GET admin/company/task` e `GET admin/company/task/{id}/document`, só os ids, na memória por 6 horas). Se essa leitura não fechar, a tela avisa e mostra todos os parecidos, como antes.

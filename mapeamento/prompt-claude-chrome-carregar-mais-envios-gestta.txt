@@ -1,0 +1,12 @@
+Você vai me ajudar a mapear como a tela do Gestta (app.gestta.com.br) pagina a lista de erros de envio ao Portal do Cliente. Só olhe as chamadas que a própria tela faz. Não clique em Reenviar, na lixeira nem em nada que mude dados. Não anote nome de cliente, CNPJ, nome de arquivo, token nem cookie.
+
+1. Abra o DevTools (F12) > Network, filtro Fetch/XHR, e marque "Preserve log".
+2. Abra a tela Status da integração > Integração Portal do Cliente (https://app.gestta.com.br/dominio-integration/#/error-status), com o filtro "Erro".
+3. Anote a chamada que traz a lista (deve ser GET .../es/file/onvio?...):
+   - o endereço com os nomes e os VALORES dos parâmetros de paginação e filtro (limit, skip, page, status, sort ou outros: só esses valores, que são números ou códigos);
+   - na resposta, os nomes das chaves do topo (ex.: docs, total, totalDocs, page, hasNextPage) e o valor dos números de paginação (total, page etc.), e quantos itens vieram na lista.
+4. Anote também a chamada que traz o número vermelho da aba (3156 ou parecido): endereço e a forma da resposta (número solto ou objeto com qual chave).
+5. Role até o fim e clique em "Carregar mais" DUAS vezes. Para cada clique, anote o endereço da nova chamada com os valores dos parâmetros de paginação, e na resposta os números de paginação e quantos itens vieram.
+6. Diga se, depois do "Carregar mais", o número ao lado de "Status de Integração" mudou e para quanto.
+
+Me devolva um resumo em texto com os itens 3, 4, 5 e 6.

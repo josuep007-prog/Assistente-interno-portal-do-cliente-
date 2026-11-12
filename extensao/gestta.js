@@ -126,7 +126,8 @@
     contagem: { fine: true, approve: true, email_not_sent: true, count: true },
     templateUm: null,
     templateTarefa: { _id: true, name: true, active: true, subtype: true },   // 0.100.6: os templates de tarefa, para saber quais documentos estão em tarefa ativa
-    docsTemplateTarefa: { _id: true },   // definido logo abaixo (o mesmo molde do templateDoc)
+    docsTemplateTarefa: { _id: true },
+    contagemFila: { n: true },   // definido logo abaixo (o mesmo molde do templateDoc)
     // 0.79.0: template de documento com o destino no portal (só nomes de pasta; nunca o arquivo modelo)
     templateDoc: { _id: true, name: true, automation_type: true, valid: true, bypass: true, send_documents_due_date: true,
       documents_integration: { customer_id: true, id: true, path: [true], pathName: [true] } },   // 0.97.0: a pasta inteira, para usar a mesma num template parecido
@@ -156,6 +157,10 @@
       return t;
     }
     if (tipo === 'me' || tipo === 'contagem' || tipo === 'templateUm') return escolher(dados, molde) || null;
+    if (tipo === 'contagemFila') {   // 0.100.7: o número de pendentes da fila do portal (número solto ou { count | total })
+      const n = typeof dados === 'number' ? dados : dados && typeof dados === 'object' ? [dados.count, dados.total, dados.onvio, dados.pending].find(v => typeof v === 'number') : undefined;
+      return typeof n === 'number' && n >= 0 ? { n } : null;
+    }
     if (tipo === 'docsTemplateTarefa') {   // 0.100.6: só os ids dos templates de documento ligados ao template de tarefa
       const l = Array.isArray(dados) ? dados : dados && Array.isArray(dados.docs) ? dados.docs : dados && Array.isArray(dados.company_documents) ? dados.company_documents : null;
       if (!l) return null;
@@ -266,6 +271,7 @@
     templatesDocumento: () => ({ id: 'templatesDocumento', tipo: 'template', metodo: 'GET', url: url('/admin/company/document', { limit: 1, page: 1 }) }),
     // 0.79.0: a lista inteira de templates de documento, com a pasta de destino no portal (para achar os que não têm pasta)
     template: (o) => ({ id: 'template', tipo: 'templateUm', metodo: 'GET', url: url('/admin/company/document/' + encodeURIComponent(o.id)) }),
+    contagemFila: () => ({ id: 'contagemFila', tipo: 'contagemFila', metodo: 'GET', url: url('/es//file/count-pending/onvio') }),
     templatesTarefa: (o) => ({ id: 'templatesTarefa', tipo: 'templateTarefa', metodo: 'GET', url: url('/admin/company/task', { limit: (o && o.limit) || 200, page: (o && o.page) || 1 }) }),
     docsTemplateTarefa: (o) => ({ id: 'docsTemplateTarefa', tipo: 'docsTemplateTarefa', metodo: 'GET', url: url('/admin/company/task/' + encodeURIComponent(o.id) + '/document') }),
     templatesLista: (o) => ({ id: 'templatesLista', tipo: 'templateDoc', metodo: 'GET', url: url('/admin/company/document', { limit: (o && o.limit) || 200, page: (o && o.page) || 1 }) })
@@ -977,7 +983,7 @@
         prog('Alertas');
         try {
           const itens = []; let total, cortado = false;
-          for (let k = 0; k < 400; k++) { const d = await um(PEDIDOS.filaOnvioErro({ limit: 50, skip: itens.length })); if (d.total != null) total = d.total; const l = d.itens || []; itens.push(...l); if (!l.length || (total != null && itens.length >= total)) break; if (k === 399) cortado = true; }   // 0.100.1: anda pelo que veio (o Gestta pode devolver menos de 50 por página)
+          for (let k = 0; k < 400; k++) { const d = await um(PEDIDOS.filaOnvioErro({ limit: 50, skip: itens.length })); if (d.total != null) total = d.total; const l = d.itens || []; itens.push(...l); if (!l.length) break; if (k === 399) cortado = true; }   // 0.100.7: o total da resposta não serve para parar   // 0.100.1: anda pelo que veio (o Gestta pode devolver menos de 50 por página)
           if (total != null && itens.length < total) cortado = true;
           const ok = itens.filter(x => x && !ehEscritorioProprio(x.customer_task && x.customer_task.customer && x.customer_task.customer.name));
           await entregar({ tipoDado: 'gestta-envios-onvio-erro', categoria: 'alertas', titulo: 'Gestta · Envios ao Onvio com erro', colunas: COLS_ENVIOS_HUB, totalNaOrigem: total }, ok.map(linhaEnvio), { cortado });

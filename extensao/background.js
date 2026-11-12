@@ -523,10 +523,20 @@ async function gesttaEnvios(msg, sender) {
     if (x.dados.total != null) total = x.dados.total;
     const l = (x.dados.itens || []).filter(i => i && !vistos.has(i._id));
     l.forEach(i => vistos.add(i._id)); envios.push(...l);
-    if (!l.length || (total != null && envios.length >= total)) break;
+    // 0.100.7: a resposta é uma lista sem total (mapeado em 12/11/2026: a tela pede de 20 em 20 e para na página com menos de 20);
+    // aqui, de 50 em 50, só para quando a página não traz nada novo
+    if (!l.length) break;
     if (k === 399) cortado = true;
   }
-  if (total != null && envios.length < total) cortado = true;
+  // o número vermelho da aba Integração Portal do Cliente (GET es//file/count-pending/onvio, { count }): conta TODOS os pendentes do
+  // portal, não só os com erro (mapeado em 12/11/2026: 3.227 pendentes com 48 em "Erro"). Só informação na tela; não confere a fila.
+  let contagemGestta = null;
+  try {
+    const { r } = await lerGestta([OCG.PEDIDOS.contagemFila()], { tab });
+    const x = r && r.resultados && r.resultados[0];
+    if (x && x.status === 200 && x.dados && x.dados.n != null) contagemGestta = x.dados.n;
+  } catch (e) { contagemGestta = null; }
+
   // os templates: a mesma coisa (sem o total de páginas, parava na primeira, e template com pasta fora dela parecia "sem pasta")
   const templates = [], tvistos = new Set();
   for (let p = 1; p <= 50; p++) {
@@ -596,7 +606,7 @@ async function gesttaEnvios(msg, sender) {
       if (ativos.length) { vinculados = [...ids]; vinculadosCache = { ids: vinculados, em: Date.now() }; }
     } catch (e) { vinculados = null; }
   }
-  return { ok: true, lidoEm: new Date().toISOString(), total, lidos: envios.length, cortado, envios, templates, notifica, naoLidas, modelo: modelo ? { id: modelo.id, nome: modelo.nome } : null, vinculados };
+  return { ok: true, lidoEm: new Date().toISOString(), total, lidos: envios.length, cortado, pendentesGestta: contagemGestta, envios, templates, notifica, naoLidas, modelo: modelo ? { id: modelo.id, nome: modelo.nome } : null, vinculados };
 }
 // Configurações › Avançado: quem está logado, o perfil e uma leitura de prova de cada fonte (só contagens).
 async function testarGestta() {
