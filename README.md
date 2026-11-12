@@ -8,7 +8,7 @@ Página de trabalho em tela cheia **por cima do Onvio Portal do Cliente**: Hoje 
 
 Só para a **visão do escritório**: com o login de um cliente a extensão fica bloqueada e não lê nada. Desde a v0.14.0 dá para **responder (com situação e anexos), encaminhar, definir responsável e alterar a expectativa** por dentro da extensão, e desde a v0.17.0 **criar solicitações Geral** para o cliente (com o cliente, o assunto e o texto que você escolher), sempre com confirmação, nas listas já mapeadas (Geral, Férias, Rescisão e Afastamento). Desde a v0.27.0 e a v0.28.0, **responder, anexar, encaminhar e definir responsável** também valem em Cadastro e Rubricas (a expectativa, só na Geral). Nunca exclui nada.
 
-O código fica na pasta [`extensao/`](extensao/). Detalhes de uso, regras do semáforo e privacidade estão em [`extensao/LEIA-ME.md`](extensao/LEIA-ME.md).
+O código fica na pasta [`extensao/`](extensao/). Detalhes de uso, regras do semáforo e privacidade estão em [`extensao/LEIA-ME.md`](extensao/LEIA-ME.md). O que mudou em cada versão está em [`extensao/HISTORICO.md`](extensao/HISTORICO.md); as regras em vigor, no [`CLAUDE.md`](CLAUDE.md), e o histórico das decisões, em [`docs/decisoes.md`](docs/decisoes.md).
 
 ### Instalar
 
