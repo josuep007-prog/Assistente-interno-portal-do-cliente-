@@ -1,11 +1,11 @@
 /* Control Onvio · Tarefas do Gestta (0.72.0). Mesmos tokens do app (ui.css, app.css); o Simplificado fica no fim,
  * sob :root[data-estilo="simples"]. Cor de grupo só em barras, pontos e anéis; texto sempre em --ink/--ink-2 ou nas pílulas. */
 :root{
-  --gt-multa:#C2000C; --gt-atraso:#E8474B; --gt-imped:#D97706; --gt-hoje:#E3A008; --gt-prox:#2A78D6; --gt-depois:#8FA0AD; --gt-feita:#1BAF7A;
+  --gt-multa:#C2000C; --gt-atraso:#E8474B; --gt-imped:#D97706; --gt-hoje:#E3A008; --gt-prox:#2A78D6; --gt-depois:#8FA0AD; --gt-feita:#1BAF7A; --gt-desc:#8B6FB8;
 }
-:root[data-theme="dark"]{ --gt-multa:#FF6B6B; --gt-atraso:#F57372; --gt-imped:#FF9D42; --gt-hoje:#F3C24A; --gt-prox:#5FA8E0; --gt-depois:#71808C; --gt-feita:#4ECC8B; }
+:root[data-theme="dark"]{ --gt-multa:#FF6B6B; --gt-atraso:#F57372; --gt-imped:#FF9D42; --gt-hoje:#F3C24A; --gt-prox:#5FA8E0; --gt-depois:#71808C; --gt-feita:#4ECC8B; --gt-desc:#A98FD6; }
 .gt-c-multa{--gc:var(--gt-multa)} .gt-c-atraso{--gc:var(--gt-atraso)} .gt-c-imped{--gc:var(--gt-imped)} .gt-c-hoje{--gc:var(--gt-hoje)}
-.gt-c-prox{--gc:var(--gt-prox)} .gt-c-depois{--gc:var(--gt-depois)} .gt-c-feita{--gc:var(--gt-feita)}
+.gt-c-prox{--gc:var(--gt-prox)} .gt-c-depois{--gc:var(--gt-depois)} .gt-c-feita{--gc:var(--gt-feita)} .gt-c-desc{--gc:var(--gt-desc)}
 
 /* cabeçalho: mês e "de quem" */
 .gt-cab-extra{display:flex; align-items:center; gap:14px; flex-wrap:wrap}
@@ -713,3 +713,21 @@
 .gs-mail{display:flex; gap:8px; flex-wrap:wrap}
 .gs-bt{display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap}
 :root[data-estilo="simples"] .gs-caixa{box-shadow:none} :root[data-estilo="simples"] .gs-veu-caixa{box-shadow:none}
+
+/* 0.104.0: "Agir em lote" em Empresas e no Meu dia */
+.gt-lote-btn{margin-left:auto; border:1px solid var(--rule-strong); background:var(--surface); color:var(--ink); border-radius:var(--r); padding:3px 9px; font:600 12px "IBM Plex Sans",sans-serif; cursor:pointer; white-space:nowrap}
+.gt-lote-btn:hover{border-color:var(--blue-deep); color:var(--blue-deep)}
+.gt-lote-btn.on{background:var(--blue-pale); border-color:var(--blue-deep); color:var(--ink)}
+.gt-lote-btn:focus-visible{outline:2px solid var(--blue-deep); outline-offset:1px}
+.gd-bloco h3 .gt-lote-btn{font-size:12px}
+.gf-cab .gt-lote-btn{align-self:center}
+.gl-grupo{margin:0 0 10px}
+
+/* 0.104.0: a situação no Gestta à vista, logo abaixo do topo */
+.gt-sitbar{display:flex; align-items:center; gap:8px 12px; flex-wrap:wrap; margin:-4px 0 12px; padding:0 2px}
+.gt-sitbar .gt-f-rot{margin:0}
+.gt-sitbar .gt-chips{margin:0}
+.gt-sitbar-dica{font-size:12px; color:var(--ink-2)}
+.gt-quem-sec{padding:8px 10px 3px; font:700 11.5px "IBM Plex Sans",sans-serif; color:var(--ink-2); text-transform:uppercase; letter-spacing:.04em; list-style:none}
+/* a pílula da desconsiderada no detalhe: fundo claro da cor, texto na tinta */
+.pill.pill-desc{background:color-mix(in srgb, var(--gt-desc) 18%, var(--surface)); color:var(--ink); border-color:color-mix(in srgb, var(--gt-desc) 55%, var(--surface))}
