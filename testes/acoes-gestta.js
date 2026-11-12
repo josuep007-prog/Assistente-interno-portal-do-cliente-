@@ -39,6 +39,9 @@ const tarefa = (status, feita) => ({ _id: T, status, done_step: feita ? 1 : 0, t
     if (u.pathname === '/admin/company/document/integration/documents/batch') return r.fulfill({ status: 200, headers: CORS, body: '' });
     if (u.pathname === '/admin/company/document/' + D && req.method() === 'PUT') return json({ _id: D, name: 'TESTE MAPEAMENTO', bypass: false, send_documents_due_date: false, company: { name: 'ESCRITORIO SIGILO' }, created_by: { email: 'fulana@exemplo.com' }, documents_integration: { customer_id: S, id: 'abc123def456', path: ['Pessoal'], pathName: ['Pessoal'] } });
     if (req.method() === 'DELETE' && /^\/admin\/company\/document\/integration\/documents\/[0-9a-f]{24}$/.test(u.pathname)) return r.fulfill({ status: 204, headers: CORS });
+    if (u.pathname === '/es/file/upload/automatic') return json(/branco/.test(bruto) ? { _id: 'a00000000000000000000003', type: 'EXPRESS_NEGATIVE', has_choices: false, company_user: 'fulana@exemplo.com', file: 'https://storage/SEGREDO-GESTTA' }
+      : { _id: 'a00000000000000000000001', type: 'EXPRESS_AUTOMATIC', has_choices: false, company_user: 'fulana@exemplo.com', file: 'https://storage/SEGREDO-GESTTA', customer_task: { _id: T, name: 'Tarefa', company_task: S, customer: { _id: D, name: 'EMPRESA SIGILO LTDA', cnpj: '12.345.678/0001-90' }, _competence_date: '2026-10-01' }, company_document: { _id: S, name: 'Guia' } });
+    if (/^\/es\/file\/[0-9a-f]{24}\/confirm$/.test(u.pathname)) return r.fulfill({ status: 200, headers: Object.assign({ 'content-type': 'application/json' }, CORS), body: '{}' });
     if (u.pathname === '/es/upload/direct') return json({ company_document: { _id: D, name: 'Recibo' }, customer_task: tarefa('DONE', true) });
     return json({ message: 'não mapeado' }, 404);
   });
@@ -115,6 +118,21 @@ const tarefa = (status, feita) => ({ _id: T, status, done_step: feita ? 1 : 0, t
     assert.deepEqual([ultima().metodo, ultima().caminho], ['DELETE', '/admin/company/document/integration/documents/' + D]);
     assert.equal(ultima().auth, TOKEN); semSegredos(r);
   });
+  await passo('0.102.0 · Express: POST /es/file/upload/automatic em formulário só com o arquivo; o que volta é só a tarefa e o item; confirmar manda só os dois ids', async () => {
+    const b64 = Buffer.from('%PDF-1.4 guia').toString('base64');
+    const r = await page.evaluate(async (b) => self.OCG.agirNaPagina(self.OCG.pedidoAcao({ acao: 'expressLer', arquivo: { nome: 'guia.pdf', tipo: 'application/pdf', base64: b } })), b64);
+    assert.equal(r.ok, true, JSON.stringify(r));
+    const c = ultima();
+    assert.equal(c.metodo + ' ' + c.caminho, 'POST /es/file/upload/automatic'); assert.match(c.tipo, /^multipart\/form-data/);
+    assert.match(c.corpo, /name="file"; filename="guia\.pdf"\r\nContent-Type: application\/pdf/); assert.doesNotMatch(c.corpo, /name="(customer_task|company_document)"/);
+    assert.equal(r.express.achou, true); assert.equal(r.express.tarefa.id, T); assert.equal(r.express.documento.id, S);
+    assert.ok(!JSON.stringify(r).includes('SEGREDO') && !JSON.stringify(r).includes('fulana'), 'nem o link do arquivo nem o usuário voltam');
+    const n = await page.evaluate(async (b) => self.OCG.agirNaPagina(self.OCG.pedidoAcao({ acao: 'expressLer', arquivo: { nome: 'branco.pdf', tipo: 'application/pdf', base64: b } })), Buffer.from('%PDF branco').toString('base64'));
+    assert.equal(n.express.achou, false);
+    const k = await page.evaluate(async (a) => self.OCG.agirNaPagina(self.OCG.pedidoAcao({ acao: 'expressConfirmar', express: 'a00000000000000000000001', tarefa: a[0], documento: a[1] })), [T, S]);
+    assert.equal(k.ok, true);
+    assert.deepEqual([ultima().metodo, ultima().caminho, ultima().corpo], ['POST', '/es/file/a00000000000000000000001/confirm', { company_document: S, customer_task: T }]);
+  });
   await passo('pedido adulterado não sai: outro endereço, DELETE, comentário externo, status fora da lista', async () => {
     const antes = chamadas.length;
     const ruins = [
@@ -147,7 +165,7 @@ const tarefa = (status, feita) => ({ _id: T, status, done_step: feita ? 1 : 0, t
   await passo('nenhuma chamada levou querystring; só PUT e POST nos endereços mapeados', async () => {
     assert.ok(chamadas.every(c => !c.busca), 'querystring');
     const ok = [/^PUT \/core\/customer\/task\/[0-9a-f]{24}\/step\/[0-9a-f]{24}\/done$/, /^PUT \/es\/task\/[0-9a-f]{24}\/status$/, /^POST \/core\/customer\/task\/[0-9a-f]{24}\/history\/comment$/, /^POST \/es\/upload\/direct$/,
-      /^POST \/es\/file\/onvio\/resend$/, /^PATCH \/admin\/company\/document\/integration\/documents\/batch$/, /^PUT \/admin\/company\/document\/[0-9a-f]{24}$/, /^PATCH \/es\/file\/onvio\/remove\/batch$/, /^DELETE \/admin\/company\/document\/integration\/documents\/[0-9a-f]{24}$/];
+      /^POST \/es\/file\/onvio\/resend$/, /^PATCH \/admin\/company\/document\/integration\/documents\/batch$/, /^PUT \/admin\/company\/document\/[0-9a-f]{24}$/, /^PATCH \/es\/file\/onvio\/remove\/batch$/, /^DELETE \/admin\/company\/document\/integration\/documents\/[0-9a-f]{24}$/, /^POST \/es\/file\/upload\/automatic$/, /^POST \/es\/file\/[0-9a-f]{24}\/confirm$/];
     for (const c of chamadas) assert.ok(ok.some(re => re.test(c.metodo + ' ' + c.caminho)), c.metodo + ' ' + c.caminho);
   });
 

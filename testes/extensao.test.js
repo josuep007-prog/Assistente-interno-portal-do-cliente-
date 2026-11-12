@@ -4605,3 +4605,40 @@ test('Gestta (0.100.7): o número vermelho do Gestta (todos os pendentes do port
   assert.doesNotMatch(bg, /envios\.length < contagemGestta/);
   assert.match(bg, /pendentesGestta: contagemGestta/);
 });
+
+test('Gestta (0.102.0) · Express: ler e confirmar só nos endereços e campos mapeados; a resposta vira { achou, tarefa, documento }', () => {
+  const A = 'https://api.gestta.com.br', X = '6577714ee4d9100006d238ec', T = '5f1e2d3c4b5a69788796a5b4', D = '7b6c5d4e3f2a10213243bbcc';
+  const b64 = Buffer.from('%PDF-1.4 teste').toString('base64');
+  const p = OCG.pedidoAcao({ acao: 'expressLer', arquivo: { nome: 'guia.pdf', tipo: 'application/pdf', base64: b64 } });
+  assert.equal(p.metodo, 'POST'); assert.equal(new URL(p.url).pathname, '/es/file/upload/automatic');
+  assert.ok(OCG.escritaPermitida(p.metodo, p.url, p.corpo).ok);
+  assert.ok(!OCG.escritaPermitida('POST', p.url, { arquivo: p.corpo.arquivo, customer_task: T }).ok, 'só o arquivo');
+  const c = OCG.pedidoAcao({ acao: 'expressConfirmar', express: X, tarefa: T, documento: D });
+  assert.equal(new URL(c.url).pathname, '/es/file/' + X + '/confirm');
+  assert.deepEqual(JSON.parse(JSON.stringify(c.corpo)), { company_document: D, customer_task: T });
+  assert.ok(OCG.escritaPermitida(c.metodo, c.url, c.corpo).ok);
+  assert.ok(!OCG.escritaPermitida('POST', c.url, { company_document: D, customer_task: T, bypass: true }).ok);
+  assert.ok(!OCG.escritaPermitida('DELETE', A + '/es/file/' + X, {}).ok, 'apagar o registro do Express, nunca');
+  assert.ok(OCG.pedidoAcao({ acao: 'expressConfirmar', express: 'x', tarefa: T, documento: D }).erro);
+  // a resposta do Express: achou (com a tarefa e o item) ou não; sem dados de usuário
+  const achou = JSON.parse(JSON.stringify(OCG.lerExpress({ _id: X, type: 'EXPRESS_AUTOMATIC', has_choices: false, company_user: 'u', file: 'segredo', customer_task: { _id: T, name: 'DAS', _competence_date: '2026-10-01', customer: { _id: D, name: 'CLIENTE FICTICIO', cnpj: '00' } }, company_document: { _id: D, name: 'Guia DAS' } })));
+  assert.equal(achou.achou, true); assert.equal(achou.tarefa.id, T); assert.equal(achou.documento.nome, 'Guia DAS'); assert.equal(achou.tarefa.cliente.nome, 'CLIENTE FICTICIO');
+  assert.ok(!JSON.stringify(achou).includes('segredo'));
+  assert.equal(OCG.lerExpress({ _id: X, type: 'EXPRESS_NEGATIVE' }).achou, false);
+  assert.equal(OCG.lerExpress({ algo: 1 }).tipo, 'desconhecido');
+});
+
+test('Gestta (0.102.0) · quando o Express não acha: CNPJ e competência do texto e a sugestão de tarefa e item', () => {
+  const t = 'GUIA DO FGTS  Empregador CNPJ 11.222.333/0001-81  Competência: 10/2026  vencimento 20/11/2026  CNPJ inválido 11.111.111/1111-11';
+  assert.deepEqual(JSON.parse(JSON.stringify(OCG.cnpjsDoTexto(t))), ['11222333000181'], 'só o CNPJ válido');
+  assert.deepEqual(JSON.parse(JSON.stringify(OCG.competenciasDoTexto(t))), ['2026-10'], 'a data de vencimento (dd/mm/aaaa) não vira competência');
+  assert.deepEqual(JSON.parse(JSON.stringify(OCG.competenciasDoTexto('Período de apuração: setembro de 2026'))), ['2026-09']);
+  const sug = JSON.parse(JSON.stringify(OCG.sugerirDestinos({ texto: t, clientes: [{ id: 'c1', nome: 'Alfa' }],
+    tarefas: [{ id: 't1', nome: 'FGTS', status: 'OPEN', clienteId: 'c1', competencia: '2026-10-01' }, { id: 't2', nome: 'FGTS', status: 'OPEN', clienteId: 'c1', competencia: '2026-09-01' }, { id: 't3', nome: 'Outra', status: 'OPEN', clienteId: 'c9', competencia: '2026-10-01' }, { id: 't4', nome: 'Feita', status: 'DONE', clienteId: 'c1', competencia: '2026-10-01' }],
+    docsPorTarefa: { t1: [{ _id: 'a'.repeat(24), name: 'Guia FGTS' }, { _id: 'b'.repeat(24), name: 'Recibo' }], t2: [{ _id: 'c'.repeat(24), name: 'Guia FGTS' }], t3: [{ _id: 'd'.repeat(24), name: 'Guia FGTS' }], t4: [{ _id: 'e'.repeat(24), name: 'Guia FGTS' }] } })));
+  assert.deepEqual(sug.map(s => [s.tarefa.id, s.documento.nome]), [['t1', 'Guia FGTS'], ['t2', 'Guia FGTS'], ['t1', 'Recibo']], 'a competência citada e o nome do item primeiro; nunca outra empresa nem tarefa concluída');
+  assert.deepEqual(sug[0].porque, ['CNPJ de Alfa', 'competência 10/2026', '“Guia FGTS” aparece no documento', 'item ainda sem arquivo']);
+  const bg = fs.readFileSync(path.join(__dirname, '..', 'extensao', 'background.js'), 'utf8');
+  assert.match(bg, /async function gesttaTextoDoc/); assert.match(bg, /async function gesttaClientesCnpj/);
+  assert.doesNotMatch(bg.slice(bg.indexOf('async function gesttaTextoDoc'), bg.indexOf('// Para a coordenação escolher')), /storage\.(local|session)/, 'o texto lido nunca é guardado');
+});

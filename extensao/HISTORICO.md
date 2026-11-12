@@ -2,6 +2,15 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.102.0 (12/11/2026): soltar documentos para o Express
+
+- **Soltar em qualquer lugar das Tarefas do Gestta** (ou na tarefa, fora de um item): aparece "Soltar aqui" / "Soltar nesta tarefa" e, ao soltar, a pergunta **Ler N arquivos com o Express?**. Cada arquivo vai ao Express do Gestta (`POST /es/file/upload/automatic`, só o arquivo), que procura a empresa, a tarefa e o item.
+- **Para onde cada arquivo vai:** o que o Express achou vem marcado (empresa · tarefa (competência) · “item”). Quando ele não acha, **a extensão lê o documento no Chrome** (texto do PDF; nada é guardado) e **sugere** a tarefa e o item pelo CNPJ (só os clientes desse CNPJ, `admin/customer`), pela competência citada e pelo nome do item, com o porquê. Dá para trocar o destino ou escolher "Não vincular".
+- **Vincular os N arquivos:** uma confirmação; cada um vai pelo Express (`POST /es/file/{id}/confirm`, só a tarefa e o item) e, se o Express recusar o destino escolhido, direto no item (o mesmo envio do "Enviar arquivo"). No fim, o aviso de para onde cada arquivo foi.
+- **Quando nada acha** (sem texto, sem CNPJ, CNPJ de quem não é cliente ou sem tarefa aberta na tela): **Avisar por e-mail (Zimbra)** abre um e-mail novo em `mail.controltax.com.br` com o assunto e o texto prontos (arquivo, o que o Express disse, o que a extensão achou), **sem destinatário**: o analista escolhe a gestão do departamento ou o setor do Portal do Cliente. Também **Copiar o texto do aviso**.
+- Arrastar **em cima de um item** da tarefa continua indo direto para ele, sem Express (0.101.0).
+- **A conferir no Gestta real:** confirmar no Express um arquivo que ele não achou, com o destino escolhido (se o Gestta recusar, a extensão manda direto no item e o registro fica na lista do Express); a abertura do e-mail novo no Zimbra pelo endereço; documento escaneado não tem texto (fica para o e-mail).
+
 ## Novidades da v0.101.0 (12/11/2026): arrastar arquivo no documento da tarefa
 
 - Josué: "também dê só de arrastar o arquivo, podendo arrastar mais de uma vez"; "se o analista arrastar o documento direto no item de uma tarefa, não precisa passar pelo leitor do Express". No detalhe da tarefa (Tarefas do Gestta), **arraste um ou mais arquivos em cima de um documento** da tarefa: o item fica destacado ("Soltar em …"), aparece **uma confirmação** com a lista dos arquivos e eles vão **um por vez** para aquele documento, pelo mesmo envio do botão Enviar arquivo (`POST /es/upload/direct`, já aprovado). Arquivo acima de 15 MB fica de fora, com o aviso. Pode arrastar de novo quantas vezes quiser.

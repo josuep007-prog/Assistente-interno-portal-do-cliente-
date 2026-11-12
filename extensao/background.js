@@ -394,7 +394,7 @@ async function gesttaAcao(msg, sender) {
     x = res && res.result;
   } catch (e) { return { ok: false, erro: 'A aba do Gestta não respondeu (' + String(e && e.message || e).slice(0, 80) + ').' }; }
   if (!x) return { ok: false, erro: 'A aba do Gestta não respondeu.' };
-  if (x.ok) return { ok: true, acao: msg.acao, tarefa: x.tarefa || null, resumo: x.resumo || null };
+  if (x.ok) return { ok: true, acao: msg.acao, tarefa: x.tarefa || null, resumo: x.resumo || null, express: x.express || null };
   if (x.recusado) return { ok: false, erro: 'A extensão recusou a ação (' + x.recusado + ').' };
   const st = x.status;
   return { ok: false, status: st, erro: st === 401 ? 'A sessão do Gestta acabou: faça login de novo na aba e tente outra vez.'
@@ -490,6 +490,44 @@ async function gesttaTirar(msg, sender) {
     success += (x.resumo && x.resumo.success) || 0; failed += (x.resumo && x.resumo.failed) || 0;
   }
   return { ok: true, success, failed, ignorados };
+}
+// 0.102.0: arrastar documento sem o Express achar o destino. A extensão lê o texto do arquivo (PDF pelo pdf.js do offscreen; texto
+// simples direto) só para a tela sugerir a tarefa e o item: nada é guardado, o texto volta só para quem pediu.
+async function gesttaTextoDoc(msg, sender) {
+  if (!String((sender && sender.url) || '').startsWith(chrome.runtime.getURL('app/'))) return { ok: false, erro: 'Só a tela das Tarefas do Gestta pode pedir.' };
+  const b64 = String(msg.base64 || ''), tipo = String(msg.tipo || ''), nome = String(msg.nome || '');
+  if (!b64 || !/^[A-Za-z0-9+/]*=*$/.test(b64) || b64.length > 21 * 1024 * 1024) return { ok: false, erro: 'Arquivo inválido ou grande demais.' };
+  try {
+    if (/pdf/i.test(tipo) || /\.pdf$/i.test(nome)) {
+      await garantirOffscreen();
+      let r = null;
+      for (let i = 0; i < 12 && !r; i++) { r = await chrome.runtime.sendMessage({ alvo: 'offscreen', cmd: 'pdfTexto', b64 }).catch(() => null); if (!r) await new Promise(ok => setTimeout(ok, 250)); }
+      if (!r || !r.ok) return { ok: false, erro: 'Não consegui ler o PDF.' };
+      return { ok: true, texto: String(r.texto || '').slice(0, 60000) };
+    }
+    if (/^text\//i.test(tipo) || /\.(txt|csv)$/i.test(nome)) return { ok: true, texto: new TextDecoder().decode(Uint8Array.from(atob(b64), c => c.charCodeAt(0))).slice(0, 60000) };
+    return { ok: true, texto: '' };   // imagem ou outro formato: sem texto (o documento escaneado precisa de OCR, ainda não)
+  } catch (e) { return { ok: false, erro: 'Não consegui ler o arquivo.' }; }
+}
+// Os clientes do Gestta com esses CNPJs (só id, nome e CNPJ; a lista fica na memória por 6 h)
+let clientesGesttaCache = null;
+async function gesttaClientesCnpj(msg, sender) {
+  const quer = [...new Set((Array.isArray(msg.cnpjs) ? msg.cnpjs : []).map(c => String(c).replace(/\D/g, '')).filter(c => c.length === 14))].slice(0, 20);
+  if (!quer.length) return { ok: true, clientes: [] };
+  const tab = await tabDoGestta(sender);
+  if (!tab) return { ok: false, erro: 'Abra o Gestta numa aba, já logado.' };
+  if (!clientesGesttaCache || Date.now() - clientesGesttaCache.em > 6 * 3600e3) {
+    const l = [];
+    for (let p = 1; p <= 30; p++) {
+      const { r } = await lerGestta([OCG.PEDIDOS.clientes({ limit: 200, page: p })], { tab });
+      const x = r && r.resultados && r.resultados[0];
+      if (!x || x.status !== 200 || !x.dados) return { ok: false, erro: x && x.status === 403 ? 'Seu acesso do Gestta não inclui a lista de clientes.' : 'Não consegui ler os clientes do Gestta.' };
+      const it = x.dados.itens || []; it.forEach(c => { if (c && c._id) l.push({ id: c._id, nome: String(c.name || ''), cnpj: String(c.cnpj || '').replace(/\D/g, '') }); });
+      if (!it.length || (x.dados.paginas && p >= x.dados.paginas)) break;
+    }
+    clientesGesttaCache = { l, em: Date.now() };
+  }
+  return { ok: true, clientes: clientesGesttaCache.l.filter(c => quer.includes(c.cnpj)) };
 }
 // Para a coordenação escolher de quem ver as tarefas: só id e nome da equipe ativa.
 async function gesttaEquipe(msg, sender) {
@@ -1461,6 +1499,8 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'gesttaEnvios') { reply(await gesttaEnvios(msg, sender)); }
       else if (msg.cmd === 'gesttaPasta') { reply(await gesttaPasta(msg, sender)); }
       else if (msg.cmd === 'gesttaTirarPasta') { reply(await gesttaTirarPasta(msg, sender)); }
+      else if (msg.cmd === 'gesttaTextoDoc') { reply(await gesttaTextoDoc(msg, sender)); }
+      else if (msg.cmd === 'gesttaClientesCnpj') { reply(await gesttaClientesCnpj(msg, sender)); }
       else if (msg.cmd === 'gesttaTirar') { reply(await gesttaTirar(msg, sender)); }
       else if (msg.cmd === 'gesttaFechamento') { reply(await gesttaFechamento(msg, sender)); }
       else if (msg.cmd === 'gesttaTarefa') { reply(await gesttaTarefa(msg, sender)); }
