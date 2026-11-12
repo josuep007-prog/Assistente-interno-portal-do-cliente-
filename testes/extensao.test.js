@@ -4315,6 +4315,23 @@ test('Gestta (0.97.0): reenviar e pôr a pasta num template só com a forma do m
   ];
   for (const [m, u, c] of nao) assert.equal(E(m, u, c).ok, false, 'recusa: ' + m + ' ' + u + ' ' + JSON.stringify(c).slice(0, 80));
 });
+test('Gestta (0.98.0): tirar da lista de erros (lixeira) só com uma lista de ids da fila; a ação direta pela tela não passa', () => {
+  const E = OCG.escritaPermitida, A = 'https://api.gestta.com.br', T = '5f1e2d3c4b5a69788796a5b4', C = '6a5b4c3d2e1f00112233aabb';
+  const p = OCG.pedidoAcao({ acao: 'tirarDaLista', ids: [T, C, T] });
+  assert.equal(p.metodo, 'PATCH'); assert.equal(new URL(p.url).pathname, '/es/file/onvio/remove/batch'); assert.deepEqual(plano(p.corpo), [T, C]);
+  assert.equal(E(p.metodo, p.url, p.corpo).ok, true);
+  assert.ok(OCG.pedidoAcao({ acao: 'tirarDaLista', ids: [] }).erro); assert.ok(OCG.pedidoAcao({ acao: 'tirarDaLista', ids: ['x'] }).erro);
+  assert.ok(OCG.pedidoAcao({ acao: 'tirarDaLista', ids: Array.from({ length: 51 }, (_, i) => T.slice(0, 22) + String(i).padStart(2, '0')) }).erro);
+  const R = A + '/es/file/onvio/remove/batch';
+  for (const [m, u, c] of [['PATCH', R, []], ['PATCH', R, [T, T]], ['PATCH', R, [{ id: T }]], ['PATCH', R, { ids: [T] }], ['POST', R, [T]], ['DELETE', A + '/es/file/onvio/' + T, {}], ['PATCH', R + '?x=1', [T]]])
+    assert.equal(E(m, u, c).ok, false, 'recusa: ' + m + ' ' + u + ' ' + JSON.stringify(c));
+  // quem pode sair da lista: só os sem pasta de template sem pasta e sem parecido que vá ao portal
+  const tpl = (id, name, pasta) => ({ _id: id, name, documents_integration: pasta ? { pathName: [pasta] } : { pathName: [] } });
+  const env = (id, tid, tn, erro) => ({ _id: id, error: erro, customer_task_file: { company_document: { _id: tid, name: tn } } });
+  const a = OCG.enviosPortal([env('a1', 't2', 'Folha de Pagamento Filial', 'NO_FOLDER_CONFIGURED'), env('a2', 't3', 'Recibo Interno', 'NO_FOLDER_CONFIGURED'), env('a3', 't1', 'Folha de Pagamento', 'UPLOAD_ERROR')],
+    [tpl('t1', 'Folha de Pagamento', 'Pessoal'), tpl('t2', 'Folha de Pagamento Filial', ''), tpl('t3', 'Recibo Interno', '')]);
+  assert.deepEqual(plano(a.semPasta.filter(g => g.classe === 'naoVai').flatMap(g => g.itens.map(i => i.id))), ['a2']);
+});
 test('Gestta (0.93.0): o detalhe traz o id das etapas e dos documentos e se o documento tem arquivo (nunca o arquivo); depois da ação sai só o resumo', () => {
   const det = OCG.limpar('tarefaDetalhe', { _id: 't1', customer_task_steps: [{ _id: 's1', name: 'Conferir', order: 1, done: true, created_at: 'x' }],
     company_documents: [{ _id: 'd1', name: 'Recibo', has_documents_integration: true, file: { name: 'segredo.pdf', url: 'https://x' } }, { _id: 'd2', name: 'Guia' }] });

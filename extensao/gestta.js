@@ -277,6 +277,8 @@
     { acao: 'documento', metodo: 'POST', re: /^\/es\/upload\/direct$/ },
     // 0.97.0 (aprovadas pelo Josué em 12/11/2026, mapeadas no mesmo dia: mapeamento/gestta-2026-11-04.md, "Envios ao portal"):
     { acao: 'reenviar', metodo: 'POST', re: /^\/es\/file\/onvio\/resend$/ },
+    // 0.98.0: a lixeira da fila (mapeada em 12/11/2026): tira o documento só da lista de erros do portal. Só para os que não vão ao portal (cmd gesttaTirar).
+    { acao: 'tirarDaLista', metodo: 'PATCH', re: /^\/es\/file\/onvio\/remove\/batch$/ },
     { acao: 'pasta', metodo: 'PATCH', re: /^\/admin\/company\/document\/integration\/documents\/batch$/ },
     { acao: 'template', metodo: 'PUT', re: /^\/admin\/company\/document\/[0-9a-f]{24}$/i }
   ];
@@ -297,6 +299,10 @@
       return Array.isArray(corpo) && corpo.length >= 1 && corpo.length <= REENVIO_MAX && corpo.every(x => x && typeof x === 'object' && !Array.isArray(x)
         && soChaves(x, ['company_user', 'customer', 'customer_task', 'customer_task_file']) && ['company_user', 'customer', 'customer_task', 'customer_task_file'].every(k => ID24.test(String(x[k]))))
         ? { ok: true, acao: e.acao } : { ok: false, motivo: 'reenviar: de 1 a ' + REENVIO_MAX + ' documentos, só com os ids' };
+    }
+    if (e.acao === 'tirarDaLista') {  // uma lista só com os ids dos itens da fila, como a tela do Gestta manda
+      return Array.isArray(corpo) && corpo.length >= 1 && corpo.length <= REENVIO_MAX && corpo.every(x => typeof x === 'string' && ID24.test(x)) && new Set(corpo).size === corpo.length
+        ? { ok: true, acao: e.acao } : { ok: false, motivo: 'tirar da lista: de 1 a ' + REENVIO_MAX + ' ids de itens da fila' };
     }
     const c = corpo && typeof corpo === 'object' && !Array.isArray(corpo) ? corpo : null;
     if (!c) return { ok: false, motivo: 'corpo inválido' };
@@ -337,6 +343,13 @@
       if (itens.length > REENVIO_MAX) return { erro: 'no máximo ' + REENVIO_MAX + ' documentos por vez' };
       if (!itens.every(i => Object.values(i).every(v => ID24.test(v)))) return { erro: 'documento sem os ids do Gestta' };
       return { id: 'reenviar', acao: 'reenviar', metodo: 'POST', url: url('/es/file/onvio/resend'), corpo: itens };
+    }
+    if (x.acao === 'tirarDaLista') {
+      const ids = [...new Set((Array.isArray(x.ids) ? x.ids : []).map(String))];
+      if (!ids.length) return { erro: 'nenhum documento para tirar da lista' };
+      if (ids.length > REENVIO_MAX) return { erro: 'no máximo ' + REENVIO_MAX + ' documentos por vez' };
+      if (!ids.every(v => ID24.test(v))) return { erro: 'documento sem o id da fila' };
+      return { id: 'tirarDaLista', acao: 'tirarDaLista', metodo: 'PATCH', url: url('/es/file/onvio/remove/batch'), corpo: ids };
     }
     if (x.acao === 'pasta') {
       const t = String(x.template || ''), pz = x.pasta || {};
@@ -393,6 +406,7 @@
       }
       if (perm.acao === 'reenviar') { const d = dados && typeof dados === 'object' ? dados : {}; return { ok: true, status: r.status, acao: perm.acao, resumo: { success: Number(d.success) || 0, failed: Number(d.failed) || 0, blocked: Number(d.blocked) || 0 } }; }
       if (perm.acao === 'pasta') return { ok: true, status: r.status, acao: perm.acao };
+      if (perm.acao === 'tirarDaLista') { const d = dados && typeof dados === 'object' ? dados : {}; return { ok: true, status: r.status, acao: perm.acao, resumo: { success: Number(d.success) || 0, failed: Number(d.failed) || 0 } }; }
       if (perm.acao === 'template') return { ok: true, status: r.status, acao: perm.acao, template: dados && typeof dados === 'object' ? escolher(dados, MOLDES.templateDoc) : null };
       const t = perm.acao === 'documento' ? dados && dados.customer_task : perm.acao === 'comentario' ? null : dados;
       return { ok: true, status: r.status, acao: perm.acao, tarefa: t && typeof t === 'object' ? escolher(t, MOLDES.tarefaApos) : null };

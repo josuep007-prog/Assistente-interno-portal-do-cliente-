@@ -378,6 +378,8 @@ async function gesttaHistorico(msg, sender) {
 async function gesttaAcao(msg, sender) {
   // só as telas da extensão pedem ação (nunca um script de conteúdo, como a ponte do Hub no claude.ai)
   if (!String((sender && sender.url) || '').startsWith(chrome.runtime.getURL('app/'))) return { ok: false, erro: 'Ação recusada: só a tela das Tarefas do Gestta pode pedir.' };
+  // tirar da lista de erros só pelo gesttaTirar, que relê a fila e confere cada documento antes
+  if (msg.acao === 'tirarDaLista') return { ok: false, erro: 'Ação recusada: tirar da lista passa pela conferência dos envios.' };
   const p = OCG.pedidoAcao(msg);
   if (p.erro) return { ok: false, erro: p.erro.charAt(0).toUpperCase() + p.erro.slice(1) + '.' };
   const perm = OCG.escritaPermitida(p.metodo, p.url, p.corpo);
@@ -428,6 +430,36 @@ async function gesttaPasta(msg, sender) {
   const b = await agir(OCG.pedidoAcao({ acao: 'templateSalvar', template: destino, bypass: !!d.bypass, nome: d.name, prazo: !!d.send_documents_due_date }));
   const conf = await ler(destino);
   return { ok: !!(conf && pastaDe(conf).length), salvou: !!b.ok, pasta: conf ? pastaDe(conf).join(' › ') : '', erro: conf && pastaDe(conf).length ? '' : 'A pasta foi enviada, mas o Gestta não a mostra no template. Confira na tela do Gestta.' };
+}
+// 0.98.0: tirar da lista de erros os documentos sem pasta que não vão ao portal (Josué, 12/11/2026: "devem ser excluídos em lote da lista
+// de erros"; a lixeira mapeada no mesmo dia: PATCH es/file/onvio/remove/batch). Relê a fila e os templates na hora e só tira o que, agora,
+// é "sem pasta" de um template sem pasta e sem nenhum parecido que vá ao portal (OCG.enviosPortal, classe naoVai). O resto é ignorado.
+async function gesttaTirar(msg, sender) {
+  if (!String((sender && sender.url) || '').startsWith(chrome.runtime.getURL('app/'))) return { ok: false, erro: 'Ação recusada: só a tela das Tarefas do Gestta pode pedir.' };
+  const pedidos = [...new Set((Array.isArray(msg.ids) ? msg.ids : []).map(String))].filter(v => /^[0-9a-f]{24}$/i.test(v)).slice(0, 2000);
+  if (!pedidos.length) return { ok: false, erro: 'Nenhum documento para tirar da lista.' };
+  const lido = await gesttaEnvios(msg, sender);
+  if (!lido.ok) return lido;
+  const A = OCG.enviosPortal(lido.envios, lido.templates);
+  const podem = new Set(A.semPasta.filter(g => g.classe === 'naoVai').flatMap(g => g.itens.map(i => i.id)));
+  const ids = pedidos.filter(v => podem.has(v)), ignorados = pedidos.length - ids.length;
+  if (!ids.length) return { ok: false, erro: 'Nenhum destes documentos está mais como "sem pasta, não vai ao portal": nada foi tirado.' };
+  const tab = await tabDoGestta(sender);
+  if (!tab) return { ok: false, erro: 'Abra o Gestta numa aba, já logado.' };
+  let success = 0, failed = 0;
+  for (let i = 0; i < ids.length; i += 50) {
+    const p = OCG.pedidoAcao({ acao: 'tirarDaLista', ids: ids.slice(i, i + 50) });
+    if (p.erro || !OCG.escritaPermitida(p.metodo, p.url, p.corpo).ok) return { ok: false, success, failed, erro: 'A extensão recusou a ação.' };
+    let x = null;
+    try {
+      await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', files: ['gestta.js'] });
+      const [res] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', func: (ped) => (self.OCG ? self.OCG.agirNaPagina(ped) : { ok: false, erro: 'núcleo do Gestta não carregou na aba' }), args: [p] });
+      x = res && res.result;
+    } catch (e) { x = null; }
+    if (!x || !x.ok) return { ok: false, success, failed, ignorados, erro: !x ? 'A aba do Gestta não respondeu.' : x.status === 401 ? 'A sessão do Gestta acabou: faça login de novo.' : x.status === 403 ? 'Seu acesso do Gestta não permite tirar da lista.' : 'O Gestta não aceitou (' + (x.erro || x.recusado || ('erro ' + x.status)) + ').' };
+    success += (x.resumo && x.resumo.success) || 0; failed += (x.resumo && x.resumo.failed) || 0;
+  }
+  return { ok: true, success, failed, ignorados };
 }
 // Para a coordenação escolher de quem ver as tarefas: só id e nome da equipe ativa.
 async function gesttaEquipe(msg, sender) {
@@ -1319,6 +1351,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'gesttaEquipe') { reply(await gesttaEquipe(msg, sender)); }
       else if (msg.cmd === 'gesttaEnvios') { reply(await gesttaEnvios(msg, sender)); }
       else if (msg.cmd === 'gesttaPasta') { reply(await gesttaPasta(msg, sender)); }
+      else if (msg.cmd === 'gesttaTirar') { reply(await gesttaTirar(msg, sender)); }
       else if (msg.cmd === 'gesttaFechamento') { reply(await gesttaFechamento(msg, sender)); }
       else if (msg.cmd === 'gesttaTarefa') { reply(await gesttaTarefa(msg, sender)); }
       else if (msg.cmd === 'gesttaHistorico') { reply(await gesttaHistorico(msg, sender)); }
