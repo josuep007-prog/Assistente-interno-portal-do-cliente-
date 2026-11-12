@@ -136,7 +136,8 @@ export function render(el, ctx, params) {
     '<div class="fila-cab"><h3 id="vez-tit">' + esc(tituloLista) + '</h3><span class="count" id="cont"></span><span class="spacer" style="flex:1"></span>' +
       (aba === 'concluidas' ? (estado.setor.fora ? '' : '<div class="seg" role="group" aria-label="De quem" id="f-conc-quem"><button type="button" data-ver=""' + (verEquipe ? '' : ' class="on"') + ' aria-pressed="' + !verEquipe + '">As minhas</button><button type="button" data-ver="equipe"' + (verEquipe ? ' class="on"' : '') + ' aria-pressed="' + verEquipe + '">Da equipe</button></div>') +
         '<button type="button" class="btn btn-sm" id="f-conc-ler" title="Ler de novo as concluídas no Onvio"><svg class="ic ic-sm"><use href="#i-refresh"/></svg> Atualizar</button>' : '') +
-      '<button type="button" class="btn btn-sm btn-primary" id="f-analise-lote" hidden title="Pôr em análise, de uma vez, as solicitações desta lista em que isso cabe: você confere a lista e confirma"><svg class="ic ic-sm"><use href="#i-clock"/></svg> <span>Pôr em análise</span></button></div>' +
+      '<button type="button" class="btn btn-sm btn-primary" id="f-analise-lote" hidden title="Pôr em análise, de uma vez, as solicitações desta lista em que isso cabe: você confere a lista e confirma"><svg class="ic ic-sm"><use href="#i-clock"/></svg> <span>Pôr em análise</span></button>' +
+      '<button type="button" class="btn btn-sm btn-primary" id="f-concluir-lote" hidden title="Concluir, de uma vez, as solicitações desta lista que estão com o cliente e em que isso cabe: você confere a lista e confirma"><svg class="ic ic-sm"><use href="#i-check"/></svg> <span>Concluir</span></button></div>' +
     (estado.enxuto ? '' : '<div class="tipos" id="tipos" role="group" aria-label="Tipo de solicitação"></div>') +
     (aba === 'concluidas' ? '' : '<div class="sits" id="sits" role="group" aria-label="Situação"></div>') +
     '<div class="ativos" id="ativos"></div>' +
@@ -238,6 +239,28 @@ export function render(el, ctx, params) {
       }
     });
   }
+  // 0.99.0 (Josué, 12/11/2026: "quero tudo com a possibilidade de fazer em lote já"): Concluir em lote, com o mesmo plano de 1 ou 2
+  // passos do botão Concluir de cada uma; uma janela, uma confirmação, um trâmite por vez (o service worker confere a situação antes)
+  function concluirEmLote(lista) {
+    const porK = new Map(lista.map(i => [i.k, i])), a0 = OC.acaoConcluir(lista[0], estado.settings);
+    const dois = lista.some(i => (OC.acaoConcluir(i, estado.settings).acao.antes || []).length);
+    const resumo = '<p><b>O que será enviado a cada uma</b>' + (dois ? ' (nas listas que pedem, primeiro a situação de respondida pelo cliente e depois Concluído, com esta confirmação só)' : '') + ':</p><ul><li>“' + esc(a0.acao.texto) + '”</li></ul>';
+    abrirLote({
+      titulo: 'Concluir em lote', tipo: 'Solicitações com o cliente', resumo, botao: 'Enviar ao Onvio', restam: 'as que falharam continuam como estavam',
+      itens: lista.map(i => ({ k: i.k, rotulo: '#' + i.num + ' ' + (i.apelido || i.cliente || '—') + ' · ' + (i.detalhe || i.typeLabel), sub: i.typeLabel + ' · com o cliente há ' + (i.parado || 0) + 'd' })),
+      executar: async k => {
+        const i = porK.get(k), a = OC.acaoConcluir(i, estado.settings);
+        if (!a.pode.ok) return { ok: false, erro: a.pode.motivo || 'não dá mais para concluir' };
+        const passos = (a.acao.antes || []).concat([{ situacao: a.acao.situacao, texto: a.acao.texto }]);
+        for (let n = 0; n < passos.length; n++) {
+          const r = await enviar({ cmd: 'acao', type: i.type, num: String(i.num), acao: 'tramite', texto: passos[n].texto, situacao: passos[n].situacao, analista: '', data: '', arquivos: [] });
+          if (!r.ok) return { ok: false, erro: (passos.length > 1 ? 'passo ' + (n + 1) + ': ' : '') + (r.erro || 'o Onvio não aceitou'), parar: !!r.auth };
+          if (n < passos.length - 1) await new Promise(ok => setTimeout(ok, 500));
+        }
+        return { ok: true };
+      }
+    });
+  }
   const desenhar = () => {
     const l = filtrar();
     tipos();
@@ -277,6 +300,11 @@ export function render(el, ctx, params) {
     bl.hidden = emLote.length < 2;
     $('span', bl).textContent = 'Pôr em análise (' + emLote.length + ')';
     bl.onclick = () => analisarEmLote(emLote);
+    const paraConcluir = aba === 'concluidas' ? [] : l.filter(i => i.lado === 'cli' && OC.acaoConcluir(i, estado.settings).pode.ok);
+    const bc = $('#f-concluir-lote', el);
+    bc.hidden = paraConcluir.length < 2;
+    $('span', bc).textContent = 'Concluir (' + paraConcluir.length + ')';
+    bc.onclick = () => concluirEmLote(paraConcluir);
     // responsável sugerido: abre a atribuição (você revisa e confirma), nunca atribui sozinho
     $$('[data-sug-resp]', el).forEach(b => {
       b.addEventListener('keydown', e => e.stopPropagation());
