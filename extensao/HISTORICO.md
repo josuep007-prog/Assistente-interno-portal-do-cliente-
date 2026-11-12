@@ -2,6 +2,20 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.105.0 (12/11/2026): concluir desconsidera os itens sem anexo
+
+- **Concluir, na tarefa e em lote,** agora prepara a tarefa inteira antes: marca as etapas (checkbox) que faltam e **desconsidera cada item (documento) sem anexo**, como o ⊘ "Desconsiderar" da tela do Gestta (`PUT /es/task/{id}/document/{doc}/file/disconsider`, corpo vazio, mapeado em 12/11/2026 na empresa 9999). Um item por vez; se algum for recusado, a tarefa não é concluída. A confirmação lista as etapas e os itens; o botão diz "Preparar e concluir".
+- Reconsiderar um item não está na extensão (só pelo Gestta).
+- **Conferido pelo Josué (12/11/2026):** o Gestta **bloqueia** concluir com item sem anexo (por isso desconsiderar vem antes), **não bloqueia** com etapa aberta (as etapas são marcadas mesmo assim, como ele pediu) e desconsiderar **não avisa o cliente**. Falta só um item que pede validação.
+
+## Novidades da v0.104.0 (12/11/2026): as melhorias de uso nas Tarefas do Gestta
+
+- **Situação no Gestta à vista**, numa faixa logo abaixo do topo (Aberta · Impedimento · Concluída · Desconsiderada), com o que está sendo mostrado; saiu do menu Filtros.
+- **De quem** separa **Setores** e **Pessoas** com um título em cada bloco.
+- **Agir em lote também em Empresas e no Meu dia:** na ficha da empresa e em cada bloco do Meu dia, **Agir em lote** marca aquelas tarefas e mostra a mesma barra da Lista (Concluir, Impedimento, Retirar impedimento, Reabrir, Comentar), com uma confirmação; clicar de novo desmarca.
+- **Detalhe de tarefa concluída ou desconsiderada** não oferece mais Enviar arquivo nem aceita arquivo arrastado (reabra antes, se precisar).
+- **Desconsiderada com cor própria** (lilás) no grupo da Lista e na pílula do detalhe.
+
 ## Novidades da v0.103.0 (12/11/2026): setor, situação, concluir com as etapas e o CNPJ
 
 - **Todas as tarefas de um setor:** em **De quem**, além das pessoas, cada setor ("Setor Fiscal · todas as tarefas"). A extensão lê as tarefas de todas as pessoas do setor numa busca só e, com o relatório do mês (lido sozinho, no máximo uma vez por hora), tira as que são de outro setor de quem está em mais de um. Só para quem tem acesso total no Gestta.

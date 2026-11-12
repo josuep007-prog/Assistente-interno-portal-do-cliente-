@@ -3135,8 +3135,8 @@ await passo('Gestta · Tarefas (0.93.0): no detalhe, marcar etapa, impedimento c
     await fr.evaluate(() => { window.__respostas.gesttaAcao = { ok: false, erro: 'Seu acesso do Gestta não permite esta ação nesta tarefa.' }; });
     await fr.waitForSelector('#gd-det [data-gp-acao="concluir"]');
     await fr.click('#gd-det [data-gp-acao="concluir"]');
-    assert.match(await fr.textContent('#gd-det .gp-conf'), /Antes, marca a etapa que falta: Transmitir[\s\S]*1 item sem anexo fica como está/);
-    assert.equal((await fr.textContent('#gd-det #gp-conf-ok')).trim(), 'Marcar as etapas e concluir');
+    assert.match(await fr.textContent('#gd-det .gp-conf'), /Antes, marca a etapa que falta: Transmitir[\s\S]*Antes, desconsidera o item sem anexo: Recibo/);
+    assert.equal((await fr.textContent('#gd-det #gp-conf-ok')).trim(), 'Preparar e concluir');
     await fr.click('#gd-det #gp-conf-ok');
     await fr.waitForSelector('#gd-det .gp-aviso.erro');
     assert.match(await fr.textContent('#gd-det .gp-aviso.erro'), /etapa “Transmitir”[\s\S]*não permite esta ação[\s\S]*não foi concluída/);
@@ -3148,7 +3148,7 @@ await passo('Gestta · Tarefas (0.93.0): no detalhe, marcar etapa, impedimento c
     await fr.click('#gd-det [data-gp-acao="concluir"]');
     await fr.click('#gd-det #gp-conf-ok');
     await fr.waitForFunction(() => window.__msgs.some(m => m.cmd === 'gesttaAcao' && m.acao === 'concluir'));
-    assert.deepEqual(await fr.evaluate(() => window.__msgs.filter(m => m.cmd === 'gesttaAcao').map(m => [m.acao, m.etapa || ''])), [['etapa', 'e00000000000000000000002'], ['concluir', '']]);
+    assert.deepEqual(await fr.evaluate(() => window.__msgs.filter(m => m.cmd === 'gesttaAcao').map(m => [m.acao, m.etapa || m.documento || ''])), [['etapa', 'e00000000000000000000002'], ['desconsiderar', 'd00000000000000000000001'], ['concluir', '']]);
     await p.close();
   }
 });
@@ -3287,15 +3287,15 @@ await passo('Gestta · 0.103.0: ver todas as tarefas de um setor, filtrar pela s
     await fr.click('#abas [data-aba="lista"]');
     await fr.waitForFunction(() => /Cliente Alfa Ltda · 0001-90/.test(document.querySelector('#vista').textContent));
     assert.match(await fr.textContent('#vista'), /Cliente Beta ME · 0001-55/);
-    // Situação no Gestta: só concluídas
-    await fr.click('#gt-filtros summary');
+    // Situação no Gestta: à vista, logo abaixo do topo (0.104.0); só concluídas
+    assert.ok(await fr.$('.gt-sitbar [data-sit="concluida"]'), 'a situação fica fora do menu Filtros');
+    assert.match(await fr.textContent('.gt-sitbar'), /nenhuma marcada/);
     assert.deepEqual(await fr.$$eval('[data-sit]', l => l.map(b => b.textContent)), ['Aberta', 'Impedimento', 'Concluída', 'Desconsiderada']);
     await fr.click('[data-sit="concluida"]');
     await fr.waitForFunction(() => document.querySelectorAll('.gl-r').length === 1);
     assert.match(await fr.textContent('.gl-r'), /eSocial Mensal/i);
     // Desconsiderada: lê de novo, pedindo as desconsideradas
     const antes = (await tarefasMsgs()).length;
-    if (!(await fr.$('#gt-filtros[open]'))) await fr.click('#gt-filtros summary');
     await fr.click('[data-sit="desconsiderada"]');
     await fr.waitForFunction(n => (window.__msgs || []).filter(m => m.cmd === 'gesttaTarefas').length > n, antes);
     assert.equal((await tarefasMsgs()).slice(-1)[0].desconsideradas, true);
@@ -3303,7 +3303,6 @@ await passo('Gestta · 0.103.0: ver todas as tarefas de um setor, filtrar pela s
     assert.match(await fr.textContent('#gl-corpo'), /Ignorada[\s\S]*Desconsiderada/);
     if (process.env.CAP) await p.screenshot({ path: path.join(process.env.CAP, 'gestta-situacao-' + estilo + '.png') });
     // tira a concluída: só a desconsiderada; o detalhe dela não tem ação e mostra o CNPJ inteiro
-    if (!(await fr.$('#gt-filtros[open]'))) await fr.click('#gt-filtros summary');
     await fr.click('[data-sit="concluida"]');
     await fr.waitForFunction(() => document.querySelectorAll('.gl-r').length === 1);
     await fr.click('.gl-r');
@@ -3311,6 +3310,8 @@ await passo('Gestta · 0.103.0: ver todas as tarefas de um setor, filtrar pela s
     assert.match(await fr.textContent('#gt-painel .gp-cli'), /12\.345\.678\/0001-90/);
     assert.match(await fr.textContent('#gt-painel .gp-topo'), /Desconsiderada/);
     assert.ok(!(await fr.$('#gt-painel [data-gp-acao]')), 'desconsiderada não tem ação');
+    assert.ok(!(await fr.$('#gt-painel [data-gp-doc]')) && !(await fr.$('#gt-painel [data-gp-drop]')), '0.104.0: nem enviar arquivo');
+    assert.ok(await fr.$('#gt-painel .pill.pill-desc'), '0.104.0: a pílula com a cor da desconsiderada');
     if (process.env.CAP) { await fr.waitForTimeout(700); await p.screenshot({ path: path.join(process.env.CAP, 'gestta-detalhe-cnpj-' + estilo + '.png') }); }
     await p.keyboard.press('Escape');
     await fr.click('#gt-limpar');
@@ -3318,6 +3319,7 @@ await passo('Gestta · 0.103.0: ver todas as tarefas de um setor, filtrar pela s
     await fr.waitForSelector('#gt-quem-wrap:not([hidden])');
     await fr.click('#gt-quem-btn');
     assert.deepEqual(await fr.$$eval('#gt-quem-lista [data-quem]', l => l.map(b => b.textContent.trim()).slice(0, 4)), ['EuMinhas', '—Sem responsável', '▦Setor Contábil · todas as tarefas', '▦Setor Fiscal · todas as tarefas']);
+    assert.deepEqual(await fr.$$eval('#gt-quem-lista .gt-quem-sec', l => l.map(x => x.textContent)), ['Setores', 'Pessoas'], '0.104.0: setores e pessoas separados');
     await fr.click('#gt-quem-lista [data-quem="setor:Fiscal"]');
     await fr.waitForFunction(() => (window.__msgs || []).some(m => m.cmd === 'gesttaTarefas' && m.quem === 'setor:Fiscal'));
     await fr.waitForFunction(() => /todas as tarefas do setor Fiscal/.test(document.querySelector('#vista').textContent) && (window.__msgs || []).some(m => m.cmd === 'gesttaFechamento'));
@@ -3325,6 +3327,37 @@ await passo('Gestta · 0.103.0: ver todas as tarefas de um setor, filtrar pela s
     await fr.waitForFunction(() => !/Folha de Pagamento/.test(document.querySelector('#gl-corpo').textContent));
     assert.match(await fr.textContent('#gl-corpo'), /DCTF Web/);
     if (process.env.CAP) await p.screenshot({ path: path.join(process.env.CAP, 'gestta-setor-' + estilo + '.png') });
+    await p.close();
+  }
+});
+
+await passo('Gestta · 0.104.0: Agir em lote nas tarefas de uma empresa e num bloco do Meu dia, com a mesma barra e uma confirmação', async () => {
+  for (const estilo of ['simples', 'atual']) {
+    const { p, fr } = await abrirGestta(gtResp(true), { estilo });
+    const acoes = () => fr.evaluate(() => (window.__msgs || []).filter(m => m.cmd === 'gesttaAcao').map(m => [m.acao, m.id]));
+    // Meu dia: o bloco "Resolver agora" tem 2 tarefas
+    await fr.waitForSelector('[data-gd-lote="agora"]');
+    await fr.click('[data-gd-lote="agora"]');
+    await fr.waitForSelector('.gd-col .gl-lote');
+    assert.match(await fr.textContent('.gd-col .gl-lote'), /2 tarefas marcadas/);
+    await fr.click('.gd-col [data-gl-lote="comentar"]');
+    await fr.fill('#gl-lote-campo', 'Visto no Meu dia');
+    if (process.env.CAP) await p.screenshot({ path: path.join(process.env.CAP, 'gestta-lote-dia-' + estilo + '.png') });
+    assert.equal((await acoes()).length, 0, 'nada sai antes de confirmar');
+    await fr.click('#gl-lote-ok');
+    await fr.waitForFunction(() => (window.__msgs || []).filter(m => m.cmd === 'gesttaAcao').length === 2, null, { timeout: 8000 });
+    assert.deepEqual((await acoes()).map(a => a[0]), ['comentar', 'comentar']);
+    await fr.waitForFunction(() => !/Gravando no Gestta/.test(document.querySelector('#vista').textContent), null, { timeout: 8000 });
+    // Empresas: a ficha da empresa tem "Agir em lote"
+    await fr.click('#abas [data-aba="empresas"]');
+    await fr.waitForSelector('[data-gf-lote]');
+    await fr.click('[data-gf-lote]');
+    await fr.waitForSelector('#ge-ficha .gl-lote');
+    assert.match(await fr.textContent('#ge-ficha .gl-lote'), /tarefas marcadas/);
+    if (process.env.CAP) await p.screenshot({ path: path.join(process.env.CAP, 'gestta-lote-empresa-' + estilo + '.png') });
+    // clicar de novo desmarca
+    await fr.click('[data-gf-lote]');
+    await fr.waitForFunction(() => !document.querySelector('#ge-ficha .gl-lote'));
     await p.close();
   }
 });
@@ -3350,8 +3383,8 @@ await passo('Gestta · Lista (0.99.0): marcar tarefas e agir em lote (concluir, 
     assert.equal((await acoes()).length, 0, 'nada sai antes de confirmar');
     await fr.click('#gl-lote-ok');
     await fr.waitForFunction(() => (window.__msgs || []).some(m => m.cmd === 'gesttaAcao' && m.acao === 'concluir'));
-    // 0.103.0: antes de concluir, lê a tarefa e marca a etapa que falta
-    assert.deepEqual(await acoes(), [['etapa', 'f00000000000000000000001', ''], ['concluir', 'f00000000000000000000001', '']]);
+    // 0.103.0/0.105.0: antes de concluir, lê a tarefa, marca a etapa que falta e desconsidera o item sem anexo
+    assert.deepEqual(await acoes(), [['etapa', 'f00000000000000000000001', ''], ['desconsiderar', 'f00000000000000000000001', ''], ['concluir', 'f00000000000000000000001', '']]);
     // Impedimento pede o motivo, o mesmo para todas
     await fr.waitForSelector('.gl-r');
     await fr.check('[data-gl-sel="f00000000000000000000002"]');
@@ -3361,8 +3394,8 @@ await passo('Gestta · Lista (0.99.0): marcar tarefas e agir em lote (concluir, 
     await fr.waitForSelector('#gl-lote-campo[aria-invalid="true"]');
     await fr.fill('#gl-lote-campo', 'Aguardando o cliente');
     await fr.click('#gl-lote-ok');
-    await fr.waitForFunction(() => (window.__msgs || []).filter(m => m.cmd === 'gesttaAcao').length === 4, null, { timeout: 8000 });
-    assert.deepEqual((await acoes()).slice(2), [['impedir', 'f00000000000000000000002', 'Aguardando o cliente'], ['impedir', 'f00000000000000000000004', 'Aguardando o cliente']]);
+    await fr.waitForFunction(() => (window.__msgs || []).filter(m => m.cmd === 'gesttaAcao').length === 5, null, { timeout: 8000 });
+    assert.deepEqual((await acoes()).slice(3), [['impedir', 'f00000000000000000000002', 'Aguardando o cliente'], ['impedir', 'f00000000000000000000004', 'Aguardando o cliente']]);
     // marcar todas e comentar
     await fr.waitForSelector('#gl-sel-todas:not([disabled])');
     await fr.check('#gl-sel-todas');

@@ -7,7 +7,7 @@ import { $, $$, esc, num, plural, toast } from './util.js';
 import { concluirComEtapas } from './gestta-concluir.js';
 
 const enviar = msg => new Promise(res => { try { chrome.runtime.sendMessage(msg, r => res(r || { ok: false, erro: 'sem resposta' })); } catch (e) { res({ ok: false, erro: String(e.message || e) }); } });
-export const LOTE = { sel: new Set(), conf: null, rodando: null, falhas: [] };
+export const LOTE = { sel: new Set(), conf: null, rodando: null, falhas: [], grupo: null };
 
 const st = t => String((t && t.status) || '').toUpperCase();
 export const ACOES_LOTE = [
@@ -31,7 +31,7 @@ export function barraLote(vis) {
   if (c) {
     const cabem = marcadas.filter(c.cabe), fora = marcadas.length - cabem.length;
     return '<div class="gl-lote gl-lote-conf" role="alertdialog" aria-label="Confirmar ação em lote"><p><b>' + esc(c.rot) + ' em ' + plural(cabem.length, 'tarefa', 'tarefas') + ' no Gestta?</b>' +
-        (fora ? ' ' + plural(fora, 'marcada fica', 'marcadas ficam') + ' de fora: a ação não cabe na situação dela' + (fora === 1 ? '' : 's') + '.' : '') + (c.k === 'concluir' ? ' Antes de concluir cada uma, a extensão marca as etapas que faltam.' : '') + ' Uma por vez, e fica registrado no Gestta em seu nome.</p>' +
+        (fora ? ' ' + plural(fora, 'marcada fica', 'marcadas ficam') + ' de fora: a ação não cabe na situação dela' + (fora === 1 ? '' : 's') + '.' : '') + (c.k === 'concluir' ? ' Antes de concluir cada uma, a extensão marca as etapas que faltam e desconsidera os itens sem anexo.' : '') + ' Uma por vez, e fica registrado no Gestta em seu nome.</p>' +
       (cabem.length ? '<ul class="gl-lote-l">' + cabem.slice(0, 8).map(t => '<li>' + esc(t.name || 'Tarefa') + ' <small>' + esc((t.customer && t.customer.name) || '') + '</small></li>').join('') + (cabem.length > 8 ? '<li class="fraco">e mais ' + num(cabem.length - 8) + '</li>' : '') + '</ul>' : '') +
       (c.campo ? '<label for="gl-lote-campo">' + esc(c.rotCampo) + ' <small class="fraco">(o mesmo para todas)</small></label><textarea id="gl-lote-campo" rows="2" maxlength="4000"' + (LOTE.conf.falta ? ' aria-invalid="true"' : '') + '>' + esc(LOTE.conf.valor || '') + '</textarea>' + (LOTE.conf.falta ? '<small class="gp-conf-falta">Escreva antes de confirmar.</small>' : '') : '') +
       '<div class="gl-lote-bt"><button type="button" class="btn btn-sm btn-primary" id="gl-lote-ok"' + (cabem.length ? '' : ' disabled') + '>Confirmar (' + num(cabem.length) + ')</button><button type="button" class="btn btn-sm" id="gl-lote-nao">Cancelar</button></div></div>';
@@ -86,4 +86,18 @@ async function executar(el, vis, redesenhar) {
   toast(plural(ok, 'tarefa ' + c.feito[0], 'tarefas ' + c.feito[1]) + ' no Gestta' + (LOTE.falhas.length ? ' · ' + LOTE.falhas.length + ' com erro (continuam marcadas)' : '') + '.', LOTE.falhas.length > 0);
   redesenhar();
   if (ok) try { window.dispatchEvent(new CustomEvent('gt-tarefa-mudou', { detail: { lote: true } })); } catch (e) {}
+}
+
+// 0.104.0 (Josué, 12/11/2026: lote também em Empresas e no Meu dia): "Agir em lote" marca o grupo todo (as tarefas de uma empresa
+// ou de um bloco do Meu dia) e mostra a mesma barra da Lista. chave diz qual grupo está em lote; só um por vez.
+export const grupoEmLote = chave => LOTE.grupo === chave;
+export function marcarGrupo(chave, tarefas) { LOTE.grupo = chave; LOTE.sel = new Set(tarefas.map(t => t._id)); LOTE.conf = null; LOTE.falhas = []; }
+export function barraGrupo(chave, tarefas) {
+  if (LOTE.grupo !== chave) return '';
+  if (!tarefas.some(t => LOTE.sel.has(t._id)) && !LOTE.rodando) { LOTE.grupo = null; return ''; }
+  return '<div class="gl-grupo" data-gl-grupo-host><div id="gl-lote-host">' + barraLote(tarefas) + '</div></div>';
+}
+export function ligarGrupo(el, tarefas, redesenhar) {
+  const host = el.querySelector('[data-gl-grupo-host]'); if (!host) return;
+  ligarLote(host, tarefas, () => { if (!tarefas.some(t => LOTE.sel.has(t._id)) && !LOTE.rodando) LOTE.grupo = null; redesenhar(); });
 }

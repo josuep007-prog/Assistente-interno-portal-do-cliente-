@@ -131,7 +131,10 @@ function quemLista(f) {
     .map(s => ({ id: 'setor:' + s, nome: 'Setor ' + s + ' · todas as tarefas', av: '▦' }));
   const pessoas = [{ id: 'eu', nome: 'Minhas', av: 'Eu' }, { id: 'sem', nome: 'Sem responsável', av: '—' }].concat(setores,(E.equipe || []).filter(p => !E.dados || p.id !== E.dados.perfil.id).map(p => ({ id: p.id, nome: p.nome, av: iniciais(p.nome) })));
   const l = pessoas.filter(p => !n || p.nome.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().includes(n));
-  $('#gt-quem-lista').innerHTML = l.length ? l.map(p => '<li><button type="button" role="option" data-quem="' + esc(p.id) + '" aria-selected="' + (E.quem === p.id) + '" class="' + (E.quem === p.id ? 'on' : '') + '"><span class="gt-quem-av" aria-hidden="true">' + esc(p.av) + '</span>' + esc(p.nome) + '</button></li>').join('') : '<li class="fraco gt-quem-nada">Ninguém com esse nome</li>';
+  // 0.104.0: títulos separando os setores das pessoas
+  const sec = rot => '<li class="gt-quem-sec" role="presentation">' + rot + '</li>';
+  let jaSet = false, jaPes = false;
+  $('#gt-quem-lista').innerHTML = l.length ? l.map(p => { let h = ''; if (p.id.startsWith('setor:') && !jaSet) { jaSet = true; h = sec('Setores'); } else if (!p.id.startsWith('setor:') && p.id !== 'eu' && p.id !== 'sem' && !jaPes) { jaPes = true; h = sec('Pessoas'); } return h + '<li><button type="button" role="option" data-quem="' + esc(p.id) + '" aria-selected="' + (E.quem === p.id) + '" class="' + (E.quem === p.id ? 'on' : '') + '"><span class="gt-quem-av" aria-hidden="true">' + esc(p.av) + '</span>' + esc(p.nome) + '</button></li>'; }).join('') : '<li class="fraco gt-quem-nada">Ninguém com esse nome</li>';
 }
 function quemAbrir(abrir) {
   const pop = $('#gt-quem-pop'), b = $('#gt-quem-btn'); if (!pop) return;
@@ -184,7 +187,7 @@ function cabecalho(c) {
 }
 
 /* ---------- peças ---------- */
-const COR = { multa: 'multa', atrasada: 'atraso', impedimento: 'imped', hoje: 'hoje', proximas: 'prox', depois: 'depois', feita: 'feita', desconsiderada: 'depois' };
+const COR = { multa: 'multa', atrasada: 'atraso', impedimento: 'imped', hoje: 'hoje', proximas: 'prox', depois: 'depois', feita: 'feita', desconsiderada: 'desc' };
 const PILL = { multa: 'pill-late', atrasada: 'pill-late', impedimento: 'pill-today', hoje: 'pill-today', feita: 'pill-ok' };
 function anel(pct, tam) {
   const r = (tam - 10) / 2, c = 2 * Math.PI * r, v = Math.max(0, Math.min(100, pct));
@@ -199,22 +202,24 @@ function topoHtml(c) {
   const sit = gr => (gr.k === 'multa' || gr.k === 'atrasada') ? '' : (c.n[gr.k] || E.grupos.has(gr.k)) ? '<button type="button" class="gt-sit gt-c-' + COR[gr.k] + (E.grupos.has(gr.k) ? ' on' : '') + '" data-grupo="' + gr.k + '" aria-pressed="' + E.grupos.has(gr.k) + '" title="' + esc(gr.rot + ': ' + gr.dica) + '"><i class="gt-ponto"></i>' + esc(SIT_CURTO[gr.k] || gr.rot) + '<b>' + num(c.n[gr.k]) + '</b></button>' : '';
   const tipo = k => '<button type="button" class="gt-chip' + (E.tipos.has(k) ? ' on' : '') + '" data-tipo="' + k + '" aria-pressed="' + E.tipos.has(k) + '">' + esc(G.TIPOS_TAREFA[k]) + '</button>';
   const sitChip = s => '<button type="button" class="gt-chip' + (E.sits.has(s.k) ? ' on' : '') + '" data-sit="' + s.k + '" aria-pressed="' + E.sits.has(s.k) + '">' + esc(s.rot) + '</button>';
-  const nf = E.sits.size + E.tipos.size + (E.setor ? 1 : 0) + (E.soPendEmp && (E.aba === 'empresas' || E.aba === 'quadro') ? 1 : 0) + (E.feitas && (E.aba === 'lista' || E.aba === 'calendario') ? 1 : 0);
+  const nf = E.tipos.size + (E.setor ? 1 : 0) + (E.soPendEmp && (E.aba === 'empresas' || E.aba === 'quadro') ? 1 : 0) + (E.feitas && (E.aba === 'lista' || E.aba === 'calendario') ? 1 : 0);
   return '<div class="gt-topo">' +
     '<div class="gt-topo-prog" title="' + num(c.feitas) + ' de ' + num(c.total) + (E.aba === 'dia' ? ' tarefas com meta neste mês' : ' tarefas da competência') + ' concluídas">' + anel(c.pctFeitas, 52) + '<span><b>' + c.pctFeitas + '%</b><small>' + num(c.feitas) + ' de ' + num(c.total) + ' concluídas</small></span></div>' +
     '<div class="gt-sits" role="group" aria-label="Filtrar pela situação">' + sitAgora + G.GRUPOS.map(sit).join('') + '</div>' +
     '<div class="gt-topo-dir">' +
       '<label class="gt-busca"><svg class="ic"><use href="#i-search"/></svg><input type="search" id="gt-q" placeholder="Buscar tarefa, empresa ou código" autocomplete="off" aria-label="Buscar tarefa, empresa ou código" value="' + esc(E.q) + '"><kbd>/</kbd></label>' +
       '<details class="menu gt-filtros" id="gt-filtros"><summary class="btn btn-sm' + (nf ? ' filtro-on' : '') + '"><svg class="ic ic-sm"><use href="#i-filter"/></svg>Filtros' + (nf ? ' <span class="menu-n">' + nf + '</span>' : '') + '</summary>' +
-        '<div class="menu-list form gt-filtros-menu"><span class="gt-f-rot">Situação no Gestta</span><div class="gt-chips" role="group" aria-label="Situação no Gestta">' + G.SITUACOES_FILTRO.map(sitChip).join('') + '</div>' +
-          '<span class="gt-f-rot">Tipo</span><div class="gt-chips" role="group" aria-label="Tipo">' + Object.keys(G.TIPOS_TAREFA).map(tipo).join('') + '</div>' +
+        '<div class="menu-list form gt-filtros-menu"><span class="gt-f-rot">Tipo</span><div class="gt-chips" role="group" aria-label="Tipo">' + Object.keys(G.TIPOS_TAREFA).map(tipo).join('') + '</div>' +
           setorSelHtml() +
           (E.aba === 'empresas' || E.aba === 'quadro' ? '<label class="gt-feitas"><input type="checkbox" id="gt-pend-emp"' + (E.soPendEmp ? ' checked' : '') + '> Só empresas com pendência</label>' : '') +
           (E.aba === 'lista' || E.aba === 'calendario' ? '<label class="gt-feitas"><input type="checkbox" id="gt-feitas"' + (E.feitas ? ' checked' : '') + '> Mostrar concluídas</label>' : '') +
           '<span class="gt-f-rot">Densidade</span><div class="seg gt-modos" role="group" aria-label="Densidade"><button type="button" class="' + (E.dens !== 'compacta' ? 'on' : '') + '" data-dens="conf" aria-pressed="' + (E.dens !== 'compacta') + '">Confortável</button><button type="button" class="' + (E.dens === 'compacta' ? 'on' : '') + '" data-dens="compacta" aria-pressed="' + (E.dens === 'compacta') + '">Compacta</button></div>' +
         '</div></details>' +
       (filtroAtivo() ? '<button type="button" class="btn btn-sm gt-limpar" id="gt-limpar"><svg class="ic ic-sm"><use href="#i-x"/></svg>Limpar</button>' : '') +
-    '</div></div>';
+    '</div></div>' +
+    // 0.104.0 (Josué, 12/11/2026): a situação no Gestta à vista, numa faixa logo abaixo; nenhuma marcada = como sempre
+    '<div class="gt-sitbar" role="group" aria-label="Situação no Gestta"><span class="gt-f-rot">Situação no Gestta</span><div class="gt-chips">' + G.SITUACOES_FILTRO.map(sitChip).join('') + '</div>' +
+      '<span class="gt-sitbar-dica">' + (E.sits.size ? 'mostrando só ' + G.SITUACOES_FILTRO.filter(s => E.sits.has(s.k)).map(s => s.rot.toLowerCase()).join(', ') : 'nenhuma marcada: abertas e com impedimento' + (E.feitas || E.aba !== 'lista' && E.aba !== 'calendario' ? ', e as concluídas' : '')) + '</span></div>';
 }
 // Setor: vem do relatório (Fechamento da competência) (a busca não traz). Sem o relatório na memória, a opção carrega.
 function setorSelHtml() {

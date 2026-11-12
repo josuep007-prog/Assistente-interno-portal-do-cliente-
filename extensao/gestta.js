@@ -295,6 +295,8 @@
     { acao: 'situacao', metodo: 'PUT', re: /^\/es\/task\/[0-9a-f]{24}\/status$/i },
     { acao: 'comentario', metodo: 'POST', re: /^\/core\/customer\/task\/[0-9a-f]{24}\/history\/comment$/i },
     { acao: 'documento', metodo: 'POST', re: /^\/es\/upload\/direct$/ },
+    // 0.105.0 (Josué, 12/11/2026; mapeado no mesmo dia na 9999): desconsiderar o item (documento) sem anexo ao concluir. Corpo vazio, 200 sem resposta.
+    { acao: 'desconsiderarItem', metodo: 'PUT', re: /^\/es\/task\/[0-9a-f]{24}\/document\/[0-9a-f]{24}\/file\/disconsider$/i },
     // 0.97.0 (aprovadas pelo Josué em 12/11/2026, mapeadas no mesmo dia: mapeamento/gestta-2026-11-04.md, "Envios ao portal"):
     { acao: 'reenviar', metodo: 'POST', re: /^\/es\/file\/onvio\/resend$/ },
     // 0.98.0: a lixeira da fila (mapeada em 12/11/2026): tira o documento só da lista de erros do portal. Só para os que não vão ao portal (cmd gesttaTirar).
@@ -353,6 +355,7 @@
       if (!soChaves(c, ['arquivo']) || !a || typeof a !== 'object' || !soChaves(a, ['nome', 'tipo', 'base64']) || !String(a.nome || '').trim() || String(a.nome).length > 200 || typeof a.base64 !== 'string' || !/^[A-Za-z0-9+/]*=*$/.test(a.base64) || !a.base64) return { ok: false, motivo: 'Express: só o arquivo' };
       return tamanhoB64(a.base64) > ARQ_MAX ? { ok: false, motivo: 'Express: arquivo acima de 15 MB' } : ok;
     }
+    if (e.acao === 'desconsiderarItem') return soChaves(c, []) ? ok : { ok: false, motivo: 'desconsiderar: corpo vazio' };
     if (e.acao === 'etapa') return soChaves(c, ['done']) && typeof c.done === 'boolean' ? ok : { ok: false, motivo: 'etapa: só { done }' };
     if (e.acao === 'situacao') {
       if (c.status === 'IMPEDIMENT') return soChaves(c, ['status', 'justification']) && textoOk(c.justification) ? ok : { ok: false, motivo: 'impedimento pede o motivo' };
@@ -478,6 +481,8 @@
         return base('situacao', 'PUT', '/es/task/' + id + '/status', { status: 'IMPEDIMENT', justification: String(x.motivo).trim() });
       case 'comentar': if (!textoOk(String(x.texto || ''))) return { erro: 'escreva o comentário' };
         return base('comentario', 'POST', '/core/customer/task/' + id + '/history/comment', { message: String(x.texto).trim(), external: false, mentions: [], cc_mentions: [], files: [] });
+      case 'desconsiderar': if (!ID24.test(String(x.documento || ''))) return { erro: 'item inválido' };
+        return base('desconsiderarItem', 'PUT', '/es/task/' + id + '/document/' + x.documento + '/file/disconsider', {});
       case 'documento': { if (!ID24.test(String(x.documento || ''))) return { erro: 'documento inválido' };
         const a = x.arquivo || {};
         return base('documento', 'POST', '/es/upload/direct', { customer_task: id, company_document: String(x.documento), arquivo: { nome: String(a.nome || '').slice(0, 200), tipo: String(a.tipo || ''), base64: String(a.base64 || '') } }); }
