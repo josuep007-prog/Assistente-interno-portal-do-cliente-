@@ -68,7 +68,8 @@ function montarBanco() {
 }
 
 let falhas = 0;
-async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.env.SO) && nome !== 'sem erros de página') return; try { await fn(); console.log('ok   ' + nome); } catch (e) { falhas++; console.log('FALHA ' + nome + '\n     ' + String(e && e.message || e).split('\n').slice(0, 6).join('\n     ')); } }
+let parou = false;      // ATE=<começo do nome de um passo>: roda tudo até ele (inclusive) e para, para corrigir um passo sem esperar a suíte inteira
+async function passo(nome, fn) { if (parou) return; if (process.env.ATE && nome.startsWith(process.env.ATE)) parou = true; if (process.env.SO && !nome.startsWith(process.env.SO) && nome !== 'sem erros de página') return; try { await fn(); console.log('ok   ' + nome); } catch (e) { falhas++; console.log('FALHA ' + nome + '\n     ' + String(e && e.message || e).split('\n').slice(0, 6).join('\n     ')); } }
 const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
 
 (async () => {
@@ -167,7 +168,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await page.waitForSelector('#dp-section-funcionarios .dp-section-row.fn-lin');
     const sec = page.locator('#dp-section-funcionarios');
     const txt = (await sec.textContent()).replace(/\s+/g, ' ');
-    assert.match(txt, /De onde vem esta lista/); assert.match(txt, /lista de empregados do Onvio/); assert.match(txt, /Pode não representar a realidade 100%/);
+    assert.match(txt, /De onde vem esta lista/); assert.match(txt, /lista de empregados do Onvio/); assert.match(txt, /folha.*decide quem está ativo/, 'a folha decide quem é ativo (Hub 306)'); assert.match(txt, /fica Inativo e volta a ativo se reaparecer/);
     assert.doesNotMatch(txt, /Os alertas usam estas datas/); assert.doesNotMatch(await sec.locator('.dp-section-row.fn-lin').first().textContent(), /Agora|Situação|Observação|Cargo|Salário|Férias/);
     const rotulos = await sec.locator('.dp-section-row.fn-lin').first().locator('.dp-section-cell-label').allTextContents();
     assert.deepEqual(rotulos.map(t => t.trim()), ['Nome', 'Admissão', 'Cód. Domínio'], 'só nome, admissão e código do Domínio');
@@ -181,7 +182,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await page.waitForSelector('#dp-section-funcionarios .dp-section-row.fn-lin');
     await page.keyboard.press('Tab').catch(() => {});
     assert.doesNotMatch(await sec.textContent(), /Ficha Desligada/);
-    const btn = sec.locator('[data-ficha-desl]'); assert.match(await btn.textContent(), /Desligados \(1\)/);
+    const btn = sec.locator("[data-ficha-desl]"); assert.match(await btn.textContent(), /Inativos e desligados \(1\)/, "inativos e desligados juntos no botão (Hub 306)");
     assert.equal(await sec.locator('.fn-pop').count(), 0, 'o balão começa fechado');
     await btn.click();
     await page.waitForSelector('#dp-section-funcionarios .fn-pop');
@@ -227,14 +228,14 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     const r = await page.evaluate(() => { const a = window.__hubApi; const cur = (e) => a.nomeEmpresa(e);
       return { orion: cur('e-orion'), sem: cur({ nome: 'ALFA COMERCIO E SERVICOS LTDA', cnpj: '' }), filial: cur({ nome: 'BETA TRADING FILIAL (0007-22)', cnpj: '11.222.333/0007-22' }), apel: cur({ nome: 'GAMA S/A', cnpj: '11222333000299' }), cpf: cur({ nome: 'JOAO ME', cnpj: '123.456.789-09' }),
         html: a.nomeEmpresa('e-orion', true) }; });
-    assert.equal(r.orion, 'ORION | 0001-81', 'apelido do Onvio (clientes-nfe) + final do CNPJ');
+    assert.equal(r.orion, 'ORION Comercio | 0001-81', 'apelido do Onvio (clientes-nfe) com o sobrenome da razão social + final do CNPJ');
     assert.equal(r.sem, 'ALFA COMERCIO E SERVICOS | sem CNPJ', 'sem apelido: tira LTDA; sem CNPJ avisa');
     assert.equal(r.filial, 'BETA TRADING | 0007-22', 'a filial mostra a ordem do CNPJ e não repete o final que o nome já trazia');
     assert.equal(r.apel, 'GAMA | 0002-99'); assert.equal(r.cpf, 'JOAO | CPF');
     assert.match(r.html, /title="ORION COMERCIO LTDA"/, 'o nome inteiro na dica');
     // a Entrada de dados (fontes.html) usa estes nomes: empresas, diferenças, parecidas e clientes sem empresa vêm no mesmo padrão
     const o = await page.evaluate(() => { const a = window.__hubApi.api('onvio'); return { emp: a.empresas().find(e => e.id === 'e-orion'), difs: [...new Set(a.difs().map(d => d.empNome))], sem: a.semVinculo().map(g => ({ cli: g.cli, par: g.parecidas.map(p => p.nome) })) }; });
-    assert.equal(o.emp.nome, 'ORION | 0001-81'); assert.equal(o.emp.nomeCompleto, 'ORION COMERCIO LTDA');
+    assert.equal(o.emp.nome, 'ORION Comercio | 0001-81'); assert.equal(o.emp.nomeCompleto, 'ORION COMERCIO LTDA');
     assert.ok(o.difs.length >= 1 && o.difs.every(n => / \| (\d{4}-\d{2}|CPF|sem CNPJ)$/.test(n)), 'diferenças por empresa no padrão: ' + o.difs.join(' / '));
     assert.ok(o.sem.length >= 1 && o.sem.every(g => / \| (\d{4}-\d{2}|CPF|sem CNPJ)$/.test(g.cli) && g.par.every(n => / \| /.test(n))), 'clientes sem empresa e parecidas no padrão: ' + JSON.stringify(o.sem));
   });
@@ -242,7 +243,8 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
   await passo('DP: as diferenças só aparecem como aviso (ficha e tela Funcionários), sem nenhum botão de decisão, e o link abre a Entrada de dados', async () => {
     await page.click('#dp-dtabs [data-dtab="funcionarios"]');
     await page.waitForSelector('#dp-ov-dif:not([hidden]) .ov-aviso');
-    assert.match(await page.textContent('#dp-ov-dif'), /5 diferenças com o Onvio desta empresa aguardam decisão na Entrada de dados/);
+    if (process.env.DBG) console.log('DIFS', JSON.stringify(await page.evaluate(() => window.__hubApi.api('onvio').difs().map(d => [d.empNome, d.acao, d.campo || d.tipo, d.rotulo || d.titulo || d.texto]))));
+    assert.match(await page.textContent('#dp-ov-dif'), /7 diferenças com o Onvio desta empresa aguardam decisão na Entrada de dados/);
     await page.keyboard.press('Escape');
     await page.evaluate(() => window.__hubApi.api('dp').irPara('funcionarios'));
     await page.waitForSelector('#dp-func-cards .fn-card');
@@ -298,10 +300,10 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await page.waitForSelector('#dp-func-cards .fn-card:has-text("ORION")');
     // evolução da quantidade de ativos
     await page.click('[data-func-modo="tempo"]');
-    await page.waitForSelector('#dp-func-cards .fe-svg');
+    await page.waitForSelector('#dp-func-cards .ev-kpis');                                   // a Evolução virou indicadores, período e uma tabela por empresa com o minigráfico
     assert.match(await page.locator('#dp-func-cards').textContent(), /ativos hoje/); assert.doesNotMatch(await page.locator('#dp-func-cards').textContent(), /alerta/i);
-    assert.ok(await page.locator('#dp-func-cards .fe-svg circle').count() >= 24, 'um ponto por mês');
-    assert.ok(await page.locator('#dp-func-cards .dp-row:has-text("ORION")').count() >= 1, 'a empresa aparece com ativos hoje e a variação');
+    assert.ok(await page.locator('#dp-func-cards [data-ev-meses]').count() >= 2, 'escolha do período');
+    assert.ok(await page.locator('#dp-func-cards .ev-tab .dp-row.ev-row:has-text("ORION")').count() >= 1, 'a empresa aparece com ativos hoje e a variação');
     if (CAP) { await page.waitForTimeout(500); await page.screenshot({ path: path.join(CAP, 'funcionarios-evolucao-claro.png') }); }
     assert.equal(await page.locator('#dp-func-tl').isVisible(), false);
     await page.click('[data-func-modo="empresas"]');
@@ -316,14 +318,15 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
   });
 
   await passo('Entrada de dados: separa complementar, corrigir e cadastro novo; clientes sem empresa; nada é gravado antes de confirmar', async () => {
+    if (process.env.DBG) { const fh = await page.$('#fontes-frame'); const fx = await fh.contentFrame(); console.log('ESCONDE', await fx.evaluate(() => { const tr = document.querySelector('#cadro tr[data-emp]'); const out = []; for (let e = tr; e; e = e.parentElement) { const cs = getComputedStyle(e); if (cs.display === 'none' || cs.visibility === 'hidden' || e.hidden || e.getBoundingClientRect().height === 0) out.push((e.id || e.className || e.tagName) + ':' + cs.display + '/' + e.getBoundingClientRect().height); } return out.join(' < '); })); }
     await fr.locator('#cadro tr[data-emp]').first().waitFor({ timeout: 10000 });
-    assert.equal(await fr.locator('#cadro tr[data-emp]').count(), 9, 'ORION 5 + VEGA 2 + LIRA 2');
-    assert.match(await fr.locator('#cadSub').textContent(), /9 diferenças · 2 clientes sem empresa/);
+    assert.equal(await fr.locator('#cadro tr[data-emp]').count(), 11, 'ORION 7 (com 2 de Vínculo, Hub 306) + VEGA 2 + LIRA 2');
+    assert.match(await fr.locator('#cadSub').textContent(), /11 diferenças · 2 clientes sem empresa/);
     assert.match(await fr.locator('#vincro').textContent(), /ZETA TRANSPORTES \| 0001-03/); assert.match(await fr.locator('#vincro').textContent(), /OMEGA SERVICOS \| 0001-05/);
-    assert.match(await fr.locator('#resumoTopo').textContent(), /11\s*para decidir/);
-    // chips por ação: complementar 4 (código, férias, rescisão, CNPJ), corrigir 3 (admissão, afastamento, UF), novo 2
+    assert.match(await fr.locator('#resumoTopo').textContent(), /13\s*para decidir/);
+    // chips por ação: complementar 6 (código, férias, rescisão, CNPJ e 2 de Vínculo), corrigir 3 (admissão, afastamento, UF), novo 2
     const chips = await fr.locator('.chips.acoes .chipf').allTextContents();
-    assert.deepEqual(chips.map(t => t.replace(/\s+/g, ' ').trim()), ['Todas 9', 'Complementar 4', 'Corrigir 3', 'Cadastro novo 2'], chips.join('|'));
+    assert.deepEqual(chips.map(t => t.replace(/\s+/g, ' ').trim()), ['Todas 11', 'Complementar 6', 'Corrigir 3', 'Cadastro novo 2'], chips.join('|'));
     assert.match(await fr.locator('#cadro tr[data-emp]:has-text("Código Domínio vazio")').textContent(), /Complementar/);
     assert.match(await fr.locator('#cadro tr[data-emp]:has-text("Admissão diferente")').textContent(), /Corrigir/);
     assert.match(await fr.locator('#cadro tr[data-emp]:has-text("Está na lista de empregados do Onvio")').first().textContent(), /Cadastrar/);
@@ -335,7 +338,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     assert.equal(await page.evaluate(() => window.__gravacoes.length), g0, 'nada é gravado antes de confirmar');
     await fr.locator('#confNao').click();
     assert.equal(await page.evaluate(() => window.__gravacoes.length), g0, 'cancelar não grava');
-    assert.equal(await fr.locator('#cadro tr[data-emp]').count(), 9);
+    assert.equal(await fr.locator('#cadro tr[data-emp]').count(), 11);
   });
 
   await passo('Entrada de dados: Complementar e Corrigir gravam só o campo e registram o verbo certo no histórico; as férias não repetem o pagamento na agenda', async () => {
@@ -346,8 +349,8 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     assert.match(e.historico[0].alteracao, /^Complementado a partir do Onvio \(Entrada de dados\): Beltrano Silva · Código Domínio vazio/);
     const b = e.funcionarios.find(f => f.nome === 'Beltrano Silva');
     assert.equal(b.admissao, '2022-02-02', 'complementar o código não mexe na admissão que o Hub já tinha');
-    await fr.locator('#cadro tr[data-emp]').nth(7).waitFor();
-    assert.equal(await fr.locator('#cadro tr[data-emp]').count(), 8);
+    await fr.locator('#cadro tr[data-emp]').nth(9).waitFor();
+    assert.equal(await fr.locator('#cadro tr[data-emp]').count(), 10);
     await aplicarNoQuadro('Férias no Onvio', '[data-cad-aplicar]');
     await fr.locator('#confSim').click();
     await page.waitForFunction(() => (window.__db.ler('dp_empresas/e-orion').funcionarios.find(f => f.nome === 'Maria Souza') || {}).feriasInicio, null, { timeout: 5000 });
@@ -373,13 +376,13 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await page.waitForFunction(() => !!window.__db.existe('dp_ov_ignorar/e-vega'), null, { timeout: 5000 });
     const ign = await page.evaluate(() => window.__db.ler('dp_ov_ignorar/e-vega'));
     assert.equal(ign.chaves.length, 1); assert.match(ign.chaves[0], /^novo\|joao lima\|/);
-    await page.waitForFunction(() => document.querySelector('#fontes-frame').contentDocument.querySelectorAll('#cadro tr[data-emp]').length === 4);
+    await page.waitForFunction(() => document.querySelector('#fontes-frame').contentDocument.querySelectorAll('#cadro tr[data-emp]').length === 6);      // ORION: admissão, rescisão, afastamento e os 2 Vínculos; VEGA: 1 novo
   });
 
   await passo('Permissão: o analista só decide nas empresas da carteira dele; a coordenação decide em qualquer uma (inclusive cadastrar empresa)', async () => {
     await page.evaluate(() => { window.__auth = { nivel: () => 'analista', analista: () => 'Bruno Teste', podeVer: () => true, ehAdmin: () => false, usuario: () => ({ nome: 'Bruno', id: 'u-bruno', prefs: {} }) }; });
     const dif = await page.evaluate(() => window.__hubApi.api('onvio').difs().map(d => [d.empId, d.tipo, d.pode]));
-    assert.deepEqual(dif.filter(d => d[0] === 'e-orion').map(d => d[2]), [false, false, false], 'ORION é da Ana');
+    assert.deepEqual(dif.filter(d => d[0] === 'e-orion').map(d => d[2]), [false, false, false, false, false], 'ORION é da Ana (admissão, rescisão, afastamento e 2 Vínculos)');
     assert.deepEqual(dif.filter(d => d[0] === 'e-vega').map(d => d[2]), [true], 'VEGA é do Bruno');
     const recusa = await page.evaluate(async () => { const a = window.__hubApi.api('onvio'), d = a.difs().find(x => x.empId === 'e-orion'); return [await a.aplicar(d.empId, d.chave), await a.ignorar(d.empId, d.chave), await a.ligar('qualquer', 'e-orion'), await a.criarEmpresa(a.semVinculo()[0].k)]; });
     assert.deepEqual(recusa.map(r => r.ok), [false, false, false, false]);
@@ -391,35 +394,35 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
 
   await passo('Entrada de dados em lote: filtra por ação e tipo, marca só os complementos, uma confirmação (cancelar não grava) e o resultado de cada uma', async () => {
     await fr.locator('[data-cad-acao="complementar"]').click();
-    assert.equal(await fr.locator('#cadro tr[data-emp]').count(), 1, 'só a rescisão do Beltrano ainda é complemento');
+    assert.equal(await fr.locator('#cadro tr[data-emp]').count(), 3, 'complementos: a rescisão do Beltrano e os 2 Vínculos');
     await fr.locator('[data-cad-acao=""]').click();
     await fr.locator('[data-cad-tipo="afastamento"]').click();
     assert.equal(await fr.locator('#cadro tr[data-emp]').count(), 1);
     await fr.locator('[data-cad-tipo=""]').click();
-    assert.equal(await fr.locator('#cadro tr[data-emp]').count(), 4);
-    // marca as três do ORION pelo cabeçalho da empresa: complementar + corrigir + corrigir
+    assert.equal(await fr.locator('#cadro tr[data-emp]').count(), 6);
+    // marca as cinco do ORION pelo cabeçalho da empresa: complementar (rescisão e 2 Vínculos) + corrigir + corrigir
     await fr.locator('[data-sel-emp="e-orion"]').check();
-    assert.match(await fr.locator('#cSelBar').textContent(), /3 selecionadas/);
-    assert.equal(await fr.locator('#cAplicarSel').textContent(), 'Aplicar 3', 'verbos misturados: Aplicar');
+    assert.match(await fr.locator('#cSelBar').textContent(), /5 selecionadas/);
+    assert.equal(await fr.locator('#cAplicarSel').textContent(), 'Aplicar 5', 'verbos misturados: Aplicar');
     const g0 = await page.evaluate(() => window.__gravacoes.length);
     await fr.locator('#cAplicarSel').click();
     await fr.locator('#dlgLote[open]').waitFor();
-    assert.match(await fr.locator('#loteTit').textContent(), /Aplicar 3 diferenças/);
-    assert.equal(await fr.locator('#loteLista li').count(), 3);
-    assert.match(await fr.locator('#loteResumo').textContent(), /Complementar 1/); assert.match(await fr.locator('#loteResumo').textContent(), /Corrigir 2/);
+    assert.match(await fr.locator('#loteTit').textContent(), /Aplicar 5 diferenças/);
+    assert.equal(await fr.locator('#loteLista li').count(), 5);
+    assert.match(await fr.locator('#loteResumo').textContent(), /Complementar 3/); assert.match(await fr.locator('#loteResumo').textContent(), /Corrigir 2/);
     if (CAP) { await page.waitForTimeout(300); await page.screenshot({ path: path.join(CAP, 'entrada-dados-lote-claro.png') }); }
     await fr.locator('#loteNao').click();
     assert.equal(await page.evaluate(() => window.__gravacoes.length), g0, 'cancelar o lote não grava nada');
     await fr.locator('#cAplicarSel').click();
     await fr.locator('#dlgLote[open]').waitFor();
     await fr.locator('#loteSim').click();
-    await page.waitForFunction(() => /3 feitas/.test(document.querySelector('#fontes-frame').contentDocument.querySelector('#loteCont').textContent), null, { timeout: 8000 });
+    await page.waitForFunction(() => /5 feitas/.test(document.querySelector('#fontes-frame').contentDocument.querySelector('#loteCont').textContent), null, { timeout: 8000 });
     const e = await page.evaluate(() => window.__db.ler('dp_empresas/e-orion'));
     const bel = e.funcionarios.find(f => f.nome === 'Beltrano Silva');
     assert.equal(bel.rescisao, D.dia(-3)); assert.equal(bel.admissao, '2022-02-01', 'corrigida pelo Onvio');
     assert.equal(e.funcionarios.find(f => f.nome === 'Maria Souza').status, 'Afastado');
-    assert.equal(e.historico.filter(h => /Entrada de dados/.test(h.alteracao)).length, 5, 'código, férias e as três do lote no histórico');
-    assert.equal(await fr.locator('#loteLista li.ok').count(), 3);
+    assert.equal(e.historico.filter(h => /Entrada de dados/.test(h.alteracao)).length, 7, 'código, férias e as cinco do lote no histórico');
+    assert.equal(await fr.locator('#loteLista li.ok').count(), 5);
     if (CAP) { await page.waitForTimeout(300); await page.screenshot({ path: path.join(CAP, 'entrada-dados-lote-feito-claro.png') }); }
     await fr.locator('#loteNao').click();
     await page.waitForFunction(() => document.querySelector('#fontes-frame').contentDocument.querySelectorAll('#cadro tr[data-emp]').length === 1);
@@ -462,6 +465,8 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     assert.equal(await page.evaluate((id) => (window.__hubApi.api('onvio').solicitacoes().porEmp.get(id) || []).length, omega.id), 1, 'a solicitação 709 já é da empresa nova (pelo CNPJ)');
     await fr.locator('#loteNao').click();
     // ZETA: ligar a uma empresa que já existe com outro nome
+    // (Hub 337: sem a lista do Gestta, empresa sem funcionário ativo fica Inativa na tela e não recebe sugestões; a ZETA ganha um)
+    await page.evaluate(() => { const z = window.__db.ler('dp_empresas/e-zeta'); z.funcionarios = [{ id: 'f-zeta1', nome: 'Zeta Motorista', cargo: 'Motorista', codigo: '9', admissao: '2023-01-02', status: 'Ativo', aquisitivo: '', feriasInicio: '', feriasFim: '', rescisao: '', salario: '', obs: '' }]; window.__db.semear('dp_empresas/e-zeta', z); });
     await fr.locator('tr[data-k] [data-cad-emp]').focus();                       // a lista completa de empresas só entra quando a pessoa abre o seletor
     await fr.locator('tr[data-k] [data-cad-emp]').selectOption('e-zeta');
     await fr.locator('tr[data-k] [data-cad-ligar]').click();
@@ -472,7 +477,8 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     assert.equal(await page.evaluate(() => (window.__hubApi.api('onvio').solicitacoes().porEmp.get('e-zeta') || []).length), 1, 'a solicitação 706 agora é da empresa');
     assert.match(await fr.locator('#vincro').textContent(), /Todos os clientes do Onvio estão ligados/);
     // e a empresa ligada ganha sugestões: o CNPJ do Onvio é outro (corrigir) e a UF falta (complementar)
-    await fr.locator('#cadro tr.grp:has-text("TRANSPORTES ZETA")').first().waitFor();
+    await fr.locator('#cadro tr.grp:has-text("| 0001-99")').first().waitFor();          // ligada ao cliente do Onvio, a empresa passa a usar o apelido dele
+
     assert.match(await fr.locator('#cadro').textContent(), /CNPJ ou CPF diferente/); assert.match(await fr.locator('#cadro').textContent(), /Cidade \/ UF vazio/);
     if (CAP) { await fr.locator('#secCadastro h2').evaluate(e => e.scrollIntoView({ block: 'start' })); await page.waitForTimeout(500); await page.screenshot({ path: path.join(CAP, 'entrada-dados-depois-claro.png') }); }
     if (CAP) {
