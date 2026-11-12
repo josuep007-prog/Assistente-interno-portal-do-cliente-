@@ -3231,30 +3231,35 @@ await passo('Gestta · Lista (0.99.0): marcar tarefas e agir em lote (concluir, 
   }
 });
 
-await passo('Gestta · Envios ao portal (0.96.0): erro para reenviar, sem pasta por template com o "deveria ir" pelo padrão do Gestta e o risco sem erro; nada é escrito', async () => {
+await passo('Gestta · Envios ao portal (0.96.0, 0.100.3): um destino por documento (reenviar, corrigir a pasta, tirar da lista), pasta fora da 9999 e o risco sem erro; nada é escrito sem confirmar', async () => {
   const T1 = 'e00000000000000000000001', T2 = 'e00000000000000000000002', T3 = 'e00000000000000000000003';
-  const tpl = (id, name, pasta) => ({ _id: id, name, valid: true, documents_integration: pasta ? { customer_id: 'c00000000000000000000001', id: 'pasta' + id, path: pasta.split(' › '), pathName: pasta.split(' › ') } : { pathName: [] } });
+  const tpl = (id, name, pasta, cli) => ({ _id: id, name, valid: true, documents_integration: pasta ? { customer_id: cli || 'c00000000000000000000001', id: 'pasta' + id, path: pasta.split(' › '), pathName: pasta.split(' › ') } : { pathName: [] } });
   const env = (id, tid, tnome, erro) => ({ _id: 'c0000000000000000000000' + id.slice(-1), company_user: { _id: 'a00000000000000000000001' }, customer: { _id: 'b0000000000000000000000' + id.slice(-1) }, status: 'ERROR', error: erro, retry_count: 1, created_at: new Date(Date.now() - 3 * 864e5).toISOString(), updated_at: new Date().toISOString(),
     customer_task: { _id: 'f0000000000000000000000' + id.slice(-1), name: 'FOLHA MENSAL', customer: { name: 'CLIENTE FICTICIO ' + id, cnpj: '00.000.000/0001-0' + id.slice(-1) }, company_department: { name: 'Pessoal' }, owner: { name: 'Eu Mesmo' }, _competence_date: '2026-10-01' },
     customer_task_file: { _id: 'd0000000000000000000000' + id.slice(-1), company_document: { _id: tid, name: tnome }, file_name: 'arquivo-' + id + '.pdf' } });
-  const resp = Object.assign(gtResp(true, gtTarefas()), { gesttaAcao: { ok: true, resumo: { success: 1, failed: 0, blocked: 0 } }, gesttaPasta: { ok: true, pasta: 'Pessoal › Folha' }, gesttaTirar: { ok: true, success: 1, failed: 0, ignorados: 0 }, gesttaEnvios: { ok: true, lidoEm: new Date().toISOString(), total: 4, cortado: false,
-    envios: [env('e1', T2, 'Folha de Pagamento Filial', 'NO_FOLDER_CONFIGURED'), env('e2', T2, 'Folha de Pagamento Filial', 'NO_FOLDER_CONFIGURED'), env('e3', T3, 'Recibo Interno', 'NO_FOLDER_CONFIGURED'), env('e4', T1, 'Folha de Pagamento', 'UPLOAD_ERROR')],
-    templates: [tpl(T1, 'Folha de Pagamento', 'Pessoal › Folha'), tpl(T2, 'Folha de Pagamento Filial', ''), tpl(T3, 'Recibo Interno', ''), tpl('e00000000000000000000004', 'Guia FGTS', 'Pessoal › Guias'), tpl('e00000000000000000000005', 'Guia FGTS Rescisório', ''), tpl('e00000000000000000000006', 'Guia FGTS Mensal Filial', '')] } });
+  const resp = Object.assign(gtResp(true, gtTarefas()), { gesttaAcao: { ok: true, resumo: { success: 1, failed: 0, blocked: 0 } }, gesttaPasta: { ok: true, pasta: 'Pessoal › Folha' }, gesttaTirar: { ok: true, success: 1, failed: 0, ignorados: 0 }, gesttaTirarPasta: { ok: true, salvou: true }, gesttaEnvios: { ok: true, lidoEm: new Date().toISOString(), total: 4, cortado: false,
+    envios: [env('e1', T2, 'Folha de Pagamento Filial', 'NO_FOLDER_CONFIGURED'), env('e2', T2, 'Folha de Pagamento Filial', 'NO_FOLDER_CONFIGURED'), env('e3', T3, 'Recibo Interno', 'NO_FOLDER_CONFIGURED'), env('e4', T1, 'Folha de Pagamento', 'UPLOAD_ERROR'), env('e5', 'e00000000000000000000007', 'Contrato Social', 'UPLOAD_ERROR')], notifica: { f00000000000000000000004: true }, modelo: { id: 'c00000000000000000000001', nome: 'EMPRESA EXEMPLO' },
+    templates: [tpl(T1, 'Folha de Pagamento', 'Pessoal › Folha'), tpl(T2, 'Folha de Pagamento Filial', ''), tpl(T3, 'Recibo Interno', ''), tpl('e00000000000000000000004', 'Guia FGTS', 'Pessoal › Guias'), tpl('e00000000000000000000007', 'Contrato Social', 'Legal › Contratos', 'c00000000000000000000099'), tpl('e00000000000000000000005', 'Guia FGTS Rescisório', ''), tpl('e00000000000000000000006', 'Guia FGTS Mensal Filial', '')] } });
   for (const [estilo, tema] of [['simples', 'light'], ['atual', 'dark']]) {
     const { p, fr } = await abrirGestta(resp, { estilo });
     await fr.evaluate(t => document.documentElement.setAttribute('data-theme', t), tema);
     await fr.click('#abas [data-aba="envios"]');
     await fr.waitForSelector('.gte-topo');
     const txt = await fr.textContent('#vista');
-    assert.match(txt, /Para reenviar[\s\S]*Erro ao enviar o arquivo[\s\S]*Cliente Ficticio E4[\s\S]*UPLOAD_ERROR/i);
-    assert.match(txt, /Provavelmente deveria ir ao portal[\s\S]*Folha de Pagamento Filial[\s\S]*2 documentos parados[\s\S]*Parecido com “Folha de Pagamento”, que vai para Pessoal › Folha/);
-    assert.match(txt, /1 template sem pasta não vai ao portal: os documentos deles saem da lista de erros/);
-    assert.ok(!/Recibo Interno/.test(txt), 'os que não vão ficam recolhidos sem filtro');
+    assert.match(txt, /1 · Reenviar[\s\S]*Cliente Ficticio E4[\s\S]*UPLOAD_ERROR[\s\S]*2 · Corrigir a pasta no Gestta/i);
+    assert.match(txt, /2 · Corrigir a pasta[\s\S]*Provavelmente deveria ir ao portal[\s\S]*Folha de Pagamento Filial[\s\S]*2 documentos parados[\s\S]*Parecido com “Folha de Pagamento”, que vai para Pessoal › Folha/);
+    assert.match(txt, /3 · Tirar da lista[\s\S]*Recibo Interno/); assert.match(txt, /3 · Tirar da lista[\s\S]*Pasta fora da 9999[\s\S]*Contrato Social[\s\S]*não foi montada a partir da empresa 9999/);
+    assert.match(txt, /Pastas fora da empresa 9999[\s\S]*Empresa Exemplo[\s\S]*Contrato Social[\s\S]*Legal › Contratos/);
+    assert.ok(!/Cliente Ficticio E5[\s\S]*2 · Corrigir/i.test(txt), 'o erro de envio de pasta fora da 9999 não fica para reenviar');
     assert.match(txt, /Templates em risco[\s\S]*Guia FGTS Rescisório[\s\S]*parecido com[\s\S]*Guia FGTS/);
+    // 0.100.3: o botão leva ao cadastro do template no Gestta
+    assert.equal(await fr.getAttribute('.gte-tpl.deve a[href*="/sidebar/document/edit/"]', 'href'), 'https://app.gestta.com.br/admin/#/sidebar/document/edit/' + T2 + '/details');
+    assert.ok(await fr.$('.gte-risco a[href$="/sidebar/document/edit/e00000000000000000000005/details"]'), 'o risco abre o template');
+    assert.ok(await fr.$('.gte-risco a[href$="/sidebar/document/edit/e00000000000000000000007/details"]'), 'a pasta fora da 9999 abre o template');
     // os números filtram; ver os documentos de um template
     await fr.click('[data-gte-f="deve"]');
-    assert.ok(!(await fr.$('.gte-tpl.nao')) && !(await fr.textContent('#vista')).includes('Erro ao enviar o arquivo'), 'só os que deveriam ir');
-    await fr.click('[data-gte-abrir="' + T2 + '"]');
+    assert.ok(!(await fr.$('.gte-tpl.nao')) && !(await fr.textContent('#vista')).includes('1 · Reenviar'), 'só os que deveriam ir');
+    await fr.click('[data-gte-abrir^="' + T2 + '|"]');
     await fr.waitForSelector('.gte-tpl.deve .gte-tab');
     assert.match(await fr.textContent('.gte-tpl.deve'), /arquivo-e1\.pdf[\s\S]*arquivo-e2\.pdf/);
     await fr.click('[data-gte-f="deve"]');
@@ -3265,19 +3270,31 @@ await passo('Gestta · Envios ao portal (0.96.0): erro para reenviar, sem pasta 
     await fr.waitForFunction(() => /Folha de Pagamento Filial/.test(document.querySelector('#vista').textContent));
     // os que não vão: só pelo número do topo, sem Reenviar nem Usar a pasta
     await fr.click('[data-gte-f="naoVai"]');
-    assert.match(await fr.textContent('.gte-tpl.nao'), /sai da lista de erros[\s\S]*Recibo Interno/);
+    assert.match((await fr.$$eval('.gte-tpl.nao', l => l.map(x => x.textContent))).join(' | '), /Não vai ao portal[\s\S]*Recibo Interno/);
     assert.ok(!(await fr.$('.gte-tpl.nao [data-gte-pasta]')) && !(await fr.$('.gte-tpl.nao [data-gte-reenviar]')), 'nem pasta nem reenviar para quem não vai');
     assert.ok(await fr.$('.gte-tpl.nao [data-gte-tirar]') && await fr.$('[data-gte-tirar-todos]'), 'tirar da lista, por template e todos');
     if (estilo === 'simples') {
       // 0.98.0: tirar da lista pede confirmação e manda só os ids da fila dos que não vão (o service worker confere de novo)
       await fr.click('[data-gte-tirar-todos]');
       await fr.waitForSelector('.gte-conf');
-      assert.match(await fr.textContent('.gte-conf'), /Tirar 1 documento da lista de erros do portal\?[\s\S]*Recibo Interno/);
+      assert.match(await fr.textContent('.gte-conf'), /Tirar 2 documentos da lista de erros do portal\?[\s\S]*2 templates e não vão ao portal/);
       if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/gestta-envios-tirar.png' });
       assert.ok(!(await fr.evaluate(() => (window.__msgs || []).some(m => m.cmd === 'gesttaTirar'))), 'nada sai antes de confirmar');
       await fr.click('[data-gte-confirmar]');
       await fr.waitForFunction(() => (window.__msgs || []).some(m => m.cmd === 'gesttaTirar'));
-      assert.deepEqual(await fr.evaluate(() => window.__msgs.find(m => m.cmd === 'gesttaTirar').ids), ['c00000000000000000000003']);
+      assert.deepEqual(await fr.evaluate(() => window.__msgs.find(m => m.cmd === 'gesttaTirar').ids.slice().sort()), ['c00000000000000000000003', 'c00000000000000000000005']);
+      await fr.waitForSelector('.gte-topo');
+      // 0.100.4: tirar a pasta fora da 9999: confirmação, primeiro os documentos saem da lista, depois a pasta sai do template
+      await fr.waitForSelector('[data-gte-tirarpasta="e00000000000000000000007"]:not([disabled])');
+      await fr.click('[data-gte-tirarpasta="e00000000000000000000007"]');
+      await fr.waitForSelector('.gte-conf');
+      assert.match(await fr.textContent('.gte-conf'), /Tirar a pasta de 1 template\?[\s\S]*Contrato Social”: pasta Legal › Contratos · 1 documento sai da lista/);
+      assert.ok(!(await fr.evaluate(() => (window.__msgs || []).some(m => m.cmd === 'gesttaTirarPasta'))), 'nada sai antes de confirmar');
+      const nTirar = await fr.evaluate(() => window.__msgs.filter(m => m.cmd === 'gesttaTirar').length);
+      await fr.click('[data-gte-confirmar]');
+      await fr.waitForFunction(() => (window.__msgs || []).some(m => m.cmd === 'gesttaTirarPasta'));
+      const seq = await fr.evaluate((n) => window.__msgs.filter(m => m.cmd === 'gesttaTirar' || m.cmd === 'gesttaTirarPasta').slice(n).map(m => [m.cmd, m.ids || m.template]), nTirar);
+      assert.deepEqual(seq, [['gesttaTirar', ['c00000000000000000000005']], ['gesttaTirarPasta', 'e00000000000000000000007']], 'documentos primeiro, depois a pasta');
       await fr.waitForSelector('.gte-topo');
     }
     await fr.click('[data-gte-f="naoVai"]');
@@ -3285,7 +3302,6 @@ await passo('Gestta · Envios ao portal (0.96.0): erro para reenviar, sem pasta 
     assert.ok(!(await fr.evaluate(() => (window.__msgs || []).some(m => m.cmd === 'gesttaAcao' || m.cmd === 'gesttaPasta'))), 'nada é escrito sem confirmar');
     if (estilo === 'simples') {
       // Reenviar: só o erro de envio (o "sem pasta" sem pasta nunca tem o botão); pede confirmação e manda os quatro ids
-      assert.equal(await fr.$$eval('[data-gte-reenviar]', b => b.length), 1);
       await fr.click('[data-gte-reenviar-todos]');
       await fr.waitForSelector('.gte-conf');
       assert.match(await fr.textContent('.gte-conf'), /Reenviar 1 documento ao Portal do Cliente\?/);

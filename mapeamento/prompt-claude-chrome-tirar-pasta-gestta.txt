@@ -1,0 +1,17 @@
+Você vai me ajudar a mapear UMA ação do Gestta (app.gestta.com.br), só olhando as chamadas que a própria tela faz. Não invente valores e não anote dados de cliente.
+
+Objetivo: descobrir exatamente como a tela do Gestta TIRA a pasta de destino (Portal do Cliente) de um template de documento.
+
+Regras:
+- Use só o template "TESTE MAPEAMENTO - NAO USAR" (Cadastros > Documentos). Se ele não existir ou estiver sem pasta, ponha nele uma pasta qualquer da empresa 9999 pela própria tela ("Pasta de destino" > "Selecionar pasta") e salve. Não mexa em nenhum outro template.
+- Não anote token, cookie, nome de cliente, CNPJ nem nome de pasta real: só método, endereço (troque ids por {id} e diga de onde cada id veio), nomes e tipos dos campos e a situação HTTP.
+
+Passos:
+1. Abra o DevTools (F12) > Network, filtro Fetch/XHR, e marque "Preserve log".
+2. Abra o template "TESTE MAPEAMENTO - NAO USAR". Antes de mexer, procure na aba Network a resposta de GET /admin/company/document/{id} e anote os campos de "documents_integration" (nomes e tipos; e se há um "_id" além do "id").
+3. Tire a pasta de destino pela tela e salve.
+4. Anote cada chamada que saiu (método, endereço, corpo, resposta). Para a chamada DELETE, diga: o último pedaço do endereço é igual a qual campo do passo 2 (documents_integration._id, documents_integration.id ou outro)?
+5. Abra outro template que tenha a MESMA pasta (se houver) e confira se ele continua com a pasta (sim/não). Não altere esse outro template.
+6. Recarregue o template de teste e confirme que ficou sem pasta.
+
+Me devolva um resumo em texto com os itens 2, 4, 5 e 6.

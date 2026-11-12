@@ -380,6 +380,7 @@ async function gesttaAcao(msg, sender) {
   if (!String((sender && sender.url) || '').startsWith(chrome.runtime.getURL('app/'))) return { ok: false, erro: 'Ação recusada: só a tela das Tarefas do Gestta pode pedir.' };
   // tirar da lista de erros só pelo gesttaTirar, que relê a fila e confere cada documento antes
   if (msg.acao === 'tirarDaLista') return { ok: false, erro: 'Ação recusada: tirar da lista passa pela conferência dos envios.' };
+  if (['tirarPasta', 'pasta', 'templateSalvar'].includes(msg.acao)) return { ok: false, erro: 'Ação recusada: a pasta do template passa pela conferência dos envios.' };   // 0.100.4
   const p = OCG.pedidoAcao(msg);
   if (p.erro) return { ok: false, erro: p.erro.charAt(0).toUpperCase() + p.erro.slice(1) + '.' };
   const perm = OCG.escritaPermitida(p.metodo, p.url, p.corpo);
@@ -418,6 +419,7 @@ async function gesttaPasta(msg, sender) {
   if (pastaDe(d).length) return { ok: false, erro: 'Este template já tem pasta (' + pastaDe(d).join(' › ') + '): nada foi mudado.' };
   const integ = m.documents_integration || {};
   if (!pastaDe(m).length || !integ.customer_id || !integ.id || !Array.isArray(integ.path)) return { ok: false, erro: 'O template modelo não tem a pasta completa no Gestta.' };
+  if (modelo9999 && String(integ.customer_id) !== String(modelo9999.id)) return { ok: false, erro: 'A pasta do template modelo não foi montada a partir da empresa 9999: nada foi mudado.' };   // 0.100.3
   const agir = async (pedido) => {
     if (pedido.erro) return { ok: false, erro: pedido.erro };
     if (!OCG.escritaPermitida(pedido.metodo, pedido.url, pedido.corpo).ok) return { ok: false, erro: 'a extensão recusou a ação' };
@@ -431,6 +433,34 @@ async function gesttaPasta(msg, sender) {
   const conf = await ler(destino);
   return { ok: !!(conf && pastaDe(conf).length), salvou: !!b.ok, pasta: conf ? pastaDe(conf).join(' › ') : '', erro: conf && pastaDe(conf).length ? '' : 'A pasta foi enviada, mas o Gestta não a mostra no template. Confira na tela do Gestta.' };
 }
+// 0.100.4: tirar a pasta de um template montada fora da empresa 9999 (Josué, 12/11/2026; mapeado no mesmo dia: DELETE
+// admin/company/document/integration/documents/{id do template}, 204, só aquele template; depois o Salvar do template, como a tela).
+// Relê o template na hora e só tira se ele ainda tem pasta e ela não é da 9999 (com a 9999 conhecida); confere no fim.
+async function gesttaTirarPasta(msg, sender) {
+  if (!String((sender && sender.url) || '').startsWith(chrome.runtime.getURL('app/'))) return { ok: false, erro: 'Ação recusada: só a tela das Tarefas do Gestta pode pedir.' };
+  const t = String(msg.template || '');
+  if (!/^[0-9a-f]{24}$/i.test(t)) return { ok: false, erro: 'Template inválido.' };
+  if (!modelo9999) return { ok: false, erro: 'A empresa 9999 não foi achada no Gestta: sem ela não dá para conferir a pasta. Nada foi mudado.' };
+  const tab = await tabDoGestta(sender);
+  if (!tab) return { ok: false, erro: 'Abra o Gestta numa aba, já logado.' };
+  const ler = async () => { const { r } = await lerGestta([OCG.PEDIDOS.template({ id: t })], { tab }); const x = r && r.resultados && r.resultados[0]; return x && x.status === 200 ? x.dados : null; };
+  const d = await ler();
+  if (!d) return { ok: false, erro: 'Não consegui ler o template no Gestta.' };
+  if (!OCG.pastaForaDe(d, modelo9999.id)) return { ok: false, erro: 'Este template não tem mais pasta fora da 9999: nada foi mudado.' };
+  const agir = async (pedido) => {
+    if (pedido.erro) return { ok: false, erro: pedido.erro };
+    if (!OCG.escritaPermitida(pedido.metodo, pedido.url, pedido.corpo).ok) return { ok: false, erro: 'a extensão recusou a ação' };
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', files: ['gestta.js'] });
+    const [res] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', func: (ped) => (self.OCG ? self.OCG.agirNaPagina(ped) : { ok: false, erro: 'núcleo do Gestta não carregou na aba' }), args: [pedido] });
+    return (res && res.result) || { ok: false, erro: 'a aba do Gestta não respondeu' };
+  };
+  const a = await agir(OCG.pedidoAcao({ acao: 'tirarPasta', template: t }));
+  if (!a.ok) return { ok: false, status: a.status, erro: a.status === 401 ? 'A sessão do Gestta acabou: faça login de novo.' : a.status === 403 ? 'Seu acesso do Gestta não permite mudar templates.' : 'O Gestta não tirou a pasta (' + (a.erro || a.recusado || 'erro') + ').' };
+  const b = await agir(OCG.pedidoAcao({ acao: 'templateSalvar', template: t, bypass: !!d.bypass, nome: d.name, prazo: !!d.send_documents_due_date }));
+  const conf = await ler();
+  const semPasta = !!conf && !(conf.documents_integration && Array.isArray(conf.documents_integration.pathName) && conf.documents_integration.pathName.filter(Boolean).length);
+  return { ok: semPasta, salvou: !!b.ok, erro: semPasta ? '' : 'O Gestta respondeu, mas o template ainda mostra a pasta. Confira na tela do Gestta.' };
+}
 // 0.98.0: tirar da lista de erros os documentos sem pasta que não vão ao portal (Josué, 12/11/2026: "devem ser excluídos em lote da lista
 // de erros"; a lixeira mapeada no mesmo dia: PATCH es/file/onvio/remove/batch). Relê a fila e os templates na hora e só tira o que, agora,
 // é "sem pasta" de um template sem pasta e sem nenhum parecido que vá ao portal (OCG.enviosPortal, classe naoVai). O resto é ignorado.
@@ -440,7 +470,7 @@ async function gesttaTirar(msg, sender) {
   if (!pedidos.length) return { ok: false, erro: 'Nenhum documento para tirar da lista.' };
   const lido = await gesttaEnvios(msg, sender);
   if (!lido.ok) return lido;
-  const A = OCG.enviosPortal(lido.envios, lido.templates);
+  const A = OCG.enviosPortal(lido.envios, lido.templates, lido.notifica, lido.modelo && lido.modelo.id);
   const podem = new Set(A.semPasta.filter(g => g.classe === 'naoVai').flatMap(g => g.itens.map(i => i.id)));
   const ids = pedidos.filter(v => podem.has(v)), ignorados = pedidos.length - ids.length;
   if (!ids.length) return { ok: false, erro: 'Nenhum destes documentos está mais como "sem pasta, não vai ao portal": nada foi tirado.' };
@@ -477,28 +507,72 @@ async function gesttaEquipe(msg, sender) {
 }
 // 0.96.0: aba Envios ao portal. A fila de envios ao Portal do Cliente com erro (de 50 em 50, até 2.000) e os templates de documento
 // (com a pasta no portal). Lido na hora e entregue à tela: nada fica no armazenamento.
+const notificaCache = new Map(), NOTIFICA_MAX = 3000; let modelo9999 = null;
 async function gesttaEnvios(msg, sender) {
   const tab = await tabDoGestta(sender);
   if (!tab) return { ok: false, erro: 'Abra o Gestta numa aba, já logado.' };
   const falha = (x, oque) => ({ ok: false, status: x && x.status, erro: !x ? 'A aba do Gestta não respondeu.' : x.status === 401 ? 'A sessão do Gestta acabou: faça login de novo.' : x.status === 403 ? 'Seu acesso do Gestta não inclui ' + oque + '.' : 'Não consegui ler ' + oque + ' (HTTP ' + x.status + ').' });
-  const envios = []; let total = null, cortado = false;
-  for (let k = 0; k < 40; k++) {
-    const { r } = await lerGestta([OCG.PEDIDOS.filaOnvioTela({ limit: 50, skip: k * 50 })], { tab });
+  // 0.100.1 (Josué, 12/11/2026: "parece não estar lendo todos os envios ao portal com erro"): antes parava na primeira página com menos
+  // de 50, e o Gestta pode devolver menos do que o pedido por página (a tela dele mostra 20); agora anda pelo que veio (skip = já lidos)
+  // até a fila acabar (página vazia) ou chegar ao total que o Gestta diz, e conta a falta como cortado, nunca em silêncio.
+  const envios = [], vistos = new Set(); let total = null, cortado = false;
+  for (let k = 0; k < 400; k++) {
+    const { r } = await lerGestta([OCG.PEDIDOS.filaOnvioTela({ limit: 50, skip: envios.length })], { tab });
     const x = r && r.resultados && r.resultados[0];
     if (!x || x.status !== 200 || !x.dados) return falha(x, 'a fila de envios ao portal');
-    if (total == null && x.dados.total != null) total = x.dados.total;
-    const l = x.dados.itens || []; envios.push(...l);
-    if (l.length < 50) break; if (k === 39) cortado = true;
+    if (x.dados.total != null) total = x.dados.total;
+    const l = (x.dados.itens || []).filter(i => i && !vistos.has(i._id));
+    l.forEach(i => vistos.add(i._id)); envios.push(...l);
+    if (!l.length || (total != null && envios.length >= total)) break;
+    if (k === 399) cortado = true;
   }
-  const templates = [];
-  for (let p = 1; p <= 20; p++) {
+  if (total != null && envios.length < total) cortado = true;
+  // os templates: a mesma coisa (sem o total de páginas, parava na primeira, e template com pasta fora dela parecia "sem pasta")
+  const templates = [], tvistos = new Set();
+  for (let p = 1; p <= 50; p++) {
     const { r } = await lerGestta([OCG.PEDIDOS.templatesLista({ limit: 200, page: p })], { tab });
     const x = r && r.resultados && r.resultados[0];
     if (!x || x.status !== 200 || !x.dados) return falha(x, 'os templates de documento');
-    templates.push(...(x.dados.itens || []));
-    if (!x.dados.paginas || p >= x.dados.paginas) break;
+    const l = (x.dados.itens || []).filter(t => t && !tvistos.has(t._id));
+    l.forEach(t => tvistos.add(t._id)); templates.push(...l);
+    if (!l.length || (x.dados.paginas && p >= x.dados.paginas) || (x.dados.total != null && templates.length >= x.dados.total)) break;
   }
-  return { ok: true, lidoEm: new Date().toISOString(), total, cortado, envios, templates };
+  // 0.100.2: "Notificar cliente via e-mail" de cada tarefa da fila (notify_customer, no detalhe da tarefa, GET). Só o sim/não fica
+  // na memória do service worker por 30 min (nada no armazenamento); de 20 em 20, até NOTIFICA_MAX tarefas por leitura.
+  const notifica = {}, faltam = [];
+  const agora = Date.now();
+  for (const e of envios) {
+    const id = e && e.customer_task && e.customer_task._id;
+    if (!/^[0-9a-f]{24}$/i.test(id || '') || id in notifica) continue;
+    const c = notificaCache.get(id);
+    if (c && agora - c.em < 30 * 60000) notifica[id] = c.v; else { notifica[id] = null; faltam.push(id); }
+  }
+  let naoLidas = 0;
+  for (let i = 0; i < faltam.length && i < NOTIFICA_MAX; i += 20) {
+    const lote = faltam.slice(i, Math.min(i + 20, NOTIFICA_MAX));
+    const { r } = await lerGestta(lote.map(id => Object.assign(OCG.PEDIDOS.tarefa({ id }), { id: 'tarefa:' + id })), { tab, pausa: 150 });
+    const rs = (r && r.resultados) || [];
+    if (rs.some(x => x && x.status === 401)) break;
+    lote.forEach((id, j) => {
+      const x = rs[j], v = x && x.status === 200 && x.dados && typeof x.dados.notify_customer === 'boolean' ? x.dados.notify_customer : null;
+      if (v === null) return;
+      notifica[id] = v; notificaCache.set(id, { v, em: Date.now() });
+    });
+  }
+  Object.keys(notifica).forEach(k => { if (notifica[k] === null) { delete notifica[k]; naoLidas++; } });
+  // 0.100.3: o id da empresa 9999 no Gestta (a única pasta válida é a montada a partir dela). Só o id e o nome, na memória por 6 h.
+  let modelo = modelo9999 && Date.now() - modelo9999.em < 6 * 3600e3 ? modelo9999 : null;
+  if (!modelo) {
+    for (let p = 1; p <= 30 && !modelo; p++) {
+      const { r } = await lerGestta([OCG.PEDIDOS.clientes({ limit: 200, page: p })], { tab });
+      const x = r && r.resultados && r.resultados[0];
+      if (!x || x.status !== 200 || !x.dados) break;
+      const c = (x.dados.itens || []).find(i => i && String(i.code || '').trim() === '9999');
+      if (c) modelo = modelo9999 = { id: c._id, nome: String(c.name || ''), em: Date.now() };
+      if (!(x.dados.itens || []).length || (x.dados.paginas && p >= x.dados.paginas)) break;
+    }
+  }
+  return { ok: true, lidoEm: new Date().toISOString(), total, lidos: envios.length, cortado, envios, templates, notifica, naoLidas, modelo: modelo ? { id: modelo.id, nome: modelo.nome } : null };
 }
 // Configurações › Avançado: quem está logado, o perfil e uma leitura de prova de cada fonte (só contagens).
 async function testarGestta() {
@@ -1252,6 +1326,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         else if (msg.acao === 'mediador') { if (mediadorRodando || envioRodando) reply({ ok: true, jaRodando: true }); else if (!(await mediadorPermitido())) reply({ ok: false, motivo: 'sem-permissao-mediador' }); else if (!mediadorLimparCnpjs(msg.cnpjs).length) reply({ ok: false, motivo: 'sem-sindicatos' }); else { mediadorBuscar('hub', msg.cnpjs).catch(() => {}); reply({ ok: true, iniciado: true }); } }
         else if (msg.acao === 'mediadorCnpjs') reply({ ok: true, sindicatos: (await mediadorGuardarCnpjs(msg.cnpjs)).length, mediador: await mediadorPainel() });
         else if (msg.acao === 'mediadorTexto') reply(await mediadorTexto(msg.solicitacao));
+        else if (msg.acao === 'mediadorConvencao') reply(await mediadorConvencao(msg.laboral, msg.patronal));
         else if (msg.acao === 'mediadorAnexo') reply(await mediadorAnexo(msg.url));
         else reply({ ok: true, envio: await hubPainelAtual() });
       }
@@ -1351,6 +1426,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'gesttaEquipe') { reply(await gesttaEquipe(msg, sender)); }
       else if (msg.cmd === 'gesttaEnvios') { reply(await gesttaEnvios(msg, sender)); }
       else if (msg.cmd === 'gesttaPasta') { reply(await gesttaPasta(msg, sender)); }
+      else if (msg.cmd === 'gesttaTirarPasta') { reply(await gesttaTirarPasta(msg, sender)); }
       else if (msg.cmd === 'gesttaTirar') { reply(await gesttaTirar(msg, sender)); }
       else if (msg.cmd === 'gesttaFechamento') { reply(await gesttaFechamento(msg, sender)); }
       else if (msg.cmd === 'gesttaTarefa') { reply(await gesttaTarefa(msg, sender)); }
@@ -1708,6 +1784,7 @@ async function gesttaHubSincronizar(manual, so) {
 const MEDIADOR_ORIGENS = ['https://mediador.trabalho.gov.br/*', 'https://www3.mte.gov.br/*', 'http://www3.mte.gov.br/*'];
 const MEDIADOR_PAUSA = 3000, MEDIADOR_MAX_CNPJS = 100;
 let mediadorRodando = null, mediadorAbaPropria = null, mediadorFecharTimer = null;
+const MEDIADOR_SO_CONVENCAO = true;          // 0.96.0: a busca é por convenção (pedido mediadorConvencao do Hub), não mais por todos os sindicatos
 async function mediadorPermitido() { try { return await chrome.permissions.contains({ origins: MEDIADOR_ORIGENS }); } catch (e) { return false; } }
 async function mediadorCfg() { const { mediadorCfg } = await chrome.storage.local.get('mediadorCfg'); return Object.assign({ cnpjs: [], em: '', ultimaBusca: '' }, mediadorCfg || {}); }
 const mediadorLimparCnpjs = l => [...new Set((Array.isArray(l) ? l : []).map(OCM.soDig).filter(OCM.cnpjValido))].slice(0, MEDIADOR_MAX_CNPJS);
@@ -1850,6 +1927,44 @@ async function mediadorBuscar(origem, cnpjsPedidos) {
   })().finally(() => { mediadorRodando = null; });
   return mediadorRodando;
 }
+// 0.96.0 (Josué, 12/11/2026: "a extensão deve buscar a convenção específica e não sindicatos isolados"): uma convenção acompanhada no Hub
+// (o par laboral × patronal), pedida pelo Hub (pedido mediadorConvencao: pelo botão da convenção ou pela busca diária depois da data-base).
+// Busca pelo CNPJ laboral (convenções e aditivos), fica só com o par e lê o texto da mais recente e dos aditivos dela. Devolve tudo na
+// resposta ao Hub, que é quem guarda; a extensão não guarda nada disso.
+let mediadorConvRodando = null;
+async function mediadorConvencao(laboral, patronal) {
+  const L = OCM.soDig(laboral), P = OCM.soDig(patronal);
+  if (!OCM.cnpjValido(L) || !OCM.cnpjValido(P) || L === P) return { ok: false, motivo: 'cnpj', mensagem: 'Os dois CNPJs (laboral e patronal) são obrigatórios e diferentes.' };
+  if (!(await mediadorPermitido())) return { ok: false, motivo: 'sem-permissao-mediador' };
+  if (mediadorRodando || mediadorConvRodando) return { ok: false, motivo: 'ocupado', jaRodando: true };
+  mediadorConvRodando = (async () => {
+    let tab = null;
+    try {
+      tab = await mediadorAba(true);
+      if (!tab) return { ok: false, motivo: 'sem-aba-mediador' };
+      const itens = [];
+      for (const tipo of Object.keys(OCM.TIPOS)) {
+        const r = await mediadorBuscarUm(tab, L, tipo);
+        if (!r || !r.ok) return { ok: false, motivo: (r && r.motivo) || 'erro', mensagem: String((r && r.erro) || '').slice(0, 200) };      // falha visível, nunca "não achou" em silêncio
+        itens.push(...r.itens);
+        await dormir(MEDIADOR_PAUSA);
+      }
+      const par = OCM.doPar(itens, L, P), esc = OCM.escolherDaConvencao(par), textos = [];
+      for (const i of [esc.cct, ...esc.aditivos].filter(Boolean)) {
+        const t = await mediadorTexto(i.solicitacao, tab);
+        if (t && t.ok) textos.push({ solicitacao: i.solicitacao, registro: i.registro, dataBase: t.dataBase || '', anexos: t.anexos || [], clausulas: (t.clausulas || []).slice(0, 400) });
+        else return { ok: false, motivo: 'texto', mensagem: 'não consegui ler o texto de ' + i.registro + ' (' + String((t && (t.erro || t.motivo)) || 'erro').slice(0, 80) + ')' };
+        await dormir(1500);
+      }
+      const limpo = (i) => ({ registro: i.registro, processo: i.processo, solicitacao: i.solicitacao, tipo: i.tipo, aditivo: OCM.ehAditivo(i), vigIni: i.vigIni, vigFim: i.vigFim,
+        cnpjTrab: OCM.soDig(i.cnpjTrab).slice(0, 14), trabalhador: String(i.trabalhador || '').slice(0, 200), cnpjEmp: OCM.soDig(i.cnpjEmp).slice(0, 14), empregador: String(i.empregador || '').slice(0, 200) });
+      const vistos = new Set(), instrumentos = par.filter(i => !vistos.has(i.solicitacao) && vistos.add(i.solicitacao)).map(limpo);
+      return { ok: true, instrumentos, cct: esc.cct ? esc.cct.solicitacao : '', aditivos: esc.aditivos.map(i => i.solicitacao), textos, buscadoEm: new Date().toISOString() };
+    } catch (e) { return { ok: false, motivo: 'erro', mensagem: String((e && e.message) || e).slice(0, 200) }; }
+    finally { if (tab) mediadorSoltarAba(); }
+  })().finally(() => { mediadorConvRodando = null; });
+  return mediadorConvRodando;
+}
 // O andamento da busca no Mediador para o Hub e a tela: só estados, contagens e motivos (nunca dado lido)
 async function mediadorPainel() {
   const { mediadorEnvio: e } = await chrome.storage.local.get('mediadorEnvio'), c = await mediadorCfg();
@@ -1859,6 +1974,8 @@ async function mediadorPainel() {
 }
 // A rodada semanal (dentro do envio completo): só com a permissão, com sindicatos e com mais de 7 dias desde a última busca
 async function mediadorSemanal() {
+  // 0.96.0: sem a varredura semanal de todos os sindicatos; a busca é por convenção acompanhada, pedida pelo Hub
+  if (MEDIADOR_SO_CONVENCAO) return null;
   const c = await mediadorCfg(), { mediadorEnvio } = await chrome.storage.local.get('mediadorEnvio');
   if (!OCM.semanalDevida(c, mediadorEnvio) || !(await mediadorPermitido())) return null;      // 0.95.1: depois de uma falha, só 24 h depois
   return mediadorBuscar('auto');

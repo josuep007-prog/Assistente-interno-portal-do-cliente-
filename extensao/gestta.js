@@ -280,7 +280,11 @@
     // 0.98.0: a lixeira da fila (mapeada em 12/11/2026): tira o documento só da lista de erros do portal. Só para os que não vão ao portal (cmd gesttaTirar).
     { acao: 'tirarDaLista', metodo: 'PATCH', re: /^\/es\/file\/onvio\/remove\/batch$/ },
     { acao: 'pasta', metodo: 'PATCH', re: /^\/admin\/company\/document\/integration\/documents\/batch$/ },
-    { acao: 'template', metodo: 'PUT', re: /^\/admin\/company\/document\/[0-9a-f]{24}$/i }
+    { acao: 'template', metodo: 'PUT', re: /^\/admin\/company\/document\/[0-9a-f]{24}$/i },
+    // 0.100.4 (Josué, 12/11/2026: "qualquer pasta destino que não esteja nessa empresa [9999] precisa ser excluída"; mapeado no mesmo dia,
+    // mapeamento/gestta-2026-11-04.md): tira a pasta de UM template; o id do endereço é o _id do template (não o da pasta) e não mexe nos
+    // outros templates da mesma pasta. Só pelo cmd gesttaTirarPasta, que só aceita template com a pasta fora da 9999.
+    { acao: 'tirarPasta', metodo: 'DELETE', re: /^\/admin\/company\/document\/integration\/documents\/[0-9a-f]{24}$/i }
   ];
   const REENVIO_MAX = 50, PASTA_ITENS_MAX = 10;
   const textoCurto = (v, n) => typeof v === 'string' && v.trim().length > 0 && v.length <= n;
@@ -306,6 +310,7 @@
     }
     const c = corpo && typeof corpo === 'object' && !Array.isArray(corpo) ? corpo : null;
     if (!c) return { ok: false, motivo: 'corpo inválido' };
+    if (e.acao === 'tirarPasta') return Object.keys(c).length === 0 ? { ok: true, acao: e.acao } : { ok: false, motivo: 'tirar a pasta: corpo vazio' };
     const ok = { ok: true, acao: e.acao };
     if (e.acao === 'pasta') {      // a pasta do portal num template: a mesma forma do "Selecionar pasta" da tela (nunca o DELETE)
       const lista = (v) => Array.isArray(v) && v.length >= 1 && v.length <= PASTA_ITENS_MAX && v.every(x => textoCurto(x, 200));
@@ -357,6 +362,11 @@
       return { id: 'pasta', acao: 'pasta', metodo: 'PATCH', url: url('/admin/company/document/integration/documents/batch'),
         corpo: { company_document_ids: [t], customer_id: String(pz.customer_id || ''), id: String(pz.id || ''), path: (pz.path || []).map(String), pathName: (pz.pathName || []).map(String) } };
     }
+    if (x.acao === 'tirarPasta') {
+      const t = String(x.template || '');
+      if (!ID24.test(t)) return { erro: 'template inválido' };
+      return { id: 'tirarPasta', acao: 'tirarPasta', metodo: 'DELETE', url: url('/admin/company/document/integration/documents/' + t), corpo: {} };
+    }
     if (x.acao === 'templateSalvar') {
       const t = String(x.template || '');
       if (!ID24.test(t)) return { erro: 'template inválido' };
@@ -405,7 +415,7 @@
         return { ok: false, status: r.status, erro: msg || ('erro ' + r.status) };
       }
       if (perm.acao === 'reenviar') { const d = dados && typeof dados === 'object' ? dados : {}; return { ok: true, status: r.status, acao: perm.acao, resumo: { success: Number(d.success) || 0, failed: Number(d.failed) || 0, blocked: Number(d.blocked) || 0 } }; }
-      if (perm.acao === 'pasta') return { ok: true, status: r.status, acao: perm.acao };
+      if (perm.acao === 'pasta' || perm.acao === 'tirarPasta') return { ok: true, status: r.status, acao: perm.acao };
       if (perm.acao === 'tirarDaLista') { const d = dados && typeof dados === 'object' ? dados : {}; return { ok: true, status: r.status, acao: perm.acao, resumo: { success: Number(d.success) || 0, failed: Number(d.failed) || 0 } }; }
       if (perm.acao === 'template') return { ok: true, status: r.status, acao: perm.acao, template: dados && typeof dados === 'object' ? escolher(dados, MOLDES.templateDoc) : null };
       const t = perm.acao === 'documento' ? dados && dados.customer_task : perm.acao === 'comentario' ? null : dados;
@@ -958,7 +968,8 @@
         prog('Alertas');
         try {
           const itens = []; let total, cortado = false;
-          for (let k = 0; k < 20; k++) { const d = await um(PEDIDOS.filaOnvioErro({ limit: 50, skip: k * 50 })); if (total == null) total = d.total; itens.push(...(d.itens || [])); if ((d.itens || []).length < 50) break; if (k === 19) cortado = true; }
+          for (let k = 0; k < 400; k++) { const d = await um(PEDIDOS.filaOnvioErro({ limit: 50, skip: itens.length })); if (d.total != null) total = d.total; const l = d.itens || []; itens.push(...l); if (!l.length || (total != null && itens.length >= total)) break; if (k === 399) cortado = true; }   // 0.100.1: anda pelo que veio (o Gestta pode devolver menos de 50 por página)
+          if (total != null && itens.length < total) cortado = true;
           const ok = itens.filter(x => x && !ehEscritorioProprio(x.customer_task && x.customer_task.customer && x.customer_task.customer.name));
           await entregar({ tipoDado: 'gestta-envios-onvio-erro', categoria: 'alertas', titulo: 'Gestta · Envios ao Onvio com erro', colunas: COLS_ENVIOS_HUB, totalNaOrigem: total }, ok.map(linhaEnvio), { cortado });
         } catch (e) { falhou('gestta-envios-onvio-erro', 'Gestta · Envios ao Onvio com erro', 'alertas', e); }
@@ -1041,33 +1052,53 @@
       ids: { usuario: (x.company_user && x.company_user._id) || '', cliente: (x.customer && x.customer._id) || c._id || '', tarefa: t._id || '', arquivo: f._id || '' } };
   }
   // envios: a fila com erro; templates: a lista de templates de documento (com a pasta). Devolve os três blocos da aba.
-  function enviosPortal(envios, templates) {
+  // 0.100.2 (Josué, 12/11/2026: "só deve ser enviado ao portal templates de tarefas que enviam documentos ao cliente"; na tarefa,
+  // "Notificar cliente via e-mail: Sim/Não" = notify_customer): notifica = { idDaTarefa: true|false } lido das tarefas da fila. Tarefa que
+  // não notifica o cliente: o documento não vai ao portal (sai da lista de erros, nunca é reenviado nem ganha pasta), qualquer que seja o erro.
+  // Tarefa que notifica e template sem pasta: deveria ir. Sem a leitura da tarefa, vale o padrão de antes (nome parecido com um que vai).
+  // 0.100.3 (Josué, 12/11/2026: "o único esquema de pasta válido é o já configurado da empresa 9999; qualquer pasta destino que não esteja
+  // nessa empresa precisa ser excluída e desvinculado todo documento que está pra ir pra ela"): modelo = o id do cliente 9999 no Gestta.
+  // Pasta montada a partir de outro cliente (documents_integration.customer_id) não vale: não serve de modelo para "Usar a pasta" e os
+  // documentos dela saem da lista de erros. Sem o modelo (9999 não achada), toda pasta vale, como antes, e a tela avisa.
+  const pastaForaDe = (t, modelo) => !!(modelo && pastaDe(t) && String((t.documents_integration || {}).customer_id || '') !== String(modelo));
+  function enviosPortal(envios, templates, notifica, modelo) {
     const tpl = (templates || []).filter(t => t && t._id), porId = new Map(tpl.map(t => [t._id, t]));
-    const comPasta = tpl.filter(t => pastaDe(t)), itens = (envios || []).filter(Boolean).map(itemEnvio);
+    const nt = notifica || {};
+    const comPasta = tpl.filter(t => pastaDe(t) && !pastaForaDe(t, modelo)), itens = (envios || []).filter(Boolean).map(itemEnvio);
+    itens.forEach(it => { it.notifica = typeof nt[it.tarefaId] === 'boolean' ? nt[it.tarefaId] : null; });
     const reenviar = [], porTemplate = new Map();
     for (const it of itens) {
-      const t = porId.get(it.templateId), pasta = pastaDe(t);
-      if (SEM_PASTA.test(it.erro) && !pasta) {
-        const k = it.templateId || 'n:' + it.template;
-        if (!porTemplate.has(k)) porTemplate.set(k, { templateId: it.templateId, template: it.template || 'Documento sem template', itens: [], clientes: new Set() });
+      const t = porId.get(it.templateId), fora = pastaForaDe(t, modelo), pasta = fora ? '' : pastaDe(t);
+      const naoNotifica = it.notifica === false;
+      if (naoNotifica || fora || (SEM_PASTA.test(it.erro) && !pasta)) {
+        const bal = fora ? 'fora' : naoNotifica ? 'nao' : it.notifica === true ? 'sim' : '?';
+        const k = (it.templateId || 'n:' + it.template) + '|' + bal;
+        if (!porTemplate.has(k)) porTemplate.set(k, { chave: k, templateId: it.templateId, template: it.template || 'Documento sem template', bal, temPasta: !!pastaDe(t), pasta: pastaDe(t), itens: [], clientes: new Set() });
         const g = porTemplate.get(k); g.itens.push(it); g.clientes.add(it.cnpj || it.cliente);
       } else reenviar.push(Object.assign(it, { pastaJa: SEM_PASTA.test(it.erro) && !!pasta, pasta }));
     }
     const semPasta = [...porTemplate.values()].map(g => {
-      const p = parecidoComPasta(g.template, comPasta);
-      return { templateId: g.templateId, template: g.template, itens: g.itens, nClientes: g.clientes.size, classe: p ? 'deve' : 'naoVai', parecido: p,
-        motivo: p ? `Parecido com “${p.nome}”, que vai para ${p.pasta}` : 'Nenhum template parecido vai ao portal' };
+      const p = g.bal === 'nao' || g.bal === 'fora' ? null : parecidoComPasta(g.template, comPasta);
+      const base = { chave: g.chave, templateId: g.templateId, template: g.template, itens: g.itens, nClientes: g.clientes.size, parecido: p, porTarefa: g.bal !== '?', fora: g.bal === 'fora', pasta: g.pasta };
+      if (g.bal === 'fora') return Object.assign(base, { classe: 'naoVai', motivo: `A pasta do template (${g.pasta}) não foi montada a partir da empresa 9999: tire a pasta no Gestta` });
+      if (g.bal === 'nao') return Object.assign(base, { classe: 'naoVai', motivo: 'A tarefa não notifica o cliente por e-mail' + (g.temPasta ? ` (o template tem a pasta ${g.pasta})` : '') });
+      if (g.bal === 'sim') return Object.assign(base, { classe: 'deve', motivo: 'A tarefa notifica o cliente por e-mail' + (p ? `; parecido com “${p.nome}”, que vai para ${p.pasta}` : '; nenhum template parecido tem pasta para copiar') });
+      return Object.assign(base, { classe: p ? 'deve' : 'naoVai', motivo: (p ? `Parecido com “${p.nome}”, que vai para ${p.pasta}` : 'Nenhum template parecido vai ao portal') + ' (não deu para ler a tarefa)' });
     }).sort((a, b) => (a.classe === b.classe ? 0 : a.classe === 'deve' ? -1 : 1) || b.itens.length - a.itens.length || a.template.localeCompare(b.template, 'pt-BR'));
     // o risco que ainda não deu erro: template sem pasta, parecido com um que tem pasta, sem documento parado agora
     const comErro = new Set(semPasta.map(g => g.templateId));
+    // todos os templates com a pasta fora da 9999 (com ou sem documento parado), para tirar a pasta no Gestta
+    const nPorTpl = new Map(); semPasta.forEach(g => nPorTpl.set(g.templateId, (nPorTpl.get(g.templateId) || 0) + g.itens.length));
+    const pastaFora = tpl.filter(t => pastaForaDe(t, modelo)).map(t => ({ templateId: t._id, template: t.name, pasta: pastaDe(t), docs: nPorTpl.get(t._id) || 0 }))
+      .sort((a, b) => b.docs - a.docs || String(a.template).localeCompare(String(b.template), 'pt-BR'));
     const risco = tpl.filter(t => !pastaDe(t) && !comErro.has(t._id) && t.valid !== false).map(t => ({ templateId: t._id, template: t.name, parecido: parecidoComPasta(t.name, comPasta) }))
       .filter(x => x.parecido).sort((a, b) => b.parecido.nota - a.parecido.nota || a.template.localeCompare(b.template, 'pt-BR'));
     reenviar.sort((a, b) => (a.pastaJa === b.pastaJa ? 0 : a.pastaJa ? -1 : 1) || String(a.erro).localeCompare(String(b.erro)) || String(b.atualizado).localeCompare(String(a.atualizado)));
-    return { reenviar, semPasta, risco, totais: { erros: itens.length, reenviar: reenviar.length, pastaJa: reenviar.filter(x => x.pastaJa).length, semPasta: semPasta.reduce((n, g) => n + g.itens.length, 0),
-      templatesSemPasta: semPasta.length, deve: semPasta.filter(g => g.classe === 'deve').length, risco: risco.length, templatesComPasta: comPasta.length } };
+    return { reenviar, semPasta, risco, pastaFora, modelo: modelo || null, totais: { pastaFora: pastaFora.length, erros: itens.length, reenviar: reenviar.length, pastaJa: reenviar.filter(x => x.pastaJa).length, semPasta: semPasta.reduce((n, g) => n + g.itens.length, 0),
+      templatesSemPasta: semPasta.length, naoVai: semPasta.filter(g => g.classe === 'naoVai').length, semNotificar: itens.filter(i => i.notifica === false).length, conferidas: itens.filter(i => i.notifica !== null).length, deve: semPasta.filter(g => g.classe === 'deve').length, risco: risco.length, templatesComPasta: comPasta.length } };
   }
 
-  g.OCG = { enviosPortal, semelhanca, parecidoComPasta, palavrasNome, ERROS_ENVIO, API, APP, PAUSA_MS, LIMITE_BUSCA, JANELA_MAX_DIAS, POST_LEITURA, RELATORIO_TIPOS, COLUNAS_RELATORIO, MOLDES, APPS,
+  g.OCG = { enviosPortal, pastaForaDe, urlTemplate: (id) => /^[0-9a-f]{24}$/i.test(String(id || '')) ? 'https://app.gestta.com.br/admin/#/sidebar/document/edit/' + id + '/details' : '', semelhanca, parecidoComPasta, palavrasNome, ERROS_ENVIO, API, APP, PAUSA_MS, LIMITE_BUSCA, JANELA_MAX_DIAS, POST_LEITURA, RELATORIO_TIPOS, COLUNAS_RELATORIO, MOLDES, APPS,
     caminhoDe, leituraPermitida, escritaPermitida, pedidoAcao, agirNaPagina, ARQ_MAX, appDe, escolher, limpar, limparRelatorio, perfil, expiraEm, janelaDoMes, PEDIDOS, lerNaPagina, linhasDoTeste,
     GRUPOS, TIPOS_TAREFA, SITUACOES_TAREFA, MAX_PAGINAS_TAREFAS, diasUteis, grupoTarefa, prazoTexto, contarGrupos, porEmpresa, porDia, filtrarTarefas, urlTarefa, ymd, diaLocal,
     COLUNAS_FECHAMENTO, linhasDoRelatorio, tarefasDoRelatorio, trilhaDaEmpresa, fechamento, ESTADOS, setorDe, respDe, ehEscritorioProprio,
