@@ -8,7 +8,7 @@ As novidades de cada versão, da mais nova para a mais antiga, como estavam no `
 - **Situação no Gestta** (Filtros): **Aberta · Impedimento · Concluída · Desconsiderada**. Escolhida uma ou mais, a lista mostra só essas (inclusive as concluídas). As desconsideradas (e as ignoradas) só são lidas quando a pessoa pede essa situação; não entram no progresso nem nas contas, e não têm ação pela extensão.
 - **Concluir marca as etapas antes**, na tarefa e em lote: cada etapa (checkbox) que falta é marcada no Gestta e só depois a tarefa é concluída; se uma etapa falhar, a tarefa não é concluída. A confirmação diz quais etapas serão marcadas.
 - **Desconsiderar os itens sem anexo ao concluir** foi pedido e espera o mapeamento (roteiro `mapeamento/prompt-claude-chrome-desconsiderar-item-gestta.txt`): a confirmação avisa quantos itens sem anexo ficam como estão.
-- **Empresa com o final do CNPJ** em todas as telas ("Cliente Alfa · 0001-90", separa matriz e filiais) e, no detalhe da tarefa, o **CNPJ inteiro** com o botão de copiar. Vem da lista de clientes do Gestta (na memória por 6 horas); sem acesso a ela, fica só o nome.
+- **Empresa com o final do CNPJ** em todas as telas ("Cliente Alfa · 0001-90", separa matriz e filiais) e, no detalhe da tarefa, o **CNPJ inteiro** com o botão de copiar. No detalhe, o CNPJ vem da própria tarefa (Josué: "ele já tem dentro da própria tarefa do Gestta"): o detalhe e, se faltar, o cliente da tarefa (`GET admin/customer/{id}`, o mesmo das informações da tarefa). Na lista, a lista de clientes numa leitura só (na memória por 6 horas); sem acesso a ela, cliente a cliente.
 
 ## Novidades da v0.102.0 (12/11/2026): soltar documentos para o Express
 
