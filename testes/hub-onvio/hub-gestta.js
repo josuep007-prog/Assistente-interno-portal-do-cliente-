@@ -254,9 +254,12 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     assert.equal(ruis[0].setor, 'contabil'); assert.equal(ruis[0].cargo, 'Analista');
     const fr3 = await page.evaluate(() => window.__db.listar('empresaSetores').find(x => /_contabil$/.test(x.__id || '') || x.analistaNome === 'Rui Teixeira'));
     assert.ok(fr3 && fr3.analistaNome === 'Rui Teixeira' && fr3.analistaId, 'a frente aponta para a pessoa nova');
-    await page.waitForFunction(() => window.__db.listar('gt_hist').flatMap(d => Array.isArray(d.itens) ? d.itens : [d]).length === 4, null, { timeout: 5000 });
-    const hist = await page.evaluate(() => window.__db.listar('gt_hist').flatMap(d => Array.isArray(d.itens) ? d.itens : [d]));
+    // 4 diferenças aplicadas e, desde o Hub 349, a pessoa incluída na equipe do Portal (aparece na aba Automático)
+    await page.waitForFunction(() => window.__db.listar('gt_hist').flatMap(d => Array.isArray(d.itens) ? d.itens : [d]).length === 5, null, { timeout: 5000 });
+    const hist0 = await page.evaluate(() => window.__db.listar('gt_hist').flatMap(d => Array.isArray(d.itens) ? d.itens : [d]));
     assert.ok(window_docs_ok(await page.evaluate(() => window.__db.listar('gt_hist'))), 'histórico num documento por mês e pessoa, não um por aplicação');
+    assert.deepEqual(hist0.filter(h => h.campo === 'equipe').map(h => [h.mod, h.depois, h.auto]), [['portal', 'Rui Teixeira · Contábil', false]]);
+    const hist = hist0.filter(h => h.campo !== 'equipe');
     assert.equal(hist.length, 4); assert.ok(hist.every(h => !h.auto && h.cnpj === '11111111000101'));
     const d = await difs();
     assert.ok(!d.some(x => x[0] === 'dp' && x[2] === 'responsavel' && x[1] === '11'), 'a diferença aplicada some');
@@ -775,6 +778,80 @@ async function passo(nome, fn) { if (process.env.SO && !nome.startsWith(process.
     assert.ok(await page.evaluate(() => !!window.__db.ler('empresaSetores/p-sm_fiscal')), 'a frente da filial passou para a matriz');
     assert.equal(await page.evaluate(() => window.__db.existe('empresaSetores/p-sf_fiscal')), false);
     assert.ok(!(await page.evaluate(() => window.__db.ler('empresas/p-sd').matrizId)), 'a desvinculada de propósito não é juntada');
+    // Hub 349: a filial juntada sozinha fica no histórico (aparece na aba Automático do Portal)
+    await page.waitForFunction(() => window.__db.listar('gt_hist').flatMap(d => d.itens || []).some(x => x.mod === 'portal' && x.campo === 'filial' && x.auto && x.depois === 'SIGMA LTDA' && /SIGMA LTDA FILIAL/.test(x.antes)), null, { timeout: 10000 });
+  });
+
+  await passo('Hub 349: a aba Automático do Portal mostra o que mudou sozinho (por tipo, por dia e por empresa), esconde o aplicado à mão até pedir, marca o novo e leva à empresa', async () => {
+    const agora = Date.now(), iso = (ms) => new Date(ms).toISOString();
+    // dois registros a mais (fictícios): um aplicado à mão na Entrada de dados e um automático de 40 dias atrás
+    await semear('gt_hist/hteste~x~0', { mes: iso(agora).slice(0, 7), por: 'u-teste', itens: [
+      { em: iso(agora - 3600e3), por: 'u-teste', porNome: 'Coordenação Teste', mod: 'portal', cnpj: C.delta, empresa: 'DELTA MEI', campo: 'analista-contabil', acao: 'corrigir', rot: 'Analista · Contábil', antes: 'Ana Velha', depois: 'Paula Nunes', auto: false },
+      { em: iso(agora - 40 * 864e5), por: 'u-teste', porNome: 'Coordenação Teste', mod: 'portal', cnpj: '77777777000177', empresa: 'VELHA AUTOMATICA LTDA', campo: 'demanda-pessoal', acao: 'corrigir', rot: 'Demanda · Pessoal', antes: 'com demanda', depois: 'sem demanda', auto: true }] });
+    await page.evaluate(() => window.__hubApi.abrirModulo('portal'));
+    let fp = null; for (let i = 0; i < 60 && !fp; i++) { fp = page.frames().find(x => /portal\.html/.test(x.url())) || null; if (!fp) await page.waitForTimeout(250); }
+    await fp.evaluate(() => { try { localStorage.removeItem('portal-auto-visto-v1'); } catch (e) {} });
+    await fp.click('#navAuto');
+    await fp.waitForSelector('#auLista .au-item', { timeout: 15000 });
+    // a aba nova fica dentro da barra escura (não escorrega para uma segunda linha por cima da página)
+    assert.ok(await fp.evaluate(() => { const b = document.querySelector('#navAuto').getBoundingClientRect(), m = document.querySelector('.masthead').getBoundingClientRect(); return b.top >= m.top && b.bottom <= m.bottom; }), 'a aba Automático cabe na barra do topo');
+    // o número de novidades na aba e os cartões por tipo
+    await fp.waitForFunction(() => { const n = document.querySelector('#autoNavN'); return n && !n.hidden && Number(n.textContent) > 0; }, null, { timeout: 10000 });
+    const conta = (t) => fp.evaluate((k) => Number(document.querySelector('.au-tipo[data-tipo="' + k + '"] b').textContent), t);
+    assert.ok(await conta('empresa') >= 2, 'empresas novas (GAMA e OMEGA)');
+    assert.ok(await conta('filial') >= 1 && await conta('dem-off') >= 1 && await conta('dem-on') >= 1, 'filial, demanda desligada e ligada');
+    let txt = await fp.textContent('#auLista');
+    assert.match(txt, /GAMA INDUSTRIA LTDA.*Entrou no Portal/s);
+    assert.match(txt, /Deixou de ter demanda no Pessoal/);
+    assert.match(txt, /SIGMA LTDA FILIAL.*foi juntada a esta matriz/s);
+    assert.match(txt, /sozinho/);
+    assert.ok(!/Ana Velha/.test(txt), 'o aplicado à mão fica de fora de fábrica');
+    assert.ok(!/VELHA AUTOMATICA/.test(txt), '7 dias de fábrica');
+    // o aplicado à mão aparece quando se pede, com quem aplicou
+    await fp.check('#auManual');
+    txt = await fp.textContent('#auLista');
+    assert.match(txt, /DELTA MEI.*Analista do Contábil: Ana Velha → Paula Nunes.*por Coordenação Teste/s);
+    await fp.uncheck('#auManual');
+    // período: 30 dias ainda não pega o de 40 dias; Tudo pega
+    await fp.click('[data-action="auto-periodo"][data-p="30"]');
+    assert.ok(!/VELHA AUTOMATICA/.test(await fp.textContent('#auLista')));
+    await fp.click('[data-action="auto-periodo"][data-p="tudo"]');
+    assert.match(await fp.textContent('#auLista'), /VELHA AUTOMATICA LTDA/);
+    assert.ok(await fp.$('.au-item .au-emp-fora'), 'empresa que não está no Portal aparece sem link');
+    await fp.click('[data-action="auto-periodo"][data-p="7"]');
+    // filtrar por tipo (o cartão) e voltar
+    await fp.click('.au-tipo[data-tipo="filial"]');
+    assert.deepEqual(await fp.evaluate(() => [...new Set([...document.querySelectorAll('#auLista .au-item')].map(li => [...li.classList].find(c => /^au-t-/.test(c))))]), ['au-t-filial']);
+    await fp.click('.au-tipo[data-tipo="filial"]');
+    // por empresa e a busca
+    await fp.click('[data-action="auto-agrupar"][data-g="empresa"]');
+    assert.ok((await fp.$$eval('#auLista .au-grupo h4', hs => hs.map(h => h.textContent))).some(t => /SIGMA LTDA/.test(t)), 'grupo da matriz');
+    await fp.fill('#auBusca', 'omega');
+    await fp.waitForFunction(() => { const its = [...document.querySelectorAll('#auLista .au-grupo h4')]; return its.length && its.every(h => /OMEGA/i.test(h.textContent)); }, null, { timeout: 5000 });
+    await fp.fill('#auBusca', '');
+    await fp.click('[data-action="auto-agrupar"][data-g="dia"]');
+    // o gráfico: clicar no dia de hoje filtra e mostra a etiqueta
+    await fp.click('#auGrafico .au-bar.hoje');
+    await fp.waitForSelector('.au-chip[data-campo="dia"]');
+    assert.match(await fp.textContent('.au-chip[data-campo="dia"]'), /Hoje/);
+    await fp.click('.au-chip[data-campo="dia"]');
+    // capturas (claro e escuro, larga e de celular)
+    if (CAP) { await page.screenshot({ path: path.join(CAP, 'hub349-automatico-claro.png') });
+      await fp.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark')); await page.waitForTimeout(500); await page.screenshot({ path: path.join(CAP, 'hub349-automatico-escuro.png') }); }
+    // sem rolagem horizontal na tela estreita, nos dois temas
+    const vp = page.viewportSize(); await page.setViewportSize({ width: 390, height: 844 }); await page.waitForTimeout(500);
+    for (const tema of ['dark', 'light']) { await fp.evaluate((t) => document.documentElement.setAttribute('data-theme', t), tema); await page.waitForTimeout(200);
+      assert.ok(await fp.evaluate(() => document.documentElement.scrollWidth - window.innerWidth <= 2), 'sem rolagem horizontal (' + tema + ')'); }
+    if (CAP) await page.screenshot({ path: path.join(CAP, 'hub349-automatico-celular.png') });
+    await page.setViewportSize(vp);
+    // a empresa abre na Consulta
+    await fp.click('#auLista .au-emp[data-action="auto-empresa"]');
+    await fp.waitForFunction(() => !document.querySelector('#view-progresso').hidden && document.querySelector('.erow.flash, .erow'), null, { timeout: 5000 });
+    // marcar como visto zera o número da aba e o destaque
+    await fp.click('#navAuto');
+    await fp.click('[data-action="auto-visto"]');
+    await fp.waitForFunction(() => document.querySelector('#autoNavN').hidden && !document.querySelector('#auLista .au-novo'), null, { timeout: 5000 });
+    assert.match(await fp.textContent('#auTopo'), /Você está em dia/);
   });
 
   await passo('Hub 334: empresa nova no DP pelo Gestta não é cadastrada de novo se outro navegador já a gravou (pelo Onvio, onv-<CNPJ>)', async () => {
