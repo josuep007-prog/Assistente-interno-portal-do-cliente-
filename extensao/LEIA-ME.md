@@ -47,6 +47,8 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 
 ## Novidades da v0.96.0 (12/11/2026): a convenção acompanhada (Hub 351)
 
+- **Hub 352 (12/11/2026):** "sindicatos não devem ser registrados nem acompanhados, apenas convenções". Convenções perdeu a aba Sindicatos e o bloco do Mediador por sindicato; a agenda não tem mais eventos por sindicato; a empresa mostra a convenção vinculada (ou "Sem convenção"). A extensão não muda.
+
 - Pedido do Josué: "o analista cadastra o CNPJ da convenção e vincula quais empresas seguem aquela convenção; clica num botão para o buscador trazer os dados mais recentes e salva no módulo; a partir disso o módulo controla os prazos e busca sozinho a partir da data-base até achar a nova; se quiser, manda buscar fora de época"; "a extensão deve buscar a convenção específica e não sindicatos isolados".
 - **A busca é por convenção:** o Hub pede à extensão uma convenção (o par **sindicato laboral × sindicato patronal**, os dois CNPJs obrigatórios). A extensão busca no Mediador pelo CNPJ laboral, fica só com os instrumentos em que o patronal também é parte, e devolve a convenção mais recente do par e os aditivos dela, com o texto. Nada disso fica na extensão: quem guarda é o Hub.
 - **Sem a varredura de todos os sindicatos:** a busca semanal de todos os sindicatos do cadastro parou (e, no Hub, o cadastro sozinho do Hub 350 também).

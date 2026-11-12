@@ -162,6 +162,13 @@ async function passo(nome, fn) { try { await fn(); console.log('ok   ' + nome); 
     await page.waitForFunction(() => !((window.__db.ler('dp_config/cvAcomp') || {}).itens || []).length);
     assert.equal((await conv()).length, 4);
   });
+  await passo('Hub 352: sem aba Sindicatos nem busca por sindicato; só convenções são cadastradas e acompanhadas', async () => {
+    const abas = await page.$$eval('#cv-abas [data-cv-aba-mod]', bs => bs.map(b => b.dataset.cvAbaMod));
+    assert.ok(!abas.includes('sindicatos'), abas.join());
+    await page.click('#cv-abas [data-cv-aba-mod="novidades"]');
+    assert.ok(await page.$eval('#cv-med', el => el.hidden), 'o bloco do Mediador por sindicato não aparece');
+    assert.doesNotMatch(await page.textContent('#cv-nova'), /Entraram sozinhas/);
+  });
   await passo('sem erros de página', async () => { assert.deepEqual(erros, []); });
   await browser.close(); servidor.close();
   console.log(falhas ? 'FALHARAM: ' + falhas : 'tudo ok');
