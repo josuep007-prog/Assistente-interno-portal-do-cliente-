@@ -1,4 +1,4 @@
-# Control Onvio · ControlTax (v0.92.0)
+# Control Onvio · ControlTax (v0.96.0)
 
 Página de trabalho que fica **por cima do Onvio**, em tela cheia: filas, dashboards em tempo real, alertas e lembretes para analistas e gestores. O Onvio continua aberto por trás e mantém a sessão; é por ele que a extensão lê. Desde a v0.14.0 a extensão também **responde, encaminha, anexa e define responsável** no Onvio e, desde a v0.17.0, **cria solicitações Geral** para o cliente, sempre com confirmação e só nas listas já mapeadas; nunca exclui nada.
 
@@ -44,6 +44,14 @@ Leitura das situações: em Geral, Férias, Rescisão e Afastamento, **Aguardand
 ## O que falta mapear no Onvio (roteiro de 22/10/2026)
 
 `mapeamento/prompt-pendencias-onvio.md` reúne, num roteiro só (empresa de teste, só leitura do formato), o que as próximas melhorias precisam confirmar no Onvio real: tipo de afastamento (acidente de trabalho) e se vem na lista; aviso trabalhado × indenizado; ids dos departamentos DP, Fiscal e Contábil e se a lista Geral mistura departamentos (causa provável de outros setores verem demandas do DP); situação "Em análise" nas férias; download de anexos; valores da criação; anexo e expectativa na folha; e três leituras. Cole no Claude com o Chrome e devolva o relatório.
+
+## Novidades da v0.96.0 (12/11/2026): a convenção acompanhada (Hub 351)
+
+- Pedido do Josué: "o analista cadastra o CNPJ da convenção e vincula quais empresas seguem aquela convenção; clica num botão para o buscador trazer os dados mais recentes e salva no módulo; a partir disso o módulo controla os prazos e busca sozinho a partir da data-base até achar a nova; se quiser, manda buscar fora de época"; "a extensão deve buscar a convenção específica e não sindicatos isolados".
+- **A busca é por convenção:** o Hub pede à extensão uma convenção (o par **sindicato laboral × sindicato patronal**, os dois CNPJs obrigatórios). A extensão busca no Mediador pelo CNPJ laboral, fica só com os instrumentos em que o patronal também é parte, e devolve a convenção mais recente do par e os aditivos dela, com o texto. Nada disso fica na extensão: quem guarda é o Hub.
+- **Sem a varredura de todos os sindicatos:** a busca semanal de todos os sindicatos do cadastro parou (e, no Hub, o cadastro sozinho do Hub 350 também).
+- **No Hub (351), aba Acompanhar em Convenções:** Nova convenção (os dois CNPJs e as empresas que seguem ela) → busca no Mediador e salva no módulo; daí as empresas ligadas passam a ter a convenção (o vínculo é direto, começando do zero: o código do sindicato do estabelecimento não liga mais a empresa à convenção). Da data-base em diante, a busca é **diária** até achar a nova, que **espera o analista** clicar em Salvar no módulo (ou Ignorar). "Buscar no Mediador" vale a qualquer hora e salva na hora.
+- **A conferir no Mediador real:** a busca pelo CNPJ laboral traz as convenções com o patronal certo nas colunas de CNPJ do trabalhador e do empregador.
 
 ## Novidades da v0.95.1 (11/11/2026): o Mediador não insiste depois de uma falha
 

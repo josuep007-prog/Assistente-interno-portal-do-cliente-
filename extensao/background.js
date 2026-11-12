@@ -1166,6 +1166,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         else if (msg.acao === 'mediador') { if (mediadorRodando || envioRodando) reply({ ok: true, jaRodando: true }); else if (!(await mediadorPermitido())) reply({ ok: false, motivo: 'sem-permissao-mediador' }); else if (!mediadorLimparCnpjs(msg.cnpjs).length) reply({ ok: false, motivo: 'sem-sindicatos' }); else { mediadorBuscar('hub', msg.cnpjs).catch(() => {}); reply({ ok: true, iniciado: true }); } }
         else if (msg.acao === 'mediadorCnpjs') reply({ ok: true, sindicatos: (await mediadorGuardarCnpjs(msg.cnpjs)).length, mediador: await mediadorPainel() });
         else if (msg.acao === 'mediadorTexto') reply(await mediadorTexto(msg.solicitacao));
+        else if (msg.acao === 'mediadorConvencao') reply(await mediadorConvencao(msg.laboral, msg.patronal));
         else if (msg.acao === 'mediadorAnexo') reply(await mediadorAnexo(msg.url));
         else reply({ ok: true, envio: await hubPainelAtual() });
       }
@@ -1619,6 +1620,7 @@ async function gesttaHubSincronizar(manual, so) {
 const MEDIADOR_ORIGENS = ['https://mediador.trabalho.gov.br/*', 'https://www3.mte.gov.br/*', 'http://www3.mte.gov.br/*'];
 const MEDIADOR_PAUSA = 3000, MEDIADOR_MAX_CNPJS = 100;
 let mediadorRodando = null, mediadorAbaPropria = null, mediadorFecharTimer = null;
+const MEDIADOR_SO_CONVENCAO = true;          // 0.96.0: a busca é por convenção (pedido mediadorConvencao do Hub), não mais por todos os sindicatos
 async function mediadorPermitido() { try { return await chrome.permissions.contains({ origins: MEDIADOR_ORIGENS }); } catch (e) { return false; } }
 async function mediadorCfg() { const { mediadorCfg } = await chrome.storage.local.get('mediadorCfg'); return Object.assign({ cnpjs: [], em: '', ultimaBusca: '' }, mediadorCfg || {}); }
 const mediadorLimparCnpjs = l => [...new Set((Array.isArray(l) ? l : []).map(OCM.soDig).filter(OCM.cnpjValido))].slice(0, MEDIADOR_MAX_CNPJS);
@@ -1761,6 +1763,44 @@ async function mediadorBuscar(origem, cnpjsPedidos) {
   })().finally(() => { mediadorRodando = null; });
   return mediadorRodando;
 }
+// 0.96.0 (Josué, 12/11/2026: "a extensão deve buscar a convenção específica e não sindicatos isolados"): uma convenção acompanhada no Hub
+// (o par laboral × patronal), pedida pelo Hub (pedido mediadorConvencao: pelo botão da convenção ou pela busca diária depois da data-base).
+// Busca pelo CNPJ laboral (convenções e aditivos), fica só com o par e lê o texto da mais recente e dos aditivos dela. Devolve tudo na
+// resposta ao Hub, que é quem guarda; a extensão não guarda nada disso.
+let mediadorConvRodando = null;
+async function mediadorConvencao(laboral, patronal) {
+  const L = OCM.soDig(laboral), P = OCM.soDig(patronal);
+  if (!OCM.cnpjValido(L) || !OCM.cnpjValido(P) || L === P) return { ok: false, motivo: 'cnpj', mensagem: 'Os dois CNPJs (laboral e patronal) são obrigatórios e diferentes.' };
+  if (!(await mediadorPermitido())) return { ok: false, motivo: 'sem-permissao-mediador' };
+  if (mediadorRodando || mediadorConvRodando) return { ok: false, motivo: 'ocupado', jaRodando: true };
+  mediadorConvRodando = (async () => {
+    let tab = null;
+    try {
+      tab = await mediadorAba(true);
+      if (!tab) return { ok: false, motivo: 'sem-aba-mediador' };
+      const itens = [];
+      for (const tipo of Object.keys(OCM.TIPOS)) {
+        const r = await mediadorBuscarUm(tab, L, tipo);
+        if (!r || !r.ok) return { ok: false, motivo: (r && r.motivo) || 'erro', mensagem: String((r && r.erro) || '').slice(0, 200) };      // falha visível, nunca "não achou" em silêncio
+        itens.push(...r.itens);
+        await dormir(MEDIADOR_PAUSA);
+      }
+      const par = OCM.doPar(itens, L, P), esc = OCM.escolherDaConvencao(par), textos = [];
+      for (const i of [esc.cct, ...esc.aditivos].filter(Boolean)) {
+        const t = await mediadorTexto(i.solicitacao, tab);
+        if (t && t.ok) textos.push({ solicitacao: i.solicitacao, registro: i.registro, dataBase: t.dataBase || '', anexos: t.anexos || [], clausulas: (t.clausulas || []).slice(0, 400) });
+        else return { ok: false, motivo: 'texto', mensagem: 'não consegui ler o texto de ' + i.registro + ' (' + String((t && (t.erro || t.motivo)) || 'erro').slice(0, 80) + ')' };
+        await dormir(1500);
+      }
+      const limpo = (i) => ({ registro: i.registro, processo: i.processo, solicitacao: i.solicitacao, tipo: i.tipo, aditivo: OCM.ehAditivo(i), vigIni: i.vigIni, vigFim: i.vigFim,
+        cnpjTrab: OCM.soDig(i.cnpjTrab).slice(0, 14), trabalhador: String(i.trabalhador || '').slice(0, 200), cnpjEmp: OCM.soDig(i.cnpjEmp).slice(0, 14), empregador: String(i.empregador || '').slice(0, 200) });
+      const vistos = new Set(), instrumentos = par.filter(i => !vistos.has(i.solicitacao) && vistos.add(i.solicitacao)).map(limpo);
+      return { ok: true, instrumentos, cct: esc.cct ? esc.cct.solicitacao : '', aditivos: esc.aditivos.map(i => i.solicitacao), textos, buscadoEm: new Date().toISOString() };
+    } catch (e) { return { ok: false, motivo: 'erro', mensagem: String((e && e.message) || e).slice(0, 200) }; }
+    finally { if (tab) mediadorSoltarAba(); }
+  })().finally(() => { mediadorConvRodando = null; });
+  return mediadorConvRodando;
+}
 // O andamento da busca no Mediador para o Hub e a tela: só estados, contagens e motivos (nunca dado lido)
 async function mediadorPainel() {
   const { mediadorEnvio: e } = await chrome.storage.local.get('mediadorEnvio'), c = await mediadorCfg();
@@ -1770,6 +1810,8 @@ async function mediadorPainel() {
 }
 // A rodada semanal (dentro do envio completo): só com a permissão, com sindicatos e com mais de 7 dias desde a última busca
 async function mediadorSemanal() {
+  // 0.96.0: sem a varredura semanal de todos os sindicatos; a busca é por convenção acompanhada, pedida pelo Hub
+  if (MEDIADOR_SO_CONVENCAO) return null;
   const c = await mediadorCfg(), { mediadorEnvio } = await chrome.storage.local.get('mediadorEnvio');
   if (!OCM.semanalDevida(c, mediadorEnvio) || !(await mediadorPermitido())) return null;      // 0.95.1: depois de uma falha, só 24 h depois
   return mediadorBuscar('auto');

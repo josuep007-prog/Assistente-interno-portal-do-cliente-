@@ -150,6 +150,23 @@
     return [...out];
   }
 
+  // ---- 0.96.0 (Josué, 12/11/2026: "a extensão deve buscar a convenção específica e não sindicatos isolados"): uma convenção = o par
+  // sindicato laboral × sindicato patronal. A busca é pelo CNPJ laboral e ficam só os instrumentos em que o patronal também é parte. ----
+  const cnpjsDe = (v) => (String(v || '').replace(/[.\/-]/g, '').match(/\d{14}/g) || []);
+  function doPar(itens, laboral, patronal) {
+    const L = soDig(laboral), P = soDig(patronal);
+    return (itens || []).filter(i => { const t = cnpjsDe(i.cnpjTrab), e = cnpjsDe(i.cnpjEmp), todos = t.concat(e);
+      return (t.includes(L) && e.includes(P)) || (todos.includes(L) && todos.includes(P)); });
+  }
+  // a convenção mais recente do par (pela vigência) e os aditivos dela
+  function escolherDaConvencao(itens) {
+    const ccts = (itens || []).filter(i => !ehAditivo(i) && i.vigIni).sort((a, b) => b.vigIni.localeCompare(a.vigIni));
+    const cct = ccts[0];
+    if (!cct) return { cct: null, aditivos: [] };
+    const aditivos = itens.filter(i => ehAditivo(i) && i.vigIni && i.vigIni >= cct.vigIni && (!cct.vigFim || i.vigIni <= cct.vigFim)).sort((a, b) => a.vigIni.localeCompare(b.vigIni));
+    return { cct, aditivos };
+  }
+
   // ---- o que vai ao Hub (fonte "mediador") ----
   const COLS_INSTRUMENTOS = ['CNPJ consultado', 'Busca', 'Nº do Registro', 'Nº do Processo', 'Nº da Solicitação', 'Tipo', 'Vigência início', 'Vigência fim', 'CNPJ Trabalhador', 'Trabalhador', 'CNPJ Empregador', 'Empregador'];
   const COLS_CLAUSULAS = ['Nº da Solicitação', 'Nº do Registro', 'Ordem', 'Grupo', 'Subgrupo', 'Título', 'Texto', 'Data-base', 'Anexos'];
@@ -230,7 +247,7 @@
   }
 
   const OCM = { HOST, URL_CONSULTA, URL_EXPORTAR, TIPOS, SOL, solParam, urlTexto, leituraPermitida, textoDe, tabelasDe, lerExportacao, lerTexto, dataBaseDe,
-    escolherTextos, ehAditivo, semanalDevida, COLS_INSTRUMENTOS, COLS_CLAUSULAS, linhasInstrumentos, linhasClausulas, buscarNaPagina, textoNaPagina, anexoNaPagina, soDig, cnpjValido };
+    escolherTextos, ehAditivo, semanalDevida, doPar, escolherDaConvencao, COLS_INSTRUMENTOS, COLS_CLAUSULAS, linhasInstrumentos, linhasClausulas, buscarNaPagina, textoNaPagina, anexoNaPagina, soDig, cnpjValido };
   g.OCM = OCM;
   if (typeof module !== 'undefined' && module.exports) module.exports = OCM;
 })(typeof self !== 'undefined' ? self : globalThis);

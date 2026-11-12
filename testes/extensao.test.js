@@ -4392,3 +4392,32 @@ test('Mediador (0.95.1): a rodada semanal espera a semana e, depois de uma busca
   assert.equal(OCM.semanalDevida(cfg, { estado: 'buscando', pulso: agora - 60e3 }, agora), false, 'já buscando');
   assert.equal(OCM.semanalDevida(cfg, { estado: 'parcial', iniciouEm: h(6) }, agora), true, 'parcial não segura (a última busca completa vale)');
 });
+
+/* ---------- Mediador (0.96.0): a convenção específica, pelo par laboral × patronal ---------- */
+test('Mediador (0.96.0): a busca da convenção fica só com o par laboral × patronal e escolhe a mais recente com os aditivos dela', () => {
+  const M = require(path.join(__dirname, '..', 'extensao', 'mediador.js'));
+  const L = '11222333000181', P = '11444777000161', X = '22333444000172';
+  const i = (sol, tipo, ini, fim, trab, emp) => ({ solicitacao: sol, registro: 'R' + sol, tipo, vigIni: ini, vigFim: fim, cnpjTrab: trab, cnpjEmp: emp, busca: /aditivo/i.test(tipo) ? 'termoAditivoConvecao' : 'convencao' });
+  const itens = [
+    i('MR1/2024', 'Convenção Coletiva', '2024-05-01', '2025-04-30', '11.222.333/0001-81', '11.444.777/0001-61'),
+    i('MR2/2025', 'Convenção Coletiva', '2025-05-01', '2026-04-30', '11.222.333/0001-81', '11.444.777/0001-61'),
+    i('MR3/2025', 'Termo Aditivo de Convenção Coletiva', '2025-08-01', '2026-04-30', '11.222.333/0001-81', '11.444.777/0001-61'),
+    i('MR4/2026', 'Convenção Coletiva', '2026-05-01', '2027-04-30', '11.222.333/0001-81', '22.333.444/0001-72'),      // outro patronal
+    i('MR5/2024', 'Termo Aditivo de Convenção Coletiva', '2024-08-01', '2025-04-30', '11.222.333/0001-81', '11.444.777/0001-61')];
+  const par = M.doPar(itens, L, P);
+  assert.deepEqual(par.map(x => x.solicitacao), ['MR1/2024', 'MR2/2025', 'MR3/2025', 'MR5/2024'], 'a convenção de outro patronal fica de fora');
+  const esc = M.escolherDaConvencao(par);
+  assert.equal(esc.cct.solicitacao, 'MR2/2025', 'a mais recente do par');
+  assert.deepEqual(esc.aditivos.map(x => x.solicitacao), ['MR3/2025'], 'só os aditivos da mais recente');
+  assert.deepEqual(M.doPar(itens, L, X).map(x => x.solicitacao), ['MR4/2026']);
+  assert.equal(M.escolherDaConvencao([]).cct, null, 'nada do par: nenhuma');
+  // o par também vale com o patronal no campo do trabalhador (instrumentos com as partes invertidas)
+  assert.equal(M.doPar([i('MR9/2026', 'Convenção Coletiva', '2026-01-01', '2026-12-31', '11.444.777/0001-61', '11.222.333/0001-81')], L, P).length, 1);
+});
+test('Mediador (0.96.0): sem a varredura semanal de todos os sindicatos; a busca é pedida pelo Hub, por convenção', () => {
+  const bg = fs.readFileSync(path.join(__dirname, '..', 'extensao', 'background.js'), 'utf8');
+  assert.match(bg, /const MEDIADOR_SO_CONVENCAO = true/);
+  assert.match(bg, /if \(MEDIADOR_SO_CONVENCAO\) return null;/, 'a semanal não roda');
+  assert.match(bg, /msg\.acao === 'mediadorConvencao'\) reply\(await mediadorConvencao\(msg\.laboral, msg\.patronal\)\)/);
+  assert.match(bg, /OCM\.doPar\(itens, L, P\)/);
+});
