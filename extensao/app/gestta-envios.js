@@ -4,13 +4,16 @@
    1) Para reenviar: erro de envio de verdade, ou "sem pasta" de um template que já ganhou pasta;
    2) Sem pasta, por template: se deveria ir ao portal sai do padrão já configurado no Gestta (template parecido com um que tem pasta);
    3) Risco: templates sem pasta parecidos com os que vão ao portal, mesmo sem documento parado agora.
-   Nada fica guardado. Reenviar e configurar a pasta pela extensão esperam o mapeamento dessas ações (por enquanto abrem o Gestta). */
-import { $, esc, num, plural, simples } from './util.js';
+   Nada fica guardado.
+   0.97.0 (aprovado pelo Josué em 12/11/2026, mapeado no mesmo dia): Reenviar (um ou o grupo, de 50 em 50) e "Usar a pasta de" um template
+   parecido, sempre com a confirmação aqui antes de gravar. Reenviar só os que têm pasta: num "sem pasta" o Gestta diz que reenviou, mas o
+   documento continua com erro (visto no mapeamento). */
+import { $, esc, num, plural, simples, toast } from './util.js';
 
 const G = window.OCG;
 const URL_STATUS = 'https://app.gestta.com.br/dominio-integration/#/error-status';
 const URL_TEMPLATES = 'https://app.gestta.com.br/admin/#/sidebar/document/list';
-const S = { dados: null, analise: null, carregando: false, erro: null, filtro: '', q: '', abertos: new Set() };
+const S = { dados: null, analise: null, carregando: false, erro: null, filtro: '', q: '', abertos: new Set(), conf: null, agindo: false };
 let enviarFn = null, aoMudar = () => {};
 
 export function estadoEnvios() { return S; }
@@ -36,9 +39,39 @@ function linhaEnvio(x) {
     '<td>' + esc(nome(x.template) || '—') + (x.arquivo ? '<small title="' + esc(x.arquivo) + '">' + esc(x.arquivo) + '</small>' : '') + '</td>' +
     '<td>' + (x.tarefaId ? '<button type="button" class="gte-link" data-abrir="' + esc(x.tarefaId) + '">' + esc(nome(x.tarefa)) + '</button>' : esc(nome(x.tarefa) || '—')) + '<small>' + esc([x.setor, comp(x.competencia) && 'competência ' + comp(x.competencia), x.responsavel].filter(Boolean).join(' · ')) + '</small></td>' +
     '<td>' + (x.pastaJa ? '<span class="gte-tag gte-ok">' + ic('check') + 'Pasta já configurada</span><small>vai para ' + esc(x.pasta) + '</small>' : '<span class="gte-tag gte-erro">' + esc(x.erroTexto) + '</span>' + (x.detalhe ? '<small title="' + esc(x.detalhe) + '">' + esc(x.detalhe) + '</small>' : '')) + '</td>' +
-    '<td class="num">' + num(x.tentativas) + '</td><td>' + esc(dataCurta(x.atualizado || x.criado)) + '<small>' + esc(haDias(x.criado)) + '</small></td></tr>';
+    '<td class="num">' + num(x.tentativas) + '</td><td>' + esc(dataCurta(x.atualizado || x.criado)) + '<small>' + esc(haDias(x.criado)) + '</small></td>' +
+    '<td>' + (podeReenviar(x) ? '<button type="button" class="btn btn-sm" data-gte-reenviar="' + esc(x.id) + '"' + (S.agindo ? ' disabled' : '') + '>' + ic('repeat') + 'Reenviar</button>' : '') + '</td></tr>';
 }
-const tabela = (l) => '<div class="gte-tab-wrap"><table class="gte-tab"><thead><tr><th>Cliente</th><th>Documento</th><th>Tarefa</th><th>Erro</th><th class="num">Tentativas</th><th>Desde</th></tr></thead><tbody>' + l.map(linhaEnvio).join('') + '</tbody></table></div>';
+const tabela = (l) => '<div class="gte-tab-wrap"><table class="gte-tab"><thead><tr><th>Cliente</th><th>Documento</th><th>Tarefa</th><th>Erro</th><th class="num">Tentativas</th><th>Desde</th><th><span class="sr">Ação</span></th></tr></thead><tbody>' + l.map(linhaEnvio).join('') + '</tbody></table></div>';
+// só reenvia o que tem pasta (o "sem pasta" reenviado volta como sucesso, mas continua com erro) e tem os ids do Gestta
+const podeReenviar = (x) => x && x.pastaJa !== undefined && !(String(x.erro).match(/NO_FOLDER/i) && !x.pastaJa) && x.ids && ['usuario', 'cliente', 'tarefa', 'arquivo'].every(k => /^[0-9a-f]{24}$/i.test(x.ids[k] || ''));
+function confHtml() {
+  const c = S.conf; if (!c) return '';
+  const corpo = c.tipo === 'reenviar'
+    ? '<b>Reenviar ' + plural(c.itens.length, 'documento', 'documentos') + ' ao Portal do Cliente?</b> O Gestta tenta mandar de novo para a pasta configurada' + (c.itens.length > 50 ? ' (de 50 em 50)' : '') + '. Nada é apagado.'
+    : '<b>Usar a pasta ' + esc(c.pasta) + ' no template “' + esc(nome(c.nomeDestino)) + '”?</b> É a mesma do template “' + esc(nome(c.nomeModelo)) + '”. Daqui para frente os documentos deste template vão para essa pasta; os que já estão parados precisam ser reenviados depois.';
+  return '<div class="faixa warn gte-conf" role="alertdialog" aria-label="Confirmar"><svg class="ic"><use href="#i-alert"/></svg><div>' + corpo + '</div>' +
+    '<button type="button" class="btn btn-sm btn-primary" data-gte-confirmar' + (S.agindo ? ' disabled' : '') + '>' + (S.agindo ? 'Gravando…' : 'Confirmar') + '</button><button type="button" class="btn btn-sm" data-gte-cancelar' + (S.agindo ? ' disabled' : '') + '>Cancelar</button></div>';
+}
+async function executarConf(redesenhar) {
+  const c = S.conf; if (!c || S.agindo || !enviarFn) return;
+  S.agindo = true; redesenhar();
+  try {
+    if (c.tipo === 'reenviar') {
+      let ok = 0, falhou = 0, bloq = 0, erro = '';
+      for (let i = 0; i < c.itens.length; i += 50) {
+        const r = await enviarFn({ cmd: 'gesttaAcao', acao: 'reenviar', itens: c.itens.slice(i, i + 50).map(x => x.ids) });
+        if (!r || !r.ok) { erro = (r && r.erro) || 'sem resposta'; break; }
+        const z = r.resumo || {}; ok += z.success || 0; falhou += z.failed || 0; bloq += z.blocked || 0;
+      }
+      toast(erro ? 'Reenvio interrompido: ' + erro : 'Gestta: ' + plural(ok, 'documento reenviado', 'documentos reenviados') + (falhou ? ', ' + falhou + ' com falha' : '') + (bloq ? ', ' + bloq + ' bloqueado(s)' : '') + '. A lista é relida em seguida.');
+    } else {
+      const r = await enviarFn({ cmd: 'gesttaPasta', template: c.destino, modelo: c.modelo });
+      toast(r && r.ok ? 'Pasta ' + (r.pasta || c.pasta) + ' configurada no template. Agora reenvie os documentos dele.' : 'Pasta não configurada: ' + ((r && r.erro) || 'sem resposta'));
+    }
+  } finally { S.agindo = false; S.conf = null; }
+  lerEnvios(enviarFn, redesenhar);
+}
 
 export function desenharEnvios(v, sub) {
   if (!S.dados) {
@@ -57,39 +90,58 @@ export function desenharEnvios(v, sub) {
   let h = '<section class="gte-topo cfg-card"><div class="gte-tit"><h2>Envios ao Portal do Cliente</h2><p' + (simples() ? ' class="ajuda"' : '') + '>Os documentos que o Gestta não conseguiu mandar ao portal. O que deve ir ao portal sai do padrão já configurado: template com pasta vai; template sem pasta e parecido com um que vai provavelmente deveria ir. Lido na hora, nada fica guardado.</p></div>' +
     '<div class="gte-kpis">' + kpi(T.reenviar, 'para reenviar', 'reenviar', 'gte-k-erro', 'Erro no envio, ou sem pasta num template que já ganhou pasta') +
     kpi(T.deve, T.deve === 1 ? 'template sem pasta que deveria ir' : 'templates sem pasta que deveriam ir', 'deve', 'gte-k-deve', 'Parecidos com templates que já vão ao portal') +
-    kpi(T.templatesSemPasta - T.deve, 'templates sem pasta que não vão', 'naoVai', 'gte-k-neutro', 'Nenhum template parecido vai ao portal: o mais provável é que não devam ir') +
+    kpi(T.templatesSemPasta - T.deve, 'sem pasta que não vão (saem da lista)', 'naoVai', 'gte-k-neutro', 'Templates sem pasta que não vão ao portal: os documentos deles saem da lista de erros') +
     kpi(T.risco, 'em risco, ainda sem erro', 'risco', 'gte-k-risco', 'Templates sem pasta parecidos com os que vão ao portal, sem documento parado agora') + '</div></section>' +
-    '<div class="faixa gt-faixa-info"><svg class="ic"><use href="#i-lock"/></svg><div><b>Reenviar e configurar a pasta pela extensão chegam depois do mapeamento dessas duas ações</b> (feito no seu Chrome, numa empresa e num template de teste). Por enquanto os botões abrem a tela certa no Gestta.</div></div>' +
+    '<div class="faixa gt-faixa-info gte-info"><svg class="ic"><use href="#i-alert"/></svg><div><b>Documento “sem pasta” só sai do erro depois de a pasta ser configurada no template.</b> Reenviar antes disso não adianta: o Gestta diz que reenviou, mas ele continua aqui. Por isso o Reenviar só aparece para quem já tem pasta.</div></div>' +
+    confHtml() +
     '<div class="gte-barra"><input type="search" id="gte-q" placeholder="Buscar cliente, documento, arquivo ou tarefa" value="' + esc(S.q) + '" autocomplete="off">' + (f ? '<button type="button" class="btn btn-sm" data-gte-f="">' + ic('x') + 'Ver tudo</button>' : '') +
     (S.dados.cortado ? '<span class="gte-aviso">Lidos os 2.000 primeiros de ' + num(S.dados.total) + '</span>' : '') + '</div>';
   if (mostra('reenviar')) {
     const pj = reenv.filter(x => x.pastaJa), err = reenv.filter(x => !x.pastaJa);
-    h += '<section class="gte-sec"><div class="gte-sec-h"><h3>Para reenviar <span class="gte-n">' + num(reenv.length) + '</span></h3>' + linkFora(URL_STATUS, 'Abrir o status da integração no Gestta', 'btn-primary') + '</div>' +
+    const todos = reenv.filter(podeReenviar);
+    h += '<section class="gte-sec"><div class="gte-sec-h"><h3>Para reenviar <span class="gte-n">' + num(reenv.length) + '</span></h3><span class="gte-acoes">' +
+      (todos.length ? '<button type="button" class="btn btn-sm btn-primary" data-gte-reenviar-todos' + (S.agindo ? ' disabled' : '') + '>' + ic('repeat') + 'Reenviar ' + (todos.length === 1 ? 'o documento' : 'os ' + num(todos.length)) + '</button>' : '') + linkFora(URL_STATUS, 'Status da integração no Gestta') + '</span></div>' +
       (reenv.length ? (pj.length ? '<h4>Já têm pasta: só falta reenviar <span class="gte-n">' + num(pj.length) + '</span></h4>' + tabela(pj) : '') + (err.length ? '<h4>Erro ao enviar o arquivo <span class="gte-n">' + num(err.length) + '</span></h4>' + tabela(err) : '')
         : '<p class="gte-vazio">' + ic('check') + 'Nada para reenviar.</p>') + '</section>';
   }
   if (mostra('deve') || mostra('naoVai')) {
-    const gs = semP.filter(g => !f || g.classe === f);
+    // Josué, 12/11/2026: "documentos que estão sem pasta configurada e realmente não vão pro portal devem ser excluídos em lote da lista de erros":
+    // nunca reenviar nem configurar pasta para eles; sem filtro ficam recolhidos numa linha. A exclusão em lote espera o mapeamento da lixeira.
+    const gs = semP.filter(g => f ? g.classe === f : g.classe === 'deve'), nNao = semP.filter(g => g.classe === 'naoVai').length;
     h += '<section class="gte-sec"><div class="gte-sec-h"><h3>Sem pasta, por template <span class="gte-n">' + num(gs.length) + '</span></h3>' + linkFora(URL_TEMPLATES, 'Abrir os templates no Gestta') + '</div>' +
       (gs.length ? '<ul class="gte-tpls">' + gs.map(g => {
         const ab = S.abertos.has(g.templateId || g.template), deve = g.classe === 'deve';
-        return '<li class="gte-tpl ' + (deve ? 'deve' : 'nao') + '"><div class="gte-tpl-h"><span class="gte-tag ' + (deve ? 'gte-deve' : 'gte-neutro') + '">' + ic(deve ? 'alert' : 'eye') + (deve ? 'Provavelmente deveria ir ao portal' : 'Provavelmente não vai ao portal') + '</span>' +
+        return '<li class="gte-tpl ' + (deve ? 'deve' : 'nao') + '"><div class="gte-tpl-h"><span class="gte-tag ' + (deve ? 'gte-deve' : 'gte-neutro') + '">' + ic(deve ? 'alert' : 'eye') + (deve ? 'Provavelmente deveria ir ao portal' : 'Não vai ao portal: sai da lista de erros') + '</span>' +
           '<b>' + esc(nome(g.template)) + '</b><span class="gte-cont">' + plural(g.itens.length, 'documento parado', 'documentos parados') + ' · ' + plural(g.nClientes, 'cliente', 'clientes') + '</span></div>' +
-          '<p class="gte-motivo">' + esc(g.motivo) + (deve ? '. Configure a pasta ' + esc(g.parecido.pasta) + ' neste template e reenvie os documentos.' : '. Se este documento deve ir ao portal, configure a pasta no template.') + '</p>' +
+          '<p class="gte-motivo">' + esc(g.motivo) + (deve ? '.' : '. Estes documentos saem da lista de erros; a exclusão em lote pela extensão chega depois do mapeamento da lixeira.') + '</p>' +
+          (deve && g.templateId && g.parecido.integracao ? '<button type="button" class="btn btn-sm btn-primary gte-usar" data-gte-pasta="' + esc(g.templateId) + '" data-gte-modelo="' + esc(g.parecido.id) + '"' + (S.agindo ? ' disabled' : '') + '>' + ic('check') + 'Usar a pasta ' + esc(g.parecido.pasta) + '</button> ' : '') +
           '<button type="button" class="gte-link" data-gte-abrir="' + esc(g.templateId || g.template) + '" aria-expanded="' + ab + '">' + (ab ? 'Esconder os documentos' : 'Ver os documentos') + '</button>' + (ab ? tabela(g.vis.length ? g.vis : g.itens) : '') + '</li>';
-      }).join('') + '</ul>' : '<p class="gte-vazio">' + ic('check') + 'Nenhum documento parado por falta de pasta.</p>') + '</section>';
+      }).join('') + '</ul>' : '<p class="gte-vazio">' + ic('check') + (f === 'naoVai' ? 'Nenhum template sem pasta fora do portal.' : 'Nenhum template sem pasta que deveria ir ao portal.') + '</p>') +
+      (!f && nNao ? '<p class="gte-dica gte-nao-resumo">' + plural(nNao, 'template sem pasta não vai', 'templates sem pasta não vão') + ' ao portal: os documentos deles saem da lista de erros (a exclusão em lote chega depois do mapeamento da lixeira). <button type="button" class="gte-link" data-gte-f="naoVai">Ver</button></p>' : '') + '</section>';
   }
   if (mostra('risco')) {
     h += '<section class="gte-sec"><div class="gte-sec-h"><h3>Templates em risco, ainda sem erro <span class="gte-n">' + num(risco.length) + '</span></h3></div>' +
       '<p class="gte-dica">Sem pasta no portal, mas com nome parecido com um template que vai. Quando um documento deles chegar, vai parar aqui como erro.</p>' +
-      (risco.length ? '<ul class="gte-risco">' + risco.map(r => '<li><b>' + esc(nome(r.template)) + '</b><span>parecido com <b>' + esc(nome(r.parecido.nome)) + '</b>, que vai para ' + esc(r.parecido.pasta) + '</span></li>').join('') + '</ul>' : '<p class="gte-vazio">' + ic('check') + 'Nenhum template em risco.</p>') + '</section>';
+      (risco.length ? '<ul class="gte-risco">' + risco.map(r => '<li><b>' + esc(nome(r.template)) + '</b><span>parecido com <b>' + esc(nome(r.parecido.nome)) + '</b>, que vai para ' + esc(r.parecido.pasta) + '</span>' +
+        (r.parecido.integracao ? '<button type="button" class="btn btn-sm gte-usar" data-gte-pasta="' + esc(r.templateId) + '" data-gte-modelo="' + esc(r.parecido.id) + '"' + (S.agindo ? ' disabled' : '') + '>Usar a mesma pasta</button>' : '') + '</li>').join('') + '</ul>' : '<p class="gte-vazio">' + ic('check') + 'Nenhum template em risco.</p>') + '</section>';
   }
   v.innerHTML = h;
 }
+const topo = (v) => { const c = v.querySelector('.gte-conf'); if (c) c.scrollIntoView({ block: 'center' }); };
 export function ligarEnvios(v, redesenhar, paraPai) {
   v.addEventListener('click', (e) => {
     if (!v.querySelector('.gte-topo, [data-gte-ler]')) return;
-    const t = e.target.closest('[data-gte-f],[data-gte-abrir],[data-gte-ler],[data-abrir]'); if (!t) return;
+    const t = e.target.closest('[data-gte-f],[data-gte-abrir],[data-gte-ler],[data-abrir],[data-gte-reenviar],[data-gte-reenviar-todos],[data-gte-pasta],[data-gte-confirmar],[data-gte-cancelar]'); if (!t) return;
+    const A = S.analise;
+    if (t.dataset.gteCancelar != null) { S.conf = null; redesenhar(); return; }
+    if (t.dataset.gteConfirmar != null) { executarConf(redesenhar); return; }
+    if (t.dataset.gteReenviar != null && A) { const x = A.reenviar.find(i => i.id === t.dataset.gteReenviar); if (x && podeReenviar(x)) { S.conf = { tipo: 'reenviar', itens: [x] }; redesenhar(); topo(v); } return; }
+    if (t.dataset.gteReenviarTodos != null && A) { const l = A.reenviar.filter(podeReenviar); if (l.length) { S.conf = { tipo: 'reenviar', itens: l }; redesenhar(); topo(v); } return; }
+    if (t.dataset.gtePasta != null && A) {
+      const dest = t.dataset.gtePasta, mod = t.dataset.gteModelo, g = A.semPasta.find(x => x.templateId === dest) || A.risco.find(x => x.templateId === dest);
+      if (g && g.parecido) { S.conf = { tipo: 'pasta', destino: dest, modelo: mod, nomeDestino: g.template, nomeModelo: g.parecido.nome, pasta: g.parecido.pasta }; redesenhar(); topo(v); }
+      return;
+    }
     if (t.dataset.gteLer != null) { if (enviarFn) lerEnvios(enviarFn, redesenhar); return; }
     if (t.dataset.gteF != null) { S.filtro = S.filtro === t.dataset.gteF ? '' : t.dataset.gteF; redesenhar(); return; }
     if (t.dataset.gteAbrir != null) { const k = t.dataset.gteAbrir; S.abertos.has(k) ? S.abertos.delete(k) : S.abertos.add(k); redesenhar(); return; }
