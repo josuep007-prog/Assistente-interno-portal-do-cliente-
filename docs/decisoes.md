@@ -131,4 +131,4 @@ A extensão vai também ao **Gestta** (`app.gestta.com.br`, admin em AngularJS; 
 
 ## 12/11/2026 · Envios ao portal: a fila inteira (0.100.7)
 
-- "Acho que a extensão ainda não está lendo todos os erros, aparece uma quantidade pequena sendo que no Gestta tem mais de 3000"; "3156 é o número total de itens que deu erro, esse número maior só libera a contagem quando clica em carregar mais". O "total" da resposta da fila é o da página: a leitura parava nele. Agora para só na página sem nada novo e confere com a contagem do Gestta.
+- "Acho que a extensão ainda não está lendo todos os erros, aparece uma quantidade pequena sendo que no Gestta tem mais de 3000"; "3156 é o número total de itens que deu erro, esse número maior só libera a contagem quando clica em carregar mais". O "total" da resposta da fila é o da página: a leitura parava nele. Agora para só na página sem nada novo. O mapeamento de 12/11/2026 (Claude no Chrome) mostrou que o número vermelho (3.227) é de todos os pendentes do portal e a lista "Erro" tinha 48: a tela mostra os dois números, sem confundir.

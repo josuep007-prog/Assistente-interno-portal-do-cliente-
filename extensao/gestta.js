@@ -271,7 +271,7 @@
     templatesDocumento: () => ({ id: 'templatesDocumento', tipo: 'template', metodo: 'GET', url: url('/admin/company/document', { limit: 1, page: 1 }) }),
     // 0.79.0: a lista inteira de templates de documento, com a pasta de destino no portal (para achar os que não têm pasta)
     template: (o) => ({ id: 'template', tipo: 'templateUm', metodo: 'GET', url: url('/admin/company/document/' + encodeURIComponent(o.id)) }),
-    contagemFila: () => ({ id: 'contagemFila', tipo: 'contagemFila', metodo: 'GET', url: url('/es/file/count-pending/onvio') }),
+    contagemFila: () => ({ id: 'contagemFila', tipo: 'contagemFila', metodo: 'GET', url: url('/es//file/count-pending/onvio') }),
     templatesTarefa: (o) => ({ id: 'templatesTarefa', tipo: 'templateTarefa', metodo: 'GET', url: url('/admin/company/task', { limit: (o && o.limit) || 200, page: (o && o.page) || 1 }) }),
     docsTemplateTarefa: (o) => ({ id: 'docsTemplateTarefa', tipo: 'docsTemplateTarefa', metodo: 'GET', url: url('/admin/company/task/' + encodeURIComponent(o.id) + '/document') }),
     templatesLista: (o) => ({ id: 'templatesLista', tipo: 'templateDoc', metodo: 'GET', url: url('/admin/company/document', { limit: (o && o.limit) || 200, page: (o && o.page) || 1 }) })

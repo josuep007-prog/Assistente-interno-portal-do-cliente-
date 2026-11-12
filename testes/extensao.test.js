@@ -4593,12 +4593,15 @@ test('Gestta (0.100.6) · Envios ao portal: o risco só mostra template ligado a
   assert.equal(new URL(p.url).pathname, '/admin/company/task/' + A + '/document');
 });
 
-test('Gestta (0.100.7): a contagem da fila do portal (o número vermelho do Gestta) em qualquer forma conhecida', () => {
+test('Gestta (0.100.7): o número vermelho do Gestta (todos os pendentes do portal) é só informação', () => {
   assert.deepEqual(JSON.parse(JSON.stringify(OCG.limpar('contagemFila', 3156))), { n: 3156 });
   assert.deepEqual(JSON.parse(JSON.stringify(OCG.limpar('contagemFila', { count: 12 }))), { n: 12 });
   assert.equal(OCG.limpar('contagemFila', { algo: 'x' }), null);
   const p = OCG.PEDIDOS.contagemFila();
   assert.equal(p.metodo, 'GET'); assert.ok(OCG.leituraPermitida(p.metodo, p.url, null).ok);
   const bg = fs.readFileSync(path.join(__dirname, '..', 'extensao', 'background.js'), 'utf8');
-  assert.match(bg, /if \(contagemGestta != null && envios\.length < contagemGestta\) cortado = true;/, 'menos que a contagem do Gestta = a tela avisa');
+  assert.equal(new URL(p.url).pathname, '/es//file/count-pending/onvio', 'com a barra dupla, como a tela do Gestta');
+  // mapeado em 12/11/2026: a contagem é de todos os pendentes, não só dos com erro; não pode marcar a fila como cortada
+  assert.doesNotMatch(bg, /envios\.length < contagemGestta/);
+  assert.match(bg, /pendentesGestta: contagemGestta/);
 });

@@ -2,11 +2,10 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
-## Novidades da v0.100.7 (12/11/2026): a fila de erros inteira, de novo
+## Novidades da v0.100.7 (12/11/2026): a fila de erros inteira e o número vermelho do Gestta
 
-- Josué: "3156 é o número total de itens que deu erro; esse número maior só libera a contagem quando clica em carregar mais". A aba Envios ao portal (e o envio ao Hub) parava a leitura no "total" que o Gestta devolve, que é o tamanho da página (15), e não o da fila. Agora só para quando uma página não traz nada novo.
-- A extensão lê também a contagem do próprio Gestta (o número vermelho da aba, `GET es/file/count-pending/onvio`) e, se leu menos do que ela, a tela avisa "Lidos N de M: a fila não veio inteira".
-- **A conferir no Gestta real:** como o "Carregar mais" pagina (roteiro em `mapeamento/prompt-claude-chrome-carregar-mais-envios-gestta.txt`) e o endereço da contagem.
+- A leitura da fila de erros não para mais no "total" da resposta: anda até uma página sem nada novo (a fila é uma lista sem total; a tela do Gestta pede de 20 em 20, mapeado em 12/11/2026).
+- **O número vermelho da aba Integração Portal do Cliente (≈3.200) não é o de erros:** é o de **todos os pendentes** de envio ao portal (`GET es//file/count-pending/onvio`, `{ count }`). No mapeamento, com 3.227 pendentes, a lista com o filtro "Erro" tinha 48 (o contador da tela só sobe ao clicar em "Carregar mais"). A aba Envios ao portal mostra os dois: "No Gestta, N pendentes de envio ao todo; com erro: M".
 
 ## Novidades da v0.100.6 (12/11/2026): o risco só com templates em tarefa ativa
 
