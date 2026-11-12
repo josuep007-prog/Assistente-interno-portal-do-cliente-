@@ -123,3 +123,8 @@ A extensão vai também ao **Gestta** (`app.gestta.com.br`, admin em AngularJS; 
 - "Os templates em risco ainda sem erro devem ter um botão que me redireciona ao cadastro de cada template dentro do Gestta" (endereço `admin/#/sidebar/document/edit/{id}/details`) e "a parte de reenviar está confusa; aprovo a sugestão": um destino por documento, 1 Reenviar, 2 Corrigir a pasta no Gestta, 3 Tirar da lista (0.100.3).
 - "Existem documentos que são enviados ao cliente que não vão pro portal" (sobre o bloco "Corrigir a pasta"); decidido, entre as opções, "A pasta é a regra": template sem pasta não vai ao portal, mesmo de tarefa que notifica; a saída para template novo é pôr a pasta nele (0.100.5).
 - "O template só deve vir para essa lista se ele estiver vinculado a alguma tarefa ativa" (lista Templates em risco): só os templates de documento de algum template de tarefa ativo (0.100.6).
+
+## 12/11/2026 · Portal: filiais soltas de matriz arquivada (Hub 353)
+
+- "Essas são tudo filial, por que não estão unificadas com a matriz? Tanto no módulo contábil quanto no portal é tudo pela matriz, a filial fica fundida e não aparece de forma separada." Causa: a matriz tinha sido arquivada à mão (05/11) e as filiais entraram pelo Gestta (09/11); a junção automática pulava matriz arquivada e só via a matriz se ela tivesse tarefa própria no Gestta.
+- Decidido: "junta e mantém arquivada; em caso de ter demanda em uma filial e em outra não, considera que todas têm e segue a marcação de progresso de forma unificada". `ligarFiliaisSozinho` não pula mais matriz arquivada, `gruposSugeridos` olha todas as empresas do banco e, em `aplicarGrupos`, a matriz com alguma filial ativa no Gestta não é escondida. Teste: passo "Hub 335" de `testes/hub-onvio/hub-gestta.js` (KAPA).
