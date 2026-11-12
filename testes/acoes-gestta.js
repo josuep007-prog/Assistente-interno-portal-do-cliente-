@@ -35,6 +35,7 @@ const tarefa = (status, feita) => ({ _id: T, status, done_step: feita ? 1 : 0, t
     if (u.pathname.endsWith('/history/comment')) return json({ _id: D, type: 'COMMENT', status: 'ADD', accomplished_by: { name: 'Fulana', email: 'fulana@exemplo.com', permissions: ['CIRCULAR_WRITE'] }, customer_task: tarefa('OPEN', true) }, 201);
     // 0.97.0: envios ao portal (como no mapeamento de 12/11/2026)
     if (u.pathname === '/es/file/onvio/resend') return json({ success: JSON.parse(bruto).length, failed: 0, blocked: 0, blocked_items: [] });
+    if (/^\/es\/task\/[0-9a-f]{24}\/document\/[0-9a-f]{24}\/file\/disconsider$/.test(u.pathname)) return r.fulfill({ status: 200, headers: Object.assign({ 'content-type': 'text/plain; charset=utf-8' }, CORS), body: '' });
     if (u.pathname === '/es/file/onvio/remove/batch') return json({ success: JSON.parse(bruto).length, failed: 0 });
     if (u.pathname === '/admin/company/document/integration/documents/batch') return r.fulfill({ status: 200, headers: CORS, body: '' });
     if (u.pathname === '/admin/company/document/' + D && req.method() === 'PUT') return json({ _id: D, name: 'TESTE MAPEAMENTO', bypass: false, send_documents_due_date: false, company: { name: 'ESCRITORIO SIGILO' }, created_by: { email: 'fulana@exemplo.com' }, documents_integration: { customer_id: S, id: 'abc123def456', path: ['Pessoal'], pathName: ['Pessoal'] } });
@@ -133,6 +134,11 @@ const tarefa = (status, feita) => ({ _id: T, status, done_step: feita ? 1 : 0, t
     assert.equal(k.ok, true);
     assert.deepEqual([ultima().metodo, ultima().caminho, ultima().corpo], ['POST', '/es/file/a00000000000000000000001/confirm', { company_document: S, customer_task: T }]);
   });
+  await passo('0.105.0 · desconsiderar o item sem anexo: PUT /es/task/{id}/document/{doc}/file/disconsider com corpo vazio; a resposta vazia vale como feito', async () => {
+    const r = await agir({ acao: 'desconsiderar', id: T, documento: D });
+    assert.equal(r.ok, true, JSON.stringify(r));
+    assert.deepEqual([ultima().metodo, ultima().caminho, ultima().corpo], ['PUT', '/es/task/' + T + '/document/' + D + '/file/disconsider', {}]);
+  });
   await passo('pedido adulterado não sai: outro endereço, DELETE, comentário externo, status fora da lista', async () => {
     const antes = chamadas.length;
     const ruins = [
@@ -151,7 +157,11 @@ const tarefa = (status, feita) => ({ _id: T, status, done_step: feita ? 1 : 0, t
       { metodo: 'PATCH', url: 'https://api.gestta.com.br/es/file/onvio/remove/batch', corpo: [S, S] },
       { metodo: 'PATCH', url: 'https://api.gestta.com.br/es/file/onvio/remove/batch', corpo: [{ id: S }] },
       { metodo: 'PATCH', url: 'https://api.gestta.com.br/es/file/onvio/remove/batch', corpo: { ids: [S] } },
-      { metodo: 'DELETE', url: 'https://api.gestta.com.br/es/file/onvio/' + S, corpo: {} }
+      { metodo: 'DELETE', url: 'https://api.gestta.com.br/es/file/onvio/' + S, corpo: {} },
+      // 0.105.0: desconsiderar só com corpo vazio; reconsiderar não está na lista
+      { metodo: 'PUT', url: 'https://api.gestta.com.br/es/task/' + T + '/document/' + D + '/file/disconsider', corpo: { motivo: 'x' } },
+      { metodo: 'PUT', url: 'https://api.gestta.com.br/es/task/' + T + '/document/' + D + '/file/reconsider', corpo: {} },
+      { metodo: 'DELETE', url: 'https://api.gestta.com.br/es/task/' + T + '/document/' + D + '/file', corpo: {} }
     ];
     for (const p of ruins) { const r = await page.evaluate((p) => self.OCG.agirNaPagina(p), p); assert.equal(r.ok, false); assert.ok(r.recusado, JSON.stringify(r)); }
     assert.equal(chamadas.length, antes, 'nenhuma chamada saiu');
@@ -165,7 +175,7 @@ const tarefa = (status, feita) => ({ _id: T, status, done_step: feita ? 1 : 0, t
   await passo('nenhuma chamada levou querystring; só PUT e POST nos endereços mapeados', async () => {
     assert.ok(chamadas.every(c => !c.busca), 'querystring');
     const ok = [/^PUT \/core\/customer\/task\/[0-9a-f]{24}\/step\/[0-9a-f]{24}\/done$/, /^PUT \/es\/task\/[0-9a-f]{24}\/status$/, /^POST \/core\/customer\/task\/[0-9a-f]{24}\/history\/comment$/, /^POST \/es\/upload\/direct$/,
-      /^POST \/es\/file\/onvio\/resend$/, /^PATCH \/admin\/company\/document\/integration\/documents\/batch$/, /^PUT \/admin\/company\/document\/[0-9a-f]{24}$/, /^PATCH \/es\/file\/onvio\/remove\/batch$/, /^DELETE \/admin\/company\/document\/integration\/documents\/[0-9a-f]{24}$/, /^POST \/es\/file\/upload\/automatic$/, /^POST \/es\/file\/[0-9a-f]{24}\/confirm$/];
+      /^POST \/es\/file\/onvio\/resend$/, /^PATCH \/admin\/company\/document\/integration\/documents\/batch$/, /^PUT \/admin\/company\/document\/[0-9a-f]{24}$/, /^PATCH \/es\/file\/onvio\/remove\/batch$/, /^DELETE \/admin\/company\/document\/integration\/documents\/[0-9a-f]{24}$/, /^POST \/es\/file\/upload\/automatic$/, /^POST \/es\/file\/[0-9a-f]{24}\/confirm$/, /^PUT \/es\/task\/[0-9a-f]{24}\/document\/[0-9a-f]{24}\/file\/disconsider$/];
     for (const c of chamadas) assert.ok(ok.some(re => re.test(c.metodo + ' ' + c.caminho)), c.metodo + ' ' + c.caminho);
   });
 

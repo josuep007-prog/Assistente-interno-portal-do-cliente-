@@ -4662,3 +4662,13 @@ test('Gestta (0.103.0): busca de um setor com as pessoas dele, situação filtra
   assert.equal(OCG.contarGrupos(l, new Date('2099-01-01')).total, 3, 'as desconsideradas continuam fora das contas');
   assert.equal(OCG.grupoTela(l[3]), 'desconsiderada'); assert.equal(OCG.grupoTarefa(l[3]), null);
 });
+
+test('Gestta (0.105.0): desconsiderar o item sem anexo só pelo endereço mapeado, com corpo vazio', () => {
+  const T = '5f1e2d3c4b5a69788796a5b4', D = '6a5b4c3d2e1f00112233aabb', A = 'https://api.gestta.com.br';
+  const p = OCG.pedidoAcao({ acao: 'desconsiderar', id: T, documento: D });
+  assert.equal(p.metodo, 'PUT'); assert.equal(new URL(p.url).pathname, '/es/task/' + T + '/document/' + D + '/file/disconsider'); assert.deepEqual(plano(p.corpo), {});
+  assert.equal(OCG.escritaPermitida(p.metodo, p.url, p.corpo).ok, true);
+  assert.ok(OCG.pedidoAcao({ acao: 'desconsiderar', id: T, documento: 'x' }).erro);
+  for (const [m, url, c] of [['PUT', p.url, { x: 1 }], ['POST', p.url, {}], ['PUT', A + '/es/task/' + T + '/document/' + D + '/file/reconsider', {}], ['DELETE', A + '/es/task/' + T + '/document/' + D + '/file', {}], ['PUT', p.url + '?x=1', {}]])
+    assert.equal(OCG.escritaPermitida(m, url, c).ok, false, 'recusa: ' + m + ' ' + url);
+});
