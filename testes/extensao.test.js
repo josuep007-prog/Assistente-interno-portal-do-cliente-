@@ -4649,6 +4649,9 @@ test('Gestta (0.103.0): busca de um setor com as pessoas dele, situação filtra
   assert.deepEqual(plano(p.corpo.company_user), ['a1', 'b2']); assert.deepEqual(plano(p.corpo.status), ['OPEN', 'IGNORED']);
   assert.equal(OCG.leituraPermitida(p.metodo, p.url, p.corpo).ok, true);
   assert.equal(OCG.fimCnpj('12.345.678/0001-90'), '0001-90'); assert.equal(OCG.fimCnpj('123'), '');
+  const pc = OCG.PEDIDOS.cliente({ id: 'c00000000000000000000001' });   // o CNPJ da tarefa aberta: um GET do cliente dela
+  assert.equal(pc.metodo, 'GET'); assert.equal(new URL(pc.url).pathname, '/admin/customer/c00000000000000000000001'); assert.equal(OCG.leituraPermitida(pc.metodo, pc.url).ok, true);
+  assert.equal(OCG.limpar('tarefaDetalhe', { _id: 't', customer: { _id: 'c', name: 'X', cnpj: '12345678000190', phone: '9' } }).customer.cnpj, '12345678000190');
   assert.equal(OCG.cnpjFormatado('12345678000190'), '12.345.678/0001-90');
   const l = [{ _id: '1', status: 'OPEN', due_date: '2099-01-10' }, { _id: '2', status: 'IMPEDIMENT' }, { _id: '3', status: 'DONE' }, { _id: '4', status: 'IGNORED' }, { _id: '5', status: 'DISCONSIDERED' }];
   const ids = f => OCG.filtrarTarefas(l, f, new Date('2099-01-01')).map(t => t._id).sort().join(',');

@@ -368,8 +368,21 @@ async function gesttaTarefa(msg, sender) {
   const x = r && r.resultados && r.resultados[0];
   if (!r || !r.ok) return { ok: false, erro: (r && r.motivo) || 'A aba do Gestta não respondeu.' };
   if (!x || x.status !== 200 || !x.dados) return { ok: false, erro: x && x.status === 403 ? 'Seu acesso não inclui esta tarefa.' : x && x.status === 404 ? 'A tarefa não foi encontrada no Gestta.' : 'Não consegui ler a tarefa (' + ((x && (x.erro || x.status)) || 'sem resposta') + ').' };
-  return { ok: true, tarefa: x.dados };
+  // 0.103.0 (Josué, 12/11/2026: "o CNPJ … já tem dentro da própria tarefa do Gestta"): se o detalhe não traz o CNPJ, lê o cliente
+  // da tarefa (um GET, como o botão de informações da tarefa) e junta só o CNPJ; guardado só na memória deste service worker
+  const t = x.dados, c = t && t.customer;
+  if (c && c._id && !c.cnpj) {
+    if (cnpjPorCliente.has(c._id)) c.cnpj = cnpjPorCliente.get(c._id);
+    else {
+      const { r: r2 } = await lerGestta([OCG.PEDIDOS.cliente({ id: c._id })], { tab });
+      const y = r2 && r2.resultados && r2.resultados[0];
+      const cnpj = y && y.status === 200 && y.dados ? String(y.dados.cnpj || '').replace(/\D/g, '') : '';
+      if (cnpj) { c.cnpj = cnpj; cnpjPorCliente.set(c._id, cnpj); }
+    }
+  } else if (c && c._id && c.cnpj) cnpjPorCliente.set(c._id, String(c.cnpj).replace(/\D/g, ''));
+  return { ok: true, tarefa: t };
 }
+const cnpjPorCliente = new Map();
 // Linha do tempo da tarefa (0.77.0): a 1ª página do histórico, só tipo, situação, data, quem e nome do documento; nada é guardado.
 async function gesttaHistorico(msg, sender) {
   const id = String(msg.id || '');
@@ -551,9 +564,19 @@ async function gesttaCnpjs(msg, sender) {
   if (!ids.size) return { ok: true, cnpjs: {} };
   const tab = await tabDoGestta(sender);
   if (!tab) return { ok: false, erro: 'Abra o Gestta numa aba, já logado.' };
+  const cnpjs = {};
+  ids.forEach(id => { if (cnpjPorCliente.has(id)) { cnpjs[id] = cnpjPorCliente.get(id); ids.delete(id); } });
+  if (!ids.size) return { ok: true, cnpjs };
   const c = await clientesGestta(tab);
-  if (!c.ok) return c;
-  const cnpjs = {}; c.l.forEach(x => { if (ids.has(x.id) && x.cnpj) cnpjs[x.id] = x.cnpj; });
+  if (c.ok) { c.l.forEach(x => { if (ids.has(x.id) && x.cnpj) { cnpjs[x.id] = x.cnpj; cnpjPorCliente.set(x.id, x.cnpj); } }); return { ok: true, cnpjs }; }
+  // sem acesso à lista de clientes: um cliente por vez (o mesmo do botão de informações da tarefa), até 60 por leitura
+  for (const id of [...ids].slice(0, 60)) {
+    const { r } = await lerGestta([OCG.PEDIDOS.cliente({ id })], { tab });
+    const y = r && r.resultados && r.resultados[0];
+    if (!y || y.status === 401 || y.status === 403) break;
+    const cnpj = y.status === 200 && y.dados ? String(y.dados.cnpj || '').replace(/\D/g, '') : '';
+    if (cnpj) { cnpjs[id] = cnpj; cnpjPorCliente.set(id, cnpj); }
+  }
   return { ok: true, cnpjs };
 }
 // Para a coordenação escolher de quem ver as tarefas: só id, nome e setores da equipe ativa.

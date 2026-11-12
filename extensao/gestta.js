@@ -102,7 +102,7 @@
     tarefa: { _id: true, name: true, customer: { _id: true, name: true, code: true }, type: true, subtype: true, status: true, fine: true, overdue: true, done_overdue: true, done_fine: true, total_step: true, done_step: true, created_at: true, due_date: true, competence_date: true },
     // detalhe da tarefa: sem valor, apontamento, aprovadores e documentos anexos
     tarefaDetalhe: { _id: true, name: true, type: true, subtype: true, status: true, overdue: true, fine: true, created_at: true, legal_date: true, due_date: true, competence_date: true, conclusion_date: true,
-      company_task: { _id: true, name: true, active: true }, company_department: SETOR, customer: { _id: true, name: true, code: true, active: true }, owner: { _id: true, name: true, active: true },
+      company_task: { _id: true, name: true, active: true }, company_department: SETOR, customer: { _id: true, name: true, code: true, active: true, cnpj: true }, owner: { _id: true, name: true, active: true },
       customer_has_documents_integration: true, notify_customer: true, total_step: true, done_step: true,
       // 0.73.0: o que há dentro da tarefa (etapas e documentos), nunca o arquivo
       // 0.93.0: o id de cada etapa e de cada documento (as ações precisam dele); has_documents_integration = o documento vai ao portal
@@ -259,6 +259,8 @@
     me: () => ({ id: 'me', tipo: 'me', metodo: 'GET', url: url('/core/company/user/me') }),
     setores: () => ({ id: 'setores', tipo: 'setor', metodo: 'GET', url: url('/admin/company/department') }),
     equipe: (o) => ({ id: 'equipe', tipo: 'equipe', metodo: 'GET', url: url('/admin/company/user', { active: true, limit: (o && o.limit) || 200, page: (o && o.page) || 1 }) }),
+    // 0.103.0: um cliente só (o mesmo que o (i) da tarefa mostra), para o CNPJ da tarefa aberta
+    cliente: (o) => ({ id: 'cliente', tipo: 'cliente', metodo: 'GET', url: url('/admin/customer/' + encodeURIComponent(o.id)) }),
     clientes: (o) => ({ id: 'clientes', tipo: 'cliente', metodo: 'GET', url: url('/admin/customer', { active: true, limit: (o && o.limit) || 200, page: (o && o.page) || 1 }) }),
     cartela: (o) => ({ id: 'cartela', tipo: 'cartela', metodo: 'GET', url: url('/admin/customer/' + encodeURIComponent(o.cliente) + '/responsible') }),
     contatos: (o) => ({ id: 'contatos', tipo: 'contatos', metodo: 'GET', url: url('/admin/customer/' + encodeURIComponent(o.cliente) + '/accountable') }),
