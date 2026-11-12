@@ -7,7 +7,8 @@
  * armazenamento. Abrir uma tarefa só navega no próprio Gestta.
  */
 import { $, $$, esc, toast, simples, lerPref, gravarPref, num, plural } from './util.js';
-import { listaEmpresas, abrirPainel, fecharPainel, painelAberto, passarPainel, abrirNoGestta } from './gestta-trilha.js';
+import { listaEmpresas, abrirPainel, fecharPainel, painelAberto, passarPainel, abrirNoGestta, painelTarefa } from './gestta-trilha.js';
+import { ligarSoltar } from './gestta-soltar.js';
 import { vistaDia, vistaEmpresas, vistaLista, vistaQuadro } from './gestta-vistas.js';
 import { desenharEnvios, lerEnvios, ligarEnvios, estadoEnvios } from './gestta-envios.js';
 const G = window.OCG;
@@ -394,6 +395,8 @@ addEventListener('storage', e => {
 $('#vista').addEventListener('scroll', () => salvarEstado(), { passive: true });
 $('#btn-atualizar').onclick = () => E.aba === 'fech' ? lerFech(true) : E.aba === 'envios' ? lerEnvios(enviar, () => { aoVivo(); desenhar(); }) : ler();
 ligarEnvios($('#vista'), () => { aoVivo(); desenhar(); }, paraPai);
+// 0.102.0: soltar documentos fora de um item da tarefa vai para o Express (e, se ele não achar, a sugestão da extensão)
+ligarSoltar({ enviar, atual: () => painelTarefa() || null, tarefas: () => ((E.dados && E.dados.itens) || []).concat((E.dados && E.dados.dia) || []) });
 function trocarAba(a) { if (!ABAS.includes(a) || a === E.aba) return; E.aba = a; gravarPref('gt.aba', E.aba); salvarEstado(); fecharPainel(); aoVivo(); desenhar(); $('#vista').scrollTop = 0; }
 $$('#abas [data-aba]').forEach(b => b.onclick = () => trocarAba(b.dataset.aba));
 // uma etapa (trilha ou linha do tempo) ou uma tarefa da lista abre o detalhe ao lado

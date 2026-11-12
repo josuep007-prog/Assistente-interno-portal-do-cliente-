@@ -3126,8 +3126,11 @@ await passo('Gestta · Tarefas (0.93.0): no detalhe, marcar etapa, impedimento c
     assert.deepEqual((await acoes()).slice(4).map(m => [m.acao, m.documento, m.arquivo.nome]), [['documento', 'd00000000000000000000001', 'guia-1.pdf'], ['documento', 'd00000000000000000000001', 'guia-2.pdf']]);
     await fr.waitForSelector('#gd-det .gp-aviso.ok');
     assert.match(await fr.textContent('#gd-det .gp-aviso.ok'), /2 arquivos enviados no documento “Recibo”/);
-    // soltar fora de um item não abre o arquivo na tela
+    // soltar fora de um item não abre o arquivo na tela: vai para o Express (0.102.0), que pergunta antes de ler
     assert.equal(await fr.evaluate(() => { const ev = new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: window.__dt }); document.body.dispatchEvent(ev); return ev.defaultPrevented; }), true);
+    await fr.waitForSelector('#gs-dlg:not([hidden]) [data-gs="ler"]');
+    assert.match(await fr.textContent('#gs-dlg'), /Ler 2 arquivos com o Express\?/);
+    await fr.click('#gs-dlg [data-gs="fechar"]');
     // erro do Gestta aparece no painel
     await fr.evaluate(() => { window.__respostas.gesttaAcao = { ok: false, erro: 'Seu acesso do Gestta não permite esta ação nesta tarefa.' }; });
     await fr.waitForSelector('#gd-det [data-gp-acao="concluir"]');
@@ -3136,6 +3139,68 @@ await passo('Gestta · Tarefas (0.93.0): no detalhe, marcar etapa, impedimento c
     await fr.click('#gd-det #gp-conf-ok');
     await fr.waitForSelector('#gd-det .gp-aviso.erro');
     assert.match(await fr.textContent('#gd-det .gp-aviso.erro'), /não permite esta ação/);
+    await p.close();
+  }
+});
+await passo('Gestta · Soltar documentos (0.102.0): fora de um item vai ao Express; o que ele acha vem marcado, o que não acha a extensão sugere pelo CNPJ e pela competência, e sem nada o e-mail pronto no Zimbra; nada é vinculado sem confirmar', async () => {
+  for (const estilo of ['simples', 'atual']) {
+    const { p, fr } = await abrirGestta(gtResp(true), { estilo });
+    if (estilo === 'atual') await fr.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
+    await fr.waitForSelector('.gt-topo');
+    // o Express e a leitura do documento simulados por arquivo (cada um responde de um jeito)
+    await fr.evaluate(() => {
+      const orig = chrome.runtime.sendMessage.bind(chrome.runtime);
+      chrome.runtime.sendMessage = (m, cb) => {
+        let r = null;
+        if (m.cmd === 'gesttaAcao' && m.acao === 'expressLer') {
+          (window.__msgs ||= []).push(m);
+          r = m.arquivo.nome === 'guia-fgts.pdf'
+            ? { ok: true, express: { id: 'a00000000000000000000001', achou: true, tipo: 'EXPRESS_AUTOMATIC', tarefa: { id: 'f00000000000000000000004', nome: 'GUIA DO FGTS', competencia: '2026-10-01', cliente: { id: 'c00000000000000000000002', nome: 'CLIENTE BETA ME' } }, documento: { id: 'd00000000000000000000002', nome: 'Guia FGTS' } } }
+            : { ok: true, express: { id: m.arquivo.nome === 'recibo-alfa.pdf' ? 'a00000000000000000000002' : 'a00000000000000000000003', achou: false, tipo: 'EXPRESS_NEGATIVE', erro: '' } };
+        } else if (m.cmd === 'gesttaTextoDoc') {
+          (window.__msgs ||= []).push(m);
+          r = { ok: true, texto: m.nome === 'recibo-alfa.pdf' ? 'RECIBO DE PAGAMENTO  CNPJ 11.222.333/0001-81  competencia 10/2026' : '' };
+        } else if (m.cmd === 'gesttaClientesCnpj') {
+          (window.__msgs ||= []).push(m);
+          r = { ok: true, clientes: [{ id: 'c00000000000000000000001', nome: 'CLIENTE ALFA LTDA', cnpj: '11222333000181' }] };
+        }
+        if (r) { if (cb) setTimeout(() => cb(r), 0); return Promise.resolve(r); }
+        return orig(m, cb);
+      };
+      const dt = new DataTransfer();
+      ['guia-fgts.pdf', 'recibo-alfa.pdf', 'branco.pdf'].forEach(n => dt.items.add(new File(['%PDF-1.4 ' + n], n, { type: 'application/pdf' })));
+      window.__dt = dt;
+      document.querySelector('#vista').dispatchEvent(new DragEvent('dragenter', { bubbles: true, cancelable: true, dataTransfer: dt }));
+    });
+    // o véu diz o que acontece ao soltar
+    await fr.waitForSelector('.gs-veu:not([hidden])');
+    assert.match(await fr.textContent('.gs-veu'), /Soltar aqui.*O Express procura a empresa, a tarefa e o item/s);
+    await fr.evaluate(() => document.querySelector('#vista').dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: window.__dt })));
+    await fr.waitForSelector('#gs-dlg:not([hidden]) [data-gs="ler"]');
+    assert.match(await fr.textContent('#gs-dlg'), /Ler 3 arquivos com o Express\?[\s\S]*Nada é vinculado antes de você conferir/);
+    assert.equal(await fr.evaluate(() => (window.__msgs || []).filter(m => m.acao === 'expressLer').length), 0, 'nada sai antes de Ler');
+    await fr.click('[data-gs="ler"]');
+    await fr.waitForSelector('[data-gs="vincular"]');
+    const txt = await fr.textContent('#gs-dlg');
+    assert.match(txt, /guia-fgts\.pdf[\s\S]*O Express achou o destino/);
+    assert.match(txt, /recibo-alfa\.pdf[\s\S]*O Express não achou\. A extensão sugere:[\s\S]*CNPJ de Cliente Alfa Ltda/i);
+    assert.match(txt, /branco\.pdf[\s\S]*Nem o Express nem a extensão acharam a tarefa\.[\s\S]*não tem texto para ler[\s\S]*Avisar por e-mail \(Zimbra\)[\s\S]*escolha no Para a gestão do seu departamento ou o setor do Portal do Cliente/);
+    assert.deepEqual(await fr.evaluate(() => window.__msgs.filter(m => m.cmd === 'gesttaClientesCnpj').map(m => m.cnpjs)), [['11222333000181']], 'só o CNPJ lido, só para achar o cliente');
+    if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/gestta-soltar-' + estilo + '.png' });
+    // o e-mail pronto abre no Zimbra, sem destinatário
+    const url = await fr.evaluate(() => { let u = ''; window.open = (x) => { u = x; return null; }; document.querySelector('[data-gs-mail]').click(); return u; });
+    assert.match(url, /^https:\/\/mail\.controltax\.com\.br\/\?view=compose&subject=Documento%20n%C3%A3o%20lido%20pelo%20Express%3A%20branco\.pdf&body=Ol%C3%A1/);
+    assert.doesNotMatch(url, /[?&]to=/, 'sem destinatário: o analista escolhe');
+    // vincular: os dois com destino vão pelo Express, cada um com a tarefa e o item escolhidos
+    assert.match(await fr.textContent('[data-gs="vincular"]'), /Vincular os 2 arquivos/);
+    await fr.click('[data-gs="vincular"]');
+    await fr.waitForFunction(() => /Pronto/.test(document.querySelector('#gs-dlg h2').textContent));
+    const conf = await fr.evaluate(() => window.__msgs.filter(m => m.acao === 'expressConfirmar').map(m => [m.express, m.tarefa, m.documento]));
+    assert.deepEqual(conf.map(c => c[0]), ['a00000000000000000000001', 'a00000000000000000000002']);
+    assert.deepEqual(conf[0].slice(1), ['f00000000000000000000004', 'd00000000000000000000002']);
+    assert.ok(['f00000000000000000000001', 'f00000000000000000000002'].includes(conf[1][1]), 'a sugestão é uma tarefa da empresa do CNPJ lido');
+    assert.match(await fr.textContent('#gs-dlg'), /guia-fgts\.pdf[\s\S]*Foi para Cliente Beta Me · Guia do Fgts[\s\S]*branco\.pdf[\s\S]*Não vinculado/i);
+    await fr.click('[data-gs="fechar"]');
     await p.close();
   }
 });

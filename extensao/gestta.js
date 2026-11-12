@@ -136,6 +136,9 @@
     historico: { _id: true, type: true, status: true, reason: true, accomplished_at: true, created_at: true, accomplished_by: { name: true },
       accomplished_by_customer_user: { name: true }, company_document: { name: true }, file_name: true, comment: true, is_auto_respond: true },
     // 0.93.0: o que volta depois de uma ação (a resposta do Gestta traz a tarefa inteira, o cliente e o escritório: sai só isto)
+    // 0.102.0: o que volta do Express (só para a tela, nada guardado): o registro, a situação e, se achou, a tarefa e o item
+    expressItem: { _id: true, type: true, has_choices: true, done: true, error: true,
+      customer_task: { _id: true, name: true, _competence_date: true, _due_date: true, customer: { _id: true, name: true, cnpj: true } }, company_document: { _id: true, name: true } },
     tarefaApos: { _id: true, status: true, done_step: true, total_step: true, conclusion_date: true, customer_task_steps: [{ _id: true, done: true }] }
   };
   // Colunas do relatório CUSTOMER_TASK que saem da página (das 34): fora valor, pontuação e mensalidade (decisão pendente).
@@ -299,7 +302,12 @@
     // 0.100.4 (Josué, 12/11/2026: "qualquer pasta destino que não esteja nessa empresa [9999] precisa ser excluída"; mapeado no mesmo dia,
     // mapeamento/gestta-2026-11-04.md): tira a pasta de UM template; o id do endereço é o _id do template (não o da pasta) e não mexe nos
     // outros templates da mesma pasta. Só pelo cmd gesttaTirarPasta, que só aceita template com a pasta fora da 9999.
-    { acao: 'tirarPasta', metodo: 'DELETE', re: /^\/admin\/company\/document\/integration\/documents\/[0-9a-f]{24}$/i }
+    { acao: 'tirarPasta', metodo: 'DELETE', re: /^\/admin\/company\/document\/integration\/documents\/[0-9a-f]{24}$/i },
+    // 0.102.0 (Josué, 12/11/2026: arrastar o documento e "utilizando o mecanismo do Express para vincular ao item certo"; mapeado na
+    // empresa de teste no mesmo dia, mapeamento/gestta-2026-11-04.md, "Express"): mandar o arquivo para o Express ler (multipart só com
+    // `file`; devolve EXPRESS_AUTOMATIC com a tarefa e o item, ou EXPRESS_NEGATIVE) e confirmar o vínculo (só os dois ids).
+    { acao: 'expressLer', metodo: 'POST', re: /^\/es\/file\/upload\/automatic$/ },
+    { acao: 'expressConfirmar', metodo: 'POST', re: /^\/es\/file\/[0-9a-f]{24}\/confirm$/i }
   ];
   const REENVIO_MAX = 50, PASTA_ITENS_MAX = 10;
   const textoCurto = (v, n) => typeof v === 'string' && v.trim().length > 0 && v.length <= n;
@@ -337,6 +345,12 @@
       return soChaves(c, ['bypass', 'name', 'send_documents_due_date']) && typeof c.bypass === 'boolean' && typeof c.send_documents_due_date === 'boolean' && textoCurto(c.name, 300)
         ? ok : { ok: false, motivo: 'template: só bypass, name e send_documents_due_date' };
     }
+    if (e.acao === 'expressConfirmar') return soChaves(c, ['company_document', 'customer_task']) && ID24.test(String(c.company_document)) && ID24.test(String(c.customer_task)) ? ok : { ok: false, motivo: 'Express: só a tarefa e o documento' };
+    if (e.acao === 'expressLer') {
+      const a = c.arquivo;
+      if (!soChaves(c, ['arquivo']) || !a || typeof a !== 'object' || !soChaves(a, ['nome', 'tipo', 'base64']) || !String(a.nome || '').trim() || String(a.nome).length > 200 || typeof a.base64 !== 'string' || !/^[A-Za-z0-9+/]*=*$/.test(a.base64) || !a.base64) return { ok: false, motivo: 'Express: só o arquivo' };
+      return tamanhoB64(a.base64) > ARQ_MAX ? { ok: false, motivo: 'Express: arquivo acima de 15 MB' } : ok;
+    }
     if (e.acao === 'etapa') return soChaves(c, ['done']) && typeof c.done === 'boolean' ? ok : { ok: false, motivo: 'etapa: só { done }' };
     if (e.acao === 'situacao') {
       if (c.status === 'IMPEDIMENT') return soChaves(c, ['status', 'justification']) && textoOk(c.justification) ? ok : { ok: false, motivo: 'impedimento pede o motivo' };
@@ -351,6 +365,61 @@
     if (!a || typeof a !== 'object' || !soChaves(a, ['nome', 'tipo', 'base64']) || !String(a.nome || '').trim() || String(a.nome).length > 200 || typeof a.base64 !== 'string' || !/^[A-Za-z0-9+/]*=*$/.test(a.base64) || !a.base64) return { ok: false, motivo: 'documento: arquivo inválido' };
     if (tamanhoB64(a.base64) > ARQ_MAX) return { ok: false, motivo: 'documento: arquivo acima de 15 MB' };
     return ok;
+  }
+  /* 0.102.0 (Josué, 12/11/2026: "quando o leitor do Express falhar a extensão lê o documento e sugere pra qual tarefa / item ele deve ir,
+   * confirmando a extensão já anexa"): pistas do texto do documento (lido no Chrome, nunca guardado) e a sugestão de destino. */
+  const soDig = (v) => String(v || '').replace(/\D/g, '');
+  function cnpjValido(c) {
+    const d = soDig(c); if (d.length !== 14 || /^(\d)\1+$/.test(d)) return false;
+    const dv = (n) => { let s = 0, p = n - 7; for (let i = 0; i < n; i++) { s += +d[i] * p--; if (p < 2) p = 9; } const r = s % 11; return r < 2 ? 0 : 11 - r; };
+    return dv(12) === +d[12] && dv(13) === +d[13];
+  }
+  function cnpjsDoTexto(texto) {
+    const out = [], t = String(texto || '');
+    (t.match(/\d{2}[.\s]?\d{3}[.\s]?\d{3}[\/\s]?\d{4}[-\s]?\d{2}/g) || []).forEach(m => { const d = soDig(m); if (cnpjValido(d) && !out.includes(d)) out.push(d); });
+    return out;
+  }
+  const MESES_EXT = ['janeiro', 'fevereiro', 'marco', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+  // competências 'AAAA-MM' citadas no texto (MM/AAAA, MM-AAAA ou o mês por extenso com o ano), da mais citada à menos
+  function competenciasDoTexto(texto) {
+    const t = semAcento(texto), cont = {};
+    const soma = (a, m) => { a = +a; m = +m; if (m >= 1 && m <= 12 && a >= 2000 && a <= 2100) { const k = a + '-' + String(m).padStart(2, '0'); cont[k] = (cont[k] || 0) + 1; } };
+    (t.match(/(?:^|[^\d\/])(\d{1,2})[\/\-.](20\d{2})(?!\d)/g) || []).forEach(x => { const m = /(\d{1,2})[\/\-.](20\d{2})/.exec(x); soma(m[2], m[1]); });
+    MESES_EXT.forEach((nome, i) => { const re = new RegExp(nome + '\\s*(?:de|\\/|-)?\\s*(20\\d{2})', 'g'); let m; while ((m = re.exec(t))) soma(m[1], i + 1); });
+    return Object.keys(cont).sort((a, b) => cont[b] - cont[a] || b.localeCompare(a));
+  }
+  // o quanto o nome de um item (documento) da tarefa aparece no texto: fração das palavras do nome que estão no texto
+  function notaDocumento(nomeDoc, texto) {
+    const ws = palavrasNome(nomeDoc); if (!ws.length) return 0;
+    const t = ' ' + semAcento(texto).replace(/[^a-z0-9]+/g, ' ') + ' ';
+    return ws.filter(w => t.includes(' ' + w + ' ')).length / ws.length;
+  }
+  // tarefas: [{ id, nome, status, clienteId, competencia }]; clientes: [{ id, nome, cnpj }] (os do CNPJ lido);
+  // docsPorTarefa: { idTarefa: [{ _id, name, temArquivo }] }; atual: id da tarefa onde soltou. Devolve até 6 destinos, do melhor ao pior.
+  function sugerirDestinos(o) {
+    const texto = String(o.texto || ''), comps = competenciasDoTexto(texto), ids = new Set((o.clientes || []).map(c => c.id));
+    const nomeCli = {}; (o.clientes || []).forEach(c => { nomeCli[c.id] = c.nome; });
+    const out = [];
+    (o.tarefas || []).filter(t => t && ids.has(t.clienteId) && t.status !== 'DONE').forEach(t => {
+      const comp = String(t.competencia || '').slice(0, 7), compOk = comps.length && comps.includes(comp);
+      (((o.docsPorTarefa || {})[t.id]) || []).filter(d => d && /^[0-9a-f]{24}$/i.test(String(d._id || ''))).forEach(d => {
+        const nd = notaDocumento(d.name, texto);
+        const nota = nd * 3 + (compOk ? 2 : 0) + (t.id === o.atual ? 1 : 0) + (d.temArquivo ? 0 : 0.3);
+        const porque = ['CNPJ de ' + (nomeCli[t.clienteId] || 'a empresa')].concat(compOk ? ['competência ' + comp.slice(5) + '/' + comp.slice(0, 4)] : []).concat(nd > 0 ? ['“' + d.name + '” aparece no documento'] : []).concat(t.id === o.atual ? ['é a tarefa onde soltou'] : []).concat(d.temArquivo ? [] : ['item ainda sem arquivo']);
+        out.push({ tarefa: { id: t.id, nome: t.nome, competencia: comp }, cliente: { id: t.clienteId, nome: nomeCli[t.clienteId] || '' }, documento: { id: d._id, nome: d.name || 'Documento' }, nota: Math.round(nota * 100) / 100, porque });
+      });
+    });
+    return out.sort((a, b) => b.nota - a.nota).slice(0, 6);
+  }
+  // 0.102.0: a resposta do Express em { id, achou, tarefa, documento, escolhas, erro }; tipo desconhecido aparece como tal
+  function lerExpress(d) {
+    const x = d && typeof d === 'object' ? escolher(d, MOLDES.expressItem) : null;
+    if (!x || !ID24.test(String(x._id || ''))) return { id: '', achou: false, tipo: 'desconhecido', erro: 'resposta do Express em formato desconhecido' };
+    const t = x.customer_task, doc = x.company_document;
+    const achou = x.type === 'EXPRESS_AUTOMATIC' && !!(t && ID24.test(String(t._id || '')) && doc && ID24.test(String(doc._id || '')));
+    return { id: x._id, achou, tipo: String(x.type || ''), escolhas: !!x.has_choices, erro: typeof x.error === 'string' ? x.error.slice(0, 200) : '',
+      tarefa: t ? { id: t._id || '', nome: t.name || '', competencia: t._competence_date || '', meta: t._due_date || '', cliente: t.customer ? { id: t.customer._id || '', nome: t.customer.name || '', cnpj: t.customer.cnpj || '' } : null } : null,
+      documento: doc ? { id: doc._id || '', nome: doc.name || '' } : null };
   }
   // Pedido de uma ação a partir do que a tela manda. o: { acao, id, etapa?, feita?, motivo?, texto?, documento?, arquivo? }
   // acao: 'etapa' | 'concluir' | 'reabrir' | 'impedir' | 'liberar' | 'comentar' | 'documento'. Erro = { erro }.
@@ -381,6 +450,15 @@
       const t = String(x.template || '');
       if (!ID24.test(t)) return { erro: 'template inválido' };
       return { id: 'tirarPasta', acao: 'tirarPasta', metodo: 'DELETE', url: url('/admin/company/document/integration/documents/' + t), corpo: {} };
+    }
+    if (x.acao === 'expressLer') {
+      const a = x.arquivo || {};
+      return { id: 'expressLer', acao: 'expressLer', metodo: 'POST', url: url('/es/file/upload/automatic'), corpo: { arquivo: { nome: String(a.nome || '').slice(0, 200), tipo: String(a.tipo || ''), base64: String(a.base64 || '') } } };
+    }
+    if (x.acao === 'expressConfirmar') {
+      const e = String(x.express || ''), t = String(x.tarefa || ''), d = String(x.documento || '');
+      if (!ID24.test(e) || !ID24.test(t) || !ID24.test(d)) return { erro: 'Express: arquivo, tarefa ou documento inválido' };
+      return { id: 'expressConfirmar', acao: 'expressConfirmar', metodo: 'POST', url: url('/es/file/' + e + '/confirm'), corpo: { company_document: d, customer_task: t } };
     }
     if (x.acao === 'templateSalvar') {
       const t = String(x.template || '');
@@ -414,7 +492,12 @@
     try {
       const headers = { Accept: 'application/json, text/plain, */*', Authorization: tok };
       let body;
-      if (perm.acao === 'documento') {
+      if (perm.acao === 'expressLer') {
+        // como a tela do Express: um formulário só com o arquivo
+        const a = p.corpo.arquivo, bin = g.atob(a.base64), u8 = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+        body = new g.FormData(); body.append('file', new g.Blob([u8], { type: a.tipo || 'application/octet-stream' }), a.nome);
+      } else if (perm.acao === 'documento') {
         // o formulário igual ao da tela do Gestta: customer_task, company_document e file
         const a = p.corpo.arquivo, bin = g.atob(a.base64), u8 = new Uint8Array(bin.length);
         for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
@@ -430,7 +513,8 @@
         return { ok: false, status: r.status, erro: msg || ('erro ' + r.status) };
       }
       if (perm.acao === 'reenviar') { const d = dados && typeof dados === 'object' ? dados : {}; return { ok: true, status: r.status, acao: perm.acao, resumo: { success: Number(d.success) || 0, failed: Number(d.failed) || 0, blocked: Number(d.blocked) || 0 } }; }
-      if (perm.acao === 'pasta' || perm.acao === 'tirarPasta') return { ok: true, status: r.status, acao: perm.acao };
+      if (perm.acao === 'pasta' || perm.acao === 'tirarPasta' || perm.acao === 'expressConfirmar') return { ok: true, status: r.status, acao: perm.acao };
+      if (perm.acao === 'expressLer') return { ok: true, status: r.status, acao: perm.acao, express: lerExpress(dados) };
       if (perm.acao === 'tirarDaLista') { const d = dados && typeof dados === 'object' ? dados : {}; return { ok: true, status: r.status, acao: perm.acao, resumo: { success: Number(d.success) || 0, failed: Number(d.failed) || 0 } }; }
       if (perm.acao === 'template') return { ok: true, status: r.status, acao: perm.acao, template: dados && typeof dados === 'object' ? escolher(dados, MOLDES.templateDoc) : null };
       const t = perm.acao === 'documento' ? dados && dados.customer_task : perm.acao === 'comentario' ? null : dados;
@@ -1118,7 +1202,7 @@
       templatesSemPasta: semPasta.length, naoVai: semPasta.filter(g => g.classe === 'naoVai').length, semNotificar: itens.filter(i => i.notifica === false).length, conferidas: itens.filter(i => i.notifica !== null).length, deve: semPasta.filter(g => g.classe === 'deve').length, risco: risco.length, templatesComPasta: comPasta.length } };
   }
 
-  g.OCG = { enviosPortal, pastaForaDe, urlTemplate: (id) => /^[0-9a-f]{24}$/i.test(String(id || '')) ? 'https://app.gestta.com.br/admin/#/sidebar/document/edit/' + id + '/details' : '', semelhanca, parecidoComPasta, palavrasNome, ERROS_ENVIO, API, APP, PAUSA_MS, LIMITE_BUSCA, JANELA_MAX_DIAS, POST_LEITURA, RELATORIO_TIPOS, COLUNAS_RELATORIO, MOLDES, APPS,
+  g.OCG = { enviosPortal, lerExpress, cnpjsDoTexto, cnpjValido, competenciasDoTexto, notaDocumento, sugerirDestinos, pastaForaDe, urlTemplate: (id) => /^[0-9a-f]{24}$/i.test(String(id || '')) ? 'https://app.gestta.com.br/admin/#/sidebar/document/edit/' + id + '/details' : '', semelhanca, parecidoComPasta, palavrasNome, ERROS_ENVIO, API, APP, PAUSA_MS, LIMITE_BUSCA, JANELA_MAX_DIAS, POST_LEITURA, RELATORIO_TIPOS, COLUNAS_RELATORIO, MOLDES, APPS,
     caminhoDe, leituraPermitida, escritaPermitida, pedidoAcao, agirNaPagina, ARQ_MAX, appDe, escolher, limpar, limparRelatorio, perfil, expiraEm, janelaDoMes, PEDIDOS, lerNaPagina, linhasDoTeste,
     GRUPOS, TIPOS_TAREFA, SITUACOES_TAREFA, MAX_PAGINAS_TAREFAS, diasUteis, grupoTarefa, prazoTexto, contarGrupos, porEmpresa, porDia, filtrarTarefas, urlTarefa, ymd, diaLocal,
     COLUNAS_FECHAMENTO, linhasDoRelatorio, tarefasDoRelatorio, trilhaDaEmpresa, fechamento, ESTADOS, setorDe, respDe, ehEscritorioProprio,

@@ -694,3 +694,22 @@
 .gp-docs li.gp-doc.gp-drop-on{outline:2px dashed var(--blue-deep, #3C659B); outline-offset:1px; background:color-mix(in srgb, var(--blue-deep, #3C659B) 14%, transparent)}
 .gp-docs li.gp-doc.gp-drop-on::after{content:attr(data-gp-drop-rot); flex-basis:100%; font-size:12px; font-weight:600; color:var(--ink)}
 :root[data-estilo="simples"] .gp-docs li.gp-doc.gp-drop-on{outline-style:solid}
+
+/* 0.102.0: soltar documentos para o Express */
+.gs-veu{position:fixed; inset:0; z-index:90; display:flex; align-items:center; justify-content:center; background:color-mix(in srgb, var(--blue-deep, #3C659B) 12%, transparent); outline:3px dashed var(--blue-deep, #3C659B); outline-offset:-10px; pointer-events:none}
+.gs-veu-caixa{background:var(--surface, #fff); color:var(--ink); border:1px solid var(--rule-strong, #C2CCD5); border-radius:var(--r); padding:16px 22px; display:flex; flex-direction:column; align-items:center; gap:4px; box-shadow:0 10px 30px rgba(0,0,0,.18); max-width:420px; text-align:center}
+.gs-veu-caixa b{font-size:16px} .gs-veu-caixa span{font-size:13px; color:var(--ink-2)}
+.gs-dlg{position:fixed; inset:0; z-index:95; display:flex; align-items:center; justify-content:center; background:rgba(10,15,20,.45); padding:16px}
+.gs-dlg[hidden]{display:none}
+.gs-caixa{background:var(--surface, #fff); color:var(--ink); border-radius:var(--r); border:1px solid var(--rule-strong, #C2CCD5); width:min(720px, 100%); max-height:calc(100vh - 32px); display:flex; flex-direction:column; gap:10px; padding:18px 20px; box-shadow:0 18px 50px rgba(0,0,0,.3)}
+.gs-caixa h2{margin:0; font-size:17px}
+.gs-dica{margin:0; font-size:13px; color:var(--ink-2)}
+.gs-lista{list-style:none; margin:0; padding:0; overflow:auto; display:flex; flex-direction:column; gap:8px; min-height:0}
+.gs-it{border:1px solid var(--rule, #DCE3E9); border-radius:var(--r); padding:10px 12px; display:flex; flex-direction:column; gap:6px}
+.gs-arq{display:flex; justify-content:space-between; gap:10px; align-items:baseline} .gs-arq b{overflow-wrap:anywhere} .gs-arq small{color:var(--ink-2); font-size:12px; white-space:nowrap}
+.gs-st{margin:0; font-size:13px; color:var(--ink-2)} .gs-st.ok{color:var(--sit-cliente-tx, #167A45); font-weight:600} .gs-st.erro{color:var(--brand-red, #C2000C); font-weight:600} .gs-st.gs-sug{color:var(--ink); font-weight:600}
+.gs-it select{font:inherit; font-size:13px; padding:6px 8px; border:1px solid var(--rule-strong, #C2CCD5); border-radius:var(--r); background:var(--surface, #fff); color:var(--ink); width:100%}
+.gs-porque{font-size:12px; color:var(--ink-2)}
+.gs-mail{display:flex; gap:8px; flex-wrap:wrap}
+.gs-bt{display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap}
+:root[data-estilo="simples"] .gs-caixa{box-shadow:none} :root[data-estilo="simples"] .gs-veu-caixa{box-shadow:none}

@@ -201,13 +201,8 @@ function confirmarArquivos(doc, lista) {
   if (vao.length === 1) return pedirConfirmacao({ msg: { acao: 'documento', documento: doc._id }, arquivo: vao[0], texto: 'Enviar “' + vao[0].name + '” (' + tamanho(vao[0].size) + ') no documento “' + nome + '”?', extra, botao: 'Enviar arquivo', feito: 'Arquivo enviado no Gestta.' });
   pedirConfirmacao({ msg: { acao: 'documento', documento: doc._id }, arquivos: vao, docNome: nome, texto: 'Enviar ' + vao.length + ' arquivos no documento “' + nome + '”? Vão um por vez.', extra, botao: 'Enviar ' + vao.length + ' arquivos', feito: '' });
 }
-// Arrastar arquivo para fora de um item não abre o arquivo na tela (o navegador abriria o PDF por cima de tudo)
+// Soltar fora de um item vai para o Express (gestta-soltar.js, 0.102.0)
 const temArquivos = e => !!(e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files'));
-if (typeof document !== 'undefined' && !document.__gtSoltar) {
-  document.__gtSoltar = true;
-  document.addEventListener('dragover', e => { if (temArquivos(e) && !e.target.closest('[data-gp-drop]')) { e.preventDefault(); e.dataTransfer.dropEffect = 'none'; } });
-  document.addEventListener('drop', e => { if (temArquivos(e) && !e.target.closest('[data-gp-drop]')) e.preventDefault(); });
-}
 // Relê o detalhe sem o esqueleto (depois de uma ação)
 async function recarregarQuieto() {
   const meu = P, t = P && P.lista[P.i]; if (!t) return;
