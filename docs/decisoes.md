@@ -140,3 +140,9 @@ A extensão vai também ao **Gestta** (`app.gestta.com.br`, admin em AngularJS; 
 - Decidido: o e-mail abre pronto no Zimbra (`mail.controltax.com.br`) e o analista envia; **sem destinatário preenchido**: a extensão só avisa o analista para escolher a gestão do departamento ou o setor do Portal do Cliente.
 - Feito na 0.101.0: arrastar em cima do documento (vários arquivos, uma confirmação, um por vez, pelo envio já aprovado). O resto espera o mapeamento do Express (`mapeamento/prompt-claude-chrome-express-gestta.txt`).
 - Mapeado o Express na empresa de teste em 12/11/2026 (três rodadas; `mapeamento/gestta-2026-11-04.md`, "Express"). Feito na 0.102.0: soltar fora de um item vai ao Express; o que ele não acha, a extensão sugere; sem destino, e-mail pronto no Zimbra sem destinatário.
+
+## 12/11/2026 · Gestta: setor, situação, concluir com as etapas e o CNPJ (0.103.0)
+
+- "Hoje a extensão do Gestta só permite filtrar por analista, porém deve haver a possibilidade de filtrar todas as tarefas de um determinado setor, além disso a extensão ignora os filtros de concluída, aberta, impedimento, desconsiderada": setores em De quem e Situação no Gestta nos Filtros.
+- "Para concluir uma tarefa, seja individualmente ou em lote, a extensão deve clicar para desconsiderar os itens de cada uma que não possuir anexo, e caso a tarefa tenha checkbox, ela deve marcá-los antes de concluir": as etapas são marcadas antes (envio já aprovado); desconsiderar o item espera o mapeamento (escrita nova).
+- "Nomear as empresas acompanhado do final do CNPJ"; "ao selecionar a tarefa já aparecer o CNPJ da empresa dentro da tarefa".

@@ -2,6 +2,14 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.103.0 (12/11/2026): setor, situação, concluir com as etapas e o CNPJ
+
+- **Todas as tarefas de um setor:** em **De quem**, além das pessoas, cada setor ("Setor Fiscal · todas as tarefas"). A extensão lê as tarefas de todas as pessoas do setor numa busca só e, com o relatório do mês (lido sozinho, no máximo uma vez por hora), tira as que são de outro setor de quem está em mais de um. Só para quem tem acesso total no Gestta.
+- **Situação no Gestta** (Filtros): **Aberta · Impedimento · Concluída · Desconsiderada**. Escolhida uma ou mais, a lista mostra só essas (inclusive as concluídas). As desconsideradas (e as ignoradas) só são lidas quando a pessoa pede essa situação; não entram no progresso nem nas contas, e não têm ação pela extensão.
+- **Concluir marca as etapas antes**, na tarefa e em lote: cada etapa (checkbox) que falta é marcada no Gestta e só depois a tarefa é concluída; se uma etapa falhar, a tarefa não é concluída. A confirmação diz quais etapas serão marcadas.
+- **Desconsiderar os itens sem anexo ao concluir** foi pedido e espera o mapeamento (roteiro `mapeamento/prompt-claude-chrome-desconsiderar-item-gestta.txt`): a confirmação avisa quantos itens sem anexo ficam como estão.
+- **Empresa com o final do CNPJ** em todas as telas ("Cliente Alfa · 0001-90", separa matriz e filiais) e, no detalhe da tarefa, o **CNPJ inteiro** com o botão de copiar. Vem da lista de clientes do Gestta (na memória por 6 horas); sem acesso a ela, fica só o nome.
+
 ## Novidades da v0.102.0 (12/11/2026): soltar documentos para o Express
 
 - **Soltar em qualquer lugar das Tarefas do Gestta** (ou na tarefa, fora de um item): aparece "Soltar aqui" / "Soltar nesta tarefa" e, ao soltar, a pergunta **Ler N arquivos com o Express?**. Cada arquivo vai ao Express do Gestta (`POST /es/file/upload/automatic`, só o arquivo), que procura a empresa, a tarefa e o item.
