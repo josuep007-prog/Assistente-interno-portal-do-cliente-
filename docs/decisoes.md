@@ -107,3 +107,4 @@ A extensão vai também ao **Gestta** (`app.gestta.com.br`, admin em AngularJS; 
 ## Decisões depois de 12/11/2026
 
 - **12/11/2026 (Josué: "sim", para a proposta de separar o que vale hoje do histórico):** o `CLAUDE.md` passa a ter só as regras em vigor; o histórico das decisões fica neste arquivo e as novidades de cada versão em `extensao/HISTORICO.md`.
+- **12/11/2026, Hub 349 (Josué: "eu preciso de uma sessão dentro do módulo do portal que me ajude a acompanhar tudo que é alterado sozinho pra eu ter noção e ciência. mas assim bem visual e fácil de navegar e bem feito"):** aba **Automático** no módulo do Portal, lida do `gt_hist`. Para ela ficar completa, passaram a ser registradas também a pessoa incluída na equipe do Portal pelo Gestta e a filial juntada sozinha à matriz. Teste: passo "Hub 349" de `testes/hub-onvio/hub-gestta.js`.
