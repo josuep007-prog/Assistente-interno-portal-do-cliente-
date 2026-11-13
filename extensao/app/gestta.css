@@ -843,3 +843,56 @@
 @keyframes gs-gira{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){ .gs-gira{animation:none} .gs-prog span{transition:none} }
 :root[data-estilo="simples"] .gs-canto{box-shadow:0 2px 8px rgba(10,15,20,.16)}
+/* ============ 0.110.0: aba Saúde da operação ============ */
+.gsa-memo{margin:-6px 0 10px; font-size:12px}
+.gsa-sec{background:var(--surface); border:1px solid var(--rule); border-radius:var(--r); margin-bottom:12px}
+.gsa-sec.gsa-tom-alerta{border-left:3px solid var(--brand-red)}
+.gsa-sec-h{all:unset; box-sizing:border-box; cursor:pointer; display:flex; align-items:center; gap:8px; width:100%; padding:11px 14px; color:var(--ink)}
+.gsa-sec-h:focus-visible{outline:2px solid var(--blue-deep); outline-offset:-2px}
+.gsa-sec-h h3{margin:0; font-size:15px; display:flex; align-items:center; gap:8px}
+.gsa-resumo{margin-left:auto; font-size:12px; color:var(--ink-2); font-weight:600}
+.gsa-corpo{padding:0 14px 12px}
+.gsa-h4{margin:14px 0 6px; font-size:13px; color:var(--ink); display:flex; align-items:center; gap:8px}
+.gsa-pills{display:flex; flex-wrap:wrap; gap:6px; margin:6px 0}
+.gsa-prog{height:6px; border-radius:3px; background:var(--rule); overflow:hidden; max-width:420px; margin-top:4px}
+.gsa-prog span{display:block; height:100%; background:var(--blue-deep); transition:width .2s ease}
+.gsa-num{margin:4px 0 8px; font-size:12px; color:var(--ink-2); font-variant-numeric:tabular-nums}
+.gsa-acoes{white-space:nowrap; text-align:right}
+.gsa-acoes .btn{margin-left:6px}
+.gsa-tab td{max-width:320px}
+/* grade de carga: pessoa × próximos dias úteis */
+.gsa-grade th, .gsa-grade td{padding:5px 6px}
+.gsa-grade .gsa-pessoa{position:sticky; left:0; background:var(--surface); z-index:1; min-width:170px; max-width:240px; text-align:left; color:var(--ink); font-weight:600; white-space:normal}
+.gsa-grade thead .gsa-pessoa{background:var(--surface-2)}
+.gsa-grade .gsa-dia small{display:block; font-weight:500; font-size:11.5px}
+.gsa-grade .gsa-dia.hoje{color:var(--ink); box-shadow:inset 0 -2px 0 var(--blue-deep)}
+.gsa-alerta{display:flex; align-items:center; gap:4px; color:var(--brand-red); font-size:11.5px; font-weight:700; margin-top:2px}
+.gsa-cel{all:unset; box-sizing:border-box; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:2px; min-width:34px; padding:3px 6px; border-radius:3px; border:1px solid var(--rule); background:var(--surface); color:var(--ink); font-weight:700; font-variant-numeric:tabular-nums}
+.gsa-cel:hover{border-color:var(--rule-strong)}
+.gsa-cel:focus-visible{outline:2px solid var(--blue-deep); outline-offset:1px}
+.gsa-cel.acima{border-color:var(--brand-red); background:color-mix(in srgb, var(--brand-red) 10%, var(--surface)); color:var(--ink)}
+.gsa-cel.acima i{font-style:normal; color:var(--brand-red)}
+.gsa-cel.atr{border-style:dashed; border-color:var(--brand-red)}
+.gsa-cel.on{box-shadow:0 0 0 2px var(--blue-deep)}
+.gsa-cap{all:unset; cursor:pointer; padding:1px 6px; border-radius:3px; border:1px dashed var(--rule-strong); color:var(--ink); font-variant-numeric:tabular-nums}
+.gsa-cap.manual{border-style:solid; border-color:var(--blue-deep); font-weight:700}
+.gsa-cap:focus-visible{outline:2px solid var(--blue-deep); outline-offset:1px}
+.gsa-cap-in{width:64px; font:inherit; font-size:12.5px; padding:2px 4px}
+.gsa-cel-lista{margin-top:10px; border:1px solid var(--blue-deep); border-left-width:3px; border-radius:var(--r); padding:10px 12px}
+.gsa-cel-h{display:flex; align-items:center; gap:8px 10px; flex-wrap:wrap; margin-bottom:6px}
+.gsa-cel-h .gte-cont{margin-left:0; margin-right:auto}
+.gsa-tlist{list-style:none; margin:0; padding:0; display:flex; flex-direction:column}
+.gsa-tlist li{display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 10px; padding:6px 0; border-top:1px dashed var(--rule); font-size:13px; color:var(--ink)}
+.gsa-tlist li:first-child{border-top:0}
+.gsa-tlist small{color:var(--ink-2); font-size:12px}
+.gsa-prio{list-style:none; margin:0; padding:0; counter-reset:p; display:flex; flex-direction:column}
+.gsa-prio li{counter-increment:p; display:grid; grid-template-columns:28px 190px minmax(0, 1fr); align-items:baseline; gap:2px 10px; padding:6px 0; border-top:1px dashed var(--rule); font-size:13px; color:var(--ink)}
+.gsa-prio li:first-child{border-top:0}
+.gsa-prio li::before{content:counter(p); font-weight:700; color:var(--ink-2); font-variant-numeric:tabular-nums}
+.gsa-prio li small{grid-column:3; color:var(--ink-2); font-size:12px}
+.gsa-nivel{font-size:12px; font-weight:700; color:var(--ink-2)}
+.gsa-n1 .gsa-nivel, .gsa-n2 .gsa-nivel{color:var(--brand-red)}
+.gsa-n3 .gsa-nivel{color:var(--late, var(--brand-red))}
+@media (max-width:760px){ .gsa-prio li{grid-template-columns:24px minmax(0, 1fr)} .gsa-prio li small, .gsa-prio li .gte-link{grid-column:2} }
+:root[data-estilo="simples"] .gsa-sec{box-shadow:none}
+:root[data-estilo="simples"] .gsa-cel.acima{background:var(--surface); border-width:2px}

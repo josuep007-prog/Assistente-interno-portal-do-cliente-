@@ -179,7 +179,7 @@ export function desenharEnvios(v, sub) {
 const topo = (v) => { const c = v.querySelector('.gte-conf'); if (c) c.scrollIntoView({ block: 'center' }); };
 export function ligarEnvios(v, redesenhar, paraPai) {
   v.addEventListener('click', (e) => {
-    if (!v.querySelector('.gte-topo, [data-gte-ler]')) return;
+    if (!v.querySelector('.gte-topo, [data-gte-ler]') || v.querySelector('.gsa-topo')) return;
     const t = e.target.closest('[data-gte-f],[data-gte-abrir],[data-gte-ler],[data-abrir],[data-gte-reenviar],[data-gte-reenviar-todos],[data-gte-pasta],[data-gte-tirar],[data-gte-tirar-todos],[data-gte-pastas],[data-gte-tirarpasta],[data-gte-tirarpasta-todos],[data-gte-ciencia],[data-gte-confirmar],[data-gte-cancelar]'); if (!t) return;
     if (t.dataset.gteCiencia != null) { S.cienciaAberta = !S.cienciaAberta; redesenhar(); return; }
     const A = S.analise;
