@@ -544,6 +544,29 @@ await passo('app · Hoje (analista): Meu dia em números (números do dia com li
   assert.deepEqual(p.erros, []);
 });
 
+await passo('app · Hoje: a leitura das concluídas que falha ao abrir não fica gravada por 10 minutos: tenta de novo sozinha e "Tentar agora" refaz (0.111.1)', async () => {
+  const falha = { ok: false, erro: 'Tentativas: página do Onvio: HTTP 401 · extensão na aba: HTTP 401 · direto: HTTP 401' };
+  const boa = { ok: true, dias: 30, erros: [], itens: [{ k: 'geral:c1', type: 'geral', id: 'c1', num: 901, code: 5, lado: 'fim', mine: true, resp: 'Ana Teste', last: new Date().toISOString() }] };
+  const p = await abrirApp('#/inicio', undefined, 'window.__mdBaseMs = 400; window.__respostas = ' + JSON.stringify({ concluidas: falha }));
+  await p.waitForSelector('.hj-meudia');
+  await p.waitForFunction(() => window.__msgs.some(m => m.cmd === 'concluidas'));
+  assert.match(await p.textContent('.hj-md-graf'), /Lendo as concluídas no Onvio… \(tentando de novo\)/, 'sem o texto técnico na cara');
+  assert.doesNotMatch(await p.textContent('.hj-meudia'), /HTTP 401|Tentativas:/);
+  const n1 = await p.evaluate(() => window.__msgs.filter(m => m.cmd === 'concluidas').length);
+  await p.waitForFunction(n => window.__msgs.filter(m => m.cmd === 'concluidas').length > n, n1, { timeout: 5000 });      // tentou de novo sozinha
+  await p.evaluate(() => { window.__respostas.concluidas = { ok: true, dias: 30, erros: [], itens: [{ k: 'geral:c1', type: 'geral', id: 'c1', num: 901, code: 5, lado: 'fim', mine: true, resp: 'Ana Teste', last: new Date().toISOString() }] }; });
+  await p.waitForSelector('.hj-md-svg', { timeout: 8000 });
+  assert.equal(await p.textContent('[data-md="concluidas"] .ap-c b'), '1', 'quando o Onvio responde, o número entra sem recarregar');
+  // depois de 3 falhas aparece o aviso curto com "Tentar agora"
+  const q = await abrirApp('#/inicio', undefined, 'window.__mdBaseMs = 150; window.__respostas = ' + JSON.stringify({ concluidas: falha }));
+  await q.waitForSelector('[data-md-reler]', { timeout: 8000 });
+  assert.match(await q.textContent('.hj-md-vazio'), /As concluídas não carregaram agora\. Vou tentar de novo sozinho\./);
+  await q.evaluate(() => { window.__respostas.concluidas = { ok: true, dias: 30, erros: [], itens: [] }; });
+  await q.click('[data-md-reler]');
+  await q.waitForSelector('.hj-md-svg', { timeout: 5000 });
+  assert.deepEqual(p.erros.concat(q.erros), []);
+});
+
 await passo('app · Hoje: "Revisar uma a uma" mostra uma sugestão por vez com o que será enviado; Fazer abre o detalhe e volta na próxima', async () => {
   const p = await abrirApp('#/inicio');
   await p.evaluate(() => { window.__respostas = Object.assign(window.__respostas || {}, { casos: { ok: true, analises: {}, lidas: 2 }, detalhe: { ok: true, item: {}, tramites: [] }, previsao: { ok: true, dias: 28, total: 0, prox30: 0, erros: [], empresas: [] } }); });
