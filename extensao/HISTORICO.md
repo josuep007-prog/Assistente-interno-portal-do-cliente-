@@ -2,6 +2,12 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.113.0 (13/11/2026): dados pessoais ligados de fábrica no envio ao Hub (Hub 355)
+
+- Josué confirmou a decisão de 06/11/2026 ("Ligar de fábrica, todos veem"): a categoria **Dados pessoais** do envio completo ao Hub vem **ligada de fábrica** e o aviso de confirmação saiu (em Configurações › Avançado e na página de opções). Quem já tinha escolhido desligar continua desligado; dá para desligar e ligar como as outras categorias.
+- No Hub (355), os dados pessoais passam a valer para **analista ou coordenação de qualquer módulo** (DP, Contábil, Fiscal ou Portal), não só do DP; quem é só consulta continua sem eles. O Hub pede a extensão 0.113.0 ou mais nova (`ING_VERSAO_MIN`).
+- O painel de desempenho por módulo ficou para depois (Josué, 13/11/2026: "Não por agora").
+
 ## Novidades da v0.112.0 (13/11/2026): Saúde e Fechamento aparecem aos poucos
 
 - Josué escolheu "Mostrar aos poucos" para as Tarefas do Gestta (aprovado em 13/11/2026); a 0.111.0 fez isso nas tarefas e esta versão faz na **Saúde** e no **Fechamento**.
