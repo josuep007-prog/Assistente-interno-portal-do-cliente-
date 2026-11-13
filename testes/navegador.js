@@ -2567,7 +2567,7 @@ await passo('app · Simplificado em tela pequena (1366×650 e 1280×720): cabeç
     await p.waitForSelector('#hj-tipos');
     const cab = await p.evaluate(() => ({ cab: document.querySelector('.mod-cab').getBoundingClientRect().height, linha: document.querySelector('.mod-linha').getBoundingClientRect().height, abas: document.querySelector('#abas').hidden }));
     assert.ok(cab.abas && cab.cab <= 64 && cab.linha <= 40, onde + ': cabeçalho numa linha só (' + JSON.stringify(cab) + ')');
-    assert.ok(await p.$eval('.hj-meudia', e => e.getBoundingClientRect().height) < 300, onde + ': Meu dia em números baixo');
+    const hMd = await p.$eval('.hj-meudia', e => e.getBoundingClientRect().height); assert.ok(hMd < 300, onde + ': Meu dia em números baixo (' + hMd + ')');
     assert.equal(await p.$$eval('.hj-md-k', e => e.filter(x => x.scrollWidth > x.clientWidth + 1).length), 0, onde + ': números sem corte');
     await sem_rolagem(p, onde + ' Hoje');
     // barras recolhíveis: a Previsão começa recolhida e o que a pessoa muda fica lembrado

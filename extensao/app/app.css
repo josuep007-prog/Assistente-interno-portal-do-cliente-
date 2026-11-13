@@ -1844,3 +1844,11 @@ textarea.adv-console{display:block; width:100%; box-sizing:border-box; resize:ve
 :root[data-estilo="simples"] .hj-meudia{padding:14px 16px 16px}
 :root[data-estilo="simples"] .hj-md-cab h2{font-size:21px}
 :root[data-estilo="simples"] .hj-md-k b{font-size:24px}
+/* telas baixas: o Meu dia em números encolhe para o resto do Hoje aparecer */
+@media (max-height:760px){
+  .hj-meudia{padding:12px 16px 14px}
+  .hj-md-cab{margin:0 0 10px} .hj-md-cab h2{font-size:20px; margin:2px 0 1px}
+  .hj-md-dest{padding:10px 12px; gap:6px} .hj-md-dest .ap{--sz:84px !important} .hj-md-dest .ap-c b{font-size:28px}
+  .hj-md-k{padding:9px 12px} .hj-md-ic{width:34px; height:34px} .hj-md-k b{font-size:22px}
+  .hj-md-graf{padding:8px 12px 6px} .hj-md-svg{max-height:112px}
+}

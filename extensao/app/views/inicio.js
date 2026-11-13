@@ -279,7 +279,7 @@ export function render(el, ctx) {
     enviar({ cmd: 'concluidas', equipe: escMd === 'equipe' }).then(r => {
       concDiaLendo[escMd] = false;
       concDia[escMd] = r && r.ok ? { itens: r.itens || [], em: Date.now() } : { itens: null, erro: (r && r.erro) || 'a leitura não respondeu', em: Date.now() };
-      if (el.isConnected && location.hash.startsWith('#/inicio')) render(el, ctx);
+      if (el.isConnected && location.hash.startsWith('#/inicio')) { const av = $('#aviso-sessao', el); render(el, ctx); if (av && !$('#aviso-sessao', el)) el.prepend(av); }      // a faixa de sessão fica
     });
   }
   $$('#hj-tipos-l [data-tipo]', el).forEach(b => b.onclick = () => {
