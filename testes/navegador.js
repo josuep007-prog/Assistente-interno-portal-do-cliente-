@@ -3457,16 +3457,16 @@ await passo('Gestta · Envios ao portal (0.96.0, 0.100.3): um destino por docume
     assert.match(txt, /2 · Tirar da lista[\s\S]*Recibo Interno/); assert.match(txt, /2 · Tirar da lista[\s\S]*Pasta fora da 9999[\s\S]*Contrato Social[\s\S]*não foi montada a partir da empresa 9999/);
     assert.match(txt, /Pastas fora da empresa 9999[\s\S]*Empresa Exemplo[\s\S]*Contrato Social[\s\S]*Legal › Contratos/);
     assert.ok(!/1 · Reenviar[\s\S]*Cliente Ficticio E5[\s\S]*2 · Tirar/i.test(txt), 'o erro de envio de pasta fora da 9999 não fica para reenviar');
-    assert.match(txt, /Templates em risco[\s\S]*Guia FGTS Rescisório[\s\S]*parecido com[\s\S]*Guia FGTS/);
-    // 0.106.1: os botões de cada linha do risco ficam juntos, na mesma coluna à direita
-    const xs = await fr.$$eval('.gte-risco li', l => l.map(li => { const b = [...li.querySelectorAll('.btn')]; return b.length ? Math.round(b[b.length - 1].getBoundingClientRect().right) : null; }).filter(Boolean));
-    assert.ok(xs.length && xs.every(x => Math.abs(x - xs[0]) <= 1), 'botões alinhados à direita: ' + xs);
-    const vaos = await fr.$$eval('.gte-risco li', l => l.map(li => { const b = [...li.querySelectorAll('.btn')]; return b.length > 1 ? Math.round(b[1].getBoundingClientRect().left - b[0].getBoundingClientRect().right) : 0; }));
-    assert.ok(vaos.every(v => v <= 12), 'os botões de cada linha ficam juntos: ' + vaos);
-    if (process.env.CAP) { await fr.$eval('.gte-risco', e => e.scrollIntoView({ block: 'center' })); await p.screenshot({ path: path.join(process.env.CAP, 'gestta-envios-risco-' + estilo + '.png') }); }
-    // 0.100.3: o botão leva ao cadastro do template no Gestta
-    assert.equal(await fr.getAttribute('.gte-tpl.nao a[href$="' + T2 + '/details"]', 'href'), 'https://app.gestta.com.br/admin/#/sidebar/document/edit/' + T2 + '/details');
-    assert.ok(await fr.$('.gte-risco a[href$="/sidebar/document/edit/e00000000000000000000005/details"]'), 'o risco abre o template');
+    // 0.107.0: "em risco" virou "Para ciência": fora dos números do topo, recolhido e sem botão principal
+    assert.ok(!/em risco/.test(txt) && !(await fr.$('[data-gte-f="risco"]')), 'sem número de pendência para o risco');
+    assert.match(txt, /Para ciência: 2 templates sem pasta parecidos com os que vão ao portal[\s\S]*Não é pendência/);
+    assert.ok(!(await fr.$('.gte-ciencia .gte-risco')), 'recolhido de fábrica');
+    await fr.click('[data-gte-ciencia]');
+    await fr.waitForSelector('.gte-ciencia .gte-risco');
+    assert.match(await fr.textContent('.gte-ciencia'), /Guia FGTS Rescisório[\s\S]*parecido com Guia FGTS/);
+    assert.ok(!(await fr.$('.gte-ciencia .btn-primary')) && !(await fr.$('[data-gte-pastas="risco"]')), 'sem ação em destaque nem em lote');
+    assert.ok(await fr.$('.gte-ciencia a[href$="/sidebar/document/edit/e00000000000000000000005/details"]'), 'abre o template no Gestta');
+    if (process.env.CAP) { await fr.$eval('.gte-ciencia', e => e.scrollIntoView({ block: 'center' })); await p.screenshot({ path: path.join(process.env.CAP, 'gestta-envios-ciencia-' + estilo + '.png') }); }
     assert.ok(await fr.$('.gte-risco a[href$="/sidebar/document/edit/e00000000000000000000007/details"]'), 'a pasta fora da 9999 abre o template');
     // os números filtram; ver os documentos de um template
     await fr.click('[data-gte-f="naoVai"]');
@@ -3531,16 +3531,14 @@ await passo('Gestta · Envios ao portal (0.96.0, 0.100.3): um destino por docume
       await fr.waitForFunction((t) => (window.__msgs || []).some(m => m.cmd === 'gesttaPasta' && m.template === t), T2);
       const mp = await fr.evaluate((t) => window.__msgs.find(m => m.cmd === 'gesttaPasta' && m.template === t), T2);
       assert.equal(mp.modelo, T1, 'a pasta vem do template parecido, relida no service worker');
-      // 0.99.0: risco com mais de um template ganha "Usar as pastas sugeridas" (um por vez, uma confirmação)
-      await fr.waitForSelector('[data-gte-pastas="risco"]:not([disabled])');
-      assert.match(await fr.textContent('[data-gte-pastas="risco"]'), /Usar as pastas sugeridas \(2\)/);
-      await fr.click('[data-gte-pastas="risco"]');
+      // 0.107.0: no "Para ciência" a pasta é posta um template por vez, só se ele deveria ir
+      await fr.waitForSelector('.gte-topo');
+      if (!(await fr.$('.gte-ciencia .gte-risco'))) await fr.click('[data-gte-ciencia]');
+      await fr.click('.gte-ciencia [data-gte-pasta="e00000000000000000000005"]');
       await fr.waitForSelector('.gte-conf');
-      assert.match(await fr.textContent('.gte-conf'), /Usar a pasta sugerida em 2 templates\?[\s\S]*Guia FGTS Mensal Filial” → Pessoal › Guias[\s\S]*Guia FGTS Rescisório” → Pessoal › Guias/);
-      const antes = await fr.evaluate(() => window.__msgs.filter(m => m.cmd === 'gesttaPasta').length);
+      assert.match(await fr.textContent('.gte-conf'), /Usar a pasta Pessoal › Guias no template “Guia FGTS Rescisório”/);
       await fr.click('[data-gte-confirmar]');
-      await fr.waitForFunction((n) => window.__msgs.filter(m => m.cmd === 'gesttaPasta').length === n + 2, antes, { timeout: 8000 });
-      assert.deepEqual(await fr.evaluate(() => window.__msgs.filter(m => m.cmd === 'gesttaPasta').slice(-2).map(m => [m.template, m.modelo])), [['e00000000000000000000006', 'e00000000000000000000004'], ['e00000000000000000000005', 'e00000000000000000000004']]);
+      await fr.waitForFunction(() => (window.__msgs || []).some(m => m.cmd === 'gesttaPasta' && m.template === 'e00000000000000000000005'));
       await fr.waitForSelector('.gte-topo');
     }
     assert.ok((await fr.evaluate(() => (window.__msgs || []).filter(m => m.cmd === 'gesttaEnvios').length)) >= 1);

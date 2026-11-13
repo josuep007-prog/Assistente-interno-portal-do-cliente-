@@ -15,7 +15,7 @@ import { $, esc, num, plural, simples, toast } from './util.js';
 const G = window.OCG;
 const URL_STATUS = 'https://app.gestta.com.br/dominio-integration/#/error-status';
 const URL_TEMPLATES = 'https://app.gestta.com.br/admin/#/sidebar/document/list';
-const S = { dados: null, analise: null, carregando: false, erro: null, filtro: '', q: '', abertos: new Set(), conf: null, agindo: false };
+const S = { dados: null, analise: null, carregando: false, erro: null, filtro: '', q: '', abertos: new Set(), conf: null, agindo: false, cienciaAberta: false };
 let enviarFn = null, aoMudar = () => {};
 
 export function estadoEnvios() { return S; }
@@ -132,8 +132,7 @@ export function desenharEnvios(v, sub) {
   let h = '<section class="gte-topo cfg-card"><div class="gte-tit"><h2>Envios ao Portal do Cliente</h2><p' + (simples() ? ' class="ajuda"' : '') + '>Cada documento com erro tem um destino só. A pasta é a regra: só vai ao portal o documento cujo template tem a pasta da empresa 9999. <b>Reenviar</b>: o template tem essa pasta (e a tarefa não está com “Notificar cliente: Não”). <b>Tirar da lista</b>: não vai ao portal (template sem pasta, pasta fora da 9999 ou tarefa que não notifica o cliente). Se um template sem pasta for novo e deveria ir, ponha a pasta nele: os documentos passam para Reenviar. Lido na hora, nada fica guardado.</p></div>' +
     '<div class="gte-kpis">' + kpi(T.reenviar, 'para reenviar', 'reenviar', 'gte-k-erro', 'Documentos que podem ser reenviados agora') +
     kpi(docs(A.semPasta.filter(g => g.classe === 'naoVai')), 'para tirar da lista', 'naoVai', 'gte-k-neutro', 'Documentos que não vão ao portal') +
-    kpi(T.pastaFora || 0, 'pastas fora da 9999', 'fora', 'gte-k-erro', 'Templates com a pasta montada a partir de outra empresa') +
-    kpi(T.risco, 'em risco, ainda sem erro', 'risco', 'gte-k-risco', 'Templates sem pasta parecidos com os que vão ao portal') + '</div></section>' +
+    kpi(T.pastaFora || 0, 'pastas fora da 9999', 'fora', 'gte-k-erro', 'Templates com a pasta montada a partir de outra empresa') + '</div></section>' +
     (!S.dados.modelo ? '<div class="faixa warn"><svg class="ic"><use href="#i-alert"/></svg><div><b>Não achei a empresa 9999 no Gestta.</b> Sem ela não dá para conferir se a pasta de cada template é a válida: por enquanto toda pasta conta como válida.</div></div>' : '') +
     confHtml() +
     '<div class="gte-barra"><input type="search" id="gte-q" placeholder="Buscar cliente, documento, arquivo ou tarefa" value="' + esc(S.q) + '" autocomplete="off">' + (f ? '<button type="button" class="btn btn-sm" data-gte-f="">' + ic('x') + 'Ver tudo</button>' : '') +
@@ -162,12 +161,18 @@ export function desenharEnvios(v, sub) {
       '<p class="gte-dica">A única pasta válida é a montada a partir da empresa 9999' + (S.dados.modelo && S.dados.modelo.nome ? ' (' + esc(nome(S.dados.modelo.nome)) + ')' : '') + '. Estes templates têm a pasta montada a partir de outra empresa: a pasta sai do template e os documentos dele com erro saem da lista (bloco 2).</p>' +
       (fora.length ? '<ul class="gte-risco">' + fora.map(r => '<li><b>' + esc(nome(r.template)) + '</b><span>pasta ' + esc(r.pasta) + (r.docs ? ' · ' + plural(r.docs, 'documento parado', 'documentos parados') : '') + '</span>' + (S.dados.modelo ? '<button type="button" class="btn btn-sm gte-usar" data-gte-tirarpasta="' + esc(r.templateId) + '"' + dis + '>' + ic('x') + 'Tirar a pasta</button> ' : '') + abrirTpl(r.templateId) + '</li>').join('') + '</ul>' : '<p class="gte-vazio">' + ic('check') + 'Nenhuma pasta fora da 9999.</p>') + '</section>';
   }
-  if (mostra('risco')) {
-    h += '<section class="gte-sec"><div class="gte-sec-h"><h3>Templates em risco, ainda sem erro <span class="gte-n">' + num(risco.length) + '</span></h3>' + (pastasDe(risco).length > 1 ? '<span class="gte-acoes"><button type="button" class="btn btn-sm btn-primary" data-gte-pastas="risco"' + dis + '>' + ic('check') + 'Usar as pastas sugeridas (' + num(pastasDe(risco).length) + ')</button></span>' : '') + '</div>' +
-      '<p class="gte-dica">Sem pasta no portal, ligados a algum template de tarefa ativo e com nome parecido com um template que vai. Quando um documento deles chegar, cai em Tirar da lista; se deveria ir, ponha a pasta antes.</p>' +
-      (!S.dados.vinculados ? '<p class="gte-aviso">Não deu para conferir quais templates estão em tarefas ativas: a lista mostra todos os parecidos.</p>' : '') +
-      (risco.length ? '<ul class="gte-risco">' + risco.map(r => '<li><b>' + esc(nome(r.template)) + '</b><span>parecido com <b>' + esc(nome(r.parecido.nome)) + '</b>, que vai para ' + esc(r.parecido.pasta) + '</span>' +
-        (r.parecido.integracao ? '<button type="button" class="btn btn-sm gte-usar" data-gte-pasta="' + esc(r.templateId) + '" data-gte-modelo="' + esc(r.parecido.id) + '"' + dis + '>Usar a mesma pasta</button> ' : '') + abrirTpl(r.templateId) + '</li>').join('') + '</ul>' : '<p class="gte-vazio">' + ic('check') + 'Nenhum template em risco.</p>') + '</section>';
+  // 0.107.0 (Josué, 13/11/2026: "é apenas para ciência, e quase sempre os itens dela não devem realmente ir pro portal, então não devem
+  // ser tratados como pendência"): sem número no topo, recolhido, em tom neutro; abrir é escolha da pessoa
+  if (!f && risco.length) {
+    const ab = S.cienciaAberta || !!q;
+    h += '<section class="gte-ciencia' + (ab ? ' aberta' : '') + '"><button type="button" class="gte-ciencia-cab" data-gte-ciencia aria-expanded="' + ab + '"><span class="gte-ciencia-ic" aria-hidden="true">i</span>' +
+        '<span class="gte-ciencia-tx"><b>Para ciência: ' + plural(risco.length, 'template sem pasta parecido', 'templates sem pasta parecidos') + ' com os que vão ao portal</b>' +
+        '<small>Não é pendência: quase sempre estes não vão ao portal. Só aja se algum deveria ir.</small></span><span class="gte-ciencia-ver">' + (ab ? 'Esconder' : 'Ver') + '</span></button>' +
+      (ab ? '<div class="gte-ciencia-corpo">' +
+        (!S.dados.vinculados ? '<p class="gte-dica">Não deu para conferir quais templates estão em tarefas ativas: a lista mostra todos os parecidos.</p>' : '') +
+        '<ul class="gte-risco gte-risco-ciencia">' + risco.map(r => '<li><b>' + esc(nome(r.template)) + '</b><span>parecido com ' + esc(nome(r.parecido.nome)) + ', que vai para ' + esc(r.parecido.pasta) + '</span>' +
+          (r.parecido.integracao ? '<button type="button" class="gte-link" data-gte-pasta="' + esc(r.templateId) + '" data-gte-modelo="' + esc(r.parecido.id) + '"' + dis + '>Deveria ir: usar a mesma pasta</button>' : '') + abrirTpl(r.templateId, 'Abrir no Gestta') + '</li>').join('') + '</ul></div>' : '') +
+      '</section>';
   }
   v.innerHTML = h;
 }
@@ -175,7 +180,8 @@ const topo = (v) => { const c = v.querySelector('.gte-conf'); if (c) c.scrollInt
 export function ligarEnvios(v, redesenhar, paraPai) {
   v.addEventListener('click', (e) => {
     if (!v.querySelector('.gte-topo, [data-gte-ler]')) return;
-    const t = e.target.closest('[data-gte-f],[data-gte-abrir],[data-gte-ler],[data-abrir],[data-gte-reenviar],[data-gte-reenviar-todos],[data-gte-pasta],[data-gte-tirar],[data-gte-tirar-todos],[data-gte-pastas],[data-gte-tirarpasta],[data-gte-tirarpasta-todos],[data-gte-confirmar],[data-gte-cancelar]'); if (!t) return;
+    const t = e.target.closest('[data-gte-f],[data-gte-abrir],[data-gte-ler],[data-abrir],[data-gte-reenviar],[data-gte-reenviar-todos],[data-gte-pasta],[data-gte-tirar],[data-gte-tirar-todos],[data-gte-pastas],[data-gte-tirarpasta],[data-gte-tirarpasta-todos],[data-gte-ciencia],[data-gte-confirmar],[data-gte-cancelar]'); if (!t) return;
+    if (t.dataset.gteCiencia != null) { S.cienciaAberta = !S.cienciaAberta; redesenhar(); return; }
     const A = S.analise;
     if (t.dataset.gteCancelar != null) { S.conf = null; redesenhar(); return; }
     if (t.dataset.gteConfirmar != null) { executarConf(redesenhar); return; }
