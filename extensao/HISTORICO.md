@@ -2,6 +2,10 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.106.0 (13/11/2026): De quem em dois passos
+
+- Josué: "quero apenas setores com tarefas ativas e o fluxo tem que ser: clicar no botão > escolher o setor > escolher uma ou mais pessoas". O botão **De quem** abre com Minhas, Sem responsável e **só os setores com tarefa aberta ou com impedimento** na competência (com a quantidade), lidos do relatório do mês. Escolher um setor mostra as **pessoas dele** (quem tem tarefa aberta no setor primeiro, com a quantidade) para **marcar uma ou mais**; **Ver as tarefas** traz só as delas, e sem ninguém marcado, todas do setor. "‹ Setores" volta. A busca do topo filtra os setores e, dentro do setor, as pessoas.
+
 ## Novidades da v0.105.0 (12/11/2026): concluir desconsidera os itens sem anexo
 
 - **Concluir, na tarefa e em lote,** agora prepara a tarefa inteira antes: marca as etapas (checkbox) que faltam e **desconsidera cada item (documento) sem anexo**, como o ⊘ "Desconsiderar" da tela do Gestta (`PUT /es/task/{id}/document/{doc}/file/disconsider`, corpo vazio, mapeado em 12/11/2026 na empresa 9999). Um item por vez; se algum for recusado, a tarefa não é concluída. A confirmação lista as etapas e os itens; o botão diz "Preparar e concluir".
