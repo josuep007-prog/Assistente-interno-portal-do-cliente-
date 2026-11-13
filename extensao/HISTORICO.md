@@ -2,6 +2,10 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.107.0 (13/11/2026): "em risco" vira "Para ciência"
+
+- Josué: "é apenas para ciência, e quase sempre os itens dela não devem realmente ir pro portal, então não devem ser tratados como pendência". Os templates sem pasta parecidos com os que vão ao portal saíram dos números do topo e viraram um bloco **Para ciência**, no fim da aba, recolhido, em tom neutro (borda tracejada, ícone de informação), com "Não é pendência". Aberto, cada um tem só o link **Deveria ir: usar a mesma pasta** (com confirmação) e Abrir no Gestta; saiu o "Usar as pastas sugeridas" em lote.
+
 ## Novidades da v0.106.1 (13/11/2026): botões alinhados nos Envios ao portal
 
 - Em **Templates em risco** e **Pastas fora da empresa 9999**, os botões de cada linha (Usar a mesma pasta, Tirar a pasta, Abrir o template no Gestta) ficam juntos, na mesma coluna à direita; antes cada um empurrava o outro e ficavam espalhados pela linha.
