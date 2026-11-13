@@ -2826,7 +2826,7 @@ function gtTarefas() {
 }
 const gtResp = (total, itens) => ({ gesttaTarefas: { ok: true, ano: new Date().getFullYear(), mes: new Date().getMonth() + 1, quem: 'eu', perfil: { id: GT_EU, papelNome: total ? 'Administrador' : 'Analista', total, setores: [{ id: 's1', nome: 'Fiscal' }] }, itens: itens || gtTarefas(), dia: itens || gtTarefas(), total: 8, cortado: false, lidoEm: new Date().toISOString() },
   gesttaEquipe: { ok: true, pessoas: [{ id: GT_EU, nome: 'Eu Mesmo' }, { id: GT_B, nome: 'Pessoa Beta' }] },
-  gesttaTarefa: { ok: true, tarefa: { _id: 'f00000000000000000000001', name: 'DCTF WEB', company_department: { name: 'Fiscal' }, owner: { name: 'Eu Mesmo' }, legal_date: new Date().toISOString(), customer_task_steps: [{ _id: 'e00000000000000000000001', name: 'Conferir', order: 1, done: true }, { _id: 'e00000000000000000000002', name: 'Transmitir', order: 2, done: false, required: true }], company_documents: [{ _id: 'd00000000000000000000001', name: 'Recibo', has_documents_integration: true, temArquivo: false }] } },
+  gesttaTarefa: { ok: true, tarefa: { _id: 'f00000000000000000000001', name: 'DCTF WEB', company_department: { name: 'Fiscal' }, owner: { name: 'Eu Mesmo' }, legal_date: new Date().toISOString(), customer_task_steps: [{ _id: 'e00000000000000000000001', name: 'Conferir', order: 1, done: true }, { _id: 'e00000000000000000000002', name: 'Transmitir', order: 2, done: false, required: true }], company_documents: [{ _id: 'd00000000000000000000001', name: 'Recibo', has_documents_integration: true, temArquivo: false, arquivos: [{ nome: 'recibo-anterior.pdf', quando: '2026-11-10T12:00:00Z' }] }] } },
   gesttaAcao: { ok: true, tarefa: { _id: 'f00000000000000000000001', status: 'OPEN' } },
   gesttaHistorico: { ok: true, total: 4, paginas: 1, eventos: [
     { quando: new Date().toISOString(), rot: 'Documento não foi ao portal', tom: 'alerta', doc: 'Recibo DCTF', motivo: 'a pasta do portal não está configurada', quem: null, texto: '', auto: true },
@@ -2951,6 +2951,9 @@ await passo('Gestta · Tarefas (0.77.0): Meu dia com o detalhe ao lado e a linha
   await fr.click('.ge-emp[data-emp="c00000000000000000000001"]');
   await fr.click('.gf-st-btn[data-et="f00000000000000000000001"]');
   await fr.waitForSelector('#gt-painel.aberto .gp-passos');
+  // 0.110.0: o painel da tarefa cobre boa parte da tela (≥ 800 px numa janela de 1440) e os dados vão em três colunas
+  await fr.waitForFunction(() => document.querySelector('#gt-painel').getBoundingClientRect().width >= 800);
+  assert.equal(await fr.$eval('#gt-painel .gp-dl', d => getComputedStyle(d).gridTemplateColumns.split(' ').length), 3, 'dados em três colunas');
   await fr.click('#gp-prox'); await fr.waitForFunction(() => /2 de 3/.test(document.querySelector('#gt-painel .gp-nav').textContent));
   await fr.press('#gt-painel', 'Escape'); await fr.waitForSelector('#gt-painel', { state: 'hidden' });
   // Lista densa: por prazo, sem as concluídas; busca, situações e tipo filtram na hora
@@ -3091,6 +3094,9 @@ await passo('Gestta · Tarefas (0.93.0): no detalhe, marcar etapa, impedimento c
     assert.equal(await fr.$eval('#gd-det #gp-com', t => t.value), '', 'o rascunho some depois de gravar');
     // documento: escolher o arquivo, conferir o aviso do portal e confirmar; vai o arquivo em base64 com nome e tipo
     assert.match(await fr.textContent('#gd-det .gp-doc'), /Recibo.*vai ao Portal do Cliente.*Enviar arquivo/s);
+    // 0.110.0: o nome do arquivo já anexado aparece embaixo do documento (só o nome e o dia; nunca o endereço)
+    assert.match(await fr.textContent('#gd-det .gp-doc .gp-doc-arqs'), /recibo-anterior\.pdf.*10\/11/s);
+    assert.equal(await fr.$$eval('#gd-det .gp-doc-arqs a[href]', l => l.length), 0, 'o nome do arquivo não vira link');
     const [fc] = await Promise.all([p.waitForEvent('filechooser'), fr.click('#gd-det [data-gp-doc="d00000000000000000000001"]')]);
     await fc.setFiles({ name: 'recibo.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 teste') });
     await fr.waitForSelector('#gd-det .gp-conf');

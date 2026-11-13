@@ -3917,7 +3917,7 @@ test('Gestta · fechamento (0.75.0): o relatório em qualquer formato aceito, as
   assert.deepEqual(plano(OCG.filtrarTarefas(T, { analista: 'Ana' }, H).map(t => t._id)), ['a1', 'c1']);
   // detalhe: etapas internas e documentos, nunca arquivo, valor nem apontamento
   const det = OCG.limpar('tarefaDetalhe', { _id: 't', value: 9, timesheet: [1], customer_task_steps: [{ name: 'Conferir', order: 1, done: true, extra: 1 }], company_documents: [{ name: 'Recibo', file: 'BINARIO', disconsidered: false }], document_request: { active: true, requested_documents: [{ name: 'Extrato' }], notify_email: 'x@y' } });
-  assert.deepEqual(plano(det), { _id: 't', customer_task_steps: [{ name: 'Conferir', order: 1, done: true }], company_documents: [{ name: 'Recibo', disconsidered: false, temArquivo: true }], document_request: { active: true, requested_documents: [{ name: 'Extrato' }] } });   // 0.93.0: só o sim/não do arquivo
+  assert.deepEqual(plano(det), { _id: 't', customer_task_steps: [{ name: 'Conferir', order: 1, done: true }], company_documents: [{ name: 'Recibo', disconsidered: false, temArquivo: true, arquivos: [] }], document_request: { active: true, requested_documents: [{ name: 'Extrato' }] } });   // 0.93.0: só o sim/não do arquivo
   const pf = OCG.PEDIDOS.fechamento({ ano: 2026, mes: 11 });
   assert.equal(pf.tipo, 'fechamento'); assert.equal(pf.corpo.type, 'CUSTOMER_TASK'); assert.equal(OCG.leituraPermitida(pf.metodo, pf.url, pf.corpo).ok, true);
 });
@@ -4332,12 +4332,22 @@ test('Gestta (0.98.0): tirar da lista de erros (lixeira) só com uma lista de id
     [tpl('t1', 'Folha de Pagamento', 'Pessoal'), tpl('t2', 'Folha de Pagamento Filial', ''), tpl('t3', 'Recibo Interno', '')]);
   assert.deepEqual(plano(a.semPasta.filter(g => g.classe === 'naoVai').flatMap(g => g.itens.map(i => i.id)).sort()), ['a1', 'a2']);
 });
+test('Gestta (0.110.0): arquivosDoItem só tira o nome e o dia do arquivo, em qualquer formato, nunca o endereço', () => {
+  assert.deepEqual(plano(OCG.arquivosDoItem({ file: { _id: 'a'.repeat(24), original_name: 'guia.pdf', url: 'https://s3/x?sig=1', created_at: '2026-11-10T10:00:00Z' } })), [{ id: 'a'.repeat(24), nome: 'guia.pdf', quando: '2026-11-10T10:00:00Z' }]);
+  assert.deepEqual(plano(OCG.arquivosDoItem({ files: [{ file_name: 'a.xml' }, { name: 'b.pdf' }] }).map(x => x.nome)), ['a.xml', 'b.pdf']);
+  assert.deepEqual(plano(OCG.arquivosDoItem({ file: 'https://s3.example/b/k/recibo%20out.pdf?X-Amz=segredo' })), [{ nome: 'recibo out.pdf' }]);
+  assert.deepEqual(plano(OCG.arquivosDoItem({ file: 'BINARIO' })), []);
+  assert.deepEqual(plano(OCG.arquivosDoItem({ file: 'abcdefabcdefabcdefabcdef' })), []);
+  assert.deepEqual(plano(OCG.arquivosDoItem(null)), []);
+  assert.ok(!JSON.stringify(OCG.arquivosDoItem({ file: 'https://s3.example/k/x.pdf?X-Amz=segredo' })).includes('segredo'));
+});
 test('Gestta (0.93.0): o detalhe traz o id das etapas e dos documentos e se o documento tem arquivo (nunca o arquivo); depois da ação sai só o resumo', () => {
   const det = OCG.limpar('tarefaDetalhe', { _id: 't1', customer_task_steps: [{ _id: 's1', name: 'Conferir', order: 1, done: true, created_at: 'x' }],
     company_documents: [{ _id: 'd1', name: 'Recibo', has_documents_integration: true, file: { name: 'segredo.pdf', url: 'https://x' } }, { _id: 'd2', name: 'Guia' }] });
   assert.deepEqual(plano(det.customer_task_steps), [{ _id: 's1', name: 'Conferir', order: 1, done: true }]);
-  assert.deepEqual(plano(det.company_documents), [{ _id: 'd1', name: 'Recibo', has_documents_integration: true, temArquivo: true }, { _id: 'd2', name: 'Guia', temArquivo: false }]);
-  assert.ok(!JSON.stringify(det).includes('segredo'));
+  // 0.110.0: o nome do arquivo vem para a tela; o endereço nunca
+  assert.deepEqual(plano(det.company_documents), [{ _id: 'd1', name: 'Recibo', has_documents_integration: true, temArquivo: true, arquivos: [{ id: '', nome: 'segredo.pdf', quando: '' }] }, { _id: 'd2', name: 'Guia', temArquivo: false, arquivos: [] }]);
+  assert.ok(!JSON.stringify(det).includes('https://x'));
 });
 
 // ---- Mediador do MTE (0.95.0): núcleo OCM, com HTML simulado no formato mapeado em 11/11/2026 ----

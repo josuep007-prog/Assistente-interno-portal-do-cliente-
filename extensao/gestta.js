@@ -147,6 +147,18 @@
 
   const lista = (d) => Array.isArray(d) ? d : d && Array.isArray(d.docs) ? d.docs : [];
   const pagina = (d) => Array.isArray(d) ? { total: d.length } : d && typeof d === 'object' ? { total: d.totalDocs != null ? d.totalDocs : d.total != null ? d.total : undefined, paginas: d.totalPages != null ? d.totalPages : d.pages, pagina: d.page } : {};
+  // 0.110.0: o nome (e a data, se vier) de cada arquivo de um item da tarefa, só para a tela; nunca o endereço nem o conteúdo.
+  // O formato do arquivo dentro de company_documents ainda não foi mapeado: aceita objeto, lista ou texto; sem nome legível, fica de fora.
+  function arquivosDoItem(o) {
+    if (!o || typeof o !== 'object') return [];
+    const cand = [].concat(Array.isArray(o.files) ? o.files : [], Array.isArray(o.file) ? o.file : o.file ? [o.file] : []);
+    const nomeDe = (v) => { const t = String(v || '').trim(); if (!t) return ''; if (/^https?:/i.test(t)) { try { return decodeURIComponent(new URL(t).pathname.split('/').pop() || ''); } catch (e) { return ''; } } return /[\/\\]/.test(t) ? t.split(/[\/\\]/).pop() : t; };
+    return cand.map(x => {
+      if (typeof x === 'string') { const n = nomeDe(x); return { nome: /\.[a-z0-9]{2,5}$/i.test(n) ? n : '' }; }
+      if (!x || typeof x !== 'object') return { nome: '' };
+      return { id: /^[0-9a-f]{24}$/i.test(String(x._id || '')) ? String(x._id) : '', nome: nomeDe(x.original_name || x.originalName || x.file_name || x.filename || x.name || ''), quando: typeof x.created_at === 'string' ? x.created_at : typeof x.date === 'string' ? x.date : '' };
+    }).filter(x => x.nome).slice(0, 20);
+  }
   // tipo: o molde a aplicar. Listas (com ou sem invólucro de paginação) viram { itens, total, paginas, pagina }.
   function limpar(tipo, dados) {
     if (tipo === 'relatorio') return limparRelatorio(dados);
@@ -156,7 +168,7 @@
     if (tipo === 'tarefaDetalhe') {
       const t = escolher(dados, molde) || null;
       // 0.93.0: o documento já tem arquivo? (só o sim/não; o arquivo e o nome dele nunca saem da página)
-      if (t && Array.isArray(t.company_documents) && dados && Array.isArray(dados.company_documents)) t.company_documents.forEach((d, i) => { const o = dados.company_documents[i]; d.temArquivo = !!(o && o.file); });
+      if (t && Array.isArray(t.company_documents) && dados && Array.isArray(dados.company_documents)) t.company_documents.forEach((d, i) => { const o = dados.company_documents[i]; d.temArquivo = !!(o && (o.file || (Array.isArray(o.files) && o.files.length))); d.arquivos = arquivosDoItem(o); });
       return t;
     }
     if (tipo === 'me' || tipo === 'contagem' || tipo === 'templateUm') return escolher(dados, molde) || null;
@@ -1248,7 +1260,7 @@
       templatesSemPasta: semPasta.length, naoVai: semPasta.filter(g => g.classe === 'naoVai').length, semNotificar: itens.filter(i => i.notifica === false).length, conferidas: itens.filter(i => i.notifica !== null).length, deve: semPasta.filter(g => g.classe === 'deve').length, risco: risco.length, templatesComPasta: comPasta.length } };
   }
 
-  g.OCG = { setoresAtivos, lerQuemSetor, grupoTela, GRUPOS_TELA, SITUACOES_FILTRO, situacaoDe, fimCnpj, cnpjFormatado, enviosPortal, lerExpress, cnpjsDoTexto, cnpjValido, competenciasDoTexto, notaDocumento, sugerirDestinos, pastaForaDe, urlTemplate: (id) => /^[0-9a-f]{24}$/i.test(String(id || '')) ? 'https://app.gestta.com.br/admin/#/sidebar/document/edit/' + id + '/details' : '', semelhanca, parecidoComPasta, palavrasNome, ERROS_ENVIO, API, APP, PAUSA_MS, LIMITE_BUSCA, JANELA_MAX_DIAS, POST_LEITURA, RELATORIO_TIPOS, COLUNAS_RELATORIO, MOLDES, APPS,
+  g.OCG = { arquivosDoItem, setoresAtivos, lerQuemSetor, grupoTela, GRUPOS_TELA, SITUACOES_FILTRO, situacaoDe, fimCnpj, cnpjFormatado, enviosPortal, lerExpress, cnpjsDoTexto, cnpjValido, competenciasDoTexto, notaDocumento, sugerirDestinos, pastaForaDe, urlTemplate: (id) => /^[0-9a-f]{24}$/i.test(String(id || '')) ? 'https://app.gestta.com.br/admin/#/sidebar/document/edit/' + id + '/details' : '', semelhanca, parecidoComPasta, palavrasNome, ERROS_ENVIO, API, APP, PAUSA_MS, LIMITE_BUSCA, JANELA_MAX_DIAS, POST_LEITURA, RELATORIO_TIPOS, COLUNAS_RELATORIO, MOLDES, APPS,
     caminhoDe, leituraPermitida, escritaPermitida, pedidoAcao, agirNaPagina, ARQ_MAX, appDe, escolher, limpar, limparRelatorio, perfil, expiraEm, janelaDoMes, PEDIDOS, lerNaPagina, linhasDoTeste,
     GRUPOS, TIPOS_TAREFA, SITUACOES_TAREFA, MAX_PAGINAS_TAREFAS, diasUteis, grupoTarefa, prazoTexto, contarGrupos, porEmpresa, porDia, filtrarTarefas, urlTarefa, ymd, diaLocal,
     COLUNAS_FECHAMENTO, linhasDoRelatorio, tarefasDoRelatorio, trilhaDaEmpresa, fechamento, ESTADOS, setorDe, respDe, ehEscritorioProprio,
