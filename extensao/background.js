@@ -349,13 +349,49 @@ async function relatorioDoMes(tab, ano, mes) {
 }
 // 0.85.0: o Fechamento é da competência. O relatório só sabe a meta, então: as tarefas da competência (a busca, todas as que o
 // acesso alcança), os meses em que elas vencem, o relatório de cada um desses meses e só as linhas dessas tarefas.
+// 0.112.0 (Josué, 13/11/2026: "mostrar aos poucos"): com parte 'busca' a resposta sai logo depois da busca (as tarefas da competência, sem
+// setor nem analista, que só o relatório traz) e a tela pede cada mês de meta com parte 'mes'; quando o último chega, o service worker
+// monta o mesmo resultado de antes e o guarda (gtFechC-AAAA-MM, 1 hora). Sem 'parte', tudo de uma vez, como antes.
+const fechPend = new Map();
+function linhaDaBusca(t) {      // a tarefa da busca no formato do relatório (COLUNAS_FECHAMENTO), sem setor, analista, datas legais nem CNPJ
+  const c = (t && t.customer) || {};
+  return [t._id, t.name || '', t.status || '', '', '', t.due_date || '', '', '', '', !!t.fine, !!t.overdue, c.code == null ? '' : c.code, c.name || '', ''];
+}
+async function montarFech(chave, p, ano, mes) {
+  const dados = { ano, mes, competencia: true, lidoEm: new Date().toISOString(), segundos: Math.round((Date.now() - p.t0) / 1000), parcial: !p.pf.total, mesesMeta: p.meses.map(m => OCG.mesTexto(m.ano, m.mes)), semRelatorio: Math.max(0, p.ids.size - p.linhas.length),
+    perfil: { papelNome: p.pf.papelNome, total: p.pf.total, setores: p.pf.setores }, colunas: p.colunas || OCG.COLUNAS_FECHAMENTO, linhas: p.linhas, total: p.linhas.length, formato: p.formato, cortado: !!p.cortado };
+  let naMemoria = true;
+  try { await chrome.storage.session.set({ [chave]: dados }); } catch (e) { naMemoria = false; }       // grande demais para a memória: vale só nesta resposta
+  return Object.assign({ ok: true, naMemoria, podeEm: 60 }, dados);
+}
+async function fechMes(p, tab, m) {
+  const rel = await relatorioDoMes(tab, m.ano, m.mes);
+  if (!rel.ok) return rel;
+  p.colunas = p.colunas || rel.colunas; p.formato = p.formato || rel.formato;
+  const iId = (rel.colunas || []).indexOf('id');
+  const l = (rel.linhas || []).filter(x => iId >= 0 && p.ids.has(String(x[iId])));
+  p.linhas = p.linhas.concat(l); p.feitos.add(m.ano + '-' + m.mes);
+  return { ok: true, colunas: rel.colunas, linhas: l };
+}
 async function gesttaFechamento(msg, sender) {
   const padrao = OCG.competenciaPadrao(new Date());
   const ano = Number(msg.ano) || padrao.ano, mes = Number(msg.mes) || padrao.mes;
   const chave = 'gtFechC-' + ano + '-' + String(mes).padStart(2, '0');
+  if (msg.parte === 'mes') {
+    const p = fechPend.get(chave);
+    if (!p) return { ok: false, recomecar: true, erro: 'A leitura do fechamento foi interrompida: atualize para ler de novo.' };
+    const m = { ano: Number(msg.metaAno), mes: Number(msg.metaMes) };
+    if (!p.meses.some(x => x.ano === m.ano && x.mes === m.mes)) return { ok: false, erro: 'Mês de meta fora da competência.' };
+    const tab = await tabDoGestta(sender);
+    if (!tab) return { ok: false, semAba: true, erro: 'Abra o Gestta numa aba, já logado.' };
+    const r = p.feitos.has(m.ano + '-' + m.mes) ? { ok: true, colunas: p.colunas, linhas: [] } : await fechMes(p, tab, m);
+    if (!r.ok) return { ok: false, erro: r.erro };
+    if (p.meses.every(x => p.feitos.has(x.ano + '-' + x.mes))) { fechPend.delete(chave); return { ok: true, colunas: r.colunas, linhas: r.linhas, fim: await montarFech(chave, p, ano, mes) }; }
+    return { ok: true, colunas: r.colunas, linhas: r.linhas };
+  }
   const guardado = (await chrome.storage.session.get(chave).catch(() => ({})))[chave];
   const idade = guardado ? Date.now() - new Date(guardado.lidoEm).getTime() : Infinity;
-  if (guardado && (!msg.forcar || idade < FECH_INTERVALO_MS)) return Object.assign({ ok: true, daMemoria: true, podeEm: Math.max(0, Math.ceil((FECH_INTERVALO_MS - idade) / 60e3)) }, guardado);
+  if (guardado && (!msg.forcar || idade < FECH_INTERVALO_MS)) return Object.assign({ ok: true, daMemoria: true, completo: true, podeEm: Math.max(0, Math.ceil((FECH_INTERVALO_MS - idade) / 60e3)) }, guardado);
   const tab = await tabDoGestta(sender);
   if (!tab) return { ok: false, semAba: true, erro: 'Abra o Gestta numa aba, já logado.' };
   const { r: r1 } = await lerGestta([OCG.PEDIDOS.me()], { tab });
@@ -365,20 +401,16 @@ async function gesttaFechamento(msg, sender) {
   const t0 = Date.now();
   const comp = await tarefasDaCompetencia(tab, { limit: OCG.LIMITE_BUSCA, status: ['OPEN', 'IMPEDIMENT', 'DONE'] }, ano, mes);
   if (!comp.ok) return { ok: false, erro: comp.erro };
-  const ids = new Set(comp.itens.map(t => t && t._id).filter(Boolean)), meses = OCG.mesesDeMeta(comp.itens).slice(0, 6);
-  let colunas = null, formato = '', linhas = [];
-  for (const m of meses) {
-    const rel = await relatorioDoMes(tab, m.ano, m.mes);
-    if (!rel.ok) return { ok: false, erro: rel.erro };
-    colunas = colunas || rel.colunas; formato = formato || rel.formato;
-    const iId = (rel.colunas || []).indexOf('id');
-    linhas = linhas.concat((rel.linhas || []).filter(l => iId >= 0 && ids.has(String(l[iId]))));
+  const p = { ids: new Set(comp.itens.map(t => t && t._id).filter(Boolean)), meses: OCG.mesesDeMeta(comp.itens).slice(0, 6), pf, t0, cortado: !!comp.cortado, colunas: null, formato: '', linhas: [], feitos: new Set() };
+  if (msg.parte === 'busca') {
+    fechPend.set(chave, p);
+    if (!p.meses.length) { fechPend.delete(chave); return Object.assign({ completo: true }, await montarFech(chave, p, ano, mes)); }
+    return { ok: true, completo: false, ano, mes, competencia: true, lidoEm: new Date().toISOString(), parcial: !pf.total, cortado: p.cortado,
+      perfil: { papelNome: pf.papelNome, total: pf.total, setores: pf.setores }, colunas: OCG.COLUNAS_FECHAMENTO, linhas: comp.itens.filter(t => t && t._id).map(linhaDaBusca),
+      meses: p.meses, mesesMeta: p.meses.map(m => OCG.mesTexto(m.ano, m.mes)) };
   }
-  const dados = { ano, mes, competencia: true, lidoEm: new Date().toISOString(), segundos: Math.round((Date.now() - t0) / 1000), parcial: !pf.total, mesesMeta: meses.map(m => OCG.mesTexto(m.ano, m.mes)), semRelatorio: Math.max(0, ids.size - linhas.length),
-    perfil: { papelNome: pf.papelNome, total: pf.total, setores: pf.setores }, colunas: colunas || OCG.COLUNAS_FECHAMENTO, linhas, total: linhas.length, formato, cortado: !!comp.cortado };
-  let naMemoria = true;
-  try { await chrome.storage.session.set({ [chave]: dados }); } catch (e) { naMemoria = false; }       // grande demais para a memória: vale só nesta resposta
-  return Object.assign({ ok: true, naMemoria, podeEm: 60 }, dados);
+  for (const m of p.meses) { const r = await fechMes(p, tab, m); if (!r.ok) return { ok: false, erro: r.erro }; }
+  return Object.assign({ completo: true }, await montarFech(chave, p, ano, mes));
 }
 // 0.110.0 · aba Saúde da operação (Josué, 13/11/2026). Só leituras: o relatório do mês (o mesmo POST de leitura do Fechamento, no máximo
 // um por hora por mês, só no chrome.storage.session), os contatos de cada cliente (só setor, ativo e se tem e-mail; 6 h na memória do service
@@ -434,7 +466,11 @@ async function gesttaSaude(msg, sender) {
   const p = await perfilGestta(tab); if (!p.ok) return p;
   const pf = p.pf, parte = String(msg.parte || 'tarefas');
   if (parte === 'tarefas') {
-    const h = new Date(), meses = SAUDE_MESES(h); let colunas = null, linhas = [], daMemoria = true; const lidos = [], faltam = [];
+    // 0.112.0 (mostrar aos poucos): a tela pede os meses que quer (primeiro o atual e o próximo, depois os 2 anteriores, para o ritmo);
+    // sem 'meses', os 4 de uma vez, como antes. As contagens só vêm quando pedidas (na primeira chamada) ou sem 'meses'.
+    const h = new Date(), pedidos = Array.isArray(msg.meses) ? msg.meses.map(m => ({ ano: Number(m && m.ano), mes: Number(m && m.mes) })).filter(m => m.ano > 2000 && m.mes >= 1 && m.mes <= 12).slice(0, 6) : null;
+    const meses = pedidos || SAUDE_MESES(h), contagens = !pedidos || !!msg.contagens;
+    let colunas = null, linhas = [], daMemoria = true; const lidos = [], faltam = [];
     for (const m of meses) {
       const rel = await relatorioSaude(tab, m.ano, m.mes, !!msg.forcar);
       // 0.111.2: só o mês corrente é obrigatório; o que o Gestta recusar dos outros (400) fica de fora e a tela diz qual
@@ -452,10 +488,10 @@ async function gesttaSaude(msg, sender) {
       linhas = eu ? linhas.filter(l => String(l[iR] || '').trim().toLowerCase() === eu || String(l[iC] || '').trim().toLowerCase() === eu) : [];
     }
     const conta = async (ped) => { const { r } = await lerGestta([ped], { tab }); const x = r && r.resultados && r.resultados[0]; return x && x.status === 200 && x.dados ? x.dados : null; };
-    const em = await conta(OCG.PEDIDOS.emailNaoSaiu({ ano: h.getFullYear(), mes: h.getMonth() + 1 }));
-    const st = pf.total ? await conta(OCG.PEDIDOS.semTarefa()) : null;
+    const em = contagens ? await conta(OCG.PEDIDOS.emailNaoSaiu({ ano: h.getFullYear(), mes: h.getMonth() + 1 })) : null;
+    const st = contagens && pf.total ? await conta(OCG.PEDIDOS.semTarefa()) : null;
     return { ok: true, perfil: { nome: pf.nome, papelNome: pf.papelNome, total: pf.total, setores: pf.setores }, colunas: colunas || OCG.COLUNAS_SAUDE, linhas, meses: lidos, mesesFaltam: faltam,
-      emailNaoSaiu: em && typeof em.email_not_sent === 'number' ? em.email_not_sent : null, semTarefa: st && typeof st.n === 'number' ? st.n : null, daMemoria, lidoEm: new Date().toISOString() };
+      emailNaoSaiu: em && typeof em.email_not_sent === 'number' ? em.email_not_sent : null, semTarefa: st && typeof st.n === 'number' ? st.n : null, contagens, daMemoria, lidoEm: new Date().toISOString() };
   }
   if (parte === 'contatos') {   // { cnpjs: [até 40] } → { porCnpj: { cnpj: [{ setor, ativo, temEmail }] } }
     const cnpjs = [...new Set((Array.isArray(msg.cnpjs) ? msg.cnpjs : []).map(c => String(c || '').replace(/\D/g, '')).filter(c => c.length === 14))].slice(0, 40);

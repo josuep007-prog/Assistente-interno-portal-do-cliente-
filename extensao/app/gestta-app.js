@@ -120,14 +120,35 @@ async function ler(silencioso) {
     aoVivo(); desenhar();
   }
 }
+// 0.112.0 (Josué, 13/11/2026: "mostrar aos poucos"): primeiro a busca (o progresso já aparece), depois o relatório de cada mês de meta
+// completa setor e analista; a tela redesenha a cada mês que chega
 async function lerFech(forcar) {
+  const vez = (lerFech.vez = (lerFech.vez || 0) + 1), ano = E.ano, mes = E.mes, valida = () => lerFech.vez === vez && E.ano === ano && E.mes === mes;
   E.fechCarregando = true; E.fechErro = null; aoVivo(); desenhar();
-  const r = await enviar({ cmd: 'gesttaFechamento', ano: E.ano, mes: E.mes, forcar: !!forcar });
-  E.fechCarregando = false;
-  if (r && r.ok) {
-    E.fech = r; E.fechTarefas = G.tarefasDoRelatorio(r.colunas, r.linhas).map(legivel); E.setorPorId = new Map(E.fechTarefas.map(t => [t._id, t.setor]));
+  const fim = (r) => { E.fech = r; E.fechTarefas = G.tarefasDoRelatorio(r.colunas, r.linhas).map(legivel); E.setorPorId = new Map(E.fechTarefas.map(t => [t._id, t.setor])); };
+  const r = await enviar({ cmd: 'gesttaFechamento', parte: 'busca', ano, mes, forcar: !!forcar });
+  if (!valida()) return;
+  if (r && r.ok && r.completo !== false) {
+    fim(r);
     if (forcar && r.daMemoria && r.podeEm > 0) toast('O relatório foi lido há menos de 1 hora: pode atualizar de novo em ' + r.podeEm + ' min.');
+  } else if (r && r.ok) {
+    const iId = (r.colunas || []).indexOf('id'), porId = new Map((r.linhas || []).map(l => [String(l[iId]), l]));
+    let colunas = r.colunas;
+    const aplicar = () => { E.fechTarefas = G.tarefasDoRelatorio(colunas, [...porId.values()]).map(legivel); };
+    E.fech = Object.assign({}, r, { incompleto: true, mesesLidos: 0, mesesTotal: (r.meses || []).length }); aplicar(); aoVivo(); desenhar();
+    for (const m of r.meses || []) {
+      const x = await enviar({ cmd: 'gesttaFechamento', parte: 'mes', ano, mes, metaAno: m.ano, metaMes: m.mes });
+      if (!valida()) return;
+      if (!x || !x.ok) { E.fechErro = x || { erro: 'sem resposta' }; break; }
+      if (x.fim) { fim(x.fim); break; }
+      // a linha do relatório (com setor e analista) toma o lugar da linha da busca da mesma tarefa
+      const xi = (x.colunas || []).indexOf('id');
+      if (x.colunas && x.colunas.join() !== colunas.join()) { const conv = l => colunas.map(c => { const k = x.colunas.indexOf(c); return k < 0 ? '' : l[k]; }); (x.linhas || []).forEach(l => porId.set(String(l[xi]), conv(l))); }
+      else (x.linhas || []).forEach(l => porId.set(String(l[xi]), l));
+      E.fech.mesesLidos++; aplicar(); aoVivo(); desenhar();
+    }
   } else E.fechErro = r || { erro: 'sem resposta' };
+  E.fechCarregando = false;
   aoVivo(); desenhar();
   if ($('#gt-quem-pop') && !$('#gt-quem-pop').hidden) quemLista($('#gt-quem-busca').value);
 }
@@ -440,13 +461,16 @@ function desenharFech() {
   $('#subtitulo').textContent = 'Fechamento da competência · ' + plural(L.empresas.length, 'empresa', 'empresas') + ' · ' + t.pct + '% fechado';
   // 0.87.0: os cartões filtram a lista (clique de novo para tirar)
   const kpi = (n, rot, cls, f) => '<button type="button" class="gt-kpi gt-kpi-est ' + (cls || '') + ((f === 'pend' ? E.soPend : E.fest === f) ? ' on' : '') + '" data-fest="' + f + '" aria-pressed="' + (f === 'pend' ? E.soPend : E.fest === f) + '" title="Mostrar só estas"><b>' + num(n) + '</b><span>' + rot + '</span></button>';
-  const avisos = (E.fech.parcial ? '<div class="faixa gt-faixa-info"><svg class="ic"><use href="#i-lock"/></svg><div><b>Você vê só o que o Gestta libera para o seu acesso</b> (' + esc(E.fech.perfil.papelNome) + (E.fech.perfil.setores.length ? ': ' + esc(E.fech.perfil.setores.map(x => x.nome).join(', ')) : '') + '). Não é o fechamento do escritório todo.</div></div>' : '') +
+  const chegando = E.fech.incompleto ? '<p class="fraco gt-chegando" role="status">Setor e analista estão chegando: relatório ' + num(E.fech.mesesLidos || 0) + ' de ' + num(E.fech.mesesTotal || 0) + (E.fech.mesesMeta ? ' (' + esc(E.fech.mesesMeta.join(', ')) + ')' : '') + '…</p>' : '';
+  const avisos = (E.fech.incompleto && E.fechErro ? '<div class="faixa"><svg class="ic"><use href="#i-alert"/></svg><div style="flex:1;min-width:240px"><b>O fechamento ficou incompleto.</b> ' + esc(E.fechErro.erro || '') + '</div><button class="btn btn-sm" id="gt-fech-tentar">Tentar de novo</button></div>' : '') +
+    (E.fech.incompleto && !E.fechErro ? '<div class="faixa gt-faixa-info"><svg class="ic"><use href="#i-clock"/></svg><div><b>Mostrando aos poucos.</b> As tarefas da competência já chegaram; setor e analista de cada uma vêm do relatório de cada mês de meta.</div></div>' : '') +
+    (E.fech.parcial ? '<div class="faixa gt-faixa-info"><svg class="ic"><use href="#i-lock"/></svg><div><b>Você vê só o que o Gestta libera para o seu acesso</b> (' + esc(E.fech.perfil.papelNome) + (E.fech.perfil.setores.length ? ': ' + esc(E.fech.perfil.setores.map(x => x.nome).join(', ')) : '') + '). Não é o fechamento do escritório todo.</div></div>' : '') +
     (geral.desconhecidas ? '<div class="faixa"><svg class="ic"><use href="#i-alert"/></svg><div><b>' + plural(geral.desconhecidas, 'tarefa veio', 'tarefas vieram') + ' com situação desconhecida</b> e não entram na conta. O Gestta pode ter mudado o relatório: avise o Josué.</div></div>' : '');
   v.innerHTML = avisos +
     '<section class="gt-hero cfg-card"><div class="gt-prog">' + anel(t.pct, simples() ? 76 : 96) + '<div class="gt-prog-tx"><b>' + t.pct + '%</b><span>' + num(t.feitas) + ' de ' + num(t.total) + ' tarefas concluídas</span><small>' + num(L.fechadas) + ' de ' + num(L.empresas.length) + ' empresas com a competência fechada</small></div></div>' +
       '<div class="gt-kpis">' + kpi(geral.total.abertas, 'abertas', 'gt-c-prox', 'abertas') + kpi(geral.total.multa, 'gerando multa', 'gt-c-multa', 'multa') + kpi(geral.total.atrasada, 'atrasadas', 'gt-c-atraso', 'atrasada') + kpi(geral.total.impedimento, 'com impedimento', 'gt-c-imped', 'impedimento') + kpi(geral.empresas.length - geral.fechadas, 'empresas com pendência', 'gt-c-depois', 'pend') + '</div></section>' +
-    '<div class="gt-paineis"><section class="cfg-card gt-pn"><h2 class="gt-pn-tit">Por setor <small class="fraco">clique para filtrar</small></h2>' + barras(geral.setores, 'setor', E.fsetor) + '</section>' +
-      '<section class="cfg-card gt-pn"><h2 class="gt-pn-tit">Por analista <small class="fraco">da menor para a maior</small></h2>' + barras(geral.analistas, 'anal', E.fanal) + '</section></div>' +
+    '<div class="gt-paineis"><section class="cfg-card gt-pn"><h2 class="gt-pn-tit">Por setor <small class="fraco">clique para filtrar</small></h2>' + (E.fech.incompleto ? chegando : barras(geral.setores, 'setor', E.fsetor)) + '</section>' +
+      '<section class="cfg-card gt-pn"><h2 class="gt-pn-tit">Por analista <small class="fraco">da menor para a maior</small></h2>' + (E.fech.incompleto ? chegando : barras(geral.analistas, 'anal', E.fanal)) + '</section></div>' +
     '<div class="gt-barra">' +
       '<label class="gt-busca"><svg class="ic"><use href="#i-search"/></svg><input type="search" id="gt-fq" placeholder="Buscar empresa, código, CNPJ ou tarefa" autocomplete="off" aria-label="Buscar empresa, código, CNPJ ou tarefa" value="' + esc(E.fq) + '"><kbd>/</kbd></label>' +
       '<label class="gt-sel"><span>Setor</span><select id="gt-fsetor"><option value="">Todos</option>' + geral.setores.map(x => '<option' + (x.nome === E.fsetor ? ' selected' : '') + '>' + esc(x.nome) + '</option>').join('') + '</select></label>' +
@@ -468,6 +492,7 @@ function desenharFech() {
   $('#gt-pend', v).onchange = e => { E.soPend = e.target.checked; desenhar(); };
   const fl = $('#gt-flimpar', v); if (fl) fl.onclick = () => { E.fq = ''; E.fsetor = ''; E.fanal = ''; E.soPend = false; E.fest = ''; desenhar(); };
   $$('[data-fest]', v).forEach(b => b.onclick = () => { const f = b.dataset.fest; if (f === 'pend') E.soPend = !E.soPend; else E.fest = E.fest === f ? '' : f; desenhar(); });
+  const ft = $('#gt-fech-tentar', v); if (ft) ft.onclick = () => lerFech(false);
   if (foco === 'gt-fq') { const n = $('#gt-fq'); if (n) n.focus(); }
 }
 function ligar(v) {

@@ -480,6 +480,16 @@ assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br
   const f2 = await tt({ cmd: 'gesttaFechamento', ano: 2026, mes: 11, forcar: true });
   assert.ok(f2.ok && f2.daMemoria && f2.podeEm > 0, 'em menos de 1 hora vem da memória');
   assert.equal(relDez().length, nRel, 'atualizar antes de 1 hora não chama o Gestta de novo');
+  // 0.112.0 · aos poucos: 'busca' devolve as tarefas da competência sem setor e analista; cada 'mes' traz o relatório; o último guarda o resultado
+  await pagina.evaluate(() => chrome.storage.session.remove('gtFechC-2026-11'));
+  const fb = await tt({ cmd: 'gesttaFechamento', parte: 'busca', ano: 2026, mes: 11 });
+  assert.ok(fb.ok && fb.completo === false && fb.meses.length === 1 && fb.linhas.length >= 2, 'busca primeiro: ' + JSON.stringify(fb).slice(0, 200));
+  assert.ok(fb.linhas.every(l => l[fb.colunas.indexOf('company_department.name')] === '' && l[fb.colunas.indexOf('owner.name')] === ''), 'sem setor nem analista na busca');
+  assert.equal((await pagina.evaluate(() => chrome.storage.session.get('gtFechC-2026-11')))['gtFechC-2026-11'], undefined, 'nada guardado antes do fim');
+  const fm = await tt({ cmd: 'gesttaFechamento', parte: 'mes', ano: 2026, mes: 11, metaAno: fb.meses[0].ano, metaMes: fb.meses[0].mes });
+  assert.ok(fm.ok && fm.fim && fm.fim.linhas.length === 2 && fm.fim.naMemoria, 'o último mês fecha e guarda');
+  const fx = await tt({ cmd: 'gesttaFechamento', parte: 'mes', ano: 2026, mes: 11, metaAno: 2026, metaMes: 12 });
+  assert.ok(!fx.ok && fx.recomecar, 'sem leitura em andamento, pede para recomeçar');
   const sess = await pagina.evaluate(() => chrome.storage.session.get(null));
   assert.ok(sess['gtFechC-2026-11'] && sess['gtFechC-2026-11'].linhas.length === 2, 'relatório na memória do Chrome');
   const loc = JSON.stringify(await pagina.evaluate(() => chrome.storage.local.get(null)));
@@ -509,6 +519,11 @@ assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br
   // 0.110.0 · aba Saúde: o relatório de 4 meses (POST de leitura), as contagens e, pelo botão, contatos, e-mails e configuração (só GET)
   const antesS = gChamadas.length, nRelS = gRel.length;
   const s1 = await tt({ cmd: 'gesttaSaude', parte: 'tarefas' });
+  // 0.112.0 · aos poucos: com 'meses', só esses; as contagens só quando pedidas
+  { const h = new Date(), m0 = { ano: h.getFullYear(), mes: h.getMonth() + 1 }, d = new Date(h.getFullYear(), h.getMonth() - 1, 1), m1 = { ano: d.getFullYear(), mes: d.getMonth() + 1 };
+    const sa = await tt({ cmd: 'gesttaSaude', parte: 'tarefas', meses: [m0], contagens: true }), sb = await tt({ cmd: 'gesttaSaude', parte: 'tarefas', meses: [m1] });
+    assert.ok(sa.ok && sa.meses.length === 1 && sa.emailNaoSaiu === 3, 'Saúde: 1º pedido com as contagens');
+    assert.ok(sb.ok && sb.meses.length === 1 && sb.emailNaoSaiu === null && sb.semTarefa === null, 'Saúde: 2º pedido sem as contagens'); }
   assert.ok(s1.ok, 'gesttaSaude: ' + (s1.erro || ''));
   const mesesS = new Set(Object.keys(await pagina.evaluate(() => chrome.storage.session.get(null))).filter(k => /^gtSaude-/.test(k)));
   assert.equal(mesesS.size, 4, 'um relatório por mês, de 2 meses atrás até o próximo (o recusado fica lembrado)');

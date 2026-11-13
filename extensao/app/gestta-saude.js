@@ -33,15 +33,32 @@ async function feriados() {
   } catch (e) { S.feriados = new Set((window.OC && OC.DEFAULTS && OC.DEFAULTS.feriados) || []); }
   return S.feriados;
 }
+// 0.112.0 (Josué, 13/11/2026: "mostrar aos poucos"): primeiro o mês atual e o próximo (carga e prioridade já aparecem), depois os 2 meses
+// anteriores, que trazem o ritmo de cada pessoa; enquanto eles não chegam, a grade diz "calculando o ritmo…". Linhas juntas sem repetir tarefa.
+const mesesRel = (h, de, ate) => { const l = []; for (let i = de; i <= ate; i++) { const d = new Date(h.getFullYear(), h.getMonth() + i, 1); l.push({ ano: d.getFullYear(), mes: d.getMonth() + 1 }); } return l; };
 export async function lerSaude(enviar, redesenhar, forcar) {
   enviarFn = enviar; aoMudar = redesenhar || aoMudar;
-  S.carregando = true; S.erro = null; aoMudar();
+  const vez = (lerSaude.vez = (lerSaude.vez || 0) + 1);
+  S.carregando = true; S.erro = null; S.ritmoPronto = false; S.erroRitmo = ''; aoMudar();
   await feriados();
-  const r = await enviar({ cmd: 'gesttaSaude', parte: 'tarefas', forcar: !!forcar });
-  S.carregando = false;
-  if (r && r.ok) { S.dados = r; S.tarefas = G.tarefasDoRelatorio(r.colunas, r.linhas).map(t => Object.assign(t, { name: nome(t.name), customer: Object.assign({}, t.customer, { name: nome(t.customer.name) }) })); }
-  else S.erro = r || { erro: 'sem resposta' };
-  aoMudar();
+  const h = new Date();
+  const r = await enviar({ cmd: 'gesttaSaude', parte: 'tarefas', meses: mesesRel(h, 0, 1), contagens: true, forcar: !!forcar });
+  if (lerSaude.vez !== vez) return;
+  if (!r || !r.ok) { S.carregando = false; S.erro = r || { erro: 'sem resposta' }; aoMudar(); return; }
+  const iId = (r.colunas || []).indexOf('id'), porId = new Map((r.linhas || []).map(l => [String(l[iId]), l]));
+  const aplicar = (colunas) => { S.tarefas = G.tarefasDoRelatorio(colunas, [...porId.values()]).map(t => Object.assign(t, { name: nome(t.name), customer: Object.assign({}, t.customer, { name: nome(t.customer.name) }) })); };
+  S.dados = Object.assign({}, r, { meses: (r.meses || []).slice(), mesesFaltam: (r.mesesFaltam || []).slice() }); aplicar(r.colunas);
+  S.carregando = false; aoMudar();
+  const x = await enviar({ cmd: 'gesttaSaude', parte: 'tarefas', meses: mesesRel(h, -2, -1), forcar: !!forcar });
+  if (lerSaude.vez !== vez) return;
+  if (x && x.ok) {
+    const xi = (x.colunas || []).indexOf('id');
+    (x.linhas || []).forEach(l => { const k = String(l[xi]); if (!porId.has(k)) porId.set(k, (x.colunas || []).join() === (r.colunas || []).join() ? l : (r.colunas || []).map(c => { const j = x.colunas.indexOf(c); return j < 0 ? '' : l[j]; })); });
+    aplicar(r.colunas);
+    S.dados.meses = [...new Set((x.meses || []).concat(S.dados.meses))]; S.dados.mesesFaltam = [...new Set((x.mesesFaltam || []).concat(S.dados.mesesFaltam))];
+    S.dados.daMemoria = !!(S.dados.daMemoria && x.daMemoria);
+  } else S.erroRitmo = (x && x.erro) || 'sem resposta';
+  S.ritmoPronto = true; aoMudar();
 }
 
 /* ---------- leituras sob demanda (uma por vez, com o andamento na tela) ---------- */
@@ -141,10 +158,13 @@ function blocoEmails() {
 function blocoCarga(carga, prio) {
   const fer = S.feriados;
   let h = '<p class="gte-dica">Tarefas abertas por pessoa nos próximos 10 dias úteis, pela meta (as atrasadas contam no primeiro dia). A capacidade é o ritmo de cada um: concluídas por dia útil nos 2 meses anteriores' + (fer && fer.size ? ', sem os feriados do escritório' : '') + '. Acima dela, não vai dar tempo.' + (S.dados.perfil.total ? ' Clique na capacidade para trocar por um número fixo (só neste navegador).' : '') + '</p>';
+  if (!S.ritmoPronto) h += '<p class="fraco gsa-memo" role="status">' + ic('clock') + ' Calculando o ritmo: os 2 meses anteriores ainda estão chegando. A carga e a prioridade já valem; os dias acima do ritmo aparecem quando ele chegar.</p>';
+  else if (S.erroRitmo) h += '<div class="faixa warn"><svg class="ic"><use href="#i-alert"/></svg><div>Não consegui ler os meses anteriores: sem o ritmo de cada um. ' + esc(S.erroRitmo) + '</div></div>';
   if (!carga.pessoas.length) return { h: h + '<p class="gte-vazio">' + ic('check') + 'Nenhuma tarefa aberta com meta nos próximos dias.</p>', n: 0 };
   const cab = '<tr><th class="gsa-pessoa">Pessoa</th><th class="num" title="Concluídas por dia útil">Ritmo</th><th class="num">Atrasadas</th>' + carga.dias.map((d, i) => '<th class="num gsa-dia' + (i === 0 ? ' hoje' : '') + '">' + esc(diaSem(d)) + '<small>' + esc(ddmm(d)) + '</small></th>').join('') + '</tr>';
   const linhas = carga.pessoas.map(p => {
-    const capTxt = p.cap ? String(p.cap).replace('.', ',') : '—', dica = p.origemCap === 'manual' ? 'Capacidade fixa (posta à mão)' : p.origemCap === 'ritmo' ? 'Ritmo dos 2 meses anteriores' : 'Sem concluídas nos 2 meses anteriores: sem capacidade';
+    const calc = !S.ritmoPronto && p.origemCap !== 'manual';
+    const capTxt = calc ? 'calculando o ritmo…' : p.cap ? String(p.cap).replace('.', ',') : '—', dica = calc ? 'O ritmo sai dos 2 meses anteriores, que ainda estão chegando' : p.origemCap === 'manual' ? 'Capacidade fixa (posta à mão)' : p.origemCap === 'ritmo' ? 'Ritmo dos 2 meses anteriores' : 'Sem concluídas nos 2 meses anteriores: sem capacidade';
     const capCel = S.editCap === p.nome ? '<input type="number" min="0" step="0.5" class="gsa-cap-in" data-gsa-cap-in="' + esc(p.nome) + '" value="' + esc(p.origemCap === 'manual' ? p.cap : '') + '" aria-label="Capacidade de ' + esc(p.nome) + ' por dia" placeholder="' + esc(capTxt) + '">'
       : S.dados.perfil.total && p.nome !== 'Sem responsável' ? '<button type="button" class="gsa-cap' + (p.origemCap === 'manual' ? ' manual' : '') + '" data-gsa-cap="' + esc(p.nome) + '" title="' + esc(dica) + '">' + esc(capTxt) + '</button>' : '<span title="' + esc(dica) + '">' + esc(capTxt) + '</span>';
     return '<tr><th class="gsa-pessoa" scope="row">' + esc(nome(p.nome)) + (p.diasAcima ? '<small class="gsa-alerta">' + ic('alert') + plural(p.diasAcima, 'dia acima', 'dias acima') + '</small>' : '') + '</th><td class="num">' + capCel + '</td>' +
@@ -197,7 +217,7 @@ export function desenharSaude(v, sub) {
     return;
   }
   const D = S.dados, total = !!D.perfil.total, hoje = hojeD(), fer = S.feriados;
-  const ritmo = G.ritmoPorPessoa(S.tarefas, hoje, fer), carga = G.cargaPorDia(S.tarefas, hoje, { dias: 10, feriados: fer, ritmo, cap: S.cap });
+  const ritmo = S.ritmoPronto ? G.ritmoPorPessoa(S.tarefas, hoje, fer) : {}, carga = G.cargaPorDia(S.tarefas, hoje, { dias: 10, feriados: fer, ritmo, cap: S.cap });
   const sobre = new Set(); carga.pessoas.forEach(p => p.celulas.forEach(c => { if (c.acima) c.ids.forEach(id => sobre.add(id)); }));
   const prio = G.prioridade(S.tarefas, hoje, { feriados: fer, sobrecarregadas: sobre });
   S._lista = prio.map(x => x.t).concat(S.tarefas.filter(t => !prio.some(x => x.t === t)));
