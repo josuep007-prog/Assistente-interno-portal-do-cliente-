@@ -334,7 +334,10 @@ function desenhar() {
   else if (E.aba === 'lista') vistaLista(alvo, x);
   else if (E.aba === 'quadro') vistaQuadro(alvo, x);
   else alvo.innerHTML = vistaCalendario(filtrados, hoje, base);
-  if (menuAberto) $('#gt-filtros').open = true;
+  // 0.108.2: o menu de Filtros abre para o lado onde cabe (antes saía pela direita da tela)
+  const fm = $('#gt-filtros');
+  if (fm) fm.addEventListener('toggle', () => posFiltros(fm));
+  if (menuAberto) { fm.open = true; posFiltros(fm); }
   v.scrollTop = topo;
   if (rolarSalvo != null) { v.scrollTop = rolarSalvo; rolarSalvo = null; }
   salvarEstado();
@@ -467,6 +470,13 @@ function abrirDe(alvo) {
 }
 $('#vista').addEventListener('click', e => { abrirDe(e.target); });
 // o menu Filtros fecha ao clicar fora dele
+function posFiltros(d) {
+  const m = d && d.open && d.querySelector('.gt-filtros-menu'); if (!m) return;
+  m.style.left = '0'; m.style.right = 'auto';
+  const r = m.getBoundingClientRect(), larg = document.documentElement.clientWidth;
+  if (r.right > larg - 8) { m.style.left = 'auto'; m.style.right = '0'; if (m.getBoundingClientRect().left < 8) { m.style.right = 'auto'; m.style.left = (8 - d.getBoundingClientRect().left) + 'px'; } }
+}
+window.addEventListener('resize', () => posFiltros($('#gt-filtros')));
 document.addEventListener('click', e => { const m = $('#gt-filtros'); if (m && m.open && !m.contains(e.target)) m.open = false; });
 $('#vista').addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.closest('.gt-t-main')) { e.preventDefault(); abrirDe(e.target); } });
 const trocouMes = () => { salvarEstado(); E.dia = ''; E.calMes = ''; E.fech = null; E.fechTarefas = []; E.setorPorId = null; E.setor = ''; E.fechErro = null; fecharPainel(); ler(); if (E.aba === 'fech') desenhar(); };

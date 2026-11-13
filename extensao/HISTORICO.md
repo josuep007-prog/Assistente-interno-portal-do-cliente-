@@ -2,6 +2,10 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.108.2 (13/11/2026): menu de Filtros dentro da tela
+
+- Josué: "conserte isso… tá fugindo pra fora da tela". Nas Tarefas do Gestta, o menu de **Filtros** abre para o lado onde cabe (direita ou esquerda do botão) e nunca passa da largura da tela; ao redimensionar a janela ele se ajeita.
+
 ## Novidades da v0.108.1 (13/11/2026): Obrigações, coluna sem pendência não filtra
 
 - Josué: "as colunas que não tiverem nenhuma pendência não devem ativar o filtro; hoje, quando clica na cabeça da coluna, ele filtra as pendentes, mas quando não tem nenhuma a tabela some". Nas Obrigações das Tarefas do Gestta, o cabeçalho de uma obrigação toda concluída não filtra mais (a dica diz "Nada pendente: não há o que filtrar") e a tabela continua inteira.

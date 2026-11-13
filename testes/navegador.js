@@ -3220,6 +3220,15 @@ await passo('Gestta · Tarefas (0.87.0): atalhos com ?, densidade compacta, Fech
   assert.equal(await fr.evaluate(() => document.documentElement.dataset.densidade), 'compacta');
   assert.equal(await fr.evaluate(() => localStorage.getItem('oc.gt.dens')), 'compacta', 'a escolha fica no navegador');
   await fr.click('#gt-filtros summary');
+  // 0.108.2: o menu de Filtros nunca sai da tela, com o botão à esquerda ou à direita
+  for (const w of [1440, 1100, 900, 640]) {
+    await p.setViewportSize({ width: w, height: 800 }); await fr.waitForTimeout(150);
+    await fr.click('#gt-filtros summary');
+    const r = await fr.$eval('.gt-filtros-menu', m => { const b = m.getBoundingClientRect(); return [Math.round(b.left), Math.round(b.right), document.documentElement.clientWidth]; });
+    assert.ok(r[0] >= 0 && r[1] <= r[2], w + ': o menu de Filtros cabe na tela (' + r.join() + ')');
+    await fr.click('#gt-filtros summary');
+  }
+  await p.setViewportSize({ width: 1360, height: 860 });
   // Fechamento: os números filtram as empresas
   await fr.click('#abas [data-aba="fech"]'); await fr.waitForSelector('.gt-bar');
   const antes = await fr.locator('.gt-tr:not(.gt-tr-cab)').count();
