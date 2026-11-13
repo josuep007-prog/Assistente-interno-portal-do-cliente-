@@ -23,7 +23,7 @@ const hoje0 = new Date(), comp0 = G.competenciaPadrao(hoje0);
 // 0.85.0 (Josué, 06/11/2026): a tela é da competência (de fábrica a do mês anterior, a que está sendo fechada); o Meu dia segue o vencimento
 const E = {
   ano: comp0.ano, mes: comp0.mes, quem: 'eu', calMes: '',
-  dados: null, carregando: false, erro: null, lidoEm: null, equipe: null,
+  dados: null, carregando: false, falta: new Set(), erro: null, lidoEm: null, equipe: null,
   feitas: lerPref('gt.feitas', '0') === '1',
   q: '', grupos: new Set(), tipos: new Set(), sits: new Set(), cnpjs: {}, dia: '', abertas: new Set(), visivel: true,
   aba: (a => ABAS.includes(a) ? a : 'dia')(lerPref('gt.aba', 'dia')), soPendEmp: false, trilha: lerPref('gt.trilha', 'seq'), setor: '',
@@ -40,7 +40,7 @@ const comCnpj = t => {
   const fim = G.fimCnpj(cnpj);
   return Object.assign({}, t, { customer: Object.assign({}, c, { cnpj, nomeBase: c.name, name: fim ? c.name + ' · ' + fim : c.name }) });
 };
-function aplicarCnpjs() { if (!E.dados) return; E.dados.itens = (E.dados.itens || []).map(comCnpj); if (E.dados.dia) E.dados.dia = E.dados.dia.map(comCnpj); }
+function aplicarCnpjs() { if (!E.dados) return; if (E.dados.itens) E.dados.itens = E.dados.itens.map(comCnpj); if (E.dados.dia) E.dados.dia = E.dados.dia.map(comCnpj); }
 async function carregarCnpjs() {
   const todos = ((E.dados && E.dados.itens) || []).concat((E.dados && E.dados.dia) || []);
   const faltam = [...new Set(todos.map(t => t.customer && t.customer._id).filter(id => id && !(id in E.cnpjs)))];
@@ -87,21 +87,38 @@ const paraPai = m => { if (m && m.controlGestta === 'abrirTarefa') { E.ultimaAbe
 
 /* ---------- leitura ---------- */
 let pedido = 0;
+// 0.111.0 (Josué, 13/11/2026: "não depender de rodar toda leitura pra aparecer alguma coisa"): duas leituras em sequência, a da aba
+// aberta primeiro (Meu dia = os vencimentos do mês; as outras abas = a competência). A tela mostra cada parte assim que chega; numa
+// atualização silenciosa, a parte antiga fica na tela até a nova chegar.
+const PARTE_CAMPOS = { dia: ['dia', 'diaErro', 'diaCortado'], comp: ['itens', 'total', 'cortado', 'modoCompetencia'] };
+const parteDaAba = () => E.aba === 'dia' ? 'dia' : 'comp';
+const faltaParte = () => !!E.dados && E.falta.has(parteDaAba()) && E.dados[parteDaAba() === 'dia' ? 'dia' : 'itens'] === undefined;
 async function ler(silencioso) {
-  const meu = ++pedido;
-  E.carregando = true; if (!silencioso) E.erro = null;
-  aoVivo(); if (!E.dados || !silencioso) desenhar();
-  const r = await enviar({ cmd: 'gesttaTarefas', ano: E.ano, mes: E.mes, quem: E.quem, desconsideradas: E.sits.has('desconsiderada') });
-  if (meu !== pedido) return;                       // trocou de mês ou de pessoa no meio: vale a leitura mais nova
-  E.carregando = false;
-  if (r && r.ok) {
-    r.itens = (r.itens || []).map(legivel); if (r.dia) r.dia = r.dia.map(legivel);
-    E.dados = r; E.erro = null; E.lidoEm = r.lidoEm || new Date().toISOString(); aplicarCnpjs(); carregarCnpjs();
+  const meu = ++pedido, ordem = parteDaAba() === 'dia' ? ['dia', 'comp'] : ['comp', 'dia'];
+  const chave = [E.ano, E.mes, E.quem, E.sits.has('desconsiderada')].join('|');
+  // outra competência ou outra pessoa: a leitura anterior sai da tela (não se misturam as partes); atualizar a mesma mantém o que está à vista
+  E.carregando = true; E.falta = new Set(ordem); if (!silencioso) E.erro = null; if (E.dados && E.dados.__chave !== chave) E.dados = null;
+  aoVivo(); desenhar();
+  for (const parte of ordem) {
+    const r = await enviar({ cmd: 'gesttaTarefas', ano: E.ano, mes: E.mes, quem: E.quem, desconsideradas: E.sits.has('desconsiderada'), parte });
+    if (meu !== pedido) return;                       // trocou de mês ou de pessoa no meio: vale a leitura mais nova
+    E.falta.delete(parte);
+    if (!(r && r.ok)) {
+      E.erro = r || { erro: 'sem resposta' }; E.falta.clear(); E.carregando = false;
+      if (!silencioso) E.dados = null;                 // como antes: numa leitura nova que falha, a tela mostra o erro
+      aoVivo(); desenhar(); return;
+    }
+    if (r.itens) r.itens = r.itens.map(legivel); if (r.dia) r.dia = r.dia.map(legivel);
+    const ant = E.dados, novo = Object.assign({}, r);
+    if (ant) for (const [pt, campos] of Object.entries(PARTE_CAMPOS)) if (pt !== parte) campos.forEach(c => { if (ant[c] !== undefined) novo[c] = ant[c]; });
+    delete novo.parte; novo.__chave = chave;
+    E.dados = novo; E.erro = null; E.lidoEm = r.lidoEm || new Date().toISOString(); aplicarCnpjs(); carregarCnpjs();
     if (setorDaVisao() && !E.setorPorId && !E.fechCarregando) lerFech(false);      // 0.103.0: o setor de cada tarefa sai do relatório
     if (r.perfil && r.perfil.total && !E.equipe) carregarEquipe();
-    if (E.quem === 'eu' && r.dia) { const c = G.contarGrupos(r.dia, new Date()).n; paraPai({ controlGestta: 'contagem', atencao: c.multa + c.atrasada + c.hoje, multa: c.multa, atrasada: c.atrasada, hoje: c.hoje }); }
-  } else { E.erro = r || { erro: 'sem resposta' }; if (!silencioso) E.dados = null; }
-  aoVivo(); desenhar();
+    if (parte === 'dia' && E.quem === 'eu' && r.dia) { const c = G.contarGrupos(r.dia, new Date()).n; paraPai({ controlGestta: 'contagem', atencao: c.multa + c.atrasada + c.hoje, multa: c.multa, atrasada: c.atrasada, hoje: c.hoje }); }
+    if (!E.falta.size) { E.carregando = false; if (r.perfil && r.perfil.total) setTimeout(lerSetores, 1500); }   // 0.111.0: os setores já ficam prontos para o De quem
+    aoVivo(); desenhar();
+  }
 }
 async function lerFech(forcar) {
   E.fechCarregando = true; E.fechErro = null; aoVivo(); desenhar();
@@ -114,12 +131,24 @@ async function lerFech(forcar) {
   aoVivo(); desenhar();
   if ($('#gt-quem-pop') && !$('#gt-quem-pop').hidden) quemLista($('#gt-quem-busca').value);
 }
+// 0.111.0: os setores com tarefa aberta para o De quem saem do relatório do mês corrente (rápido e guardado 1 hora); até ele chegar,
+// os setores do cadastro de equipe aparecem na hora
+async function lerSetores() {
+  if (E.setoresLendo || E.setoresRel) return;
+  E.setoresLendo = true;
+  const r = await enviar({ cmd: 'gesttaSetores' });
+  E.setoresLendo = false;
+  if (r && r.ok) E.setoresRel = (r.linhas || []).map(l => ({ status: l[0], setor: l[1], responsavel: G.nomeLegivel(l[2]) }));
+  else E.setoresErro = (r && r.erro) || 'sem resposta';
+  if ($('#gt-quem-pop') && !$('#gt-quem-pop').hidden) quemLista($('#gt-quem-busca').value);
+}
 async function carregarEquipe() {
   const r = await enviar({ cmd: 'gesttaEquipe' });
   if (!r || !r.ok) return;
   E.equipe = (r.pessoas || []).map(p => Object.assign({}, p, { nome: G.nomeLegivel(p.nome) }));
   $('#gt-quem-wrap').hidden = false;
   quemRot();
+  if ($('#gt-quem-pop') && !$('#gt-quem-pop').hidden) quemLista($('#gt-quem-busca').value);
 }
 // 0.87.0: "De quem" é um botão com o nome e uma lista com busca (iniciais de cada pessoa), no lugar da lista larga
 const iniciais = n => String(n || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
@@ -139,7 +168,8 @@ function quemLista(f) {
   const n = semAc(f), ul = $('#gt-quem-lista'), bt = (attrs, av, rot, extra, on) => '<li><button type="button" role="option" ' + attrs + ' aria-selected="' + !!on + '" class="' + (on ? 'on' : '') + '"><span class="gt-quem-av" aria-hidden="true">' + esc(av) + '</span><span class="gt-quem-nome">' + esc(rot) + '</span>' + (extra || '') + '</button></li>';
   const sec = rot => '<li class="gt-quem-sec" role="presentation">' + esc(rot) + '</li>';
   const conta = k => k ? '<small class="gt-quem-n">' + num(k) + (k === 1 ? ' aberta' : ' abertas') + '</small>' : '';
-  const setores = E.setorPorId ? G.setoresAtivos(E.fechTarefas, E.equipe) : null;
+  const fonte = E.setoresRel || (E.setorPorId ? E.fechTarefas : null);
+  const setores = fonte ? G.setoresAtivos(fonte, E.equipe) : E.equipe ? G.setoresDaEquipe(E.equipe) : null, provisorio = !fonte && !!setores;
   $('#gt-quem-busca').placeholder = QP.passo === 'setor' ? 'Buscar pessoa do setor' : 'Buscar setor';
   if (QP.passo === 'setor') {
     const st = (setores || []).find(x => x.nome === QP.setor) || { nome: QP.setor, pessoas: (E.equipe || []).filter(p => (p.setores || []).includes(QP.setor)).map(p => ({ id: p.id, nome: p.nome, abertas: 0 })) };
@@ -151,8 +181,9 @@ function quemLista(f) {
       '<li class="gt-quem-pe" role="presentation"><button type="button" class="btn btn-sm btn-primary" data-gt-aplicar>' + (k ? 'Ver as tarefas de ' + (k === 1 ? '1 pessoa' : k + ' pessoas') : 'Ver todas as tarefas do setor') + '</button></li>';
     return;
   }
-  let h = bt('data-quem="eu"', 'Eu', 'Minhas', '', E.quem === 'eu') + bt('data-quem="sem"', '—', 'Sem responsável', '', E.quem === 'sem') + sec('Setores com tarefas abertas');
-  if (!setores) h += '<li class="fraco gt-quem-nada">' + (E.fechErro ? 'Não consegui ler os setores: ' + esc(E.fechErro.erro || '') : 'Lendo os setores no relatório do mês…') + '</li>';
+  let h = bt('data-quem="eu"', 'Eu', 'Minhas', '', E.quem === 'eu') + bt('data-quem="sem"', '—', 'Sem responsável', '', E.quem === 'sem') + sec(provisorio ? 'Setores da equipe' : 'Setores com tarefas abertas');
+  if (provisorio) h += '<li class="fraco gt-quem-nada">' + (E.setoresErro ? 'Não consegui conferir as tarefas abertas: ' + esc(E.setoresErro) + '. Mostrando os setores do cadastro de equipe.' : 'Conferindo quais têm tarefa aberta…') + '</li>';
+  if (!setores) h += '<li class="fraco gt-quem-nada">' + (E.setoresErro ? 'Não consegui ler os setores: ' + esc(E.setoresErro) : 'Lendo a equipe do Gestta…') + '</li>';
   else { const l = setores.filter(x => !n || semAc(x.nome).includes(n)); h += l.length ? l.map(x => bt('data-gt-setor="' + esc(x.nome) + '"', '▦', 'Setor ' + x.nome, conta(x.abertas) + '<svg class="ic ic-sm gt-quem-seta" aria-hidden="true"><use href="#i-chev-r"/></svg>', setorDaVisao() === x.nome)).join('') : '<li class="fraco gt-quem-nada">Nenhum setor com tarefa aberta' + (n ? ' com esse nome' : '') + '</li>'; }
   ul.innerHTML = h;
 }
@@ -161,7 +192,7 @@ function quemAbrir(abrir) {
   pop.hidden = !abrir; b.setAttribute('aria-expanded', String(abrir));
   if (abrir) {
     const q = qsVisao(); QP.passo = 'inicio'; QP.setor = ''; QP.marcados = new Set(q ? q.ids : []);
-    if (!E.setorPorId && !E.fechCarregando && E.dados && E.dados.perfil && E.dados.perfil.total) lerFech(false);   // os setores saem do relatório do mês
+    if (E.dados && E.dados.perfil && E.dados.perfil.total) { if (!E.equipe) carregarEquipe(); lerSetores(); }   // 0.111.0: setores na hora (equipe) e conferidos pelo relatório do mês corrente
     $('#gt-quem-busca').value = ''; quemLista(''); setTimeout(() => $('#gt-quem-busca').focus(), 20);
   }
 }
@@ -198,7 +229,7 @@ function aoVivo() {
     const hf = new Date(E.fech.lidoEm), hmf = String(hf.getHours()).padStart(2, '0') + ':' + String(hf.getMinutes()).padStart(2, '0');
     el.classList.add('ok'); tx.textContent = simples() ? hmf : 'Lido às ' + hmf; el.title = 'Relatório lido às ' + hmf + (E.fech.segundos ? ' (levou ' + E.fech.segundos + ' s)' : '') + '. Atualiza no máximo 1 vez por hora.'; return;
   }
-  if (E.carregando) { tx.textContent = 'Lendo o Gestta…'; return; }
+  if (E.carregando) { tx.textContent = E.dados && E.falta.size ? (E.falta.has('comp') ? 'Lendo a competência…' : 'Lendo o Meu dia…') : 'Lendo o Gestta…'; return; }
   if (E.erro) { el.classList.add('erro'); tx.textContent = E.erro.semSessao ? 'Sem sessão no Gestta' : 'Falha na leitura'; return; }
   if (!E.lidoEm) { tx.textContent = 'Aguardando'; return; }
   const h = new Date(E.lidoEm), hm = String(h.getHours()).padStart(2, '0') + ':' + String(h.getMinutes()).padStart(2, '0');
@@ -332,6 +363,11 @@ function desenhar() {
       v.innerHTML = '<div class="faixa"><svg class="ic"><use href="#i-alert"/></svg><div style="flex:1;min-width:240px"><b>' + (E.erro.semSessao ? 'Sem sessão no Gestta.' : E.erro.semAba ? 'Nenhuma aba do Gestta.' : 'Não consegui ler as tarefas.') + '</b> ' + esc(E.erro.erro || '') + '</div><button class="btn btn-sm" id="gt-tentar">Tentar de novo</button></div>';
       $('#gt-tentar').onclick = () => ler();
     } else v.innerHTML = esqueleto('Lendo as tarefas no Gestta…');
+    return;
+  }
+  if (faltaParte()) {   // 0.111.0: a outra parte já chegou; a desta aba ainda está a caminho
+    cabecalho(null);
+    v.innerHTML = esqueleto(E.aba === 'dia' ? 'Lendo os vencimentos do mês no Gestta…' : 'Lendo as tarefas da competência no Gestta…') + '<p class="fraco gt-esq-nota">' + (E.aba === 'dia' ? 'As tarefas da competência já chegaram: as outras abas já mostram.' : 'O Meu dia já chegou e está na primeira aba.') + '</p>';
     return;
   }
   const hoje = new Date(), todos = E.aba === 'dia' && E.dados.dia ? listaDia() : lista(), c = G.contarGrupos(todos, hoje), vm = mesDeMeta(lista());

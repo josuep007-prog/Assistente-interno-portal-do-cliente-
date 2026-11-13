@@ -223,17 +223,27 @@ async function abaGestta() {
   const boas = abas.filter(t => OCG.appDe(t.url || '') && OCG.appDe(t.url || '') !== 'login');
   return boas.find(t => t.active) || boas[0] || abas[0] || null;
 }
+// 0.111.0 (Josué, 13/11/2026: "muita coisa da parte do Gestta tá demorando"): o núcleo entra na aba uma vez por versão da extensão,
+// não a cada leitura. A função roda no mundo da página só se o núcleo já carregado for desta versão; se não, injeta e roda de novo.
+const NUCLEO_V = (() => { try { return chrome.runtime.getManifest().version; } catch (e) { return 'teste'; } })();
+// acao: 'ler' (lerNaPagina) ou 'agir' (agirNaPagina); uma função fixa, sem eval (a página do Gestta pode ter CSP).
+async function naPaginaGestta(tabId, acao, args) {
+  const rodar = () => chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN', args: [NUCLEO_V, acao, args],
+    func: (v, ac, a) => !self.OCG || self.OCG.__v !== v ? { __semNucleo: true } : ac === 'ler' ? self.OCG.lerNaPagina(a[0], { pausa: a[1] }) : self.OCG.agirNaPagina(a[0]) });
+  let [res] = await rodar();
+  if (res && res.result && res.result.__semNucleo) {
+    await chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN', files: ['gestta.js'] });
+    await chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN', args: [NUCLEO_V], func: (v) => { if (self.OCG) self.OCG.__v = v; } });
+    [res] = await rodar();
+  }
+  return res;
+}
 async function lerGestta(pedidos, opcoes) {
   const lista = (pedidos || []).filter(p => p && OCG.leituraPermitida(p.metodo, p.url, p.corpo == null ? null : p.corpo).ok);
   if (lista.length !== (pedidos || []).length) throw new Error('pedido ao Gestta fora da lista permitida');
   const tab = (opcoes && opcoes.tab) || await abaGestta();
   if (!tab) return { aba: null, r: null };
-  await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', files: ['gestta.js'] });
-  const [res] = await chrome.scripting.executeScript({
-    target: { tabId: tab.id }, world: 'MAIN',
-    func: (ps, pausa) => (self.OCG ? self.OCG.lerNaPagina(ps, { pausa }) : { ok: false, motivo: 'núcleo do Gestta não carregou na aba' }),
-    args: [lista, opcoes && opcoes.pausa != null ? opcoes.pausa : OCG.PAUSA_MS]
-  });
+  const res = await naPaginaGestta(tab.id, 'ler', [lista, opcoes && opcoes.pausa != null ? opcoes.pausa : OCG.PAUSA_MS]);
   return { aba: tab, r: (res && res.result) || null };
 }
 // Tela "Tarefas do Gestta" (0.72.0): as tarefas do mês de quem está logado (ou, para a coordenação, de outra pessoa
@@ -261,12 +271,17 @@ async function buscarTodasGestta(tab, base) {
 // se o Gestta respeitou; se recusar ou ignorar, lê as metas da competência e dos 3 meses seguintes e separa pela competence_date.
 // O jeito que deu certo fica lembrado só na memória do service worker.
 let gesttaModoComp = '';
+// 0.111.0: o jeito que deu certo na busca por competência e no relatório fica na memória do Chrome (só a palavra, nada lido),
+// para não repetir a tentativa que falha toda vez que o service worker acorda
+const lembrarModos = () => { try { chrome.storage.session.set({ gtModos: { comp: gesttaModoComp, rel: OCG.modoRel() } }); } catch (e) {} };
+const modosProntos = Promise.resolve().then(() => chrome.storage.session.get('gtModos')).then(o => { const m = o && o.gtModos; if (m) { if (m.comp === 'meta' || m.comp === 'direto') gesttaModoComp = m.comp; OCG.restaurarModoRel(m.rel); } }).catch(() => {});
 async function tarefasDaCompetencia(tab, base, ano, mes) {
+  await modosProntos;
   if (gesttaModoComp !== 'meta') {
     const d = await buscarTodasGestta(tab, Object.assign({}, base, { ano, mes, dataTipo: 'COMPETENCE_DATE' }));
-    if (d.ok && OCG.buscaPorCompetenciaValeu(d.itens, ano, mes)) { gesttaModoComp = 'direto'; return Object.assign(d, { modo: 'direto' }); }
+    if (d.ok && OCG.buscaPorCompetenciaValeu(d.itens, ano, mes)) { if (gesttaModoComp !== 'direto') { gesttaModoComp = 'direto'; lembrarModos(); } return Object.assign(d, { modo: 'direto' }); }
     if (!d.ok && d.status !== 400 && d.status !== 422 && d.status !== 500) return d;          // 401, 403, aba sem resposta: o erro é outro
-    gesttaModoComp = 'meta';
+    gesttaModoComp = 'meta'; lembrarModos();
   }
   const vistos = new Map(); let cortado = false;
   for (const m of OCG.mesesDaCompetencia(ano, mes)) {
@@ -304,12 +319,16 @@ async function gesttaTarefas(msg, sender) {
     if (!ids.length) return { ok: false, erro: 'Ninguém da equipe do Gestta está no setor ' + nome + '.' };
     base.companyUsers = ids; setorPessoas = ids.length;
   } else if (quem === 'sem') base.semDono = true; else base.companyUser = quem === 'eu' ? pf.id : quem;
-  const comp = await tarefasDaCompetencia(tab, base, ano, mes);
-  if (!comp.ok) return { ok: false, erro: comp.erro };
+  // 0.111.0 (Josué, 13/11/2026: "não depender de rodar toda leitura pra aparecer alguma coisa"): parte 'dia' ou 'comp' lê só um
+  // dos dois, e a tela mostra o que chegar primeiro; sem parte, os dois (como antes)
+  const parte = msg.parte === 'dia' || msg.parte === 'comp' ? msg.parte : '';
+  const comum = { ok: true, parte, ano, mes, quem, setorPessoas, desconsideradas: !!msg.desconsideradas, perfil: { id: pf.id, papelNome: pf.papelNome, total: pf.total, setores: pf.setores }, validade: r1.validade || null, lidoEm: new Date().toISOString() };
+  let comp = null, dia = null;
+  if (parte !== 'dia') { comp = await tarefasDaCompetencia(tab, base, ano, mes); if (!comp.ok) return { ok: false, erro: comp.erro }; }
   // Meu dia: pelo vencimento (escolha do Josué em 06/11/2026), as metas do mês corrente, de qualquer competência
-  const h = new Date(), dia = await buscarTodasGestta(tab, Object.assign({}, base, { ano: h.getFullYear(), mes: h.getMonth() + 1 }));
-  return { ok: true, ano, mes, quem, setorPessoas, desconsideradas: !!msg.desconsideradas, perfil: { id: pf.id, papelNome: pf.papelNome, total: pf.total, setores: pf.setores }, itens: comp.itens, total: comp.total, cortado: comp.cortado, modoCompetencia: comp.modo,
-    dia: dia.ok ? dia.itens : null, diaErro: dia.ok ? '' : dia.erro, diaCortado: !!dia.cortado, validade: r1.validade || null, lidoEm: new Date().toISOString() };
+  if (parte !== 'comp') { const h = new Date(); dia = await buscarTodasGestta(tab, Object.assign({}, base, { ano: h.getFullYear(), mes: h.getMonth() + 1 })); }
+  return Object.assign(comum, comp ? { itens: comp.itens, total: comp.total, cortado: comp.cortado, modoCompetencia: comp.modo } : {},
+    dia ? { dia: dia.ok ? dia.itens : null, diaErro: dia.ok ? '' : dia.erro, diaCortado: !!dia.cortado } : {}, { lidoEm: new Date().toISOString() });
 }
 // Fechamento do mês (0.73.0): o relatório CUSTOMER_TASK do mês, lido sob demanda e guardado SÓ na memória do Chrome
 // (chrome.storage.session: some ao fechar o navegador, nunca vai ao disco), com no máximo uma leitura por hora
@@ -318,10 +337,11 @@ const FECH_INTERVALO_MS = 60 * 60e3;
 // O relatório CUSTOMER_TASK de um mês de meta. 0.83.0: num 400 tenta os outros valores de período que o próprio Gestta usa.
 async function relatorioDoMes(tab, ano, mes) {
   let x = null;
+  await modosProntos;
   for (const filtro of OCG.filtrosRelatorio({ ano, mes })) {
     const { r } = await lerGestta([OCG.PEDIDOS.fechamento({ ano, mes, filtro })], { tab });
     x = r && r.resultados && r.resultados[0];
-    if (!x || x.status !== 400) { if (x && x.status === 200) OCG.lembrarFiltroRel(filtro); break; }
+    if (!x || x.status !== 400) { if (x && x.status === 200) { const antes = OCG.modoRel(); OCG.lembrarFiltroRel(filtro); if (OCG.modoRel() !== antes) lembrarModos(); } break; }
   }
   if (!x) return { ok: false, erro: 'A aba do Gestta não respondeu ao relatório.' };
   if (x.status !== 200 || !x.dados) return { ok: false, erro: x.status === 403 ? 'Seu acesso do Gestta não inclui o relatório de tarefas.' : x.status === 401 ? 'A sessão do Gestta acabou: faça login de novo na aba.' : 'O relatório do Gestta não veio (' + (x.erro || x.recusado || x.status) + ').' };
@@ -377,16 +397,31 @@ async function relatorioSaude(tab, ano, mes, forcar) {
   const g = (await chrome.storage.session.get(chave).catch(() => ({})))[chave];
   if (g && (!forcar || Date.now() - new Date(g.lidoEm).getTime() < FECH_INTERVALO_MS)) return Object.assign({ ok: true, daMemoria: true }, g);
   let x = null;
+  await modosProntos;
   for (const filtro of OCG.filtrosRelatorio({ ano, mes })) {
     const { r } = await lerGestta([OCG.PEDIDOS.saude({ ano, mes, filtro })], { tab });
     x = r && r.resultados && r.resultados[0];
-    if (!x || x.status !== 400) { if (x && x.status === 200) OCG.lembrarFiltroRel(filtro); break; }
+    if (!x || x.status !== 400) { if (x && x.status === 200) { const antes = OCG.modoRel(); OCG.lembrarFiltroRel(filtro); if (OCG.modoRel() !== antes) lembrarModos(); } break; }
   }
   if (!x) return { ok: false, erro: 'A aba do Gestta não respondeu ao relatório.' };
   if (x.status !== 200 || !x.dados) return { ok: false, erro: x.status === 403 ? 'Seu acesso do Gestta não inclui o relatório de tarefas.' : x.status === 401 ? 'A sessão do Gestta acabou: faça login de novo na aba.' : 'O relatório do Gestta não veio (' + (x.erro || x.recusado || x.status) + ').' };
   const d = { colunas: x.dados.colunas, linhas: x.dados.linhas, lidoEm: new Date().toISOString() };
   try { await chrome.storage.session.set({ [chave]: d }); } catch (e) {}
   return Object.assign({ ok: true }, d);
+}
+// 0.111.0: os setores com tarefa aberta para o De quem, pelo relatório do mês corrente (um POST de leitura, o mesmo da Saúde, que fica
+// 1 hora na memória do Chrome), em vez do Fechamento inteiro (todas as tarefas da competência mais o relatório de cada mês)
+async function gesttaSetores(msg, sender) {
+  const tab = await tabDoGestta(sender);
+  if (!tab) return { ok: false, semAba: true, erro: 'Abra o Gestta numa aba, já logado.' };
+  const p = await perfilGestta(tab); if (!p.ok) return p;
+  if (!p.pf.total) return { ok: false, erro: 'Os setores são da coordenação (acesso total no Gestta).' };
+  const h = new Date(), rel = await relatorioSaude(tab, h.getFullYear(), h.getMonth() + 1, !!msg.forcar);
+  if (!rel.ok) return { ok: false, erro: rel.erro };
+  const cols = rel.colunas || [], iSt = cols.indexOf('status'), iSet = cols.indexOf('company_department.name'), iR = cols.indexOf('owner.name');
+  // só o que o De quem precisa: setor, situação e responsável de cada tarefa aberta (nada de empresa)
+  const linhas = (rel.linhas || []).filter(l => /^(OPEN|IMPEDIMENT)$/i.test(String(l[iSt] || ''))).map(l => [String(l[iSt] || '').toUpperCase(), String(l[iSet] || ''), String(l[iR] || '')]);
+  return { ok: true, linhas, daMemoria: !!rel.daMemoria, lidoEm: rel.lidoEm };
 }
 async function gesttaSaude(msg, sender) {
   const tab = await tabDoGestta(sender);
@@ -531,8 +566,7 @@ async function gesttaAcao(msg, sender) {
   if (!tab) return { ok: false, erro: 'Abra o Gestta numa aba, já logado.' };
   let x = null;
   try {
-    await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', files: ['gestta.js'] });
-    const [res] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', func: (ped) => (self.OCG ? self.OCG.agirNaPagina(ped) : { ok: false, erro: 'núcleo do Gestta não carregou na aba' }), args: [p] });
+    const res = await naPaginaGestta(tab.id, 'agir', [p]);
     x = res && res.result;
   } catch (e) { return { ok: false, erro: 'A aba do Gestta não respondeu (' + String(e && e.message || e).slice(0, 80) + ').' }; }
   if (!x) return { ok: false, erro: 'A aba do Gestta não respondeu.' };
@@ -565,8 +599,7 @@ async function gesttaPasta(msg, sender) {
   const agir = async (pedido) => {
     if (pedido.erro) return { ok: false, erro: pedido.erro };
     if (!OCG.escritaPermitida(pedido.metodo, pedido.url, pedido.corpo).ok) return { ok: false, erro: 'a extensão recusou a ação' };
-    await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', files: ['gestta.js'] });
-    const [res] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', func: (ped) => (self.OCG ? self.OCG.agirNaPagina(ped) : { ok: false, erro: 'núcleo do Gestta não carregou na aba' }), args: [pedido] });
+    const res = await naPaginaGestta(tab.id, 'agir', [pedido]);
     return (res && res.result) || { ok: false, erro: 'a aba do Gestta não respondeu' };
   };
   const a = await agir(OCG.pedidoAcao({ acao: 'pasta', template: destino, pasta: { customer_id: integ.customer_id, id: integ.id, path: integ.path, pathName: integ.pathName } }));
@@ -592,8 +625,7 @@ async function gesttaTirarPasta(msg, sender) {
   const agir = async (pedido) => {
     if (pedido.erro) return { ok: false, erro: pedido.erro };
     if (!OCG.escritaPermitida(pedido.metodo, pedido.url, pedido.corpo).ok) return { ok: false, erro: 'a extensão recusou a ação' };
-    await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', files: ['gestta.js'] });
-    const [res] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', func: (ped) => (self.OCG ? self.OCG.agirNaPagina(ped) : { ok: false, erro: 'núcleo do Gestta não carregou na aba' }), args: [pedido] });
+    const res = await naPaginaGestta(tab.id, 'agir', [pedido]);
     return (res && res.result) || { ok: false, erro: 'a aba do Gestta não respondeu' };
   };
   const a = await agir(OCG.pedidoAcao({ acao: 'tirarPasta', template: t }));
@@ -624,8 +656,7 @@ async function gesttaTirar(msg, sender) {
     if (p.erro || !OCG.escritaPermitida(p.metodo, p.url, p.corpo).ok) return { ok: false, success, failed, erro: 'A extensão recusou a ação.' };
     let x = null;
     try {
-      await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', files: ['gestta.js'] });
-      const [res] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: 'MAIN', func: (ped) => (self.OCG ? self.OCG.agirNaPagina(ped) : { ok: false, erro: 'núcleo do Gestta não carregou na aba' }), args: [p] });
+      const res = await naPaginaGestta(tab.id, 'agir', [p]);
       x = res && res.result;
     } catch (e) { x = null; }
     if (!x || !x.ok) return { ok: false, success, failed, ignorados, erro: !x ? 'A aba do Gestta não respondeu.' : x.status === 401 ? 'A sessão do Gestta acabou: faça login de novo.' : x.status === 403 ? 'Seu acesso do Gestta não permite tirar da lista.' : 'O Gestta não aceitou (' + (x.erro || x.recusado || ('erro ' + x.status)) + ').' };
@@ -1676,6 +1707,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'gesttaTirar') { reply(await gesttaTirar(msg, sender)); }
       else if (msg.cmd === 'gesttaFechamento') { reply(await gesttaFechamento(msg, sender)); }
       else if (msg.cmd === 'gesttaSaude') { reply(await gesttaSaude(msg, sender)); }
+      else if (msg.cmd === 'gesttaSetores') { reply(await gesttaSetores(msg, sender)); }
       else if (msg.cmd === 'gesttaTarefa') { reply(await gesttaTarefa(msg, sender)); }
       else if (msg.cmd === 'gesttaHistorico') { reply(await gesttaHistorico(msg, sender)); }
       else if (msg.cmd === 'gesttaAcao') { reply(await gesttaAcao(msg, sender)); }

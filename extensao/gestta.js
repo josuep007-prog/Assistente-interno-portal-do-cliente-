@@ -252,6 +252,12 @@
         .sort((a, b) => b.abertas - a.abertas || a.nome.localeCompare(b.nome, 'pt-BR')) }))
       .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
   }
+  // 0.111.0: os setores do cadastro de equipe, para o De quem aparecer na hora (abertas: null = ainda sem o relatório do mês)
+  function setoresDaEquipe(equipe) {
+    const sem = s => semAcento(String(s || '')).trim(), m = new Map();
+    for (const p of equipe || []) for (const nome of p.setores || []) { const k = sem(nome); if (!k) continue; if (!m.has(k)) m.set(k, { nome, abertas: null, pessoas: [] }); m.get(k).pessoas.push({ id: p.id, nome: p.nome, abertas: 0 }); }
+    return [...m.values()].map(x => Object.assign(x, { pessoas: x.pessoas.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')) })).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  }
   // "setor:Fiscal" (todas as pessoas do setor) ou "setor:Fiscal|id1,id2" (só essas)
   function lerQuemSetor(q) {
     const m = /^setor:([^|]{1,80})(?:\|([0-9a-f,]{24,}))?$/i.exec(String(q || ''));
@@ -299,6 +305,8 @@
     return [...new Set([deModo(modoRelOk), '', rel, 'CUSTOM'])];          // rel vazio (mês mais antigo) cai no '' que já está na lista
   }
   const lembrarFiltroRel = (f) => { modoRelOk = f === 'CURRENT_MONTH' || f === 'LAST_MONTH' ? 'P' : String(f || ''); };
+  // 0.111.0: o service worker guarda esse jeito (só '', 'P' ou 'CUSTOM') na memória do Chrome e o devolve quando acorda
+  const modoRel = () => modoRelOk, restaurarModoRel = (m) => { if (m === '' || m === 'P' || m === 'CUSTOM') modoRelOk = m; };
   const filtroRelOk = '';
   const PEDIDOS = {
     me: () => ({ id: 'me', tipo: 'me', metodo: 'GET', url: url('/core/company/user/me') }),
@@ -1430,7 +1438,7 @@
   }
   const urlCliente = (id) => /^[0-9a-f]{24}$/i.test(String(id || '')) ? APP + '/admin/#/sidebar/customer/edit/' + id + '/details' : '';
 
-  g.OCG = { semContatoNoSetor, vereditoEmail, tarefasParaEmail, ritmoPorPessoa, cargaPorDia, prioridade, NIVEIS_PRIORIDADE, sugestoesConfig, extrasSaude, urlCliente, proximosDiasUteis, motivoEmail, COLUNAS_SAUDE, arquivosDoItem, setoresAtivos, lerQuemSetor, grupoTela, GRUPOS_TELA, SITUACOES_FILTRO, situacaoDe, fimCnpj, cnpjFormatado, enviosPortal, lerExpress, cnpjsDoTexto, cnpjValido, competenciasDoTexto, notaDocumento, sugerirDestinos, pastaForaDe, urlTemplate: (id) => /^[0-9a-f]{24}$/i.test(String(id || '')) ? 'https://app.gestta.com.br/admin/#/sidebar/document/edit/' + id + '/details' : '', semelhanca, parecidoComPasta, palavrasNome, ERROS_ENVIO, API, APP, PAUSA_MS, LIMITE_BUSCA, JANELA_MAX_DIAS, POST_LEITURA, RELATORIO_TIPOS, COLUNAS_RELATORIO, MOLDES, APPS,
+  g.OCG = { setoresDaEquipe, modoRel, restaurarModoRel, semContatoNoSetor, vereditoEmail, tarefasParaEmail, ritmoPorPessoa, cargaPorDia, prioridade, NIVEIS_PRIORIDADE, sugestoesConfig, extrasSaude, urlCliente, proximosDiasUteis, motivoEmail, COLUNAS_SAUDE, arquivosDoItem, setoresAtivos, lerQuemSetor, grupoTela, GRUPOS_TELA, SITUACOES_FILTRO, situacaoDe, fimCnpj, cnpjFormatado, enviosPortal, lerExpress, cnpjsDoTexto, cnpjValido, competenciasDoTexto, notaDocumento, sugerirDestinos, pastaForaDe, urlTemplate: (id) => /^[0-9a-f]{24}$/i.test(String(id || '')) ? 'https://app.gestta.com.br/admin/#/sidebar/document/edit/' + id + '/details' : '', semelhanca, parecidoComPasta, palavrasNome, ERROS_ENVIO, API, APP, PAUSA_MS, LIMITE_BUSCA, JANELA_MAX_DIAS, POST_LEITURA, RELATORIO_TIPOS, COLUNAS_RELATORIO, MOLDES, APPS,
     caminhoDe, leituraPermitida, escritaPermitida, pedidoAcao, agirNaPagina, ARQ_MAX, appDe, escolher, limpar, limparRelatorio, perfil, expiraEm, janelaDoMes, PEDIDOS, lerNaPagina, linhasDoTeste,
     GRUPOS, TIPOS_TAREFA, SITUACOES_TAREFA, MAX_PAGINAS_TAREFAS, diasUteis, grupoTarefa, prazoTexto, contarGrupos, porEmpresa, porDia, filtrarTarefas, urlTarefa, ymd, diaLocal,
     COLUNAS_FECHAMENTO, linhasDoRelatorio, tarefasDoRelatorio, trilhaDaEmpresa, fechamento, ESTADOS, setorDe, respDe, ehEscritorioProprio,
