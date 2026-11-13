@@ -213,6 +213,31 @@
     });
   }
 
+  // 0.106.0 (Josué, 13/11/2026: "quero apenas setores com tarefas ativas e o fluxo tem que ser: clicar no botão > escolher o setor >
+  // escolher uma ou mais pessoas"): os setores com tarefa aberta ou com impedimento no relatório do mês, e as pessoas de cada um
+  // (da equipe do Gestta; quem tem tarefa aberta no setor primeiro, com a quantidade).
+  function setoresAtivos(tarefasRel, equipe) {
+    const sem = s => semAcento(String(s || '')).trim();
+    const abertas = (tarefasRel || []).filter(t => t && (t.status === 'OPEN' || t.status === 'IMPEDIMENT') && t.setor);
+    const m = new Map();
+    for (const t of abertas) {
+      const k = sem(t.setor);
+      if (!m.has(k)) m.set(k, { nome: t.setor, abertas: 0, porResp: new Map() });
+      const s = m.get(k); s.abertas++;
+      const r = sem(t.responsavel); if (r) s.porResp.set(r, (s.porResp.get(r) || 0) + 1);
+    }
+    return [...m.entries()].map(([k, s]) => ({ nome: s.nome, abertas: s.abertas,
+      // do setor no cadastro de equipe ou responsável por tarefa aberta do setor (o cadastro nem sempre traz o setor)
+      pessoas: (equipe || []).filter(p => (p.setores || []).some(x => sem(x) === k) || s.porResp.has(sem(p.nome))).map(p => ({ id: p.id, nome: p.nome, abertas: s.porResp.get(sem(p.nome)) || 0 }))
+        .sort((a, b) => b.abertas - a.abertas || a.nome.localeCompare(b.nome, 'pt-BR')) }))
+      .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  }
+  // "setor:Fiscal" (todas as pessoas do setor) ou "setor:Fiscal|id1,id2" (só essas)
+  function lerQuemSetor(q) {
+    const m = /^setor:([^|]{1,80})(?:\|([0-9a-f,]{24,}))?$/i.exec(String(q || ''));
+    return m ? { setor: m[1], ids: m[2] ? m[2].split(',').filter(x => /^[0-9a-f]{24}$/i.test(x)) : [] } : null;
+  }
+
   /* ---------- perfil ---------- */
   const PAPEIS = { ROLE_ADMIN: 'Administrador', ROLE_MANAGER: 'Gestor', ROLE_USER: 'Analista' };
   // A coordenação (administrador ou gestor) vê todos os setores; o analista só os dele (Josué, 05/11/2026).
@@ -1223,7 +1248,7 @@
       templatesSemPasta: semPasta.length, naoVai: semPasta.filter(g => g.classe === 'naoVai').length, semNotificar: itens.filter(i => i.notifica === false).length, conferidas: itens.filter(i => i.notifica !== null).length, deve: semPasta.filter(g => g.classe === 'deve').length, risco: risco.length, templatesComPasta: comPasta.length } };
   }
 
-  g.OCG = { grupoTela, GRUPOS_TELA, SITUACOES_FILTRO, situacaoDe, fimCnpj, cnpjFormatado, enviosPortal, lerExpress, cnpjsDoTexto, cnpjValido, competenciasDoTexto, notaDocumento, sugerirDestinos, pastaForaDe, urlTemplate: (id) => /^[0-9a-f]{24}$/i.test(String(id || '')) ? 'https://app.gestta.com.br/admin/#/sidebar/document/edit/' + id + '/details' : '', semelhanca, parecidoComPasta, palavrasNome, ERROS_ENVIO, API, APP, PAUSA_MS, LIMITE_BUSCA, JANELA_MAX_DIAS, POST_LEITURA, RELATORIO_TIPOS, COLUNAS_RELATORIO, MOLDES, APPS,
+  g.OCG = { setoresAtivos, lerQuemSetor, grupoTela, GRUPOS_TELA, SITUACOES_FILTRO, situacaoDe, fimCnpj, cnpjFormatado, enviosPortal, lerExpress, cnpjsDoTexto, cnpjValido, competenciasDoTexto, notaDocumento, sugerirDestinos, pastaForaDe, urlTemplate: (id) => /^[0-9a-f]{24}$/i.test(String(id || '')) ? 'https://app.gestta.com.br/admin/#/sidebar/document/edit/' + id + '/details' : '', semelhanca, parecidoComPasta, palavrasNome, ERROS_ENVIO, API, APP, PAUSA_MS, LIMITE_BUSCA, JANELA_MAX_DIAS, POST_LEITURA, RELATORIO_TIPOS, COLUNAS_RELATORIO, MOLDES, APPS,
     caminhoDe, leituraPermitida, escritaPermitida, pedidoAcao, agirNaPagina, ARQ_MAX, appDe, escolher, limpar, limparRelatorio, perfil, expiraEm, janelaDoMes, PEDIDOS, lerNaPagina, linhasDoTeste,
     GRUPOS, TIPOS_TAREFA, SITUACOES_TAREFA, MAX_PAGINAS_TAREFAS, diasUteis, grupoTarefa, prazoTexto, contarGrupos, porEmpresa, porDia, filtrarTarefas, urlTarefa, ymd, diaLocal,
     COLUNAS_FECHAMENTO, linhasDoRelatorio, tarefasDoRelatorio, trilhaDaEmpresa, fechamento, ESTADOS, setorDe, respDe, ehEscritorioProprio,

@@ -4672,3 +4672,14 @@ test('Gestta (0.105.0): desconsiderar o item sem anexo só pelo endereço mapead
   for (const [m, url, c] of [['PUT', p.url, { x: 1 }], ['POST', p.url, {}], ['PUT', A + '/es/task/' + T + '/document/' + D + '/file/reconsider', {}], ['DELETE', A + '/es/task/' + T + '/document/' + D + '/file', {}], ['PUT', p.url + '?x=1', {}]])
     assert.equal(OCG.escritaPermitida(m, url, c).ok, false, 'recusa: ' + m + ' ' + url);
 });
+
+test('Gestta (0.106.0): só setores com tarefa aberta, as pessoas de cada um e o quem com pessoas escolhidas', () => {
+  const rel = [{ status: 'OPEN', setor: 'Fiscal', responsavel: 'Ana' }, { status: 'IMPEDIMENT', setor: 'Fiscal', responsavel: 'Ana' }, { status: 'DONE', setor: 'Contábil', responsavel: 'Bia' }, { status: 'OPEN', setor: 'Pessoal', responsavel: 'Caio' }];
+  const eq = [{ id: 'a', nome: 'Ana', setores: ['Fiscal'] }, { id: 'b', nome: 'Bia', setores: ['Fiscal', 'Contábil'] }];
+  const s = plano(OCG.setoresAtivos(rel, eq));
+  assert.deepEqual(s.map(x => [x.nome, x.abertas]), [['Fiscal', 2], ['Pessoal', 1]], 'Contábil só tem concluída: fica de fora');
+  assert.deepEqual(s[0].pessoas.map(p => [p.nome, p.abertas]), [['Ana', 2], ['Bia', 0]]);
+  assert.deepEqual(plano(OCG.lerQuemSetor('setor:Fiscal')), { setor: 'Fiscal', ids: [] });
+  assert.deepEqual(plano(OCG.lerQuemSetor('setor:Fiscal|aaaaaaaaaaaaaaaaaaaaaaaa,bbbbbbbbbbbbbbbbbbbbbbbb')), { setor: 'Fiscal', ids: ['aaaaaaaaaaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbbbbbbbbbb'] });
+  assert.equal(OCG.lerQuemSetor('eu'), null);
+});

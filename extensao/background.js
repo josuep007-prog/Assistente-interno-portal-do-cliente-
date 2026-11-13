@@ -288,17 +288,19 @@ async function gesttaTarefas(msg, sender) {
   const padrao = OCG.competenciaPadrao(new Date());
   const ano = Number(msg.ano) || padrao.ano, mes = Number(msg.mes) || padrao.mes;
   let quem = String(msg.quem || 'eu');
-  if (!pf.total || !(quem === 'eu' || quem === 'sem' || /^[0-9a-f]{24}$/i.test(quem) || /^setor:.{1,80}$/.test(quem))) quem = 'eu';
+  if (!pf.total || !(quem === 'eu' || quem === 'sem' || /^[0-9a-f]{24}$/i.test(quem) || OCG.lerQuemSetor(quem))) quem = 'eu';
   // 0.103.0: as desconsideradas (IGNORED/DISCONSIDERED) só são lidas quando a pessoa pede essa situação
   const base = { limit: OCG.LIMITE_BUSCA, status: ['OPEN', 'IMPEDIMENT', 'DONE'].concat(msg.desconsideradas ? ['IGNORED', 'DISCONSIDERED'] : []) };
   let setorPessoas = 0;
   if (quem.startsWith('setor:')) {
     // 0.103.0 (Josué, 12/11/2026: "filtrar todas as tarefas de um determinado setor"): a busca não traz o setor, então lê as tarefas
     // de todas as pessoas do setor de uma vez (company_user[], já usado pela busca); a tela separa pelo setor quando o relatório está lido
-    const nome = quem.slice(6), eq = await lerEquipeGestta(tab);
+    const qs = OCG.lerQuemSetor(quem), nome = qs.setor, eq = await lerEquipeGestta(tab);
     if (!eq.ok) return { ok: false, erro: eq.erro };
     const sem = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-    const ids = eq.pessoas.filter(p => (p.setores || []).some(s => sem(s) === sem(nome))).map(p => p.id);
+    const doSetor = eq.pessoas.filter(p => (p.setores || []).some(s => sem(s) === sem(nome))).map(p => p.id);
+    // 0.106.0: uma ou mais pessoas do setor escolhidas (só as que são do setor)
+    const ids = qs.ids.length ? qs.ids.filter(id => eq.pessoas.some(p => p.id === id)) : doSetor;   // escolhidas: só quem é da equipe ativa
     if (!ids.length) return { ok: false, erro: 'Ninguém da equipe do Gestta está no setor ' + nome + '.' };
     base.companyUsers = ids; setorPessoas = ids.length;
   } else if (quem === 'sem') base.semDono = true; else base.companyUser = quem === 'eu' ? pf.id : quem;
