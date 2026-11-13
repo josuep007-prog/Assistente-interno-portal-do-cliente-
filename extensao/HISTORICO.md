@@ -2,6 +2,13 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.111.0 (13/11/2026): Gestta mais rápido, cada parte aparece quando chega
+
+- Josué: "tá demorando muito pra ler, na real muita coisa da parte do Gestta tá demorando pra terminar de ler"; "não depender de rodar toda leitura pra aparecer alguma coisa". Escolheu três das quatro saídas propostas (a de abrir com a última leitura guardada ficou de fora):
+  - **Setores na hora:** o De quem mostra logo os setores do cadastro de equipe ("Setores da equipe · Conferindo quais têm tarefa aberta…") e, quando chega o relatório do mês corrente, fica só com os que têm tarefa aberta, com a quantidade. Antes esperava o Fechamento inteiro (todas as tarefas da competência do escritório e o relatório de cada mês); agora é um relatório só, o mesmo da Saúde, que fica 1 hora na memória do Chrome e já é pedido em segundo plano depois que as tarefas chegam.
+  - **Mostrar aos poucos:** as tarefas vêm em duas leituras, a da aba aberta primeiro: o Meu dia (vencimentos do mês) aparece sem esperar a competência, e a competência (Empresas, Lista, Obrigações, Calendário) aparece sem esperar o Meu dia. A aba cuja parte ainda não chegou mostra "Lendo…" e o topo diz o que falta. Atualizar a mesma visão mantém o que está na tela até a leitura nova chegar.
+  - **Leitura mais enxuta:** o núcleo da extensão entra na aba do Gestta uma vez por versão (antes era carregado de novo a cada leitura e a cada ação); e o jeito que deu certo na busca por competência e no relatório fica lembrado na memória do Chrome (só a palavra), para não repetir a tentativa que falha toda vez que o service worker acorda.
+
 ## Novidades da v0.110.0 (13/11/2026): aba Saúde, painel maior, arquivo do item e soltar sem tapar a tela
 
 - Josué pediu uma sessão para compensar o que falta no Gestta: falhas de e-mail ao cliente, tarefa que avisa o cliente sem contato cadastrado, carga por dia que mostre quando não vai dar tempo e o que é prioridade e, para gestores, ajuda para configurar as tarefas de cada empresa pela demanda. Nas Tarefas do Gestta, a aba **Saúde** (tecla 8), só leitura:
