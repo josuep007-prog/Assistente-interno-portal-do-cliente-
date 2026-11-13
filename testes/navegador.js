@@ -461,6 +461,7 @@ await passo('app · Hoje (analista): Meu dia em números (números do dia com li
   assert.deepEqual(ks.map(x => x[3]), ['#/fila?escopo=concluidas', '#/fila', '#/fila?escopo=respondidas', '#/fila?idade=4-', '#/lembretes']);
   assert.equal(await p.textContent('[data-md="concluidas"] .ap-c b'), '1', 'concluída hoje (a leitura das concluídas, só na memória)');
   assert.match(await p.textContent('[data-md="concluidas"]'), /média de [\d,]+ por dia útil/);
+  assert.doesNotMatch(await p.textContent('.hj-meudia'), /acima da média|abaixo|para a média/, 'sem comparação com a média (Josué: "tira esse negócio de acima da média ou abaixo")');
   assert.match(await p.textContent('.hj-md-graf figcaption'), /Concluídas por dia útil1 em 10 dias/);
   assert.ok(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'concluidas' && m.equipe === false)), 'as minhas concluídas');
   assert.equal(await p.$$eval('.hj-md-svg rect', e => e.length), 10, 'uma barra por dia útil');

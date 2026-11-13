@@ -221,12 +221,10 @@ export function render(el, ctx) {
     // destaque: as concluídas de hoje contra a média por dia útil (o anel enche ao chegar na média)
     const ch = md.concluidasHoje, med = md.media;
     const pct = ch == null ? null : med ? Math.min(100, ch / med * 100) : ch ? 100 : 0;
-    const ritmo = ch == null ? (esc2 ? (cd && cd.erro ? 'não deu para ler' : 'lendo no Onvio…') : 'sem analista: não se aplica')
-      : !med ? 'primeiras do período' : ch >= med ? (ch > med ? '<span class="hj-md-chip ok">▲ acima da média</span>' : '<span class="hj-md-chip ok">na média</span>')
-      : '<span class="hj-md-chip">faltam ' + Math.ceil(med - ch) + ' para a média</span>';
+    const ritmo = esc2 ? (cd && cd.erro ? 'não deu para ler' : 'lendo no Onvio…') : 'sem analista: não se aplica';      // só enquanto não há número
     const destaque = '<a class="hj-md-k hj-md-dest" href="' + esc(linkFila({ escopo: 'concluidas' })) + '" data-md="concluidas">' +
       anelProgresso(pct, (ch == null ? '<b>…</b>' : '<b data-conta="' + ch + '">' + num(ch) + '</b>') + '<small>hoje</small>', { tam: 112 }) +
-      '<span class="hj-md-tx"><span>concluídas hoje</span><small>' + (med != null ? 'média de ' + vg(med) + ' por dia útil' : '') + '</small>' + (ch == null ? '<small>' + ritmo + '</small>' : ritmo) + '</span></a>';
+      '<span class="hj-md-tx"><span>concluídas hoje</span><small>' + (med != null ? 'média de ' + vg(med) + ' por dia útil' : '') + '</small>' + (ch == null ? '<small>' + ritmo + '</small>' : '') + '</span></a>';
     const total10 = md.serie ? md.serie.reduce((t, x) => t + x.n, 0) : null;
     return '<section class="hj-meudia" style="--i:0">' +
       '<header class="hj-md-cab"><div><span class="hj-eyebrow">' + esc(rotCart) + (cart !== EQUIPE ? ' · <button type="button" class="linkish" data-cart="' + EQUIPE + '">ver equipe toda</button>' : '') + '</span>' +

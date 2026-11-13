@@ -1815,8 +1815,6 @@ textarea.adv-console{display:block; width:100%; box-sizing:border-box; resize:ve
 .hj-md-dest .ap-c small{font-size:11.5px; color:var(--ink-2)}
 .hj-md-dest .hj-md-tx{align-items:center; gap:4px}
 .hj-md-dest .hj-md-tx > span{font-size:14px; font-weight:700}
-.hj-md-chip{display:inline-block; margin-top:2px; padding:2px 8px; border-radius:3px; font-size:11.5px; font-weight:700; background:color-mix(in srgb, var(--ink) 8%, transparent); color:var(--ink)}
-.hj-md-chip.ok{background:color-mix(in srgb, var(--viz-ok, #2E9E5B) 16%, transparent); color:var(--ink)}
 .hj-md-graf{margin:0; padding:12px 14px 10px; border:1px solid var(--rule); border-radius:var(--r); background:color-mix(in srgb, var(--surface) 82%, transparent); display:flex; flex-direction:column; gap:6px}
 .hj-md-graf figcaption{display:flex; justify-content:space-between; gap:8px; font-size:12.5px; font-weight:700; color:var(--ink)}
 .hj-md-graf figcaption b{font-weight:600; color:var(--ink-2)}
