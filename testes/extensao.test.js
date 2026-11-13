@@ -2914,11 +2914,11 @@ function apiHub() {
 }
 const todasCategorias = () => OC.HUB_CATEGORIAS.map(c => c.id);
 
-test('Hub: por padrão os dados pessoais ficam desligados e as demais categorias ligadas', () => {
+test('Hub: por padrão todas as categorias vão, inclusive os dados pessoais (Josué, 06/11 e 13/11/2026: ligada de fábrica, sem aviso)', () => {
   const pessoais = OC.HUB_CATEGORIAS.filter(c => c.pessoal);
   assert.deepEqual(plano(pessoais.map(c => c.id)), ['pessoais']);
-  assert.equal(pessoais[0].padrao, false);
-  assert.ok(OC.HUB_CATEGORIAS.filter(c => !c.pessoal).every(c => c.padrao));
+  assert.equal(pessoais[0].padrao, true);
+  assert.ok(OC.HUB_CATEGORIAS.every(c => c.padrao));
 });
 
 test('Hub: partirTabela parte entre linhas, respeita o limite e nunca devolve zero partes', () => {

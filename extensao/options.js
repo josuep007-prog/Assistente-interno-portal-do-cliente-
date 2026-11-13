@@ -198,11 +198,8 @@
   async function onCategoria(e) {
     const inp = e.target.closest('input[data-cat]'); if (!inp) return;
     const k = OC.HUB_CATEGORIAS.find(x => x.id === inp.dataset.cat);
-    if (k.pessoal && inp.checked) { inp.checked = false; $('#hub-pessoais-aviso').hidden = false; return; }   // pede confirmação antes de ligar
     await gravarEnvio(k.id, inp.checked);
   }
-  $('#hub-pessoais-sim').addEventListener('click', async () => { await gravarEnvio('pessoais', true); $('#hub-pessoais-aviso').hidden = true; await mostrarHub(); });
-  $('#hub-pessoais-nao').addEventListener('click', () => { $('#hub-pessoais-aviso').hidden = true; });
   async function mostrarEnvioCompleto(c) {
     desenharCategorias(c);
     if (document.activeElement !== $('#hubSyncHoras')) $('#hubSyncHoras').value = c.syncHoras || 6;

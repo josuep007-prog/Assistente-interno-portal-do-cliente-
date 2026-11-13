@@ -163,10 +163,13 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const lotesHub3 = () => f3().evaluate(() => window.lotes);
   const envioParado = async () => { const x = await opc.evaluate(() => chrome.storage.local.get(['hubEnvio', 'hubSync', 'hubSyncGestta'])); return (!x.hubEnvio || !['preparando', 'enviando'].includes(x.hubEnvio.estado)) && !(x.hubSync && x.hubSync.estado === 'enviando') && !(x.hubSyncGestta && x.hubSyncGestta.estado === 'enviando') ? x : null; };
   const esperarSync = async () => { await sleep(300); for (let i = 0; i < 240; i++) { await sleep(500); const x = await envioParado(); if (x && x.hubSync && x.hubSync.terminouEm) return x.hubSync; } throw new Error('envio completo não terminou'); };
-  // a tela mostra as 7 categorias; a de dados pessoais vem desligada
+  // a tela mostra as 7 categorias; desde a 0.113.0 a de dados pessoais vem ligada (sem aviso). Para conferir o envio sem ela, desliga
   await opc.reload(); await sleep(600);
   assert.equal(await opc.locator('#hub-cats input[data-cat]').count(), 7);
-  assert.equal(await opc.locator('#hub-cats input[data-cat="pessoais"]').isChecked(), false);
+  assert.equal(await opc.locator('#hub-cats input[data-cat="pessoais"]').isChecked(), true, 'dados pessoais ligados de fábrica');
+  assert.equal(await opc.locator('#hub-pessoais-aviso').count(), 0, 'sem o aviso');
+  await opc.locator('#hub-cats input[data-cat="pessoais"]').click(); await sleep(300);
+  assert.equal((await opc.evaluate(() => chrome.storage.local.get('hubCfg'))).hubCfg.envio.pessoais, false);
   assert.equal(await opc.locator('#hub-cats input[data-cat="listas"]').isChecked(), true);
   const antes = (await lotesHub3()).length;
   assert.equal((await msg('hubSincronizar')).ok, true);
@@ -185,11 +188,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   assert.doesNotMatch(JSON.stringify(novos), /João Silva|Assunto secreto|ana@teste\.com|SeamlessAuthenticationToken/, 'nem assunto, nem nome de empregado, nem e-mail, nem sessão');
   const geral = novos.find(x => x.tipoDado === 'lista-geral');
   assert.ok(geral && geral.colunas.includes('Cliente') && geral.nLinhasTotal === 2);
-  // dados pessoais: aviso e confirmação antes de ligar
-  await opc.locator('#hub-cats input[data-cat="pessoais"]').click();
-  assert.equal(await opc.locator('#hub-pessoais-aviso').isVisible(), true);
-  assert.equal(await opc.locator('#hub-cats input[data-cat="pessoais"]').isChecked(), false, 'continua desligado até confirmar');
-  await opc.click('#hub-pessoais-sim'); await sleep(300);
+  // dados pessoais: ligar de novo, sem aviso
+  await opc.locator('#hub-cats input[data-cat="pessoais"]').click(); await sleep(300);
   assert.equal((await opc.evaluate(() => chrome.storage.local.get('hubCfg'))).hubCfg.envio.pessoais, true);
   const antes2 = (await lotesHub3()).length;
   await msg('hubSincronizar'); await esperarSync();

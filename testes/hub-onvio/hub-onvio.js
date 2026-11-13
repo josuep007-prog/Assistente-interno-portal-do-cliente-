@@ -1082,7 +1082,7 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await page.evaluate(() => { const d = window.__db.ler('dp_empresas/e-lira'); d.observacoes = ''; d.funcionarios = d.funcionarios.filter(f => f.id !== 'f-concorrente'); window.__db.semear('dp_empresas/e-lira', d); });
   });
 
-  await passo('Permissões: o código de pareamento só aparece para quem edita o Hub; dados pessoais do Onvio só para coordenação e analista do DP', async () => {
+  await passo('Permissões: o código de pareamento só aparece para quem edita o Hub; dados pessoais do Onvio para coordenação e analista de qualquer módulo (não para consulta)', async () => {
     const outra = await ctx.newPage(); await outra.addInitScript(BANCO); await outra.addInitScript(() => { window.__canEdit = false; try { localStorage.setItem('controlhub-theme', 'light'); } catch (e) {} });
     await outra.goto(url); await outra.waitForFunction(() => window.__hubApi && window.__db);
     await outra.evaluate(() => window.__db.semear('ing_config/cfg', { token: 'SEGREDO1234567890ABCDEF', criadoEm: Date.now() }));
@@ -1096,6 +1096,9 @@ const num = (s) => parseInt(String(s).replace(/^\D+/, ''), 10);
     await page.evaluate(() => { window.__auth = { nivel: () => 'consulta', analista: () => '', podeVer: () => true, ehAdmin: () => false, usuario: () => ({ nome: 'Carla', id: 'u-carla', prefs: {} }) }; });
     assert.equal(await page.evaluate(() => window.__hubApi.api('onvio').ler('pessoais-aviso-ferias').length), 0, 'consulta não lê dados pessoais');
     assert.equal(await page.evaluate(() => window.__hubApi.api('onvio').ler('lista-aviso-ferias').length > 0), true, 'as listas sem dados pessoais continuam');
+    // Hub 355 (Josué, 06/11 e 13/11/2026: "todos os analistas veem tudo"): analista de outro módulo (aqui o Fiscal) também lê os dados pessoais
+    await page.evaluate(() => { window.__auth = { nivel: (m) => m === 'fiscal' ? 'analista' : 'consulta', analista: () => 'Fernanda', podeVer: () => true, ehAdmin: () => false, usuario: () => ({ nome: 'Fernanda', id: 'u-fer', prefs: {} }) }; });
+    assert.ok(await page.evaluate(() => window.__hubApi.api('onvio').ler('pessoais-aviso-ferias').length > 0), 'analista do Fiscal lê os dados pessoais');
     await page.evaluate(() => { delete window.__auth; });
   });
 

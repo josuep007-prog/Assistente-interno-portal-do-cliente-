@@ -1295,11 +1295,12 @@ await passo('app · Configurações → Avançado (0.69.0): cinco partes com o e
     assert.match(diag, /Clientes de CND \(clientes-cnd\): sem-resposta · alimenta: a ficha da empresa/);
     assert.doesNotMatch(diag, /ABCDEF123456/, 'sem o código de pareamento');
     if (process.env.CAP) await (await p.$('#adv-envio')).screenshot({ path: process.env.CAP + '/avancado-envio-' + estilo + '.png' });
-    // dados pessoais pedem confirmação antes de ligar
+    // 0.113.0: dados pessoais vêm ligados de fábrica e desligam e ligam como as outras, sem aviso
+    assert.equal(await p.isChecked('.adv-cat input[data-cat="pessoais"]'), true, 'ligado de fábrica');
+    assert.equal(await p.$('#adv-pessoais-aviso'), null, 'sem o aviso');
     await p.click('.adv-cat input[data-cat="pessoais"]');
-    await p.waitForSelector('#adv-pessoais-aviso:not([hidden])');
-    assert.equal(await p.isChecked('.adv-cat input[data-cat="pessoais"]'), false, 'não liga sem confirmar');
-    await p.click('#adv-pessoais-sim');
+    await p.waitForFunction(() => JSON.parse(localStorage.getItem('__mem')).hubCfg.envio.pessoais === false);
+    await p.click('.adv-cat input[data-cat="pessoais"]');
     await p.waitForFunction(() => JSON.parse(localStorage.getItem('__mem')).hubCfg.envio.pessoais === true);
     // "Enviar só a folha" manda o pedido com soFolha
     await p.click('#adv-so-folha');
