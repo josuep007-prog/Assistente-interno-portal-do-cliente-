@@ -3458,6 +3458,12 @@ await passo('Gestta · Envios ao portal (0.96.0, 0.100.3): um destino por docume
     assert.match(txt, /Pastas fora da empresa 9999[\s\S]*Empresa Exemplo[\s\S]*Contrato Social[\s\S]*Legal › Contratos/);
     assert.ok(!/1 · Reenviar[\s\S]*Cliente Ficticio E5[\s\S]*2 · Tirar/i.test(txt), 'o erro de envio de pasta fora da 9999 não fica para reenviar');
     assert.match(txt, /Templates em risco[\s\S]*Guia FGTS Rescisório[\s\S]*parecido com[\s\S]*Guia FGTS/);
+    // 0.106.1: os botões de cada linha do risco ficam juntos, na mesma coluna à direita
+    const xs = await fr.$$eval('.gte-risco li', l => l.map(li => { const b = [...li.querySelectorAll('.btn')]; return b.length ? Math.round(b[b.length - 1].getBoundingClientRect().right) : null; }).filter(Boolean));
+    assert.ok(xs.length && xs.every(x => Math.abs(x - xs[0]) <= 1), 'botões alinhados à direita: ' + xs);
+    const vaos = await fr.$$eval('.gte-risco li', l => l.map(li => { const b = [...li.querySelectorAll('.btn')]; return b.length > 1 ? Math.round(b[1].getBoundingClientRect().left - b[0].getBoundingClientRect().right) : 0; }));
+    assert.ok(vaos.every(v => v <= 12), 'os botões de cada linha ficam juntos: ' + vaos);
+    if (process.env.CAP) { await fr.$eval('.gte-risco', e => e.scrollIntoView({ block: 'center' })); await p.screenshot({ path: path.join(process.env.CAP, 'gestta-envios-risco-' + estilo + '.png') }); }
     // 0.100.3: o botão leva ao cadastro do template no Gestta
     assert.equal(await fr.getAttribute('.gte-tpl.nao a[href$="' + T2 + '/details"]', 'href'), 'https://app.gestta.com.br/admin/#/sidebar/document/edit/' + T2 + '/details');
     assert.ok(await fr.$('.gte-risco a[href$="/sidebar/document/edit/e00000000000000000000005/details"]'), 'o risco abre o template');

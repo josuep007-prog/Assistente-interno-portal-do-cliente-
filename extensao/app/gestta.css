@@ -666,7 +666,10 @@
 .gte-conf{position:sticky; top:0; z-index:3}
 .gte-conf .btn{flex:none}
 .gte-usar{margin:2px 12px 6px 0}
-.gte-risco li .btn{margin-left:auto}
+/* 0.106.1: os botões de cada linha ficam juntos, alinhados à direita (antes cada um empurrava o outro e ficavam espalhados) */
+.gte-risco li{align-items:center}
+.gte-risco li .btn, .gte-risco li .btn.gte-usar{margin:0}
+.gte-risco li > span{margin-right:auto}
 .gte-tab .sr{position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0)}
 .gte-info b{color:var(--ink)}
 
