@@ -388,6 +388,12 @@ assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br
       { _id: 'h1', type: 'DOCUMENT', status: 'NOT_SENT_TO_PORTAL', reason: 'NO_FOLDER_CONFIGURED', accomplished_at: new Date().toISOString(), company_document: { name: 'Recibo' }, upload: { url: 'https://arquivo.exemplo/up.pdf' } },
       { _id: 'h2', type: 'EMAIL', status: 'SENT', accomplished_at: new Date().toISOString(), email_log: { to: ['destino@exemplo.com'], server: 'smtp.exemplo' } }], totalDocs: 2, totalPages: 1, page: 1 });
     if (p === '/core/dashboard/attention/fine/all') return json({ fine: 7 });
+    // 0.110.0 · aba Saúde
+    if (p === '/core/dashboard/attention/email-not-sent/all') return json({ email_not_sent: 3 });
+    if (p === '/admin/customer/count-without-task') return json({ count: 5 });
+    if (p === '/admin/customer/' + ID + '/accountable') return json([{ company_department: { _id: ID, name: 'Pessoal' }, customer_user: { _id: ID2, name: 'Contato Ficticio', email: 'contato@exemplo.com', active: true, phone_number: '(27) 90000-0000' } }]);
+    if (p === '/admin/company/task') return json({ docs: [{ _id: ID, name: 'DCTF WEB', active: true, type: 'RECURRENT', frequency: 'MONTHLY', company_department: { _id: ID2, name: 'Fiscal' }, score: 9 }], totalDocs: 1, totalPages: 1 });
+    if (p === '/admin/company/task/' + ID + '/customer') return json([{ customer: { _id: ID2, name: 'EMPRESA FICTICIA LTDA', cnpj: '12.345.678/0001-90' } }]);
     if (p === '/es/file/onvio') return json({ docs: [], totalDocs: 4 });
     if (p === '/admin/company/document') return json({ docs: [{ _id: ID, name: 'DAS' }], totalDocs: 1008, documents_without_destination: 31 });
     return json({ message: 'não simulado' }, 404);
@@ -497,7 +503,36 @@ assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br
   const d2 = await tt({ cmd: 'gesttaTarefa', id: '../admin/company' });
   assert.equal(d2.ok, false); assert.equal(gChamadas.length, antesInv, 'id inválido não pede nada');
   // analista: avisa que o envio ao Hub não sai; admin proibido vira "seu acesso não inclui"
+  // 0.110.0 · aba Saúde: o relatório de 4 meses (POST de leitura), as contagens e, pelo botão, contatos, e-mails e configuração (só GET)
+  const antesS = gChamadas.length, nRelS = gRel.length;
+  const s1 = await tt({ cmd: 'gesttaSaude', parte: 'tarefas' });
+  assert.ok(s1.ok, 'gesttaSaude: ' + (s1.erro || ''));
+  assert.equal(gRel.length - nRelS, 4, 'um relatório por mês, de 2 meses atrás até o próximo');
+  assert.ok(s1.colunas.includes('notify_customer') && s1.colunas.includes('concluded_by.name') && !s1.colunas.includes('value'), 'colunas da Saúde');
+  assert.equal(s1.emailNaoSaiu, 3); assert.equal(s1.semTarefa, 5); assert.equal(s1.perfil.total, true);
+  const s1b = await tt({ cmd: 'gesttaSaude', parte: 'tarefas' });
+  assert.ok(s1b.daMemoria && gRel.length - nRelS === 4, 'o relatório da Saúde vem da memória por 1 hora');
+  const s2 = await tt({ cmd: 'gesttaSaude', parte: 'contatos', cnpjs: ['12345678000190', '99999999000199'] });
+  assert.ok(s2.ok, 'contatos: ' + (s2.erro || ''));
+  assert.deepEqual(s2.porCnpj['12345678000190'], [{ setor: 'Pessoal', ativo: true, temEmail: true }]); assert.equal(s2.porCnpj['99999999000199'], null);
+  const s3 = await tt({ cmd: 'gesttaSaude', parte: 'emails', ids: [ID, 'x'] });
+  assert.ok(s3.ok); assert.deepEqual(s3.porTarefa[ID].map(e => e.status), ['SENT']); assert.equal(Object.keys(s3.porTarefa).length, 1, 'id inválido fica de fora');
+  const s4 = await tt({ cmd: 'gesttaSaude', parte: 'config' });
+  assert.ok(s4.ok, 'config: ' + (s4.erro || '')); assert.deepEqual(s4.templates, [{ id: ID, nome: 'DCTF WEB', setor: 'Fiscal', frequencia: 'MONTHLY', tipo: 'RECURRENT' }]);
+  const s5 = await tt({ cmd: 'gesttaSaude', parte: 'configClientes', ids: [ID] });
+  assert.ok(s5.ok); assert.deepEqual(s5.porTemplate[ID], [ID2]);
+  const novasS = gChamadas.slice(antesS);
+  assert.ok(novasS.every(c => c.startsWith('GET ') || c === 'POST /core/customer/task/report' || c === 'POST /core/customer/task/search'), 'a Saúde só lê: ' + novasS.filter(c => !c.startsWith('GET ')).join(', '));
+  for (const v of ['contato@exemplo', '(27)', 'Contato Ficticio', 'destino@exemplo', 'smtp.exemplo', '"score"', 'SEGREDO', 'eyJ']) assert.ok(!JSON.stringify([s1, s2, s3, s4, s5]).includes(v), 'Saúde vazou: ' + v);
+  const sessS = await pagina.evaluate(() => chrome.storage.session.get(null)), locS = JSON.stringify(await pagina.evaluate(() => chrome.storage.local.get(null)));
+  assert.ok(Object.keys(sessS).some(k => /^gtSaude-\d{4}-\d{2}$/.test(k)), 'relatório da Saúde na memória do Chrome');
+  assert.ok(!locS.includes('gtSaude') && !locS.includes('accountable'), 'nada da Saúde no disco');
   papel = 'ROLE_USER'; adminProibido = true;
+  const s6 = await tt({ cmd: 'gesttaSaude', parte: 'config' });
+  assert.equal(s6.ok, false, 'o analista não lê a configuração'); assert.match(s6.erro, /só da coordenação/);
+  const s7 = await tt({ cmd: 'gesttaSaude', parte: 'tarefas' });
+  assert.ok(s7.ok && s7.perfil.total === false && s7.semTarefa === null, 'analista: sem a contagem da coordenação');
+  assert.ok(s7.linhas.every(l => l[s7.colunas.indexOf('owner.name')] === 'Pessoa Ficticia' || l[s7.colunas.indexOf('concluded_by.name')] === 'Pessoa Ficticia'), 'analista: só as dele');
   await pagina.evaluate(() => chrome.storage.session.remove('gtFechC-2026-11'));
   const f3 = await tt({ cmd: 'gesttaFechamento', ano: 2026, mes: 11 });
   assert.ok(f3.ok && f3.parcial === true, 'analista: fechamento marcado como parcial');

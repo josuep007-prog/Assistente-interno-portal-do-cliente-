@@ -4705,3 +4705,81 @@ test('Hoje (0.108.0): Meu dia em números — chegaram, respondidas, paradas, co
   const sem = plano(OC.meuDia(base, null, now));
   assert.equal(sem.concluidasHoje, null); assert.equal(sem.serie, null);
 });
+
+/* ---------- 0.110.0 · aba Saúde da operação ---------- */
+test('Gestta · Saúde (0.110.0): leituras novas só por GET na lista fechada; o relatório leva notify_customer e quem concluiu', () => {
+  const ok = (p) => OCG.leituraPermitida(p.metodo, p.url, p.corpo == null ? null : p.corpo).ok;
+  assert.ok(ok(OCG.PEDIDOS.emailNaoSaiu({ ano: 2026, mes: 11 })));
+  assert.match(OCG.PEDIDOS.emailNaoSaiu({ ano: 2026, mes: 11 }).url, /\/core\/dashboard\/attention\/email-not-sent\/all\?start_date=.*&end_date=/);
+  assert.ok(ok(OCG.PEDIDOS.semTarefa()));
+  assert.ok(ok(OCG.PEDIDOS.clientesDoTemplate({ id: 'a'.repeat(24) })));
+  assert.ok(ok(OCG.PEDIDOS.saude({ ano: 2026, mes: 11 })));
+  assert.match(OCG.PEDIDOS.historico({ id: 'a'.repeat(24), types: 'EMAIL' }).url, /history\?page=1&types=EMAIL$/);
+  assert.equal(OCG.leituraPermitida('POST', 'https://api.gestta.com.br/core/dashboard/attention/email-not-sent', {}).ok, false, 'o POST do painel continua de fora');
+  assert.ok(OCG.COLUNAS_SAUDE.includes('notify_customer') && OCG.COLUNAS_SAUDE.includes('concluded_by.name'));
+  const rel = OCG.limpar('relSaude', [{ id: 't1', name: 'X', notify_customer: true, 'concluded_by.name': 'Ana', value: 99, 'customer.cnpj': '1' }]);
+  assert.ok(!rel.colunas.includes('value'));
+  const [t] = OCG.tarefasDoRelatorio(rel.colunas, rel.linhas);
+  assert.equal(t.notifica, true); assert.equal(t.concluidoPor, 'Ana');
+  assert.deepEqual(plano(OCG.limpar('clientesDoTemplate', [{ customer: { _id: 'b'.repeat(24), name: 'NÃO SAI' } }, { customer: 'c'.repeat(24) }, { _id: 'x' }])), { ids: ['b'.repeat(24), 'c'.repeat(24)] });
+  assert.deepEqual(plano(OCG.limpar('numero', { count: 7 })), { n: 7 });
+});
+test('Gestta · Saúde: sem contato no setor (nenhum, inativo, sem e-mail); cliente não lido fica de fora', () => {
+  const T = (id, setor, cnpj, o) => Object.assign({ _id: id, name: 'T' + id, status: 'OPEN', setor, notifica: true, customer: { name: 'C' + cnpj, cnpj } }, o);
+  const tarefas = [T('1', 'Fiscal', '1'), T('2', 'Fiscal', '1'), T('3', 'Pessoal', '2'), T('4', 'Contábil', '3'), T('5', 'Fiscal', '4'), T('6', 'Fiscal', '5', { notifica: false }), T('7', 'Fiscal', '9')];
+  const contatos = { 1: [{ setor: 'Pessoal', ativo: true, temEmail: true }], 2: [{ setor: 'Pessoal', ativo: false, temEmail: true }], 3: [{ setor: 'Contabil', ativo: true, temEmail: false }], 4: [{ setor: 'fiscal', ativo: true, temEmail: true }], 5: [] };
+  const r = OCG.semContatoNoSetor(tarefas, contatos);
+  assert.deepEqual(plano(r.casos.map(c => [c.cnpj, c.setor, c.motivo, c.n])), [['1', 'Fiscal', 'nenhum', 2], ['2', 'Pessoal', 'inativo', 1], ['3', 'Contábil', 'semEmail', 1]]);
+  assert.equal(r.naoLidos, 1, 'o cliente 9 ainda não foi conferido');
+  assert.equal(r.tarefasAfetadas, 4);
+});
+test('Gestta · Saúde: veredito do e-mail pelo último evento; motivo legível; só as que avisam e concluídas nos últimos 7 dias', () => {
+  assert.deepEqual(plano(OCG.vereditoEmail([{ status: 'SENT', quando: '2026-11-10' }, { status: 'NOT_SENT', reason: 'NOT_SENT_NO_CUSTOMER_ACCOUNTABLE', quando: '2026-11-11' }])), { v: 'naoSaiu', rot: 'Não saiu', motivo: 'o cliente não tem usuário neste setor', quando: '2026-11-11' });
+  assert.equal(OCG.vereditoEmail([{ status: 'NOT_SENT', quando: '2026-11-10' }, { status: 'DELIVERY', quando: '2026-11-11' }]).v, 'entregue');
+  assert.equal(OCG.vereditoEmail([]).v, 'semEmail');
+  assert.match(OCG.vereditoEmail([{ status: 'NOT_SENT', reason: 'ALGO_NOVO', quando: 'x' }]).motivo, /motivo do Gestta: algo novo/);
+  const H = new Date(2026, 10, 13);
+  const l = OCG.tarefasParaEmail([{ _id: 'a', notifica: true, status: 'DONE', conclusion_date: '2026-11-12T10:00:00Z' }, { _id: 'b', notifica: true, status: 'DONE', conclusion_date: '2026-10-30T10:00:00Z' }, { _id: 'c', notifica: false, status: 'DONE', conclusion_date: '2026-11-12T10:00:00Z' }, { _id: 'd', notifica: true, status: 'OPEN' }], H, 7);
+  assert.deepEqual(plano(l.map(t => t._id)), ['a']);
+});
+test('Gestta · Saúde: dias úteis com feriado; ritmo dos 2 meses anteriores; carga acima da capacidade; capacidade manual vence o ritmo', () => {
+  const fer = ['2026-11-20'];
+  assert.equal(OCG.diasUteis(new Date(2026, 10, 19), new Date(2026, 10, 23)), 2);
+  assert.equal(OCG.diasUteis(new Date(2026, 10, 19), new Date(2026, 10, 23), fer), 1, 'o feriado não conta');
+  assert.deepEqual(plano(OCG.proximosDiasUteis(new Date(2026, 10, 19), 3, new Set(fer))), ['2026-11-19', '2026-11-23', '2026-11-24']);
+  const H = new Date(2026, 10, 19);
+  const feitas = Array.from({ length: 41 }, (_, i) => ({ _id: 'd' + i, status: 'DONE', conclusion_date: '2026-10-1' + (i % 9) + 'T12:00:00', concluidoPor: 'Ana' }))
+    .concat([{ _id: 'x', status: 'DONE', conclusion_date: '2026-11-03T12:00:00', concluidoPor: 'Ana' }]);   // do mês atual: fora
+  const rit = OCG.ritmoPorPessoa(feitas, H);
+  assert.equal(rit.Ana.feitas, 41); assert.equal(rit.Ana.dias, 44); assert.equal(rit.Ana.ritmo, 0.9);
+  const abertas = [1, 2, 3].map(i => ({ _id: 'a' + i, status: 'OPEN', responsavel: 'Ana', due_date: '2026-11-23T12:00:00' })).concat([{ _id: 'v', status: 'OPEN', responsavel: 'Ana', due_date: '2026-11-10T12:00:00' }, { _id: 's', status: 'OPEN', responsavel: '', due_date: '2026-11-19T12:00:00' }]);
+  const c = OCG.cargaPorDia(abertas.concat(feitas), H, { dias: 3, feriados: fer, ritmo: rit });
+  const ana = c.pessoas.find(p => p.nome === 'Ana');
+  assert.deepEqual(plano(c.dias), ['2026-11-19', '2026-11-23', '2026-11-24']);
+  assert.deepEqual(plano(ana.celulas.map(x => [x.n, x.carga, x.acima])), [[0, 1, 1], [3, 3, 3], [0, 0, 0]], 'a atrasada pesa no primeiro dia');
+  assert.equal(ana.origemCap, 'ritmo'); assert.equal(c.pessoas[c.pessoas.length - 1].nome, 'Sem responsável');
+  assert.equal(c.alertas.length, 2);
+  const c2 = OCG.cargaPorDia(abertas, H, { dias: 3, feriados: fer, ritmo: rit, cap: { Ana: 5 } });
+  assert.equal(c2.pessoas.find(p => p.nome === 'Ana').origemCap, 'manual'); assert.equal(c2.alertas.length, 0);
+});
+test('Gestta · Saúde: prioridade (multa/legal vencida > legal em 1 d.u. > meta vencida > dia acima do ritmo > resto pela data legal)', () => {
+  const H = new Date(2026, 10, 19);
+  const T = (id, o) => Object.assign({ _id: id, name: id, status: 'OPEN' }, o);
+  const l = OCG.prioridade([T('resto2', { legal_date: '2026-12-10T12:00:00' }), T('resto1', { legal_date: '2026-12-01T12:00:00' }), T('meta', { due_date: '2026-11-18T12:00:00' }), T('legal1', { legal_date: '2026-11-23T12:00:00' }),
+    T('multa', { fine: true }), T('sobre', { due_date: '2026-11-25T12:00:00' }), T('feita', { status: 'DONE', fine: true })], H, { feriados: ['2026-11-20'], sobrecarregadas: ['sobre'] });
+  assert.deepEqual(plano(l.map(x => x.t._id)), ['multa', 'legal1', 'meta', 'sobre', 'resto1', 'resto2']);
+  assert.deepEqual(plano(l.map(x => x.nivel)), [1, 2, 3, 4, 5, 5]);
+});
+test('Gestta · Saúde: configuração pela demanda (falta ≥ 80%, sobra ≤ 10%, só em perfis com empresas suficientes); extras', () => {
+  const tpl = [{ id: 'T1', nome: 'DCTF', setor: 'Fiscal' }, { id: 'T2', nome: 'ICMS', setor: 'Fiscal' }, { id: 'T3', nome: 'RARO', setor: 'Fiscal' }, { id: 'P1', nome: 'FOLHA', setor: 'Pessoal' }];
+  const c = n => 'c' + n, dez = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(c);
+  const r = OCG.sugestoesConfig(tpl, { T1: dez, T2: dez.slice(0, 9), T3: [c(1)], P1: ['p1', 'p2'] }, { c10: { nome: 'EMPRESA DEZ', cnpj: '10' } });
+  assert.deepEqual(plano(r.falta.map(x => [x.cliente, x.template, x.pct])), [['c10', 'T2', 90]]);
+  assert.equal(r.falta[0].nomeCliente, 'EMPRESA DEZ');
+  assert.deepEqual(plano(r.sobra.map(x => [x.cliente, x.template])), [['c1', 'T3']]);
+  assert.equal(r.perfis.length, 2, 'Fiscal e Pessoal; o Pessoal (2 empresas) é pequeno demais para sugerir');
+  const H = new Date(2026, 10, 19);
+  const ex = OCG.extrasSaude([{ _id: 'a', status: 'OPEN', responsavel: '', due_date: '2026-11-18', customer: { name: 'A', cnpj: '1' } }, { _id: 'b', status: 'OPEN', responsavel: 'X', due_date: '2026-10-20', customer: { name: 'B', cnpj: '2' } }, { _id: 'c', status: 'DONE', responsavel: '', due_date: '2026-10-01', customer: { name: 'C', cnpj: '3' } }], H, 15);
+  assert.deepEqual(plano(ex.semDono.map(t => t._id)), ['a']);
+  assert.deepEqual(plano(ex.atrasoLongo.map(e => e.cliente)), ['B']);
+});
