@@ -767,3 +767,24 @@
 .gte-risco-ciencia li b{font-weight:600}
 .gte-risco-ciencia li .gte-link{font-size:12px; font-weight:500}
 .gte-risco-ciencia li .btn{padding:3px 8px; font-size:12px}
+
+/* 0.107.1 (Josué, 13/11/2026): busca e Filtros à esquerda, com a busca em destaque; progresso e situações vão para a direita */
+.gt-topo .gt-topo-dir{order:-1; margin-left:0; flex:1 1 420px; min-width:0}
+.gt-topo .gt-topo-dir .gt-busca{flex:1 1 360px; max-width:560px; min-width:220px}
+.gt-topo .gt-busca input{padding-top:10px; padding-bottom:10px; font-size:14px; border-width:1.5px}
+.gt-topo .gt-busca .ic{width:18px; height:18px; color:var(--ink-2)}
+.gt-topo .gt-busca input{padding-left:36px}
+.gt-topo .gt-sits{flex:0 1 auto; justify-content:flex-end; margin-left:auto}
+.gt-topo .gt-topo-prog{order:2; padding-right:0; border-right:0; padding-left:12px; border-left:1px solid var(--rule)}
+@media (max-width:900px){ .gt-topo .gt-topo-dir{flex-basis:100%} .gt-topo .gt-sits{margin-left:0; justify-content:flex-start} }
+@media (min-width:901px){
+  .gt-topo{flex-wrap:nowrap}
+  .gt-topo .gt-topo-dir{flex:1 1 300px}
+  .gt-topo .gt-topo-dir .gt-busca{flex:1 1 240px; min-width:200px}
+  .gt-topo .gt-sits{flex:0 1 auto; min-width:0; flex-wrap:wrap; justify-content:flex-end}
+  .gt-topo .gt-topo-prog{flex:none}
+}
+@media (min-width:901px){
+  .gt-topo .gt-topo-dir .gt-busca{min-width:340px; flex:1 1 420px}
+  .gt-topo .gt-sits{flex:0 1 46%}
+}
