@@ -2,6 +2,13 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.112.0 (13/11/2026): Saúde e Fechamento aparecem aos poucos
+
+- Josué escolheu "Mostrar aos poucos" para as Tarefas do Gestta (aprovado em 13/11/2026); a 0.111.0 fez isso nas tarefas e esta versão faz na **Saúde** e no **Fechamento**.
+  - **Saúde:** primeiro o relatório do mês atual e do próximo (com as contagens do topo), e a carga e a prioridade já aparecem; depois os 2 meses anteriores, que trazem o ritmo de cada pessoa. Até ele chegar, a grade diz "calculando o ritmo…" no lugar da capacidade. As linhas se juntam sem repetir tarefa; o relatório de cada mês continua 1 hora na memória do Chrome.
+  - **Fechamento:** o progresso geral e por empresa aparecem assim que a busca das tarefas da competência chega; setor e analista vêm do relatório de cada mês de meta, e até lá a tela avisa "Setor e analista estão chegando". A tela se completa a cada relatório; o resultado final continua guardado 1 hora (`gtFechC-AAAA-MM`).
+- O manual lista o que ainda depende do roteiro da Saúde (Ver o arquivo, e as escritas Excluir o arquivo e aplicar ou tirar template, só com aprovação) e a ideia futura dos documentos pedidos ao cliente sem resposta.
+
 ## Novidades da v0.111.3 (13/11/2026): De quem numa janela por cima
 
 - Josué: "eu quero que isso seja uma janela que abre por cima pra fazer as seleções". O De quem das Tarefas do Gestta deixou de ser um menu pendurado no botão: abre uma janela no meio da tela, com o fundo escurecido, título "De quem são as tarefas", busca e lista maiores, e fecha pelo ×, por Esc ou clicando fora. Os passos continuam os mesmos (setor > uma ou mais pessoas).
