@@ -3307,6 +3307,17 @@ await passo('Gestta · 0.103.0: ver todas as tarefas de um setor, filtrar pela s
     await fr.click('.gl-r');
     await fr.waitForSelector('#gt-painel .gp-cli');
     assert.match(await fr.textContent('#gt-painel .gp-cli'), /12\.345\.678\/0001-90/);
+    // 0.109.1: o Copiar copia de verdade (o quadro tem a permissão) e, se não conseguir, diz que não copiou
+    assert.equal(await (await fr.frameElement()).getAttribute('allow'), 'clipboard-write');
+    await fr.evaluate(() => { window.__copiado = []; Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: t => { window.__copiado.push(t); return Promise.resolve(); } } }); });
+    await fr.click('#gt-painel .gp-copiar[data-copiar="12.345.678/0001-90"], #gt-painel .gp-copiar[data-copiar="12345678000190"]');
+    await fr.waitForFunction(() => /Copiado/.test(document.querySelector('#gt-painel .gp-copiar.ok').textContent));
+    assert.match((await fr.evaluate(() => window.__copiado))[0], /12\.?345\.?678\/?0001-?90/);
+    await fr.waitForFunction(() => !document.querySelector('#gt-painel .gp-copiar.ok'));
+    await fr.evaluate(() => { Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => Promise.reject(new Error('negado')) } }); document.execCommand = () => false; });
+    await fr.click('#gt-painel .gp-copiar');
+    await fr.waitForSelector('#gt-painel .gp-copiar.erro');
+    assert.match(await fr.textContent('#gt-painel .gp-copiar.erro'), /Não copiou/, 'falha não vira "Copiado"');
     assert.match(await fr.textContent('#gt-painel .gp-topo'), /Desconsiderada/);
     assert.ok(!(await fr.$('#gt-painel [data-gp-acao]')), 'desconsiderada não tem ação');
     assert.ok(!(await fr.$('#gt-painel [data-gp-doc]')) && !(await fr.$('#gt-painel [data-gp-drop]')), '0.104.0: nem enviar arquivo');

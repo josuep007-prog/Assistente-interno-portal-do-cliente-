@@ -2,7 +2,7 @@
  * lateral com o detalhe da tarefa. Usado nas abas "Minhas tarefas" (visão por empresa) e "Fechamento do mês".
  * Cada tarefa do mês é uma etapa: na trilha, na ordem da meta, com o traço cheio até onde está concluído; na linha do
  * tempo, no dia da meta, com a linha do hoje. O detalhe é lido na hora (cmd gesttaTarefa) e nunca guardado. */
-import { $, $$, esc, num, toast } from './util.js';
+import { $, $$, esc, num, toast, copiarTexto } from './util.js';
 import { concluirComEtapas, etapasAbertas, itensSemAnexo } from './gestta-concluir.js';
 const G = window.OCG;
 const enviar = msg => new Promise(res => { try { chrome.runtime.sendMessage(msg, r => res(r || { ok: false, erro: 'sem resposta' })); } catch (e) { res({ ok: false, erro: String(e.message || e) }); } });
@@ -291,7 +291,12 @@ function desenharPainel() {
   $('#gp-abrir', el).onclick = () => abrirNoGestta();
   $('#gp-aba', el).onclick = () => { const u = G.urlTarefa(base._id); if (u) window.open(u, '_blank', 'noopener'); };
   $$('[data-gp-aba]', el).forEach(b => b.onclick = () => { P.aba = b.dataset.gpAba; desenharPainel(); if (P.aba === 'tempo') carregarHist(); });
-  $$('[data-copiar]', el).forEach(b => b.onclick = () => { const v = b.dataset.copiar, ok = () => { b.classList.add('ok'); b.lastChild.textContent = 'Copiado'; setTimeout(() => desenharPainel(), 1400); }; try { navigator.clipboard.writeText(v).then(ok, ok); } catch (_) { ok(); } });
+  $$('[data-copiar]', el).forEach(b => b.onclick = async () => {
+    const ok = await copiarTexto(b.dataset.copiar);
+    b.classList.toggle('ok', ok); b.classList.toggle('erro', !ok); b.lastChild.textContent = ok ? 'Copiado' : 'Não copiou';
+    if (!ok) toast('Não consegui copiar: selecione o texto e use Ctrl+C.', true);
+    setTimeout(() => desenharPainel(), 1400);
+  });
   const tt = $('#gp-tentar', el); if (tt) tt.onclick = () => { P.erro = null; P.carregando = true; desenharPainel(); carregar(); };
   const th = $('#gp-hist-tentar', el); if (th) th.onclick = () => carregarHist(true);
   ligarAcoes(el, t, passos || [], docs);

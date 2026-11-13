@@ -165,3 +165,12 @@ const TIPO_VISUAL = {
 };
 export const tipoVisual = k => { const v = TIPO_VISUAL[k] || ['i-layers', 'todos']; return { ic: v[0], fam: v[1] }; };
 export const tipoIcone = (k, cls) => { const v = tipoVisual(k); return '<span class="tipo-ic fam-' + v.fam + (cls ? ' ' + cls : '') + '" aria-hidden="true"><svg class="ic"><use href="#' + v.ic + '"/></svg></span>'; };
+
+// 0.109.1: copia de verdade e diz se deu certo (a API da área de transferência e, se recusar, o caminho antigo pela seleção)
+export async function copiarTexto(v) {
+  try { await navigator.clipboard.writeText(String(v)); return true; } catch (e) { /* tenta o caminho antigo */ }
+  try {
+    const t = document.createElement('textarea'); t.value = String(v); t.setAttribute('readonly', ''); t.style.cssText = 'position:fixed;top:-1000px;opacity:0';
+    document.body.appendChild(t); t.select(); const ok = document.execCommand('copy'); t.remove(); return !!ok;
+  } catch (e) { return false; }
+}

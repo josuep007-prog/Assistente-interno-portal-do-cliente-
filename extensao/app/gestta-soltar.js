@@ -6,7 +6,7 @@
    Arrastar em cima de um item da tarefa continua indo direto para ele (gestta-trilha.js, sem Express).
    Fluxo, sempre com confirmação: soltar → "Ler com o Express" → o que o Express achou (ou a sugestão da extensão) → "Vincular" → o aviso
    de para onde cada arquivo foi. Arquivo, texto lido e resultados ficam só na memória desta tela. */
-import { esc, toast } from './util.js';
+import { esc, toast, copiarTexto } from './util.js';
 
 const G = window.OCG;
 const ARQ_MAX = (G && G.ARQ_MAX) || 15 * 1024 * 1024;
@@ -201,7 +201,7 @@ function clique(e) {
   const i = +(b.dataset.gsMail != null ? b.dataset.gsMail : b.dataset.gsCopiar), it = S.itens[i]; if (!it) return;
   const a = textoAviso(it);
   if (b.dataset.gsMail != null) { try { window.open(urlZimbra(a.assunto, a.corpo), '_blank', 'noopener'); } catch (x) {} toast('E-mail aberto no Zimbra: escolha no Para a gestão do seu departamento ou o setor do Portal do Cliente.'); return; }
-  try { navigator.clipboard.writeText(a.assunto + '\n\n' + a.corpo); toast('Texto do aviso copiado.'); } catch (x) { toast('Não consegui copiar.', true); }
+  copiarTexto(a.assunto + '\n\n' + a.corpo).then(ok => ok ? toast('Texto do aviso copiado.') : toast('Não consegui copiar.', true));
 }
 function mudou(e) {
   const s = e.target.closest('[data-gs-esc]'); if (!s || !S) return;
