@@ -2,6 +2,19 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.110.0 (13/11/2026): aba Saúde, painel maior, arquivo do item e soltar sem tapar a tela
+
+- Josué pediu uma sessão para compensar o que falta no Gestta: falhas de e-mail ao cliente, tarefa que avisa o cliente sem contato cadastrado, carga por dia que mostre quando não vai dar tempo e o que é prioridade e, para gestores, ajuda para configurar as tarefas de cada empresa pela demanda. Nas Tarefas do Gestta, a aba **Saúde** (tecla 8), só leitura:
+  - **Carga por dia e prioridade:** pessoa × próximos 10 dias úteis pela meta, sem os feriados do escritório; as atrasadas pesam no primeiro dia. A capacidade é o ritmo de cada um (concluídas por dia útil nos 2 meses anteriores, pelo relatório do mês); a coordenação pode trocar por um número fixo (só neste navegador, `oc.gt.cap`). A célula acima da capacidade avisa "não vai dar tempo" e abre as tarefas com **Agir em lote**. A **Prioridade do dia** ordena: multa ou data legal vencida, data legal em até 1 dia útil, meta vencida, dia acima do ritmo e o resto pela data legal.
+  - **Avisa o cliente sem contato no setor:** pelo botão, os contatos de cada cliente com tarefa que avisa (um por vez; só setor, se está ativo e se tem e-mail; 6 horas na memória do service worker). Mostra empresa × setor com "nenhum contato", "contatos inativos" ou "sem e-mail".
+  - **Falhas de e-mail ao cliente:** o número do painel do Gestta (`attention/email-not-sent/all`) e, pelo botão, o histórico de e-mail das tarefas que avisam o cliente e foram concluídas nos últimos 7 dias (até 150, uma por vez), com o motivo.
+  - **Configuração das empresas pela demanda** (só coordenação): os templates de tarefa ativos e as empresas de cada um (`admin/company/task/{id}/customer`); empresas com os mesmos setores formam um perfil, e a tela aponta o que falta (≥ 80% das parecidas recebem) e o que sobra (≤ 10%), com o número de clientes ativos sem nenhuma tarefa.
+  - **Sem responsável e atrasos longos:** as abertas sem responsável e as empresas com tarefa atrasada há mais de 15 dias.
+  - O analista vê só as tarefas dele e não vê a configuração. O relatório fica até 1 hora em `chrome.storage.session` (`gtSaude-AAAA-MM`); contatos, e-mails e configuração só na memória.
+- **Painel da tarefa maior** (Lista, Empresas, Obrigações): até 880 px ou 72% da tela (a tela toda abaixo de 900 px), com os dados em três colunas quando cabem.
+- **Arquivo do item:** o nome e o dia de cada arquivo anexado aparecem embaixo do documento da tarefa (nunca o endereço). O formato ainda é "a conferir": se não vier como esperado, fica o "✓ com arquivo". **Ver** e **Excluir** esperam o mapeamento (roteiro `mapeamento/prompt-gestta-saude-2026-11-13.md`).
+- **Soltar documentos sem tapar a tela:** depois de "Ler com o Express", a leitura, a sugestão e o vínculo andam num cartão no canto (barra de progresso, o arquivo da vez, Recolher e Cancelar); a tela atrás continua clicável. Terminada a leitura, o cartão avisa "N arquivos esperam o destino" e a escolha só abre pelo botão **Escolher destinos**. Esc recolhe o cartão; o "Pronto" fica no canto e some sozinho se tudo deu certo.
+
 ## Novidades da v0.109.2 (13/11/2026): no Meu dia, a tarefa com mais espaço
 
 - Josué: "tem mais espaço pra lista do que pra própria tarefa, a tarefa precisa ocupar um espaço maior, além disso deixe os itens da tarefa com um retângulo em volta". No Meu dia das Tarefas do Gestta, o detalhe da tarefa fica com cerca de dois terços da largura e a fila com o resto; cada documento da tarefa ganhou uma caixa (como as etapas).
