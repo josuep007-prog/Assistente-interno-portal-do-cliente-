@@ -3164,6 +3164,8 @@ await passo('Gestta · Soltar documentos (0.102.0): fora de um item vai ao Expre
         let r = null;
         if (m.cmd === 'gesttaAcao' && m.acao === 'expressLer') {
           (window.__msgs ||= []).push(m);
+          // 0.110.0: o primeiro fica preso até o teste soltar, para conferir a tela durante a leitura
+          if (m.arquivo.nome === 'guia-fgts.pdf' && !window.__soltou) return new Promise(res => { window.__solta = () => { window.__soltou = true; res(chrome.runtime.sendMessage(m, cb)); }; });
           r = m.arquivo.nome === 'guia-fgts.pdf'
             ? { ok: true, express: { id: 'a00000000000000000000001', achou: true, tipo: 'EXPRESS_AUTOMATIC', tarefa: { id: 'f00000000000000000000004', nome: 'GUIA DO FGTS', competencia: '2026-10-01', cliente: { id: 'c00000000000000000000002', nome: 'CLIENTE BETA ME' } }, documento: { id: 'd00000000000000000000002', nome: 'Guia FGTS' } } }
             : { ok: true, express: { id: m.arquivo.nome === 'recibo-alfa.pdf' ? 'a00000000000000000000002' : 'a00000000000000000000003', achou: false, tipo: 'EXPRESS_NEGATIVE', erro: '' } };
@@ -3190,7 +3192,28 @@ await passo('Gestta · Soltar documentos (0.102.0): fora de um item vai ao Expre
     assert.match(await fr.textContent('#gs-dlg'), /Ler 3 arquivos com o Express\?[\s\S]*Nada é vinculado antes de você conferir/);
     assert.equal(await fr.evaluate(() => (window.__msgs || []).filter(m => m.acao === 'expressLer').length), 0, 'nada sai antes de Ler');
     await fr.click('[data-gs="ler"]');
-    await fr.waitForSelector('[data-gs="vincular"]');
+    // 0.110.0: durante a leitura, um cartão no canto, sem fundo nem janela por cima; a tela atrás continua clicável
+    await fr.waitForSelector('#gs-dlg.canto .gs-prog');
+    assert.equal(await fr.$eval('#gs-dlg', d => d.getAttribute('aria-modal')), null, 'não é janela modal');
+    assert.match(await fr.textContent('#gs-dlg'), /Lendo com o Express[\s\S]*0 de 3 arquivos lidos[\s\S]*Lendo guia-fgts\.pdf[\s\S]*Recolher[\s\S]*Cancelar/);
+    const caixa = await fr.$eval('#gs-dlg', d => { const r = d.getBoundingClientRect(); return { dir: innerWidth - r.right, baixo: innerHeight - r.bottom, larg: r.width, fundo: getComputedStyle(d).backgroundColor }; });
+    assert.ok(caixa.dir <= 24 && caixa.baixo <= 24 && caixa.larg <= 400, 'no canto de baixo à direita: ' + JSON.stringify(caixa));
+    assert.match(caixa.fundo, /rgba\(0, 0, 0, 0\)|transparent/, 'sem fundo escurecendo a tela');
+    assert.equal(await fr.evaluate(() => { const b = document.querySelector('[data-aba="lista"]').getBoundingClientRect(); const el = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); return !!(el && el.closest('[data-aba="lista"]')); }), true, 'a aba atrás recebe o clique');
+    await fr.click('[data-aba="lista"]'); await fr.waitForSelector('[data-aba="lista"][aria-selected="true"]');
+    if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/gestta-soltar-canto-' + estilo + '.png' });
+    // Esc recolhe; Expandir volta
+    await fr.press('#gs-dlg [data-gs="recolher"]', 'Escape');
+    await fr.waitForSelector('#gs-dlg.recolhido [data-gs="expandir"]');
+    assert.match(await fr.textContent('#gs-dlg'), /Lendo 0 de 3/);
+    await fr.click('[data-gs="expandir"]'); await fr.waitForSelector('#gs-dlg.canto:not(.recolhido) .gs-prog');
+    await fr.evaluate(() => window.__solta());
+    // terminada a leitura, o cartão avisa e só abre a escolha pelo botão
+    await fr.waitForSelector('#gs-dlg.canto [data-gs="escolher"]');
+    assert.match(await fr.textContent('#gs-dlg'), /3 arquivos esperam o destino[\s\S]*Nada foi vinculado/);
+    assert.equal(await fr.$('[data-gs="vincular"]'), null, 'a escolha não abre sozinha');
+    await fr.click('[data-gs="escolher"]');
+    await fr.waitForSelector('#gs-dlg[aria-modal="true"] [data-gs="vincular"]');
     const txt = await fr.textContent('#gs-dlg');
     assert.match(txt, /guia-fgts\.pdf[\s\S]*O Express achou o destino/);
     assert.match(txt, /recibo-alfa\.pdf[\s\S]*O Express não achou\. A extensão sugere:[\s\S]*CNPJ de Cliente Alfa Ltda/i);
@@ -3205,6 +3228,10 @@ await passo('Gestta · Soltar documentos (0.102.0): fora de um item vai ao Expre
     assert.match(await fr.textContent('[data-gs="vincular"]'), /Vincular os 2 arquivos/);
     await fr.click('[data-gs="vincular"]');
     await fr.waitForFunction(() => /Pronto/.test(document.querySelector('#gs-dlg h2').textContent));
+    // o "Pronto" fica no cartão do canto; o detalhe abre pelo botão
+    assert.ok(await fr.$('#gs-dlg.canto'), 'o Pronto fica no canto');
+    assert.match(await fr.textContent('#gs-dlg'), /2 arquivos vinculados/);
+    await fr.click('[data-gs="ver"]'); await fr.waitForSelector('#gs-dlg[aria-modal="true"] .gs-lista');
     const conf = await fr.evaluate(() => window.__msgs.filter(m => m.acao === 'expressConfirmar').map(m => [m.express, m.tarefa, m.documento]));
     assert.deepEqual(conf.map(c => c[0]), ['a00000000000000000000001', 'a00000000000000000000002']);
     assert.deepEqual(conf[0].slice(1), ['f00000000000000000000004', 'd00000000000000000000002']);

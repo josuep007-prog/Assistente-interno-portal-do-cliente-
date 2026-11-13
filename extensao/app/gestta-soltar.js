@@ -5,7 +5,10 @@
    ("na extensão apenas avisa pro próprio analista escolher o e-mail da gestão ou do setor do Portal do Cliente").
    Arrastar em cima de um item da tarefa continua indo direto para ele (gestta-trilha.js, sem Express).
    Fluxo, sempre com confirmação: soltar → "Ler com o Express" → o que o Express achou (ou a sugestão da extensão) → "Vincular" → o aviso
-   de para onde cada arquivo foi. Arquivo, texto lido e resultados ficam só na memória desta tela. */
+   de para onde cada arquivo foi. Arquivo, texto lido e resultados ficam só na memória desta tela.
+   0.110.0 (Josué, 13/11/2026): depois de "Ler com o Express" nada fica por cima da tela. A leitura, a sugestão e o vínculo andam num
+   cartão no canto (barra de progresso, o arquivo da vez, Recolher e Cancelar), a tela atrás continua clicável e a escolha dos destinos
+   só abre pelo botão "Escolher destinos". Esc recolhe o cartão. O "Pronto" fica no cartão e some sozinho se tudo deu certo. */
 import { esc, toast, copiarTexto } from './util.js';
 
 const G = window.OCG;
@@ -18,7 +21,9 @@ const comp = (c) => { const m = /^(\d{4})-(\d{2})/.exec(String(c || '')); return
 const temArquivos = e => !!(e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files'));
 
 let O = null;            // { enviar, tarefas(), atual() }
-let S = null;            // a janela aberta: { itens: [{ f, estado, express, sug, escolha, erro, cnpjs, comps, final }], fase, atual }
+let S = null;            // a janela aberta: { itens: [{ f, estado, express, sug, escolha, erro, cnpjs, comps, final }], fase, atual, modo, parar }
+// modo: 'grande' (janela no meio, com fundo: a confirmação e a escolha dos destinos) · 'canto' (cartão sem fundo) · 'recolhido'
+const PRONTO_SOME_MS = 6000;
 let veu = null, cont = 0;
 
 export function ligarSoltar(o) {
@@ -53,18 +58,31 @@ export function ligarSoltar(o) {
 function abrir(arquivos, atual) {
   const fs = arquivos.filter(f => f && f.size != null);
   if (!fs.length) return;
-  S = { atual, fase: 'confirmar', itens: fs.map(f => ({ f, estado: f.size > ARQ_MAX ? 'grande' : 'novo' })) };
+  S = { atual, fase: 'confirmar', modo: 'grande', itens: fs.map(f => ({ f, estado: f.size > ARQ_MAX ? 'grande' : 'novo' })) };
   let el = document.getElementById('gs-dlg');
   if (!el) {
-    el = document.createElement('div'); el.id = 'gs-dlg'; el.className = 'gs-dlg'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); el.setAttribute('aria-label', 'Documentos soltos');
+    el = document.createElement('div'); el.id = 'gs-dlg'; el.className = 'gs-dlg'; el.setAttribute('aria-label', 'Documentos soltos');
     document.body.appendChild(el);
     el.addEventListener('click', clique); el.addEventListener('change', mudou);
-    el.addEventListener('keydown', e => { if (e.key === 'Escape' && S && S.fase !== 'lendo' && S.fase !== 'vinculando') { e.stopPropagation(); fechar(); } });
+    el.addEventListener('keydown', e => {
+      if (e.key !== 'Escape' || !S) return;
+      e.stopPropagation();
+      if (S.modo === 'canto') modo('recolhido');
+      else if (S.modo === 'grande') { if (S.fase === 'confirmar') fechar(); else modo('canto'); }
+    });
   }
   el.hidden = false; desenhar();
   setTimeout(() => { const b = el.querySelector('[data-gs="ler"]'); if (b) b.focus(); }, 20);
 }
-function fechar() { const el = document.getElementById('gs-dlg'); if (el) { el.hidden = true; el.innerHTML = ''; } S = null; }
+function fechar() { const el = document.getElementById('gs-dlg'); if (el) { el.hidden = true; el.innerHTML = ''; } if (S && S.timer) clearTimeout(S.timer); S = null; }
+function modo(m) {
+  if (!S) return;
+  if (S.timer && m === 'grande') { clearTimeout(S.timer); S.timer = null; }
+  S.modo = m; desenhar();
+  const el = document.getElementById('gs-dlg'); if (!el) return;
+  const alvo = m === 'grande' ? el.querySelector('.gs-caixa select, [data-gs="vincular"], [data-gs="fechar"]') : el.querySelector('[data-gs="expandir"], [data-gs="recolher"]');
+  if (alvo) setTimeout(() => alvo.focus(), 20);
+}
 
 function destinoTxt(d) {
   if (!d) return '';
@@ -94,10 +112,54 @@ function linha(it, i) {
   } else if (it.estado === 'feito') corpo = '<p class="gs-st ok">Foi para ' + esc(destinoTxt(it.final)) + '.</p>';
   else if (it.estado === 'falhou') corpo = '<p class="gs-st erro">' + esc(it.erro || 'Não foi.') + '</p>';
   else if (it.estado === 'pulado') corpo = '<p class="gs-st">Não vinculado.</p>';
+  else if (it.estado === 'vinculando') corpo = '<p class="gs-st">Vinculando…</p>';
   return '<li class="gs-it">' + cab + corpo + '</li>';
+}
+const lidoFim = x => ['pronto', 'semDestino', 'falhou', 'pulado'].includes(x.estado);
+const icone = n => '<svg class="ic ic-sm" aria-hidden="true"><use href="#i-' + n + '"/></svg>';
+function barra(feitos, total, rot) {
+  const pct = total ? Math.round(feitos * 100 / total) : 0;
+  return '<div class="gs-prog" role="progressbar" aria-valuemin="0" aria-valuemax="' + total + '" aria-valuenow="' + feitos + '" aria-label="' + esc(rot) + '"><span style="width:' + pct + '%"></span></div><p class="gs-c-num">' + esc(rot) + '</p>';
+}
+// o cartão do canto (e a faixa recolhida): o andamento sem tapar a tela
+function cantoHtml() {
+  const validos = S.itens.filter(x => x.estado !== 'grande');
+  const da_vez = S.itens.find(x => x.estado === 'lendo' || x.estado === 'sugerindo' || x.estado === 'vinculando');
+  const esperam = S.itens.filter(x => x.estado === 'pronto' || x.estado === 'semDestino').length;
+  const ok = S.itens.filter(x => x.estado === 'feito').length, falhas = S.itens.filter(x => x.estado === 'falhou').length;
+  let tit = '', corpo = '', bts = '', curto = '';
+  const recolher = '<button type="button" class="btn btn-sm" data-gs="recolher">Recolher</button>';
+  const cancelar = S.parar ? '' : '<button type="button" class="btn btn-sm" data-gs="cancelar">Cancelar</button>';
+  if (S.fase === 'lendo') {
+    const n = validos.filter(lidoFim).length;
+    tit = S.parar ? 'Parando a leitura…' : 'Lendo com o Express'; curto = 'Lendo ' + n + ' de ' + validos.length;
+    corpo = barra(n, validos.length, n + ' de ' + validos.length + (validos.length === 1 ? ' arquivo lido' : ' arquivos lidos')) +
+      (da_vez ? '<p class="gs-c-arq" title="' + esc(da_vez.f.name) + '">' + (da_vez.estado === 'sugerindo' ? 'Procurando o destino de ' : 'Lendo ') + '<b>' + esc(da_vez.f.name) + '</b></p>' : '');
+    bts = recolher + cancelar;
+  } else if (S.fase === 'escolher') {
+    tit = esperam === 1 ? '1 arquivo espera o destino' : esperam + ' arquivos esperam o destino'; curto = tit;
+    corpo = '<p class="gs-c-arq">Leitura terminada. Nada foi vinculado: confira para onde cada um vai.</p>';
+    bts = '<button type="button" class="btn btn-primary btn-sm" data-gs="escolher">Escolher destinos</button>' + recolher + '<button type="button" class="btn btn-sm" data-gs="fechar">Descartar</button>';
+  } else if (S.fase === 'vinculando') {
+    const n = ok + falhas, t = S.totalVinc || 0;
+    tit = S.parar ? 'Parando…' : 'Vinculando'; curto = 'Vinculando ' + n + ' de ' + t;
+    corpo = barra(n, t, n + ' de ' + t + (t === 1 ? ' vinculado' : ' vinculados')) + (da_vez ? '<p class="gs-c-arq" title="' + esc(da_vez.f.name) + '">Vinculando <b>' + esc(da_vez.f.name) + '</b></p>' : '');
+    bts = recolher + cancelar;
+  } else if (S.fase === 'fim') {
+    tit = 'Pronto'; curto = 'Pronto: ' + ok + (ok === 1 ? ' vinculado' : ' vinculados');
+    corpo = '<p class="gs-c-arq">' + (ok ? (ok === 1 ? '1 arquivo vinculado: ' + esc(destinoTxt((S.itens.find(x => x.estado === 'feito') || {}).final)) : ok + ' arquivos vinculados.') : 'Nenhum arquivo vinculado.') + (falhas ? ' <b class="gs-c-erro">' + (falhas === 1 ? '1 não foi.' : falhas + ' não foram.') + '</b>' : '') + '</p>';
+    bts = '<button type="button" class="btn btn-sm" data-gs="ver">Ver para onde cada um foi</button><button type="button" class="btn btn-sm" data-gs="fechar">Fechar</button>';
+  }
+  if (S.modo === 'recolhido') return '<div class="gs-canto gs-recolhido">' + (S.fase === 'lendo' || S.fase === 'vinculando' ? '<span class="gs-gira" aria-hidden="true"></span>' : '') + '<span class="gs-c-curto">' + esc(curto) + '</span><button type="button" class="btn btn-sm" data-gs="expandir" aria-label="Expandir: ' + esc(curto) + '">Expandir</button></div>';
+  return '<div class="gs-canto"><div class="gs-c-cab">' + icone('upload') + '<h2>' + esc(tit) + '</h2></div>' + corpo + '<div class="gs-bt">' + bts + '</div></div>';
 }
 function desenhar() {
   const el = document.getElementById('gs-dlg'); if (!el || !S) return;
+  const grande = S.modo === 'grande';
+  el.className = 'gs-dlg' + (grande ? '' : ' canto') + (S.modo === 'recolhido' ? ' recolhido' : '');
+  if (grande) { el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); el.removeAttribute('aria-live'); }
+  else { el.setAttribute('role', 'region'); el.removeAttribute('aria-modal'); el.setAttribute('aria-live', 'polite'); }
+  if (!grande) { el.innerHTML = cantoHtml(); return; }
   const n = S.itens.length, validos = S.itens.filter(x => x.estado !== 'grande').length;
   const marcados = S.itens.filter(x => x.estado === 'pronto' && x.escolha >= 0).length;
   const titulo = S.fase === 'confirmar' ? (n === 1 ? 'Ler 1 arquivo com o Express?' : 'Ler ' + n + ' arquivos com o Express?')
@@ -106,7 +168,7 @@ function desenhar() {
     : S.fase === 'escolher' ? 'Confira o destino de cada arquivo. O do Express vem marcado; quando ele não acha, a extensão sugere pelo CNPJ, pela competência e pelo nome do item.'
     : S.fase === 'fim' ? 'Aviso de para onde cada arquivo foi.' : '';
   const bt = S.fase === 'confirmar' ? '<button type="button" class="btn btn-primary" data-gs="ler"' + (validos ? '' : ' disabled') + '>Ler com o Express</button><button type="button" class="btn" data-gs="fechar">Cancelar</button>'
-    : S.fase === 'escolher' ? '<button type="button" class="btn btn-primary" data-gs="vincular"' + (marcados ? '' : ' disabled') + '>' + (marcados === 1 ? 'Vincular o arquivo' : 'Vincular os ' + marcados + ' arquivos') + '</button><button type="button" class="btn" data-gs="fechar">Cancelar</button>'
+    : S.fase === 'escolher' ? '<button type="button" class="btn btn-primary" data-gs="vincular"' + (marcados ? '' : ' disabled') + '>' + (marcados === 1 ? 'Vincular o arquivo' : 'Vincular os ' + marcados + ' arquivos') + '</button><button type="button" class="btn" data-gs="canto">Deixar para depois</button><button type="button" class="btn" data-gs="fechar">Descartar</button>'
     : S.fase === 'fim' ? '<button type="button" class="btn btn-primary" data-gs="fechar">Fechar</button>' : '';
   el.innerHTML = '<div class="gs-caixa"><h2>' + esc(titulo) + '</h2>' + (dica ? '<p class="gs-dica">' + esc(dica) + '</p>' : '') + '<ul class="gs-lista">' + S.itens.map(linha).join('') + '</ul><div class="gs-bt">' + bt + '</div></div>';
 }
@@ -114,9 +176,11 @@ const expressDestino = (x) => ({ tarefa: x.tarefa ? { id: x.tarefa.id, nome: x.t
 
 /* ---------- ler: Express e, se ele não achar, a sugestão da extensão ---------- */
 async function ler() {
-  S.fase = 'lendo'; desenhar();
+  S.fase = 'lendo'; S.modo = 'canto'; desenhar();
   for (const it of S.itens) {
-    if (!S || it.estado === 'grande') continue;
+    if (!S) return;
+    if (it.estado === 'grande') continue;
+    if (S.parar) { it.estado = 'pulado'; continue; }
     it.estado = 'lendo'; desenhar();
     try { it.b64 = await lerBase64(it.f); } catch (e) { it.estado = 'falhou'; it.erro = 'Não consegui ler o arquivo.'; continue; }
     const r = await O.enviar({ cmd: 'gesttaAcao', acao: 'expressLer', arquivo: { nome: it.f.name, tipo: it.f.type || '', base64: it.b64 } });
@@ -130,7 +194,10 @@ async function ler() {
     it.estado = (it.sug && it.sug.length) ? 'pronto' : 'semDestino'; it.escolha = it.sug && it.sug.length ? 0 : -1;
     desenhar();
   }
-  if (S) { S.fase = 'escolher'; desenhar(); }
+  if (!S) return;
+  S.parar = false;
+  if (!S.itens.some(x => x.estado === 'pronto' || x.estado === 'semDestino')) { S.fase = 'fim'; desenhar(); return; }
+  S.fase = 'escolher'; desenhar();
 }
 async function sugerir(it) {
   const t = await O.enviar({ cmd: 'gesttaTextoDoc', base64: it.b64, tipo: it.f.type || '', nome: it.f.name });
@@ -159,12 +226,15 @@ async function sugerir(it) {
 
 /* ---------- vincular ---------- */
 async function vincular() {
-  S.fase = 'vinculando'; desenhar();
+  S.totalVinc = S.itens.filter(x => x.estado === 'pronto' && x.escolha >= 0).length;
+  S.fase = 'vinculando'; S.modo = 'canto'; desenhar();
   for (const it of S.itens) {
     if (!S) return;
+    if (S.parar && it.estado === 'pronto') { it.estado = 'pulado'; continue; }
     if (it.estado !== 'pronto') { if (it.estado === 'semDestino') it.estado = 'pulado'; continue; }
     if (it.escolha < 0) { it.estado = 'pulado'; continue; }
     const o = it.ops[it.escolha];
+    it.estado = 'vinculando'; desenhar();
     let r = null;
     // pelo Express (o arquivo já está no registro dele); se o Express recusar o destino escolhido, envio direto no item (o mesmo do "Enviar arquivo")
     if (it.express && it.express.id) r = await O.enviar({ cmd: 'gesttaAcao', acao: 'expressConfirmar', express: it.express.id, tarefa: o.tarefa.id, documento: o.documento.id });
@@ -174,9 +244,9 @@ async function vincular() {
     desenhar();
   }
   if (!S) return;
-  S.fase = 'fim'; desenhar();
-  const ok = S.itens.filter(x => x.estado === 'feito');
-  if (ok.length) toast(ok.length === 1 ? '1 arquivo vinculado: ' + destinoTxt(ok[0].final) : ok.length + ' arquivos vinculados (veja para onde cada um foi).');
+  S.fase = 'fim'; S.parar = false; desenhar();
+  // tudo certo: o "Pronto" some sozinho do canto; com falha, fica até a pessoa fechar
+  if (!S.itens.some(x => x.estado === 'falhou') && S.modo !== 'grande') { const eu = S; S.timer = setTimeout(() => { if (S === eu && S.fase === 'fim' && S.modo !== 'grande') fechar(); }, PRONTO_SOME_MS); }
 }
 
 /* ---------- e-mail pronto no Zimbra (sem destinatário: o analista escolhe a gestão do departamento ou o setor do Portal do Cliente) ---------- */
@@ -196,6 +266,10 @@ export const urlZimbra = (assunto, corpo) => ZIMBRA + '?view=compose&subject=' +
 function clique(e) {
   const b = e.target.closest('[data-gs],[data-gs-mail],[data-gs-copiar]'); if (!b || !S) return;
   if (b.dataset.gs === 'fechar') { if (S.fase !== 'lendo' && S.fase !== 'vinculando') fechar(); return; }
+  if (b.dataset.gs === 'cancelar') { S.parar = true; desenhar(); return; }      // para depois do arquivo da vez
+  if (b.dataset.gs === 'recolher') { modo('recolhido'); return; }
+  if (b.dataset.gs === 'expandir' || b.dataset.gs === 'canto') { modo('canto'); return; }
+  if (b.dataset.gs === 'escolher' || b.dataset.gs === 'ver') { modo('grande'); return; }
   if (b.dataset.gs === 'ler') { ler(); return; }
   if (b.dataset.gs === 'vincular') { vincular(); return; }
   const i = +(b.dataset.gsMail != null ? b.dataset.gsMail : b.dataset.gsCopiar), it = S.itens[i]; if (!it) return;
