@@ -11,12 +11,13 @@ import { listaEmpresas, abrirPainel, fecharPainel, painelAberto, passarPainel, a
 import { ligarSoltar } from './gestta-soltar.js';
 import { vistaDia, vistaEmpresas, vistaLista, vistaQuadro } from './gestta-vistas.js';
 import { desenharEnvios, lerEnvios, ligarEnvios, estadoEnvios } from './gestta-envios.js';
+import { desenharSaude, lerSaude, ligarSaude, estadoSaude } from './gestta-saude.js';
 const G = window.OCG;
 const enviar = msg => new Promise(res => { try { chrome.runtime.sendMessage(msg, r => res(r || { ok: false, erro: (chrome.runtime.lastError && chrome.runtime.lastError.message) || 'sem resposta' })); } catch (e) { res({ ok: false, erro: String(e.message || e) }); } });
 const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 const SEMANA = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
 const ATUALIZA_MIN = 10;
-const ABAS = ['dia', 'empresas', 'lista', 'quadro', 'calendario', 'fech', 'envios'];               // com a camada aberta e visível, relê sozinho a cada 10 minutos
+const ABAS = ['dia', 'empresas', 'lista', 'quadro', 'calendario', 'fech', 'envios', 'saude'];               // com a camada aberta e visível, relê sozinho a cada 10 minutos
 
 const hoje0 = new Date(), comp0 = G.competenciaPadrao(hoje0);
 // 0.85.0 (Josué, 06/11/2026): a tela é da competência (de fábrica a do mês anterior, a que está sendo fechada); o Meu dia segue o vencimento
@@ -58,7 +59,7 @@ function restaurar() {
   if (ABAS.includes(v.aba)) E.aba = v.aba;
   if (v.ano && v.mes) { E.ano = v.ano; E.mes = v.mes; }
   if (v.quem) E.quem = v.quem;
-  E.q = v.q || ''; E.grupos = new Set(v.grupos || []); E.tipos = new Set(v.tipos || []); E.ultimaAberta = v.ultimaAberta || '';
+  E.q = v.q || ''; E.grupos = new Set(v.grupos || []); E.tipos = new Set();      // 0.109.0: sem filtro de tipo na tela, nada escondido de uma visita antiga E.ultimaAberta = v.ultimaAberta || '';
   return v;
 }
 let tSalvar = 0;
@@ -71,7 +72,7 @@ const salvo = restaurar();
 // as tarefas da busca ganham o setor quando o relatório do mês já está na memória (cruzando pelo id)
 const comSetor = l => E.setorPorId ? l.map(t => Object.assign({}, t, { setor: E.setorPorId.get(t._id) || '' })) : l;
 // 0.103.0: na visão de um setor, sai a tarefa cujo setor (do relatório) é outro; a que o relatório não conhece fica
-const doSetor = l => { const s = E.quem && E.quem.startsWith('setor:') ? E.quem.slice(6) : ''; return s && E.setorPorId ? l.filter(t => !t.setor || t.setor === s) : l; };
+const doSetor = l => { const q = G.lerQuemSetor(E.quem), s = q ? q.setor : ''; return s && E.setorPorId ? l.filter(t => !t.setor || t.setor === s) : l; };
 const lista = () => doSetor(comSetor((E.dados && E.dados.itens) || []));
 const listaDia = () => doSetor(comSetor((E.dados && E.dados.dia) || []));          // o que vence no mês corrente, de qualquer competência
 const nomeMes = () => 'Competência ' + MESES[E.mes - 1] + ' de ' + E.ano;
@@ -111,6 +112,7 @@ async function lerFech(forcar) {
     if (forcar && r.daMemoria && r.podeEm > 0) toast('O relatório foi lido há menos de 1 hora: pode atualizar de novo em ' + r.podeEm + ' min.');
   } else E.fechErro = r || { erro: 'sem resposta' };
   aoVivo(); desenhar();
+  if ($('#gt-quem-pop') && !$('#gt-quem-pop').hidden) quemLista($('#gt-quem-busca').value);
 }
 async function carregarEquipe() {
   const r = await enviar({ cmd: 'gesttaEquipe' });
@@ -121,26 +123,50 @@ async function carregarEquipe() {
 }
 // 0.87.0: "De quem" é um botão com o nome e uma lista com busca (iniciais de cada pessoa), no lugar da lista larga
 const iniciais = n => String(n || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
-const setorDaVisao = () => E.quem.startsWith('setor:') ? E.quem.slice(6) : '';
-const quemNome = () => E.quem === 'eu' ? 'Minhas' : E.quem === 'sem' ? 'Sem responsável' : setorDaVisao() ? 'Setor ' + setorDaVisao() : ((E.equipe || []).find(p => p.id === E.quem) || {}).nome || 'Outra pessoa';
+// 0.106.0 (Josué, 13/11/2026): clicar no botão > escolher o setor (só os com tarefa aberta) > escolher uma ou mais pessoas
+const qsVisao = () => G.lerQuemSetor(E.quem);
+const setorDaVisao = () => { const q = qsVisao(); return q ? q.setor : ''; };
+const nomeDaPessoa = id => ((E.equipe || []).find(p => p.id === id) || {}).nome || 'Outra pessoa';
+const quemNome = () => {
+  if (E.quem === 'eu') return 'Minhas'; if (E.quem === 'sem') return 'Sem responsável';
+  const q = qsVisao(); if (!q) return nomeDaPessoa(E.quem);
+  return 'Setor ' + q.setor + (q.ids.length === 1 ? ' · ' + nomeDaPessoa(q.ids[0]) : q.ids.length ? ' · ' + q.ids.length + ' pessoas' : '');
+};
 function quemRot() { const b = $('#gt-quem-btn'); if (b) b.innerHTML = '<span class="gt-quem-av" aria-hidden="true">' + esc(E.quem === 'eu' ? 'Eu' : E.quem === 'sem' ? '—' : setorDaVisao() ? '▦' : iniciais(quemNome())) + '</span><span>' + esc(quemNome()) + '</span><svg class="ic ic-sm"><use href="#i-chev-d"/></svg>'; }
+const QP = { passo: 'inicio', setor: '', marcados: new Set() };
+const semAc = t => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 function quemLista(f) {
-  const n = String(f || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-  // 0.103.0: os setores primeiro (todas as tarefas de quem é do setor), depois as pessoas
-  const setores = [...new Set((E.equipe || []).flatMap(p => p.setores || []).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR'))
-    .map(s => ({ id: 'setor:' + s, nome: 'Setor ' + s + ' · todas as tarefas', av: '▦' }));
-  const pessoas = [{ id: 'eu', nome: 'Minhas', av: 'Eu' }, { id: 'sem', nome: 'Sem responsável', av: '—' }].concat(setores,(E.equipe || []).filter(p => !E.dados || p.id !== E.dados.perfil.id).map(p => ({ id: p.id, nome: p.nome, av: iniciais(p.nome) })));
-  const l = pessoas.filter(p => !n || p.nome.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().includes(n));
-  // 0.104.0: títulos separando os setores das pessoas
-  const sec = rot => '<li class="gt-quem-sec" role="presentation">' + rot + '</li>';
-  let jaSet = false, jaPes = false;
-  $('#gt-quem-lista').innerHTML = l.length ? l.map(p => { let h = ''; if (p.id.startsWith('setor:') && !jaSet) { jaSet = true; h = sec('Setores'); } else if (!p.id.startsWith('setor:') && p.id !== 'eu' && p.id !== 'sem' && !jaPes) { jaPes = true; h = sec('Pessoas'); } return h + '<li><button type="button" role="option" data-quem="' + esc(p.id) + '" aria-selected="' + (E.quem === p.id) + '" class="' + (E.quem === p.id ? 'on' : '') + '"><span class="gt-quem-av" aria-hidden="true">' + esc(p.av) + '</span>' + esc(p.nome) + '</button></li>'; }).join('') : '<li class="fraco gt-quem-nada">Ninguém com esse nome</li>';
+  const n = semAc(f), ul = $('#gt-quem-lista'), bt = (attrs, av, rot, extra, on) => '<li><button type="button" role="option" ' + attrs + ' aria-selected="' + !!on + '" class="' + (on ? 'on' : '') + '"><span class="gt-quem-av" aria-hidden="true">' + esc(av) + '</span><span class="gt-quem-nome">' + esc(rot) + '</span>' + (extra || '') + '</button></li>';
+  const sec = rot => '<li class="gt-quem-sec" role="presentation">' + esc(rot) + '</li>';
+  const conta = k => k ? '<small class="gt-quem-n">' + num(k) + (k === 1 ? ' aberta' : ' abertas') + '</small>' : '';
+  const setores = E.setorPorId ? G.setoresAtivos(E.fechTarefas, E.equipe) : null;
+  $('#gt-quem-busca').placeholder = QP.passo === 'setor' ? 'Buscar pessoa do setor' : 'Buscar setor';
+  if (QP.passo === 'setor') {
+    const st = (setores || []).find(x => x.nome === QP.setor) || { nome: QP.setor, pessoas: (E.equipe || []).filter(p => (p.setores || []).includes(QP.setor)).map(p => ({ id: p.id, nome: p.nome, abertas: 0 })) };
+    const ps = st.pessoas.filter(p => !n || semAc(p.nome).includes(n));
+    const k = QP.marcados.size;
+    ul.innerHTML = '<li class="gt-quem-topo" role="presentation"><button type="button" class="gt-quem-voltar" data-gt-voltar aria-label="Voltar aos setores"><svg class="ic ic-sm"><use href="#i-chev-l"/></svg>Setores</button><b>Setor ' + esc(st.nome) + '</b></li>' +
+      sec('Escolha uma ou mais pessoas') +
+      (ps.length ? ps.map(p => '<li><label class="gt-quem-ck"><input type="checkbox" data-gt-pessoa="' + esc(p.id) + '"' + (QP.marcados.has(p.id) ? ' checked' : '') + '><span class="gt-quem-av" aria-hidden="true">' + esc(iniciais(p.nome)) + '</span><span class="gt-quem-nome">' + esc(p.nome) + '</span>' + conta(p.abertas) + '</label></li>').join('') : '<li class="fraco gt-quem-nada">Ninguém com esse nome no setor</li>') +
+      '<li class="gt-quem-pe" role="presentation"><button type="button" class="btn btn-sm btn-primary" data-gt-aplicar>' + (k ? 'Ver as tarefas de ' + (k === 1 ? '1 pessoa' : k + ' pessoas') : 'Ver todas as tarefas do setor') + '</button></li>';
+    return;
+  }
+  let h = bt('data-quem="eu"', 'Eu', 'Minhas', '', E.quem === 'eu') + bt('data-quem="sem"', '—', 'Sem responsável', '', E.quem === 'sem') + sec('Setores com tarefas abertas');
+  if (!setores) h += '<li class="fraco gt-quem-nada">' + (E.fechErro ? 'Não consegui ler os setores: ' + esc(E.fechErro.erro || '') : 'Lendo os setores no relatório do mês…') + '</li>';
+  else { const l = setores.filter(x => !n || semAc(x.nome).includes(n)); h += l.length ? l.map(x => bt('data-gt-setor="' + esc(x.nome) + '"', '▦', 'Setor ' + x.nome, conta(x.abertas) + '<svg class="ic ic-sm gt-quem-seta" aria-hidden="true"><use href="#i-chev-r"/></svg>', setorDaVisao() === x.nome)).join('') : '<li class="fraco gt-quem-nada">Nenhum setor com tarefa aberta' + (n ? ' com esse nome' : '') + '</li>'; }
+  ul.innerHTML = h;
 }
 function quemAbrir(abrir) {
   const pop = $('#gt-quem-pop'), b = $('#gt-quem-btn'); if (!pop) return;
   pop.hidden = !abrir; b.setAttribute('aria-expanded', String(abrir));
-  if (abrir) { $('#gt-quem-busca').value = ''; quemLista(''); setTimeout(() => $('#gt-quem-busca').focus(), 20); }
+  if (abrir) {
+    const q = qsVisao(); QP.passo = 'inicio'; QP.setor = ''; QP.marcados = new Set(q ? q.ids : []);
+    if (!E.setorPorId && !E.fechCarregando && E.dados && E.dados.perfil && E.dados.perfil.total) lerFech(false);   // os setores saem do relatório do mês
+    $('#gt-quem-busca').value = ''; quemLista(''); setTimeout(() => $('#gt-quem-busca').focus(), 20);
+  }
 }
+function quemPasso(setor) { const q = qsVisao(); QP.passo = setor ? 'setor' : 'inicio'; QP.setor = setor || ''; QP.marcados = new Set(q && q.setor === setor ? q.ids : []); $('#gt-quem-busca').value = ''; quemLista(''); setTimeout(() => $('#gt-quem-busca').focus(), 20); }
+function quemAplicar() { trocarQuem('setor:' + QP.setor + (QP.marcados.size ? '|' + [...QP.marcados].join(',') : '')); }
 function trocarQuem(id) { if (!id || id === E.quem) { quemAbrir(false); return; } E.quem = id; E.abertas.clear(); quemAbrir(false); quemRot(); salvarEstado(); ler(); }
 
 /* ---------- cabeçalho, trilho e "ao vivo" ---------- */
@@ -148,6 +174,14 @@ function aoVivo() {
   const el = $('#aovivo'), tx = $('#aovivo-tx');
   el.classList.remove('ok', 'parado', 'erro');
   $('#btn-atualizar').classList.toggle('girando', E.carregando);
+  if (E.aba === 'saude') {   // 0.110.0
+    const S = estadoSaude(); $('#btn-atualizar').classList.toggle('girando', S.carregando);
+    if (S.carregando) { tx.textContent = 'Lendo a saúde…'; return; }
+    if (S.erro) { el.classList.add('erro'); tx.textContent = 'Falha na leitura'; return; }
+    if (!S.dados) { tx.textContent = 'Aguardando'; return; }
+    const he = new Date(S.dados.lidoEm), hme = String(he.getHours()).padStart(2, '0') + ':' + String(he.getMinutes()).padStart(2, '0');
+    el.classList.add('ok'); tx.textContent = simples() ? hme : 'Lido às ' + hme; el.title = 'Saúde da operação lida às ' + hme; return;
+  }
   if (E.aba === 'envios') {   // 0.96.0
     const S = estadoEnvios(); $('#btn-atualizar').classList.toggle('girando', S.carregando);
     if (S.carregando) { tx.textContent = 'Lendo os envios…'; return; }
@@ -196,36 +230,43 @@ function anel(pct, tam) {
 // rótulos curtos das situações no topo (o nome inteiro e a explicação ficam na dica)
 const SIT_CURTO = { multa: 'Multa', atrasada: 'Atrasadas', impedimento: 'Impedimento', hoje: 'Hoje', proximas: 'Próximos dias', depois: 'Mais adiante', feita: 'Concluídas' };
 // Topo das abas de trabalho (0.77.0): progresso do mês, as situações (que filtram), a busca e o menu Filtros, numa faixa só.
-function topoHtml(c) {
+function topoHtml(c, cont) {
   const agora = c.n.multa + c.n.atrasada, agoraOn = E.grupos.has('multa') && E.grupos.has('atrasada');
   const sitAgora = (agora || agoraOn) ? '<button type="button" class="gt-sit gt-sit-agora gt-c-multa' + (agoraOn ? ' on' : '') + '" data-grupo="agora" aria-pressed="' + agoraOn + '" title="' + esc('Resolver agora: ' + c.n.multa + ' gerando multa e ' + c.n.atrasada + ' com a meta vencida') + '"><span class="gt-sit-ic" aria-hidden="true">!</span>Resolver agora<b>' + num(agora) + '</b></button>' : '';
   const sit = gr => (gr.k === 'multa' || gr.k === 'atrasada') ? '' : (c.n[gr.k] || E.grupos.has(gr.k)) ? '<button type="button" class="gt-sit gt-c-' + COR[gr.k] + (E.grupos.has(gr.k) ? ' on' : '') + '" data-grupo="' + gr.k + '" aria-pressed="' + E.grupos.has(gr.k) + '" title="' + esc(gr.rot + ': ' + gr.dica) + '"><i class="gt-ponto"></i>' + esc(SIT_CURTO[gr.k] || gr.rot) + '<b>' + num(c.n[gr.k]) + '</b></button>' : '';
-  const tipo = k => '<button type="button" class="gt-chip' + (E.tipos.has(k) ? ' on' : '') + '" data-tipo="' + k + '" aria-pressed="' + E.tipos.has(k) + '">' + esc(G.TIPOS_TAREFA[k]) + '</button>';
   const sitChip = s => '<button type="button" class="gt-chip' + (E.sits.has(s.k) ? ' on' : '') + '" data-sit="' + s.k + '" aria-pressed="' + E.sits.has(s.k) + '">' + esc(s.rot) + '</button>';
-  const nf = E.tipos.size + (E.setor ? 1 : 0) + (E.soPendEmp && (E.aba === 'empresas' || E.aba === 'quadro') ? 1 : 0) + (E.feitas && (E.aba === 'lista' || E.aba === 'calendario') ? 1 : 0);
-  return '<div class="gt-topo">' +
+  return '<div class="gt-topo' + (filtroAtivo() ? ' filtrado' : '') + '">' +
     '<div class="gt-topo-prog" title="' + num(c.feitas) + ' de ' + num(c.total) + (E.aba === 'dia' ? ' tarefas com meta neste mês' : ' tarefas da competência') + ' concluídas">' + anel(c.pctFeitas, 52) + '<span><b>' + c.pctFeitas + '%</b><small>' + num(c.feitas) + ' de ' + num(c.total) + ' concluídas</small></span></div>' +
     '<div class="gt-sits" role="group" aria-label="Filtrar pela situação">' + sitAgora + G.GRUPOS.map(sit).join('') + '</div>' +
     '<div class="gt-topo-dir">' +
       '<label class="gt-busca"><svg class="ic"><use href="#i-search"/></svg><input type="search" id="gt-q" placeholder="Buscar tarefa, empresa ou código" autocomplete="off" aria-label="Buscar tarefa, empresa ou código" value="' + esc(E.q) + '"><kbd>/</kbd></label>' +
-      '<details class="menu gt-filtros" id="gt-filtros"><summary class="btn btn-sm' + (nf ? ' filtro-on' : '') + '"><svg class="ic ic-sm"><use href="#i-filter"/></svg>Filtros' + (nf ? ' <span class="menu-n">' + nf + '</span>' : '') + '</summary>' +
-        '<div class="menu-list form gt-filtros-menu"><span class="gt-f-rot">Tipo</span><div class="gt-chips" role="group" aria-label="Tipo">' + Object.keys(G.TIPOS_TAREFA).map(tipo).join('') + '</div>' +
-          setorSelHtml() +
-          (E.aba === 'empresas' || E.aba === 'quadro' ? '<label class="gt-feitas"><input type="checkbox" id="gt-pend-emp"' + (E.soPendEmp ? ' checked' : '') + '> Só empresas com pendência</label>' : '') +
-          (E.aba === 'lista' || E.aba === 'calendario' ? '<label class="gt-feitas"><input type="checkbox" id="gt-feitas"' + (E.feitas ? ' checked' : '') + '> Mostrar concluídas</label>' : '') +
-          '<span class="gt-f-rot">Densidade</span><div class="seg gt-modos" role="group" aria-label="Densidade"><button type="button" class="' + (E.dens !== 'compacta' ? 'on' : '') + '" data-dens="conf" aria-pressed="' + (E.dens !== 'compacta') + '">Confortável</button><button type="button" class="' + (E.dens === 'compacta' ? 'on' : '') + '" data-dens="compacta" aria-pressed="' + (E.dens === 'compacta') + '">Compacta</button></div>' +
-        '</div></details>' +
-      (filtroAtivo() ? '<button type="button" class="btn btn-sm gt-limpar" id="gt-limpar"><svg class="ic ic-sm"><use href="#i-x"/></svg>Limpar</button>' : '') +
-    '</div></div>' +
+      // 0.109.0 (Josué, 13/11/2026: "acabar com o menu"): sem Filtros; a caixa que vale para a aba fica à vista
+      (E.aba === 'empresas' || E.aba === 'quadro' ? '<label class="gt-feitas gt-tog"><input type="checkbox" id="gt-pend-emp"' + (E.soPendEmp ? ' checked' : '') + '> Só com pendência</label>' : '') +
+      (E.aba === 'lista' || E.aba === 'calendario' ? '<label class="gt-feitas gt-tog"><input type="checkbox" id="gt-feitas"' + (E.feitas ? ' checked' : '') + '> Mostrar concluídas</label>' : '') +
+    '</div></div>' + faixaFiltrada(cont) +
     // 0.104.0 (Josué, 12/11/2026): a situação no Gestta à vista, numa faixa logo abaixo; nenhuma marcada = como sempre
     '<div class="gt-sitbar" role="group" aria-label="Situação no Gestta"><span class="gt-f-rot">Situação no Gestta</span><div class="gt-chips">' + G.SITUACOES_FILTRO.map(sitChip).join('') + '</div>' +
       '<span class="gt-sitbar-dica">' + (E.sits.size ? 'mostrando só ' + G.SITUACOES_FILTRO.filter(s => E.sits.has(s.k)).map(s => s.rot.toLowerCase()).join(', ') : 'nenhuma marcada: abertas e com impedimento' + (E.feitas || E.aba !== 'lista' && E.aba !== 'calendario' ? ', e as concluídas' : '')) + '</span></div>';
 }
-// Setor: vem do relatório (Fechamento da competência) (a busca não traz). Sem o relatório na memória, a opção carrega.
-function setorSelHtml() {
-  const setores = E.setorPorId ? [...new Set(lista().map(t => t.setor).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')) : [];
-  return '<label class="gt-sel"><span>Setor</span><select id="gt-setor" aria-label="Setor"><option value="">Todos</option>' +
-    (E.setorPorId ? setores.map(x => '<option' + (x === E.setor ? ' selected' : '') + '>' + esc(x) + '</option>').join('') : '<option value="__carregar">' + (E.fechCarregando ? 'Carregando setores…' : 'Carregar setores (fechamento da competência)') + '</option>') + '</select></label>';
+// 0.109.0 (Josué, 13/11/2026: "as mudanças de filtros tão muito sutis e às vezes você não percebe que está numa visualização filtrada"):
+// com qualquer filtro ligado, uma faixa forte logo abaixo do topo diz quantas tarefas aparecem de quantas e o que está filtrando, cada um com ×
+function faixaFiltrada(cont) {
+  if (!filtroAtivo()) return '';
+  const chip = (k, rot) => '<button type="button" class="gt-fx-chip" data-tira="' + esc(k) + '" title="Tirar este filtro">' + rot + '<svg class="ic ic-sm" aria-hidden="true"><use href="#i-x"/></svg></button>';
+  const ch = [];
+  if (E.q) ch.push(chip('q', 'Busca: <b>“' + esc(E.q) + '”</b>'));
+  const gs = new Set(E.grupos);
+  if (gs.has('multa') && gs.has('atrasada')) { ch.push(chip('grupo:agora', '<b>Resolver agora</b>')); gs.delete('multa'); gs.delete('atrasada'); }
+  gs.forEach(k => { const gr = G.GRUPOS_TELA.find(x => x.k === k) || G.GRUPOS.find(x => x.k === k); ch.push(chip('grupo:' + k, '<b>' + esc(gr ? gr.rot : k) + '</b>')); });
+  E.sits.forEach(k => { const st = G.SITUACOES_FILTRO.find(x => x.k === k); ch.push(chip('sit:' + k, 'Situação: <b>' + esc(st ? st.rot : k) + '</b>')); });
+  if (E.dia) ch.push(chip('dia', 'Meta em <b>' + esc(E.dia.slice(8, 10) + '/' + E.dia.slice(5, 7)) + '</b>'));
+  if (E.soPendEmp) ch.push(chip('pend', '<b>Só com pendência</b>'));
+  if (E.tipos.size) ch.push(chip('tipos', 'Tipo: <b>' + esc([...E.tipos].map(k => G.TIPOS_TAREFA[k] || k).join(', ')) + '</b>'));
+  if (E.setor) ch.push(chip('setor', 'Setor: <b>' + esc(E.setor) + '</b>'));
+  return '<div class="gt-filtrada" id="gt-filtrada" role="status"><svg class="ic" aria-hidden="true"><use href="#i-filter"/></svg>' +
+    '<span class="gt-fx-tx"><b>Visão filtrada</b>' + (cont ? ' · mostrando ' + num(cont.tela) + ' de ' + plural(cont.todas, 'tarefa', 'tarefas') : '') + '</span>' +
+    '<span class="gt-fx-chips">' + ch.join('') + '</span>' +
+    '<button type="button" class="btn btn-sm gt-limpar" id="gt-limpar"><svg class="ic ic-sm"><use href="#i-x"/></svg>Limpar tudo</button></div>';
 }
 const modoTrilhaHtml = () => '<div class="seg gt-modos" role="group" aria-label="Como desenhar as etapas"><button type="button" class="' + (E.trilha === 'seq' ? 'on' : '') + '" data-trilha="seq" aria-pressed="' + (E.trilha === 'seq') + '"><svg class="ic ic-sm"><use href="#i-repeat"/></svg>Trilha</button><button type="button" class="' + (E.trilha === 'tempo' ? 'on' : '') + '" data-trilha="tempo" aria-pressed="' + (E.trilha === 'tempo') + '"><svg class="ic ic-sm"><use href="#i-calendar"/></svg>Linha do tempo</button></div>';
 const legendaTrilha = () => '<p class="gt-leg" aria-hidden="true"><span><i class="gt-et gt-e-feita"><span class="gt-et-mk">✓</span></i>concluída</span><span><i class="gt-et gt-e-multa"><span class="gt-et-mk">!</span></i>multa ou atraso</span><span><i class="gt-et gt-e-impedimento"><span class="gt-et-mk"></span></i>impedimento</span><span><i class="gt-et gt-e-hoje"><span class="gt-et-mk"></span></i>vence hoje</span><span><i class="gt-et gt-e-afazer"><span class="gt-et-mk"></span></i>a fazer</span><span class="fraco">clique numa etapa para ver o detalhe</span></p>';
@@ -269,11 +310,16 @@ const esqueleto = rot => '<div class="gt-esq-tela" role="status" aria-label="' +
 /* ---------- desenho ---------- */
 function abas() {
   $$('#abas [data-aba]').forEach(b => { const on = b.dataset.aba === E.aba; b.classList.toggle('on', on); b.setAttribute('aria-selected', String(on)); });
-  const qw = $('#gt-quem-wrap'); if (qw) qw.classList.toggle('gt-so-minhas', E.aba === 'fech' || E.aba === 'envios');
+  const qw = $('#gt-quem-wrap'); if (qw) qw.classList.toggle('gt-so-minhas', E.aba === 'fech' || E.aba === 'envios' || E.aba === 'saude');
 }
 function desenhar() {
   abas();
   if (E.aba === 'fech') return desenharFech();
+  if (E.aba === 'saude') {   // 0.110.0: Saúde da operação (lida na hora, só na memória da tela)
+    const S = estadoSaude(), v = $('#vista'), topo = v.scrollTop; desenharSaude(v, t => { $('#subtitulo').textContent = t; }); v.scrollTop = topo;
+    if (!S.dados && !S.carregando && !S.erro) lerSaude(enviar, () => { aoVivo(); desenhar(); });
+    return;
+  }
   if (E.aba === 'envios') {   // 0.96.0: Envios ao portal (lidos na hora, só na memória da tela)
     const S = estadoEnvios(); desenharEnvios($('#vista'), t => { $('#subtitulo').textContent = t; });
     if (!S.dados && !S.carregando && !S.erro) lerEnvios(enviar, () => { aoVivo(); desenhar(); });
@@ -298,8 +344,7 @@ function desenhar() {
     (E.aba === 'dia' && !E.dados.dia ? '<div class="faixa"><svg class="ic"><use href="#i-alert"/></svg><div><b>Não consegui ler as metas deste mês</b>' + (E.dados.diaErro ? ': ' + esc(E.dados.diaErro) : '') + '. O Meu dia mostra as tarefas da competência escolhida.</div></div>' : '') +
     (E.quem !== 'eu' ? '<p class="gt-outra">Vendo ' + (E.quem === 'sem' ? 'as tarefas <b>sem responsável</b>' : setorDaVisao() ? 'todas as tarefas do setor <b>' + esc(setorDaVisao()) + '</b>' + (E.dados.setorPessoas ? ' (' + plural(E.dados.setorPessoas, 'pessoa', 'pessoas') + ')' : '') + (E.setorPorId ? '' : E.fechCarregando ? ', separando pelo setor…' : ', inclusive as de outro setor de quem está em mais de um') : 'as tarefas de <b>' + esc(quemNome()) + '</b>') + '. <button type="button" class="linkish" id="gt-voltar-eu">Voltar às minhas</button></p>' : '');
   const foco = document.activeElement && document.activeElement.id === 'gt-q' ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null;
-  const menuAberto = $('#gt-filtros') && $('#gt-filtros').open;
-  v.innerHTML = aviso + topoHtml(c) + '<div class="gt-conteudo gt-aba-' + E.aba + '" id="gt-conteudo"></div>';
+  v.innerHTML = aviso + topoHtml(c, { tela: filtrados.length, todas: G.filtrarTarefas(todos, { q: '', grupos: [], tipos: [], situacoes: [], feitas: f.feitas, dia: '', setor: '' }, hoje).length }) + '<div class="gt-conteudo gt-aba-' + E.aba + '" id="gt-conteudo"></div>';
   const alvo = $('#gt-conteudo', v);
   E.empMap = new Map(); E.listaAtual = filtrados; teclaVista = null;
   const x = { itens: filtrados, todos, hoje, ano: vm.ano, mes: vm.mes, mesAtual: true, filtro: filtroAtivo(), soPend: E.soPendEmp, paraPai, vazio,
@@ -309,7 +354,6 @@ function desenhar() {
   else if (E.aba === 'lista') vistaLista(alvo, x);
   else if (E.aba === 'quadro') vistaQuadro(alvo, x);
   else alvo.innerHTML = vistaCalendario(filtrados, hoje, base);
-  if (menuAberto) $('#gt-filtros').open = true;
   v.scrollTop = topo;
   if (rolarSalvo != null) { v.scrollTop = rolarSalvo; rolarSalvo = null; }
   salvarEstado();
@@ -390,22 +434,31 @@ function desenharFech() {
   if (foco === 'gt-fq') { const n = $('#gt-fq'); if (n) n.focus(); }
 }
 function ligar(v) {
-  $$('[data-dens]', v).forEach(b => b.onclick = () => { E.dens = b.dataset.dens; gravarPref('gt.dens', E.dens); document.documentElement.dataset.densidade = E.dens; desenhar(); });
   $$('[data-grupo="agora"]', v).forEach(b => b.onclick = () => { const on = E.grupos.has('multa') && E.grupos.has('atrasada'); ['multa', 'atrasada'].forEach(k => on ? E.grupos.delete(k) : E.grupos.add(k)); desenhar(); });
   $$('[data-grupo]:not([data-grupo="agora"])', v).forEach(b => b.onclick = () => { const k = b.dataset.grupo; if (E.grupos.has(k)) E.grupos.delete(k); else E.grupos.add(k); if (k === 'feita' && E.grupos.has('feita')) E.feitas = true; desenhar(); });
   // 0.103.0: situação no Gestta; a desconsiderada só é lida quando pedida (liga ou desliga = lê de novo)
   $$('[data-sit]', v).forEach(b => b.onclick = () => { const k = b.dataset.sit; if (E.sits.has(k)) E.sits.delete(k); else E.sits.add(k); if (k === 'desconsiderada') ler(); else desenhar(); });
-  $$('[data-tipo]', v).forEach(b => b.onclick = () => { const k = b.dataset.tipo; if (E.tipos.has(k)) E.tipos.delete(k); else E.tipos.add(k); desenhar(); });
   $$('[data-dia]', v).forEach(b => b.onclick = () => { E.dia = E.dia === b.dataset.dia ? '' : b.dataset.dia; desenhar(); });
   $$('[data-calmes]', v).forEach(b => b.onclick = () => { E.calMes = b.dataset.calmes; E.dia = ''; desenhar(); });
   $$('[data-abrir]', v).forEach(b => b.onclick = e => { e.stopPropagation(); paraPai({ controlGestta: 'abrirTarefa', id: b.dataset.abrir }); });
   $$('[data-nova]', v).forEach(b => b.onclick = e => { e.stopPropagation(); const u = G.urlTarefa(b.dataset.nova); if (u) window.open(u, '_blank', 'noopener'); });
   const pe = $('#gt-pend-emp', v); if (pe) pe.onchange = () => { E.soPendEmp = pe.checked; desenhar(); };
-  const st = $('#gt-setor', v); if (st) st.onchange = () => { if (st.value === '__carregar') { st.value = ''; if (!E.fechCarregando) lerFech(false); return; } E.setor = st.value; desenhar(); };
   $$('.gt-t .gt-t-main', v).forEach(m => { m.tabIndex = 0; m.setAttribute('role', 'button'); m.title = 'Ver o detalhe'; });
   const q = $('#gt-q', v); if (q) q.oninput = () => { E.q = q.value; desenhar(); };
   const fe = $('#gt-feitas', v); if (fe) fe.onchange = () => { E.feitas = fe.checked; if (!fe.checked) E.grupos.delete('feita'); gravarPref('gt.feitas', E.feitas ? '1' : '0'); desenhar(); };
   const lp = $('#gt-limpar', v); if (lp) lp.onclick = () => { const rele = E.sits.has('desconsiderada'); E.q = ''; E.grupos.clear(); E.tipos.clear(); E.sits.clear(); if (rele) ler(); E.dia = ''; E.setor = ''; E.soPendEmp = false; desenhar(); };
+  $$('[data-tira]', v).forEach(b => b.onclick = () => {
+    const k = b.dataset.tira;
+    if (k === 'q') E.q = '';
+    else if (k === 'grupo:agora') { E.grupos.delete('multa'); E.grupos.delete('atrasada'); }
+    else if (k.startsWith('grupo:')) E.grupos.delete(k.slice(6));
+    else if (k.startsWith('sit:')) { E.sits.delete(k.slice(4)); if (k === 'sit:desconsiderada') ler(); }
+    else if (k === 'dia') E.dia = '';
+    else if (k === 'pend') E.soPendEmp = false;
+    else if (k === 'tipos') E.tipos.clear();
+    else if (k === 'setor') E.setor = '';
+    desenhar();
+  });
   const ds = $('#gt-dia-sair', v); if (ds) ds.onclick = () => { E.dia = ''; desenhar(); };
   const ve = $('#gt-voltar-eu', v); if (ve) ve.onclick = () => trocarQuem('eu');
 }
@@ -421,13 +474,15 @@ let avisoCfg = 0;
 addEventListener('storage', e => {
   if (e.key === 'controlonvio-theme' && e.newValue) document.documentElement.setAttribute('data-theme', e.newValue === 'dark' ? 'dark' : 'light');
   else if (e.key === 'controlonvio-estilo' && e.newValue) document.documentElement.setAttribute('data-estilo', e.newValue === 'atual' ? 'atual' : 'simples');
+  else if (e.key === 'oc.gt.dens') { E.dens = e.newValue === 'compacta' ? 'compacta' : 'conf'; document.documentElement.dataset.densidade = E.dens; }
   else return;
   iconeTema(); desenhar();
   clearTimeout(avisoCfg); avisoCfg = setTimeout(() => toast('Configurações atualizadas: já valem nesta tela'), 400);
 });
 $('#vista').addEventListener('scroll', () => salvarEstado(), { passive: true });
-$('#btn-atualizar').onclick = () => E.aba === 'fech' ? lerFech(true) : E.aba === 'envios' ? lerEnvios(enviar, () => { aoVivo(); desenhar(); }) : ler();
+$('#btn-atualizar').onclick = () => E.aba === 'fech' ? lerFech(true) : E.aba === 'envios' ? lerEnvios(enviar, () => { aoVivo(); desenhar(); }) : E.aba === 'saude' ? lerSaude(enviar, () => { aoVivo(); desenhar(); }, true) : ler();
 ligarEnvios($('#vista'), () => { aoVivo(); desenhar(); }, paraPai);
+ligarSaude($('#vista'), () => { aoVivo(); desenhar(); }, paraPai);
 // 0.102.0: soltar documentos fora de um item da tarefa vai para o Express (e, se ele não achar, a sugestão da extensão)
 ligarSoltar({ enviar, atual: () => painelTarefa() || null, tarefas: () => ((E.dados && E.dados.itens) || []).concat((E.dados && E.dados.dia) || []) });
 function trocarAba(a) { if (!ABAS.includes(a) || a === E.aba) return; E.aba = a; gravarPref('gt.aba', E.aba); salvarEstado(); fecharPainel(); aoVivo(); desenhar(); $('#vista').scrollTop = 0; }
@@ -442,7 +497,6 @@ function abrirDe(alvo) {
 }
 $('#vista').addEventListener('click', e => { abrirDe(e.target); });
 // o menu Filtros fecha ao clicar fora dele
-document.addEventListener('click', e => { const m = $('#gt-filtros'); if (m && m.open && !m.contains(e.target)) m.open = false; });
 $('#vista').addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.closest('.gt-t-main')) { e.preventDefault(); abrirDe(e.target); } });
 const trocouMes = () => { salvarEstado(); E.dia = ''; E.calMes = ''; E.fech = null; E.fechTarefas = []; E.setorPorId = null; E.setor = ''; E.fechErro = null; fecharPainel(); ler(); if (E.aba === 'fech') desenhar(); };
 $('#gt-mes-ant').onclick = () => { E.mes--; if (E.mes < 1) { E.mes = 12; E.ano--; } trocouMes(); };
@@ -464,11 +518,22 @@ $('#gt-mes-pop').addEventListener('click', e => {
 });
 $('#gt-quem-btn').onclick = () => quemAbrir($('#gt-quem-pop').hidden);
 $('#gt-quem-busca').oninput = e => quemLista(e.target.value);
-$('#gt-quem-busca').onkeydown = e => { if (e.key === 'Enter') { const b = $('#gt-quem-lista [data-quem]'); if (b) trocarQuem(b.dataset.quem); } };
-$('#gt-quem-lista').addEventListener('click', e => { const b = e.target.closest('[data-quem]'); if (b) trocarQuem(b.dataset.quem); });
+$('#gt-quem-busca').onkeydown = e => {
+  if (e.key !== 'Enter') return;
+  if (QP.passo === 'setor') { quemAplicar(); return; }
+  const b = $('#gt-quem-lista [data-gt-setor]') || $('#gt-quem-lista [data-quem]'); if (b) b.click();
+};
+$('#gt-quem-lista').addEventListener('click', e => {
+  const b = e.target.closest('[data-quem],[data-gt-setor],[data-gt-voltar],[data-gt-aplicar]'); if (!b) return;
+  if (b.dataset.quem) trocarQuem(b.dataset.quem);
+  else if (b.dataset.gtSetor) quemPasso(b.dataset.gtSetor);
+  else if (b.dataset.gtVoltar != null) quemPasso('');
+  else quemAplicar();
+});
+$('#gt-quem-lista').addEventListener('change', e => { const c = e.target.closest('[data-gt-pessoa]'); if (!c) return; if (c.checked) QP.marcados.add(c.dataset.gtPessoa); else QP.marcados.delete(c.dataset.gtPessoa); const ap = $('#gt-quem-lista [data-gt-aplicar]'); if (ap) ap.textContent = QP.marcados.size ? 'Ver as tarefas de ' + (QP.marcados.size === 1 ? '1 pessoa' : QP.marcados.size + ' pessoas') : 'Ver todas as tarefas do setor'; });
 document.addEventListener('click', e => {
   if (!$('#gt-mes-pop').hidden && !e.target.closest('#gt-mes-pop, #gt-mes-rot')) mesAbrir(false);
-  if (!$('#gt-quem-pop').hidden && !e.target.closest('#gt-quem-pop, #gt-quem-btn')) quemAbrir(false);
+  if (!$('#gt-quem-pop').hidden && e.target.isConnected && !e.target.closest('#gt-quem-pop, #gt-quem-btn')) quemAbrir(false);   // clicar num passo redesenha a lista: o alvo some e o popover fica
 });
 // 0.87.0: a ajuda dos atalhos (tecla ?)
 function atalhos(abrir) { const d = $('#gt-atalhos'); d.hidden = !abrir; if (abrir) setTimeout(() => $('#gt-atalhos-fechar').focus(), 20); }
@@ -483,8 +548,8 @@ addEventListener('keydown', e => {
   if (e.key === '?' && !digitando) { e.preventDefault(); atalhos(true); return; }
   if (painelAberto()) { if (e.key === 'Escape') { e.preventDefault(); fecharPainel(); return; } if (!digitando && e.key === 'ArrowLeft') { passarPainel(-1); return; } if (!digitando && e.key === 'ArrowRight') { passarPainel(1); return; } }
   if (e.key === '/' && !digitando) { const q = $('#gt-q') || $('#gt-fq'); if (q) { e.preventDefault(); q.focus(); } return; }
-  if (!digitando && !e.ctrlKey && !e.metaKey && !e.altKey && teclaVista && E.aba !== 'fech' && E.aba !== 'envios' && teclaVista(e)) { e.preventDefault(); return; }
-  const n = '1234567'.indexOf(e.key);
+  if (!digitando && !e.ctrlKey && !e.metaKey && !e.altKey && teclaVista && E.aba !== 'fech' && E.aba !== 'envios' && E.aba !== 'saude' && teclaVista(e)) { e.preventDefault(); return; }
+  const n = '12345678'.indexOf(e.key);
   if (!digitando && n >= 0 && !e.ctrlKey && !e.metaKey && !e.altKey) { trocarAba(ABAS[n]); return; }
   if (e.key === 'Escape') { if (digitando && e.target.id === 'gt-q' && E.q) { E.q = ''; desenhar(); return; } if (!digitando) paraPai({ controlGestta: 'fechar' }); }
 });

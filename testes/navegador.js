@@ -21,7 +21,7 @@ const STUB = `
       set(o, cb) { carregar(); const ch = {}; for (const [k, v] of Object.entries(o)) { ch[k] = { oldValue: mem[k], newValue: v }; mem[k] = v; } salvar(); ouvintes.forEach(f => f(ch, 'local')); if (cb) cb(); return Promise.resolve(); },
       remove(k) { (window.__removidos ||= []).push(k); carregar(); delete mem[k]; salvar(); return Promise.resolve(); }
     }, onChanged: { addListener(f) { ouvintes.push(f); } } },
-    runtime: { id: 'teste', getURL: p => 'https://onvio.com.br/__ext__/' + p, onMessage: { addListener(f) { (window.__ouvintes ||= []).push(f); } }, sendMessage(m, cb) { (window.__msgs ||= []).push(m); const r = (window.__respostas && window.__respostas[m.cmd]) || { ok: true, proximoEmSeg: 60 }; if (cb) setTimeout(() => cb(r), 0); return Promise.resolve(r); }, lastError: null, openOptionsPage() {}, lastErrorX: null, getManifest: () => ({ version: '0.2.0' }) },
+    runtime: { id: 'teste', getURL: p => 'https://onvio.com.br/__ext__/' + p, onMessage: { addListener(f) { (window.__ouvintes ||= []).push(f); } }, sendMessage(m, cb) { (window.__msgs ||= []).push(m); const r = (window.__respostas && ((m.parte && window.__respostas[m.cmd + ':' + m.parte]) || window.__respostas[m.cmd])) || { ok: true, proximoEmSeg: 60 }; if (cb) setTimeout(() => cb(r), 0); return Promise.resolve(r); }, lastError: null, openOptionsPage() {}, lastErrorX: null, getManifest: () => ({ version: '0.2.0' }) },
     tabs: { create(o) { (window.__tabs ||= []).push(o); } } };
 })();`;
 
@@ -441,8 +441,9 @@ await passo('app · listas que antes cortavam (Sugestões do Hoje, Sem analista 
   }
 });
 
-await passo('app · Hoje (analista): destaque com rosca, carrossel e próximos passos; painéis de avisos, sugestões e previsão; sem os painéis de vencimentos e de uso do portal', async () => {
-  const p = await abrirApp('#/inicio', undefined, undefined, { estilo: 'atual' });      // o destaque com carrossel e legenda é do estilo Atual (o Simplificado tem passo próprio)
+await passo('app · Hoje (analista): Meu dia em números (números do dia com link e concluídas por dia útil); painéis de avisos, sugestões e previsão; sem os painéis de vencimentos e de uso do portal', async () => {
+  const hoje11 = (() => { const x = new Date(); x.setHours(9, 0, 0, 0); return x.toISOString(); })();
+  const p = await abrirApp('#/inicio', undefined, 'window.__respostas = ' + JSON.stringify({ concluidas: { ok: true, dias: 30, itens: [{ k: 'geral:c1', type: 'geral', id: 'c1', num: 901, code: 5, lado: 'fim', mine: true, resp: 'Ana Teste', last: hoje11 }], erros: [] } }), { estilo: 'atual' });
   await p.evaluate(() => { window.__respostas = Object.assign(window.__respostas || {}, { casos: { ok: true, analises: {}, lidas: 2 }, detalhe: { ok: true, item: {}, tramites: [] }, previsao: { ok: true, dias: 28, total: 12, prox30: 13, erros: [], empresas: [{ cliente: 'ACME LTDA', apelido: 'ACME', total: 8, porSemana: 2, prox7: 3, prox30: 11, tendencia: 'sobe', tipos: [{ tipo: 'Geral', n: 5 }, { tipo: 'Cálculo de férias', n: 3 }] }] } }); });
   assert.equal(await p.textContent('#titulo'), 'Hoje');
   assert.match(await p.textContent('#subtitulo'), /, Ana · /);
@@ -450,16 +451,21 @@ await passo('app · Hoje (analista): destaque com rosca, carrossel e próximos p
   // carteira: abre na sua
   assert.equal(await p.$eval('#hj-carteira', s => s.value), '__minha');
   assert.deepEqual(await p.$$eval('#hj-carteira option', o => o.map(x => x.textContent)), ['Minha carteira (2)', 'Equipe toda (4)', 'Ana Teste (2)', 'Bia (1)', 'Sem analista (1)']);
-  // destaque: rosca, título, resumo e legenda
-  await p.waitForFunction(() => document.querySelector('#hj-titulo em').textContent === '2');
-  assert.match(await p.textContent('#hj-titulo'), /^2 solicitações pedem sua atenção$/);
-  assert.match(await p.textContent('.hj-hero-tx p'), /^2 pendências · 2 com o escritório · 0 com o cliente$/);
-  assert.match(await p.textContent('.hj-legenda'), /Em análise 1.*Cliente respondeu 1/);
-  assert.doesNotMatch(await p.textContent('.hj-legenda'), /Fora do prazo|Prescreve|Vence hoje/, 'prazo interno e prescrição não aparecem');
-  // carrossel e próximos passos
-  assert.equal(await p.getAttribute('#hj-tick', 'class'), 'hj-tick ok');
-  assert.deepEqual(await p.$$eval('.hj-tk', e => e.map(x => x.querySelector('.hj-tk-tag').textContent)), ['Lembrete atrasado', 'Em análise', 'Cliente respondeu']);
-  assert.deepEqual(await p.$$eval('#hj-passos .hj-step b', e => e.map(x => x.textContent)), ['Cobrar o BETA', 'Dar andamento · parada há 31 dias', 'Responder o cliente']);
+  // Meu dia em números (0.108.0): o que aconteceu hoje na carteira, cada número leva à lista, e as concluídas por dia útil
+  await p.waitForSelector('.hj-meudia .hj-md-svg');
+  assert.equal(await p.textContent('#hj-titulo'), 'Meu dia em números');
+  assert.match(await p.textContent('.hj-md-cab p'), /^2 pendências$/);
+  for (const sel of ['.hj-hero', '.hj-donut', '#hj-tick', '#hj-passos', '.hj-legenda']) assert.equal(await p.$(sel), null, sel + ' saiu (sem uso)');
+  const ks = await p.$$eval('.hj-md-k', e => e.map(x => [x.dataset.md, x.querySelector('b').textContent, x.querySelector('span').textContent, x.getAttribute('href')]));
+  assert.deepEqual(ks.map(x => x[0]), ['concluidas', 'chegaram', 'respondidas', 'paradas', 'lembretes'], 'em destaque as concluídas de hoje, com o anel contra a média');
+  assert.deepEqual(ks.map(x => x[3]), ['#/fila?escopo=concluidas', '#/fila', '#/fila?escopo=respondidas', '#/fila?idade=4-', '#/lembretes']);
+  assert.equal(await p.textContent('[data-md="concluidas"] .ap-c b'), '1', 'concluída hoje (a leitura das concluídas, só na memória)');
+  assert.match(await p.textContent('[data-md="concluidas"]'), /média de [\d,]+ por dia útil/);
+  assert.doesNotMatch(await p.textContent('.hj-meudia'), /acima da média|abaixo|para a média/, 'sem comparação com a média (Josué: "tira esse negócio de acima da média ou abaixo")');
+  assert.match(await p.textContent('.hj-md-graf figcaption'), /Concluídas por dia útil1 em 10 dias/);
+  assert.ok(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'concluidas' && m.equipe === false)), 'as minhas concluídas');
+  assert.equal(await p.$$eval('.hj-md-svg rect', e => e.length), 10, 'uma barra por dia útil');
+  assert.equal(await p.$$eval('.hj-md-svg rect.hoje', e => e.length), 1, 'hoje em destaque');
   // solicitações por tipo: os cartões das Solicitações, do mais urgente ao menos urgente, aviso e cálculo no mesmo bloco
   const blocos = await p.$$eval('#hj-tipos-l > *', e => e.map(x => [...x.querySelectorAll('.tipo-c')].reduce((n, c) => n + Number(c.querySelector('b').textContent), 0)));
   assert.deepEqual(blocos.map(n => n > 0), blocos.map(n => n > 0).sort((a, b) => b - a), 'os tipos sem solicitação ficam por último: ' + blocos.join());
@@ -512,31 +518,17 @@ await passo('app · Hoje (analista): destaque com rosca, carrossel e próximos p
   await p.click('#hj-prev-ler');                         // a 1ª leitura saiu antes da resposta simulada: recalcula
   await p.waitForSelector('#hj-prev table');
   assert.match(await p.textContent('#hj-prev'), /Escritório: 12 abertas em 4 semanas · estimativa de 13 nos próximos 30 dias[\s\S]*ACME2311 ▲Geral, Cálculo de férias/);
-  // clique na rosca leva às Solicitações com o motivo, na mesma carteira
-  // a rosca entra animada: o clique só vale depois que os arcos chegam ao lugar
-  await p.waitForFunction(() => !document.querySelector('#vista').classList.contains('hj-anim'));
-  await p.$eval('.hj-donut', e => e.scrollIntoView({ block: 'center' }));
-  await p.waitForTimeout(250);
-  const ponto = await p.evaluate(() => { const r = document.querySelector('.hj-donut .an-svg').getBoundingClientRect(), k = r.width / 150; return [r.left + (75 + 64) * k, r.top + 75 * k]; });
-  await p.mouse.click(ponto[0], ponto[1]);
-  await p.waitForFunction(() => location.hash === '#/fila?motivo=analise');
-  await p.waitForFunction(() => document.querySelector('#titulo').textContent === 'Solicitações', null, { timeout: 3000 }).catch(() => {});
-  assert.equal(await p.textContent('#titulo'), 'Solicitações');
+  // o número leva à lista: paradas há mais de 3 dias
+  await p.click('[data-md="paradas"]');
+  await p.waitForFunction(() => location.hash === '#/fila?idade=4-');
   await p.evaluate(() => { location.hash = '#/inicio'; });
-  await p.waitForSelector('#hj-passos');
-  // passo e carrossel abrem o detalhe; lembrete "Feito" sai dos próximos passos
-  await p.click('#hj-passos [data-k="calcFerias:a"]');
-  await p.waitForFunction(() => /ACME/.test(document.querySelector('#gaveta h2').textContent));
-  await p.keyboard.press('Escape');
-  await p.waitForSelector('#gaveta', { state: 'hidden' });
-  await p.click('#hj-passos [data-feito]');
-  await p.waitForFunction(() => !/Cobrar o BETA/.test(document.querySelector('#hj-passos').textContent));
+  await p.waitForSelector('.hj-meudia');
   // carteira Equipe toda
   await p.selectOption('#hj-carteira', '__equipe');
-  await p.waitForFunction(() => document.querySelector('.hj-donut .an-total').textContent === '100%');
-  assert.match(await p.textContent('.hj-hero-tx p'), /4 pendências · 3 com o escritório · 1 com o cliente · 1 sem analista/);
+  await p.waitForFunction(() => /^4 pendências · 1 sem analista$/.test(document.querySelector('.hj-md-cab p').textContent));
+  assert.ok(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'concluidas' && m.equipe === true)), 'na equipe toda, as concluídas da equipe');
   await p.selectOption('#hj-carteira', '(sem responsável)');
-  await p.waitForFunction(() => /Tudo em dia/.test(document.querySelector('#hj-titulo').textContent), null, { timeout: 4000 });      // só a que está com o cliente
+  await p.waitForFunction(() => /Sem analista: as concluídas não se aplicam/.test(document.querySelector('.hj-md-graf').textContent), null, { timeout: 4000 });
   await p.reload(); await p.waitForSelector('#hj-carteira');
   assert.equal(await p.$eval('#hj-carteira', s => s.value), '(sem responsável)');
   await p.selectOption('#hj-carteira', '__minha');
@@ -595,7 +587,7 @@ await passo('app · Hoje: admissões sem trâmite do escritório em faixa recolh
   const p = await abrirApp('#/inicio', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens }) });
   await p.waitForSelector('#hj-admissao');
   const ordem = await p.evaluate(() => [...document.querySelector('#vista').children].map(x => x.id || x.className.split(' ')[0]));
-  assert.ok(ordem.indexOf('hj-admissao') === ordem.indexOf('hj-hero') + 1, 'logo abaixo do destaque: ' + ordem.join());
+  assert.ok(ordem.indexOf('hj-admissao') === ordem.indexOf('hj-meudia') + 1, 'logo abaixo do destaque: ' + ordem.join());
   assert.match(await p.textContent('#hj-admissao h3'), /3 admissões pedem prioridade/, 'as que o escritório já tramitou (situação do escritório ou trâmite lido) ficam de fora');
   assert.equal(await p.textContent('#hj-admissao .hj-adm-resumo'), '1 retroativa · próxima em 20/10');
   const l = await p.$$eval('#hj-admissao .hj-adm', e => e.map(x => x.textContent));
@@ -756,25 +748,6 @@ await passo('app · Hoje: lote com erro mostra qual falhou e deixa as outras seg
   assert.deepEqual(p.erros, []);
 });
 
-await passo('app · Hoje: Próximos passos só rola e esmaece quando a fila é maior que a caixa (uma solicitação só não é cortada)', async () => {
-  const base = { nivel: 1, grav: 1, motivos: [{ n: 1, m: 'x' }], resp: 'Ana Teste', mine: true, lado: 'esc', code: 2, status: 'Em análise', created: agoraIso(20), last: agoraIso(9), parado: 9 };
-  const um = [Object.assign({}, base, { k: 'cadEstagiario:u1', type: 'cadEstagiario', typeLabel: 'Cadastro estagiário', id: 'u1', num: 1628, apelido: 'MULTILONAS', cliente: 'MULTILONAS', detalhe: 'Lavinia Capucho' })];
-  const muitos = Array.from({ length: 14 }, (x, n) => Object.assign({}, base, { k: 'geral:m' + n, type: 'geral', typeLabel: 'Geral', id: 'm' + n, num: 2000 + n, apelido: 'EMP' + n, cliente: 'EMP' + n, detalhe: 'Assunto ' + n, parado: 9 + n }));
-  const p = await abrirApp('#/inicio', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: um }), lembretes: [] });
-  await p.waitForSelector('#hj-passos .hj-step');
-  await p.waitForTimeout(1900);                                                                    // passa a animação de entrada (a marca é refeita no fim dela)
-  assert.equal(await p.$$eval('#hj-passos li', e => e.length), 1);
-  assert.equal(await p.$eval('#hj-passos', e => e.classList.contains('rola')), false, 'uma só: cabe na caixa');
-  assert.equal(await p.$eval('#hj-passos', e => getComputedStyle(e).maskImage), 'none', 'sem esmaecer o fim');
-  const q = await abrirApp('#/inicio', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: muitos }), lembretes: [] });
-  await q.waitForSelector('#hj-passos .hj-step');
-  await q.waitForTimeout(1900);
-  assert.equal(await q.$eval('#hj-passos', e => e.scrollHeight > e.clientHeight + 2), true, 'a fila passa da caixa');
-  assert.equal(await q.$eval('#hj-passos', e => e.classList.contains('rola')), true, 'então rola');
-  assert.notEqual(await q.$eval('#hj-passos', e => getComputedStyle(e).maskImage), 'none', 'e esmaece o fim');
-  assert.deepEqual(p.erros, []);
-});
-
 await passo('app · Hoje: rescisão nova (aviso): põe em análise com o aviso do prazo de pagamento, documentos, exame demissional e eSocial/FGTS, com a data preenchida; o cálculo de rescisão fica de fora', async () => {
   const base = { nivel: 0, grav: 0, parado: 1, motivos: [], resp: 'Ana Teste', mine: true, lado: 'esc', code: 1, status: 'Sem análise', created: agoraIso(1), last: agoraIso(1) };
   const itens = ITENS_APP.concat([
@@ -880,9 +853,9 @@ await passo('app · Hoje sem nada com você: abre na equipe toda e a frase expli
   const p = await abrirApp('#/inicio', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: semMinhas }) });
   assert.equal(await p.$eval('#hj-carteira', s => s.value), '__equipe');
   assert.match(await p.textContent('#ht-resumo'), /Nenhuma pendência está com você como responsável.*equipe toda \(4 pendências\)/);
-  await p.waitForFunction(() => document.querySelector('#hj-titulo em') && document.querySelector('#hj-titulo em').textContent === '3');
+  await p.waitForFunction(() => /^4 pendências/.test(document.querySelector('.hj-md-cab p').textContent));
   await p.selectOption('#hj-carteira', '__minha');
-  await p.waitForFunction(() => /Nada pendente nesta carteira/.test(document.querySelector('#hj-titulo').textContent));
+  await p.waitForFunction(() => /^0 pendências$/.test(document.querySelector('.hj-md-cab p').textContent));
   assert.equal(await p.$('#ht-resumo') === null, true, 'escolheu: sem a frase');
   const vazio = await abrirApp('#/inicio', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: [] }) });
   assert.match(await vazio.textContent('#ht-resumo'), /não trouxe nenhuma pendência em nenhuma das 10 listas.*Testar a leitura/);
@@ -1442,7 +1415,7 @@ await passo('app · Hoje: o quadro de avisos sem cálculo saiu (nem com avisos d
     { k: 'avisoRescisao:r1', type: 'avisoRescisao', typeLabel: 'Aviso de rescisão', id: 'r1', num: 202, code: 2, status: 'Em análise', lado: 'esc', nivel: 0, grav: 0, parado: 1, motivos: [], resp: 'Ana Teste', mine: true, apelido: 'ÔMEGA', cliente: 'ÔMEGA', detalhe: 'Joana', created: agoraIso(2), last: agoraIso(1), semCalculo: { alvo: '2026-10-14', faltam: -1, ref: 'aviso em 04/10/2026', calculo: 'Cálculo de rescisão' } }
   ]);
   const p = await abrirApp('#/inicio', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens }), settings: { __v: 2, desfazerSeg: 0 } });
-  await p.waitForSelector('.hj-hero');
+  await p.waitForSelector('.hj-meudia');
   assert.equal(await p.$('#hj-semcalc') === null, true);
   assert.equal(await p.$('.sc-cols') === null, true);
   assert.ok(!/sem cálculo/i.test(await p.textContent('.app-body')), 'nenhum texto de aviso sem cálculo no Hoje');
@@ -2595,9 +2568,8 @@ await passo('app · Simplificado em tela pequena (1366×650 e 1280×720): cabeç
     await p.waitForSelector('#hj-tipos');
     const cab = await p.evaluate(() => ({ cab: document.querySelector('.mod-cab').getBoundingClientRect().height, linha: document.querySelector('.mod-linha').getBoundingClientRect().height, abas: document.querySelector('#abas').hidden }));
     assert.ok(cab.abas && cab.cab <= 64 && cab.linha <= 40, onde + ': cabeçalho numa linha só (' + JSON.stringify(cab) + ')');
-    assert.equal(await p.$('.hj-tick') && await p.$eval('.hj-tick', e => getComputedStyle(e).display), 'none', onde + ': sem o carrossel');
-    assert.equal(await p.$eval('.hj-hero .an-svg', e => Math.round(e.getBoundingClientRect().width)), 96, onde + ': rosca de 96 px');
-    assert.ok(await p.$eval('.hj-hero', e => e.getBoundingClientRect().height) < 270, onde + ': destaque baixo');
+    const hMd = await p.$eval('.hj-meudia', e => e.getBoundingClientRect().height); assert.ok(hMd < 300, onde + ': Meu dia em números baixo (' + hMd + ')');
+    assert.equal(await p.$$eval('.hj-md-k', e => e.filter(x => x.scrollWidth > x.clientWidth + 1).length), 0, onde + ': números sem corte');
     await sem_rolagem(p, onde + ' Hoje');
     // barras recolhíveis: a Previsão começa recolhida e o que a pessoa muda fica lembrado
     assert.equal(await p.$eval('#hj-prev', e => e.classList.contains('recolhida')), true, 'Previsão recolhida de fábrica');
@@ -2636,13 +2608,25 @@ await passo('app · Simplificado em tela pequena (1366×650 e 1280×720): cabeç
   }
 });
 
-await passo('app · Atual intacto: grade de tipos, destaque escuro com carrossel e legenda, a barra Conversa à vista', async () => {
-  const p = await abrirApp('#/inicio', undefined, undefined, { estilo: 'atual' });
-  await p.waitForSelector('.hj-hero');
+await passo('app · Atual intacto: grade de tipos, Meu dia em números acompanha o tema (claro e escuro), a barra Conversa à vista', async () => {
+  const conc = []; [3, 2, 4, 0, 1, 5, 2, 3, 4, 2, 3, 1, 2].forEach((q, d) => { for (let n = 0; n < q; n++) { const x = new Date(); x.setDate(x.getDate() - d); x.setHours(9 + n % 8, 0, 0, 0); conc.push({ k: 'geral:z' + d + '-' + n, lado: 'fim', mine: true, last: x.toISOString() }); } });
+  const p = await abrirApp('#/inicio', undefined, 'window.__respostas = ' + JSON.stringify({ concluidas: { ok: true, dias: 30, itens: conc, erros: [] } }), { estilo: 'atual' });
+  await p.waitForSelector('.hj-md-svg');
+  await p.waitForSelector('.hj-meudia');
   assert.equal(await p.evaluate(() => document.documentElement.getAttribute('data-estilo')), 'atual');
-  assert.equal(await p.$eval('.hj-hero', e => getComputedStyle(e).backgroundColor), 'rgb(15, 22, 28)', 'destaque sempre escuro');
-  assert.ok(await p.$('.hj-tick .hj-bola') && await p.$('.hj-legenda'), 'carrossel e legenda');
-  assert.equal(await p.$eval('.hj-hero .an-svg', e => Math.round(e.getBoundingClientRect().width)), 150, 'rosca de 150 px');
+  const lum = () => p.$eval('.hj-meudia', e => { const m = getComputedStyle(e).backgroundColor.match(/\d+/g).map(Number); return (m[0] + m[1] + m[2]) / 3; });
+  assert.ok(await lum() > 200, 'no tema claro o bloco é claro (não mais sempre escuro)');
+  await p.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
+  assert.ok(await lum() < 60, 'no escuro, escuro');
+  await p.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'));
+  for (const est of ['simples', 'atual']) {
+    await p.evaluate(e => document.documentElement.setAttribute('data-estilo', e), est);
+    for (const t of ['light', 'dark']) {
+      await p.evaluate(x => document.documentElement.setAttribute('data-theme', x), t);
+      if (process.env.CAP) { await p.waitForTimeout(1700); await p.$eval('.hj-meudia', e => e.scrollIntoView()); await p.locator('.hj-meudia').screenshot({ path: process.env.CAP + '/meudia-' + est + '-' + t + '.png' }); }
+    }
+  }
+  await p.evaluate(() => { document.documentElement.setAttribute('data-estilo', 'atual'); document.documentElement.setAttribute('data-theme', 'light'); });
   assert.equal(await p.$('#hj-tipos.hj-rec') === null, true, 'sem barras recolhíveis');
   assert.ok(await p.$('#hj-tipos .hj-painel-sub, #hj-tipos + .hj-painel-sub') || (await p.textContent('#hj-tipos')).includes('Da mais urgente para a menos urgente'), 'explicação à vista');
   assert.match(await p.$eval('.trilho', e => getComputedStyle(e).backgroundImage), /gradient/, 'trilho escuro');
@@ -2823,6 +2807,32 @@ await passo('Configurações numa guia à parte (0.90.0): só a tela Configuraç
 
 /* ---------- Tarefas do Gestta (0.72.0): camada por cima do Gestta ---------- */
 const GT_EU = 'aaaaaaaaaaaaaaaaaaaaaaaa', GT_B = 'bbbbbbbbbbbbbbbbbbbbbbbb';
+// 0.110.0 · aba Saúde: o relatório (colunas da Saúde), os contatos, o histórico de e-mail e a configuração, tudo simulado e fictício
+function gtSaude(total) {
+  const COL = ['id', 'name', 'status', 'company_department.name', 'owner.name', '_due_date', 'legal_date', 'conclusion_date', 'on_time', 'fine', 'overdue', 'customer.code', 'customer.name', 'customer.cnpj', 'notify_customer', 'concluded_by.name'];
+  const dia = n => { const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() + n); return d.toISOString(); };
+  const util = n => { const d = new Date(); d.setHours(12, 0, 0, 0); let k = 0; while (k < n) { d.setDate(d.getDate() + 1); if (d.getDay() % 6) k++; } return d.toISOString(); };
+  const mesAnt = () => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1); d.setDate(15); d.setHours(12); return d.toISOString(); };
+  const id = n => 'f' + String(n).padStart(23, '0');
+  const A = ['101', 'CLIENTE ALFA LTDA', '11222333000181'], B = ['102', 'CLIENTE BETA ME', '22333444000190'];
+  const L = (n, nome, st, setor, dono, meta, legal, concl, fine, cli, notif, quem) => [id(n), nome, st, setor, dono, meta, legal || '', concl || '', '', fine ? 'true' : 'false', 'false', cli[0], cli[1], cli[2], notif ? 'true' : 'false', quem || ''];
+  const linhas = [
+    L(1, 'DCTF WEB', 'OPEN', 'Fiscal', 'Eu Mesmo', dia(0), dia(-1), '', true, A, true),
+    ...[2, 3, 4, 5, 6].map(n => L(n, 'CONFERÊNCIA ' + n, 'OPEN', 'Fiscal', 'Ana Teste', util(1), '', '', false, A, false)),
+    L(7, 'FOLHA DE PAGAMENTO', 'OPEN', 'Pessoal', '', dia(-20), '', '', false, B, true),
+    L(8, 'GUIA DO FGTS', 'DONE', 'Fiscal', 'Eu Mesmo', dia(-3), '', dia(-2), false, A, true, 'Eu Mesmo'),
+    L(9, 'DAS DO SIMPLES', 'DONE', 'Fiscal', 'Eu Mesmo', dia(-2), '', dia(-1), false, A, true, 'Eu Mesmo'),
+    ...Array.from({ length: 22 }, (_, i) => L(100 + i, 'ROTINA ' + i, 'DONE', 'Fiscal', 'Ana Teste', mesAnt(), '', mesAnt(), false, A, false, 'Ana Teste'))
+  ];
+  const T1 = 'e10000000000000000000001', T2 = 'e10000000000000000000002', cli = n => 'c1000000000000000000000' + n;
+  return {
+    'gesttaSaude:tarefas': { ok: true, perfil: { nome: 'Eu Mesmo', papelNome: total ? 'Administrador' : 'Analista', total, setores: [] }, colunas: COL, linhas: total ? linhas : linhas.filter(l => l[4] === 'Eu Mesmo' || l[15] === 'Eu Mesmo'), meses: [], emailNaoSaiu: 4, semTarefa: total ? 12 : null, lidoEm: new Date().toISOString() },
+    'gesttaSaude:contatos': { ok: true, porCnpj: { '11222333000181': [{ setor: 'Fiscal', ativo: true, temEmail: true }], '22333444000190': [{ setor: 'Pessoal', ativo: false, temEmail: true }] } },
+    'gesttaSaude:emails': { ok: true, porTarefa: { [id(8)]: [{ status: 'SENT', reason: '', quando: dia(-3) }, { status: 'NOT_SENT', reason: 'NOT_SENT_NO_CUSTOMER_ACCOUNTABLE', quando: dia(-2) }], [id(9)]: [{ status: 'DELIVERY', reason: '', quando: dia(-1) }] } },
+    'gesttaSaude:config': { ok: true, templates: [{ id: T1, nome: 'DCTF WEB', setor: 'Fiscal' }, { id: T2, nome: 'APURAÇÃO DO ICMS', setor: 'Fiscal' }], clientes: [1, 2, 3, 4, 5, 6].map(n => ({ id: cli(n), nome: 'EMPRESA EXEMPLO ' + n, cnpj: '0000000000000' + n })) },
+    'gesttaSaude:configClientes': { ok: true, porTemplate: { [T1]: [1, 2, 3, 4, 5, 6].map(cli), [T2]: [1, 2, 3, 4, 5].map(cli) } }
+  };
+}
 function gtTarefas() {
   const dia = n => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + n); return new Date(d.getTime() + 3 * 36e5).toISOString(); };
   const util = n => { const d = new Date(); d.setHours(0, 0, 0, 0); let k = 0; while (k < n) { d.setDate(d.getDate() + 1); if (d.getDay() % 6) k++; } return new Date(d.getTime() + 3 * 36e5).toISOString(); };
@@ -2842,7 +2852,7 @@ function gtTarefas() {
 }
 const gtResp = (total, itens) => ({ gesttaTarefas: { ok: true, ano: new Date().getFullYear(), mes: new Date().getMonth() + 1, quem: 'eu', perfil: { id: GT_EU, papelNome: total ? 'Administrador' : 'Analista', total, setores: [{ id: 's1', nome: 'Fiscal' }] }, itens: itens || gtTarefas(), dia: itens || gtTarefas(), total: 8, cortado: false, lidoEm: new Date().toISOString() },
   gesttaEquipe: { ok: true, pessoas: [{ id: GT_EU, nome: 'Eu Mesmo' }, { id: GT_B, nome: 'Pessoa Beta' }] },
-  gesttaTarefa: { ok: true, tarefa: { _id: 'f00000000000000000000001', name: 'DCTF WEB', company_department: { name: 'Fiscal' }, owner: { name: 'Eu Mesmo' }, legal_date: new Date().toISOString(), customer_task_steps: [{ _id: 'e00000000000000000000001', name: 'Conferir', order: 1, done: true }, { _id: 'e00000000000000000000002', name: 'Transmitir', order: 2, done: false, required: true }], company_documents: [{ _id: 'd00000000000000000000001', name: 'Recibo', has_documents_integration: true, temArquivo: false }] } },
+  gesttaTarefa: { ok: true, tarefa: { _id: 'f00000000000000000000001', name: 'DCTF WEB', company_department: { name: 'Fiscal' }, owner: { name: 'Eu Mesmo' }, legal_date: new Date().toISOString(), customer_task_steps: [{ _id: 'e00000000000000000000001', name: 'Conferir', order: 1, done: true }, { _id: 'e00000000000000000000002', name: 'Transmitir', order: 2, done: false, required: true }], company_documents: [{ _id: 'd00000000000000000000001', name: 'Recibo', has_documents_integration: true, temArquivo: false, arquivos: [{ nome: 'recibo-anterior.pdf', quando: '2026-11-10T12:00:00Z' }] }] } },
   gesttaAcao: { ok: true, tarefa: { _id: 'f00000000000000000000001', status: 'OPEN' } },
   gesttaHistorico: { ok: true, total: 4, paginas: 1, eventos: [
     { quando: new Date().toISOString(), rot: 'Documento não foi ao portal', tom: 'alerta', doc: 'Recibo DCTF', motivo: 'a pasta do portal não está configurada', quem: null, texto: '', auto: true },
@@ -2905,7 +2915,6 @@ await passo('app · 0.92.0: mudança feita na guia de Configurações vale na ho
 await passo('Gestta · Tarefas (0.77.0): Meu dia com o detalhe ao lado e a linha do tempo, Empresas com a ficha e a trilha, Lista densa, Obrigações, calendário, Fechamento e abrir no Gestta', async () => {
   const { p, fr } = await abrirGestta(gtResp(true));
   const sit = k => fr.$eval('.gt-sit[data-grupo="' + k + '"] b', e => e.textContent);
-  const filtros = async () => { if (!(await fr.$eval('#gt-filtros', d => d.open))) await fr.click('#gt-filtros summary'); };
   for (const k of ['impedimento', 'hoje', 'proximas', 'depois', 'feita']) assert.equal(await sit(k), '1', 'um em ' + k);
   assert.equal(await sit('agora'), '2', '0.87.0: multa e atraso juntos em Resolver agora');
   assert.equal(await fr.locator('.gt-sit[data-grupo="multa"], .gt-sit[data-grupo="atrasada"]').count(), 0);
@@ -2968,6 +2977,9 @@ await passo('Gestta · Tarefas (0.77.0): Meu dia com o detalhe ao lado e a linha
   await fr.click('.ge-emp[data-emp="c00000000000000000000001"]');
   await fr.click('.gf-st-btn[data-et="f00000000000000000000001"]');
   await fr.waitForSelector('#gt-painel.aberto .gp-passos');
+  // 0.110.0: o painel da tarefa cobre boa parte da tela (≥ 800 px numa janela de 1440) e os dados vão em três colunas
+  await fr.waitForFunction(() => document.querySelector('#gt-painel').getBoundingClientRect().width >= 800);
+  assert.equal(await fr.$eval('#gt-painel .gp-dl', d => getComputedStyle(d).gridTemplateColumns.split(' ').length), 3, 'dados em três colunas');
   await fr.click('#gp-prox'); await fr.waitForFunction(() => /2 de 3/.test(document.querySelector('#gt-painel .gp-nav').textContent));
   await fr.press('#gt-painel', 'Escape'); await fr.waitForSelector('#gt-painel', { state: 'hidden' });
   // Lista densa: por prazo, sem as concluídas; busca, situações e tipo filtram na hora
@@ -2975,17 +2987,22 @@ await passo('Gestta · Tarefas (0.77.0): Meu dia com o detalhe ao lado e a linha
   await fr.waitForSelector('.gl-r');
   assert.equal(await fr.locator('.gl-r').count(), 6);
   assert.deepEqual(await fr.$$eval('.gl-g b', l => l.map(e => e.textContent)), ['Gerando multa', 'Atrasadas', 'Com impedimento', 'Vencem hoje', 'Próximos 5 dias úteis', 'Mais adiante']);
+  assert.equal(await fr.locator('#gt-filtros').count(), 0, '0.109.0: sem o menu Filtros');
+  assert.equal(await fr.locator('#gt-filtrada').count(), 0, 'sem filtro, sem faixa');
   await fr.fill('#gt-q', 'gama'); assert.equal(await fr.locator('.gl-r').count(), 2, 'busca pela empresa');
+  // 0.109.0: visão filtrada bem à vista: faixa com a contagem e o que filtra, cada um com ×; o topo ganha a borda
+  assert.match(await fr.textContent('#gt-filtrada'), /Visão filtrada · mostrando 2 de 6 tarefas.*Busca: “gama”/);
+  assert.equal(await fr.$eval('.gt-topo', e => e.classList.contains('filtrado')), true);
+  if (process.env.CAP) for (const est of ['simples', 'atual']) for (const t of ['light', 'dark']) { await fr.evaluate(([e, x]) => { document.documentElement.setAttribute('data-estilo', e); document.documentElement.setAttribute('data-theme', x); }, [est, t]); await fr.waitForTimeout(100); await p.screenshot({ path: path.join(process.env.CAP, 'gestta-filtrada-' + est + '-' + t + '.png'), clip: { x: 0, y: 0, width: 1440, height: 330 } }); }
+  if (process.env.CAP) await fr.evaluate(() => { document.documentElement.setAttribute('data-estilo', 'simples'); document.documentElement.setAttribute('data-theme', 'light'); });
+  await fr.click('[data-tira="q"]'); assert.equal(await fr.locator('.gl-r').count(), 6, 'o × tira só aquele filtro');
+  assert.equal(await fr.locator('#gt-filtrada').count(), 0);
   await fr.fill('#gt-q', 'apuracao'); assert.equal(await fr.locator('.gl-r').count(), 1, 'busca sem acento');
   await fr.click('#gt-limpar'); assert.equal(await fr.locator('.gl-r').count(), 6);
   await fr.click('.gt-sit[data-grupo="agora"]');
   assert.equal(await fr.locator('.gl-r').count(), 2, 'multa + atrasadas');
   await fr.click('#gt-limpar');
-  await filtros(); await fr.click('.gt-chip[data-tipo="ACCOUNTING"]');
-  assert.equal(await fr.locator('.gl-r').count(), 1, 'só contábil');
-  await fr.click('#gt-limpar');
-  await filtros(); await fr.check('#gt-feitas'); assert.equal(await fr.locator('.gl-r').count(), 7, 'com as concluídas');
-  await fr.click('.gt-topo-prog'); assert.equal(await fr.$eval('#gt-filtros', d => d.open), false, 'clicar fora fecha o menu');
+  await fr.check('#gt-feitas'); assert.equal(await fr.locator('.gl-r').count(), 7, 'com as concluídas (a caixa fica à vista no topo)');
   await fr.click('[data-gl-col="empresa"]');
   assert.equal(await fr.$eval('.gl-r .gl-emp', e => e.textContent), '101Cliente Alfa Ltda', 'ordenada pela empresa');
   await fr.click('[data-gl-grupo="empresa"]');
@@ -3000,6 +3017,13 @@ await passo('Gestta · Tarefas (0.77.0): Meu dia com o detalhe ao lado e a linha
   assert.equal(await fr.locator('.gq tbody tr').count(), 3);
   assert.equal(await fr.$eval('.gq tbody tr:first-child .gq-b[data-et="f00000000000000000000001"]', b => b.className), 'gq-b gq-e-multa');
   if (process.env.CAP) await p.screenshot({ path: path.join(process.env.CAP, 'gestta-obrigacoes.png') });
+  // 0.108.1: coluna sem nada pendente não filtra (antes a tabela sumia)
+  const semPend = await fr.locator('.gq-h .gq-h-sem').count();
+  assert.ok(semPend > 0, 'há coluna toda concluída nos dados de teste');
+  assert.equal(semPend + await fr.locator('[data-gq-col]').count(), 7);
+  await fr.$eval('.gq-h .gq-h-sem', b => b.click());
+  assert.equal(await fr.locator('.gq tbody tr').count(), 3, 'a tabela continua inteira');
+  assert.equal(await fr.locator('#gq-tudo').count(), 0, 'nenhum filtro ligado');
   await fr.click('[data-gq-col="GUIA DO FGTS"]');
   assert.deepEqual(await fr.$$eval('.gq tbody .gq-emp b', l => l.map(e => e.textContent)), ['Cliente Beta ME']);
   await fr.click('.gq-b[data-et="f00000000000000000000004"]');
@@ -3015,11 +3039,16 @@ await passo('Gestta · Tarefas (0.77.0): Meu dia com o detalhe ao lado e a linha
   await fr.waitForSelector('#gt-quem-wrap:not([hidden])');
   const quem = async v => { await fr.click('#gt-quem-btn'); await fr.waitForSelector('#gt-quem-pop:not([hidden])'); await fr.click('#gt-quem-lista [data-quem="' + v + '"]'); };
   await fr.click('#gt-quem-btn');
-  assert.deepEqual(await fr.$$eval('#gt-quem-lista [data-quem]', o => o.map(x => x.textContent.trim())), ['EuMinhas', '—Sem responsável', 'PBPessoa Beta'], 'a própria pessoa não se repete na equipe');
-  await fr.fill('#gt-quem-busca', 'beta'); assert.equal(await fr.locator('#gt-quem-lista [data-quem]').count(), 1, 'a busca filtra a equipe');
+  // 0.106.0: botão > setor (só os com tarefa aberta) > uma ou mais pessoas
+  await fr.waitForSelector('#gt-quem-lista [data-gt-setor]');
+  assert.deepEqual(await fr.$$eval('#gt-quem-lista [data-quem]', o => o.map(x => x.textContent.trim())), ['EuMinhas', '—Sem responsável']);
+  await fr.fill('#gt-quem-busca', 'pess'); assert.equal(await fr.locator('#gt-quem-lista [data-gt-setor]').count(), 1, 'a busca filtra os setores');
   await fr.press('#gt-quem-busca', 'Enter');
-  await fr.waitForFunction(b => (window.__msgs || []).some(m => m.cmd === 'gesttaTarefas' && m.quem === b), GT_B);
-  assert.match(await fr.textContent('#gt-quem-btn'), /Pessoa Beta/);
+  await fr.waitForSelector('#gt-quem-lista [data-gt-pessoa]');
+  await fr.check('#gt-quem-lista [data-gt-pessoa="' + GT_B + '"]');
+  await fr.press('#gt-quem-busca', 'Enter');
+  await fr.waitForFunction(b => (window.__msgs || []).some(m => m.cmd === 'gesttaTarefas' && m.quem === 'setor:Pessoal|' + b), GT_B);
+  assert.match(await fr.textContent('#gt-quem-btn'), /Setor Pessoal · Pessoa Beta/);
   await quem('sem');
   await fr.waitForFunction(() => (window.__msgs || []).some(m => m.cmd === 'gesttaTarefas' && m.quem === 'sem'));
   // Fechamento do mês: geral, por setor e por analista; clicar numa barra filtra; só com pendência; empresa do escritório fora
@@ -3035,13 +3064,7 @@ await passo('Gestta · Tarefas (0.77.0): Meu dia com o detalhe ao lado e a linha
   await fr.check('#gt-pend'); assert.equal(await fr.locator('.gt-tr').count(), 2, 'só com pendência');
   await fr.click('#gt-flimpar');
   assert.ok((await fr.evaluate(() => window.__msgs.filter(m => m.cmd === 'gesttaFechamento').length)) >= 1);
-  // de volta à lista: o setor (do relatório) filtra
   await fr.click('#abas [data-aba="lista"]');
-  await filtros();
-  await fr.selectOption('#gt-setor', 'Pessoal');
-  assert.deepEqual(await fr.$$eval('.gl-r .gl-nome b', l => l.map(e => e.textContent)), ['Folha de Pagamento', 'Guia do FGTS', 'eSocial Mensal'], 'só as do Pessoal, com a concluída (o setor vem do relatório, pelo id)');
-  await fr.selectOption('#gt-setor', '');
-  await fr.click('.gt-topo-prog');
   // nada das tarefas vai ao armazenamento da extensão
   assert.ok(!JSON.stringify(await fr.evaluate(() => localStorage.getItem('__mem') || '')).includes('CLIENTE ALFA'), 'tarefas fora do armazenamento');
   // abrir: a camada fecha e o próprio Gestta vai para a tarefa
@@ -3097,6 +3120,9 @@ await passo('Gestta · Tarefas (0.93.0): no detalhe, marcar etapa, impedimento c
     assert.equal(await fr.$eval('#gd-det #gp-com', t => t.value), '', 'o rascunho some depois de gravar');
     // documento: escolher o arquivo, conferir o aviso do portal e confirmar; vai o arquivo em base64 com nome e tipo
     assert.match(await fr.textContent('#gd-det .gp-doc'), /Recibo.*vai ao Portal do Cliente.*Enviar arquivo/s);
+    // 0.110.0: o nome do arquivo já anexado aparece embaixo do documento (só o nome e o dia; nunca o endereço)
+    assert.match(await fr.textContent('#gd-det .gp-doc .gp-doc-arqs'), /recibo-anterior\.pdf.*10\/11/s);
+    assert.equal(await fr.$$eval('#gd-det .gp-doc-arqs a[href]', l => l.length), 0, 'o nome do arquivo não vira link');
     const [fc] = await Promise.all([p.waitForEvent('filechooser'), fr.click('#gd-det [data-gp-doc="d00000000000000000000001"]')]);
     await fc.setFiles({ name: 'recibo.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 teste') });
     await fr.waitForSelector('#gd-det .gp-conf');
@@ -3164,6 +3190,8 @@ await passo('Gestta · Soltar documentos (0.102.0): fora de um item vai ao Expre
         let r = null;
         if (m.cmd === 'gesttaAcao' && m.acao === 'expressLer') {
           (window.__msgs ||= []).push(m);
+          // 0.110.0: o primeiro fica preso até o teste soltar, para conferir a tela durante a leitura
+          if (m.arquivo.nome === 'guia-fgts.pdf' && !window.__soltou) return new Promise(res => { window.__solta = () => { window.__soltou = true; res(chrome.runtime.sendMessage(m, cb)); }; });
           r = m.arquivo.nome === 'guia-fgts.pdf'
             ? { ok: true, express: { id: 'a00000000000000000000001', achou: true, tipo: 'EXPRESS_AUTOMATIC', tarefa: { id: 'f00000000000000000000004', nome: 'GUIA DO FGTS', competencia: '2026-10-01', cliente: { id: 'c00000000000000000000002', nome: 'CLIENTE BETA ME' } }, documento: { id: 'd00000000000000000000002', nome: 'Guia FGTS' } } }
             : { ok: true, express: { id: m.arquivo.nome === 'recibo-alfa.pdf' ? 'a00000000000000000000002' : 'a00000000000000000000003', achou: false, tipo: 'EXPRESS_NEGATIVE', erro: '' } };
@@ -3190,7 +3218,28 @@ await passo('Gestta · Soltar documentos (0.102.0): fora de um item vai ao Expre
     assert.match(await fr.textContent('#gs-dlg'), /Ler 3 arquivos com o Express\?[\s\S]*Nada é vinculado antes de você conferir/);
     assert.equal(await fr.evaluate(() => (window.__msgs || []).filter(m => m.acao === 'expressLer').length), 0, 'nada sai antes de Ler');
     await fr.click('[data-gs="ler"]');
-    await fr.waitForSelector('[data-gs="vincular"]');
+    // 0.110.0: durante a leitura, um cartão no canto, sem fundo nem janela por cima; a tela atrás continua clicável
+    await fr.waitForSelector('#gs-dlg.canto .gs-prog');
+    assert.equal(await fr.$eval('#gs-dlg', d => d.getAttribute('aria-modal')), null, 'não é janela modal');
+    assert.match(await fr.textContent('#gs-dlg'), /Lendo com o Express[\s\S]*0 de 3 arquivos lidos[\s\S]*Lendo guia-fgts\.pdf[\s\S]*Recolher[\s\S]*Cancelar/);
+    const caixa = await fr.$eval('#gs-dlg', d => { const r = d.getBoundingClientRect(); return { dir: innerWidth - r.right, baixo: innerHeight - r.bottom, larg: r.width, fundo: getComputedStyle(d).backgroundColor }; });
+    assert.ok(caixa.dir <= 24 && caixa.baixo <= 24 && caixa.larg <= 400, 'no canto de baixo à direita: ' + JSON.stringify(caixa));
+    assert.match(caixa.fundo, /rgba\(0, 0, 0, 0\)|transparent/, 'sem fundo escurecendo a tela');
+    assert.equal(await fr.evaluate(() => { const b = document.querySelector('[data-aba="lista"]').getBoundingClientRect(); const el = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); return !!(el && el.closest('[data-aba="lista"]')); }), true, 'a aba atrás recebe o clique');
+    await fr.click('[data-aba="lista"]'); await fr.waitForSelector('[data-aba="lista"][aria-selected="true"]');
+    if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/gestta-soltar-canto-' + estilo + '.png' });
+    // Esc recolhe; Expandir volta
+    await fr.press('#gs-dlg [data-gs="recolher"]', 'Escape');
+    await fr.waitForSelector('#gs-dlg.recolhido [data-gs="expandir"]');
+    assert.match(await fr.textContent('#gs-dlg'), /Lendo 0 de 3/);
+    await fr.click('[data-gs="expandir"]'); await fr.waitForSelector('#gs-dlg.canto:not(.recolhido) .gs-prog');
+    await fr.evaluate(() => window.__solta());
+    // terminada a leitura, o cartão avisa e só abre a escolha pelo botão
+    await fr.waitForSelector('#gs-dlg.canto [data-gs="escolher"]');
+    assert.match(await fr.textContent('#gs-dlg'), /3 arquivos esperam o destino[\s\S]*Nada foi vinculado/);
+    assert.equal(await fr.$('[data-gs="vincular"]'), null, 'a escolha não abre sozinha');
+    await fr.click('[data-gs="escolher"]');
+    await fr.waitForSelector('#gs-dlg[aria-modal="true"] [data-gs="vincular"]');
     const txt = await fr.textContent('#gs-dlg');
     assert.match(txt, /guia-fgts\.pdf[\s\S]*O Express achou o destino/);
     assert.match(txt, /recibo-alfa\.pdf[\s\S]*O Express não achou\. A extensão sugere:[\s\S]*CNPJ de Cliente Alfa Ltda/i);
@@ -3205,6 +3254,10 @@ await passo('Gestta · Soltar documentos (0.102.0): fora de um item vai ao Expre
     assert.match(await fr.textContent('[data-gs="vincular"]'), /Vincular os 2 arquivos/);
     await fr.click('[data-gs="vincular"]');
     await fr.waitForFunction(() => /Pronto/.test(document.querySelector('#gs-dlg h2').textContent));
+    // o "Pronto" fica no cartão do canto; o detalhe abre pelo botão
+    assert.ok(await fr.$('#gs-dlg.canto'), 'o Pronto fica no canto');
+    assert.match(await fr.textContent('#gs-dlg'), /2 arquivos vinculados/);
+    await fr.click('[data-gs="ver"]'); await fr.waitForSelector('#gs-dlg[aria-modal="true"] .gs-lista');
     const conf = await fr.evaluate(() => window.__msgs.filter(m => m.acao === 'expressConfirmar').map(m => [m.express, m.tarefa, m.documento]));
     assert.deepEqual(conf.map(c => c[0]), ['a00000000000000000000001', 'a00000000000000000000002']);
     assert.deepEqual(conf[0].slice(1), ['f00000000000000000000004', 'd00000000000000000000002']);
@@ -3214,16 +3267,81 @@ await passo('Gestta · Soltar documentos (0.102.0): fora de um item vai ao Expre
     await p.close();
   }
 });
+await passo('Gestta · Saúde (0.110.0): carga por dia com o ritmo, prioridade, contatos e e-mails só pelo botão, configuração só para a coordenação; nada é escrito', async () => {
+  const { p, fr } = await abrirGestta(Object.assign(gtResp(true), gtSaude(true)));
+  await fr.waitForSelector('.gt-topo');
+  await fr.press('body', '8');
+  await fr.waitForSelector('.gsa-topo');
+  const sm = () => fr.evaluate(() => (window.__msgs || []).filter(m => m.cmd === 'gesttaSaude').map(m => m.parte));
+  assert.deepEqual(await sm(), ['tarefas'], 'ao abrir, só o relatório; contatos, e-mails e configuração esperam o botão');
+  assert.match(await fr.textContent('.gsa-topo'), /4\s*e-mails não saíram no mês[\s\S]*1\s*abertas sem responsável[\s\S]*1\s*empresas atrasadas \+15 dias/);
+  // carga: Ana tem 5 no próximo dia útil e ritmo 0,5 (22 concluídas em ~42 dias úteis): não vai dar tempo
+  const ana = await fr.$eval('.gsa-grade', t => [...t.querySelectorAll('tbody tr')].find(r => /Ana Teste/.test(r.textContent)).textContent);
+  assert.match(ana, /Ana Teste.*1 dia acima/s);
+  assert.ok(await fr.$('.gsa-cel.acima[data-gsa-cel^="Ana Teste|"]'), 'a célula acima do ritmo fica marcada');
+  // prioridade: a de multa ou data legal vencida vem primeiro
+  assert.match(await fr.textContent('.gsa-prio li:first-child'), /Multa ou data legal vencida.*Dctf Web/is);
+  // a célula abre a lista daquelas tarefas e o lote
+  await fr.click('.gsa-cel.acima[data-gsa-cel^="Ana Teste|"]');
+  await fr.waitForSelector('.gsa-cel-lista');
+  assert.match(await fr.textContent('.gsa-cel-lista'), /Ana Teste.*5 tarefas/s);
+  await fr.click('[data-gsa-lote]'); await fr.waitForSelector('.gsa-cel-lista .gl-lote');
+  assert.match(await fr.textContent('.gsa-cel-lista .gl-lote'), /5/);
+  // contatos: só pelo botão; Beta tem o contato do Pessoal inativo
+  await fr.click('[data-gsa-ler="contatos"]');
+  await fr.waitForFunction(() => /estão inativos/.test(document.querySelector('#gsa-contatos').textContent));
+  const ct = await fr.textContent('#gsa-contatos');
+  assert.match(ct, /Cliente Beta Me[\s\S]*Pessoal[\s\S]*Os contatos do setor estão inativos/i);
+  assert.doesNotMatch(ct, /Cliente Alfa Ltda/i, 'Alfa tem contato ativo com e-mail no Fiscal');
+  const pc = await fr.evaluate(() => window.__msgs.filter(m => m.parte === 'contatos').map(m => m.cnpjs));
+  assert.deepEqual(pc[0].sort(), ['11222333000181', '22333444000190'], 'só os CNPJs das tarefas que avisam o cliente');
+  // e-mails: só as que avisam e foram concluídas nos últimos 7 dias
+  await fr.click('[data-gsa-ler="emails"]');
+  await fr.waitForFunction(() => /não tem usuário neste setor/.test(document.querySelector('#gsa-emails').textContent));
+  assert.match(await fr.textContent('#gsa-emails'), /1 não saiu[\s\S]*1 entregue[\s\S]*0 sem e-mail[\s\S]*Guia do Fgts[\s\S]*o cliente não tem usuário neste setor/i);
+  assert.deepEqual((await fr.evaluate(() => window.__msgs.filter(m => m.parte === 'emails').map(m => m.ids)))[0].sort(), ['f00000000000000000000008', 'f00000000000000000000009']);
+  // configuração: a empresa 6 não recebe a Apuração do ICMS, que 83% das parecidas recebem
+  await fr.click('[data-gsa-ler="config"]');
+  await fr.waitForFunction(() => /Falta/.test(document.querySelector('#gsa-config').textContent) && document.querySelector('#gsa-config table'));
+  assert.match(await fr.textContent('#gsa-config'), /12 clientes ativos sem nenhuma tarefa[\s\S]*Empresa Exemplo 6[\s\S]*Apuração do Icms[\s\S]*83%/i);
+  // capacidade fixa: só números, só neste navegador
+  await fr.click('[data-gsa-cap="Ana Teste"]'); await fr.fill('[data-gsa-cap-in="Ana Teste"]', '6'); await fr.press('[data-gsa-cap-in="Ana Teste"]', 'Enter');
+  await fr.waitForFunction(() => !document.querySelector('.gsa-cel.acima[data-gsa-cel^="Ana Teste|"]'));
+  assert.equal(await fr.evaluate(() => localStorage.getItem('oc.gt.cap')), '{"Ana Teste":6}');
+  // a tarefa abre o painel ao lado
+  await fr.click('.gsa-prio li:first-child [data-gsa-tarefa]');
+  await fr.waitForSelector('#gt-painel.aberto');
+  const escritas = await fr.evaluate(() => (window.__msgs || []).filter(m => /gesttaAcao|gesttaTirar|gesttaPasta/.test(m.cmd)).length);
+  assert.equal(escritas, 0, 'a aba Saúde não escreve nada');
+  if (process.env.CAP) {
+    await fr.press('#gt-painel', 'Escape'); await p.screenshot({ path: process.env.CAP + '/gestta-saude-gestor.png' });
+    await fr.evaluate(() => document.querySelector('#gsa-contatos').scrollIntoView()); await p.screenshot({ path: process.env.CAP + '/gestta-saude-gestor-2.png' });
+    await fr.evaluate(() => document.querySelector('#gsa-config').scrollIntoView()); await p.screenshot({ path: process.env.CAP + '/gestta-saude-gestor-3.png' });
+  }
+  await p.context().close();
+  // analista: só as tarefas dele e sem o bloco da configuração
+  const a = await abrirGestta(Object.assign(gtResp(false), gtSaude(false)));
+  await a.fr.click('#abas [data-aba="saude"]'); await a.fr.waitForSelector('.gsa-topo');
+  assert.equal(await a.fr.$('#gsa-config'), null, 'o analista não vê a configuração');
+  assert.match(await a.fr.textContent('#subtitulo'), /as suas tarefas/);
+  assert.doesNotMatch(await a.fr.textContent('.gsa-grade'), /Ana Teste/);
+  await a.p.context().close();
+});
 await passo('Gestta · Tarefas (0.87.0): atalhos com ?, densidade compacta, Fechamento filtrado pelos números, abrir pelo Meu dia e voltar ao mesmo ponto', async () => {
   const { p, fr } = await abrirGestta(gtResp(true));
   await fr.waitForSelector('.gd-it.on');
   await fr.press('body', '?'); await fr.waitForSelector('#gt-atalhos:not([hidden])');
   assert.match(await fr.textContent('#gt-atalhos'), /Trocar de aba.*Abrir a tarefa escolhida no Gestta.*Buscar/s);
   await fr.press('#gt-atalhos-fechar', 'Escape'); await fr.waitForSelector('#gt-atalhos', { state: 'hidden' });
-  await fr.click('#gt-filtros summary'); await fr.click('[data-dens="compacta"]');
-  assert.equal(await fr.evaluate(() => document.documentElement.dataset.densidade), 'compacta');
-  assert.equal(await fr.evaluate(() => localStorage.getItem('oc.gt.dens')), 'compacta', 'a escolha fica no navegador');
-  await fr.click('#gt-filtros summary');
+  // 0.109.0: a densidade mudou para Configurações › Aparência; a guia do Gestta aberta acompanha na hora
+  assert.equal(await fr.locator('[data-dens]').count(), 0, 'densidade fora da tela das tarefas');
+  await fr.evaluate(() => { localStorage.setItem('oc.gt.dens', 'compacta'); dispatchEvent(new StorageEvent('storage', { key: 'oc.gt.dens', newValue: 'compacta' })); });      // como quando muda na guia de Configurações
+  await fr.waitForFunction(() => document.documentElement.dataset.densidade === 'compacta');
+  const cfg = await abrirApp('#/config');
+  await cfg.click('[data-dens-op="compacta"]');
+  assert.equal(await cfg.evaluate(() => localStorage.getItem('oc.gt.dens')), 'compacta', 'Configurações › Aparência grava a densidade no navegador');
+  assert.equal(await cfg.$eval('[data-dens-op="compacta"]', b => b.getAttribute('aria-checked')), 'true');
+  assert.deepEqual(cfg.erros, []);
   // Fechamento: os números filtram as empresas
   await fr.click('#abas [data-aba="fech"]'); await fr.waitForSelector('.gt-bar');
   const antes = await fr.locator('.gt-tr:not(.gt-tr-cab)').count();
@@ -3252,8 +3370,8 @@ await passo('Gestta · Tarefas: no Meu dia, Enter abre a tarefa escolhida no Ges
   const s = await abrirGestta({ gesttaTarefas: { ok: false, semSessao: true, erro: 'sem sessão do Gestta nesta aba (faça login)' } });
   assert.match(await s.fr.textContent('.faixa'), /Sem sessão no Gestta\..*faça login/s);
   const medir = require('./contraste-lib.js'), ruins = [];
-  for (const estilo of ['simples', 'atual']) for (const tema of ['light', 'dark']) for (const modo of ['dia', 'historico', 'empresas', 'tempo', 'lista', 'painel', 'quadro', 'calendario', 'fechamento', 'quem', 'mespop', 'atalhos']) {
-    const { p, fr } = await abrirGestta(gtResp(true), { estilo });
+  for (const estilo of ['simples', 'atual']) for (const tema of ['light', 'dark']) for (const modo of ['dia', 'historico', 'empresas', 'tempo', 'lista', 'painel', 'quadro', 'calendario', 'fechamento', 'quem', 'mespop', 'atalhos', 'saude']) {
+    const { p, fr } = await abrirGestta(Object.assign(gtResp(true), gtSaude(true)), { estilo });
     await p.emulateMedia({ reducedMotion: 'reduce' });
     await fr.evaluate(t => document.documentElement.setAttribute('data-theme', t), tema);
     const aba = { historico: 'dia', tempo: 'empresas', painel: 'lista', fechamento: 'fech', quem: 'dia', mespop: 'dia', atalhos: 'dia' }[modo] || modo;
@@ -3267,8 +3385,16 @@ await passo('Gestta · Tarefas: no Meu dia, Enter abre a tarefa escolhida no Ges
     if (modo === 'quem') { await fr.waitForSelector('#gt-quem-wrap:not([hidden])'); await fr.click('#gt-quem-btn'); }
     if (modo === 'mespop') await fr.click('#gt-mes-rot');
     if (modo === 'atalhos') { await fr.waitForSelector('.gd-it'); await fr.press('body', '?'); }
-    if (modo === 'lista') { await fr.click('#gt-filtros summary'); await fr.check('#gt-feitas'); await fr.click('#gt-filtros summary'); }
+    if (modo === 'lista') await fr.check('#gt-feitas');
+    if (modo === 'saude') {   // 0.110.0: com os blocos lidos e uma célula aberta
+      await fr.waitForSelector('.gsa-topo');
+      await fr.click('[data-gsa-ler="contatos"]'); await fr.waitForSelector('#gsa-contatos table');
+      await fr.click('[data-gsa-ler="emails"]'); await fr.waitForSelector('#gsa-emails table');
+      await fr.click('[data-gsa-ler="config"]'); await fr.waitForSelector('#gsa-config table');
+      await fr.click('.gsa-cel.acima'); await fr.waitForSelector('.gsa-cel-lista');
+    }
     await fr.waitForTimeout(400);
+    if (process.env.CAP && modo === 'saude') await p.screenshot({ path: path.join(process.env.CAP, 'gestta-saude-' + estilo + '-' + tema + '.png'), fullPage: true });
     if (process.env.CAP && ['dia', 'empresas', 'quadro', 'lista', 'fechamento', 'quem', 'mespop', 'atalhos'].includes(modo)) await p.screenshot({ path: path.join(process.env.CAP, 'gestta-' + modo + '-' + estilo + '-' + tema + '.png') });
     const r = await fr.evaluate(([m, min]) => eval('(' + m + ')')(min), [medir.toString(), 4.5]);
     for (const x of r) ruins.push(estilo + '/' + tema + ' · ' + modo + ' · "' + x.texto + '" ' + x.fg + ' sobre ' + x.bg + ' = ' + x.r + ':1');
@@ -3308,6 +3434,17 @@ await passo('Gestta · 0.103.0: ver todas as tarefas de um setor, filtrar pela s
     await fr.click('.gl-r');
     await fr.waitForSelector('#gt-painel .gp-cli');
     assert.match(await fr.textContent('#gt-painel .gp-cli'), /12\.345\.678\/0001-90/);
+    // 0.109.1: o Copiar copia de verdade (o quadro tem a permissão) e, se não conseguir, diz que não copiou
+    assert.equal(await (await fr.frameElement()).getAttribute('allow'), 'clipboard-write');
+    await fr.evaluate(() => { window.__copiado = []; Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: t => { window.__copiado.push(t); return Promise.resolve(); } } }); });
+    await fr.click('#gt-painel .gp-copiar[data-copiar="12.345.678/0001-90"], #gt-painel .gp-copiar[data-copiar="12345678000190"]');
+    await fr.waitForFunction(() => /Copiado/.test(document.querySelector('#gt-painel .gp-copiar.ok').textContent));
+    assert.match((await fr.evaluate(() => window.__copiado))[0], /12\.?345\.?678\/?0001-?90/);
+    await fr.waitForFunction(() => !document.querySelector('#gt-painel .gp-copiar.ok'));
+    await fr.evaluate(() => { Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => Promise.reject(new Error('negado')) } }); document.execCommand = () => false; });
+    await fr.click('#gt-painel .gp-copiar');
+    await fr.waitForSelector('#gt-painel .gp-copiar.erro');
+    assert.match(await fr.textContent('#gt-painel .gp-copiar.erro'), /Não copiou/, 'falha não vira "Copiado"');
     assert.match(await fr.textContent('#gt-painel .gp-topo'), /Desconsiderada/);
     assert.ok(!(await fr.$('#gt-painel [data-gp-acao]')), 'desconsiderada não tem ação');
     assert.ok(!(await fr.$('#gt-painel [data-gp-doc]')) && !(await fr.$('#gt-painel [data-gp-drop]')), '0.104.0: nem enviar arquivo');
@@ -3315,12 +3452,30 @@ await passo('Gestta · 0.103.0: ver todas as tarefas de um setor, filtrar pela s
     if (process.env.CAP) { await fr.waitForTimeout(700); await p.screenshot({ path: path.join(process.env.CAP, 'gestta-detalhe-cnpj-' + estilo + '.png') }); }
     await p.keyboard.press('Escape');
     await fr.click('#gt-limpar');
-    // De quem: os setores aparecem antes das pessoas; o setor lê as tarefas de todos dele e separa pelo relatório
+    // 0.106.0: De quem em dois passos: o botão mostra só os setores com tarefa aberta; o setor mostra as pessoas dele para marcar
     await fr.waitForSelector('#gt-quem-wrap:not([hidden])');
     await fr.click('#gt-quem-btn');
-    assert.deepEqual(await fr.$$eval('#gt-quem-lista [data-quem]', l => l.map(b => b.textContent.trim()).slice(0, 4)), ['EuMinhas', '—Sem responsável', '▦Setor Contábil · todas as tarefas', '▦Setor Fiscal · todas as tarefas']);
-    assert.deepEqual(await fr.$$eval('#gt-quem-lista .gt-quem-sec', l => l.map(x => x.textContent)), ['Setores', 'Pessoas'], '0.104.0: setores e pessoas separados');
-    await fr.click('#gt-quem-lista [data-quem="setor:Fiscal"]');
+    await fr.waitForSelector('#gt-quem-lista [data-gt-setor]');
+    assert.deepEqual(await fr.$$eval('#gt-quem-lista [data-quem]', l => l.map(b => b.dataset.quem)), ['eu', 'sem'], 'no 1º passo, sem a lista de pessoas');
+    assert.deepEqual(await fr.$$eval('#gt-quem-lista [data-gt-setor]', l => l.map(b => b.dataset.gtSetor)), ['Fiscal', 'Pessoal'], 'só setores com tarefa aberta (Contábil não tem)');
+    assert.match(await fr.textContent('#gt-quem-lista [data-gt-setor="Fiscal"]'), /3 abertas/);
+    await fr.click('#gt-quem-lista [data-gt-setor="Fiscal"]');
+    await fr.waitForSelector('#gt-quem-lista [data-gt-pessoa]');
+    assert.ok(!(await fr.$('#gt-quem-pop[hidden]')), 'o popover continua aberto no 2º passo');
+    assert.deepEqual(await fr.$$eval('#gt-quem-lista [data-gt-pessoa]', l => l.map(c => c.closest('label').textContent.trim())), ['EMEu Mesmo3 abertas', 'PBPessoa Beta']);
+    if (process.env.CAP) await p.screenshot({ path: path.join(process.env.CAP, 'gestta-dequem-setor-' + estilo + '.png') });
+    await fr.check('#gt-quem-lista [data-gt-pessoa="' + GT_B + '"]');
+    assert.equal((await fr.textContent('[data-gt-aplicar]')).trim(), 'Ver as tarefas de 1 pessoa');
+    await fr.click('[data-gt-aplicar]');
+    await fr.waitForFunction(b => (window.__msgs || []).some(m => m.cmd === 'gesttaTarefas' && m.quem === 'setor:Fiscal|' + b), GT_B);
+    await fr.waitForFunction(() => /Setor Fiscal · Pessoa Beta/.test(document.querySelector('#gt-quem-btn').textContent));
+    // de novo, sem marcar ninguém: todas as tarefas do setor
+    await fr.click('#gt-quem-btn');
+    await fr.click('#gt-quem-lista [data-gt-setor="Fiscal"]');
+    await fr.waitForSelector('#gt-quem-lista [data-gt-pessoa]');
+    await fr.uncheck('#gt-quem-lista [data-gt-pessoa="' + GT_B + '"]');
+    assert.equal((await fr.textContent('[data-gt-aplicar]')).trim(), 'Ver todas as tarefas do setor');
+    await fr.click('[data-gt-aplicar]');
     await fr.waitForFunction(() => (window.__msgs || []).some(m => m.cmd === 'gesttaTarefas' && m.quem === 'setor:Fiscal'));
     await fr.waitForFunction(() => /todas as tarefas do setor Fiscal/.test(document.querySelector('#vista').textContent) && (window.__msgs || []).some(m => m.cmd === 'gesttaFechamento'));
     assert.match(await fr.textContent('#gt-quem-btn'), /Setor Fiscal/);
@@ -3434,10 +3589,16 @@ await passo('Gestta · Envios ao portal (0.96.0, 0.100.3): um destino por docume
     assert.match(txt, /2 · Tirar da lista[\s\S]*Recibo Interno/); assert.match(txt, /2 · Tirar da lista[\s\S]*Pasta fora da 9999[\s\S]*Contrato Social[\s\S]*não foi montada a partir da empresa 9999/);
     assert.match(txt, /Pastas fora da empresa 9999[\s\S]*Empresa Exemplo[\s\S]*Contrato Social[\s\S]*Legal › Contratos/);
     assert.ok(!/1 · Reenviar[\s\S]*Cliente Ficticio E5[\s\S]*2 · Tirar/i.test(txt), 'o erro de envio de pasta fora da 9999 não fica para reenviar');
-    assert.match(txt, /Templates em risco[\s\S]*Guia FGTS Rescisório[\s\S]*parecido com[\s\S]*Guia FGTS/);
-    // 0.100.3: o botão leva ao cadastro do template no Gestta
-    assert.equal(await fr.getAttribute('.gte-tpl.nao a[href$="' + T2 + '/details"]', 'href'), 'https://app.gestta.com.br/admin/#/sidebar/document/edit/' + T2 + '/details');
-    assert.ok(await fr.$('.gte-risco a[href$="/sidebar/document/edit/e00000000000000000000005/details"]'), 'o risco abre o template');
+    // 0.107.0: "em risco" virou "Para ciência": fora dos números do topo, recolhido e sem botão principal
+    assert.ok(!/em risco/.test(txt) && !(await fr.$('[data-gte-f="risco"]')), 'sem número de pendência para o risco');
+    assert.match(txt, /Para ciência: 2 templates sem pasta parecidos com os que vão ao portal[\s\S]*Não é pendência/);
+    assert.ok(!(await fr.$('.gte-ciencia .gte-risco')), 'recolhido de fábrica');
+    await fr.click('[data-gte-ciencia]');
+    await fr.waitForSelector('.gte-ciencia .gte-risco');
+    assert.match(await fr.textContent('.gte-ciencia'), /Guia FGTS Rescisório[\s\S]*parecido com Guia FGTS/);
+    assert.ok(!(await fr.$('.gte-ciencia .btn-primary')) && !(await fr.$('[data-gte-pastas="risco"]')), 'sem ação em destaque nem em lote');
+    assert.ok(await fr.$('.gte-ciencia a[href$="/sidebar/document/edit/e00000000000000000000005/details"]'), 'abre o template no Gestta');
+    if (process.env.CAP) { await fr.$eval('.gte-ciencia', e => e.scrollIntoView({ block: 'center' })); await p.screenshot({ path: path.join(process.env.CAP, 'gestta-envios-ciencia-' + estilo + '.png') }); }
     assert.ok(await fr.$('.gte-risco a[href$="/sidebar/document/edit/e00000000000000000000007/details"]'), 'a pasta fora da 9999 abre o template');
     // os números filtram; ver os documentos de um template
     await fr.click('[data-gte-f="naoVai"]');
@@ -3502,16 +3663,14 @@ await passo('Gestta · Envios ao portal (0.96.0, 0.100.3): um destino por docume
       await fr.waitForFunction((t) => (window.__msgs || []).some(m => m.cmd === 'gesttaPasta' && m.template === t), T2);
       const mp = await fr.evaluate((t) => window.__msgs.find(m => m.cmd === 'gesttaPasta' && m.template === t), T2);
       assert.equal(mp.modelo, T1, 'a pasta vem do template parecido, relida no service worker');
-      // 0.99.0: risco com mais de um template ganha "Usar as pastas sugeridas" (um por vez, uma confirmação)
-      await fr.waitForSelector('[data-gte-pastas="risco"]:not([disabled])');
-      assert.match(await fr.textContent('[data-gte-pastas="risco"]'), /Usar as pastas sugeridas \(2\)/);
-      await fr.click('[data-gte-pastas="risco"]');
+      // 0.107.0: no "Para ciência" a pasta é posta um template por vez, só se ele deveria ir
+      await fr.waitForSelector('.gte-topo');
+      if (!(await fr.$('.gte-ciencia .gte-risco'))) await fr.click('[data-gte-ciencia]');
+      await fr.click('.gte-ciencia [data-gte-pasta="e00000000000000000000005"]');
       await fr.waitForSelector('.gte-conf');
-      assert.match(await fr.textContent('.gte-conf'), /Usar a pasta sugerida em 2 templates\?[\s\S]*Guia FGTS Mensal Filial” → Pessoal › Guias[\s\S]*Guia FGTS Rescisório” → Pessoal › Guias/);
-      const antes = await fr.evaluate(() => window.__msgs.filter(m => m.cmd === 'gesttaPasta').length);
+      assert.match(await fr.textContent('.gte-conf'), /Usar a pasta Pessoal › Guias no template “Guia FGTS Rescisório”/);
       await fr.click('[data-gte-confirmar]');
-      await fr.waitForFunction((n) => window.__msgs.filter(m => m.cmd === 'gesttaPasta').length === n + 2, antes, { timeout: 8000 });
-      assert.deepEqual(await fr.evaluate(() => window.__msgs.filter(m => m.cmd === 'gesttaPasta').slice(-2).map(m => [m.template, m.modelo])), [['e00000000000000000000006', 'e00000000000000000000004'], ['e00000000000000000000005', 'e00000000000000000000004']]);
+      await fr.waitForFunction(() => (window.__msgs || []).some(m => m.cmd === 'gesttaPasta' && m.template === 'e00000000000000000000005'));
       await fr.waitForSelector('.gte-topo');
     }
     assert.ok((await fr.evaluate(() => (window.__msgs || []).filter(m => m.cmd === 'gesttaEnvios').length)) >= 1);

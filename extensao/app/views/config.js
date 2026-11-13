@@ -3,7 +3,7 @@
  * Feriados, Palavras (como a extensão lê os textos) e Avançado (Control Hub, regras do escritório, testes de leitura, aprender ações e diagnóstico; views/avancado.js).
  * Grava só o que difere do padrão em vigor (__v: 2), como a página de opções. */
 import { estado, itens, enviar, aoMudar, escolherVisao } from '../estado.js';
-import { $, $$, esc, toast } from '../util.js';
+import { $, $$, esc, toast, lerPref, gravarPref } from '../util.js';
 import { avancado as avancadoTela } from './avancado.js';
 const OC = window.OC;
 
@@ -100,6 +100,8 @@ function aparencia(el, ctx) {
   const cartao = (id, rot, desc) => '<button type="button" class="apar-card' + (est === id ? ' on' : '') + '" data-estilo-op="' + id + '" role="radio" aria-checked="' + (est === id) + '">' + MINI(id) +
     '<span class="apar-tx"><b>' + esc(rot) + (est === id ? ' <em>em uso</em>' : '') + '</b><small>' + esc(desc) + '</small></span></button>';
   const op = (id, rot) => '<button type="button" class="apar-op' + (tema === id ? ' on' : '') + '" data-tema-op="' + id + '" role="radio" aria-checked="' + (tema === id) + '">' + rot + '</button>';
+  const dens = lerPref('gt.dens', 'conf') === 'compacta' ? 'compacta' : 'conf';
+  const dop = (id, rot) => '<button type="button" class="apar-op' + (dens === id ? ' on' : '') + '" data-dens-op="' + id + '" role="radio" aria-checked="' + (dens === id) + '">' + rot + '</button>';
   el.innerHTML = '<div class="cfg-grade"><div class="cfg-col">' +
     '<section class="cfg-card"><h3><svg class="ic"><use href="#i-eye"/></svg>Estilo</h3>' +
       '<p class="fraco">A troca vale na hora e só neste Chrome. Os dados e as regras são os mesmos nos dois.</p>' +
@@ -110,9 +112,14 @@ function aparencia(el, ctx) {
     '<section class="cfg-card"><h3><svg class="ic"><use href="#i-moon"/></svg>Claro ou escuro</h3>' +
       '<p class="fraco">Vale nos dois estilos (é o mesmo botão do menu à esquerda).</p>' +
       '<div class="apar-ops" role="radiogroup" aria-label="Tema">' + op('light', '<svg class="ic ic-sm"><use href="#i-sun"/></svg> Claro') + op('dark', '<svg class="ic ic-sm"><use href="#i-moon"/></svg> Escuro') + '</div></section>' +
+    // 0.109.0: a densidade das Tarefas do Gestta saiu do menu Filtros e veio para cá (mesma preferência, só neste Chrome)
+    '<section class="cfg-card"><h3><svg class="ic"><use href="#i-list"/></svg>Tarefas do Gestta</h3>' +
+      '<p class="fraco">Quanto espaço cada linha ocupa nas Tarefas do Gestta. Vale na hora na guia aberta.</p>' +
+      '<div class="apar-ops" role="radiogroup" aria-label="Densidade das Tarefas do Gestta">' + dop('conf', 'Confortável') + dop('compacta', 'Compacta') + '</div></section>' +
     '</div></div>';
   $$('[data-estilo-op]', el).forEach(b => b.onclick = () => { if (b.dataset.estiloOp !== est) ctx.definirEstilo(b.dataset.estiloOp); });
   $$('[data-tema-op]', el).forEach(b => b.onclick = () => { if (b.dataset.temaOp !== tema) ctx.definirTema(b.dataset.temaOp); });
+  $$('[data-dens-op]', el).forEach(b => b.onclick = () => { gravarPref('gt.dens', b.dataset.densOp); aparencia(el, ctx); });
   botaoGeral(el);
 }
 

@@ -2232,6 +2232,34 @@
       .sort((a, b) => String(b.last || '').localeCompare(String(a.last || '')));
   }
   // Grupo da data da conclusão: hoje, ontem, nesta semana (desde segunda), neste mês, antes
+  // 0.108.0 (Josué, 13/11/2026: o destaque do Hoje "sem uso"; escolhido "Meu dia em números"): o dia da carteira em números.
+  // base: as pendências da carteira; concluidas: as concluídas dos últimos 30 dias (lidas na hora, ou null); dias: quantos dias
+  // úteis vão no gráfico. Nada é guardado.
+  function meuDia(base, concluidas, now, feriados, dias) {
+    now = now || new Date(); dias = dias || 10;
+    const hol = feriados instanceof Set ? feriados : new Set(feriados || []);
+    const hoje = ymd(now), mesmoDia = s => { const d = parseDate(s); return !!d && ymd(d) === hoje; };
+    const util = d => d.getDay() !== 0 && d.getDay() !== 6 && !hol.has(ymd(d));
+    const l = base || [];
+    const r = {
+      chegaram: l.filter(i => mesmoDia(i.created)).length,
+      respondidas: l.filter(i => i.lado === 'cli' && mesmoDia(i.last)).length,
+      paradas: l.filter(i => i.lado === 'esc' && (i.parado || 0) > 3).length,
+      comEscritorio: l.filter(i => i.lado === 'esc').length,
+      concluidasHoje: null, media: null, serie: null
+    };
+    if (concluidas) {
+      // os últimos N dias úteis, de hoje para trás (hoje entra mesmo se não for útil)
+      const serie = [], d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      while (serie.length < dias) { if (util(d) || ymd(d) === hoje) serie.unshift({ dia: ymd(d), n: 0 }); d.setDate(d.getDate() - 1); }
+      const porDia = new Map(serie.map(x => [x.dia, x]));
+      let n30 = 0; const ini30 = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30);
+      for (const c of concluidas) { const dc = parseDate(c.last); if (!dc) continue; const x = porDia.get(ymd(dc)); if (x) x.n++; if (dc >= ini30 && ymd(dc) !== hoje) n30++; }
+      const uteis30 = Math.max(1, diasUteis(ini30, new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1), hol));
+      r.serie = serie; r.concluidasHoje = (porDia.get(hoje) || { n: 0 }).n; r.media = Math.round(n30 / uteis30 * 10) / 10;
+    }
+    return r;
+  }
   function grupoConclusao(item, now) {
     now = now || new Date();
     const d = parseDate(item && item.last);
@@ -4084,5 +4112,5 @@
     return resultados;
   }
 
-  g.OC = { hubAlimenta, hubAlvo, hubDiagnostico, hubUrlValida, hubEnvioPainel, hubEnvioEstado, hubTarefaDoConjunto, hubParaReenviar, testarEmpregadosEmpresa, extratoContribuintes, lerFolhaContribuintes, resumoFolha, tipoCalculo, competenciaMinima, FOLHA_V, FOLHA_MESES_QUADRO, testarFolhaEmpresa, PASTA_PESSOAL, testarFolha, competenciaDoNome, FOLHA_COLUNAS, negritoUnicode, aplicarDestaques, ehEscritorioProprio, sondarEmpregados, montarLoteHub, HUB_CATEGORIAS, tabelaAnaliseSolicitacoes, tabelaAnaliseEquipe, hubPlano, hubExecutar, hubPartesDe, partirTabela, tabelaLista, tabelaPessoais, tabelaCnd, tabelaNfe, lerEscritorio, lerDocumentos, lerNoticias, slugHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, SETOR_NOMES, setoresVistos, filtrarVisao, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, dentroDoHorario, planoDistribuicaoAuto, acaoConcluir, agruparSugestoes, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, acaoAnalise, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, mensagensProntas, marcadoresPendentes, observacoesFaltantes, avisosResposta, situacaoEquivalente, despersonalizar, previsaoPorEmpresa, lerMovimentadas, soConcluidas, grupoConclusao, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { hubAlimenta, hubAlvo, hubDiagnostico, hubUrlValida, hubEnvioPainel, hubEnvioEstado, hubTarefaDoConjunto, hubParaReenviar, testarEmpregadosEmpresa, extratoContribuintes, lerFolhaContribuintes, resumoFolha, tipoCalculo, competenciaMinima, FOLHA_V, FOLHA_MESES_QUADRO, testarFolhaEmpresa, PASTA_PESSOAL, testarFolha, competenciaDoNome, FOLHA_COLUNAS, negritoUnicode, aplicarDestaques, ehEscritorioProprio, sondarEmpregados, montarLoteHub, HUB_CATEGORIAS, tabelaAnaliseSolicitacoes, tabelaAnaliseEquipe, hubPlano, hubExecutar, hubPartesDe, partirTabela, tabelaLista, tabelaPessoais, tabelaCnd, tabelaNfe, lerEscritorio, lerDocumentos, lerNoticias, slugHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, SETOR_NOMES, setoresVistos, filtrarVisao, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, dentroDoHorario, planoDistribuicaoAuto, acaoConcluir, agruparSugestoes, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, acaoAnalise, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, mensagensProntas, marcadoresPendentes, observacoesFaltantes, avisosResposta, situacaoEquivalente, despersonalizar, previsaoPorEmpresa, lerMovimentadas, soConcluidas, grupoConclusao, meuDia, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);

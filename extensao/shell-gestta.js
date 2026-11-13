@@ -54,6 +54,7 @@
     if (iframe) return;
     iframe = document.createElement('iframe');
     iframe.title = 'Tarefas do Gestta · Control';
+    iframe.allow = 'clipboard-write';      // 0.109.1: sem isto o Copiar do quadro falhava em silêncio
     iframe.src = url('app/gestta.html');
     wrap.appendChild(iframe);
   }

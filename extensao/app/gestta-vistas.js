@@ -247,13 +247,15 @@ const Q = { col: '' };
 export function vistaQuadro(el, x) {
   const ob = G.obrigacoes(x.itens, x.hoje);
   let linhas = ob.linhas.filter(l => !x.soPend || l.empresa.abertas);
-  if (Q.col && !ob.colunas.some(c => c.nome === Q.col)) Q.col = '';
+  // 0.108.1: só filtra a coluna que tem pendência (Josué: "as colunas que não tiverem nenhuma pendência não devem ativar o filtro")
+  const comPend = new Set(ob.colunas.map(c => c.nome).filter(n => linhas.some(l => (l.celulas.get(n) || []).some(e => e.estado !== 'feita'))));
+  if (Q.col && !comPend.has(Q.col)) Q.col = '';
   if (Q.col) linhas = linhas.filter(l => (l.celulas.get(Q.col) || []).some(e => e.estado !== 'feita'));
   if (!ob.colunas.length || !linhas.length) { el.innerHTML = x.vazio(); return; }
   // 0.87.0: as obrigações que pedem atenção primeiro (com alerta, depois as mais pendentes, depois o nome)
   ob.colunas = ob.colunas.slice().sort((a, b) => (b.alerta || 0) - (a.alerta || 0) || ((b.total - b.feitas) - (a.total - a.feitas)) || a.nome.localeCompare(b.nome, 'pt-BR'));
   const empMap = new Map(ob.linhas.map(l => [l.empresa.id, l.empresa]));
-  const th = c => '<th scope="col" class="gq-h' + (Q.col === c.nome ? ' on' : '') + '"><button type="button" data-gq-col="' + esc(c.nome) + '" aria-pressed="' + (Q.col === c.nome) + '" title="' + esc(c.nome + ': ' + c.feitas + ' de ' + c.total + ' concluídas' + (c.alerta ? ', ' + c.alerta + ' com multa ou atraso' : '') + '. Clique para ver só as empresas com esta obrigação pendente.') + '">' +
+  const th = c => '<th scope="col" class="gq-h' + (Q.col === c.nome ? ' on' : '') + '">' + (comPend.has(c.nome) ? '<button type="button" data-gq-col="' + esc(c.nome) + '" aria-pressed="' + (Q.col === c.nome) + '"' : '<button type="button" class="gq-h-sem" aria-disabled="true"') + ' title="' + esc(c.nome + ': ' + c.feitas + ' de ' + c.total + ' concluídas' + (c.alerta ? ', ' + c.alerta + ' com multa ou atraso' : '') + (comPend.has(c.nome) ? '. Clique para ver só as empresas com esta obrigação pendente.' : '. Nada pendente: não há o que filtrar.')) + '">' +
     '<span class="gq-h-nome">' + esc(G.nomeLegivel(c.nome)) + '</span><span class="gq-h-n">' + num(c.feitas) + '/' + num(c.total) + (c.alerta ? ' <em>!' + c.alerta + '</em>' : '') + '</span><span class="gq-h-bar" aria-hidden="true"><i style="width:' + Math.round(c.feitas / c.total * 100) + '%"></i></span></button></th>';
   const linha = l => {
     const e = l.empresa;

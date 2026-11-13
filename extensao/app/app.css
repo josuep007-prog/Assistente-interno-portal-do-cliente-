@@ -1779,3 +1779,74 @@ body.setor-fora .trilho [data-rota="equipe"], body.setor-fora .trilho [data-rota
 .bg-lista{margin:6px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px;font-size:13px}
 .bg-lista li{display:flex;align-items:center;justify-content:space-between;gap:10px;color:var(--ink)}
 textarea.adv-console{display:block; width:100%; box-sizing:border-box; resize:vertical; max-height:none}
+
+/* 0.108.0: Hoje · "Meu dia em números" (no lugar do destaque escuro): no tema da tela, números que levam à lista certa */
+.hj-meudia{--md-a:var(--viz-s1, #2A78D6); --md-b:var(--viz-s2, #1BAF8E); --md-c:var(--viz-crit, #D64545); --md-d:var(--viz-warn, #E0A100);
+  position:relative; overflow:hidden; border:1px solid var(--rule); border-radius:var(--r); padding:18px 20px 20px; margin:0 0 14px;
+  background:radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--md-a) 13%, transparent) 0%, transparent 55%),
+    radial-gradient(90% 120% at 100% 100%, color-mix(in srgb, var(--md-b) 10%, transparent) 0%, transparent 60%), var(--surface);
+  box-shadow:0 1px 2px rgba(16,24,32,.05), 0 8px 24px -12px rgba(16,24,32,.18)}
+.hj-meudia::before{content:""; position:absolute; inset:0 0 auto 0; height:3px; background:linear-gradient(90deg, var(--md-a), var(--md-b) 50%, var(--md-d))}
+.hj-md-cab{display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin:0 0 16px}
+.hj-md-cab h2{margin:4px 0 3px; font:800 24px/1.15 Archivo, sans-serif; letter-spacing:-.01em; color:var(--ink)}
+.hj-md-cab p{margin:0; font-size:13px; color:var(--ink-2)}
+.hj-meudia .hj-eyebrow{font-size:11.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-2)}
+.hj-md-grade{display:grid; grid-template-columns:minmax(220px, .9fr) minmax(0, 1.5fr) minmax(280px, 1.2fr); gap:14px; align-items:stretch}
+.hj-md-ks{display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px}
+.hj-md-k{position:relative; display:flex; align-items:center; gap:12px; padding:12px 14px; border:1px solid var(--rule); border-radius:var(--r);
+  background:color-mix(in srgb, var(--surface) 82%, transparent); color:var(--ink); text-decoration:none; min-width:0; transition:transform .15s ease, box-shadow .15s ease, border-color .15s ease}
+.hj-md-k:hover{transform:translateY(-2px); border-color:color-mix(in srgb, var(--md-t, var(--md-a)) 55%, var(--rule)); box-shadow:0 10px 22px -14px color-mix(in srgb, var(--md-t, var(--md-a)) 80%, transparent)}
+.hj-md-k:focus-visible{outline:2px solid var(--blue-deep); outline-offset:2px}
+.hj-md-k.tom-a{--md-t:var(--md-a)} .hj-md-k.tom-b{--md-t:var(--md-b)} .hj-md-k.tom-c{--md-t:var(--md-c)} .hj-md-k.tom-d{--md-t:var(--md-d)}
+.hj-md-ic{flex:none; display:grid; place-items:center; width:40px; height:40px; border-radius:var(--r); background:color-mix(in srgb, var(--md-t) 16%, transparent); color:var(--md-t)}
+.hj-md-ic .ic{width:20px; height:20px}
+.hj-md-tx{display:flex; flex-direction:column; gap:1px; min-width:0; flex:1}
+.hj-md-k b{font:800 28px/1.05 Archivo, sans-serif; color:var(--ink); font-variant-numeric:tabular-nums}
+.hj-md-tx > span{font-size:12.5px; font-weight:600; color:var(--ink)}
+.hj-md-k small{font-size:11.5px; color:var(--ink-2); line-height:1.3}
+.hj-md-ir{color:var(--ink-3); opacity:0; transform:translateX(-4px); transition:opacity .15s, transform .15s}
+.hj-md-k:hover .hj-md-ir{opacity:1; transform:none}
+.hj-md-k.alerta{border-color:color-mix(in srgb, var(--md-c) 45%, var(--rule)); background:color-mix(in srgb, var(--md-c) 6%, var(--surface))}
+.hj-md-dest{flex-direction:column; justify-content:center; text-align:center; gap:10px; padding:16px 14px; --md-t:var(--md-a);
+  background:linear-gradient(160deg, color-mix(in srgb, var(--md-a) 12%, var(--surface)), color-mix(in srgb, var(--md-b) 8%, var(--surface)))}
+.hj-md-dest .ap{--c:var(--md-a)}
+.hj-md-dest .ap-svg circle{stroke-width:3}
+.hj-md-dest .ap-c b{font-size:38px}
+.hj-md-dest .ap-c small{font-size:11.5px; color:var(--ink-2)}
+.hj-md-dest .hj-md-tx{align-items:center; gap:4px}
+.hj-md-dest .hj-md-tx > span{font-size:14px; font-weight:700}
+.hj-md-graf{margin:0; padding:12px 14px 10px; border:1px solid var(--rule); border-radius:var(--r); background:color-mix(in srgb, var(--surface) 82%, transparent); display:flex; flex-direction:column; gap:6px}
+.hj-md-graf figcaption{display:flex; justify-content:space-between; gap:8px; font-size:12.5px; font-weight:700; color:var(--ink)}
+.hj-md-graf figcaption b{font-weight:600; color:var(--ink-2)}
+.hj-md-svg{width:100%; height:auto; display:block; flex:1}
+.hj-md-svg .g1{stop-color:var(--md-a)} .hj-md-svg .g2{stop-color:color-mix(in srgb, var(--md-a) 35%, var(--surface))}
+.hj-md-svg rect{fill:url(#hj-md-g)}
+.hj-md-svg rect.zero{fill:var(--viz-grid, rgba(0,0,0,.1))}
+.hj-md-svg rect.hoje{fill:var(--md-a)}
+.hj-md-svg .base{stroke:var(--viz-grid, rgba(0,0,0,.12)); stroke-width:1}
+.hj-md-svg .media{stroke:var(--ink-3); stroke-width:1; stroke-dasharray:4 3}
+.hj-md-svg text{font:600 11.5px "IBM Plex Sans", sans-serif; fill:var(--ink-2)}
+.hj-md-svg text.v{font:800 12px Archivo, sans-serif; fill:var(--ink)}
+.hj-md-svg text.h{fill:var(--ink); font-weight:700}
+.hj-md-leg{display:inline-block; width:14px; margin:0 5px 3px 2px; border-top:1.5px dashed var(--ink-3); vertical-align:middle}
+.hj-meudia #ag-novo{background:var(--surface); border:1px solid var(--rule); color:var(--ink); opacity:1}
+.hj-meudia #ag-novo:hover{border-color:var(--blue-deep); color:var(--blue-deep)}
+.hj-md-vazio{flex:1; display:grid; place-items:center; font-size:12.5px; color:var(--ink-2); min-height:100px; text-align:center}
+.hj-anim .hj-md-k, .hj-anim .hj-md-graf{animation:hj-sobe .55s cubic-bezier(.2,.7,.2,1) both}
+.hj-anim .hj-md-ks .hj-md-k:nth-child(2){animation-delay:60ms} .hj-anim .hj-md-ks .hj-md-k:nth-child(3){animation-delay:120ms} .hj-anim .hj-md-ks .hj-md-k:nth-child(4){animation-delay:180ms} .hj-anim .hj-md-graf{animation-delay:220ms}
+.hj-anim .hj-md-svg rect{transform-box:fill-box; transform-origin:bottom; animation:hj-md-cresce .7s cubic-bezier(.2,.7,.2,1) both; animation-delay:.25s}
+@keyframes hj-md-cresce{from{transform:scaleY(0)} to{transform:none}}
+@media (prefers-reduced-motion:reduce){ .hj-md-k, .hj-md-ir{transition:none} .hj-anim .hj-md-k, .hj-anim .hj-md-graf, .hj-anim .hj-md-svg rect{animation:none} }
+@media (max-width:1250px){ .hj-md-grade{grid-template-columns:minmax(200px, .8fr) minmax(0, 1.6fr)} .hj-md-graf{grid-column:1 / -1} }
+@media (max-width:760px){ .hj-md-grade{grid-template-columns:1fr} .hj-md-ks{grid-template-columns:repeat(2, minmax(0, 1fr))} }
+:root[data-estilo="simples"] .hj-meudia{padding:14px 16px 16px}
+:root[data-estilo="simples"] .hj-md-cab h2{font-size:21px}
+:root[data-estilo="simples"] .hj-md-k b{font-size:24px}
+/* telas baixas: o Meu dia em números encolhe para o resto do Hoje aparecer */
+@media (max-height:760px){
+  .hj-meudia{padding:12px 16px 14px}
+  .hj-md-cab{margin:0 0 10px} .hj-md-cab h2{font-size:20px; margin:2px 0 1px}
+  .hj-md-dest{padding:10px 12px; gap:6px} .hj-md-dest .ap{--sz:84px !important} .hj-md-dest .ap-c b{font-size:28px}
+  .hj-md-k{padding:9px 12px} .hj-md-ic{width:34px; height:34px} .hj-md-k b{font-size:22px}
+  .hj-md-graf{padding:8px 12px 6px} .hj-md-svg{max-height:112px}
+}

@@ -2,6 +2,61 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.110.0 (13/11/2026): aba Saúde, painel maior, arquivo do item e soltar sem tapar a tela
+
+- Josué pediu uma sessão para compensar o que falta no Gestta: falhas de e-mail ao cliente, tarefa que avisa o cliente sem contato cadastrado, carga por dia que mostre quando não vai dar tempo e o que é prioridade e, para gestores, ajuda para configurar as tarefas de cada empresa pela demanda. Nas Tarefas do Gestta, a aba **Saúde** (tecla 8), só leitura:
+  - **Carga por dia e prioridade:** pessoa × próximos 10 dias úteis pela meta, sem os feriados do escritório; as atrasadas pesam no primeiro dia. A capacidade é o ritmo de cada um (concluídas por dia útil nos 2 meses anteriores, pelo relatório do mês); a coordenação pode trocar por um número fixo (só neste navegador, `oc.gt.cap`). A célula acima da capacidade avisa "não vai dar tempo" e abre as tarefas com **Agir em lote**. A **Prioridade do dia** ordena: multa ou data legal vencida, data legal em até 1 dia útil, meta vencida, dia acima do ritmo e o resto pela data legal.
+  - **Avisa o cliente sem contato no setor:** pelo botão, os contatos de cada cliente com tarefa que avisa (um por vez; só setor, se está ativo e se tem e-mail; 6 horas na memória do service worker). Mostra empresa × setor com "nenhum contato", "contatos inativos" ou "sem e-mail".
+  - **Falhas de e-mail ao cliente:** o número do painel do Gestta (`attention/email-not-sent/all`) e, pelo botão, o histórico de e-mail das tarefas que avisam o cliente e foram concluídas nos últimos 7 dias (até 150, uma por vez), com o motivo.
+  - **Configuração das empresas pela demanda** (só coordenação): os templates de tarefa ativos e as empresas de cada um (`admin/company/task/{id}/customer`); empresas com os mesmos setores formam um perfil, e a tela aponta o que falta (≥ 80% das parecidas recebem) e o que sobra (≤ 10%), com o número de clientes ativos sem nenhuma tarefa.
+  - **Sem responsável e atrasos longos:** as abertas sem responsável e as empresas com tarefa atrasada há mais de 15 dias.
+  - O analista vê só as tarefas dele e não vê a configuração. O relatório fica até 1 hora em `chrome.storage.session` (`gtSaude-AAAA-MM`); contatos, e-mails e configuração só na memória.
+- **Painel da tarefa maior** (Lista, Empresas, Obrigações): até 880 px ou 72% da tela (a tela toda abaixo de 900 px), com os dados em três colunas quando cabem.
+- **Arquivo do item:** o nome e o dia de cada arquivo anexado aparecem embaixo do documento da tarefa (nunca o endereço). O formato ainda é "a conferir": se não vier como esperado, fica o "✓ com arquivo". **Ver** e **Excluir** esperam o mapeamento (roteiro `mapeamento/prompt-gestta-saude-2026-11-13.md`).
+- **Soltar documentos sem tapar a tela:** depois de "Ler com o Express", a leitura, a sugestão e o vínculo andam num cartão no canto (barra de progresso, o arquivo da vez, Recolher e Cancelar); a tela atrás continua clicável. Terminada a leitura, o cartão avisa "N arquivos esperam o destino" e a escolha só abre pelo botão **Escolher destinos**. Esc recolhe o cartão; o "Pronto" fica no canto e some sozinho se tudo deu certo.
+
+## Novidades da v0.109.2 (13/11/2026): no Meu dia, a tarefa com mais espaço
+
+- Josué: "tem mais espaço pra lista do que pra própria tarefa, a tarefa precisa ocupar um espaço maior, além disso deixe os itens da tarefa com um retângulo em volta". No Meu dia das Tarefas do Gestta, o detalhe da tarefa fica com cerca de dois terços da largura e a fila com o resto; cada documento da tarefa ganhou uma caixa (como as etapas).
+
+## Novidades da v0.109.1 (13/11/2026): Copiar de verdade no detalhe da tarefa
+
+- Josué: "esse copiar não tá funcionando de verdade". O quadro das Tarefas do Gestta não tinha a permissão de área de transferência (o do Onvio tinha) e o botão mostrava "Copiado" mesmo quando nada era copiado. Agora o quadro tem a permissão, a cópia tenta também o caminho antigo pela seleção e, se ainda assim falhar, o botão diz **Não copiou** e um aviso pede Ctrl+C. Vale para o código e o CNPJ da empresa e para o texto do aviso do Express.
+
+## Novidades da v0.109.0 (13/11/2026): sem menu Filtros e visão filtrada bem à vista
+
+- Josué: "essas opções de filtro tão meio sem sentido também"; escolheu acabar com o menu; "as mudanças de filtros no Gestta tão muito sutis e fazem com que às vezes você não perceba que está numa visualização filtrada". Nas Tarefas do Gestta:
+  - Saiu o botão **Filtros**. O Tipo e o Setor saíram (o setor já está no De quem); a caixa da aba (**Só com pendência** em Empresas e Obrigações, **Mostrar concluídas** na Lista e no Calendário) fica à vista ao lado da busca; a **densidade** (Confortável ou Compacta) foi para Configurações › Aparência e vale na hora na guia aberta.
+  - Com qualquer filtro ligado (busca, situação, Resolver agora, dia do calendário, só com pendência), aparece logo abaixo do topo a faixa **Visão filtrada · mostrando N de M tarefas**, com cada filtro numa etiqueta com × para tirar só ele e **Limpar tudo**; o topo ganha uma borda azul.
+
+## Novidades da v0.108.2 (13/11/2026): menu de Filtros dentro da tela
+
+- Josué: "conserte isso… tá fugindo pra fora da tela". Nas Tarefas do Gestta, o menu de **Filtros** abre para o lado onde cabe (direita ou esquerda do botão) e nunca passa da largura da tela; ao redimensionar a janela ele se ajeita.
+
+## Novidades da v0.108.1 (13/11/2026): Obrigações, coluna sem pendência não filtra
+
+- Josué: "as colunas que não tiverem nenhuma pendência não devem ativar o filtro; hoje, quando clica na cabeça da coluna, ele filtra as pendentes, mas quando não tem nenhuma a tabela some". Nas Obrigações das Tarefas do Gestta, o cabeçalho de uma obrigação toda concluída não filtra mais (a dica diz "Nada pendente: não há o que filtrar") e a tabela continua inteira.
+
+## Novidades da v0.108.0 (13/11/2026): Meu dia em números
+
+- Josué: "essa parte na extensão do Onvio está sem uso, preciso de opções"; escolheu **Meu dia em números**; "ela escura assim também não tá legal"; "tá muito simples, quero que impressione". No Hoje, o destaque escuro (rosca % em dia, carrossel e Próximos passos) saiu. No lugar, um bloco que segue o tema da tela (claro ou escuro, nos dois estilos): **concluídas hoje** em destaque num anel que enche ao chegar na média por dia útil, cartões com ícone de **chegaram hoje**, **respondidas hoje**, **paradas há mais de 3 dias** e **lembretes de hoje** (cada um abre a lista certa, na mesma carteira) e o gráfico das **concluídas por dia útil** nos últimos 10 dias, com a linha tracejada da média. As concluídas vêm da mesma leitura da aba Concluídas (últimos 30 dias, só na memória por 10 minutos); sem analista, o bloco diz que não se aplica. Números e barras entram animados (sem animação para quem pede movimento reduzido).
+
+## Novidades da v0.107.1 (13/11/2026): busca à esquerda, em destaque
+
+- Josué: "quero a barra de pesquisa e os filtros na esquerda, dando uma ênfase maior na barra de pesquisa, e o que tá na esquerda vai pra direita". No topo das Tarefas do Gestta, a **busca** (maior, com letra e ícone maiores) e **Filtros** ficam à esquerda; as etiquetas de prazo e o **progresso do mês** vão para a direita. Com muitas etiquetas, elas quebram em duas linhas e a busca mantém o tamanho.
+
+## Novidades da v0.107.0 (13/11/2026): "em risco" vira "Para ciência"
+
+- Josué: "é apenas para ciência, e quase sempre os itens dela não devem realmente ir pro portal, então não devem ser tratados como pendência". Os templates sem pasta parecidos com os que vão ao portal saíram dos números do topo e viraram um bloco **Para ciência**, no fim da aba, recolhido, em tom neutro (borda tracejada, ícone de informação), com "Não é pendência". Aberto, cada um tem só o link **Deveria ir: usar a mesma pasta** (com confirmação) e Abrir no Gestta; saiu o "Usar as pastas sugeridas" em lote.
+
+## Novidades da v0.106.1 (13/11/2026): botões alinhados nos Envios ao portal
+
+- Em **Templates em risco** e **Pastas fora da empresa 9999**, os botões de cada linha (Usar a mesma pasta, Tirar a pasta, Abrir o template no Gestta) ficam juntos, na mesma coluna à direita; antes cada um empurrava o outro e ficavam espalhados pela linha.
+
+## Novidades da v0.106.0 (13/11/2026): De quem em dois passos
+
+- Josué: "quero apenas setores com tarefas ativas e o fluxo tem que ser: clicar no botão > escolher o setor > escolher uma ou mais pessoas". O botão **De quem** abre com Minhas, Sem responsável e **só os setores com tarefa aberta ou com impedimento** na competência (com a quantidade), lidos do relatório do mês. Escolher um setor mostra as **pessoas dele** (quem tem tarefa aberta no setor primeiro, com a quantidade) para **marcar uma ou mais**; **Ver as tarefas** traz só as delas, e sem ninguém marcado, todas do setor. "‹ Setores" volta. A busca do topo filtra os setores e, dentro do setor, as pessoas.
+
 ## Novidades da v0.105.0 (12/11/2026): concluir desconsidera os itens sem anexo
 
 - **Concluir, na tarefa e em lote,** agora prepara a tarefa inteira antes: marca as etapas (checkbox) que faltam e **desconsidera cada item (documento) sem anexo**, como o ⊘ "Desconsiderar" da tela do Gestta (`PUT /es/task/{id}/document/{doc}/file/disconsider`, corpo vazio, mapeado em 12/11/2026 na empresa 9999). Um item por vez; se algum for recusado, a tarefa não é concluída. A confirmação lista as etapas e os itens; o botão diz "Preparar e concluir".

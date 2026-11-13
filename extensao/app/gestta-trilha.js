@@ -2,7 +2,7 @@
  * lateral com o detalhe da tarefa. Usado nas abas "Minhas tarefas" (visão por empresa) e "Fechamento do mês".
  * Cada tarefa do mês é uma etapa: na trilha, na ordem da meta, com o traço cheio até onde está concluído; na linha do
  * tempo, no dia da meta, com a linha do hoje. O detalhe é lido na hora (cmd gesttaTarefa) e nunca guardado. */
-import { $, $$, esc, num, toast } from './util.js';
+import { $, $$, esc, num, toast, copiarTexto } from './util.js';
 import { concluirComEtapas, etapasAbertas, itensSemAnexo } from './gestta-concluir.js';
 const G = window.OCG;
 const enviar = msg => new Promise(res => { try { chrome.runtime.sendMessage(msg, r => res(r || { ok: false, erro: 'sem resposta' })); } catch (e) { res({ ok: false, erro: String(e.message || e) }); } });
@@ -262,6 +262,7 @@ function desenharPainel() {
         return '<li class="' + (p.done ? 'ok' : '') + '">' + (p._id ? '<button type="button" class="gp-passo" data-gp-etapa="' + esc(p._id) + '" aria-pressed="' + !!p.done + '" title="' + (p.done ? 'Desmarcar esta etapa' : 'Marcar esta etapa como feita') + '">' + conteudo + '</button>' : conteudo) + '</li>';
       }).join('') + '</ul></section>' : '<p class="fraco">Esta tarefa não tem etapas internas.</p>') +
       (docs.length ? '<section class="gp-sec"><h3>Documentos da tarefa</h3>' + (docs.some(x => x._id) && !fechada ? '<p class="gp-dica-arrastar ajuda">Arraste um ou mais arquivos em cima do documento para enviar nele.</p>' : '') + '<ul class="gp-docs">' + docs.map(x => '<li class="gp-doc"' + (x._id && !fechada ? ' data-gp-drop="' + esc(x._id) + '" data-gp-drop-rot="Soltar em “' + esc(x.name || 'Documento') + '”"' : '') + '><span class="gp-doc-nome">' + esc(x.name || 'Documento') + (x.validation_required ? ' <small class="fraco">pede validação</small>' : '') + (x.temArquivo ? ' <small class="gp-doc-ok">✓ com arquivo</small>' : '') + (x.has_documents_integration ? ' <small class="fraco">vai ao Portal do Cliente</small>' : '') + '</span>' +
+        (Array.isArray(x.arquivos) && x.arquivos.length ? '<ul class="gp-doc-arqs" aria-label="Arquivos de ' + esc(x.name || 'Documento') + '">' + x.arquivos.map(a => '<li><svg class="ic ic-sm" aria-hidden="true"><use href="#i-paperclip"/></svg><span class="gp-arq-nome" title="' + esc(a.nome) + '">' + esc(a.nome) + '</span>' + (a.quando ? ' <small class="fraco">' + esc(ddmm(a.quando.slice(0, 10))) + '</small>' : '') + '</li>').join('') + '</ul>' : '') +
         (x._id && !fechada ? '<button type="button" class="btn btn-sm" data-gp-doc="' + esc(x._id) + '"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-upload"/></svg>' + (x.temArquivo ? 'Enviar outro arquivo' : 'Enviar arquivo') + '</button>' : '') + '</li>').join('') + '</ul><input type="file" id="gp-arq" multiple hidden></section>' : '') +
       (pedidos.length ? '<section class="gp-sec"><h3>Pedidos ao cliente' + (d.document_request && d.document_request.active ? ' <span class="pill pill-today">cobrança ativa</span>' : '') + '</h3><ul class="gp-docs">' + pedidos.map(x => '<li>' + esc(x.name || 'Documento') + '</li>').join('') + '</ul></section>' : '') +
       // 0.93.0: comentário interno (fica só para a equipe; nunca vai ao cliente)
@@ -291,7 +292,12 @@ function desenharPainel() {
   $('#gp-abrir', el).onclick = () => abrirNoGestta();
   $('#gp-aba', el).onclick = () => { const u = G.urlTarefa(base._id); if (u) window.open(u, '_blank', 'noopener'); };
   $$('[data-gp-aba]', el).forEach(b => b.onclick = () => { P.aba = b.dataset.gpAba; desenharPainel(); if (P.aba === 'tempo') carregarHist(); });
-  $$('[data-copiar]', el).forEach(b => b.onclick = () => { const v = b.dataset.copiar, ok = () => { b.classList.add('ok'); b.lastChild.textContent = 'Copiado'; setTimeout(() => desenharPainel(), 1400); }; try { navigator.clipboard.writeText(v).then(ok, ok); } catch (_) { ok(); } });
+  $$('[data-copiar]', el).forEach(b => b.onclick = async () => {
+    const ok = await copiarTexto(b.dataset.copiar);
+    b.classList.toggle('ok', ok); b.classList.toggle('erro', !ok); b.lastChild.textContent = ok ? 'Copiado' : 'Não copiou';
+    if (!ok) toast('Não consegui copiar: selecione o texto e use Ctrl+C.', true);
+    setTimeout(() => desenharPainel(), 1400);
+  });
   const tt = $('#gp-tentar', el); if (tt) tt.onclick = () => { P.erro = null; P.carregando = true; desenharPainel(); carregar(); };
   const th = $('#gp-hist-tentar', el); if (th) th.onclick = () => carregarHist(true);
   ligarAcoes(el, t, passos || [], docs);
