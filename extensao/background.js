@@ -518,7 +518,7 @@ async function gesttaSaude(msg, sender) {
     }
     return { ok: true, porCnpj, ids };
   }
-  if (parte === 'emailLista') {   // 0.115.0: a lista direta das tarefas com falha de e-mail (a busca do próprio Gestta, filtro email_not_sent), últimos 30 dias
+  if (parte === 'emailLista') {   // 0.115.0: a lista direta das tarefas com falha de e-mail (a busca do próprio Gestta, filtro email_not_sent, sem datas desde a 0.115.1)
     const tarefas = []; let total = null;
     for (let pg = 1; pg <= 10; pg++) {
       const { r } = await lerGestta([OCG.PEDIDOS.emailFalhou({ page: pg, limit: 100, companyUser: pf.total ? '' : pf.id })], { tab });
@@ -526,7 +526,8 @@ async function gesttaSaude(msg, sender) {
       if (!x || x.status === 401) return { ok: false, erro: 'A sessão do Gestta acabou: faça login de novo na aba.' };
       if (x.status !== 200 || !x.dados) return { ok: false, erro: 'O Gestta recusou a busca das tarefas com falha de e-mail' + (x.status ? ' (erro ' + x.status + ')' : '') + '.' };
       const itens = x.dados.itens || []; total = typeof x.dados.total === 'number' ? x.dados.total : total;
-      itens.forEach(t => { if (t && /^[0-9a-f]{24}$/i.test(String(t._id || ''))) tarefas.push({ id: t._id, nome: String(t.name || ''), cliente: { id: String(t.customer && t.customer._id || ''), nome: String(t.customer && t.customer.name || ''), code: String(t.customer && t.customer.code || '') }, tipo: String(t.type || ''), responsavel: String(t.owner && t.owner.name || ''), meta: t.due_date || '', conclusao: t.conclusion_date || '' }); });
+      itens.forEach(t => { if (!pf.total && !(t && t.owner && t.owner._id === pf.id)) return;   // o analista só vê as dele (a tela do Gestta mistura as sem responsável)
+        if (t && /^[0-9a-f]{24}$/i.test(String(t._id || ''))) tarefas.push({ id: t._id, nome: String(t.name || ''), cliente: { id: String(t.customer && t.customer._id || ''), nome: String(t.customer && t.customer.name || ''), code: String(t.customer && t.customer.code || '') }, tipo: String(t.type || ''), responsavel: String(t.owner && t.owner.name || ''), meta: t.due_date || '', conclusao: t.conclusion_date || '' }); });
       if (!itens.length || (x.dados.paginas && pg >= x.dados.paginas) || (!x.dados.paginas && itens.length < 100)) break;
     }
     return { ok: true, tarefas, total: total != null ? total : tarefas.length, lidoEm: new Date().toISOString() };
@@ -547,7 +548,7 @@ async function gesttaSaude(msg, sender) {
       const x = r && r.resultados && r.resultados[0];
       if (!x || x.status === 401) return { ok: false, erro: 'A sessão do Gestta acabou: faça login de novo na aba.', porTarefa };
       if (x.status !== 200 || !x.dados) { porTarefa[id] = null; continue; }
-      porTarefa[id] = (x.dados.itens || []).filter(e => e && e.type === 'EMAIL').map(e => ({ status: e.status || '', reason: e.reason || '', quando: e.accomplished_at || e.created_at || '' }));
+      porTarefa[id] = (x.dados.itens || []).filter(e => e && e.type === 'EMAIL').map(e => ({ status: e.status || '', reason: /^[A-Za-z][A-Za-z0-9_]{2,}$/.test(String(e.reason || '')) ? e.reason : (e.reason ? 'TEXTO_LIVRE' : ''), quando: e.accomplished_at || e.created_at || '' }));
     }
     return { ok: true, porTarefa };
   }

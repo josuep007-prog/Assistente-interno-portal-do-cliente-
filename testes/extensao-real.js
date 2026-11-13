@@ -550,8 +550,8 @@ assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br
   const sL = await tt({ cmd: 'gesttaSaude', parte: 'emailLista' });
   assert.ok(sL.ok, 'emailLista: ' + (sL.erro || '')); assert.equal(sL.total, 1);
   assert.deepEqual(sL.tarefas.map(t => [t.id, t.nome, t.cliente.nome, t.responsavel]), [[ID, 'GUIA DO FGTS', 'EMPRESA FICTICIA LTDA', 'Pessoa Ficticia']]);
-  { const c = gBuscas[nBuscaS]; assert.ok(c.email_not_sent === true && c.status.join() === 'DONE' && c.limit === 100 && Array.isArray(c.company_user) && c.company_user.length === 0, 'corpo da tela, sem filtrar pessoa na coordenação');
-    assert.ok((new Date(c.end_date) - new Date(c.start_date)) / 864e5 <= 31, 'a busca vai um mês por chamada'); }
+  { const c = gBuscas[nBuscaS]; assert.ok(c.email_not_sent === true && c.status.join() === 'DONE' && c.limit === 100 && !('company_user' in c), 'corpo da tela, sem filtrar pessoa na coordenação');
+    assert.ok(!('start_date' in c) && !('end_date' in c), '0.115.1: a tela do Gestta não manda datas'); }
   const sR = await tt({ cmd: 'gesttaSaude', parte: 'remetente' });
   assert.ok(sR.ok && sR.aviso.nivel === 'aviso' && /DKIM falhou/.test(sR.aviso.texto), 'remetente: ' + JSON.stringify(sR.aviso));
   assert.deepEqual(Object.keys(sR.remetente).sort(), ['dkim_status', 'domain', 'domain_status', 'verified'], 'do domínio, só o estado');

@@ -59,6 +59,8 @@
     if (!c) return { ok: false, motivo: 'corpo inválido' };
     if (tipo === 'busca') {
       if (!(Number(c.limit) >= 1 && Number(c.limit) <= LIMITE_BUSCA)) return { ok: false, motivo: 'limit entre 1 e ' + LIMITE_BUSCA };
+      // 0.115.1: a busca das falhas de e-mail é estreita (dezenas de tarefas) e a tela do Gestta a faz sem datas: só ela dispensa a janela de um mês
+      if (c.email_not_sent === true && !c.start_date && !c.end_date) return Number(c.limit) <= 200 ? { ok: true } : { ok: false, motivo: 'a busca das falhas de e-mail vai até 200 por página' };
       if (!c.start_date || !c.end_date || diasEntre(c.start_date, c.end_date) > JANELA_MAX_DIAS) return { ok: false, motivo: 'a busca vai um mês por vez' };
       return { ok: true };
     }
@@ -334,12 +336,13 @@
     // 0.110.0 · aba Saúde (todas GET, menos o relatório, que é o mesmo POST de leitura do Fechamento)
     saude: (o) => Object.assign(PEDIDOS.relatorio(o), { id: 'saude', tipo: 'relSaude' }),
     emailNaoSaiu: (o) => ({ id: 'emailNaoSaiu', tipo: 'contagem', metodo: 'GET', url: url('/core/dashboard/attention/email-not-sent/all', janelaDoMes(o.ano, o.mes)) }),
-    // 0.115.0 (mapeamento de 13/11/2026): o corpo é o da própria tela "falha na entrega do e-mail" (status DONE, os quatro marcadores ligados,
-    // 60 = o número do painel); a janela é a do painel, os últimos 30 dias (a busca vai um mês por chamada)
-    emailFalhou: (o) => { const fim = new Date((o && o.agora) || Date.now()), ini = new Date(fim.getTime() - 30 * 864e5);
-      return { id: 'emailFalhou', tipo: 'tarefaFalha', metodo: 'POST', url: url('/core/customer/task/search'),
-        corpo: Object.assign({ page: (o && o.page) || 1, limit: (o && o.limit) || 100, type: [], company_department: [], company_user: o && o.companyUser ? [o.companyUser] : [], status: ['DONE'], date_type: 'DUE_DATE',
-          not_downloaded: true, collaborator: false, no_owner: true, email_not_sent: true, os_workflow: true }, { start_date: iso(ini), end_date: iso(fim) }) }; },
+    // 0.115.1 (mapeamento de 13/11/2026, passo 2): o corpo é o da própria tela "falha na entrega do e-mail", que NÃO leva datas (as 60 do painel têm
+    // meta de 16/10 a 28/11); com datas dos últimos 30 dias o total deu 65, não 60. Sem os filtros de setor e pessoa (a tela manda os ids de todos);
+    // o analista leva só o id dele em company_user.
+    emailFalhou: (o) => ({ id: 'emailFalhou', tipo: 'tarefaFalha', metodo: 'POST', url: url('/core/customer/task/search'),
+      corpo: Object.assign({ page: (o && o.page) || 1, limit: (o && o.limit) || 100, type: ['SERVICE_ORDER', 'RECURRENT'], status: ['DONE'], date_type: 'DUE_DATE', overdue: false,
+        not_downloaded: true, fine: false, on_time: false, collaborator: false, no_owner: true, email_not_sent: true, document_request_sent: false, without_external_user: false, os_workflow: true,
+        onvio_documents_error: false }, o && o.companyUser ? { company_user: [o.companyUser] } : {}) }),
     dominioEmail: () => ({ id: 'dominioEmail', tipo: 'dominioEmail', metodo: 'GET', url: url('/admin/company/email/domain') }),
     semTarefa: () => ({ id: 'semTarefa', tipo: 'numero', metodo: 'GET', url: url('/admin/customer/count-without-task') }),
     clientesDoTemplate: (o) => ({ id: 'clientesDoTemplate', tipo: 'clientesDoTemplate', metodo: 'GET', url: url('/admin/company/task/' + encodeURIComponent(o.id) + '/customer') }),
@@ -874,7 +877,7 @@
     STEP: { DONE: ['Concluiu uma etapa', 'ok'], OPEN: ['Reabriu uma etapa', 'neutro'] },
     DOCUMENT: { SENT_TO_PORTAL: ['Documento enviado ao portal', 'ok'], NOT_SENT_TO_PORTAL: ['Documento não foi ao portal', 'alerta'], DOWNLOADED: ['O cliente baixou o documento', 'cliente'], VIEWED: ['O cliente viu o documento', 'cliente'], ADDED: ['Documento anexado', 'neutro'], ADD: ['Documento anexado', 'neutro'] },
     REQUESTED_DOCUMENT: { _: ['Documento pedido ao cliente', 'neutro'], DONE: ['O cliente mandou o documento pedido', 'cliente'], SENT: ['Pedido de documento enviado ao cliente', 'neutro'] },
-    EMAIL: { SENT: ['E-mail enviado ao cliente', 'ok'], DELIVERY: ['E-mail entregue ao cliente', 'ok'], NOT_SENT: ['E-mail ao cliente não saiu', 'alerta'] },
+    EMAIL: { SENT: ['E-mail enviado ao cliente', 'ok'], DELIVERY: ['E-mail entregue ao cliente', 'ok'], NOT_SENT: ['E-mail ao cliente não saiu', 'alerta'], BOUNCE: ['E-mail ao cliente voltou', 'alerta'] },
     WHATSAPP: { _: ['Mensagem de WhatsApp', 'neutro'] },
     COMMENT: { _: ['Comentário', 'neutro'] },
     AUTOMATION: { _: ['Automação do Gestta', 'neutro'] },
@@ -1319,8 +1322,9 @@
   /* ---------- 0.110.0 · aba Saúde da operação (Josué, 13/11/2026): o que o Gestta não mostra direito ----------
      Tudo puro: as tarefas vêm do relatório do mês (tarefasDoRelatorio, com notifica e concluidoPor), os contatos só como
      { setor, ativo, temEmail } (nunca nome, e-mail ou telefone) e o histórico de e-mail só como situação, motivo e data. */
-  const MOTIVO_EMAIL = { NOT_SENT_NO_CUSTOMER_ACCOUNTABLE: 'o cliente não tem usuário neste setor', NO_CUSTOMER_ACCOUNTABLE: 'o cliente não tem usuário neste setor', NO_EMAIL: 'o contato não tem e-mail', INVALID_EMAIL: 'o e-mail do contato é inválido', BOUNCE: 'o e-mail voltou (endereço não existe ou caixa cheia)', BOUNCED: 'o e-mail voltou (endereço não existe ou caixa cheia)', SPAM: 'o e-mail foi marcado como spam', BLOCKED: 'o servidor do cliente bloqueou o e-mail' };
-  const motivoEmail = (r) => r ? (MOTIVO_EMAIL[String(r).toUpperCase()] || 'motivo do Gestta: ' + String(r).toLowerCase().replace(/_/g, ' ')) : 'o Gestta não disse o motivo';
+  const MOTIVO_EMAIL = { BOUNCE_LIMIT: 'o endereço do cliente devolveu e-mails demais (o Gestta parou de enviar)', TEXTO_LIVRE: 'o servidor do cliente devolveu o e-mail (endereço que não existe, caixa cheia ou bloqueio)', NOT_SENT_NO_CUSTOMER_ACCOUNTABLE: 'o cliente não tem usuário neste setor', NO_CUSTOMER_ACCOUNTABLE: 'o cliente não tem usuário neste setor', NO_EMAIL: 'o contato não tem e-mail', INVALID_EMAIL: 'o e-mail do contato é inválido', BOUNCE: 'o e-mail voltou (endereço não existe ou caixa cheia)', BOUNCED: 'o e-mail voltou (endereço não existe ou caixa cheia)', SPAM: 'o e-mail foi marcado como spam', BLOCKED: 'o servidor do cliente bloqueou o e-mail' };
+  // 0.115.1: o `reason` de um BOUNCE é o texto livre do servidor do cliente (pode trazer o endereço dele): só valem os códigos (MAIÚSCULAS_COM_SUBLINHADO); o resto vira a frase fixa
+  const motivoEmail = (r) => { if (!r) return 'o Gestta não disse o motivo'; const c = String(r); const k = /^[A-Za-z][A-Za-z0-9_]{2,}$/.test(c) ? c.toUpperCase() : 'TEXTO_LIVRE'; return MOTIVO_EMAIL[k] || 'motivo do Gestta: ' + k.toLowerCase().replace(/_/g, ' '); };
   const chaveCli = (c) => c ? String(c.cnpj || '').replace(/\D/g, '') || (c.code ? 'cod:' + c.code : '') : '';
   // 1 · tarefas que avisam o cliente, por empresa × setor, onde o setor não tem contato que receba
   // contatos: { [cnpj]: [{ setor, ativo, temEmail }] } (cliente não lido = ausente: fica fora e conta em naoLidos)
@@ -1364,6 +1368,7 @@
     if (!l.length) return { v: 'semEmail', rot: 'Nenhum e-mail registrado', quando: '' };
     const ult = l[0], st = String(ult.status).toUpperCase();
     if (st === 'NOT_SENT') return { v: 'naoSaiu', rot: 'Não saiu', motivo: motivoEmail(ult.reason), quando: ult.quando };
+    if (st === 'BOUNCE') return { v: 'naoSaiu', rot: 'Voltou', motivo: motivoEmail(ult.reason || 'BOUNCE'), quando: ult.quando };
     if (st === 'DELIVERY' || st === 'DELIVERED') return { v: 'entregue', rot: 'Entregue', quando: ult.quando };
     if (st === 'SENT') return { v: 'saiu', rot: 'Saiu (sem confirmação de entrega)', quando: ult.quando };
     return { v: 'outro', rot: 'Situação do Gestta: ' + st.toLowerCase(), quando: ult.quando };

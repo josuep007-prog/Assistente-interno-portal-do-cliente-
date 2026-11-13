@@ -2,6 +2,14 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.115.1 (13/11/2026): a lista de falhas de e-mail como a tela do Gestta faz
+
+- Josué subiu o resultado do roteiro de mapeamento (passos 0 a 4). Três coisas mudaram em relação à 0.115.0:
+  - **Sem datas.** A busca da tela "falha na entrega do e-mail" não manda `start_date` nem `end_date` (as 60 do painel têm meta de 16/10 a 28/11); com a janela de 30 dias que eu tinha posto, o total dava 65, não 60. A extensão agora manda o corpo da tela, sem datas e sem os filtros de setor e pessoa; a guarda de leitura abre exceção só para essa busca (precisa de `email_not_sent` ligado e até 200 por página). O analista leva só o id dele e a extensão ainda descarta o que não for dele.
+  - **Devolvidos (BOUNCE).** Os e-mails que o servidor do cliente devolveu aparecem como "Voltou" e agrupados com os demais. O texto livre que o servidor do cliente manda como motivo **nunca é mostrado nem guardado** (pode trazer o endereço dele): vira a frase "o servidor do cliente devolveu o e-mail (endereço que não existe, caixa cheia ou bloqueio)"; `BOUNCE_LIMIT` vira "o endereço do cliente devolveu e-mails demais (o Gestta parou de enviar)".
+  - **Remetente com os valores reais** (domínio não verificado, DKIM falhou): o aviso foi testado com eles.
+- Ficou sem fazer, esperando o Josué: Ver o arquivo do item, Excluir o arquivo e incluir ou tirar template (mapeados, ver o mapa do Gestta).
+
 ## Novidades da v0.115.0 (13/11/2026): Saúde com a lista direta de falhas de e-mail e o aviso do remetente
 
 - Josué subiu o mapeamento do Gestta de 13/11/2026 (`mapeamento/gestta-2026-11-04.md`, seção "Leitura de 13/11/2026"). O que ele liberou entrou:

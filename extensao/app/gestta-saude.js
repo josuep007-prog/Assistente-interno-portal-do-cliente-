@@ -85,7 +85,7 @@ async function lerContatos() {
   S.lendoCont = null; aoMudar();
 }
 const MAX_EMAILS = 150;
-// 0.115.0 (mapeamento de 13/11/2026): a lista vem direto do Gestta (a busca com o filtro "falha na entrega do e-mail", últimos 30 dias, os
+// 0.115.0 (mapeamento de 13/11/2026): a lista vem direto do Gestta (a busca com o filtro "falha na entrega do e-mail", sem datas, como a tela do Gestta, os
 // mesmos números do painel). Ela não traz o motivo: esse sai do histórico de cada tarefa, pelo botão, uma por vez.
 const falhaComoTarefa = (f) => { const t = S.tarefas.find(x => x._id === f.id); return { _id: f.id, name: nome(f.nome), customer: { name: nome(f.cliente.nome), cnpj: t ? t.customer.cnpj : '', code: f.cliente.code }, setor: t ? t.setor : '', responsavel: f.responsavel, conclusion_date: f.conclusao || (t && t.conclusion_date) || '' }; };
 async function lerFalhas() {
@@ -164,7 +164,7 @@ function blocoEmails() {
   if (rem && rem.nivel === 'aviso') h += '<div class="faixa warn gsa-rem"><svg class="ic"><use href="#i-alert"/></svg><div><b>Remetente do escritório.</b> ' + esc(rem.texto) + '</div></div>';
   else if (rem && rem.nivel === 'ok') h += '<p class="fraco gsa-memo">' + ic('check') + esc(rem.texto) + ' O Gestta usa um remetente só para todos os setores.</p>';
   if (!F) {
-    h += '<p class="gte-dica">' + (n != null ? 'No painel do Gestta, <b>' + plural(n, 'e-mail não saiu', 'e-mails não saíram') + '</b> neste mês. ' : '') + 'A lista sai direto do Gestta (o filtro de falha na entrega do e-mail, dos últimos 30 dias).</p>';
+    h += '<p class="gte-dica">' + (n != null ? 'No painel do Gestta, <b>' + plural(n, 'e-mail não saiu', 'e-mails não saíram') + '</b> neste mês. ' : '') + 'A lista sai direto do Gestta (o filtro de falha na entrega do e-mail).</p>';
     if (S.lendoFalhas) h += '<p class="fraco gsa-memo" role="status">' + ic('clock') + ' Lendo a lista do Gestta…</p>';
     else h += '<p><button type="button" class="btn btn-primary btn-sm" data-gsa-ler="falhas">' + ic('search') + 'Ler a lista de falhas</button></p>';
     if (S.erroFalhas) h += '<div class="faixa warn"><svg class="ic"><use href="#i-alert"/></svg><div>' + esc(S.erroFalhas) + '</div></div>';
@@ -172,7 +172,7 @@ function blocoEmails() {
   }
   const l = F.lista, alvo = l.slice(0, MAX_EMAILS), lidos = alvo.filter(t => t._id in S.emails), faltam = alvo.length - lidos.length;
   const porMotivo = new Map(); lidos.forEach(t => { const v = S.emails[t._id]; if (v && v.v === 'naoSaiu') porMotivo.set(v.motivo || 'Motivo não informado', (porMotivo.get(v.motivo || 'Motivo não informado') || 0) + 1); });
-  h += '<p class="gte-dica"><b>' + plural(l.length, 'tarefa concluída teve', 'tarefas concluídas tiveram') + ' falha de e-mail ao cliente</b> nos últimos 30 dias' + (n != null ? ' (o painel do Gestta conta ' + num(n) + ' neste mês)' : '') + '. A lista não traz o motivo: ' + (lidos.length ? 'ele vem do histórico de cada tarefa.' : 'leia o histórico para saber o porquê.') + '</p>';
+  h += '<p class="gte-dica"><b>' + plural(l.length, 'tarefa concluída teve', 'tarefas concluídas tiveram') + ' falha de e-mail ao cliente</b>' + (n != null ? ' (o painel do Gestta conta ' + num(n) + ' neste mês)' : '') + '. A lista não traz o motivo: ' + (lidos.length ? 'ele vem do histórico de cada tarefa.' : 'leia o histórico para saber o porquê.') + '</p>';
   if (S.lendoEm) h += barra(S.lendoEm);
   else if (faltam > 0) h += '<p><button type="button" class="btn btn-primary btn-sm" data-gsa-ler="emails">' + ic('search') + 'Ler o motivo (' + plural(faltam, 'tarefa', 'tarefas') + ')</button> <small class="fraco">Uma tarefa por vez. Só a situação do e-mail, o motivo e a data' + (l.length > MAX_EMAILS ? '; as ' + MAX_EMAILS + ' mais novas' : '') + '.</small></p>';
   if (S.erroEm) h += '<div class="faixa warn"><svg class="ic"><use href="#i-alert"/></svg><div>' + esc(S.erroEm) + '</div></div>';
@@ -180,7 +180,7 @@ function blocoEmails() {
   h += l.length ? '<div class="gte-tab-wrap"><table class="gte-tab gsa-tab"><thead><tr><th>Empresa</th><th>Tarefa</th><th>Setor</th><th>Responsável</th><th>Motivo</th><th>Concluída</th></tr></thead><tbody>' +
     l.map(t => { const v = S.emails[t._id]; const mot = v ? (v.v === 'naoSaiu' ? v.motivo || '' : v.rot) : '<span class="fraco">—</span>';
       return '<tr><td><b>' + esc(t.customer.name || '—') + '</b><small>' + esc(cnpjFmt(t.customer.cnpj) || t.customer.code) + '</small></td><td>' + btnTarefa(t) + '</td><td>' + esc(t.setor || '—') + '</td><td>' + esc(nome(t.responsavel) || '—') + '</td><td>' + (v ? esc(mot) : mot) + '</td><td>' + esc(ddmm(t.conclusion_date)) + '</td></tr>'; }).join('') + '</tbody></table></div>'
-    : '<p class="gte-vazio">' + ic('check') + 'Nenhuma tarefa com falha de e-mail nos últimos 30 dias.</p>';
+    : '<p class="gte-vazio">' + ic('check') + 'Nenhuma tarefa com falha de e-mail.</p>';
   return { h, n: l.length };
 }
 function blocoCarga(carga, prio) {
@@ -255,7 +255,7 @@ export function desenharSaude(v, sub) {
   sub('Saúde da operação · ' + (total ? 'equipe toda' : 'as suas tarefas') + ' · lido às ' + new Date(D.lidoEm).toTimeString().slice(0, 5));
   const kpi = (n, rot, alvo, cls, dica) => '<button type="button" class="gte-kpi ' + cls + '" data-gsa-ir="' + alvo + '" title="' + esc(dica) + '"><b>' + (n == null ? '—' : num(n)) + '</b><span>' + esc(rot) + '</span></button>';
   let h = '<section class="gte-topo cfg-card gsa-topo"><div class="gte-tit"><h2>Saúde da operação</h2><p' + (simples() ? ' class="ajuda"' : '') + '>O que o Gestta não mostra direito: o e-mail que não chega ao cliente, a tarefa que avisa sem contato no setor, quando não vai dar tempo e o que vem primeiro' + (total ? ', e a configuração das tarefas de cada empresa' : '') + '. Só leitura; ' + (total ? 'a equipe toda.' : 'só as suas tarefas.') + '</p></div>' +
-    '<div class="gte-kpis">' + kpi(S.falhas ? S.falhas.lista.length : D.emailNaoSaiu, S.falhas ? 'tarefas com falha de e-mail' : 'e-mails não saíram no mês', 'emails', 'gte-k-erro', S.falhas ? 'Tarefas concluídas nos últimos 30 dias com falha na entrega do e-mail (a lista do Gestta)' : 'Do painel do Gestta (atenção: e-mail não enviado)') +
+    '<div class="gte-kpis">' + kpi(S.falhas ? S.falhas.lista.length : D.emailNaoSaiu, S.falhas ? 'tarefas com falha de e-mail' : 'e-mails não saíram no mês', 'emails', 'gte-k-erro', S.falhas ? 'Tarefas concluídas com falha na entrega do e-mail (a lista do Gestta)' : 'Do painel do Gestta (atenção: e-mail não enviado)') +
     kpi(bC.n, 'empresas × setor sem contato', 'contatos', 'gte-k-erro', 'Tarefas que avisam o cliente e o setor não tem contato com e-mail (confira os contatos)') +
     kpi(carga.alertas.length, 'dias acima do ritmo', 'carga', 'gte-k-erro', 'Pessoa × dia em que a carga passa da capacidade') +
     kpi(ex.semDono.length, 'abertas sem responsável', 'extras:semDono', 'gte-k-neutro', 'Tarefas abertas sem responsável') +
