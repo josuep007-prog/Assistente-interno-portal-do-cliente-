@@ -2,6 +2,10 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.108.1 (13/11/2026): Obrigações, coluna sem pendência não filtra
+
+- Josué: "as colunas que não tiverem nenhuma pendência não devem ativar o filtro; hoje, quando clica na cabeça da coluna, ele filtra as pendentes, mas quando não tem nenhuma a tabela some". Nas Obrigações das Tarefas do Gestta, o cabeçalho de uma obrigação toda concluída não filtra mais (a dica diz "Nada pendente: não há o que filtrar") e a tabela continua inteira.
+
 ## Novidades da v0.108.0 (13/11/2026): Meu dia em números
 
 - Josué: "essa parte na extensão do Onvio está sem uso, preciso de opções"; escolheu **Meu dia em números**; "ela escura assim também não tá legal"; "tá muito simples, quero que impressione". No Hoje, o destaque escuro (rosca % em dia, carrossel e Próximos passos) saiu. No lugar, um bloco que segue o tema da tela (claro ou escuro, nos dois estilos): **concluídas hoje** em destaque num anel que enche ao chegar na média por dia útil, cartões com ícone de **chegaram hoje**, **respondidas hoje**, **paradas há mais de 3 dias** e **lembretes de hoje** (cada um abre a lista certa, na mesma carteira) e o gráfico das **concluídas por dia útil** nos últimos 10 dias, com a linha tracejada da média. As concluídas vêm da mesma leitura da aba Concluídas (últimos 30 dias, só na memória por 10 minutos); sem analista, o bloco diz que não se aplica. Números e barras entram animados (sem animação para quem pede movimento reduzido).

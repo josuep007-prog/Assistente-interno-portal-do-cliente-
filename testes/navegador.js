@@ -2984,6 +2984,13 @@ await passo('Gestta · Tarefas (0.77.0): Meu dia com o detalhe ao lado e a linha
   assert.equal(await fr.locator('.gq tbody tr').count(), 3);
   assert.equal(await fr.$eval('.gq tbody tr:first-child .gq-b[data-et="f00000000000000000000001"]', b => b.className), 'gq-b gq-e-multa');
   if (process.env.CAP) await p.screenshot({ path: path.join(process.env.CAP, 'gestta-obrigacoes.png') });
+  // 0.108.1: coluna sem nada pendente não filtra (antes a tabela sumia)
+  const semPend = await fr.locator('.gq-h .gq-h-sem').count();
+  assert.ok(semPend > 0, 'há coluna toda concluída nos dados de teste');
+  assert.equal(semPend + await fr.locator('[data-gq-col]').count(), 7);
+  await fr.$eval('.gq-h .gq-h-sem', b => b.click());
+  assert.equal(await fr.locator('.gq tbody tr').count(), 3, 'a tabela continua inteira');
+  assert.equal(await fr.locator('#gq-tudo').count(), 0, 'nenhum filtro ligado');
   await fr.click('[data-gq-col="GUIA DO FGTS"]');
   assert.deepEqual(await fr.$$eval('.gq tbody .gq-emp b', l => l.map(e => e.textContent)), ['Cliente Beta ME']);
   await fr.click('.gq-b[data-et="f00000000000000000000004"]');

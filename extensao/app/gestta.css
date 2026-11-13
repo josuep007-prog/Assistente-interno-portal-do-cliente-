@@ -475,6 +475,7 @@
 .gq-h{padding:0; min-width:92px; max-width:110px}
 .gq-h button{all:unset; box-sizing:border-box; cursor:pointer; width:100%; display:flex; flex-direction:column; gap:3px; padding:8px 8px 6px}
 .gq-h button:hover{background:var(--surface-3)} .gq-h button:focus-visible{outline:2px solid var(--blue-deep); outline-offset:-2px}
+.gq-h button.gq-h-sem{cursor:default} .gq-h button.gq-h-sem:hover{background:none}
 .gq-h.on button{background:color-mix(in srgb, var(--blue-deep) 12%, var(--surface)); box-shadow:inset 0 -3px 0 var(--blue-deep)}
 .gq-h-nome{font-size:11.5px; font-weight:700; color:var(--ink); line-height:1.25; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere}
 .gq-h-n{font-size:11.5px; color:var(--ink-2); font-variant-numeric:tabular-nums} .gq-h-n em{font-style:normal; color:var(--late); font-weight:700}
