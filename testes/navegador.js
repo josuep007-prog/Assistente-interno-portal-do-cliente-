@@ -3015,11 +3015,16 @@ await passo('Gestta · Tarefas (0.77.0): Meu dia com o detalhe ao lado e a linha
   await fr.waitForSelector('#gt-quem-wrap:not([hidden])');
   const quem = async v => { await fr.click('#gt-quem-btn'); await fr.waitForSelector('#gt-quem-pop:not([hidden])'); await fr.click('#gt-quem-lista [data-quem="' + v + '"]'); };
   await fr.click('#gt-quem-btn');
-  assert.deepEqual(await fr.$$eval('#gt-quem-lista [data-quem]', o => o.map(x => x.textContent.trim())), ['EuMinhas', '—Sem responsável', 'PBPessoa Beta'], 'a própria pessoa não se repete na equipe');
-  await fr.fill('#gt-quem-busca', 'beta'); assert.equal(await fr.locator('#gt-quem-lista [data-quem]').count(), 1, 'a busca filtra a equipe');
+  // 0.106.0: botão > setor (só os com tarefa aberta) > uma ou mais pessoas
+  await fr.waitForSelector('#gt-quem-lista [data-gt-setor]');
+  assert.deepEqual(await fr.$$eval('#gt-quem-lista [data-quem]', o => o.map(x => x.textContent.trim())), ['EuMinhas', '—Sem responsável']);
+  await fr.fill('#gt-quem-busca', 'pess'); assert.equal(await fr.locator('#gt-quem-lista [data-gt-setor]').count(), 1, 'a busca filtra os setores');
   await fr.press('#gt-quem-busca', 'Enter');
-  await fr.waitForFunction(b => (window.__msgs || []).some(m => m.cmd === 'gesttaTarefas' && m.quem === b), GT_B);
-  assert.match(await fr.textContent('#gt-quem-btn'), /Pessoa Beta/);
+  await fr.waitForSelector('#gt-quem-lista [data-gt-pessoa]');
+  await fr.check('#gt-quem-lista [data-gt-pessoa="' + GT_B + '"]');
+  await fr.press('#gt-quem-busca', 'Enter');
+  await fr.waitForFunction(b => (window.__msgs || []).some(m => m.cmd === 'gesttaTarefas' && m.quem === 'setor:Pessoal|' + b), GT_B);
+  assert.match(await fr.textContent('#gt-quem-btn'), /Setor Pessoal · Pessoa Beta/);
   await quem('sem');
   await fr.waitForFunction(() => (window.__msgs || []).some(m => m.cmd === 'gesttaTarefas' && m.quem === 'sem'));
   // Fechamento do mês: geral, por setor e por analista; clicar numa barra filtra; só com pendência; empresa do escritório fora
@@ -3315,12 +3320,30 @@ await passo('Gestta · 0.103.0: ver todas as tarefas de um setor, filtrar pela s
     if (process.env.CAP) { await fr.waitForTimeout(700); await p.screenshot({ path: path.join(process.env.CAP, 'gestta-detalhe-cnpj-' + estilo + '.png') }); }
     await p.keyboard.press('Escape');
     await fr.click('#gt-limpar');
-    // De quem: os setores aparecem antes das pessoas; o setor lê as tarefas de todos dele e separa pelo relatório
+    // 0.106.0: De quem em dois passos: o botão mostra só os setores com tarefa aberta; o setor mostra as pessoas dele para marcar
     await fr.waitForSelector('#gt-quem-wrap:not([hidden])');
     await fr.click('#gt-quem-btn');
-    assert.deepEqual(await fr.$$eval('#gt-quem-lista [data-quem]', l => l.map(b => b.textContent.trim()).slice(0, 4)), ['EuMinhas', '—Sem responsável', '▦Setor Contábil · todas as tarefas', '▦Setor Fiscal · todas as tarefas']);
-    assert.deepEqual(await fr.$$eval('#gt-quem-lista .gt-quem-sec', l => l.map(x => x.textContent)), ['Setores', 'Pessoas'], '0.104.0: setores e pessoas separados');
-    await fr.click('#gt-quem-lista [data-quem="setor:Fiscal"]');
+    await fr.waitForSelector('#gt-quem-lista [data-gt-setor]');
+    assert.deepEqual(await fr.$$eval('#gt-quem-lista [data-quem]', l => l.map(b => b.dataset.quem)), ['eu', 'sem'], 'no 1º passo, sem a lista de pessoas');
+    assert.deepEqual(await fr.$$eval('#gt-quem-lista [data-gt-setor]', l => l.map(b => b.dataset.gtSetor)), ['Fiscal', 'Pessoal'], 'só setores com tarefa aberta (Contábil não tem)');
+    assert.match(await fr.textContent('#gt-quem-lista [data-gt-setor="Fiscal"]'), /3 abertas/);
+    await fr.click('#gt-quem-lista [data-gt-setor="Fiscal"]');
+    await fr.waitForSelector('#gt-quem-lista [data-gt-pessoa]');
+    assert.ok(!(await fr.$('#gt-quem-pop[hidden]')), 'o popover continua aberto no 2º passo');
+    assert.deepEqual(await fr.$$eval('#gt-quem-lista [data-gt-pessoa]', l => l.map(c => c.closest('label').textContent.trim())), ['EMEu Mesmo3 abertas', 'PBPessoa Beta']);
+    if (process.env.CAP) await p.screenshot({ path: path.join(process.env.CAP, 'gestta-dequem-setor-' + estilo + '.png') });
+    await fr.check('#gt-quem-lista [data-gt-pessoa="' + GT_B + '"]');
+    assert.equal((await fr.textContent('[data-gt-aplicar]')).trim(), 'Ver as tarefas de 1 pessoa');
+    await fr.click('[data-gt-aplicar]');
+    await fr.waitForFunction(b => (window.__msgs || []).some(m => m.cmd === 'gesttaTarefas' && m.quem === 'setor:Fiscal|' + b), GT_B);
+    await fr.waitForFunction(() => /Setor Fiscal · Pessoa Beta/.test(document.querySelector('#gt-quem-btn').textContent));
+    // de novo, sem marcar ninguém: todas as tarefas do setor
+    await fr.click('#gt-quem-btn');
+    await fr.click('#gt-quem-lista [data-gt-setor="Fiscal"]');
+    await fr.waitForSelector('#gt-quem-lista [data-gt-pessoa]');
+    await fr.uncheck('#gt-quem-lista [data-gt-pessoa="' + GT_B + '"]');
+    assert.equal((await fr.textContent('[data-gt-aplicar]')).trim(), 'Ver todas as tarefas do setor');
+    await fr.click('[data-gt-aplicar]');
     await fr.waitForFunction(() => (window.__msgs || []).some(m => m.cmd === 'gesttaTarefas' && m.quem === 'setor:Fiscal'));
     await fr.waitForFunction(() => /todas as tarefas do setor Fiscal/.test(document.querySelector('#vista').textContent) && (window.__msgs || []).some(m => m.cmd === 'gesttaFechamento'));
     assert.match(await fr.textContent('#gt-quem-btn'), /Setor Fiscal/);
