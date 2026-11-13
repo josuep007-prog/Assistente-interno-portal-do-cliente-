@@ -147,7 +147,7 @@ assert.equal(appDe(portal), undefined, 'ao entrar no Onvio a camada nunca abre s
 await sw.evaluate(async i => aoClicarNoIcone(await chrome.tabs.get(i)), await idDaAba(PORTAL_TESTE));      // o clique no ícone abre
 await esperar(() => appDe(portal));
 const app = appDe(portal);
-await app.waitForSelector('.hj-hero .an-svg', { timeout: 8000 });
+await app.waitForSelector('.hj-meudia .hj-md-k', { timeout: 8000 });
 await new Promise(r => setTimeout(r, 1000));                         // números e anel animados
 assert.equal(await cheia(portal), true);
 const caixa = await (await app.frameElement()).boundingBox();

@@ -4683,3 +4683,15 @@ test('Gestta (0.106.0): só setores com tarefa aberta, as pessoas de cada um e o
   assert.deepEqual(plano(OCG.lerQuemSetor('setor:Fiscal|aaaaaaaaaaaaaaaaaaaaaaaa,bbbbbbbbbbbbbbbbbbbbbbbb')), { setor: 'Fiscal', ids: ['aaaaaaaaaaaaaaaaaaaaaaaa', 'bbbbbbbbbbbbbbbbbbbbbbbb'] });
   assert.equal(OCG.lerQuemSetor('eu'), null);
 });
+
+test('Hoje (0.108.0): Meu dia em números — chegaram, respondidas, paradas, concluídas por dia útil e a média', () => {
+  const now = new Date('2026-11-13T15:00:00');
+  const base = [{ created: '2026-11-13T10:00:00', lado: 'esc', parado: 0 }, { lado: 'cli', last: '2026-11-13T11:00:00' }, { lado: 'esc', parado: 5 }, { lado: 'cli', last: '2026-11-10T11:00:00' }];
+  const md = plano(OC.meuDia(base, [{ last: '2026-11-13T09:00:00' }, { last: '2026-11-12T09:00:00' }, { last: '2026-11-12T10:00:00' }, { last: '2026-11-08T09:00:00' }], now, ['2026-11-11'], 5));
+  assert.deepEqual([md.chegaram, md.respondidas, md.paradas, md.comEscritorio, md.concluidasHoje], [1, 1, 1, 2, 1]);
+  assert.deepEqual(md.serie.map(x => x.dia), ['2026-11-06', '2026-11-09', '2026-11-10', '2026-11-12', '2026-11-13'], 'só dias úteis (feriado e fim de semana fora)');
+  assert.deepEqual(md.serie.map(x => x.n), [0, 0, 0, 2, 1]);
+  assert.ok(md.media > 0 && md.media < 1, 'média por dia útil dos 30 dias, sem contar hoje');
+  const sem = plano(OC.meuDia(base, null, now));
+  assert.equal(sem.concluidasHoje, null); assert.equal(sem.serie, null);
+});

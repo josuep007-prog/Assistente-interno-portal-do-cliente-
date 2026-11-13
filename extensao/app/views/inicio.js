@@ -32,6 +32,8 @@ const gravarRecolhido = (id, rec) => gravarPref('hojeRecolhidos', JSON.stringify
 let filtroSug = lerPref('hojeSugFiltro', '');
 const PRIO_SUG = ['abaErrada', 'feriasNova', 'rescisaoNova', 'falta', 'anexo', 'duplicada', 'avisoTrabalhado', 'fora', 'semRetorno'];
 
+// 0.108.0: concluídas dos últimos 30 dias para o "Meu dia em números" (cmd 'concluidas', as suas ou as da equipe), só na memória, 10 min
+const concDia = {}, concDiaLendo = {};
 let casosAtuais = [];      // as sugestões da última tela desenhada (o modo foco lê daqui, para saber o que já saiu)
 
 const corMotivo = Object.fromEntries(OC.MOTIVOS.map(m => [m.k, m.cor]));
@@ -46,7 +48,7 @@ const nomeCli = i => i.apelido || i.cliente || '—';
 export function contagemSugestoes() { return estado.snap ? OC.casosSugeridos(minhas().concat(resolvidas().filter(i => i.mine)), casosLidos, estado.settings, estado.sugIgnoradas).length : 0; }
 
 export function render(el, ctx) {
-  const animar = !el.querySelector('.hj-hero');      // só ao chegar na tela, não a cada clique ou leitura
+  const animar = !el.querySelector('.hj-meudia');      // só ao chegar na tela, não a cada clique ou leitura
   const m = minhas(), todas = itens();
   const analistas = OC.porAnalista(todas).map(r => r.resp).filter(r => r !== SEM).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   // carteira: a escolhida (se ainda existe); sem escolha, a sua, ou a equipe quando nada está com você
@@ -60,12 +62,8 @@ export function render(el, ctx) {
   // números
   const cont = OC.contarMotivos(base);
   const total = base.length;
-  const atencao = total - cont.cliente;               // o que espera o escritório ou tem prazo legal
   const semN = base.filter(i => !i.resp).length;
-  const pctDia = total ? Math.round((total - cont.legal) / total * 100) : 100;     // sem prazo legal em cima
   const enxuto = !!estado.enxuto;                    // 0.89.0: Contábil/Fiscal (só a Geral): sem admissões, tipos nem prazo legal
-  const fatias = OC.MOTIVOS.map(mo => ({ k: mo.k, rot: mo.rot, n: cont[mo.k], cor: mo.cor }));
-  const prio = OC.prioridades(base);
   const lems = (estado.lembretes || []).filter(l => !l.feito && ['hoje', 'atrasado'].includes(OC.situacaoLembrete(l))).sort((a, b) => a.quando.localeCompare(b.quando));
 
   const rotCart = cart === MINHA ? 'Minha carteira' + (nome ? ' · ' + nome : '') : cart === EQUIPE ? 'Equipe toda' : cart === SEM ? 'Sem analista' : 'Carteira de ' + cart;
@@ -87,9 +85,9 @@ export function render(el, ctx) {
   const resolvidasBase = resolvidas().filter(i => cart === MINHA ? i.mine : cart === EQUIPE ? true : (i.resp || SEM) === cart);
   const casos = OC.casosSugeridos(base.concat(resolvidasBase), casosLidos, estado.settings, estado.sugIgnoradas);
   casosAtuais = casos;
-  const linkFila = p => '#/fila?' + new URLSearchParams(Object.assign(cart === EQUIPE ? { escopo: 'equipe' } : cart === SEM ? { escopo: 'semresp' } : cart !== MINHA ? { analista: cart } : {}, p));
+  const linkFila = p => ('#/fila?' + new URLSearchParams(Object.assign(cart === EQUIPE ? { escopo: 'equipe' } : cart === SEM ? { escopo: 'semresp' } : cart !== MINHA ? { analista: cart } : {}, p))).replace(/\?$/, '');
 
-  el.innerHTML = aviso + heroHtml() + admissoesHtml() + tiposPainel() +
+  el.innerHTML = aviso + meuDiaHtml() + admissoesHtml() + tiposPainel() +
     sugHtml() + '<div class="hj-paineis">' + prevHtml() + '</div>';
 
   // Admissões: faixa destacada logo abaixo do destaque, só as que o escritório ainda não tocou; recolhível (lembra a escolha)
@@ -207,31 +205,56 @@ export function render(el, ctx) {
       fresca ? '<button class="icon-btn" id="hj-prev-ler" title="Recalcular" aria-label="Recalcular">' + ic('refresh', 'ic-sm') + '</button>' : '');
   }
 
-  function heroHtml() {
-    const slides = slidesDoCarrossel();
-    const e = estadoLeitura(), dica = dicaLeitura(e);
-    const titulo = !estado.snap ? 'Aguardando a primeira leitura do Onvio'
-      : atencao ? '<em data-conta="' + atencao + '" data-de="0">' + num(atencao) + '</em> ' + (atencao === 1 ? 'solicitação pede' : 'solicitações pedem') + ' sua atenção'
-      : total ? 'Tudo em dia ' + ic('check') : 'Nada pendente nesta carteira';
-    const resumo = [plural(total, 'pendência', 'pendências'), base.filter(i => i.lado === 'esc').length + ' com o escritório', base.filter(i => i.lado === 'cli').length + ' com o cliente']
-      .concat(semN && cart !== SEM ? ['<b class="t-sem">' + semN + ' sem analista</b>'] : []).join(' · ');
-    return '<section class="hj-hero" style="--i:0">' +
-      '<div class="hj-hero-g">' +
-        '<div class="hj-donut" id="hj-donut">' + anel(fatias, { ativo: null, rotulo: enxuto ? (total === 1 ? 'pendência' : 'pendências') : 'em dia', anima: animar, semLegenda: true, tam: 150, esp: 11, centro: enxuto ? { n: total, de: animar ? 0 : total, suf: '' } : { n: pctDia, de: animar ? 0 : pctDia, suf: '%' }, titulo: 'Pendências por situação (clique numa parte para ver em Solicitações)' }) + '</div>' +
-        '<div class="hj-hero-tx">' +
-          '<span class="hj-eyebrow">' + esc(rotCart) + (cart !== EQUIPE ? ' · <button type="button" class="linkish" data-cart="' + EQUIPE + '">ver equipe toda</button>' : '') + '</span>' +
-          '<h2 id="hj-titulo">' + titulo + '</h2>' +
-          '<p>' + resumo + '</p>' +
-          '<div class="hj-tick ' + e + (slides.length < 2 ? ' uno' : '') + '" id="hj-tick" role="region" aria-label="Pendências, uma por vez" aria-live="off">' +
-            '<span class="hj-bola" title="' + esc(dica) + '" aria-label="' + esc(dica) + '"></span>' +
-            '<div class="hj-tick-palco">' + (slides.length ? slides.map((s, n) => '<button type="button" class="hj-tk n-' + s.n + (n === 0 ? ' on' : '') + '"' + (s.k ? ' data-k="' + esc(s.k) + '"' : ' data-lem="' + esc(s.lem) + '"') + (n ? ' tabindex="-1" aria-hidden="true"' : '') + ' style="--c:' + s.c + '"><span class="hj-tk-tag">' + esc(s.tag) + '</span><b>' + esc(s.txt) + '</b><small>' + esc(s.sub) + '</small></button>').join('') : '<span class="hj-tk on vazio"><b>' + (estado.snap ? 'Nenhuma pendência pedindo atenção agora.' : 'Aguardando a primeira leitura do Onvio.') + '</b></span>') + '</div>' +
-            '<i class="hj-tick-relogio"><i></i></i>' +
-          '</div>' +
-          '<div class="hj-legenda">' + fatias.filter(f => f.n).map(f => '<span><i style="background:' + cor(f.cor) + '"></i>' + esc(f.rot) + ' <b>' + num(f.n) + '</b></span>').join('') + '</div>' +
+  // 0.108.0 (Josué, 13/11/2026: o destaque "sem uso"; escolhido "Meu dia em números"; "ela escura assim também não tá legal"):
+  // o dia da carteira em números, no tema da tela; cada número leva à lista certa. Concluídas: lidas na hora, 10 min na memória.
+  function meuDiaHtml() {
+    const esc2 = cart === MINHA ? 'mine' : cart === SEM ? '' : 'equipe';
+    const cd = esc2 && concDia[esc2];
+    const conc = !cd || !cd.itens ? null : esc2 === 'mine' || cart === EQUIPE ? cd.itens : cd.itens.filter(i => (i.resp || '') === cart);
+    const md = OC.meuDia(base, conc, new Date(), estado.settings.feriados, 10);
+    const lendo = esc2 && !cd;
+    const vg = n => String(n).replace('.', ',');
+    const conta = n => n == null ? '…' : '<b data-conta="' + n + '">' + num(n) + '</b>';
+    const tile = (k, n, rot, sub, href, icone, tom, cls) => '<a class="hj-md-k tom-' + tom + (cls ? ' ' + cls : '') + '" href="' + esc(href) + '" data-md="' + k + '">' +
+      '<span class="hj-md-ic">' + ic(icone) + '</span><span class="hj-md-tx">' + conta(n) + '<span>' + esc(rot) + '</span>' + (sub ? '<small>' + sub + '</small>' : '') + '</span>' +
+      '<span class="hj-md-ir">' + ic('chev-r', 'ic-sm') + '</span></a>';
+    // destaque: as concluídas de hoje contra a média por dia útil (o anel enche ao chegar na média)
+    const ch = md.concluidasHoje, med = md.media;
+    const pct = ch == null ? null : med ? Math.min(100, ch / med * 100) : ch ? 100 : 0;
+    const ritmo = ch == null ? (esc2 ? (cd && cd.erro ? 'não deu para ler' : 'lendo no Onvio…') : 'sem analista: não se aplica')
+      : !med ? 'primeiras do período' : ch >= med ? (ch > med ? '<span class="hj-md-chip ok">▲ acima da média</span>' : '<span class="hj-md-chip ok">na média</span>')
+      : '<span class="hj-md-chip">faltam ' + Math.ceil(med - ch) + ' para a média</span>';
+    const destaque = '<a class="hj-md-k hj-md-dest" href="' + esc(linkFila({ escopo: 'concluidas' })) + '" data-md="concluidas">' +
+      anelProgresso(pct, (ch == null ? '<b>…</b>' : '<b data-conta="' + ch + '">' + num(ch) + '</b>') + '<small>hoje</small>', { tam: 112 }) +
+      '<span class="hj-md-tx"><span>concluídas hoje</span><small>' + (med != null ? 'média de ' + vg(med) + ' por dia útil' : '') + '</small>' + (ch == null ? '<small>' + ritmo + '</small>' : ritmo) + '</span></a>';
+    const total10 = md.serie ? md.serie.reduce((t, x) => t + x.n, 0) : null;
+    return '<section class="hj-meudia" style="--i:0">' +
+      '<header class="hj-md-cab"><div><span class="hj-eyebrow">' + esc(rotCart) + (cart !== EQUIPE ? ' · <button type="button" class="linkish" data-cart="' + EQUIPE + '">ver equipe toda</button>' : '') + '</span>' +
+        '<h2 id="hj-titulo">Meu dia em números</h2><p>' + plural(total, 'pendência', 'pendências') + (semN && cart !== SEM ? ' · <b class="t-sem">' + semN + ' sem analista</b>' : '') + '</p></div>' +
+        '<button class="btn btn-sm" id="ag-novo">' + ic('plus', 'ic-sm') + ' Lembrete</button></header>' +
+      '<div class="hj-md-grade">' + destaque +
+        '<div class="hj-md-ks">' +
+          tile('chegaram', md.chegaram, 'chegaram hoje', 'novas na carteira', linkFila({}), 'inbox', 'a') +
+          tile('respondidas', md.respondidas, 'respondidas hoje', 'a vez passou ao cliente', linkFila({ escopo: 'respondidas' }), 'chat', 'b') +
+          tile('paradas', md.paradas, 'paradas há mais de 3 dias', 'de ' + num(md.comEscritorio) + ' com o escritório', linkFila({ idade: '4-' }), 'clock', 'c', md.paradas ? 'alerta' : '') +
+          tile('lembretes', lems.length, lems.length === 1 ? 'lembrete para hoje' : 'lembretes para hoje', lems.some(l => OC.situacaoLembrete(l) === 'atrasado') ? 'tem atrasado' : 'nada atrasado', '#/lembretes', 'bell', 'd') +
         '</div>' +
-      '</div>' +
-      '<div class="hj-passos"><h3>Próximos passos <button class="btn btn-sm" id="ag-novo">' + ic('plus', 'ic-sm') + ' Lembrete</button></h3>' + passosHtml() + '</div>' +
-    '</section>';
+        '<figure class="hj-md-graf" aria-label="Concluídas por dia útil"><figcaption><span>Concluídas por dia útil</span>' + (total10 != null ? '<b>' + num(total10) + ' em 10 dias' + (md.media ? ' · <i class="hj-md-leg" aria-hidden="true"></i>média ' + vg(md.media) : '') + '</b>' : '') + '</figcaption>' + (md.serie ? barrasDia(md.serie, md.media) : '<div class="hj-md-vazio">' + (lendo ? 'Lendo as concluídas no Onvio…' : cd && cd.erro ? 'Não deu para ler as concluídas: ' + esc(cd.erro) : 'Sem analista: as concluídas não se aplicam.') + '</div>') + '</figure>' +
+      '</div></section>';
+  }
+  // barras finas com degradê, uma por dia útil; a de hoje cheia, com o número, e a linha tracejada da média
+  function barrasDia(serie, media) {
+    const W = 360, H = 132, pad = 4, max = Math.max(1, media || 0, ...serie.map(x => x.n)), bw = (W - pad * 2) / serie.length;
+    const y = v => H - 20 - (v / max) * (H - 40);
+    const hojeK = serie[serie.length - 1].dia, larg = Math.min(18, bw * 0.6);
+    const barras = serie.map((x, n) => { const h = Math.max(x.n ? 3 : 2, (H - 20) - y(x.n)), cx = pad + n * bw + bw / 2, dd = x.dia.slice(8, 10) + '/' + x.dia.slice(5, 7), eh = x.dia === hojeK;
+      return '<g><title>' + dd + ': ' + x.n + (x.n === 1 ? ' concluída' : ' concluídas') + '</title><rect x="' + (cx - larg / 2).toFixed(1) + '" y="' + ((H - 20) - h).toFixed(1) + '" width="' + larg.toFixed(1) + '" height="' + h.toFixed(1) + '" rx="3" class="' + (eh ? 'hoje' : x.n ? '' : 'zero') + '"/>' +
+        (eh || (x.n && x.n === max) ? '<text x="' + cx.toFixed(1) + '" y="' + ((H - 20) - h - 5).toFixed(1) + '" text-anchor="middle" class="v">' + x.n + '</text>' : '') +
+        '<text x="' + cx.toFixed(1) + '" y="' + (H - 5) + '" text-anchor="middle" class="d' + (eh ? ' h' : '') + '">' + (eh ? 'hoje' : dd.slice(0, 2)) + '</text></g>'; }).join('');
+    const mv = String(media).replace('.', ',');
+    const ym = media ? '<line x1="0" x2="' + W + '" y1="' + y(media).toFixed(1) + '" y2="' + y(media).toFixed(1) + '" class="media"/>' : '';
+    return '<svg class="hj-md-svg" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Concluídas por dia útil, média ' + mv + '"><defs><linearGradient id="hj-md-g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="g1"/><stop offset="1" class="g2"/></linearGradient></defs>' +
+      '<line x1="0" x2="' + W + '" y1="' + (H - 20) + '" y2="' + (H - 20) + '" class="base"/>' + barras + ym + '</svg>';
   }
 
   // Solicitações por tipo: os cartões das Solicitações, do tipo mais urgente para o menos urgente. O clique abre a lista
@@ -243,35 +266,22 @@ export function render(el, ctx) {
       plural(new Set(base.map(i => i.type)).size, 'tipo com pendência', 'tipos com pendência'));
   }
 
-  function slidesDoCarrossel() {
-    const out = [];
-    lems.filter(l => OC.situacaoLembrete(l) === 'atrasado').forEach(l => out.push({ n: 'lem', tag: 'Lembrete atrasado', txt: l.texto, sub: fmtDataHora(l.quando) + (l.num ? ' · #' + l.num + ' ' + (l.cliente || '') : ''), lem: l.id, c: 'var(--late)' }));
-    prio.slice(0, 12).forEach(p => {
-      const i = p.item;
-      out.push({ n: p.motivo, tag: TAG[p.motivo], txt: '#' + i.num + ' ' + nomeCli(i) + ': ' + OC.acaoDe(i, p.motivo).toLowerCase(), sub: [i.typeLabel, i.detalhe, cart === MINHA ? '' : (i.resp || 'sem analista')].filter(Boolean).join(' · '), k: i.k, c: cor(corMotivo[p.motivo]) });
-    });
-    lems.filter(l => OC.situacaoLembrete(l) === 'hoje').forEach(l => out.push({ n: 'lem', tag: 'Lembrete de hoje', txt: l.texto, sub: fmtDataHora(l.quando), lem: l.id, c: 'var(--blue-deep)' }));
-    return out;
-  }
 
-  function passosHtml() {
-    let n = 2;
-    const li = [];
-    lems.forEach(l => {
-      const atr = OC.situacaoLembrete(l) === 'atrasado', h = new Date(l.quando);
-      li.push('<li style="--i:' + (n++) + '"><div class="hj-step n-lem' + (atr ? ' late' : '') + '" tabindex="0" data-ag="lembrete|' + esc(l.id) + '"><i></i><span><b>' + esc(l.texto) + '</b><small>' + (atr ? 'Lembrete atrasado · ' + fmtDataHora(l.quando) : 'Lembrete · ' + String(h.getHours()).padStart(2, '0') + ':' + String(h.getMinutes()).padStart(2, '0')) + (l.rep && l.rep !== 'nao' ? ' · ' + esc(OC.REPETICOES[l.rep]) : '') + (l.num ? ' · #' + esc(l.num) + ' ' + esc(l.cliente) : '') + '</small></span><button class="btn btn-sm" data-feito title="Marcar como feito">' + ic('check', 'ic-sm') + ' Feito</button></div></li>');
-    });
-    prio.forEach(p => {
-      const i = p.item;
-      li.push('<li style="--i:' + (n++) + '"><div class="hj-step" tabindex="0" data-k="' + esc(i.k) + '" style="--c:' + cor(corMotivo[p.motivo]) + '"><i></i><span><b>' + esc(OC.acaoDe(i, p.motivo)) + '</b><small>#' + esc(i.num) + ' ' + esc(nomeCli(i)) + ' · ' + esc(i.typeLabel) + (cart === MINHA ? '' : ' · ' + esc(i.resp || 'sem analista')) + '</small></span>' + ic('chev-r', 'ic-sm') + '</div></li>');
-    });
-    return li.length ? '<ol class="hj-passos-l" id="hj-passos">' + li.join('') + '</ol>' : '<div class="hj-zen">' + ic('check') + '<span>Nenhuma ação pendente. Bom trabalho!</span></div>';
-  }
+
+
 
   // ---------- interações ----------
   const redesenhar = () => render(el, ctx);
-  ligarItens($('#hj-passos', el) || document.createElement('div'), prio.map(p => p.item), ctx.abrirDetalhe);
-  ligarItens($('#hj-tick', el), base, ctx.abrirDetalhe);
+  // 0.108.0: lê as concluídas dos últimos 30 dias para o Meu dia (uma leitura por vez, 10 min na memória)
+  const escMd = cart === MINHA ? 'mine' : cart === SEM ? '' : 'equipe';
+  if (escMd && estado.snap && !concDiaLendo[escMd] && (!concDia[escMd] || Date.now() - concDia[escMd].em > 10 * 60000)) {
+    concDiaLendo[escMd] = true;
+    enviar({ cmd: 'concluidas', equipe: escMd === 'equipe' }).then(r => {
+      concDiaLendo[escMd] = false;
+      concDia[escMd] = r && r.ok ? { itens: r.itens || [], em: Date.now() } : { itens: null, erro: (r && r.erro) || 'a leitura não respondeu', em: Date.now() };
+      if (el.isConnected && location.hash.startsWith('#/inicio')) render(el, ctx);
+    });
+  }
   $$('#hj-tipos-l [data-tipo]', el).forEach(b => b.onclick = () => {
     const xs = base.filter(i => i.type === b.dataset.tipo);
     const soCliente = xs.length && xs.every(i => i.lado === 'cli');
@@ -396,8 +406,6 @@ export function render(el, ctx) {
   ligarRec($('#hj-tipos', el) || document.createElement('div'));
   ligarDicas(el);
   if (animar) { el.classList.remove('hj-anim'); void el.offsetWidth; el.classList.add('hj-anim'); setTimeout(() => el.classList.remove('hj-anim'), 1600); animarNumeros(el); }
-  iniciarCarrossel($('#hj-tick', el));
-  marcarRolagem($('#hj-passos', el));
 
   // rosca: leva às Solicitações com aquele motivo, na mesma carteira
   $$('[data-motivo]', el).forEach(b => b.addEventListener('click', () => { location.hash = linkFila({ motivo: b.dataset.motivo }); }));
@@ -420,28 +428,3 @@ export function render(el, ctx) {
   $$('[data-lem]', el).forEach(b => b.addEventListener('click', () => { const l = estado.lembretes.find(x => x.id === b.dataset.lem); if (l) (l.type && l.num ? ctx.abrirDetalhe(l) : ctx.abrirLembrete({ l })); }));
 }
 
-// Carrossel: uma pendência por vez. A barra invisível é o relógio (5 s por volta); passar o mouse ou focar pausa.
-function iniciarCarrossel(raiz) {
-  if (!raiz) return;
-  const sl = $$('.hj-tk', raiz);
-  if (sl.length < 2) return;
-  const ir = () => {
-    const at = sl.findIndex(x => x.classList.contains('on')), prox = (at + 1) % sl.length;
-    sl.forEach((x, n) => { x.classList.toggle('on', n === prox); x.classList.toggle('sai', n === at); x.tabIndex = n === prox ? 0 : -1; x.setAttribute('aria-hidden', String(n !== prox)); });
-  };
-  $('.hj-tick-relogio i', raiz).addEventListener('animationiteration', () => { if (!document.hidden && raiz.isConnected) ir(); });
-}
-// Próximos passos: o esmaecido embaixo só aparece quando a lista passa da caixa.
-function marcarRolagem(lst) {
-  if (!lst) return;
-  const marca = () => {
-    // só rola (e só então esmaece o fim) quando a fila é maior que a caixa; o scrollHeight é o do próprio quadro da lista
-    // (o offsetTop do último item conta o título de cima e dava falso positivo com uma solicitação só)
-    const conteudo = lst.scrollHeight, cab = lst.clientHeight;
-    const passa = conteudo - cab > 2;
-    lst.classList.toggle('rola', passa);
-    lst.classList.toggle('fim', !passa || lst.scrollTop + cab >= conteudo - 2);
-    lst.classList.toggle('topo', passa && lst.scrollTop > 2);
-  };
-  marca(); lst.addEventListener('scroll', marca, { passive: true }); setTimeout(marca, 1700);
-}

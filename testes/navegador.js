@@ -441,8 +441,9 @@ await passo('app · listas que antes cortavam (Sugestões do Hoje, Sem analista 
   }
 });
 
-await passo('app · Hoje (analista): destaque com rosca, carrossel e próximos passos; painéis de avisos, sugestões e previsão; sem os painéis de vencimentos e de uso do portal', async () => {
-  const p = await abrirApp('#/inicio', undefined, undefined, { estilo: 'atual' });      // o destaque com carrossel e legenda é do estilo Atual (o Simplificado tem passo próprio)
+await passo('app · Hoje (analista): Meu dia em números (números do dia com link e concluídas por dia útil); painéis de avisos, sugestões e previsão; sem os painéis de vencimentos e de uso do portal', async () => {
+  const hoje11 = (() => { const x = new Date(); x.setHours(9, 0, 0, 0); return x.toISOString(); })();
+  const p = await abrirApp('#/inicio', undefined, 'window.__respostas = ' + JSON.stringify({ concluidas: { ok: true, dias: 30, itens: [{ k: 'geral:c1', type: 'geral', id: 'c1', num: 901, code: 5, lado: 'fim', mine: true, resp: 'Ana Teste', last: hoje11 }], erros: [] } }), { estilo: 'atual' });
   await p.evaluate(() => { window.__respostas = Object.assign(window.__respostas || {}, { casos: { ok: true, analises: {}, lidas: 2 }, detalhe: { ok: true, item: {}, tramites: [] }, previsao: { ok: true, dias: 28, total: 12, prox30: 13, erros: [], empresas: [{ cliente: 'ACME LTDA', apelido: 'ACME', total: 8, porSemana: 2, prox7: 3, prox30: 11, tendencia: 'sobe', tipos: [{ tipo: 'Geral', n: 5 }, { tipo: 'Cálculo de férias', n: 3 }] }] } }); });
   assert.equal(await p.textContent('#titulo'), 'Hoje');
   assert.match(await p.textContent('#subtitulo'), /, Ana · /);
@@ -450,16 +451,20 @@ await passo('app · Hoje (analista): destaque com rosca, carrossel e próximos p
   // carteira: abre na sua
   assert.equal(await p.$eval('#hj-carteira', s => s.value), '__minha');
   assert.deepEqual(await p.$$eval('#hj-carteira option', o => o.map(x => x.textContent)), ['Minha carteira (2)', 'Equipe toda (4)', 'Ana Teste (2)', 'Bia (1)', 'Sem analista (1)']);
-  // destaque: rosca, título, resumo e legenda
-  await p.waitForFunction(() => document.querySelector('#hj-titulo em').textContent === '2');
-  assert.match(await p.textContent('#hj-titulo'), /^2 solicitações pedem sua atenção$/);
-  assert.match(await p.textContent('.hj-hero-tx p'), /^2 pendências · 2 com o escritório · 0 com o cliente$/);
-  assert.match(await p.textContent('.hj-legenda'), /Em análise 1.*Cliente respondeu 1/);
-  assert.doesNotMatch(await p.textContent('.hj-legenda'), /Fora do prazo|Prescreve|Vence hoje/, 'prazo interno e prescrição não aparecem');
-  // carrossel e próximos passos
-  assert.equal(await p.getAttribute('#hj-tick', 'class'), 'hj-tick ok');
-  assert.deepEqual(await p.$$eval('.hj-tk', e => e.map(x => x.querySelector('.hj-tk-tag').textContent)), ['Lembrete atrasado', 'Em análise', 'Cliente respondeu']);
-  assert.deepEqual(await p.$$eval('#hj-passos .hj-step b', e => e.map(x => x.textContent)), ['Cobrar o BETA', 'Dar andamento · parada há 31 dias', 'Responder o cliente']);
+  // Meu dia em números (0.108.0): o que aconteceu hoje na carteira, cada número leva à lista, e as concluídas por dia útil
+  await p.waitForSelector('.hj-meudia .hj-md-svg');
+  assert.equal(await p.textContent('#hj-titulo'), 'Meu dia em números');
+  assert.match(await p.textContent('.hj-md-cab p'), /^2 pendências$/);
+  for (const sel of ['.hj-hero', '.hj-donut', '#hj-tick', '#hj-passos', '.hj-legenda']) assert.equal(await p.$(sel), null, sel + ' saiu (sem uso)');
+  const ks = await p.$$eval('.hj-md-k', e => e.map(x => [x.dataset.md, x.querySelector('b').textContent, x.querySelector('span').textContent, x.getAttribute('href')]));
+  assert.deepEqual(ks.map(x => x[0]), ['concluidas', 'chegaram', 'respondidas', 'paradas', 'lembretes'], 'em destaque as concluídas de hoje, com o anel contra a média');
+  assert.deepEqual(ks.map(x => x[3]), ['#/fila?escopo=concluidas', '#/fila', '#/fila?escopo=respondidas', '#/fila?idade=4-', '#/lembretes']);
+  assert.equal(await p.textContent('[data-md="concluidas"] .ap-c b'), '1', 'concluída hoje (a leitura das concluídas, só na memória)');
+  assert.match(await p.textContent('[data-md="concluidas"]'), /média de [\d,]+ por dia útil/);
+  assert.match(await p.textContent('.hj-md-graf figcaption'), /Concluídas por dia útil1 em 10 dias/);
+  assert.ok(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'concluidas' && m.equipe === false)), 'as minhas concluídas');
+  assert.equal(await p.$$eval('.hj-md-svg rect', e => e.length), 10, 'uma barra por dia útil');
+  assert.equal(await p.$$eval('.hj-md-svg rect.hoje', e => e.length), 1, 'hoje em destaque');
   // solicitações por tipo: os cartões das Solicitações, do mais urgente ao menos urgente, aviso e cálculo no mesmo bloco
   const blocos = await p.$$eval('#hj-tipos-l > *', e => e.map(x => [...x.querySelectorAll('.tipo-c')].reduce((n, c) => n + Number(c.querySelector('b').textContent), 0)));
   assert.deepEqual(blocos.map(n => n > 0), blocos.map(n => n > 0).sort((a, b) => b - a), 'os tipos sem solicitação ficam por último: ' + blocos.join());
@@ -512,31 +517,17 @@ await passo('app · Hoje (analista): destaque com rosca, carrossel e próximos p
   await p.click('#hj-prev-ler');                         // a 1ª leitura saiu antes da resposta simulada: recalcula
   await p.waitForSelector('#hj-prev table');
   assert.match(await p.textContent('#hj-prev'), /Escritório: 12 abertas em 4 semanas · estimativa de 13 nos próximos 30 dias[\s\S]*ACME2311 ▲Geral, Cálculo de férias/);
-  // clique na rosca leva às Solicitações com o motivo, na mesma carteira
-  // a rosca entra animada: o clique só vale depois que os arcos chegam ao lugar
-  await p.waitForFunction(() => !document.querySelector('#vista').classList.contains('hj-anim'));
-  await p.$eval('.hj-donut', e => e.scrollIntoView({ block: 'center' }));
-  await p.waitForTimeout(250);
-  const ponto = await p.evaluate(() => { const r = document.querySelector('.hj-donut .an-svg').getBoundingClientRect(), k = r.width / 150; return [r.left + (75 + 64) * k, r.top + 75 * k]; });
-  await p.mouse.click(ponto[0], ponto[1]);
-  await p.waitForFunction(() => location.hash === '#/fila?motivo=analise');
-  await p.waitForFunction(() => document.querySelector('#titulo').textContent === 'Solicitações', null, { timeout: 3000 }).catch(() => {});
-  assert.equal(await p.textContent('#titulo'), 'Solicitações');
+  // o número leva à lista: paradas há mais de 3 dias
+  await p.click('[data-md="paradas"]');
+  await p.waitForFunction(() => location.hash === '#/fila?idade=4-');
   await p.evaluate(() => { location.hash = '#/inicio'; });
-  await p.waitForSelector('#hj-passos');
-  // passo e carrossel abrem o detalhe; lembrete "Feito" sai dos próximos passos
-  await p.click('#hj-passos [data-k="calcFerias:a"]');
-  await p.waitForFunction(() => /ACME/.test(document.querySelector('#gaveta h2').textContent));
-  await p.keyboard.press('Escape');
-  await p.waitForSelector('#gaveta', { state: 'hidden' });
-  await p.click('#hj-passos [data-feito]');
-  await p.waitForFunction(() => !/Cobrar o BETA/.test(document.querySelector('#hj-passos').textContent));
+  await p.waitForSelector('.hj-meudia');
   // carteira Equipe toda
   await p.selectOption('#hj-carteira', '__equipe');
-  await p.waitForFunction(() => document.querySelector('.hj-donut .an-total').textContent === '100%');
-  assert.match(await p.textContent('.hj-hero-tx p'), /4 pendências · 3 com o escritório · 1 com o cliente · 1 sem analista/);
+  await p.waitForFunction(() => /^4 pendências · 1 sem analista$/.test(document.querySelector('.hj-md-cab p').textContent));
+  assert.ok(await p.evaluate(() => window.__msgs.some(m => m.cmd === 'concluidas' && m.equipe === true)), 'na equipe toda, as concluídas da equipe');
   await p.selectOption('#hj-carteira', '(sem responsável)');
-  await p.waitForFunction(() => /Tudo em dia/.test(document.querySelector('#hj-titulo').textContent), null, { timeout: 4000 });      // só a que está com o cliente
+  await p.waitForFunction(() => /Sem analista: as concluídas não se aplicam/.test(document.querySelector('.hj-md-graf').textContent), null, { timeout: 4000 });
   await p.reload(); await p.waitForSelector('#hj-carteira');
   assert.equal(await p.$eval('#hj-carteira', s => s.value), '(sem responsável)');
   await p.selectOption('#hj-carteira', '__minha');
@@ -595,7 +586,7 @@ await passo('app · Hoje: admissões sem trâmite do escritório em faixa recolh
   const p = await abrirApp('#/inicio', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens }) });
   await p.waitForSelector('#hj-admissao');
   const ordem = await p.evaluate(() => [...document.querySelector('#vista').children].map(x => x.id || x.className.split(' ')[0]));
-  assert.ok(ordem.indexOf('hj-admissao') === ordem.indexOf('hj-hero') + 1, 'logo abaixo do destaque: ' + ordem.join());
+  assert.ok(ordem.indexOf('hj-admissao') === ordem.indexOf('hj-meudia') + 1, 'logo abaixo do destaque: ' + ordem.join());
   assert.match(await p.textContent('#hj-admissao h3'), /3 admissões pedem prioridade/, 'as que o escritório já tramitou (situação do escritório ou trâmite lido) ficam de fora');
   assert.equal(await p.textContent('#hj-admissao .hj-adm-resumo'), '1 retroativa · próxima em 20/10');
   const l = await p.$$eval('#hj-admissao .hj-adm', e => e.map(x => x.textContent));
@@ -756,25 +747,6 @@ await passo('app · Hoje: lote com erro mostra qual falhou e deixa as outras seg
   assert.deepEqual(p.erros, []);
 });
 
-await passo('app · Hoje: Próximos passos só rola e esmaece quando a fila é maior que a caixa (uma solicitação só não é cortada)', async () => {
-  const base = { nivel: 1, grav: 1, motivos: [{ n: 1, m: 'x' }], resp: 'Ana Teste', mine: true, lado: 'esc', code: 2, status: 'Em análise', created: agoraIso(20), last: agoraIso(9), parado: 9 };
-  const um = [Object.assign({}, base, { k: 'cadEstagiario:u1', type: 'cadEstagiario', typeLabel: 'Cadastro estagiário', id: 'u1', num: 1628, apelido: 'MULTILONAS', cliente: 'MULTILONAS', detalhe: 'Lavinia Capucho' })];
-  const muitos = Array.from({ length: 14 }, (x, n) => Object.assign({}, base, { k: 'geral:m' + n, type: 'geral', typeLabel: 'Geral', id: 'm' + n, num: 2000 + n, apelido: 'EMP' + n, cliente: 'EMP' + n, detalhe: 'Assunto ' + n, parado: 9 + n }));
-  const p = await abrirApp('#/inicio', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: um }), lembretes: [] });
-  await p.waitForSelector('#hj-passos .hj-step');
-  await p.waitForTimeout(1900);                                                                    // passa a animação de entrada (a marca é refeita no fim dela)
-  assert.equal(await p.$$eval('#hj-passos li', e => e.length), 1);
-  assert.equal(await p.$eval('#hj-passos', e => e.classList.contains('rola')), false, 'uma só: cabe na caixa');
-  assert.equal(await p.$eval('#hj-passos', e => getComputedStyle(e).maskImage), 'none', 'sem esmaecer o fim');
-  const q = await abrirApp('#/inicio', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: muitos }), lembretes: [] });
-  await q.waitForSelector('#hj-passos .hj-step');
-  await q.waitForTimeout(1900);
-  assert.equal(await q.$eval('#hj-passos', e => e.scrollHeight > e.clientHeight + 2), true, 'a fila passa da caixa');
-  assert.equal(await q.$eval('#hj-passos', e => e.classList.contains('rola')), true, 'então rola');
-  assert.notEqual(await q.$eval('#hj-passos', e => getComputedStyle(e).maskImage), 'none', 'e esmaece o fim');
-  assert.deepEqual(p.erros, []);
-});
-
 await passo('app · Hoje: rescisão nova (aviso): põe em análise com o aviso do prazo de pagamento, documentos, exame demissional e eSocial/FGTS, com a data preenchida; o cálculo de rescisão fica de fora', async () => {
   const base = { nivel: 0, grav: 0, parado: 1, motivos: [], resp: 'Ana Teste', mine: true, lado: 'esc', code: 1, status: 'Sem análise', created: agoraIso(1), last: agoraIso(1) };
   const itens = ITENS_APP.concat([
@@ -880,9 +852,9 @@ await passo('app · Hoje sem nada com você: abre na equipe toda e a frase expli
   const p = await abrirApp('#/inicio', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: semMinhas }) });
   assert.equal(await p.$eval('#hj-carteira', s => s.value), '__equipe');
   assert.match(await p.textContent('#ht-resumo'), /Nenhuma pendência está com você como responsável.*equipe toda \(4 pendências\)/);
-  await p.waitForFunction(() => document.querySelector('#hj-titulo em') && document.querySelector('#hj-titulo em').textContent === '3');
+  await p.waitForFunction(() => /^4 pendências/.test(document.querySelector('.hj-md-cab p').textContent));
   await p.selectOption('#hj-carteira', '__minha');
-  await p.waitForFunction(() => /Nada pendente nesta carteira/.test(document.querySelector('#hj-titulo').textContent));
+  await p.waitForFunction(() => /^0 pendências$/.test(document.querySelector('.hj-md-cab p').textContent));
   assert.equal(await p.$('#ht-resumo') === null, true, 'escolheu: sem a frase');
   const vazio = await abrirApp('#/inicio', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: [] }) });
   assert.match(await vazio.textContent('#ht-resumo'), /não trouxe nenhuma pendência em nenhuma das 10 listas.*Testar a leitura/);
@@ -1442,7 +1414,7 @@ await passo('app · Hoje: o quadro de avisos sem cálculo saiu (nem com avisos d
     { k: 'avisoRescisao:r1', type: 'avisoRescisao', typeLabel: 'Aviso de rescisão', id: 'r1', num: 202, code: 2, status: 'Em análise', lado: 'esc', nivel: 0, grav: 0, parado: 1, motivos: [], resp: 'Ana Teste', mine: true, apelido: 'ÔMEGA', cliente: 'ÔMEGA', detalhe: 'Joana', created: agoraIso(2), last: agoraIso(1), semCalculo: { alvo: '2026-10-14', faltam: -1, ref: 'aviso em 04/10/2026', calculo: 'Cálculo de rescisão' } }
   ]);
   const p = await abrirApp('#/inicio', { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: itens }), settings: { __v: 2, desfazerSeg: 0 } });
-  await p.waitForSelector('.hj-hero');
+  await p.waitForSelector('.hj-meudia');
   assert.equal(await p.$('#hj-semcalc') === null, true);
   assert.equal(await p.$('.sc-cols') === null, true);
   assert.ok(!/sem cálculo/i.test(await p.textContent('.app-body')), 'nenhum texto de aviso sem cálculo no Hoje');
@@ -2595,9 +2567,8 @@ await passo('app · Simplificado em tela pequena (1366×650 e 1280×720): cabeç
     await p.waitForSelector('#hj-tipos');
     const cab = await p.evaluate(() => ({ cab: document.querySelector('.mod-cab').getBoundingClientRect().height, linha: document.querySelector('.mod-linha').getBoundingClientRect().height, abas: document.querySelector('#abas').hidden }));
     assert.ok(cab.abas && cab.cab <= 64 && cab.linha <= 40, onde + ': cabeçalho numa linha só (' + JSON.stringify(cab) + ')');
-    assert.equal(await p.$('.hj-tick') && await p.$eval('.hj-tick', e => getComputedStyle(e).display), 'none', onde + ': sem o carrossel');
-    assert.equal(await p.$eval('.hj-hero .an-svg', e => Math.round(e.getBoundingClientRect().width)), 96, onde + ': rosca de 96 px');
-    assert.ok(await p.$eval('.hj-hero', e => e.getBoundingClientRect().height) < 270, onde + ': destaque baixo');
+    assert.ok(await p.$eval('.hj-meudia', e => e.getBoundingClientRect().height) < 300, onde + ': Meu dia em números baixo');
+    assert.equal(await p.$$eval('.hj-md-k', e => e.filter(x => x.scrollWidth > x.clientWidth + 1).length), 0, onde + ': números sem corte');
     await sem_rolagem(p, onde + ' Hoje');
     // barras recolhíveis: a Previsão começa recolhida e o que a pessoa muda fica lembrado
     assert.equal(await p.$eval('#hj-prev', e => e.classList.contains('recolhida')), true, 'Previsão recolhida de fábrica');
@@ -2636,13 +2607,25 @@ await passo('app · Simplificado em tela pequena (1366×650 e 1280×720): cabeç
   }
 });
 
-await passo('app · Atual intacto: grade de tipos, destaque escuro com carrossel e legenda, a barra Conversa à vista', async () => {
-  const p = await abrirApp('#/inicio', undefined, undefined, { estilo: 'atual' });
-  await p.waitForSelector('.hj-hero');
+await passo('app · Atual intacto: grade de tipos, Meu dia em números acompanha o tema (claro e escuro), a barra Conversa à vista', async () => {
+  const conc = []; [3, 2, 4, 0, 1, 5, 2, 3, 4, 2, 3, 1, 2].forEach((q, d) => { for (let n = 0; n < q; n++) { const x = new Date(); x.setDate(x.getDate() - d); x.setHours(9 + n % 8, 0, 0, 0); conc.push({ k: 'geral:z' + d + '-' + n, lado: 'fim', mine: true, last: x.toISOString() }); } });
+  const p = await abrirApp('#/inicio', undefined, 'window.__respostas = ' + JSON.stringify({ concluidas: { ok: true, dias: 30, itens: conc, erros: [] } }), { estilo: 'atual' });
+  await p.waitForSelector('.hj-md-svg');
+  await p.waitForSelector('.hj-meudia');
   assert.equal(await p.evaluate(() => document.documentElement.getAttribute('data-estilo')), 'atual');
-  assert.equal(await p.$eval('.hj-hero', e => getComputedStyle(e).backgroundColor), 'rgb(15, 22, 28)', 'destaque sempre escuro');
-  assert.ok(await p.$('.hj-tick .hj-bola') && await p.$('.hj-legenda'), 'carrossel e legenda');
-  assert.equal(await p.$eval('.hj-hero .an-svg', e => Math.round(e.getBoundingClientRect().width)), 150, 'rosca de 150 px');
+  const lum = () => p.$eval('.hj-meudia', e => { const m = getComputedStyle(e).backgroundColor.match(/\d+/g).map(Number); return (m[0] + m[1] + m[2]) / 3; });
+  assert.ok(await lum() > 200, 'no tema claro o bloco é claro (não mais sempre escuro)');
+  await p.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
+  assert.ok(await lum() < 60, 'no escuro, escuro');
+  await p.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'));
+  for (const est of ['simples', 'atual']) {
+    await p.evaluate(e => document.documentElement.setAttribute('data-estilo', e), est);
+    for (const t of ['light', 'dark']) {
+      await p.evaluate(x => document.documentElement.setAttribute('data-theme', x), t);
+      if (process.env.CAP) { await p.waitForTimeout(1700); await p.$eval('.hj-meudia', e => e.scrollIntoView()); await p.locator('.hj-meudia').screenshot({ path: process.env.CAP + '/meudia-' + est + '-' + t + '.png' }); }
+    }
+  }
+  await p.evaluate(() => { document.documentElement.setAttribute('data-estilo', 'atual'); document.documentElement.setAttribute('data-theme', 'light'); });
   assert.equal(await p.$('#hj-tipos.hj-rec') === null, true, 'sem barras recolhíveis');
   assert.ok(await p.$('#hj-tipos .hj-painel-sub, #hj-tipos + .hj-painel-sub') || (await p.textContent('#hj-tipos')).includes('Da mais urgente para a menos urgente'), 'explicação à vista');
   assert.match(await p.$eval('.trilho', e => getComputedStyle(e).backgroundImage), /gradient/, 'trilho escuro');
