@@ -2849,7 +2849,7 @@ function gtSaude(total) {
   ];
   const T1 = 'e10000000000000000000001', T2 = 'e10000000000000000000002', cli = n => 'c1000000000000000000000' + n;
   return {
-    'gesttaSaude:tarefas': { ok: true, perfil: { nome: 'Eu Mesmo', papelNome: total ? 'Administrador' : 'Analista', total, setores: [] }, colunas: COL, linhas: total ? linhas : linhas.filter(l => l[4] === 'Eu Mesmo' || l[15] === 'Eu Mesmo'), meses: [], emailNaoSaiu: 4, semTarefa: total ? 12 : null, lidoEm: new Date().toISOString() },
+    'gesttaSaude:tarefas': { ok: true, perfil: { nome: 'Eu Mesmo', papelNome: total ? 'Administrador' : 'Analista', total, setores: [] }, colunas: COL, linhas: total ? linhas : linhas.filter(l => l[4] === 'Eu Mesmo' || l[15] === 'Eu Mesmo'), meses: ['Out/2026', 'Nov/2026', 'Dez/2026'], mesesFaltam: ['Set/2026'], emailNaoSaiu: 4, semTarefa: total ? 12 : null, lidoEm: new Date().toISOString() },
     'gesttaSaude:contatos': { ok: true, porCnpj: { '11222333000181': [{ setor: 'Fiscal', ativo: true, temEmail: true }], '22333444000190': [{ setor: 'Pessoal', ativo: false, temEmail: true }] } },
     'gesttaSaude:emails': { ok: true, porTarefa: { [id(8)]: [{ status: 'SENT', reason: '', quando: dia(-3) }, { status: 'NOT_SENT', reason: 'NOT_SENT_NO_CUSTOMER_ACCOUNTABLE', quando: dia(-2) }], [id(9)]: [{ status: 'DELIVERY', reason: '', quando: dia(-1) }] } },
     'gesttaSaude:config': { ok: true, templates: [{ id: T1, nome: 'DCTF WEB', setor: 'Fiscal' }, { id: T2, nome: 'APURAÇÃO DO ICMS', setor: 'Fiscal' }], clientes: [1, 2, 3, 4, 5, 6].map(n => ({ id: cli(n), nome: 'EMPRESA EXEMPLO ' + n, cnpj: '0000000000000' + n })) },
@@ -3341,6 +3341,7 @@ await passo('Gestta · Saúde (0.110.0): carga por dia com o ritmo, prioridade, 
   await fr.waitForSelector('.gsa-topo');
   const sm = () => fr.evaluate(() => (window.__msgs || []).filter(m => m.cmd === 'gesttaSaude').map(m => m.parte));
   assert.deepEqual(await sm(), ['tarefas'], 'ao abrir, só o relatório; contatos, e-mails e configuração esperam o botão');
+  assert.match(await fr.textContent('#vista'), /O Gestta não entregou o relatório de Set\/2026: o ritmo e a carga usam só Out\/2026, Nov\/2026, Dez\/2026\./, '0.111.2: o mês recusado aparece, sem derrubar a tela');
   assert.match(await fr.textContent('.gsa-topo'), /4\s*e-mails não saíram no mês[\s\S]*1\s*abertas sem responsável[\s\S]*1\s*empresas atrasadas \+15 dias/);
   // carga: Ana tem 5 no próximo dia útil e ritmo 0,5 (22 concluídas em ~42 dias úteis): não vai dar tempo
   const ana = await fr.$eval('.gsa-grade', t => [...t.querySelectorAll('tbody tr')].find(r => /Ana Teste/.test(r.textContent)).textContent);

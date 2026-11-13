@@ -2,6 +2,10 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.111.2 (13/11/2026): a Saúde não cai mais com o erro 400
+
+- Josué (captura da aba Saúde: "Não consegui ler a saúde da operação. O relatório do Gestta não veio (erro 400)"). A Saúde pedia o relatório de 4 meses (2 meses atrás até o próximo), e o Gestta recusa com 400 os meses fora do período que ele aceita. Agora só o mês corrente é obrigatório: o mês recusado fica de fora (lembrado por 1 hora, sem repetir as tentativas), a tela diz qual ficou de fora e o ritmo e a carga usam os meses que vieram.
+
 ## Novidades da v0.111.1 (13/11/2026): Meu dia em números não fica preso no erro
 
 - Josué (com a captura do Meu dia em "Equipe toda" mostrando "Não deu para ler as concluídas: Tentativas: página do Onvio: HTTP 401…"): "sempre abre assim". Ao abrir o Hoje, a leitura das concluídas podia falhar porque o Onvio ainda não tinha dado a autorização à página, e a falha ficava guardada por 10 minutos. Agora ela tenta de novo sozinha (15 s, 30 s, 1 min, 2 min e depois a cada 5 min), o texto técnico some da tela (fica só na dica) e, depois de 3 falhas, aparece "As concluídas não carregaram agora. Vou tentar de novo sozinho." com **Tentar agora**. Quando o Onvio responde, o número entra sem recarregar.

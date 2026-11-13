@@ -212,6 +212,7 @@ export function desenharSaude(v, sub) {
     kpi(carga.alertas.length, 'dias acima do ritmo', 'carga', 'gte-k-erro', 'Pessoa × dia em que a carga passa da capacidade') +
     kpi(ex.semDono.length, 'abertas sem responsável', 'extras:semDono', 'gte-k-neutro', 'Tarefas abertas sem responsável') +
     kpi(ex.atrasoLongo.length, 'empresas atrasadas +15 dias', 'extras:velhas', 'gte-k-neutro', 'Empresas com tarefa aberta e meta vencida há mais de 15 dias') + '</div></section>' +
+    (D.mesesFaltam && D.mesesFaltam.length ? '<p class="fraco gsa-memo">O Gestta não entregou o relatório de ' + esc(D.mesesFaltam.join(' e ')) + ': o ritmo e a carga usam só ' + esc((D.meses || []).join(', ')) + '.</p>' : '') +
     (D.daMemoria ? '<p class="fraco gsa-memo">Relatório lido há pouco (vale por 1 hora). ' + (D.meses ? 'Meses: ' + esc(D.meses.join(', ')) + '.' : '') + '</p>' : '');
   h += secao('carga', 'Carga por dia e prioridade', carga.alertas.length, bK.h, { tom: carga.alertas.length ? 'alerta' : '', resumo: carga.alertas.length ? esc(plural(carga.alertas.length, 'dia', 'dias') + ' acima do ritmo') : 'dentro do ritmo' });
   h += secao('contatos', 'Avisa o cliente sem contato no setor', bC.n, bC.h, { tom: bC.n ? 'alerta' : '' });

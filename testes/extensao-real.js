@@ -377,6 +377,8 @@ assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br
     }
     if (p === '/core/customer/task/report') {
       const c = JSON.parse(q.postData() || '{}'); gRel.push(c);
+      // como o Gestta real (13/11/2026): mês anterior ao passado é recusado com 400, com qualquer filtro
+      { const ini = new Date(c.dates && c.dates.startDate), h = new Date(), lim = new Date(h.getFullYear(), h.getMonth() - 1, 1); if (ini.getTime() < lim.getTime() - 3 * 864e5) return r.fulfill({ status: 400, headers: Object.assign({ 'content-type': 'application/json' }, CORS), body: '{"message":"invalid period"}' }); }
       const linha = (id, st, setor) => JSON.stringify({ id, name: 'TAREFA ' + id.slice(-2), status: st, 'company_department.name': setor, 'owner.name': 'Pessoa Ficticia', _due_date: new Date().toISOString(), 'customer.code': '9999', 'customer.name': 'EMPRESA FICTICIA LTDA', 'customer.cnpj': '12.345.678/0001-90', 'customer.monthly_payment': 999, value: 50, 'company_task.score': 3 });
       return r.fulfill({ status: 200, headers: Object.assign({ 'content-type': 'application/x-ndjson' }, CORS), body: [linha(ID, 'DONE', 'Fiscal'), linha(ID2, 'OPEN', 'Pessoal')].join('\n') + '\n' });
     }
@@ -509,7 +511,8 @@ assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br
   const s1 = await tt({ cmd: 'gesttaSaude', parte: 'tarefas' });
   assert.ok(s1.ok, 'gesttaSaude: ' + (s1.erro || ''));
   const mesesS = new Set(Object.keys(await pagina.evaluate(() => chrome.storage.session.get(null))).filter(k => /^gtSaude-/.test(k)));
-  assert.equal(mesesS.size, 4, 'um relatório por mês, de 2 meses atrás até o próximo'); assert.ok(gRel.length - nRelS <= 4);
+  assert.equal(mesesS.size, 4, 'um relatório por mês, de 2 meses atrás até o próximo (o recusado fica lembrado)');
+  assert.equal(s1.mesesFaltam.length, 1, '0.111.2: o mês que o Gestta recusa (400) fica de fora sem derrubar a Saúde'); assert.equal(s1.meses.length, 3);
   assert.ok(s1.colunas.includes('notify_customer') && s1.colunas.includes('concluded_by.name') && !s1.colunas.includes('value'), 'colunas da Saúde');
   assert.equal(s1.emailNaoSaiu, 3); assert.equal(s1.semTarefa, 5); assert.equal(s1.perfil.total, true);
   const nRelS2 = gRel.length;

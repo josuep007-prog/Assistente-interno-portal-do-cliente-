@@ -395,7 +395,7 @@ async function perfilGestta(tab) {
 async function relatorioSaude(tab, ano, mes, forcar) {
   const chave = 'gtSaude-' + ano + '-' + String(mes).padStart(2, '0');
   const g = (await chrome.storage.session.get(chave).catch(() => ({})))[chave];
-  if (g && (!forcar || Date.now() - new Date(g.lidoEm).getTime() < FECH_INTERVALO_MS)) return Object.assign({ ok: true, daMemoria: true }, g);
+  if (g && (!forcar || Date.now() - new Date(g.lidoEm).getTime() < FECH_INTERVALO_MS)) return g.falhou ? { ok: false, status: g.status, erro: g.erro, daMemoria: true } : Object.assign({ ok: true, daMemoria: true }, g);
   let x = null;
   await modosProntos;
   for (const filtro of OCG.filtrosRelatorio({ ano, mes })) {
@@ -404,7 +404,12 @@ async function relatorioSaude(tab, ano, mes, forcar) {
     if (!x || x.status !== 400) { if (x && x.status === 200) { const antes = OCG.modoRel(); OCG.lembrarFiltroRel(filtro); if (OCG.modoRel() !== antes) lembrarModos(); } break; }
   }
   if (!x) return { ok: false, erro: 'A aba do Gestta não respondeu ao relatório.' };
-  if (x.status !== 200 || !x.dados) return { ok: false, erro: x.status === 403 ? 'Seu acesso do Gestta não inclui o relatório de tarefas.' : x.status === 401 ? 'A sessão do Gestta acabou: faça login de novo na aba.' : 'O relatório do Gestta não veio (' + (x.erro || x.recusado || x.status) + ').' };
+  if (x.status !== 200 || !x.dados) {
+    const erro = x.status === 403 ? 'Seu acesso do Gestta não inclui o relatório de tarefas.' : x.status === 401 ? 'A sessão do Gestta acabou: faça login de novo na aba.' : 'O relatório do Gestta não veio (' + (x.erro || x.recusado || x.status) + ').';
+    // 0.111.2: o mês que o Gestta recusa (400: o relatório só aceita o período dele, mês atual e anterior) fica lembrado por 1 hora, para não repetir as tentativas a cada leitura
+    if (x.status === 400) { try { await chrome.storage.session.set({ [chave]: { falhou: true, status: 400, erro, lidoEm: new Date().toISOString() } }); } catch (e) {} }
+    return { ok: false, status: x.status, erro };
+  }
   const d = { colunas: x.dados.colunas, linhas: x.dados.linhas, lidoEm: new Date().toISOString() };
   try { await chrome.storage.session.set({ [chave]: d }); } catch (e) {}
   return Object.assign({ ok: true }, d);
@@ -429,10 +434,13 @@ async function gesttaSaude(msg, sender) {
   const p = await perfilGestta(tab); if (!p.ok) return p;
   const pf = p.pf, parte = String(msg.parte || 'tarefas');
   if (parte === 'tarefas') {
-    const h = new Date(), meses = SAUDE_MESES(h); let colunas = null, linhas = [], daMemoria = true;
+    const h = new Date(), meses = SAUDE_MESES(h); let colunas = null, linhas = [], daMemoria = true; const lidos = [], faltam = [];
     for (const m of meses) {
       const rel = await relatorioSaude(tab, m.ano, m.mes, !!msg.forcar);
-      if (!rel.ok) return { ok: false, erro: rel.erro };
+      // 0.111.2: só o mês corrente é obrigatório; o que o Gestta recusar dos outros (400) fica de fora e a tela diz qual
+      const atual = m.ano === h.getFullYear() && m.mes === h.getMonth() + 1;
+      if (!rel.ok) { if (atual || rel.status !== 400) return { ok: false, erro: rel.erro }; faltam.push(OCG.mesTexto(m.ano, m.mes)); continue; }
+      lidos.push(OCG.mesTexto(m.ano, m.mes));
       if (!rel.daMemoria) daMemoria = false;
       colunas = colunas || rel.colunas;
       const ids = new Set(linhas.map(l => l[0]));
@@ -446,7 +454,7 @@ async function gesttaSaude(msg, sender) {
     const conta = async (ped) => { const { r } = await lerGestta([ped], { tab }); const x = r && r.resultados && r.resultados[0]; return x && x.status === 200 && x.dados ? x.dados : null; };
     const em = await conta(OCG.PEDIDOS.emailNaoSaiu({ ano: h.getFullYear(), mes: h.getMonth() + 1 }));
     const st = pf.total ? await conta(OCG.PEDIDOS.semTarefa()) : null;
-    return { ok: true, perfil: { nome: pf.nome, papelNome: pf.papelNome, total: pf.total, setores: pf.setores }, colunas: colunas || OCG.COLUNAS_SAUDE, linhas, meses: meses.map(m => OCG.mesTexto(m.ano, m.mes)),
+    return { ok: true, perfil: { nome: pf.nome, papelNome: pf.papelNome, total: pf.total, setores: pf.setores }, colunas: colunas || OCG.COLUNAS_SAUDE, linhas, meses: lidos, mesesFaltam: faltam,
       emailNaoSaiu: em && typeof em.email_not_sent === 'number' ? em.email_not_sent : null, semTarefa: st && typeof st.n === 'number' ? st.n : null, daMemoria, lidoEm: new Date().toISOString() };
   }
   if (parte === 'contatos') {   // { cnpjs: [até 40] } → { porCnpj: { cnpj: [{ setor, ativo, temEmail }] } }
