@@ -190,6 +190,7 @@ function quemLista(f) {
 function quemAbrir(abrir) {
   const pop = $('#gt-quem-pop'), b = $('#gt-quem-btn'); if (!pop) return;
   pop.hidden = !abrir; b.setAttribute('aria-expanded', String(abrir));
+  const veu = $('#gt-quem-veu'); if (veu) veu.hidden = !abrir;      // 0.111.3: janela por cima, com o fundo escurecido
   if (abrir) {
     const q = qsVisao(); QP.passo = 'inicio'; QP.setor = ''; QP.marcados = new Set(q ? q.ids : []);
     if (E.dados && E.dados.perfil && E.dados.perfil.total) { if (!E.equipe) carregarEquipe(); lerSetores(); }   // 0.111.0: setores na hora (equipe) e conferidos pelo relatório do mês corrente
@@ -553,6 +554,7 @@ $('#gt-mes-pop').addEventListener('click', e => {
   if (e.target.closest('[data-mp-atual]')) { const c = G.competenciaPadrao(new Date()); E.ano = c.ano; E.mes = c.mes; mesAbrir(false); trocouMes(); }
 });
 $('#gt-quem-btn').onclick = () => quemAbrir($('#gt-quem-pop').hidden);
+if ($('#gt-quem-x')) $('#gt-quem-x').onclick = () => { quemAbrir(false); $('#gt-quem-btn').focus(); };
 $('#gt-quem-busca').oninput = e => quemLista(e.target.value);
 $('#gt-quem-busca').onkeydown = e => {
   if (e.key !== 'Enter') return;

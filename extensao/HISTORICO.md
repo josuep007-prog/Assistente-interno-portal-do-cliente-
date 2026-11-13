@@ -2,6 +2,10 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.111.3 (13/11/2026): De quem numa janela por cima
+
+- Josué: "eu quero que isso seja uma janela que abre por cima pra fazer as seleções". O De quem das Tarefas do Gestta deixou de ser um menu pendurado no botão: abre uma janela no meio da tela, com o fundo escurecido, título "De quem são as tarefas", busca e lista maiores, e fecha pelo ×, por Esc ou clicando fora. Os passos continuam os mesmos (setor > uma ou mais pessoas).
+
 ## Novidades da v0.111.2 (13/11/2026): a Saúde não cai mais com o erro 400
 
 - Josué (captura da aba Saúde: "Não consegui ler a saúde da operação. O relatório do Gestta não veio (erro 400)"). A Saúde pedia o relatório de 4 meses (2 meses atrás até o próximo), e o Gestta recusa com 400 os meses fora do período que ele aceita. Agora só o mês corrente é obrigatório: o mês recusado fica de fora (lembrado por 1 hora, sem repetir as tentativas), a tela diz qual ficou de fora e o ritmo e a carga usam os meses que vieram.

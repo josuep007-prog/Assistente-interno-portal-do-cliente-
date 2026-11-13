@@ -3066,6 +3066,15 @@ await passo('Gestta · Tarefas (0.77.0): Meu dia com o detalhe ao lado e a linha
   await fr.click('#gt-quem-btn');
   // 0.106.0: botão > setor (só os com tarefa aberta) > uma ou mais pessoas
   await fr.waitForSelector('#gt-quem-lista [data-gt-setor]');
+  // 0.111.3: janela no meio da tela, por cima, com o fundo escurecido; o × e o fundo fecham
+  const caixa = await fr.evaluate(() => { const r = document.querySelector('#gt-quem-pop').getBoundingClientRect(); return { cx: r.left + r.width / 2, w: r.width, vw: innerWidth, veu: !document.querySelector('#gt-quem-veu').hidden, papel: document.querySelector('#gt-quem-pop').getAttribute('role') }; });
+  assert.ok(Math.abs(caixa.cx - caixa.vw / 2) < 4 && caixa.w >= 480 && caixa.veu && caixa.papel === 'dialog', 'janela por cima: ' + JSON.stringify(caixa));
+  if (process.env.CAP) await p.screenshot({ path: path.join(process.env.CAP, 'gestta-dequem-janela.png') });
+  await fr.click('#gt-quem-x'); await fr.waitForSelector('#gt-quem-pop', { state: 'hidden' });
+  assert.equal(await fr.$eval('#gt-quem-veu', v => v.hidden), true);
+  await fr.click('#gt-quem-btn'); await fr.waitForSelector('#gt-quem-lista [data-gt-setor]');
+  await p.mouse.click(30, 600); await fr.waitForSelector('#gt-quem-pop', { state: 'hidden' });
+  await fr.click('#gt-quem-btn'); await fr.waitForSelector('#gt-quem-lista [data-gt-setor]');
   // 0.111.0: os setores vêm do relatório do mês corrente (gesttaSetores), não do Fechamento inteiro
   await fr.waitForFunction(() => /Setores com tarefas abertas/.test(document.querySelector('#gt-quem-lista').textContent));
   assert.equal(await fr.evaluate(() => (window.__msgs || []).filter(m => m.cmd === 'gesttaFechamento').length), 0, 'o De quem não espera o Fechamento');
