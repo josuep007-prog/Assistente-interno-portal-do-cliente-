@@ -2,6 +2,18 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.114.0 (13/11/2026): leituras do Gestta mais rápidas
+
+- Josué ("pode aplicar") sobre a análise de eficiência das leituras do Gestta:
+  - **Memórias que não se perdem:** o service worker do Chrome dorme depois de uns 30 s parado e levava as memórias de 6 horas (lista de clientes, CNPJs, contatos, empresa 9999, templates, equipe) e de 30 minutos ("avisa o cliente"). Agora elas ficam também na memória do Chrome (`chrome.storage.session`, chave `gtMemo`: some ao fechar o navegador, nunca no disco; só ids, nome e CNPJ de empresa, sim/não e contagens, nunca nome, e-mail ou telefone de pessoa).
+  - **Envios ao portal:** as tarefas que o relatório do mês (já lido pela Saúde ou pelo Fechamento) diz que avisam o cliente não são mais abertas uma a uma; o "não avisa", que decide o que sai da lista de erros, continua vindo do detalhe da tarefa. A empresa 9999 sai da mesma lista de clientes dos CNPJs (uma leitura só).
+  - **Fechamento e Saúde dividem o relatório do mês** (uma leitura por hora por mês, em vez de duas).
+  - **Equipe** guardada por 30 minutos e **"quem está logado"** por 3 minutos (só se o token da aba for o mesmo; outra pessoa que entra na aba tem outro token e a pergunta é refeita).
+  - **Detalhe da tarefa:** enquanto você vê uma tarefa, a seguinte da fila já é lida (só na memória da tela, 1 minuto; descartada depois de qualquer ação), então passar para a próxima abre na hora.
+  - **Releitura de 10 em 10 minutos mais leve:** relê só a parte da aba aberta; a outra é lida quando você troca para a aba que a usa e ela está velha.
+  - **Pausa entre leituras que se ajusta**, sempre uma leitura por vez: resposta rápida, metade da pausa (mínimo 120 ms); lenta, erro 429/5xx ou falha, o dobro (máximo 3 s).
+- Ficaram de fora: o compartilhamento dos contatos do envio ao Hub com a Saúde (a Saúde guarda só contagens, nunca nome nem e-mail, e dividir obrigaria a guardar os e-mails) e a busca direta por competência (depende da conferência no seu Chrome).
+
 ## Novidades da v0.113.0 (13/11/2026): dados pessoais ligados de fábrica no envio ao Hub (Hub 355)
 
 - Josué confirmou a decisão de 06/11/2026 ("Ligar de fábrica, todos veem"): a categoria **Dados pessoais** do envio completo ao Hub vem **ligada de fábrica** e o aviso de confirmação saiu (em Configurações › Avançado e na página de opções). Quem já tinha escolhido desligar continua desligado; dá para desligar e ligar como as outras categorias.
