@@ -2,6 +2,10 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.111.1 (13/11/2026): Meu dia em números não fica preso no erro
+
+- Josué (com a captura do Meu dia em "Equipe toda" mostrando "Não deu para ler as concluídas: Tentativas: página do Onvio: HTTP 401…"): "sempre abre assim". Ao abrir o Hoje, a leitura das concluídas podia falhar porque o Onvio ainda não tinha dado a autorização à página, e a falha ficava guardada por 10 minutos. Agora ela tenta de novo sozinha (15 s, 30 s, 1 min, 2 min e depois a cada 5 min), o texto técnico some da tela (fica só na dica) e, depois de 3 falhas, aparece "As concluídas não carregaram agora. Vou tentar de novo sozinho." com **Tentar agora**. Quando o Onvio responde, o número entra sem recarregar.
+
 ## Novidades da v0.111.0 (13/11/2026): Gestta mais rápido, cada parte aparece quando chega
 
 - Josué: "tá demorando muito pra ler, na real muita coisa da parte do Gestta tá demorando pra terminar de ler"; "não depender de rodar toda leitura pra aparecer alguma coisa". Escolheu três das quatro saídas propostas (a de abrir com a última leitura guardada ficou de fora):
