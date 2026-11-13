@@ -4783,3 +4783,13 @@ test('Gestta · Saúde: configuração pela demanda (falta ≥ 80%, sobra ≤ 10
   assert.deepEqual(plano(ex.semDono.map(t => t._id)), ['a']);
   assert.deepEqual(plano(ex.atrasoLongo.map(e => e.cliente)), ['B']);
 });
+
+test('Gestta (0.111.0): setores da equipe na hora para o De quem; o jeito do relatório volta depois que o service worker acorda', () => {
+  const eq = [{ id: 'b', nome: 'Bia', setores: ['Pessoal', 'Fiscal'] }, { id: 'a', nome: 'Ana', setores: ['pessoal'] }, { id: 'c', nome: 'Caio', setores: [] }];
+  assert.deepEqual(plano(OCG.setoresDaEquipe(eq)), [{ nome: 'Fiscal', abertas: null, pessoas: [{ id: 'b', nome: 'Bia', abertas: 0 }] }, { nome: 'Pessoal', abertas: null, pessoas: [{ id: 'a', nome: 'Ana', abertas: 0 }, { id: 'b', nome: 'Bia', abertas: 0 }] }]);
+  assert.deepEqual(plano(OCG.setoresDaEquipe(null)), []);
+  const antes = OCG.modoRel();
+  OCG.restaurarModoRel('CUSTOM'); assert.equal(OCG.modoRel(), 'CUSTOM');
+  OCG.restaurarModoRel('qualquer coisa'); assert.equal(OCG.modoRel(), 'CUSTOM', 'só os jeitos conhecidos');
+  OCG.restaurarModoRel(antes);
+});

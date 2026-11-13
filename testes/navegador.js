@@ -2859,7 +2859,9 @@ const gtResp = (total, itens) => ({ gesttaTarefas: { ok: true, ano: new Date().g
     { quando: new Date(Date.now() - 36e5).toISOString(), rot: 'O cliente baixou o documento', tom: 'cliente', doc: 'Guia', motivo: '', quem: { nome: 'Contato Ficticio', cliente: true }, texto: '' },
     { quando: new Date(Date.now() - 72e5).toISOString(), rot: 'Comentário', tom: 'neutro', doc: '', motivo: '', quem: { nome: 'Eu Mesmo', cliente: false }, texto: 'Aguardando o extrato' },
     { quando: new Date(Date.now() - 864e5).toISOString(), rot: 'Concluiu uma etapa', tom: 'ok', doc: '', motivo: '', quem: { nome: 'Eu Mesmo', cliente: false }, texto: '' }] },
-  gesttaFechamento: gtFech(total) });
+  gesttaFechamento: gtFech(total),
+  // 0.111.0: os setores do De quem pelo relatório do mês corrente (só situação, setor e responsável das abertas)
+  gesttaSetores: { ok: true, linhas: gtFech(total).linhas.filter(l => /OPEN|IMPEDIMENT/.test(l[2])).map(l => [l[2], l[3], l[4]]) } });
 // relatório do mês simulado (as colunas que o Fechamento usa): 4 empresas, 2 setores, 2 analistas
 function gtFech(total) {
   const col = ['id', 'name', 'status', 'company_department.name', 'owner.name', '_due_date', 'legal_date', 'conclusion_date', 'on_time', 'fine', 'overdue', 'customer.code', 'customer.name', 'customer.cnpj'];
@@ -3041,6 +3043,9 @@ await passo('Gestta · Tarefas (0.77.0): Meu dia com o detalhe ao lado e a linha
   await fr.click('#gt-quem-btn');
   // 0.106.0: botão > setor (só os com tarefa aberta) > uma ou mais pessoas
   await fr.waitForSelector('#gt-quem-lista [data-gt-setor]');
+  // 0.111.0: os setores vêm do relatório do mês corrente (gesttaSetores), não do Fechamento inteiro
+  await fr.waitForFunction(() => /Setores com tarefas abertas/.test(document.querySelector('#gt-quem-lista').textContent));
+  assert.equal(await fr.evaluate(() => (window.__msgs || []).filter(m => m.cmd === 'gesttaFechamento').length), 0, 'o De quem não espera o Fechamento');
   assert.deepEqual(await fr.$$eval('#gt-quem-lista [data-quem]', o => o.map(x => x.textContent.trim())), ['EuMinhas', '—Sem responsável']);
   await fr.fill('#gt-quem-busca', 'pess'); assert.equal(await fr.locator('#gt-quem-lista [data-gt-setor]').count(), 1, 'a busca filtra os setores');
   await fr.press('#gt-quem-busca', 'Enter');
@@ -3266,6 +3271,45 @@ await passo('Gestta · Soltar documentos (0.102.0): fora de um item vai ao Expre
     await fr.click('[data-gs="fechar"]');
     await p.close();
   }
+});
+await passo('Gestta · 0.111.0: a tela mostra cada parte assim que chega (Meu dia antes da competência) e o De quem tem os setores da equipe na hora', async () => {
+  const resp = gtResp(true);
+  resp.gesttaEquipe = { ok: true, pessoas: [{ id: GT_EU, nome: 'Eu Mesmo', setores: ['Fiscal'] }, { id: GT_B, nome: 'Pessoa Beta', setores: ['Pessoal', 'Recepção'] }] };
+  const { p, fr } = await abrirGestta(resp, { segura: true });
+  await fr.waitForSelector('.gt-topo');
+  // a competência e os setores ficam presos até o teste soltar
+  await fr.evaluate(() => {
+    const orig = chrome.runtime.sendMessage.bind(chrome.runtime); window.__presos = {};
+    chrome.runtime.sendMessage = (m, cb) => {
+      const k = m.cmd === 'gesttaTarefas' && m.parte === 'comp' ? 'comp' : m.cmd === 'gesttaSetores' ? 'setores' : '';
+      if (k && !window['__solto_' + k]) { (window.__msgs ||= []).push(m); window.__presos[k] = () => { window['__solto_' + k] = true; window.__msgs.pop(); orig(m, cb); }; return; }
+      // como o service worker: a parte 'dia' não traz a competência
+      if (m.cmd === 'gesttaTarefas' && m.parte === 'dia') return orig(m, r => { const x = Object.assign({}, r); delete x.itens; delete x.total; delete x.cortado; cb && cb(x); });
+      return orig(m, cb);
+    };
+  });
+  await fr.click('#gt-mes-ant');                    // outra competência: leitura nova (atualizar a mesma mantém o que está à vista)
+  await fr.waitForFunction(() => window.__presos.comp);
+  // o Meu dia já aparece; a Lista mostra que a competência ainda está chegando
+  await fr.waitForSelector('.gd-it');
+  assert.deepEqual(await fr.evaluate(() => window.__msgs.filter(m => m.cmd === 'gesttaTarefas').slice(-2).map(m => m.parte)), ['dia', 'comp'], 'a parte da aba aberta vem primeiro');
+  await fr.click('#abas [data-aba="lista"]');
+  await fr.waitForFunction(() => /Lendo as tarefas da competência/.test(document.querySelector('#vista').textContent));
+  assert.match(await fr.textContent('#aovivo'), /Lendo a competência/);
+  await fr.evaluate(() => window.__presos.comp());
+  await fr.waitForSelector('.gl-r');
+  // De quem: os setores do cadastro de equipe na hora, enquanto o relatório do mês não chega
+  await fr.click('#gt-quem-btn');
+  await fr.waitForFunction(() => /Setores da equipe/.test(document.querySelector('#gt-quem-lista').textContent));
+  assert.deepEqual(await fr.$$eval('#gt-quem-lista [data-gt-setor]', l => l.map(x => x.dataset.gtSetor)), ['Fiscal', 'Pessoal', 'Recepção']);
+  assert.match(await fr.textContent('#gt-quem-lista'), /Conferindo quais têm tarefa aberta/);
+  await fr.waitForFunction(() => window.__presos.setores);
+  await fr.evaluate(() => window.__presos.setores());
+  await fr.waitForFunction(() => /Setores com tarefas abertas/.test(document.querySelector('#gt-quem-lista').textContent));
+  assert.deepEqual(await fr.$$eval('#gt-quem-lista [data-gt-setor]', l => l.map(x => x.dataset.gtSetor)), ['Fiscal', 'Pessoal'], 'sem tarefa aberta, a Recepção sai');
+  assert.match(await fr.textContent('#gt-quem-lista [data-gt-setor="Fiscal"]'), /3 abertas/, 'a quantidade vem do relatório');
+  assert.deepEqual(p.erros, []);
+  await p.context().close();
 });
 await passo('Gestta · Saúde (0.110.0): carga por dia com o ritmo, prioridade, contatos e e-mails só pelo botão, configuração só para a coordenação; nada é escrito', async () => {
   const { p, fr } = await abrirGestta(Object.assign(gtResp(true), gtSaude(true)));

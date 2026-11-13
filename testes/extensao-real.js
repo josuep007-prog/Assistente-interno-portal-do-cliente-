@@ -469,14 +469,15 @@ assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br
   assert.equal(f1.formato, 'ndjson'); assert.equal(f1.linhas.length, 2); assert.equal(f1.parcial, false); assert.equal(f1.naMemoria, true);
   // 0.85.0: o Fechamento é da competência: as tarefas da competência pela busca, e o relatório só dos meses em que elas vencem
   assert.deepEqual([...new Set(gChamadas.slice(antesFech).filter(c => c.startsWith('POST ')))], ['POST /core/customer/task/search', 'POST /core/customer/task/report']);
-  assert.equal(gRel.length, 1, 'as tarefas da competência 11 vencem em dezembro: um relatório'); assert.equal(gRel[0].type, 'CUSTOMER_TASK');
-  assert.match(gRel[0].dates.startDate, /^2026-12-01/); assert.deepEqual(f1.mesesMeta, ['2026-12']); assert.equal(f1.competencia, true);
+  // 0.111.0: a tela das Tarefas aberta acima pode já ter pedido o relatório do mês corrente (os setores do De quem): conta só o de dezembro
+  const relDez = () => gRel.filter(c => /^2026-12-01/.test(c.dates && c.dates.startDate));
+  assert.equal(relDez().length, 1, 'as tarefas da competência 11 vencem em dezembro: um relatório'); assert.ok(gRel.every(c => c.type === 'CUSTOMER_TASK')); assert.deepEqual(f1.mesesMeta, ['2026-12']); assert.equal(f1.competencia, true);
   for (const c of ['value', 'customer.monthly_payment', 'company_task.score']) assert.ok(!f1.colunas.includes(c), 'coluna fora do fechamento: ' + c);
   assert.ok(f1.colunas.includes('company_department.name') && f1.colunas.includes('owner.name'), 'setor e responsável no fechamento');
-  const nRel = gRel.length;
+  const nRel = relDez().length;
   const f2 = await tt({ cmd: 'gesttaFechamento', ano: 2026, mes: 11, forcar: true });
   assert.ok(f2.ok && f2.daMemoria && f2.podeEm > 0, 'em menos de 1 hora vem da memória');
-  assert.equal(gRel.length, nRel, 'atualizar antes de 1 hora não chama o Gestta de novo');
+  assert.equal(relDez().length, nRel, 'atualizar antes de 1 hora não chama o Gestta de novo');
   const sess = await pagina.evaluate(() => chrome.storage.session.get(null));
   assert.ok(sess['gtFechC-2026-11'] && sess['gtFechC-2026-11'].linhas.length === 2, 'relatório na memória do Chrome');
   const loc = JSON.stringify(await pagina.evaluate(() => chrome.storage.local.get(null)));
@@ -507,11 +508,13 @@ assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br
   const antesS = gChamadas.length, nRelS = gRel.length;
   const s1 = await tt({ cmd: 'gesttaSaude', parte: 'tarefas' });
   assert.ok(s1.ok, 'gesttaSaude: ' + (s1.erro || ''));
-  assert.equal(gRel.length - nRelS, 4, 'um relatório por mês, de 2 meses atrás até o próximo');
+  const mesesS = new Set(Object.keys(await pagina.evaluate(() => chrome.storage.session.get(null))).filter(k => /^gtSaude-/.test(k)));
+  assert.equal(mesesS.size, 4, 'um relatório por mês, de 2 meses atrás até o próximo'); assert.ok(gRel.length - nRelS <= 4);
   assert.ok(s1.colunas.includes('notify_customer') && s1.colunas.includes('concluded_by.name') && !s1.colunas.includes('value'), 'colunas da Saúde');
   assert.equal(s1.emailNaoSaiu, 3); assert.equal(s1.semTarefa, 5); assert.equal(s1.perfil.total, true);
+  const nRelS2 = gRel.length;
   const s1b = await tt({ cmd: 'gesttaSaude', parte: 'tarefas' });
-  assert.ok(s1b.daMemoria && gRel.length - nRelS === 4, 'o relatório da Saúde vem da memória por 1 hora');
+  assert.ok(s1b.daMemoria && gRel.length === nRelS2, 'o relatório da Saúde vem da memória por 1 hora');
   const s2 = await tt({ cmd: 'gesttaSaude', parte: 'contatos', cnpjs: ['12345678000190', '99999999000199'] });
   assert.ok(s2.ok, 'contatos: ' + (s2.erro || ''));
   assert.deepEqual(s2.porCnpj['12345678000190'], [{ setor: 'Pessoal', ativo: true, temEmail: true }]); assert.equal(s2.porCnpj['99999999000199'], null);
@@ -527,6 +530,24 @@ assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br
   const sessS = await pagina.evaluate(() => chrome.storage.session.get(null)), locS = JSON.stringify(await pagina.evaluate(() => chrome.storage.local.get(null)));
   assert.ok(Object.keys(sessS).some(k => /^gtSaude-\d{4}-\d{2}$/.test(k)), 'relatório da Saúde na memória do Chrome');
   assert.ok(!locS.includes('gtSaude') && !locS.includes('accountable'), 'nada da Saúde no disco');
+  // 0.111.0: leitura em partes, setores do De quem pelo relatório do mês corrente e o núcleo carregado uma vez na aba
+  const pd = await tt({ cmd: 'gesttaTarefas', parte: 'dia' });
+  assert.ok(pd.ok && pd.parte === 'dia' && Array.isArray(pd.dia) && pd.itens === undefined, 'parte dia: só os vencimentos');
+  const pc = await tt({ cmd: 'gesttaTarefas', parte: 'comp' });
+  assert.ok(pc.ok && pc.parte === 'comp' && Array.isArray(pc.itens) && pc.dia === undefined, 'parte comp: só a competência');
+  const nRelSet = gRel.length;
+  const st = await tt({ cmd: 'gesttaSetores' });
+  assert.ok(st.ok, 'gesttaSetores: ' + (st.erro || ''));
+  assert.equal(gRel.length, nRelSet, 'o relatório do mês corrente já estava na memória (o mesmo da Saúde)');
+  assert.ok(st.linhas.length && st.linhas.every(l => l.length === 3 && /OPEN|IMPEDIMENT/.test(l[0])), 'só situação, setor e responsável das abertas');
+  assert.ok(!JSON.stringify(st).includes('EMPRESA FICTICIA'), 'sem empresa');
+  const versaoNaAba = await gAba.evaluate(() => self.OCG && self.OCG.__v);
+  assert.equal(versaoNaAba, man.version, 'o núcleo fica na aba marcado com a versão da extensão');
+  await gAba.evaluate(() => { self.__marcaNucleo = self.OCG; });
+  await tt({ cmd: 'gesttaTarefas', parte: 'dia' });
+  assert.equal(await gAba.evaluate(() => self.__marcaNucleo === self.OCG), true, 'a leitura seguinte não injeta o núcleo de novo');
+  const modos = (await pagina.evaluate(() => chrome.storage.session.get('gtModos'))).gtModos;
+  assert.ok(modos && ['direto', 'meta'].includes(modos.comp), 'o jeito da busca por competência fica lembrado (só a palavra)');
   papel = 'ROLE_USER'; adminProibido = true;
   const s6 = await tt({ cmd: 'gesttaSaude', parte: 'config' });
   assert.equal(s6.ok, false, 'o analista não lê a configuração'); assert.match(s6.erro, /só da coordenação/);
