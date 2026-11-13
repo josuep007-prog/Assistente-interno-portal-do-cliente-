@@ -2889,7 +2889,6 @@ await passo('app · 0.92.0: mudança feita na guia de Configurações vale na ho
 await passo('Gestta · Tarefas (0.77.0): Meu dia com o detalhe ao lado e a linha do tempo, Empresas com a ficha e a trilha, Lista densa, Obrigações, calendário, Fechamento e abrir no Gestta', async () => {
   const { p, fr } = await abrirGestta(gtResp(true));
   const sit = k => fr.$eval('.gt-sit[data-grupo="' + k + '"] b', e => e.textContent);
-  const filtros = async () => { if (!(await fr.$eval('#gt-filtros', d => d.open))) await fr.click('#gt-filtros summary'); };
   for (const k of ['impedimento', 'hoje', 'proximas', 'depois', 'feita']) assert.equal(await sit(k), '1', 'um em ' + k);
   assert.equal(await sit('agora'), '2', '0.87.0: multa e atraso juntos em Resolver agora');
   assert.equal(await fr.locator('.gt-sit[data-grupo="multa"], .gt-sit[data-grupo="atrasada"]').count(), 0);
@@ -2959,17 +2958,22 @@ await passo('Gestta · Tarefas (0.77.0): Meu dia com o detalhe ao lado e a linha
   await fr.waitForSelector('.gl-r');
   assert.equal(await fr.locator('.gl-r').count(), 6);
   assert.deepEqual(await fr.$$eval('.gl-g b', l => l.map(e => e.textContent)), ['Gerando multa', 'Atrasadas', 'Com impedimento', 'Vencem hoje', 'Próximos 5 dias úteis', 'Mais adiante']);
+  assert.equal(await fr.locator('#gt-filtros').count(), 0, '0.109.0: sem o menu Filtros');
+  assert.equal(await fr.locator('#gt-filtrada').count(), 0, 'sem filtro, sem faixa');
   await fr.fill('#gt-q', 'gama'); assert.equal(await fr.locator('.gl-r').count(), 2, 'busca pela empresa');
+  // 0.109.0: visão filtrada bem à vista: faixa com a contagem e o que filtra, cada um com ×; o topo ganha a borda
+  assert.match(await fr.textContent('#gt-filtrada'), /Visão filtrada · mostrando 2 de 6 tarefas.*Busca: “gama”/);
+  assert.equal(await fr.$eval('.gt-topo', e => e.classList.contains('filtrado')), true);
+  if (process.env.CAP) for (const est of ['simples', 'atual']) for (const t of ['light', 'dark']) { await fr.evaluate(([e, x]) => { document.documentElement.setAttribute('data-estilo', e); document.documentElement.setAttribute('data-theme', x); }, [est, t]); await fr.waitForTimeout(100); await p.screenshot({ path: path.join(process.env.CAP, 'gestta-filtrada-' + est + '-' + t + '.png'), clip: { x: 0, y: 0, width: 1440, height: 330 } }); }
+  if (process.env.CAP) await fr.evaluate(() => { document.documentElement.setAttribute('data-estilo', 'simples'); document.documentElement.setAttribute('data-theme', 'light'); });
+  await fr.click('[data-tira="q"]'); assert.equal(await fr.locator('.gl-r').count(), 6, 'o × tira só aquele filtro');
+  assert.equal(await fr.locator('#gt-filtrada').count(), 0);
   await fr.fill('#gt-q', 'apuracao'); assert.equal(await fr.locator('.gl-r').count(), 1, 'busca sem acento');
   await fr.click('#gt-limpar'); assert.equal(await fr.locator('.gl-r').count(), 6);
   await fr.click('.gt-sit[data-grupo="agora"]');
   assert.equal(await fr.locator('.gl-r').count(), 2, 'multa + atrasadas');
   await fr.click('#gt-limpar');
-  await filtros(); await fr.click('.gt-chip[data-tipo="ACCOUNTING"]');
-  assert.equal(await fr.locator('.gl-r').count(), 1, 'só contábil');
-  await fr.click('#gt-limpar');
-  await filtros(); await fr.check('#gt-feitas'); assert.equal(await fr.locator('.gl-r').count(), 7, 'com as concluídas');
-  await fr.click('.gt-topo-prog'); assert.equal(await fr.$eval('#gt-filtros', d => d.open), false, 'clicar fora fecha o menu');
+  await fr.check('#gt-feitas'); assert.equal(await fr.locator('.gl-r').count(), 7, 'com as concluídas (a caixa fica à vista no topo)');
   await fr.click('[data-gl-col="empresa"]');
   assert.equal(await fr.$eval('.gl-r .gl-emp', e => e.textContent), '101Cliente Alfa Ltda', 'ordenada pela empresa');
   await fr.click('[data-gl-grupo="empresa"]');
@@ -3031,13 +3035,7 @@ await passo('Gestta · Tarefas (0.77.0): Meu dia com o detalhe ao lado e a linha
   await fr.check('#gt-pend'); assert.equal(await fr.locator('.gt-tr').count(), 2, 'só com pendência');
   await fr.click('#gt-flimpar');
   assert.ok((await fr.evaluate(() => window.__msgs.filter(m => m.cmd === 'gesttaFechamento').length)) >= 1);
-  // de volta à lista: o setor (do relatório) filtra
   await fr.click('#abas [data-aba="lista"]');
-  await filtros();
-  await fr.selectOption('#gt-setor', 'Pessoal');
-  assert.deepEqual(await fr.$$eval('.gl-r .gl-nome b', l => l.map(e => e.textContent)), ['Folha de Pagamento', 'Guia do FGTS', 'eSocial Mensal'], 'só as do Pessoal, com a concluída (o setor vem do relatório, pelo id)');
-  await fr.selectOption('#gt-setor', '');
-  await fr.click('.gt-topo-prog');
   // nada das tarefas vai ao armazenamento da extensão
   assert.ok(!JSON.stringify(await fr.evaluate(() => localStorage.getItem('__mem') || '')).includes('CLIENTE ALFA'), 'tarefas fora do armazenamento');
   // abrir: a camada fecha e o próprio Gestta vai para a tarefa
@@ -3216,19 +3214,15 @@ await passo('Gestta · Tarefas (0.87.0): atalhos com ?, densidade compacta, Fech
   await fr.press('body', '?'); await fr.waitForSelector('#gt-atalhos:not([hidden])');
   assert.match(await fr.textContent('#gt-atalhos'), /Trocar de aba.*Abrir a tarefa escolhida no Gestta.*Buscar/s);
   await fr.press('#gt-atalhos-fechar', 'Escape'); await fr.waitForSelector('#gt-atalhos', { state: 'hidden' });
-  await fr.click('#gt-filtros summary'); await fr.click('[data-dens="compacta"]');
-  assert.equal(await fr.evaluate(() => document.documentElement.dataset.densidade), 'compacta');
-  assert.equal(await fr.evaluate(() => localStorage.getItem('oc.gt.dens')), 'compacta', 'a escolha fica no navegador');
-  await fr.click('#gt-filtros summary');
-  // 0.108.2: o menu de Filtros nunca sai da tela, com o botão à esquerda ou à direita
-  for (const w of [1440, 1100, 900, 640]) {
-    await p.setViewportSize({ width: w, height: 800 }); await fr.waitForTimeout(150);
-    await fr.click('#gt-filtros summary');
-    const r = await fr.$eval('.gt-filtros-menu', m => { const b = m.getBoundingClientRect(); return [Math.round(b.left), Math.round(b.right), document.documentElement.clientWidth]; });
-    assert.ok(r[0] >= 0 && r[1] <= r[2], w + ': o menu de Filtros cabe na tela (' + r.join() + ')');
-    await fr.click('#gt-filtros summary');
-  }
-  await p.setViewportSize({ width: 1360, height: 860 });
+  // 0.109.0: a densidade mudou para Configurações › Aparência; a guia do Gestta aberta acompanha na hora
+  assert.equal(await fr.locator('[data-dens]').count(), 0, 'densidade fora da tela das tarefas');
+  await fr.evaluate(() => { localStorage.setItem('oc.gt.dens', 'compacta'); dispatchEvent(new StorageEvent('storage', { key: 'oc.gt.dens', newValue: 'compacta' })); });      // como quando muda na guia de Configurações
+  await fr.waitForFunction(() => document.documentElement.dataset.densidade === 'compacta');
+  const cfg = await abrirApp('#/config');
+  await cfg.click('[data-dens-op="compacta"]');
+  assert.equal(await cfg.evaluate(() => localStorage.getItem('oc.gt.dens')), 'compacta', 'Configurações › Aparência grava a densidade no navegador');
+  assert.equal(await cfg.$eval('[data-dens-op="compacta"]', b => b.getAttribute('aria-checked')), 'true');
+  assert.deepEqual(cfg.erros, []);
   // Fechamento: os números filtram as empresas
   await fr.click('#abas [data-aba="fech"]'); await fr.waitForSelector('.gt-bar');
   const antes = await fr.locator('.gt-tr:not(.gt-tr-cab)').count();
@@ -3272,7 +3266,7 @@ await passo('Gestta · Tarefas: no Meu dia, Enter abre a tarefa escolhida no Ges
     if (modo === 'quem') { await fr.waitForSelector('#gt-quem-wrap:not([hidden])'); await fr.click('#gt-quem-btn'); }
     if (modo === 'mespop') await fr.click('#gt-mes-rot');
     if (modo === 'atalhos') { await fr.waitForSelector('.gd-it'); await fr.press('body', '?'); }
-    if (modo === 'lista') { await fr.click('#gt-filtros summary'); await fr.check('#gt-feitas'); await fr.click('#gt-filtros summary'); }
+    if (modo === 'lista') await fr.check('#gt-feitas');
     await fr.waitForTimeout(400);
     if (process.env.CAP && ['dia', 'empresas', 'quadro', 'lista', 'fechamento', 'quem', 'mespop', 'atalhos'].includes(modo)) await p.screenshot({ path: path.join(process.env.CAP, 'gestta-' + modo + '-' + estilo + '-' + tema + '.png') });
     const r = await fr.evaluate(([m, min]) => eval('(' + m + ')')(min), [medir.toString(), 4.5]);

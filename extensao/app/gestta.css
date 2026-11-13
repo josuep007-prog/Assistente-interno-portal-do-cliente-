@@ -789,3 +789,19 @@
   .gt-topo .gt-topo-dir .gt-busca{min-width:340px; flex:1 1 420px}
   .gt-topo .gt-sits{flex:0 1 46%}
 }
+
+/* 0.109.0: sem o menu Filtros; a caixa da aba fica à vista e a visão filtrada aparece forte */
+.gt-tog{display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border:1px solid var(--rule); border-radius:var(--r); background:var(--surface); font-size:12.5px; font-weight:600; color:var(--ink); white-space:nowrap; cursor:pointer}
+.gt-tog:has(input:checked){border-color:var(--blue-deep); background:color-mix(in srgb, var(--blue-deep) 10%, var(--surface)); box-shadow:inset 0 0 0 1px var(--blue-deep)}
+.gt-topo.filtrado{border-color:var(--blue-deep); box-shadow:0 0 0 1px var(--blue-deep), var(--shadow-card)}
+.gt-filtrada{display:flex; align-items:center; gap:8px 12px; flex-wrap:wrap; margin:-6px 0 14px; padding:9px 12px; border:1px solid var(--blue-deep); border-left-width:5px; border-radius:var(--r);
+  background:color-mix(in srgb, var(--blue-deep) 12%, var(--surface)); color:var(--ink)}
+.gt-filtrada > .ic{color:var(--blue-deep); flex:none}
+.gt-fx-tx{font-size:13.5px; color:var(--ink)} .gt-fx-tx b{font-weight:800}
+.gt-fx-chips{display:flex; flex-wrap:wrap; gap:6px; flex:1 1 auto; min-width:0}
+.gt-fx-chip{all:unset; box-sizing:border-box; cursor:pointer; display:inline-flex; align-items:center; gap:6px; padding:4px 8px 4px 10px; border-radius:3px; background:var(--surface); border:1px solid color-mix(in srgb, var(--blue-deep) 45%, var(--rule)); font-size:12.5px; color:var(--ink)}
+.gt-fx-chip b{font-weight:700} .gt-fx-chip .ic{color:var(--ink-2)}
+.gt-fx-chip:hover{border-color:var(--blue-deep)} .gt-fx-chip:hover .ic{color:var(--ink)}
+.gt-fx-chip:focus-visible{outline:2px solid var(--blue-deep); outline-offset:2px}
+.gt-filtrada .gt-limpar{margin-left:auto; background:var(--surface)}
+:root[data-estilo="simples"] .gt-filtrada{padding:8px 10px}

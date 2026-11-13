@@ -58,7 +58,7 @@ function restaurar() {
   if (ABAS.includes(v.aba)) E.aba = v.aba;
   if (v.ano && v.mes) { E.ano = v.ano; E.mes = v.mes; }
   if (v.quem) E.quem = v.quem;
-  E.q = v.q || ''; E.grupos = new Set(v.grupos || []); E.tipos = new Set(v.tipos || []); E.ultimaAberta = v.ultimaAberta || '';
+  E.q = v.q || ''; E.grupos = new Set(v.grupos || []); E.tipos = new Set();      // 0.109.0: sem filtro de tipo na tela, nada escondido de uma visita antiga E.ultimaAberta = v.ultimaAberta || '';
   return v;
 }
 let tSalvar = 0;
@@ -221,36 +221,43 @@ function anel(pct, tam) {
 // rótulos curtos das situações no topo (o nome inteiro e a explicação ficam na dica)
 const SIT_CURTO = { multa: 'Multa', atrasada: 'Atrasadas', impedimento: 'Impedimento', hoje: 'Hoje', proximas: 'Próximos dias', depois: 'Mais adiante', feita: 'Concluídas' };
 // Topo das abas de trabalho (0.77.0): progresso do mês, as situações (que filtram), a busca e o menu Filtros, numa faixa só.
-function topoHtml(c) {
+function topoHtml(c, cont) {
   const agora = c.n.multa + c.n.atrasada, agoraOn = E.grupos.has('multa') && E.grupos.has('atrasada');
   const sitAgora = (agora || agoraOn) ? '<button type="button" class="gt-sit gt-sit-agora gt-c-multa' + (agoraOn ? ' on' : '') + '" data-grupo="agora" aria-pressed="' + agoraOn + '" title="' + esc('Resolver agora: ' + c.n.multa + ' gerando multa e ' + c.n.atrasada + ' com a meta vencida') + '"><span class="gt-sit-ic" aria-hidden="true">!</span>Resolver agora<b>' + num(agora) + '</b></button>' : '';
   const sit = gr => (gr.k === 'multa' || gr.k === 'atrasada') ? '' : (c.n[gr.k] || E.grupos.has(gr.k)) ? '<button type="button" class="gt-sit gt-c-' + COR[gr.k] + (E.grupos.has(gr.k) ? ' on' : '') + '" data-grupo="' + gr.k + '" aria-pressed="' + E.grupos.has(gr.k) + '" title="' + esc(gr.rot + ': ' + gr.dica) + '"><i class="gt-ponto"></i>' + esc(SIT_CURTO[gr.k] || gr.rot) + '<b>' + num(c.n[gr.k]) + '</b></button>' : '';
-  const tipo = k => '<button type="button" class="gt-chip' + (E.tipos.has(k) ? ' on' : '') + '" data-tipo="' + k + '" aria-pressed="' + E.tipos.has(k) + '">' + esc(G.TIPOS_TAREFA[k]) + '</button>';
   const sitChip = s => '<button type="button" class="gt-chip' + (E.sits.has(s.k) ? ' on' : '') + '" data-sit="' + s.k + '" aria-pressed="' + E.sits.has(s.k) + '">' + esc(s.rot) + '</button>';
-  const nf = E.tipos.size + (E.setor ? 1 : 0) + (E.soPendEmp && (E.aba === 'empresas' || E.aba === 'quadro') ? 1 : 0) + (E.feitas && (E.aba === 'lista' || E.aba === 'calendario') ? 1 : 0);
-  return '<div class="gt-topo">' +
+  return '<div class="gt-topo' + (filtroAtivo() ? ' filtrado' : '') + '">' +
     '<div class="gt-topo-prog" title="' + num(c.feitas) + ' de ' + num(c.total) + (E.aba === 'dia' ? ' tarefas com meta neste mês' : ' tarefas da competência') + ' concluídas">' + anel(c.pctFeitas, 52) + '<span><b>' + c.pctFeitas + '%</b><small>' + num(c.feitas) + ' de ' + num(c.total) + ' concluídas</small></span></div>' +
     '<div class="gt-sits" role="group" aria-label="Filtrar pela situação">' + sitAgora + G.GRUPOS.map(sit).join('') + '</div>' +
     '<div class="gt-topo-dir">' +
       '<label class="gt-busca"><svg class="ic"><use href="#i-search"/></svg><input type="search" id="gt-q" placeholder="Buscar tarefa, empresa ou código" autocomplete="off" aria-label="Buscar tarefa, empresa ou código" value="' + esc(E.q) + '"><kbd>/</kbd></label>' +
-      '<details class="menu gt-filtros" id="gt-filtros"><summary class="btn btn-sm' + (nf ? ' filtro-on' : '') + '"><svg class="ic ic-sm"><use href="#i-filter"/></svg>Filtros' + (nf ? ' <span class="menu-n">' + nf + '</span>' : '') + '</summary>' +
-        '<div class="menu-list form gt-filtros-menu"><span class="gt-f-rot">Tipo</span><div class="gt-chips" role="group" aria-label="Tipo">' + Object.keys(G.TIPOS_TAREFA).map(tipo).join('') + '</div>' +
-          setorSelHtml() +
-          (E.aba === 'empresas' || E.aba === 'quadro' ? '<label class="gt-feitas"><input type="checkbox" id="gt-pend-emp"' + (E.soPendEmp ? ' checked' : '') + '> Só empresas com pendência</label>' : '') +
-          (E.aba === 'lista' || E.aba === 'calendario' ? '<label class="gt-feitas"><input type="checkbox" id="gt-feitas"' + (E.feitas ? ' checked' : '') + '> Mostrar concluídas</label>' : '') +
-          '<span class="gt-f-rot">Densidade</span><div class="seg gt-modos" role="group" aria-label="Densidade"><button type="button" class="' + (E.dens !== 'compacta' ? 'on' : '') + '" data-dens="conf" aria-pressed="' + (E.dens !== 'compacta') + '">Confortável</button><button type="button" class="' + (E.dens === 'compacta' ? 'on' : '') + '" data-dens="compacta" aria-pressed="' + (E.dens === 'compacta') + '">Compacta</button></div>' +
-        '</div></details>' +
-      (filtroAtivo() ? '<button type="button" class="btn btn-sm gt-limpar" id="gt-limpar"><svg class="ic ic-sm"><use href="#i-x"/></svg>Limpar</button>' : '') +
-    '</div></div>' +
+      // 0.109.0 (Josué, 13/11/2026: "acabar com o menu"): sem Filtros; a caixa que vale para a aba fica à vista
+      (E.aba === 'empresas' || E.aba === 'quadro' ? '<label class="gt-feitas gt-tog"><input type="checkbox" id="gt-pend-emp"' + (E.soPendEmp ? ' checked' : '') + '> Só com pendência</label>' : '') +
+      (E.aba === 'lista' || E.aba === 'calendario' ? '<label class="gt-feitas gt-tog"><input type="checkbox" id="gt-feitas"' + (E.feitas ? ' checked' : '') + '> Mostrar concluídas</label>' : '') +
+    '</div></div>' + faixaFiltrada(cont) +
     // 0.104.0 (Josué, 12/11/2026): a situação no Gestta à vista, numa faixa logo abaixo; nenhuma marcada = como sempre
     '<div class="gt-sitbar" role="group" aria-label="Situação no Gestta"><span class="gt-f-rot">Situação no Gestta</span><div class="gt-chips">' + G.SITUACOES_FILTRO.map(sitChip).join('') + '</div>' +
       '<span class="gt-sitbar-dica">' + (E.sits.size ? 'mostrando só ' + G.SITUACOES_FILTRO.filter(s => E.sits.has(s.k)).map(s => s.rot.toLowerCase()).join(', ') : 'nenhuma marcada: abertas e com impedimento' + (E.feitas || E.aba !== 'lista' && E.aba !== 'calendario' ? ', e as concluídas' : '')) + '</span></div>';
 }
-// Setor: vem do relatório (Fechamento da competência) (a busca não traz). Sem o relatório na memória, a opção carrega.
-function setorSelHtml() {
-  const setores = E.setorPorId ? [...new Set(lista().map(t => t.setor).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR')) : [];
-  return '<label class="gt-sel"><span>Setor</span><select id="gt-setor" aria-label="Setor"><option value="">Todos</option>' +
-    (E.setorPorId ? setores.map(x => '<option' + (x === E.setor ? ' selected' : '') + '>' + esc(x) + '</option>').join('') : '<option value="__carregar">' + (E.fechCarregando ? 'Carregando setores…' : 'Carregar setores (fechamento da competência)') + '</option>') + '</select></label>';
+// 0.109.0 (Josué, 13/11/2026: "as mudanças de filtros tão muito sutis e às vezes você não percebe que está numa visualização filtrada"):
+// com qualquer filtro ligado, uma faixa forte logo abaixo do topo diz quantas tarefas aparecem de quantas e o que está filtrando, cada um com ×
+function faixaFiltrada(cont) {
+  if (!filtroAtivo()) return '';
+  const chip = (k, rot) => '<button type="button" class="gt-fx-chip" data-tira="' + esc(k) + '" title="Tirar este filtro">' + rot + '<svg class="ic ic-sm" aria-hidden="true"><use href="#i-x"/></svg></button>';
+  const ch = [];
+  if (E.q) ch.push(chip('q', 'Busca: <b>“' + esc(E.q) + '”</b>'));
+  const gs = new Set(E.grupos);
+  if (gs.has('multa') && gs.has('atrasada')) { ch.push(chip('grupo:agora', '<b>Resolver agora</b>')); gs.delete('multa'); gs.delete('atrasada'); }
+  gs.forEach(k => { const gr = G.GRUPOS_TELA.find(x => x.k === k) || G.GRUPOS.find(x => x.k === k); ch.push(chip('grupo:' + k, '<b>' + esc(gr ? gr.rot : k) + '</b>')); });
+  E.sits.forEach(k => { const st = G.SITUACOES_FILTRO.find(x => x.k === k); ch.push(chip('sit:' + k, 'Situação: <b>' + esc(st ? st.rot : k) + '</b>')); });
+  if (E.dia) ch.push(chip('dia', 'Meta em <b>' + esc(E.dia.slice(8, 10) + '/' + E.dia.slice(5, 7)) + '</b>'));
+  if (E.soPendEmp) ch.push(chip('pend', '<b>Só com pendência</b>'));
+  if (E.tipos.size) ch.push(chip('tipos', 'Tipo: <b>' + esc([...E.tipos].map(k => G.TIPOS_TAREFA[k] || k).join(', ')) + '</b>'));
+  if (E.setor) ch.push(chip('setor', 'Setor: <b>' + esc(E.setor) + '</b>'));
+  return '<div class="gt-filtrada" id="gt-filtrada" role="status"><svg class="ic" aria-hidden="true"><use href="#i-filter"/></svg>' +
+    '<span class="gt-fx-tx"><b>Visão filtrada</b>' + (cont ? ' · mostrando ' + num(cont.tela) + ' de ' + plural(cont.todas, 'tarefa', 'tarefas') : '') + '</span>' +
+    '<span class="gt-fx-chips">' + ch.join('') + '</span>' +
+    '<button type="button" class="btn btn-sm gt-limpar" id="gt-limpar"><svg class="ic ic-sm"><use href="#i-x"/></svg>Limpar tudo</button></div>';
 }
 const modoTrilhaHtml = () => '<div class="seg gt-modos" role="group" aria-label="Como desenhar as etapas"><button type="button" class="' + (E.trilha === 'seq' ? 'on' : '') + '" data-trilha="seq" aria-pressed="' + (E.trilha === 'seq') + '"><svg class="ic ic-sm"><use href="#i-repeat"/></svg>Trilha</button><button type="button" class="' + (E.trilha === 'tempo' ? 'on' : '') + '" data-trilha="tempo" aria-pressed="' + (E.trilha === 'tempo') + '"><svg class="ic ic-sm"><use href="#i-calendar"/></svg>Linha do tempo</button></div>';
 const legendaTrilha = () => '<p class="gt-leg" aria-hidden="true"><span><i class="gt-et gt-e-feita"><span class="gt-et-mk">✓</span></i>concluída</span><span><i class="gt-et gt-e-multa"><span class="gt-et-mk">!</span></i>multa ou atraso</span><span><i class="gt-et gt-e-impedimento"><span class="gt-et-mk"></span></i>impedimento</span><span><i class="gt-et gt-e-hoje"><span class="gt-et-mk"></span></i>vence hoje</span><span><i class="gt-et gt-e-afazer"><span class="gt-et-mk"></span></i>a fazer</span><span class="fraco">clique numa etapa para ver o detalhe</span></p>';
@@ -323,8 +330,7 @@ function desenhar() {
     (E.aba === 'dia' && !E.dados.dia ? '<div class="faixa"><svg class="ic"><use href="#i-alert"/></svg><div><b>Não consegui ler as metas deste mês</b>' + (E.dados.diaErro ? ': ' + esc(E.dados.diaErro) : '') + '. O Meu dia mostra as tarefas da competência escolhida.</div></div>' : '') +
     (E.quem !== 'eu' ? '<p class="gt-outra">Vendo ' + (E.quem === 'sem' ? 'as tarefas <b>sem responsável</b>' : setorDaVisao() ? 'todas as tarefas do setor <b>' + esc(setorDaVisao()) + '</b>' + (E.dados.setorPessoas ? ' (' + plural(E.dados.setorPessoas, 'pessoa', 'pessoas') + ')' : '') + (E.setorPorId ? '' : E.fechCarregando ? ', separando pelo setor…' : ', inclusive as de outro setor de quem está em mais de um') : 'as tarefas de <b>' + esc(quemNome()) + '</b>') + '. <button type="button" class="linkish" id="gt-voltar-eu">Voltar às minhas</button></p>' : '');
   const foco = document.activeElement && document.activeElement.id === 'gt-q' ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null;
-  const menuAberto = $('#gt-filtros') && $('#gt-filtros').open;
-  v.innerHTML = aviso + topoHtml(c) + '<div class="gt-conteudo gt-aba-' + E.aba + '" id="gt-conteudo"></div>';
+  v.innerHTML = aviso + topoHtml(c, { tela: filtrados.length, todas: G.filtrarTarefas(todos, { q: '', grupos: [], tipos: [], situacoes: [], feitas: f.feitas, dia: '', setor: '' }, hoje).length }) + '<div class="gt-conteudo gt-aba-' + E.aba + '" id="gt-conteudo"></div>';
   const alvo = $('#gt-conteudo', v);
   E.empMap = new Map(); E.listaAtual = filtrados; teclaVista = null;
   const x = { itens: filtrados, todos, hoje, ano: vm.ano, mes: vm.mes, mesAtual: true, filtro: filtroAtivo(), soPend: E.soPendEmp, paraPai, vazio,
@@ -334,10 +340,6 @@ function desenhar() {
   else if (E.aba === 'lista') vistaLista(alvo, x);
   else if (E.aba === 'quadro') vistaQuadro(alvo, x);
   else alvo.innerHTML = vistaCalendario(filtrados, hoje, base);
-  // 0.108.2: o menu de Filtros abre para o lado onde cabe (antes saía pela direita da tela)
-  const fm = $('#gt-filtros');
-  if (fm) fm.addEventListener('toggle', () => posFiltros(fm));
-  if (menuAberto) { fm.open = true; posFiltros(fm); }
   v.scrollTop = topo;
   if (rolarSalvo != null) { v.scrollTop = rolarSalvo; rolarSalvo = null; }
   salvarEstado();
@@ -418,22 +420,31 @@ function desenharFech() {
   if (foco === 'gt-fq') { const n = $('#gt-fq'); if (n) n.focus(); }
 }
 function ligar(v) {
-  $$('[data-dens]', v).forEach(b => b.onclick = () => { E.dens = b.dataset.dens; gravarPref('gt.dens', E.dens); document.documentElement.dataset.densidade = E.dens; desenhar(); });
   $$('[data-grupo="agora"]', v).forEach(b => b.onclick = () => { const on = E.grupos.has('multa') && E.grupos.has('atrasada'); ['multa', 'atrasada'].forEach(k => on ? E.grupos.delete(k) : E.grupos.add(k)); desenhar(); });
   $$('[data-grupo]:not([data-grupo="agora"])', v).forEach(b => b.onclick = () => { const k = b.dataset.grupo; if (E.grupos.has(k)) E.grupos.delete(k); else E.grupos.add(k); if (k === 'feita' && E.grupos.has('feita')) E.feitas = true; desenhar(); });
   // 0.103.0: situação no Gestta; a desconsiderada só é lida quando pedida (liga ou desliga = lê de novo)
   $$('[data-sit]', v).forEach(b => b.onclick = () => { const k = b.dataset.sit; if (E.sits.has(k)) E.sits.delete(k); else E.sits.add(k); if (k === 'desconsiderada') ler(); else desenhar(); });
-  $$('[data-tipo]', v).forEach(b => b.onclick = () => { const k = b.dataset.tipo; if (E.tipos.has(k)) E.tipos.delete(k); else E.tipos.add(k); desenhar(); });
   $$('[data-dia]', v).forEach(b => b.onclick = () => { E.dia = E.dia === b.dataset.dia ? '' : b.dataset.dia; desenhar(); });
   $$('[data-calmes]', v).forEach(b => b.onclick = () => { E.calMes = b.dataset.calmes; E.dia = ''; desenhar(); });
   $$('[data-abrir]', v).forEach(b => b.onclick = e => { e.stopPropagation(); paraPai({ controlGestta: 'abrirTarefa', id: b.dataset.abrir }); });
   $$('[data-nova]', v).forEach(b => b.onclick = e => { e.stopPropagation(); const u = G.urlTarefa(b.dataset.nova); if (u) window.open(u, '_blank', 'noopener'); });
   const pe = $('#gt-pend-emp', v); if (pe) pe.onchange = () => { E.soPendEmp = pe.checked; desenhar(); };
-  const st = $('#gt-setor', v); if (st) st.onchange = () => { if (st.value === '__carregar') { st.value = ''; if (!E.fechCarregando) lerFech(false); return; } E.setor = st.value; desenhar(); };
   $$('.gt-t .gt-t-main', v).forEach(m => { m.tabIndex = 0; m.setAttribute('role', 'button'); m.title = 'Ver o detalhe'; });
   const q = $('#gt-q', v); if (q) q.oninput = () => { E.q = q.value; desenhar(); };
   const fe = $('#gt-feitas', v); if (fe) fe.onchange = () => { E.feitas = fe.checked; if (!fe.checked) E.grupos.delete('feita'); gravarPref('gt.feitas', E.feitas ? '1' : '0'); desenhar(); };
   const lp = $('#gt-limpar', v); if (lp) lp.onclick = () => { const rele = E.sits.has('desconsiderada'); E.q = ''; E.grupos.clear(); E.tipos.clear(); E.sits.clear(); if (rele) ler(); E.dia = ''; E.setor = ''; E.soPendEmp = false; desenhar(); };
+  $$('[data-tira]', v).forEach(b => b.onclick = () => {
+    const k = b.dataset.tira;
+    if (k === 'q') E.q = '';
+    else if (k === 'grupo:agora') { E.grupos.delete('multa'); E.grupos.delete('atrasada'); }
+    else if (k.startsWith('grupo:')) E.grupos.delete(k.slice(6));
+    else if (k.startsWith('sit:')) { E.sits.delete(k.slice(4)); if (k === 'sit:desconsiderada') ler(); }
+    else if (k === 'dia') E.dia = '';
+    else if (k === 'pend') E.soPendEmp = false;
+    else if (k === 'tipos') E.tipos.clear();
+    else if (k === 'setor') E.setor = '';
+    desenhar();
+  });
   const ds = $('#gt-dia-sair', v); if (ds) ds.onclick = () => { E.dia = ''; desenhar(); };
   const ve = $('#gt-voltar-eu', v); if (ve) ve.onclick = () => trocarQuem('eu');
 }
@@ -449,6 +460,7 @@ let avisoCfg = 0;
 addEventListener('storage', e => {
   if (e.key === 'controlonvio-theme' && e.newValue) document.documentElement.setAttribute('data-theme', e.newValue === 'dark' ? 'dark' : 'light');
   else if (e.key === 'controlonvio-estilo' && e.newValue) document.documentElement.setAttribute('data-estilo', e.newValue === 'atual' ? 'atual' : 'simples');
+  else if (e.key === 'oc.gt.dens') { E.dens = e.newValue === 'compacta' ? 'compacta' : 'conf'; document.documentElement.dataset.densidade = E.dens; }
   else return;
   iconeTema(); desenhar();
   clearTimeout(avisoCfg); avisoCfg = setTimeout(() => toast('Configurações atualizadas: já valem nesta tela'), 400);
@@ -470,14 +482,6 @@ function abrirDe(alvo) {
 }
 $('#vista').addEventListener('click', e => { abrirDe(e.target); });
 // o menu Filtros fecha ao clicar fora dele
-function posFiltros(d) {
-  const m = d && d.open && d.querySelector('.gt-filtros-menu'); if (!m) return;
-  m.style.left = '0'; m.style.right = 'auto';
-  const r = m.getBoundingClientRect(), larg = document.documentElement.clientWidth;
-  if (r.right > larg - 8) { m.style.left = 'auto'; m.style.right = '0'; if (m.getBoundingClientRect().left < 8) { m.style.right = 'auto'; m.style.left = (8 - d.getBoundingClientRect().left) + 'px'; } }
-}
-window.addEventListener('resize', () => posFiltros($('#gt-filtros')));
-document.addEventListener('click', e => { const m = $('#gt-filtros'); if (m && m.open && !m.contains(e.target)) m.open = false; });
 $('#vista').addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.closest('.gt-t-main')) { e.preventDefault(); abrirDe(e.target); } });
 const trocouMes = () => { salvarEstado(); E.dia = ''; E.calMes = ''; E.fech = null; E.fechTarefas = []; E.setorPorId = null; E.setor = ''; E.fechErro = null; fecharPainel(); ler(); if (E.aba === 'fech') desenhar(); };
 $('#gt-mes-ant').onclick = () => { E.mes--; if (E.mes < 1) { E.mes = 12; E.ano--; } trocouMes(); };

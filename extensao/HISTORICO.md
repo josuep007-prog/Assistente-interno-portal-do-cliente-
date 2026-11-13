@@ -2,6 +2,12 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.109.0 (13/11/2026): sem menu Filtros e visão filtrada bem à vista
+
+- Josué: "essas opções de filtro tão meio sem sentido também"; escolheu acabar com o menu; "as mudanças de filtros no Gestta tão muito sutis e fazem com que às vezes você não perceba que está numa visualização filtrada". Nas Tarefas do Gestta:
+  - Saiu o botão **Filtros**. O Tipo e o Setor saíram (o setor já está no De quem); a caixa da aba (**Só com pendência** em Empresas e Obrigações, **Mostrar concluídas** na Lista e no Calendário) fica à vista ao lado da busca; a **densidade** (Confortável ou Compacta) foi para Configurações › Aparência e vale na hora na guia aberta.
+  - Com qualquer filtro ligado (busca, situação, Resolver agora, dia do calendário, só com pendência), aparece logo abaixo do topo a faixa **Visão filtrada · mostrando N de M tarefas**, com cada filtro numa etiqueta com × para tirar só ele e **Limpar tudo**; o topo ganha uma borda azul.
+
 ## Novidades da v0.108.2 (13/11/2026): menu de Filtros dentro da tela
 
 - Josué: "conserte isso… tá fugindo pra fora da tela". Nas Tarefas do Gestta, o menu de **Filtros** abre para o lado onde cabe (direita ou esquerda do botão) e nunca passa da largura da tela; ao redimensionar a janela ele se ajeita.
