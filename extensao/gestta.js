@@ -604,7 +604,7 @@
         let dados = null, texto = '';
         try { texto = await r.text(); dados = texto ? JSON.parse(texto) : null; } catch (e) { dados = null; }
         if (r.ok) {
-          const limpo = p.tipo === 'relatorio' || p.tipo === 'fechamento' ? limpar(p.tipo, texto) : limpar(p.tipo, dados);
+          const limpo = p.tipo === 'relatorio' || p.tipo === 'fechamento' || p.tipo === 'relSaude' ? limpar(p.tipo, texto) : limpar(p.tipo, dados);
           resultados.push(limpo == null ? { id: p.id, status: r.status, erro: 'resposta em formato desconhecido' } : { id: p.id, status: r.status, dados: limpo });
         } else {
           const msg = dados && typeof dados === 'object' ? String(dados.message || dados.error || '').slice(0, 160) : '';
