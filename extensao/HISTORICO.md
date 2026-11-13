@@ -2,6 +2,10 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.109.2 (13/11/2026): no Meu dia, a tarefa com mais espaço
+
+- Josué: "tem mais espaço pra lista do que pra própria tarefa, a tarefa precisa ocupar um espaço maior, além disso deixe os itens da tarefa com um retângulo em volta". No Meu dia das Tarefas do Gestta, o detalhe da tarefa fica com cerca de dois terços da largura e a fila com o resto; cada documento da tarefa ganhou uma caixa (como as etapas).
+
 ## Novidades da v0.109.1 (13/11/2026): Copiar de verdade no detalhe da tarefa
 
 - Josué: "esse copiar não tá funcionando de verdade". O quadro das Tarefas do Gestta não tinha a permissão de área de transferência (o do Onvio tinha) e o botão mostrava "Copiado" mesmo quando nada era copiado. Agora o quadro tem a permissão, a cópia tenta também o caminho antigo pela seleção e, se ainda assim falhar, o botão diz **Não copiou** e um aviso pede Ctrl+C. Vale para o código e o CNPJ da empresa e para o texto do aviso do Express.

@@ -806,3 +806,11 @@
 .gt-fx-chip:focus-visible{outline:2px solid var(--blue-deep); outline-offset:2px}
 .gt-filtrada .gt-limpar{margin-left:auto; background:var(--surface)}
 :root[data-estilo="simples"] .gt-filtrada{padding:8px 10px}
+/* 0.109.2 (Josué, 13/11/2026: "a tarefa precisa ocupar um espaço maior"; "os itens da tarefa com um retângulo em volta"):
+   no Meu dia o detalhe fica com a maior parte da largura, e cada documento da tarefa numa caixa */
+.gd{grid-template-columns:minmax(300px, .72fr) minmax(480px, 1.5fr)}
+.gp-docs li.gp-doc, .gp-docs li.gp-doc[data-gp-drop]{padding:9px 12px; border:1px solid var(--rule-strong, var(--rule)); border-radius:var(--r); background:var(--surface)}
+.gp-docs li.gp-doc::before{display:none}
+.gp-docs li.gp-doc:hover{border-color:var(--blue-deep)}
+.gp-docs{gap:8px}
+@media (max-width:1100px){ .gd{grid-template-columns:minmax(0,1fr)} }
