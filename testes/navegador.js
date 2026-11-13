@@ -2969,7 +2969,9 @@ await passo('Gestta · Tarefas (0.77.0): Meu dia com o detalhe ao lado e a linha
   // teclado: ↓ passa para a próxima da fila (e o detalhe acompanha)
   await fr.press('.gd-it.on', 'ArrowDown');
   await fr.waitForFunction(() => document.querySelector('.gd-it.on b').textContent === 'Folha de Pagamento');
-  await fr.waitForFunction(() => (window.__msgs || []).filter(m => m.cmd === 'gesttaTarefa').pop().id === 'f00000000000000000000002');
+  // 0.114.0: a seguinte já foi lida enquanto a anterior estava à vista (uma só leitura da 002, que serve ao ↓) e a próxima da fila é adiantada
+  await fr.waitForFunction(() => (window.__msgs || []).filter(m => m.cmd === 'gesttaTarefa' && m.id === 'f00000000000000000000002').length === 1);
+  assert.ok(await fr.$('#gd-det .gp-topo'), 'o detalhe da 002 abriu (com o que foi adiantado)');
   // linha do tempo da tarefa: lida só quando a aba abre
   assert.equal(await fr.evaluate(() => (window.__msgs || []).some(m => m.cmd === 'gesttaHistorico')), false);
   await fr.click('#gd-det [data-gp-aba="tempo"]');

@@ -566,6 +566,25 @@ assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br
   assert.equal(await gAba.evaluate(() => self.__marcaNucleo === self.OCG), true, 'a leitura seguinte não injeta o núcleo de novo');
   const modos = (await pagina.evaluate(() => chrome.storage.session.get('gtModos'))).gtModos;
   assert.ok(modos && ['direto', 'meta'].includes(modos.comp), 'o jeito da busca por competência fica lembrado (só a palavra)');
+  // 0.114.0 · memórias que o service worker não perde ao dormir: Envios ao portal acha a empresa 9999 pela lista de clientes (a mesma dos CNPJs)
+  // e tudo fica na memória do Chrome (gtMemo: só ids, nome e CNPJ de empresa, nada de pessoa, nunca no disco)
+  const antesCli = gChamadas.filter(c => c === 'GET /admin/customer').length;
+  const env1 = await tt({ cmd: 'gesttaEnvios' });
+  assert.ok(env1.ok, 'gesttaEnvios: ' + (env1.erro || ''));
+  const env2 = await tt({ cmd: 'gesttaEnvios' });
+  assert.ok(env2.ok); assert.ok(gChamadas.filter(c => c === 'GET /admin/customer').length - antesCli <= 1, 'a lista de clientes é lida uma vez, não a cada tela');
+  await sleepMs(2200);
+  const memo = (await pagina.evaluate(() => chrome.storage.session.get('gtMemo'))).gtMemo;
+  assert.ok(memo && memo.clientes && memo.clientes.l.some(c => c.code === '9999'), 'a lista de clientes fica na memória do Chrome');
+  assert.ok(memo.modelo && memo.modelo.id, 'a empresa 9999 também');
+  assert.doesNotMatch(JSON.stringify(memo), /@|Contato Ficticio|SEGREDO|eyJ/, 'nada de e-mail, nome de pessoa nem token na memória');
+  assert.ok(!JSON.stringify(await pagina.evaluate(() => chrome.storage.local.get(null))).includes('gtMemo'), 'nada disso no disco');
+  // 0.114.0: "quem está logado" fica 3 min na memória, mas só com o mesmo token da aba: outra pessoa que entra na aba tem outro token
+  const meAntes = gChamadas.filter(c => c === 'GET /core/company/user/me').length;
+  await tt({ cmd: 'gesttaTarefas', parte: 'dia' });
+  assert.equal(gChamadas.filter(c => c === 'GET /core/company/user/me').length, meAntes, 'a 2ª leitura não pergunta de novo quem está logado');
+  const TOKEN_ANALISTA = 'JWT eyJhbGciOiJIUzI1NiJ9.' + Buffer.from(JSON.stringify({ exp: 1893459999 })).toString('base64url') + '.SEGREDO-ASSINATURA-2';
+  await gAba.evaluate(t => localStorage.setItem('ngStorage-jwt', JSON.stringify(t)), TOKEN_ANALISTA);
   papel = 'ROLE_USER'; adminProibido = true;
   const s6 = await tt({ cmd: 'gesttaSaude', parte: 'config' });
   assert.equal(s6.ok, false, 'o analista não lê a configuração'); assert.match(s6.erro, /só da coordenação/);

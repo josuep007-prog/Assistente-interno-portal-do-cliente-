@@ -93,8 +93,11 @@ let pedido = 0;
 const PARTE_CAMPOS = { dia: ['dia', 'diaErro', 'diaCortado'], comp: ['itens', 'total', 'cortado', 'modoCompetencia'] };
 const parteDaAba = () => E.aba === 'dia' ? 'dia' : 'comp';
 const faltaParte = () => !!E.dados && E.falta.has(parteDaAba()) && E.dados[parteDaAba() === 'dia' ? 'dia' : 'itens'] === undefined;
-async function ler(silencioso) {
-  const meu = ++pedido, ordem = parteDaAba() === 'dia' ? ['dia', 'comp'] : ['comp', 'dia'];
+// 0.114.0: a releitura sozinha (a cada 10 min) lê só a parte da aba aberta (soParte); a outra é lida quando a pessoa troca para a aba que
+// a usa e ela está velha (E.parteEm), em vez de refazer as duas a cada 10 minutos
+const parteEm = { dia: 0, comp: 0 };
+async function ler(silencioso, soParte) {
+  const meu = ++pedido, ordem = soParte ? [soParte] : parteDaAba() === 'dia' ? ['dia', 'comp'] : ['comp', 'dia'];
   const chave = [E.ano, E.mes, E.quem, E.sits.has('desconsiderada')].join('|');
   // outra competência ou outra pessoa: a leitura anterior sai da tela (não se misturam as partes); atualizar a mesma mantém o que está à vista
   E.carregando = true; E.falta = new Set(ordem); if (!silencioso) E.erro = null; if (E.dados && E.dados.__chave !== chave) E.dados = null;
@@ -102,7 +105,7 @@ async function ler(silencioso) {
   for (const parte of ordem) {
     const r = await enviar({ cmd: 'gesttaTarefas', ano: E.ano, mes: E.mes, quem: E.quem, desconsideradas: E.sits.has('desconsiderada'), parte });
     if (meu !== pedido) return;                       // trocou de mês ou de pessoa no meio: vale a leitura mais nova
-    E.falta.delete(parte);
+    E.falta.delete(parte); if (r && r.ok) parteEm[parte] = Date.now();
     if (!(r && r.ok)) {
       E.erro = r || { erro: 'sem resposta' }; E.falta.clear(); E.carregando = false;
       if (!silencioso) E.dados = null;                 // como antes: numa leitura nova que falha, a tela mostra o erro
@@ -547,7 +550,11 @@ ligarEnvios($('#vista'), () => { aoVivo(); desenhar(); }, paraPai);
 ligarSaude($('#vista'), () => { aoVivo(); desenhar(); }, paraPai);
 // 0.102.0: soltar documentos fora de um item da tarefa vai para o Express (e, se ele não achar, a sugestão da extensão)
 ligarSoltar({ enviar, atual: () => painelTarefa() || null, tarefas: () => ((E.dados && E.dados.itens) || []).concat((E.dados && E.dados.dia) || []) });
-function trocarAba(a) { if (!ABAS.includes(a) || a === E.aba) return; E.aba = a; gravarPref('gt.aba', E.aba); salvarEstado(); fecharPainel(); aoVivo(); desenhar(); $('#vista').scrollTop = 0; }
+function trocarAba(a) {
+  if (!ABAS.includes(a) || a === E.aba) return; E.aba = a; gravarPref('gt.aba', E.aba); salvarEstado(); fecharPainel(); aoVivo(); desenhar(); $('#vista').scrollTop = 0;
+  const pt = parteDaAba();      // 0.114.0: a parte desta aba ficou velha enquanto a pessoa estava na outra: relê só ela, com a tela à vista
+  if (E.dados && !E.carregando && ABAS.indexOf(a) < 5 && Date.now() - parteEm[pt] > ATUALIZA_MIN * 60e3) ler(true, pt);
+}
 $$('#abas [data-aba]').forEach(b => b.onclick = () => trocarAba(b.dataset.aba));
 // uma etapa (trilha ou linha do tempo) ou uma tarefa da lista abre o detalhe ao lado
 function abrirDe(alvo) {
@@ -623,7 +630,7 @@ addEventListener('message', e => {
   if (d.controlGestta === 'visivel') { E.visivel = true; setTimeout(destacarUltima, 120); if (!E.carregando && (!E.lidoEm || Date.now() - new Date(E.lidoEm) > 60e3)) ler(true); }
   else if (d.controlGestta === 'oculto') E.visivel = false;
 });
-setInterval(() => { if (E.visivel && !E.carregando && document.visibilityState === 'visible') ler(true); }, ATUALIZA_MIN * 60e3);
+setInterval(() => { if (E.visivel && !E.carregando && document.visibilityState === 'visible') ler(true, E.dados && ABAS.indexOf(E.aba) < 5 ? parteDaAba() : undefined); }, ATUALIZA_MIN * 60e3);
 setInterval(aoVivo, 30e3);
 // 0.93.0: depois de uma ação no painel (etapa, concluir, impedimento, comentário, documento), a lista é relida em silêncio
 addEventListener('gt-tarefa-mudou', () => { if (!E.carregando) ler(true); });

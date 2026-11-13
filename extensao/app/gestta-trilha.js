@@ -118,14 +118,33 @@ export function fecharPainel() {
   if (fundo) { fundo.classList.remove('aberto'); fundo.hidden = true; }
 }
 export function passarPainel(d) { if (!P) return; const j = P.i + d; if (j < 0 || j >= P.lista.length) return; P.i = j; P.dados = null; P.erro = null; P.carregando = true; P.conf = null; P.aviso = null; P.rasc = { com: '' }; desenharPainel(); carregar(); if (P.aba === 'tempo') carregarHist(); }
+// 0.114.0: o detalhe da tarefa seguinte já é lido enquanto a pessoa vê a atual ("2 de 100 · Próxima"), e fica 1 minuto só na memória
+// desta tela; passar para a próxima abre na hora. Depois de uma ação, o da tarefa é descartado e relido.
+const DET = new Map();
+const detFresco = id => { const d = DET.get(id); return d && Date.now() - d.em < 60e3 ? d.dados : null; };
+let preLendo = false;
+addEventListener('gt-tarefa-mudou', () => DET.clear());      // ação, lote ou arquivo solto: nada adiantado vale mais
+async function preLer() {
+  const meu = P; if (!P || preLendo || P.carregando || P.agindo) return;
+  const prox = P.lista[P.i + 1]; if (!prox || detFresco(prox._id)) return;
+  preLendo = true;
+  const r = await enviar({ cmd: 'gesttaTarefa', id: prox._id });
+  preLendo = false;
+  if (r && r.ok) DET.set(prox._id, { dados: r.tarefa, em: Date.now() });
+  if (DET.size > 40) DET.delete(DET.keys().next().value);
+  void meu;
+}
 async function carregar() {
   const meu = P, t = P.lista[P.i];
+  const pronto = detFresco(t._id);
+  if (pronto) { P.carregando = false; P.dados = pronto; desenharPainel(); if (P.aba === 'tempo') carregarHist(); preLer(); return; }
   const r = await enviar({ cmd: 'gesttaTarefa', id: t._id });
   if (P !== meu || P.lista[P.i] !== t) return;
   P.carregando = false;
-  if (r && r.ok) P.dados = r.tarefa; else P.erro = (r && r.erro) || 'Não consegui ler a tarefa.';
+  if (r && r.ok) { P.dados = r.tarefa; DET.set(t._id, { dados: r.tarefa, em: Date.now() }); } else P.erro = (r && r.erro) || 'Não consegui ler a tarefa.';
   desenharPainel();
   if (P.aba === 'tempo') carregarHist();
+  preLer();
 }
 async function carregarHist(forcar) {
   const meu = P, id = P.lista[P.i]._id;
@@ -208,8 +227,10 @@ const temArquivos = e => !!(e.dataTransfer && Array.from(e.dataTransfer.types ||
 // Relê o detalhe sem o esqueleto (depois de uma ação)
 async function recarregarQuieto() {
   const meu = P, t = P && P.lista[P.i]; if (!t) return;
+  DET.delete(t._id);
   const r = await enviar({ cmd: 'gesttaTarefa', id: t._id });
   if (P !== meu || P.lista[P.i] !== t || !(r && r.ok)) return;
+  DET.set(t._id, { dados: r.tarefa, em: Date.now() });
   P.dados = r.tarefa; if (r.tarefa && r.tarefa.status) t.status = r.tarefa.status;
   desenharPainel();
 }

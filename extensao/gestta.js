@@ -591,6 +591,14 @@
   /* ---------- leitura dentro da página (mundo MAIN da aba do Gestta) ----------
    * Recebe uma lista de pedidos, confere cada um de novo, usa o token só aqui e devolve só os dados limpos.
    * O token não está no retorno, nem nos erros (só o código e uma mensagem curta do servidor). */
+  // 0.114.0 (Josué, 13/11/2026: "pode aplicar"): a pausa entre uma leitura e outra se ajusta ao Gestta, sempre uma leitura por vez:
+  // resposta rápida (menos de 400 ms) a metade da pausa, no mínimo 120 ms; lenta (mais de 2,5 s), erro 429/5xx ou falha o dobro, no
+  // máximo 3 s; no meio fica a pausa de antes. Nunca abaixo de 120 ms nem acima de 3 s.
+  function pausaSeguinte(base, atual, ms, status) {
+    if (status === 0 || status === 429 || status >= 500 || ms > 2500) return Math.min(3000, Math.max(atual, base) * 2);
+    if (ms < 400) return Math.max(120, Math.round(base / 2));
+    return base;
+  }
   async function lerNaPagina(pedidos, opcoes) {
     const pausa = opcoes && opcoes.pausa != null ? opcoes.pausa : PAUSA_MS;
     const app = appDe(String(g.location && g.location.href || ''));
@@ -599,16 +607,19 @@
     if (typeof tok !== 'string' || !/^JWT\s+\S+/.test(tok)) return { ok: false, app, semSessao: true, motivo: 'sem sessão do Gestta nesta aba (faça login)' };
     const validade = expiraEm(tok);
     const resultados = [];
+    let espera = pausa;      // 0.114.0: pausa que se ajusta ao Gestta (ver abaixo); continua uma leitura por vez
     for (let i = 0; i < (pedidos || []).length; i++) {
       const p = pedidos[i] || {};
       const perm = leituraPermitida(p.metodo, p.url, p.corpo == null ? null : p.corpo);
       if (!perm.ok) { resultados.push({ id: p.id, status: 0, recusado: perm.motivo }); continue; }
-      if (i) await new Promise(r => setTimeout(r, pausa));
+      if (i) await new Promise(r => setTimeout(r, espera));
+      const t0 = Date.now();
       try {
         const metodo = String(p.metodo || 'GET').toUpperCase();
         const headers = { Accept: 'application/json, text/plain, */*', Authorization: tok };
         if (metodo === 'POST') headers['Content-Type'] = 'application/json';
         const r = await g.fetch(p.url, { method: metodo, headers, body: metodo === 'POST' ? JSON.stringify(p.corpo) : undefined, credentials: 'omit' });
+        espera = pausaSeguinte(pausa, espera, Date.now() - t0, r.status);
         let dados = null, texto = '';
         try { texto = await r.text(); dados = texto ? JSON.parse(texto) : null; } catch (e) { dados = null; }
         if (r.ok) {
@@ -619,7 +630,7 @@
           resultados.push({ id: p.id, status: r.status, erro: msg || ('erro ' + r.status) });
           if (r.status === 401) break;             // sessão caiu: para tudo
         }
-      } catch (e) { resultados.push({ id: p.id, status: 0, erro: 'sem resposta do Gestta (' + String(e && e.message || e).slice(0, 80) + ')' }); }
+      } catch (e) { espera = pausaSeguinte(pausa, espera, 99999, 0); resultados.push({ id: p.id, status: 0, erro: 'sem resposta do Gestta (' + String(e && e.message || e).slice(0, 80) + ')' }); }
     }
     tok = null;
     return { ok: true, app, validade, resultados };
@@ -1438,7 +1449,7 @@
   }
   const urlCliente = (id) => /^[0-9a-f]{24}$/i.test(String(id || '')) ? APP + '/admin/#/sidebar/customer/edit/' + id + '/details' : '';
 
-  g.OCG = { setoresDaEquipe, modoRel, restaurarModoRel, semContatoNoSetor, vereditoEmail, tarefasParaEmail, ritmoPorPessoa, cargaPorDia, prioridade, NIVEIS_PRIORIDADE, sugestoesConfig, extrasSaude, urlCliente, proximosDiasUteis, motivoEmail, COLUNAS_SAUDE, arquivosDoItem, setoresAtivos, lerQuemSetor, grupoTela, GRUPOS_TELA, SITUACOES_FILTRO, situacaoDe, fimCnpj, cnpjFormatado, enviosPortal, lerExpress, cnpjsDoTexto, cnpjValido, competenciasDoTexto, notaDocumento, sugerirDestinos, pastaForaDe, urlTemplate: (id) => /^[0-9a-f]{24}$/i.test(String(id || '')) ? 'https://app.gestta.com.br/admin/#/sidebar/document/edit/' + id + '/details' : '', semelhanca, parecidoComPasta, palavrasNome, ERROS_ENVIO, API, APP, PAUSA_MS, LIMITE_BUSCA, JANELA_MAX_DIAS, POST_LEITURA, RELATORIO_TIPOS, COLUNAS_RELATORIO, MOLDES, APPS,
+  g.OCG = { pausaSeguinte, setoresDaEquipe, modoRel, restaurarModoRel, semContatoNoSetor, vereditoEmail, tarefasParaEmail, ritmoPorPessoa, cargaPorDia, prioridade, NIVEIS_PRIORIDADE, sugestoesConfig, extrasSaude, urlCliente, proximosDiasUteis, motivoEmail, COLUNAS_SAUDE, arquivosDoItem, setoresAtivos, lerQuemSetor, grupoTela, GRUPOS_TELA, SITUACOES_FILTRO, situacaoDe, fimCnpj, cnpjFormatado, enviosPortal, lerExpress, cnpjsDoTexto, cnpjValido, competenciasDoTexto, notaDocumento, sugerirDestinos, pastaForaDe, urlTemplate: (id) => /^[0-9a-f]{24}$/i.test(String(id || '')) ? 'https://app.gestta.com.br/admin/#/sidebar/document/edit/' + id + '/details' : '', semelhanca, parecidoComPasta, palavrasNome, ERROS_ENVIO, API, APP, PAUSA_MS, LIMITE_BUSCA, JANELA_MAX_DIAS, POST_LEITURA, RELATORIO_TIPOS, COLUNAS_RELATORIO, MOLDES, APPS,
     caminhoDe, leituraPermitida, escritaPermitida, pedidoAcao, agirNaPagina, ARQ_MAX, appDe, escolher, limpar, limparRelatorio, perfil, expiraEm, janelaDoMes, PEDIDOS, lerNaPagina, linhasDoTeste,
     GRUPOS, TIPOS_TAREFA, SITUACOES_TAREFA, MAX_PAGINAS_TAREFAS, diasUteis, grupoTarefa, prazoTexto, contarGrupos, porEmpresa, porDia, filtrarTarefas, urlTarefa, ymd, diaLocal,
     COLUNAS_FECHAMENTO, linhasDoRelatorio, tarefasDoRelatorio, trilhaDaEmpresa, fechamento, ESTADOS, setorDe, respDe, ehEscritorioProprio,

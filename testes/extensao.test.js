@@ -3784,6 +3784,17 @@ function carregarGestta() {
   ctx.self = ctx; vm.createContext(ctx); vm.runInContext(src('gestta.js'), ctx); return ctx.OCG;
 }
 const OCG = carregarGestta();
+test('Gestta (0.114.0): a pausa entre leituras se ajusta ao Gestta, nunca abaixo de 120 ms nem acima de 3 s', () => {
+  const f = OCG.pausaSeguinte;
+  assert.equal(f(300, 300, 150, 200), 150, 'resposta rápida: metade da pausa');
+  assert.equal(f(100, 100, 50, 200), 120, 'nunca abaixo de 120 ms');
+  assert.equal(f(300, 150, 900, 200), 300, 'no meio: a pausa de antes');
+  assert.equal(f(300, 300, 3000, 200), 600, 'resposta lenta: o dobro');
+  assert.equal(f(300, 600, 100, 429), 1200, 'limite de pedidos (429): dobra');
+  assert.equal(f(300, 1600, 100, 503), 3000, 'erro do servidor: dobra, no máximo 3 s');
+  assert.equal(f(300, 300, 99999, 0), 600, 'falha de rede: dobra');
+});
+
 test('Gestta: só GET em api.gestta.com.br, a busca e o relatório CUSTOMER_TASK; o resto é recusado antes de sair', () => {
   const P = OCG.leituraPermitida, mes = OCG.janelaDoMes(2026, 11);
   assert.equal(P('GET', 'https://api.gestta.com.br/admin/customer?active=true').ok, true);

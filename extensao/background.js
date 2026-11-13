@@ -238,13 +238,32 @@ async function naPaginaGestta(tabId, acao, args) {
   }
   return res;
 }
+// 0.114.0: "quem está logado" lido uma vez e guardado por 3 minutos (cada leitura começava perguntando de novo); some ao primeiro 401
+let meCache = null;
+async function meGestta(tab) {
+  if (meCache && meCache.tabId === tab.id && Date.now() - meCache.em < 3 * 60e3) {
+    // sem rede: só confere se o token da aba é o mesmo (outra pessoa que entrou na aba tem outro token e outra validade)
+    const { r } = await lerGestta([], { tab });
+    if (r && r.ok && r.validade && r.validade === meCache.v.validade) return meCache.v;
+    meCache = null;
+  }
+  const { r: r1 } = await lerGestta([OCG.PEDIDOS.me()], { tab });
+  if (!r1 || !r1.ok) return { ok: false, semSessao: !!(r1 && r1.semSessao), erro: (r1 && r1.motivo) || 'A aba do Gestta não respondeu (recarregue com F5).' };
+  const me = r1.resultados[0], pf = me && me.dados ? OCG.perfil(me.dados) : null;
+  if (!pf || !pf.ok) return { ok: false, erro: 'Não consegui saber quem está logado no Gestta' + (me && me.status ? ' (' + (me.erro || me.status) + ')' : '') + '.' };
+  const v = { ok: true, pf, validade: r1.validade || null };
+  meCache = { v, tabId: tab.id, em: Date.now() };
+  return v;
+}
 async function lerGestta(pedidos, opcoes) {
   const lista = (pedidos || []).filter(p => p && OCG.leituraPermitida(p.metodo, p.url, p.corpo == null ? null : p.corpo).ok);
   if (lista.length !== (pedidos || []).length) throw new Error('pedido ao Gestta fora da lista permitida');
   const tab = (opcoes && opcoes.tab) || await abaGestta();
   if (!tab) return { aba: null, r: null };
   const res = await naPaginaGestta(tab.id, 'ler', [lista, opcoes && opcoes.pausa != null ? opcoes.pausa : OCG.PAUSA_MS]);
-  return { aba: tab, r: (res && res.result) || null };
+  const out = (res && res.result) || null;
+  if (out && (out.semSessao || (out.resultados || []).some(x => x && (x.status === 401 || x.status === 403)))) meCache = null;      // sessão ou acesso mudou: pergunta de novo
+  return { aba: tab, r: out };
 }
 // Tela "Tarefas do Gestta" (0.72.0): as tarefas do mês de quem está logado (ou, para a coordenação, de outra pessoa
 // ou as sem responsável), abertas, com impedimento e concluídas, de 1000 em 1000. Lidas na hora e entregues ao app:
@@ -296,10 +315,8 @@ async function tarefasDaCompetencia(tab, base, ano, mes) {
 async function gesttaTarefas(msg, sender) {
   const tab = await tabDoGestta(sender);
   if (!tab) return { ok: false, semAba: true, erro: 'Abra o Gestta numa aba, já logado.' };
-  const { r: r1 } = await lerGestta([OCG.PEDIDOS.me()], { tab });
-  if (!r1 || !r1.ok) return { ok: false, semSessao: !!(r1 && r1.semSessao), erro: (r1 && r1.motivo) || 'A aba do Gestta não respondeu (recarregue com F5).' };
-  const me = r1.resultados[0], pf = me && me.dados ? OCG.perfil(me.dados) : null;
-  if (!pf || !pf.ok) return { ok: false, erro: 'Não consegui saber quem está logado no Gestta' + (me && me.status ? ' (' + (me.erro || me.status) + ')' : '') + '.' };
+  const eu = await meGestta(tab); if (!eu.ok) return eu;
+  const pf = eu.pf, r1 = { validade: eu.validade };
   const padrao = OCG.competenciaPadrao(new Date());
   const ano = Number(msg.ano) || padrao.ano, mes = Number(msg.mes) || padrao.mes;
   let quem = String(msg.quem || 'eu');
@@ -335,17 +352,13 @@ async function gesttaTarefas(msg, sender) {
 // (decisão do Josué em 05/11/2026). Com acesso parcial, a resposta vai marcada "parcial" e a tela avisa.
 const FECH_INTERVALO_MS = 60 * 60e3;
 // O relatório CUSTOMER_TASK de um mês de meta. 0.83.0: num 400 tenta os outros valores de período que o próprio Gestta usa.
-async function relatorioDoMes(tab, ano, mes) {
-  let x = null;
-  await modosProntos;
-  for (const filtro of OCG.filtrosRelatorio({ ano, mes })) {
-    const { r } = await lerGestta([OCG.PEDIDOS.fechamento({ ano, mes, filtro })], { tab });
-    x = r && r.resultados && r.resultados[0];
-    if (!x || x.status !== 400) { if (x && x.status === 200) { const antes = OCG.modoRel(); OCG.lembrarFiltroRel(filtro); if (OCG.modoRel() !== antes) lembrarModos(); } break; }
-  }
-  if (!x) return { ok: false, erro: 'A aba do Gestta não respondeu ao relatório.' };
-  if (x.status !== 200 || !x.dados) return { ok: false, erro: x.status === 403 ? 'Seu acesso do Gestta não inclui o relatório de tarefas.' : x.status === 401 ? 'A sessão do Gestta acabou: faça login de novo na aba.' : 'O relatório do Gestta não veio (' + (x.erro || x.recusado || x.status) + ').' };
-  return { ok: true, colunas: x.dados.colunas, linhas: x.dados.linhas, total: x.dados.total, formato: x.dados.formato };
+// 0.114.0: é o mesmo relatório da Saúde (que tem todas as colunas do Fechamento): os dois leem por relatorioSaude, uma vez por hora
+// por mês, e o Fechamento só separa as colunas dele.
+async function relatorioDoMes(tab, ano, mes, forcar) {
+  const rel = await relatorioSaude(tab, ano, mes, !!forcar);
+  if (!rel.ok) return { ok: false, erro: rel.erro };
+  const idx = OCG.COLUNAS_FECHAMENTO.map(c => (rel.colunas || []).indexOf(c));
+  return { ok: true, colunas: OCG.COLUNAS_FECHAMENTO.slice(), linhas: (rel.linhas || []).map(l => idx.map(i => i < 0 ? '' : l[i])), total: (rel.linhas || []).length, formato: rel.formato || 'ndjson' };
 }
 // 0.85.0: o Fechamento é da competência. O relatório só sabe a meta, então: as tarefas da competência (a busca, todas as que o
 // acesso alcança), os meses em que elas vencem, o relatório de cada um desses meses e só as linhas dessas tarefas.
@@ -365,7 +378,7 @@ async function montarFech(chave, p, ano, mes) {
   return Object.assign({ ok: true, naMemoria, podeEm: 60 }, dados);
 }
 async function fechMes(p, tab, m) {
-  const rel = await relatorioDoMes(tab, m.ano, m.mes);
+  const rel = await relatorioDoMes(tab, m.ano, m.mes, p.forcar);
   if (!rel.ok) return rel;
   p.colunas = p.colunas || rel.colunas; p.formato = p.formato || rel.formato;
   const iId = (rel.colunas || []).indexOf('id');
@@ -394,14 +407,12 @@ async function gesttaFechamento(msg, sender) {
   if (guardado && (!msg.forcar || idade < FECH_INTERVALO_MS)) return Object.assign({ ok: true, daMemoria: true, completo: true, podeEm: Math.max(0, Math.ceil((FECH_INTERVALO_MS - idade) / 60e3)) }, guardado);
   const tab = await tabDoGestta(sender);
   if (!tab) return { ok: false, semAba: true, erro: 'Abra o Gestta numa aba, já logado.' };
-  const { r: r1 } = await lerGestta([OCG.PEDIDOS.me()], { tab });
-  if (!r1 || !r1.ok) return { ok: false, semSessao: !!(r1 && r1.semSessao), erro: (r1 && r1.motivo) || 'A aba do Gestta não respondeu (recarregue com F5).' };
-  const pf = r1.resultados[0] && r1.resultados[0].dados ? OCG.perfil(r1.resultados[0].dados) : null;
-  if (!pf || !pf.ok) return { ok: false, erro: 'Não consegui saber quem está logado no Gestta.' };
+  const eu = await meGestta(tab); if (!eu.ok) return eu;
+  const pf = eu.pf;
   const t0 = Date.now();
   const comp = await tarefasDaCompetencia(tab, { limit: OCG.LIMITE_BUSCA, status: ['OPEN', 'IMPEDIMENT', 'DONE'] }, ano, mes);
   if (!comp.ok) return { ok: false, erro: comp.erro };
-  const p = { ids: new Set(comp.itens.map(t => t && t._id).filter(Boolean)), meses: OCG.mesesDeMeta(comp.itens).slice(0, 6), pf, t0, cortado: !!comp.cortado, colunas: null, formato: '', linhas: [], feitos: new Set() };
+  const p = { ids: new Set(comp.itens.map(t => t && t._id).filter(Boolean)), meses: OCG.mesesDeMeta(comp.itens).slice(0, 6), pf, t0, forcar: !!msg.forcar, cortado: !!comp.cortado, colunas: null, formato: '', linhas: [], feitos: new Set() };
   if (msg.parte === 'busca') {
     fechPend.set(chave, p);
     if (!p.meses.length) { fechPend.delete(chave); return Object.assign({ completo: true }, await montarFech(chave, p, ano, mes)); }
@@ -418,12 +429,7 @@ async function gesttaFechamento(msg, sender) {
 // e as empresas de cada um (6 h na memória). Sem acesso total: só as tarefas da própria pessoa e nada da configuração.
 const SAUDE_MESES = (h) => { const l = []; for (let i = -2; i <= 1; i++) { const d = new Date(h.getFullYear(), h.getMonth() + i, 1); l.push({ ano: d.getFullYear(), mes: d.getMonth() + 1 }); } return l; };
 const contatosCache = new Map(), clientesTplCache = new Map(); let templatesSaudeCache = null;
-async function perfilGestta(tab) {
-  const { r: r1 } = await lerGestta([OCG.PEDIDOS.me()], { tab });
-  if (!r1 || !r1.ok) return { ok: false, semSessao: !!(r1 && r1.semSessao), erro: (r1 && r1.motivo) || 'A aba do Gestta não respondeu (recarregue com F5).' };
-  const pf = r1.resultados[0] && r1.resultados[0].dados ? OCG.perfil(r1.resultados[0].dados) : null;
-  return pf && pf.ok ? { ok: true, pf } : { ok: false, erro: 'Não consegui saber quem está logado no Gestta.' };
-}
+async function perfilGestta(tab) { const e = await meGestta(tab); return e.ok ? { ok: true, pf: e.pf } : e; }
 async function relatorioSaude(tab, ano, mes, forcar) {
   const chave = 'gtSaude-' + ano + '-' + String(mes).padStart(2, '0');
   const g = (await chrome.storage.session.get(chave).catch(() => ({})))[chave];
@@ -442,7 +448,7 @@ async function relatorioSaude(tab, ano, mes, forcar) {
     if (x.status === 400) { try { await chrome.storage.session.set({ [chave]: { falhou: true, status: 400, erro, lidoEm: new Date().toISOString() } }); } catch (e) {} }
     return { ok: false, status: x.status, erro };
   }
-  const d = { colunas: x.dados.colunas, linhas: x.dados.linhas, lidoEm: new Date().toISOString() };
+  const d = { colunas: x.dados.colunas, linhas: x.dados.linhas, formato: x.dados.formato || '', lidoEm: new Date().toISOString() };
   try { await chrome.storage.session.set({ [chave]: d }); } catch (e) {}
   return Object.assign({ ok: true }, d);
 }
@@ -535,7 +541,7 @@ async function gesttaSaude(msg, sender) {
         (x.dados.itens || []).forEach(t => { if (t && t._id && t.active !== false) l.push({ id: t._id, nome: String(t.name || ''), setor: String(t.company_department && t.company_department.name || ''), frequencia: String(t.frequency || ''), tipo: String(t.type || '') }); });
         if (!(x.dados.itens || []).length || (x.dados.paginas && pg >= x.dados.paginas)) break;
       }
-      templatesSaudeCache = { l, em: Date.now() };
+      templatesSaudeCache = { l, em: Date.now() }; salvarMemo();
     }
     const c = await clientesGestta(tab);
     return { ok: true, templates: templatesSaudeCache.l, clientes: c.ok ? c.l.map(x => ({ id: x.id, nome: x.nome, cnpj: x.cnpj })) : [] };
@@ -745,10 +751,10 @@ async function clientesGestta(tab) {
       const { r } = await lerGestta([OCG.PEDIDOS.clientes({ limit: 200, page: p })], { tab });
       const x = r && r.resultados && r.resultados[0];
       if (!x || x.status !== 200 || !x.dados) return { ok: false, erro: x && x.status === 403 ? 'Seu acesso do Gestta não inclui a lista de clientes.' : 'Não consegui ler os clientes do Gestta.' };
-      const it = x.dados.itens || []; it.forEach(c => { if (c && c._id) l.push({ id: c._id, nome: String(c.name || ''), cnpj: String(c.cnpj || '').replace(/\D/g, '') }); });
+      const it = x.dados.itens || []; it.forEach(c => { if (c && c._id) l.push({ id: c._id, nome: String(c.name || ''), cnpj: String(c.cnpj || '').replace(/\D/g, ''), code: String(c.code || '').trim() }); });
       if (!it.length || (x.dados.paginas && p >= x.dados.paginas)) break;
     }
-    clientesGesttaCache = { l, em: Date.now() };
+    clientesGesttaCache = { l, em: Date.now() }; salvarMemo();
   }
   return { ok: true, l: clientesGesttaCache.l };
 }
@@ -779,6 +785,7 @@ async function gesttaEquipe(msg, sender) {
   return lerEquipeGestta(tab);
 }
 async function lerEquipeGestta(tab) {
+  if (equipeCache && Date.now() - equipeCache.em < 30 * 60e3) return { ok: true, pessoas: equipeCache.pessoas };      // 0.114.0: 30 min na memória do Chrome
   const pessoas = [];
   for (let p = 1; p <= 5; p++) {
     const { r } = await lerGestta([OCG.PEDIDOS.equipe({ limit: 200, page: p })], { tab });
@@ -787,11 +794,40 @@ async function lerEquipeGestta(tab) {
     (x.dados.itens || []).forEach(u => { if (u && u._id && u.active !== false) pessoas.push({ id: u._id, nome: String(u.name || ''), setores: (u.company_departments || []).map(s => String(s.name || '')) }); });
     if (!x.dados.paginas || p >= x.dados.paginas) break;
   }
-  return { ok: true, pessoas: pessoas.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')) };
+  pessoas.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  equipeCache = { pessoas, em: Date.now() }; salvarMemo();
+  return { ok: true, pessoas };
 }
 // 0.96.0: aba Envios ao portal. A fila de envios ao Portal do Cliente com erro (de 50 em 50, até 2.000) e os templates de documento
 // (com a pasta no portal). Lido na hora e entregue à tela: nada fica no armazenamento.
 const notificaCache = new Map(), NOTIFICA_MAX = 3000; let modelo9999 = null, vinculadosCache = null;
+// 0.114.0 (Josué, 13/11/2026: "pode aplicar" as melhorias de velocidade): o service worker do Chrome dorme depois de uns 30 s parado e
+// levava consigo estas memórias (clientes, CNPJs, contatos, "avisa o cliente", empresa 9999, templates, equipe), então toda volta à tela
+// relia tudo. Agora elas ficam também em chrome.storage.session (memória do Chrome: some ao fechar o navegador, nunca vai ao disco), na
+// chave gtMemo. Só ids, nome e CNPJ de empresa, sim/não e contagens de contato (nunca nome, e-mail ou telefone de pessoa).
+let equipeCache = null;
+const MEMO_MAPAS = () => ({ contatos: contatosCache, clientesTpl: clientesTplCache, notifica: notificaCache, cnpjCliente: cnpjPorCliente });
+const memoriaPronta = Promise.resolve().then(() => chrome.storage.session.get('gtMemo')).then(o => {
+  const m = o && o.gtMemo; if (!m) return;
+  const mapas = MEMO_MAPAS(); for (const k of Object.keys(mapas)) if (Array.isArray(m[k])) m[k].forEach(([a, b]) => mapas[k].set(a, b));
+  if (m.clientes && Array.isArray(m.clientes.l)) clientesGesttaCache = m.clientes;
+  if (m.modelo && m.modelo.id) modelo9999 = m.modelo;
+  if (m.vinculados && Array.isArray(m.vinculados.ids)) vinculadosCache = m.vinculados;
+  if (m.templates && Array.isArray(m.templates.l)) templatesSaudeCache = m.templates;
+  if (m.equipe && Array.isArray(m.equipe.pessoas)) equipeCache = m.equipe;
+}).catch(() => {});
+let salvarMemoT = null;
+function salvarMemo() {
+  clearTimeout(salvarMemoT);
+  salvarMemoT = setTimeout(() => {
+    try {
+      const m = { clientes: clientesGesttaCache, modelo: modelo9999, vinculados: vinculadosCache, templates: templatesSaudeCache, equipe: equipeCache }, mapas = MEMO_MAPAS();
+      for (const k of Object.keys(mapas)) m[k] = [...mapas[k].entries()];
+      chrome.storage.session.set({ gtMemo: m }).catch(() => {});
+    } catch (e) {}
+  }, 1500);
+}
+for (const m of [contatosCache, clientesTplCache, notificaCache, cnpjPorCliente]) { const set = m.set.bind(m); m.set = (k, v) => { const r = set(k, v); salvarMemo(); return r; }; }
 async function gesttaEnvios(msg, sender) {
   const tab = await tabDoGestta(sender);
   if (!tab) return { ok: false, erro: 'Abra o Gestta numa aba, já logado.' };
@@ -833,11 +869,23 @@ async function gesttaEnvios(msg, sender) {
   }
   // 0.100.2: "Notificar cliente via e-mail" de cada tarefa da fila (notify_customer, no detalhe da tarefa, GET). Só o sim/não fica
   // na memória do service worker por 30 min (nada no armazenamento); de 20 em 20, até NOTIFICA_MAX tarefas por leitura.
+  // 0.114.0: as tarefas que o relatório do mês (já na memória do Chrome, lido pela Saúde ou pelo Fechamento) diz que avisam o cliente
+  // não precisam ser abertas uma a uma. Só o "sim" vale daqui: o "não" decide o que sai da lista de erros, e esse continua vindo do detalhe.
+  const sim = new Set();
+  try {
+    const todos = await chrome.storage.session.get(null);
+    for (const [k, rel] of Object.entries(todos || {})) {
+      if (!/^gtSaude-\d{4}-\d{2}$/.test(k) || !rel || rel.falhou || !Array.isArray(rel.linhas)) continue;
+      const iI = (rel.colunas || []).indexOf('id'), iN = (rel.colunas || []).indexOf('notify_customer');
+      if (iI >= 0 && iN >= 0) rel.linhas.forEach(l => { if (l[iN] === true || /^(true|sim|yes|1)$/i.test(String(l[iN]))) sim.add(String(l[iI])); });
+    }
+  } catch (e) {}
   const notifica = {}, faltam = [];
   const agora = Date.now();
   for (const e of envios) {
     const id = e && e.customer_task && e.customer_task._id;
     if (!/^[0-9a-f]{24}$/i.test(id || '') || id in notifica) continue;
+    if (sim.has(String(id))) { notifica[id] = true; continue; }
     const c = notificaCache.get(id);
     if (c && agora - c.em < 30 * 60000) notifica[id] = c.v; else { notifica[id] = null; faltam.push(id); }
   }
@@ -856,15 +904,10 @@ async function gesttaEnvios(msg, sender) {
   Object.keys(notifica).forEach(k => { if (notifica[k] === null) { delete notifica[k]; naoLidas++; } });
   // 0.100.3: o id da empresa 9999 no Gestta (a única pasta válida é a montada a partir dela). Só o id e o nome, na memória por 6 h.
   let modelo = modelo9999 && Date.now() - modelo9999.em < 6 * 3600e3 ? modelo9999 : null;
-  if (!modelo) {
-    for (let p = 1; p <= 30 && !modelo; p++) {
-      const { r } = await lerGestta([OCG.PEDIDOS.clientes({ limit: 200, page: p })], { tab });
-      const x = r && r.resultados && r.resultados[0];
-      if (!x || x.status !== 200 || !x.dados) break;
-      const c = (x.dados.itens || []).find(i => i && String(i.code || '').trim() === '9999');
-      if (c) modelo = modelo9999 = { id: c._id, nome: String(c.name || ''), em: Date.now() };
-      if (!(x.dados.itens || []).length || (x.dados.paginas && p >= x.dados.paginas)) break;
-    }
+  if (!modelo) {      // 0.114.0: pela mesma lista de clientes que os CNPJs usam (uma leitura só, 6 h na memória do Chrome)
+    const c = await clientesGestta(tab);
+    const x = c.ok ? c.l.find(i => i.code === '9999') : null;
+    if (x) { modelo = modelo9999 = { id: x.id, nome: x.nome, em: Date.now() }; salvarMemo(); }
   }
   // 0.100.6: os templates de documento que estão em algum template de tarefa ativo (admin/company/task e /{id}/document, só GET;
   // só os ids, na memória por 6 h). Se a leitura não fechar, null: a tela avisa e o risco mostra todos.
@@ -887,7 +930,7 @@ async function gesttaEnvios(msg, sender) {
         if (rs.length !== lote.length || rs.some(x => !x || x.status !== 200 || !x.dados)) throw new Error('documentos');
         rs.forEach(x => x.dados.ids.forEach(v => ids.add(v)));
       }
-      if (ativos.length) { vinculados = [...ids]; vinculadosCache = { ids: vinculados, em: Date.now() }; }
+      if (ativos.length) { vinculados = [...ids]; vinculadosCache = { ids: vinculados, em: Date.now() }; salvarMemo(); }
     } catch (e) { vinculados = null; }
   }
   return { ok: true, lidoEm: new Date().toISOString(), total, lidos: envios.length, cortado, pendentesGestta: contagemGestta, envios, templates, notifica, naoLidas, modelo: modelo ? { id: modelo.id, nome: modelo.nome } : null, vinculados };
@@ -1740,20 +1783,20 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'folhaDeNovo') { await chrome.storage.local.remove(['folhaLidos', 'folhaEstado', 'folhaPastas']); reply({ ok: true }); }      // refaz também o caminho das pastas de cada empresa
       else if (msg.cmd === 'testarLeitura') { reply({ ok: true, linhas: await testarLeitura() }); }
       else if (msg.cmd === 'testarGestta') { reply({ ok: true, linhas: await testarGestta() }); }
-      else if (msg.cmd === 'gesttaTarefas') { reply(await gesttaTarefas(msg, sender)); }
-      else if (msg.cmd === 'gesttaEquipe') { reply(await gesttaEquipe(msg, sender)); }
-      else if (msg.cmd === 'gesttaCnpjs') { reply(await gesttaCnpjs(msg, sender)); }
-      else if (msg.cmd === 'gesttaEnvios') { reply(await gesttaEnvios(msg, sender)); }
-      else if (msg.cmd === 'gesttaPasta') { reply(await gesttaPasta(msg, sender)); }
-      else if (msg.cmd === 'gesttaTirarPasta') { reply(await gesttaTirarPasta(msg, sender)); }
+      else if (msg.cmd === 'gesttaTarefas') { await memoriaPronta; reply(await gesttaTarefas(msg, sender)); }
+      else if (msg.cmd === 'gesttaEquipe') { await memoriaPronta; reply(await gesttaEquipe(msg, sender)); }
+      else if (msg.cmd === 'gesttaCnpjs') { await memoriaPronta; reply(await gesttaCnpjs(msg, sender)); }
+      else if (msg.cmd === 'gesttaEnvios') { await memoriaPronta; reply(await gesttaEnvios(msg, sender)); }
+      else if (msg.cmd === 'gesttaPasta') { await memoriaPronta; reply(await gesttaPasta(msg, sender)); }
+      else if (msg.cmd === 'gesttaTirarPasta') { await memoriaPronta; reply(await gesttaTirarPasta(msg, sender)); }
       else if (msg.cmd === 'gesttaTextoDoc') { reply(await gesttaTextoDoc(msg, sender)); }
-      else if (msg.cmd === 'gesttaClientesCnpj') { reply(await gesttaClientesCnpj(msg, sender)); }
-      else if (msg.cmd === 'gesttaTirar') { reply(await gesttaTirar(msg, sender)); }
-      else if (msg.cmd === 'gesttaFechamento') { reply(await gesttaFechamento(msg, sender)); }
-      else if (msg.cmd === 'gesttaSaude') { reply(await gesttaSaude(msg, sender)); }
-      else if (msg.cmd === 'gesttaSetores') { reply(await gesttaSetores(msg, sender)); }
-      else if (msg.cmd === 'gesttaTarefa') { reply(await gesttaTarefa(msg, sender)); }
-      else if (msg.cmd === 'gesttaHistorico') { reply(await gesttaHistorico(msg, sender)); }
+      else if (msg.cmd === 'gesttaClientesCnpj') { await memoriaPronta; reply(await gesttaClientesCnpj(msg, sender)); }
+      else if (msg.cmd === 'gesttaTirar') { await memoriaPronta; reply(await gesttaTirar(msg, sender)); }
+      else if (msg.cmd === 'gesttaFechamento') { await memoriaPronta; reply(await gesttaFechamento(msg, sender)); }
+      else if (msg.cmd === 'gesttaSaude') { await memoriaPronta; reply(await gesttaSaude(msg, sender)); }
+      else if (msg.cmd === 'gesttaSetores') { await memoriaPronta; reply(await gesttaSetores(msg, sender)); }
+      else if (msg.cmd === 'gesttaTarefa') { await memoriaPronta; reply(await gesttaTarefa(msg, sender)); }
+      else if (msg.cmd === 'gesttaHistorico') { await memoriaPronta; reply(await gesttaHistorico(msg, sender)); }
       else if (msg.cmd === 'gesttaAcao') { reply(await gesttaAcao(msg, sender)); }
       else if (msg.cmd === 'irPara') { reply(await irPara(msg.destino)); }
       else if (msg.cmd === 'abrirConfig') { reply(await abrirGuiaConfig(msg.params)); }
