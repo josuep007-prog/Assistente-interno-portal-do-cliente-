@@ -59,6 +59,8 @@
     if (!c) return { ok: false, motivo: 'corpo inválido' };
     if (tipo === 'busca') {
       if (!(Number(c.limit) >= 1 && Number(c.limit) <= LIMITE_BUSCA)) return { ok: false, motivo: 'limit entre 1 e ' + LIMITE_BUSCA };
+      // 0.115.1: a busca das falhas de e-mail é estreita (dezenas de tarefas) e a tela do Gestta a faz sem datas: só ela dispensa a janela de um mês
+      if (c.email_not_sent === true && !c.start_date && !c.end_date) return Number(c.limit) <= 200 ? { ok: true } : { ok: false, motivo: 'a busca das falhas de e-mail vai até 200 por página' };
       if (!c.start_date || !c.end_date || diasEntre(c.start_date, c.end_date) > JANELA_MAX_DIAS) return { ok: false, motivo: 'a busca vai um mês por vez' };
       return { ok: true };
     }
@@ -124,6 +126,10 @@
       customer_task: { _id: true, name: true, customer: { _id: true, name: true, cnpj: true }, company_department: SETOR, owner: REF, _due_date: true, _competence_date: true },
       customer_task_file: { _id: true, company_document: REF, file_name: true } },
     contagem: { fine: true, approve: true, email_not_sent: true, count: true },
+    // 0.115.0: a lista direta das tarefas com falha de e-mail (a busca com email_not_sent): só quem, qual tarefa e as datas; sem motivo (a lista não traz)
+    tarefaFalha: { _id: true, name: true, customer: { _id: true, name: true, code: true }, type: true, status: true, owner: { _id: true, name: true }, due_date: true, conclusion_date: true, competence_date: true },
+    // 0.115.0: o remetente do escritório (Endereço customizado): só se está verificado e o estado do domínio e do DKIM; nunca o registro TXT
+    dominioEmail: { verified: true, domain: true, domain_status: true, dkim_status: true },
     templateUm: null,
     templateTarefa: { _id: true, name: true, active: true, subtype: true, type: true, frequency: true, company_department: SETOR },   // 0.110.0: frequência e setor (Saúde › Configuração)   // 0.100.6: os templates de tarefa, para saber quais documentos estão em tarefa ativa
     docsTemplateTarefa: { _id: true },
@@ -175,6 +181,10 @@
       // 0.93.0: o documento já tem arquivo? (só o sim/não; o arquivo e o nome dele nunca saem da página)
       if (t && Array.isArray(t.company_documents) && dados && Array.isArray(dados.company_documents)) t.company_documents.forEach((d, i) => { const o = dados.company_documents[i]; d.temArquivo = !!(o && (o.file || (Array.isArray(o.files) && o.files.length))); d.arquivos = arquivosDoItem(o); });
       return t;
+    }
+    if (tipo === 'dominioEmail') {   // 0.115.0: um objeto (ou uma lista de um); nada de e-mail, empresa nem valor do DNS
+      const d = Array.isArray(dados) ? dados[0] : dados && Array.isArray(dados.docs) ? dados.docs[0] : dados;
+      return d && typeof d === 'object' ? escolher(d, molde) || null : null;
     }
     if (tipo === 'me' || tipo === 'contagem' || tipo === 'templateUm') return escolher(dados, molde) || null;
     if (tipo === 'contagemFila' || tipo === 'numero') {   // 0.100.7: o número de pendentes da fila do portal (número solto ou { count | total })
@@ -326,6 +336,14 @@
     // 0.110.0 · aba Saúde (todas GET, menos o relatório, que é o mesmo POST de leitura do Fechamento)
     saude: (o) => Object.assign(PEDIDOS.relatorio(o), { id: 'saude', tipo: 'relSaude' }),
     emailNaoSaiu: (o) => ({ id: 'emailNaoSaiu', tipo: 'contagem', metodo: 'GET', url: url('/core/dashboard/attention/email-not-sent/all', janelaDoMes(o.ano, o.mes)) }),
+    // 0.115.1 (mapeamento de 13/11/2026, passo 2): o corpo é o da própria tela "falha na entrega do e-mail", que NÃO leva datas (as 60 do painel têm
+    // meta de 16/10 a 28/11); com datas dos últimos 30 dias o total deu 65, não 60. Sem os filtros de setor e pessoa (a tela manda os ids de todos);
+    // o analista leva só o id dele em company_user.
+    emailFalhou: (o) => ({ id: 'emailFalhou', tipo: 'tarefaFalha', metodo: 'POST', url: url('/core/customer/task/search'),
+      corpo: Object.assign({ page: (o && o.page) || 1, limit: (o && o.limit) || 100, type: ['SERVICE_ORDER', 'RECURRENT'], status: ['DONE'], date_type: 'DUE_DATE', overdue: false,
+        not_downloaded: true, fine: false, on_time: false, collaborator: false, no_owner: true, email_not_sent: true, document_request_sent: false, without_external_user: false, os_workflow: true,
+        onvio_documents_error: false }, o && o.companyUser ? { company_user: [o.companyUser] } : {}) }),
+    dominioEmail: () => ({ id: 'dominioEmail', tipo: 'dominioEmail', metodo: 'GET', url: url('/admin/company/email/domain') }),
     semTarefa: () => ({ id: 'semTarefa', tipo: 'numero', metodo: 'GET', url: url('/admin/customer/count-without-task') }),
     clientesDoTemplate: (o) => ({ id: 'clientesDoTemplate', tipo: 'clientesDoTemplate', metodo: 'GET', url: url('/admin/company/task/' + encodeURIComponent(o.id) + '/customer') }),
     filaOnvioTela: (o) => ({ id: 'filaOnvioTela', tipo: 'filaOnvioTela', metodo: 'GET', url: url('/es/file/onvio', { status: 'ERROR', limit: (o && o.limit) || 50, skip: (o && o.skip) || 0 }) }),
@@ -591,6 +609,14 @@
   /* ---------- leitura dentro da página (mundo MAIN da aba do Gestta) ----------
    * Recebe uma lista de pedidos, confere cada um de novo, usa o token só aqui e devolve só os dados limpos.
    * O token não está no retorno, nem nos erros (só o código e uma mensagem curta do servidor). */
+  // 0.114.0 (Josué, 13/11/2026: "pode aplicar"): a pausa entre uma leitura e outra se ajusta ao Gestta, sempre uma leitura por vez:
+  // resposta rápida (menos de 400 ms) a metade da pausa, no mínimo 120 ms; lenta (mais de 2,5 s), erro 429/5xx ou falha o dobro, no
+  // máximo 3 s; no meio fica a pausa de antes. Nunca abaixo de 120 ms nem acima de 3 s.
+  function pausaSeguinte(base, atual, ms, status) {
+    if (status === 0 || status === 429 || status >= 500 || ms > 2500) return Math.min(3000, Math.max(atual, base) * 2);
+    if (ms < 400) return Math.max(120, Math.round(base / 2));
+    return base;
+  }
   async function lerNaPagina(pedidos, opcoes) {
     const pausa = opcoes && opcoes.pausa != null ? opcoes.pausa : PAUSA_MS;
     const app = appDe(String(g.location && g.location.href || ''));
@@ -599,16 +625,19 @@
     if (typeof tok !== 'string' || !/^JWT\s+\S+/.test(tok)) return { ok: false, app, semSessao: true, motivo: 'sem sessão do Gestta nesta aba (faça login)' };
     const validade = expiraEm(tok);
     const resultados = [];
+    let espera = pausa;      // 0.114.0: pausa que se ajusta ao Gestta (ver abaixo); continua uma leitura por vez
     for (let i = 0; i < (pedidos || []).length; i++) {
       const p = pedidos[i] || {};
       const perm = leituraPermitida(p.metodo, p.url, p.corpo == null ? null : p.corpo);
       if (!perm.ok) { resultados.push({ id: p.id, status: 0, recusado: perm.motivo }); continue; }
-      if (i) await new Promise(r => setTimeout(r, pausa));
+      if (i) await new Promise(r => setTimeout(r, espera));
+      const t0 = Date.now();
       try {
         const metodo = String(p.metodo || 'GET').toUpperCase();
         const headers = { Accept: 'application/json, text/plain, */*', Authorization: tok };
         if (metodo === 'POST') headers['Content-Type'] = 'application/json';
         const r = await g.fetch(p.url, { method: metodo, headers, body: metodo === 'POST' ? JSON.stringify(p.corpo) : undefined, credentials: 'omit' });
+        espera = pausaSeguinte(pausa, espera, Date.now() - t0, r.status);
         let dados = null, texto = '';
         try { texto = await r.text(); dados = texto ? JSON.parse(texto) : null; } catch (e) { dados = null; }
         if (r.ok) {
@@ -619,7 +648,7 @@
           resultados.push({ id: p.id, status: r.status, erro: msg || ('erro ' + r.status) });
           if (r.status === 401) break;             // sessão caiu: para tudo
         }
-      } catch (e) { resultados.push({ id: p.id, status: 0, erro: 'sem resposta do Gestta (' + String(e && e.message || e).slice(0, 80) + ')' }); }
+      } catch (e) { espera = pausaSeguinte(pausa, espera, 99999, 0); resultados.push({ id: p.id, status: 0, erro: 'sem resposta do Gestta (' + String(e && e.message || e).slice(0, 80) + ')' }); }
     }
     tok = null;
     return { ok: true, app, validade, resultados };
@@ -848,7 +877,7 @@
     STEP: { DONE: ['Concluiu uma etapa', 'ok'], OPEN: ['Reabriu uma etapa', 'neutro'] },
     DOCUMENT: { SENT_TO_PORTAL: ['Documento enviado ao portal', 'ok'], NOT_SENT_TO_PORTAL: ['Documento não foi ao portal', 'alerta'], DOWNLOADED: ['O cliente baixou o documento', 'cliente'], VIEWED: ['O cliente viu o documento', 'cliente'], ADDED: ['Documento anexado', 'neutro'], ADD: ['Documento anexado', 'neutro'] },
     REQUESTED_DOCUMENT: { _: ['Documento pedido ao cliente', 'neutro'], DONE: ['O cliente mandou o documento pedido', 'cliente'], SENT: ['Pedido de documento enviado ao cliente', 'neutro'] },
-    EMAIL: { SENT: ['E-mail enviado ao cliente', 'ok'], DELIVERY: ['E-mail entregue ao cliente', 'ok'], NOT_SENT: ['E-mail ao cliente não saiu', 'alerta'] },
+    EMAIL: { SENT: ['E-mail enviado ao cliente', 'ok'], DELIVERY: ['E-mail entregue ao cliente', 'ok'], NOT_SENT: ['E-mail ao cliente não saiu', 'alerta'], BOUNCE: ['E-mail ao cliente voltou', 'alerta'] },
     WHATSAPP: { _: ['Mensagem de WhatsApp', 'neutro'] },
     COMMENT: { _: ['Comentário', 'neutro'] },
     AUTOMATION: { _: ['Automação do Gestta', 'neutro'] },
@@ -1293,8 +1322,9 @@
   /* ---------- 0.110.0 · aba Saúde da operação (Josué, 13/11/2026): o que o Gestta não mostra direito ----------
      Tudo puro: as tarefas vêm do relatório do mês (tarefasDoRelatorio, com notifica e concluidoPor), os contatos só como
      { setor, ativo, temEmail } (nunca nome, e-mail ou telefone) e o histórico de e-mail só como situação, motivo e data. */
-  const MOTIVO_EMAIL = { NOT_SENT_NO_CUSTOMER_ACCOUNTABLE: 'o cliente não tem usuário neste setor', NO_CUSTOMER_ACCOUNTABLE: 'o cliente não tem usuário neste setor', NO_EMAIL: 'o contato não tem e-mail', INVALID_EMAIL: 'o e-mail do contato é inválido', BOUNCE: 'o e-mail voltou (endereço não existe ou caixa cheia)', BOUNCED: 'o e-mail voltou (endereço não existe ou caixa cheia)', SPAM: 'o e-mail foi marcado como spam', BLOCKED: 'o servidor do cliente bloqueou o e-mail' };
-  const motivoEmail = (r) => r ? (MOTIVO_EMAIL[String(r).toUpperCase()] || 'motivo do Gestta: ' + String(r).toLowerCase().replace(/_/g, ' ')) : 'o Gestta não disse o motivo';
+  const MOTIVO_EMAIL = { BOUNCE_LIMIT: 'o endereço do cliente devolveu e-mails demais (o Gestta parou de enviar)', TEXTO_LIVRE: 'o servidor do cliente devolveu o e-mail (endereço que não existe, caixa cheia ou bloqueio)', NOT_SENT_NO_CUSTOMER_ACCOUNTABLE: 'o cliente não tem usuário neste setor', NO_CUSTOMER_ACCOUNTABLE: 'o cliente não tem usuário neste setor', NO_EMAIL: 'o contato não tem e-mail', INVALID_EMAIL: 'o e-mail do contato é inválido', BOUNCE: 'o e-mail voltou (endereço não existe ou caixa cheia)', BOUNCED: 'o e-mail voltou (endereço não existe ou caixa cheia)', SPAM: 'o e-mail foi marcado como spam', BLOCKED: 'o servidor do cliente bloqueou o e-mail' };
+  // 0.115.1: o `reason` de um BOUNCE é o texto livre do servidor do cliente (pode trazer o endereço dele): só valem os códigos (MAIÚSCULAS_COM_SUBLINHADO); o resto vira a frase fixa
+  const motivoEmail = (r) => { if (!r) return 'o Gestta não disse o motivo'; const c = String(r); const k = /^[A-Za-z][A-Za-z0-9_]{2,}$/.test(c) ? c.toUpperCase() : 'TEXTO_LIVRE'; return MOTIVO_EMAIL[k] || 'motivo do Gestta: ' + k.toLowerCase().replace(/_/g, ' '); };
   const chaveCli = (c) => c ? String(c.cnpj || '').replace(/\D/g, '') || (c.code ? 'cod:' + c.code : '') : '';
   // 1 · tarefas que avisam o cliente, por empresa × setor, onde o setor não tem contato que receba
   // contatos: { [cnpj]: [{ setor, ativo, temEmail }] } (cliente não lido = ausente: fica fora e conta em naoLidos)
@@ -1320,11 +1350,25 @@
     return { casos, naoLidos, tarefasAfetadas: casos.reduce((n, c) => n + c.n, 0) };
   }
   // 2 · o que aconteceu com o e-mail ao cliente de uma tarefa, pelos eventos EMAIL do histórico ({ status, reason, quando })
+  // 0.115.0: o remetente único do escritório (não há remetente por setor nem por usuário, mapeado em 13/11/2026). Avisa quando o domínio
+  // não está verificado ou o DKIM falhou: o e-mail ao cliente pode cair no spam ou ser recusado. nivel: ok | aviso | sem (sem leitura).
+  function avisoRemetente(d) {
+    if (!d || typeof d !== 'object') return { nivel: 'sem', texto: '' };
+    const ruim = v => /fail|falh|erro|error|invalid|inv[aá]lid|denied/i.test(String(v || '')), bom = v => /^(verified|verificad|success|ok|valid|v[aá]lid|true|active|ativ)/i.test(String(v || ''));
+    const probs = [];
+    if (d.verified === false) probs.push('o domínio do remetente não está verificado');
+    if (d.domain_status && ruim(d.domain_status)) probs.push('a verificação do domínio falhou');
+    else if (d.domain_status && !bom(d.domain_status) && d.verified !== true) probs.push('a verificação do domínio está "' + String(d.domain_status).toLowerCase() + '"');
+    if (d.dkim_status != null && d.dkim_status !== '' && !bom(d.dkim_status)) probs.push(ruim(d.dkim_status) ? 'a verificação de DKIM falhou' : 'a verificação de DKIM está "' + String(d.dkim_status).toLowerCase() + '"');
+    if (!probs.length) return { nivel: 'ok', texto: 'O remetente do escritório está verificado' + (d.domain ? ' (' + d.domain + ')' : '') + '.' };
+    return { nivel: 'aviso', texto: probs.map((x, i) => i ? x : x.charAt(0).toUpperCase() + x.slice(1)).join('; ') + '. O e-mail ao cliente pode cair no spam ou não sair: confira em Configure › E-mail e WhatsApp › Endereço customizado.', dominio: d.domain || '' };
+  }
   function vereditoEmail(eventos) {
     const l = (eventos || []).filter(e => e && e.status).sort((a, b) => String(b.quando).localeCompare(String(a.quando)));
     if (!l.length) return { v: 'semEmail', rot: 'Nenhum e-mail registrado', quando: '' };
     const ult = l[0], st = String(ult.status).toUpperCase();
     if (st === 'NOT_SENT') return { v: 'naoSaiu', rot: 'Não saiu', motivo: motivoEmail(ult.reason), quando: ult.quando };
+    if (st === 'BOUNCE') return { v: 'naoSaiu', rot: 'Voltou', motivo: motivoEmail(ult.reason || 'BOUNCE'), quando: ult.quando };
     if (st === 'DELIVERY' || st === 'DELIVERED') return { v: 'entregue', rot: 'Entregue', quando: ult.quando };
     if (st === 'SENT') return { v: 'saiu', rot: 'Saiu (sem confirmação de entrega)', quando: ult.quando };
     return { v: 'outro', rot: 'Situação do Gestta: ' + st.toLowerCase(), quando: ult.quando };
@@ -1438,7 +1482,7 @@
   }
   const urlCliente = (id) => /^[0-9a-f]{24}$/i.test(String(id || '')) ? APP + '/admin/#/sidebar/customer/edit/' + id + '/details' : '';
 
-  g.OCG = { setoresDaEquipe, modoRel, restaurarModoRel, semContatoNoSetor, vereditoEmail, tarefasParaEmail, ritmoPorPessoa, cargaPorDia, prioridade, NIVEIS_PRIORIDADE, sugestoesConfig, extrasSaude, urlCliente, proximosDiasUteis, motivoEmail, COLUNAS_SAUDE, arquivosDoItem, setoresAtivos, lerQuemSetor, grupoTela, GRUPOS_TELA, SITUACOES_FILTRO, situacaoDe, fimCnpj, cnpjFormatado, enviosPortal, lerExpress, cnpjsDoTexto, cnpjValido, competenciasDoTexto, notaDocumento, sugerirDestinos, pastaForaDe, urlTemplate: (id) => /^[0-9a-f]{24}$/i.test(String(id || '')) ? 'https://app.gestta.com.br/admin/#/sidebar/document/edit/' + id + '/details' : '', semelhanca, parecidoComPasta, palavrasNome, ERROS_ENVIO, API, APP, PAUSA_MS, LIMITE_BUSCA, JANELA_MAX_DIAS, POST_LEITURA, RELATORIO_TIPOS, COLUNAS_RELATORIO, MOLDES, APPS,
+  g.OCG = { avisoRemetente, pausaSeguinte, setoresDaEquipe, modoRel, restaurarModoRel, semContatoNoSetor, vereditoEmail, tarefasParaEmail, ritmoPorPessoa, cargaPorDia, prioridade, NIVEIS_PRIORIDADE, sugestoesConfig, extrasSaude, urlCliente, proximosDiasUteis, motivoEmail, COLUNAS_SAUDE, arquivosDoItem, setoresAtivos, lerQuemSetor, grupoTela, GRUPOS_TELA, SITUACOES_FILTRO, situacaoDe, fimCnpj, cnpjFormatado, enviosPortal, lerExpress, cnpjsDoTexto, cnpjValido, competenciasDoTexto, notaDocumento, sugerirDestinos, pastaForaDe, urlTemplate: (id) => /^[0-9a-f]{24}$/i.test(String(id || '')) ? 'https://app.gestta.com.br/admin/#/sidebar/document/edit/' + id + '/details' : '', semelhanca, parecidoComPasta, palavrasNome, ERROS_ENVIO, API, APP, PAUSA_MS, LIMITE_BUSCA, JANELA_MAX_DIAS, POST_LEITURA, RELATORIO_TIPOS, COLUNAS_RELATORIO, MOLDES, APPS,
     caminhoDe, leituraPermitida, escritaPermitida, pedidoAcao, agirNaPagina, ARQ_MAX, appDe, escolher, limpar, limparRelatorio, perfil, expiraEm, janelaDoMes, PEDIDOS, lerNaPagina, linhasDoTeste,
     GRUPOS, TIPOS_TAREFA, SITUACOES_TAREFA, MAX_PAGINAS_TAREFAS, diasUteis, grupoTarefa, prazoTexto, contarGrupos, porEmpresa, porDia, filtrarTarefas, urlTarefa, ymd, diaLocal,
     COLUNAS_FECHAMENTO, linhasDoRelatorio, tarefasDoRelatorio, trilhaDaEmpresa, fechamento, ESTADOS, setorDe, respDe, ehEscritorioProprio,

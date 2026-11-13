@@ -896,3 +896,15 @@
 @media (max-width:760px){ .gsa-prio li{grid-template-columns:24px minmax(0, 1fr)} .gsa-prio li small, .gsa-prio li .gte-link{grid-column:2} }
 :root[data-estilo="simples"] .gsa-sec{box-shadow:none}
 :root[data-estilo="simples"] .gsa-cel.acima{background:var(--surface); border-width:2px}
+
+/* 0.111.3 (Josué, 13/11/2026: "quero que isso seja uma janela que abre por cima pra fazer as seleções"): o De quem vira janela no meio da tela */
+.gt-quem-veu{position:fixed; inset:0; z-index:60; background:rgba(8,13,17,.45)}
+.gt-quem .gt-quem-pop{position:fixed; z-index:61; top:12vh; left:50%; right:auto; transform:translateX(-50%); width:min(560px, calc(100vw - 32px)); max-height:76vh; padding:16px 18px 18px; gap:10px; box-shadow:0 18px 48px rgba(16,24,32,.28)}
+.gt-quem-cab{display:flex; align-items:center; justify-content:space-between; gap:12px}
+.gt-quem-cab b{font:700 16px Archivo, sans-serif; color:var(--ink)}
+.gt-quem-x{all:unset; cursor:pointer; width:30px; height:30px; display:grid; place-items:center; border-radius:var(--r); font-size:22px; line-height:1; color:var(--ink-2)}
+.gt-quem-x:hover{background:var(--surface-2); color:var(--ink)} .gt-quem-x:focus-visible{outline:2px solid var(--blue-deep)}
+.gt-quem .gt-quem-pop .inp{padding:10px 12px; font-size:14px}
+.gt-quem .gt-quem-lista{max-height:calc(76vh - 140px)}
+.gt-quem .gt-quem-lista button, .gt-quem .gt-quem-ck{padding:9px 10px; font-size:14px}
+@media (max-width:900px){ .gt-quem .gt-quem-pop{top:6vh; left:50%; right:auto} }

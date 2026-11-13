@@ -92,8 +92,10 @@
           </div>
           <div class="gt-quem" id="gt-quem-wrap" hidden>
             <button class="gt-quem-btn" type="button" id="gt-quem-btn" aria-haspopup="listbox" aria-expanded="false" title="De quem são as tarefas"></button>
-            <div class="gt-pop gt-quem-pop" id="gt-quem-pop" hidden>
-              <input class="inp" id="gt-quem-busca" type="search" placeholder="Buscar pessoa" aria-label="Buscar pessoa" autocomplete="off">
+            <div class="gt-quem-veu" id="gt-quem-veu" hidden></div>
+            <div class="gt-pop gt-quem-pop" id="gt-quem-pop" role="dialog" aria-modal="true" aria-labelledby="gt-quem-tit" hidden>
+              <div class="gt-quem-cab"><b id="gt-quem-tit">De quem são as tarefas</b><button type="button" class="gt-quem-x" id="gt-quem-x" aria-label="Fechar">×</button></div>
+              <input class="inp" id="gt-quem-busca" type="search" placeholder="Buscar setor ou pessoa" aria-label="Buscar setor ou pessoa" autocomplete="off">
               <ul class="gt-quem-lista" id="gt-quem-lista" role="listbox" aria-label="De quem são as tarefas"></ul>
             </div>
           </div>

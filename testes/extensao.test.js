@@ -2914,11 +2914,11 @@ function apiHub() {
 }
 const todasCategorias = () => OC.HUB_CATEGORIAS.map(c => c.id);
 
-test('Hub: por padrão os dados pessoais ficam desligados e as demais categorias ligadas', () => {
+test('Hub: por padrão todas as categorias vão, inclusive os dados pessoais (Josué, 06/11 e 13/11/2026: ligada de fábrica, sem aviso)', () => {
   const pessoais = OC.HUB_CATEGORIAS.filter(c => c.pessoal);
   assert.deepEqual(plano(pessoais.map(c => c.id)), ['pessoais']);
-  assert.equal(pessoais[0].padrao, false);
-  assert.ok(OC.HUB_CATEGORIAS.filter(c => !c.pessoal).every(c => c.padrao));
+  assert.equal(pessoais[0].padrao, true);
+  assert.ok(OC.HUB_CATEGORIAS.every(c => c.padrao));
 });
 
 test('Hub: partirTabela parte entre linhas, respeita o limite e nunca devolve zero partes', () => {
@@ -3784,6 +3784,17 @@ function carregarGestta() {
   ctx.self = ctx; vm.createContext(ctx); vm.runInContext(src('gestta.js'), ctx); return ctx.OCG;
 }
 const OCG = carregarGestta();
+test('Gestta (0.114.0): a pausa entre leituras se ajusta ao Gestta, nunca abaixo de 120 ms nem acima de 3 s', () => {
+  const f = OCG.pausaSeguinte;
+  assert.equal(f(300, 300, 150, 200), 150, 'resposta rápida: metade da pausa');
+  assert.equal(f(100, 100, 50, 200), 120, 'nunca abaixo de 120 ms');
+  assert.equal(f(300, 150, 900, 200), 300, 'no meio: a pausa de antes');
+  assert.equal(f(300, 300, 3000, 200), 600, 'resposta lenta: o dobro');
+  assert.equal(f(300, 600, 100, 429), 1200, 'limite de pedidos (429): dobra');
+  assert.equal(f(300, 1600, 100, 503), 3000, 'erro do servidor: dobra, no máximo 3 s');
+  assert.equal(f(300, 300, 99999, 0), 600, 'falha de rede: dobra');
+});
+
 test('Gestta: só GET em api.gestta.com.br, a busca e o relatório CUSTOMER_TASK; o resto é recusado antes de sair', () => {
   const P = OCG.leituraPermitida, mes = OCG.janelaDoMes(2026, 11);
   assert.equal(P('GET', 'https://api.gestta.com.br/admin/customer?active=true').ok, true);
@@ -4741,6 +4752,38 @@ test('Gestta · Saúde: veredito do e-mail pelo último evento; motivo legível;
   const H = new Date(2026, 10, 13);
   const l = OCG.tarefasParaEmail([{ _id: 'a', notifica: true, status: 'DONE', conclusion_date: '2026-11-12T10:00:00Z' }, { _id: 'b', notifica: true, status: 'DONE', conclusion_date: '2026-10-30T10:00:00Z' }, { _id: 'c', notifica: false, status: 'DONE', conclusion_date: '2026-11-12T10:00:00Z' }, { _id: 'd', notifica: true, status: 'OPEN' }], H, 7);
   assert.deepEqual(plano(l.map(t => t._id)), ['a']);
+});
+test('Gestta · Saúde (0.115.1): a lista direta de falhas de e-mail usa o corpo da tela (sem datas), BOUNCE nunca mostra o texto do servidor, e o aviso do remetente lê só o estado do domínio', () => {
+  const ped = OCG.PEDIDOS.emailFalhou({ page: 2, limit: 100, companyUser: 'u1' });
+  assert.equal(ped.metodo, 'POST'); assert.match(ped.url, /\/core\/customer\/task\/search$/);
+  assert.deepEqual(plano(ped.corpo), { page: 2, limit: 100, type: ['SERVICE_ORDER', 'RECURRENT'], status: ['DONE'], date_type: 'DUE_DATE', overdue: false, not_downloaded: true, fine: false, on_time: false, collaborator: false, no_owner: true, email_not_sent: true, document_request_sent: false, without_external_user: false, os_workflow: true, onvio_documents_error: false, company_user: ['u1'] });
+  assert.ok(!('start_date' in ped.corpo) && !('end_date' in ped.corpo), 'a tela não manda datas: com datas o total deu 65, não 60');
+  assert.equal(OCG.leituraPermitida(ped.metodo, ped.url, ped.corpo).ok, true, 'a busca estreita das falhas de e-mail dispensa a janela de um mês');
+  assert.ok(!('company_user' in OCG.PEDIDOS.emailFalhou({}).corpo), 'sem pessoa: todas');
+  // a exceção é só dela: a mesma busca sem o filtro de e-mail, sem datas, continua recusada
+  const sem = Object.assign({}, plano(ped.corpo)); delete sem.email_not_sent;
+  assert.equal(OCG.leituraPermitida('POST', ped.url, sem).ok, false); assert.equal(OCG.leituraPermitida('POST', ped.url, Object.assign({}, plano(ped.corpo), { limit: 500 })).ok, false, 'até 200 por página');
+  // a limpeza deixa só quem, qual tarefa e as datas (nada de e-mail do responsável, valor, anexo)
+  const l = OCG.limpar('tarefaFalha', { docs: [{ _id: 't1', name: 'GUIA', customer: { _id: 'c1', name: 'ALFA', code: '101', cnpj: '1', monthly_payment: 9 }, status: 'DONE', owner: { _id: 'u1', name: 'Ana', email: 'a@b', picture: 'x' }, due_date: '2026-11-10', conclusion_date: '2026-11-11', value: 5, protocol: 'p' }], totalDocs: 60, totalPages: 1, page: 1 });
+  assert.equal(l.total, 60); assert.deepEqual(plano(l.itens[0].owner), { _id: 'u1', name: 'Ana' }); assert.deepEqual(plano(l.itens[0].customer), { _id: 'c1', name: 'ALFA', code: '101' });
+  for (const k of ['value', 'protocol', 'monthly_payment', 'email', 'picture']) assert.ok(!JSON.stringify(l).includes(k), 'vazou ' + k);
+  // eventos EMAIL reais (13/11/2026): SENT, DELIVERY, BOUNCE e NOT_SENT; motivos BOUNCE_LIMIT, NOT_SENT_NO_CUSTOMER_ACCOUNTABLE e o texto livre do servidor
+  assert.deepEqual(plano(OCG.vereditoEmail([{ status: 'NOT_SENT', reason: 'BOUNCE_LIMIT', quando: '2026-11-11' }])), { v: 'naoSaiu', rot: 'Não saiu', motivo: 'o endereço do cliente devolveu e-mails demais (o Gestta parou de enviar)', quando: '2026-11-11' });
+  const b = OCG.vereditoEmail([{ status: 'SENT', quando: '2026-11-10' }, { status: 'BOUNCE', reason: '550 5.1.1 <fulano@cliente.com.br>: Recipient address rejected', quando: '2026-11-11' }]);
+  assert.equal(b.v, 'naoSaiu'); assert.equal(b.rot, 'Voltou'); assert.match(b.motivo, /servidor do cliente devolveu o e-mail/);
+  assert.ok(!JSON.stringify(b).includes('fulano') && !JSON.stringify(b).includes('550'), 'o texto livre do servidor (com o endereço do cliente) nunca sai');
+  assert.equal(OCG.vereditoEmail([{ status: 'BOUNCE', quando: 'a' }, { status: 'DELIVERY', quando: 'b' }]).v, 'entregue', 'o último evento decide');
+  assert.equal(OCG.eventosDaTarefa([{ type: 'EMAIL', status: 'BOUNCE', accomplished_at: '2026-11-11' }])[0].rot, 'E-mail ao cliente voltou');
+  // o remetente: o endereço do domínio é permitido (o SMTP, com senha, continua proibido)
+  const d = OCG.PEDIDOS.dominioEmail();
+  assert.equal(OCG.leituraPermitida(d.metodo, d.url, null).ok, true); assert.equal(OCG.leituraPermitida('GET', 'https://api.gestta.com.br/admin/company/smtp', null).ok, false);
+  // os valores reais de 13/11/2026: verified=false, domain_status="success", dkim_status="failed"; chaves a mais (dkim, mx, topics, email_status) ficam de fora
+  const lim = OCG.limpar('dominioEmail', { _id: 'x', verified: false, email: 'escritorio@exemplo.com', domain: 'exemplo.com', company: 'c', domain_status: 'success', domain_txt_value: 'SEGREDO-DNS', domain_txt_name: 'n', dkim_status: 'failed', dkim: ['k'], mx: ['m'], topics: ['t'], email_status: 'ok' });
+  assert.deepEqual(plano(lim), { verified: false, domain: 'exemplo.com', domain_status: 'success', dkim_status: 'failed' }); assert.ok(!JSON.stringify(lim).includes('SEGREDO') && !JSON.stringify(lim).includes('escritorio@'));
+  assert.equal(OCG.limpar('dominioEmail', [{ verified: false, domain: 'a.com' }]).verified, false, 'lista de um');
+  const av = OCG.avisoRemetente(lim); assert.equal(av.nivel, 'aviso'); assert.match(av.texto, /não está verificado/); assert.match(av.texto, /DKIM falhou/); assert.doesNotMatch(av.texto, /verificação do domínio falhou/, 'domain_status "success" é bom'); assert.match(av.texto, /Endereço customizado/);
+  assert.equal(OCG.avisoRemetente({ verified: true, domain: 'exemplo.com', domain_status: 'success', dkim_status: 'success' }).nivel, 'ok');
+  assert.equal(OCG.avisoRemetente(null).nivel, 'sem');
 });
 test('Gestta · Saúde: dias úteis com feriado; ritmo dos 2 meses anteriores; carga acima da capacidade; capacidade manual vence o ritmo', () => {
   const fer = ['2026-11-20'];

@@ -544,6 +544,29 @@ await passo('app · Hoje (analista): Meu dia em números (números do dia com li
   assert.deepEqual(p.erros, []);
 });
 
+await passo('app · Hoje: a leitura das concluídas que falha ao abrir não fica gravada por 10 minutos: tenta de novo sozinha e "Tentar agora" refaz (0.111.1)', async () => {
+  const falha = { ok: false, erro: 'Tentativas: página do Onvio: HTTP 401 · extensão na aba: HTTP 401 · direto: HTTP 401' };
+  const boa = { ok: true, dias: 30, erros: [], itens: [{ k: 'geral:c1', type: 'geral', id: 'c1', num: 901, code: 5, lado: 'fim', mine: true, resp: 'Ana Teste', last: new Date().toISOString() }] };
+  const p = await abrirApp('#/inicio', undefined, 'window.__mdBaseMs = 400; window.__respostas = ' + JSON.stringify({ concluidas: falha }));
+  await p.waitForSelector('.hj-meudia');
+  await p.waitForFunction(() => window.__msgs.some(m => m.cmd === 'concluidas'));
+  assert.match(await p.textContent('.hj-md-graf'), /Lendo as concluídas no Onvio… \(tentando de novo\)/, 'sem o texto técnico na cara');
+  assert.doesNotMatch(await p.textContent('.hj-meudia'), /HTTP 401|Tentativas:/);
+  const n1 = await p.evaluate(() => window.__msgs.filter(m => m.cmd === 'concluidas').length);
+  await p.waitForFunction(n => window.__msgs.filter(m => m.cmd === 'concluidas').length > n, n1, { timeout: 5000 });      // tentou de novo sozinha
+  await p.evaluate(() => { window.__respostas.concluidas = { ok: true, dias: 30, erros: [], itens: [{ k: 'geral:c1', type: 'geral', id: 'c1', num: 901, code: 5, lado: 'fim', mine: true, resp: 'Ana Teste', last: new Date().toISOString() }] }; });
+  await p.waitForSelector('.hj-md-svg', { timeout: 8000 });
+  assert.equal(await p.textContent('[data-md="concluidas"] .ap-c b'), '1', 'quando o Onvio responde, o número entra sem recarregar');
+  // depois de 3 falhas aparece o aviso curto com "Tentar agora"
+  const q = await abrirApp('#/inicio', undefined, 'window.__mdBaseMs = 150; window.__respostas = ' + JSON.stringify({ concluidas: falha }));
+  await q.waitForSelector('[data-md-reler]', { timeout: 8000 });
+  assert.match(await q.textContent('.hj-md-vazio'), /As concluídas não carregaram agora\. Vou tentar de novo sozinho\./);
+  await q.evaluate(() => { window.__respostas.concluidas = { ok: true, dias: 30, erros: [], itens: [] }; });
+  await q.click('[data-md-reler]');
+  await q.waitForSelector('.hj-md-svg', { timeout: 5000 });
+  assert.deepEqual(p.erros.concat(q.erros), []);
+});
+
 await passo('app · Hoje: "Revisar uma a uma" mostra uma sugestão por vez com o que será enviado; Fazer abre o detalhe e volta na próxima', async () => {
   const p = await abrirApp('#/inicio');
   await p.evaluate(() => { window.__respostas = Object.assign(window.__respostas || {}, { casos: { ok: true, analises: {}, lidas: 2 }, detalhe: { ok: true, item: {}, tramites: [] }, previsao: { ok: true, dias: 28, total: 0, prox30: 0, erros: [], empresas: [] } }); });
@@ -1272,11 +1295,12 @@ await passo('app · Configurações → Avançado (0.69.0): cinco partes com o e
     assert.match(diag, /Clientes de CND \(clientes-cnd\): sem-resposta · alimenta: a ficha da empresa/);
     assert.doesNotMatch(diag, /ABCDEF123456/, 'sem o código de pareamento');
     if (process.env.CAP) await (await p.$('#adv-envio')).screenshot({ path: process.env.CAP + '/avancado-envio-' + estilo + '.png' });
-    // dados pessoais pedem confirmação antes de ligar
+    // 0.113.0: dados pessoais vêm ligados de fábrica e desligam e ligam como as outras, sem aviso
+    assert.equal(await p.isChecked('.adv-cat input[data-cat="pessoais"]'), true, 'ligado de fábrica');
+    assert.equal(await p.$('#adv-pessoais-aviso'), null, 'sem o aviso');
     await p.click('.adv-cat input[data-cat="pessoais"]');
-    await p.waitForSelector('#adv-pessoais-aviso:not([hidden])');
-    assert.equal(await p.isChecked('.adv-cat input[data-cat="pessoais"]'), false, 'não liga sem confirmar');
-    await p.click('#adv-pessoais-sim');
+    await p.waitForFunction(() => JSON.parse(localStorage.getItem('__mem')).hubCfg.envio.pessoais === false);
+    await p.click('.adv-cat input[data-cat="pessoais"]');
     await p.waitForFunction(() => JSON.parse(localStorage.getItem('__mem')).hubCfg.envio.pessoais === true);
     // "Enviar só a folha" manda o pedido com soFolha
     await p.click('#adv-so-folha');
@@ -2826,8 +2850,11 @@ function gtSaude(total) {
   ];
   const T1 = 'e10000000000000000000001', T2 = 'e10000000000000000000002', cli = n => 'c1000000000000000000000' + n;
   return {
-    'gesttaSaude:tarefas': { ok: true, perfil: { nome: 'Eu Mesmo', papelNome: total ? 'Administrador' : 'Analista', total, setores: [] }, colunas: COL, linhas: total ? linhas : linhas.filter(l => l[4] === 'Eu Mesmo' || l[15] === 'Eu Mesmo'), meses: [], emailNaoSaiu: 4, semTarefa: total ? 12 : null, lidoEm: new Date().toISOString() },
+    'gesttaSaude:tarefas': { ok: true, perfil: { nome: 'Eu Mesmo', papelNome: total ? 'Administrador' : 'Analista', total, setores: [] }, colunas: COL, linhas: total ? linhas : linhas.filter(l => l[4] === 'Eu Mesmo' || l[15] === 'Eu Mesmo'), meses: ['Out/2026', 'Nov/2026', 'Dez/2026'], mesesFaltam: ['Set/2026'], emailNaoSaiu: 4, semTarefa: total ? 12 : null, lidoEm: new Date().toISOString() },
     'gesttaSaude:contatos': { ok: true, porCnpj: { '11222333000181': [{ setor: 'Fiscal', ativo: true, temEmail: true }], '22333444000190': [{ setor: 'Pessoal', ativo: false, temEmail: true }] } },
+    // 0.115.0: a lista direta do Gestta (sem motivo) e o remetente do escritório (DKIM falhou)
+    'gesttaSaude:emailLista': { ok: true, total: 2, lidoEm: dia(0), tarefas: [{ id: id(8), nome: 'GUIA DO FGTS', cliente: { id: cli(1), nome: 'CLIENTE ALFA LTDA', code: '101' }, tipo: 'RECURRENT', responsavel: 'Eu Mesmo', meta: dia(-3), conclusao: dia(-2) }, { id: id(9), nome: 'DAS DO SIMPLES', cliente: { id: cli(1), nome: 'CLIENTE ALFA LTDA', code: '101' }, tipo: 'RECURRENT', responsavel: 'Eu Mesmo', meta: dia(-2), conclusao: dia(-1) }] },
+    'gesttaSaude:remetente': total ? { ok: true, remetente: { verified: true, domain: 'exemplo.com' }, aviso: { nivel: 'aviso', texto: 'A verificação de DKIM falhou. O e-mail ao cliente pode cair no spam ou não sair: confira em Configure › E-mail e WhatsApp › Endereço customizado.' } } : { ok: true, remetente: null, aviso: { nivel: 'sem', texto: '' } },
     'gesttaSaude:emails': { ok: true, porTarefa: { [id(8)]: [{ status: 'SENT', reason: '', quando: dia(-3) }, { status: 'NOT_SENT', reason: 'NOT_SENT_NO_CUSTOMER_ACCOUNTABLE', quando: dia(-2) }], [id(9)]: [{ status: 'DELIVERY', reason: '', quando: dia(-1) }] } },
     'gesttaSaude:config': { ok: true, templates: [{ id: T1, nome: 'DCTF WEB', setor: 'Fiscal' }, { id: T2, nome: 'APURAÇÃO DO ICMS', setor: 'Fiscal' }], clientes: [1, 2, 3, 4, 5, 6].map(n => ({ id: cli(n), nome: 'EMPRESA EXEMPLO ' + n, cnpj: '0000000000000' + n })) },
     'gesttaSaude:configClientes': { ok: true, porTemplate: { [T1]: [1, 2, 3, 4, 5, 6].map(cli), [T2]: [1, 2, 3, 4, 5].map(cli) } }
@@ -2945,7 +2972,9 @@ await passo('Gestta · Tarefas (0.77.0): Meu dia com o detalhe ao lado e a linha
   // teclado: ↓ passa para a próxima da fila (e o detalhe acompanha)
   await fr.press('.gd-it.on', 'ArrowDown');
   await fr.waitForFunction(() => document.querySelector('.gd-it.on b').textContent === 'Folha de Pagamento');
-  await fr.waitForFunction(() => (window.__msgs || []).filter(m => m.cmd === 'gesttaTarefa').pop().id === 'f00000000000000000000002');
+  // 0.114.0: a seguinte já foi lida enquanto a anterior estava à vista (uma só leitura da 002, que serve ao ↓) e a próxima da fila é adiantada
+  await fr.waitForFunction(() => (window.__msgs || []).filter(m => m.cmd === 'gesttaTarefa' && m.id === 'f00000000000000000000002').length === 1);
+  assert.ok(await fr.$('#gd-det .gp-topo'), 'o detalhe da 002 abriu (com o que foi adiantado)');
   // linha do tempo da tarefa: lida só quando a aba abre
   assert.equal(await fr.evaluate(() => (window.__msgs || []).some(m => m.cmd === 'gesttaHistorico')), false);
   await fr.click('#gd-det [data-gp-aba="tempo"]');
@@ -3043,6 +3072,15 @@ await passo('Gestta · Tarefas (0.77.0): Meu dia com o detalhe ao lado e a linha
   await fr.click('#gt-quem-btn');
   // 0.106.0: botão > setor (só os com tarefa aberta) > uma ou mais pessoas
   await fr.waitForSelector('#gt-quem-lista [data-gt-setor]');
+  // 0.111.3: janela no meio da tela, por cima, com o fundo escurecido; o × e o fundo fecham
+  const caixa = await fr.evaluate(() => { const r = document.querySelector('#gt-quem-pop').getBoundingClientRect(); return { cx: r.left + r.width / 2, w: r.width, vw: innerWidth, veu: !document.querySelector('#gt-quem-veu').hidden, papel: document.querySelector('#gt-quem-pop').getAttribute('role') }; });
+  assert.ok(Math.abs(caixa.cx - caixa.vw / 2) < 4 && caixa.w >= 480 && caixa.veu && caixa.papel === 'dialog', 'janela por cima: ' + JSON.stringify(caixa));
+  if (process.env.CAP) await p.screenshot({ path: path.join(process.env.CAP, 'gestta-dequem-janela.png') });
+  await fr.click('#gt-quem-x'); await fr.waitForSelector('#gt-quem-pop', { state: 'hidden' });
+  assert.equal(await fr.$eval('#gt-quem-veu', v => v.hidden), true);
+  await fr.click('#gt-quem-btn'); await fr.waitForSelector('#gt-quem-lista [data-gt-setor]');
+  await p.mouse.click(30, 600); await fr.waitForSelector('#gt-quem-pop', { state: 'hidden' });
+  await fr.click('#gt-quem-btn'); await fr.waitForSelector('#gt-quem-lista [data-gt-setor]');
   // 0.111.0: os setores vêm do relatório do mês corrente (gesttaSetores), não do Fechamento inteiro
   await fr.waitForFunction(() => /Setores com tarefas abertas/.test(document.querySelector('#gt-quem-lista').textContent));
   assert.equal(await fr.evaluate(() => (window.__msgs || []).filter(m => m.cmd === 'gesttaFechamento').length), 0, 'o De quem não espera o Fechamento');
@@ -3317,8 +3355,10 @@ await passo('Gestta · Saúde (0.110.0): carga por dia com o ritmo, prioridade, 
   await fr.press('body', '8');
   await fr.waitForSelector('.gsa-topo');
   const sm = () => fr.evaluate(() => (window.__msgs || []).filter(m => m.cmd === 'gesttaSaude').map(m => m.parte));
-  assert.deepEqual(await sm(), ['tarefas'], 'ao abrir, só o relatório; contatos, e-mails e configuração esperam o botão');
-  assert.match(await fr.textContent('.gsa-topo'), /4\s*e-mails não saíram no mês[\s\S]*1\s*abertas sem responsável[\s\S]*1\s*empresas atrasadas \+15 dias/);
+  await fr.waitForFunction(() => (window.__msgs || []).filter(m => m.cmd === 'gesttaSaude').length >= 4 && !/calculando o ritmo/.test(document.querySelector('#vista').textContent));
+  assert.deepEqual(await sm(), ['tarefas', 'tarefas', 'emailLista', 'remetente'], 'ao abrir, o relatório (0.112.0: em duas partes), a lista de falhas de e-mail e o remetente (0.115.0); contatos, motivos e configuração esperam o botão');
+  assert.match(await fr.textContent('#vista'), /O Gestta não entregou o relatório de Set\/2026: o ritmo e a carga usam só Out\/2026, Nov\/2026, Dez\/2026\./, '0.111.2: o mês recusado aparece, sem derrubar a tela');
+  assert.match(await fr.textContent('.gsa-topo'), /2\s*tarefas com falha de e-mail[\s\S]*1\s*abertas sem responsável[\s\S]*1\s*empresas atrasadas \+15 dias/);
   // carga: Ana tem 5 no próximo dia útil e ritmo 0,5 (22 concluídas em ~42 dias úteis): não vai dar tempo
   const ana = await fr.$eval('.gsa-grade', t => [...t.querySelectorAll('tbody tr')].find(r => /Ana Teste/.test(r.textContent)).textContent);
   assert.match(ana, /Ana Teste.*1 dia acima/s);
@@ -3339,10 +3379,16 @@ await passo('Gestta · Saúde (0.110.0): carga por dia com o ritmo, prioridade, 
   assert.doesNotMatch(ct, /Cliente Alfa Ltda/i, 'Alfa tem contato ativo com e-mail no Fiscal');
   const pc = await fr.evaluate(() => window.__msgs.filter(m => m.parte === 'contatos').map(m => m.cnpjs));
   assert.deepEqual(pc[0].sort(), ['11222333000181', '22333444000190'], 'só os CNPJs das tarefas que avisam o cliente');
-  // e-mails: só as que avisam e foram concluídas nos últimos 7 dias
+  // e-mails (0.115.0): a lista direta do Gestta chega sozinha; o motivo só pelo botão, uma tarefa por vez
+  await fr.waitForFunction(() => /tiveram falha de e-mail/.test(document.querySelector('#gsa-emails').textContent));
+  const em0 = await fr.textContent('#gsa-emails');
+  assert.match(em0, /2 tarefas concluídas tiveram falha de e-mail[\s\S]*Das do Simples[\s\S]*Guia do Fgts/i, 'da mais nova à mais velha');
+  assert.match(em0, /Remetente do escritório[\s\S]*DKIM falhou/i, 'o aviso do remetente na Saúde');
+  assert.match(await fr.textContent('[data-gsa-ir="emails"]'), /^2tarefas com falha de e-mail/, 'o número do topo é o da lista');
+  assert.equal(await fr.evaluate(() => window.__msgs.filter(m => m.parte === 'emails').length), 0, 'o histórico não é lido sozinho');
   await fr.click('[data-gsa-ler="emails"]');
-  await fr.waitForFunction(() => /não tem usuário neste setor/.test(document.querySelector('#gsa-emails').textContent));
-  assert.match(await fr.textContent('#gsa-emails'), /1 não saiu[\s\S]*1 entregue[\s\S]*0 sem e-mail[\s\S]*Guia do Fgts[\s\S]*o cliente não tem usuário neste setor/i);
+  await fr.waitForFunction(() => /não tem usuário neste setor: 1/.test(document.querySelector('#gsa-emails').textContent));
+  assert.match(await fr.textContent('#gsa-emails'), /Das do Simples[\s\S]*Entregue[\s\S]*Guia do Fgts[\s\S]*o cliente não tem usuário neste setor/i);
   assert.deepEqual((await fr.evaluate(() => window.__msgs.filter(m => m.parte === 'emails').map(m => m.ids)))[0].sort(), ['f00000000000000000000008', 'f00000000000000000000009']);
   // configuração: a empresa 6 não recebe a Apuração do ICMS, que 83% das parecidas recebem
   await fr.click('[data-gsa-ler="config"]');
@@ -3371,6 +3417,48 @@ await passo('Gestta · Saúde (0.110.0): carga por dia com o ritmo, prioridade, 
   assert.doesNotMatch(await a.fr.textContent('.gsa-grade'), /Ana Teste/);
   await a.p.context().close();
 });
+await passo('Gestta · 0.112.0: Saúde e Fechamento aparecem aos poucos: a primeira parte já aparece enquanto a segunda é segurada', async () => {
+  const { p, fr } = await abrirGestta(Object.assign(gtResp(true), gtSaude(true)));
+  await fr.waitForSelector('.gt-topo');
+  // segura a 2ª parte: na Saúde, os 2 meses anteriores; no Fechamento, o relatório de cada mês de meta
+  await fr.evaluate(() => {
+    const orig = chrome.runtime.sendMessage.bind(chrome.runtime); window.__soltar = {};
+    const espera = (k) => new Promise(res => { window.__soltar[k] = res; });
+    chrome.runtime.sendMessage = (m, cb) => {
+      const h = new Date(), atual = h.getFullYear() * 12 + h.getMonth();
+      const anteriores = m.cmd === 'gesttaSaude' && m.parte === 'tarefas' && Array.isArray(m.meses) && m.meses.every(x => x.ano * 12 + x.mes - 1 < atual);
+      if (anteriores) { espera('saude').then(() => orig(m, cb)); return; }
+      if (m.cmd === 'gesttaFechamento' && m.parte === 'busca') { (window.__msgs ||= []).push(m); const col = ['id', 'name', 'status', 'company_department.name', 'owner.name', '_due_date', 'legal_date', 'conclusion_date', 'on_time', 'fine', 'overdue', 'customer.code', 'customer.name', 'customer.cnpj'];
+        const d = new Date().toISOString(), r = { ok: true, completo: false, ano: h.getFullYear(), mes: h.getMonth() + 1, competencia: true, lidoEm: d, parcial: false, perfil: { papelNome: 'Administrador', total: true, setores: [] }, colunas: col,
+          linhas: [['f1', 'DCTF WEB', 'OPEN', '', '', d, '', '', '', false, false, '101', 'CLIENTE ALFA LTDA', ''], ['f2', 'FOLHA', 'DONE', '', '', d, '', '', '', false, false, '102', 'CLIENTE BETA ME', '']], meses: [{ ano: h.getFullYear(), mes: h.getMonth() + 1 }], mesesMeta: ['este mês'] };
+        setTimeout(() => cb && cb(r), 0); return; }
+      if (m.cmd === 'gesttaFechamento' && m.parte === 'mes') { (window.__msgs ||= []).push(m); espera('fech').then(() => { const fim = Object.assign(window.__fechFim, { lidoEm: new Date().toISOString() }); cb && cb({ ok: true, colunas: fim.colunas, linhas: fim.linhas, fim }); }); return; }
+      return orig(m, cb);
+    };
+  });
+  await fr.evaluate((f) => { window.__fechFim = f; }, gtFech(true));
+  // Saúde: carga e prioridade já aparecem; o ritmo diz "calculando"
+  await fr.press('body', '8');
+  await fr.waitForSelector('.gsa-grade');
+  assert.match(await fr.textContent('#gsa-carga'), /Calculando o ritmo: os 2 meses anteriores ainda estão chegando/);
+  assert.match(await fr.$eval('.gsa-grade', t => [...t.querySelectorAll('tbody tr')].find(r => /Ana Teste/.test(r.textContent)).textContent), /calculando o ritmo…/);
+  assert.ok(await fr.$('.gsa-prio li'), 'a prioridade já aparece');
+  assert.deepEqual(await fr.evaluate(() => window.__msgs.filter(m => m.cmd === 'gesttaSaude').map(m => [m.meses.length, !!m.contagens])), [[2, true]], 'só a 1ª chamada pede as contagens');
+  await fr.evaluate(() => window.__soltar.saude());
+  await fr.waitForFunction(() => !/calculando o ritmo/.test(document.querySelector('.gsa-grade').textContent));
+  assert.match(await fr.$eval('.gsa-grade', t => [...t.querySelectorAll('tbody tr')].find(r => /Ana Teste/.test(r.textContent)).textContent), /Ana Teste.*1 dia acima/s, 'com o ritmo, o dia acima aparece');
+  // Fechamento: o progresso já aparece com a busca; setor e analista estão chegando
+  await fr.click('#abas [data-aba="fech"]');
+  await fr.waitForSelector('.gt-prog-tx');
+  assert.match(await fr.textContent('.gt-prog-tx'), /50%\s*1 de 2 tarefas concluídas/);
+  assert.match(await fr.textContent('.gt-paineis'), /Setor e analista estão chegando: relatório 0 de 1/);
+  assert.match(await fr.textContent('#vista'), /Mostrando aos poucos/);
+  await fr.evaluate(() => window.__soltar.fech());
+  await fr.waitForFunction(() => !/estão chegando/.test(document.querySelector('#vista').textContent));
+  assert.deepEqual(await fr.$$eval('.gt-pn:first-child .gt-bar-nome', l => l.map(e => e.textContent)), ['Fiscal', 'Pessoal'], 'com o relatório, setor e analista completam a tela');
+  assert.deepEqual(p.erros, []);
+});
+
 await passo('Gestta · Tarefas (0.87.0): atalhos com ?, densidade compacta, Fechamento filtrado pelos números, abrir pelo Meu dia e voltar ao mesmo ponto', async () => {
   const { p, fr } = await abrirGestta(gtResp(true));
   await fr.waitForSelector('.gd-it.on');

@@ -39,6 +39,14 @@ Me devolva um resumo em texto com os itens 1 a 4, na ordem.
 
 ---
 
+## Resultado do roteiro único (13/11/2026)
+
+Os passos 0 a 4 de `prompt-gestta-faltante-2026-11-13.md` foram executados e estão no fim de `gestta-2026-11-04.md` (seção "Mapeado em 13/11/2026, passos 0 a 4"). O que sobrou: abrir o link Download da prévia, ver uma tarefa concluída com arquivo, o aviso ao tirar template com tarefa gerada e o `id` do `DELETE /admin/group/customer`.
+
+## Situação depois da leitura de 13/11/2026
+
+Os itens **2** (lista de e-mails, `email_not_sent` na busca) e **3** (remetente: um só para o escritório; aviso de DKIM) foram respondidos e entraram na extensão 0.115.0. O item **4.1 e 4.2** (página da empresa e `GET admin/customer/{id}/company/task`) também. **Seguem travados** pelo template de teste que não existe: **1.2 a 1.4** (arquivo do item), **4.3 e 4.4** (incluir e tirar template) e **4.5**. Para destravar, o Josué decide: criar o "TESTE MAPEAMENTO - NAO USAR" ou autorizar o "TESTE CONTROL ONVIO" da 9999. Pendente também: valores de `status` e `reason` de um evento `EMAIL` (2.3), que só existem numa tarefa que já enviou e-mail.
+
 ## O que a extensão faz com cada resposta
 
 | Item | Hoje (0.110.0) | Depois do mapeamento |
@@ -46,6 +54,6 @@ Me devolva um resumo em texto com os itens 1 a 4, na ordem.
 | 1.2 campos do arquivo | Mostra o nome do arquivo se vier em `file`/`files` com `name`, `file_name` ou `original_name`; senão, "✓ com arquivo" | Ajusta o molde ao formato real |
 | 1.3 abrir/baixar | Não existe | **Ver** o arquivo dentro da extensão (leitura: entra direto, blob só na memória) |
 | 1.4 excluir | Não existe | **Excluir** o arquivo do item: escrita nova, só com aprovação do Josué, confirmação com o nome do arquivo e nunca em tarefa concluída |
-| 2 lista de e-mails | Lê o histórico de até 150 tarefas, uma por vez, pelo botão | Uma leitura só, se a lista ou o filtro existir por GET ou pela busca |
-| 3 remetente | Não existe | Aviso na Saúde do setor sem remetente |
+| 2 lista de e-mails | **0.115.0:** a lista direta (busca com `email_not_sent`, corpo da tela, 30 dias) chega sozinha; o motivo vem do histórico pelo botão | (feito) |
+| 3 remetente | **0.115.0:** aviso de domínio não verificado ou DKIM falhando (remetente único; não há por setor) | (feito) |
 | 4 templates da empresa | Só sugere (falta, sobra) e abre a empresa no Gestta | Aplicar ou tirar o template pela extensão: escrita nova, com aprovação, em lote com uma confirmação |

@@ -3131,7 +3131,7 @@
    * Além do resumo acima, a pessoa pode mandar ao Hub as listas inteiras, clientes, dados do escritório, permissões,
    * documentos e notícias, em partes (o Hub aceita até 150 mil caracteres por documento). Tudo é lido na hora, vai
    * direto para o Hub e NADA fica na extensão. As categorias são escolhidas em Configurações → Control Hub; a dos
-   * dados pessoais (CPF, salário, nomes, descrições, trâmites, comunicações) vem desligada e pede confirmação.
+   * dados pessoais (CPF, salário, nomes, descrições, trâmites, comunicações) vem ligada de fábrica, sem aviso (Josué, 06/11 e 13/11/2026).
    * Nunca vão: tokens e dados da sessão (UdsSession), cookies, armazenamento do navegador. */
   const HUB_CATEGORIAS = [
     { id: 'analise', nome: 'Análise do escritório', ajuda: 'O que a extensão calcula e o Hub não tem: de quem é a vez, dias com o escritório, prazo legal e prometido, gravidade, resolvidas sem retorno do cliente e a carga por analista. Só números e datas; sem texto de solicitação. Não faz nenhuma leitura nova no Onvio.', pessoal: false, padrao: true },
@@ -3140,7 +3140,7 @@
     { id: 'escritorio', nome: 'Escritório e acesso', ajuda: 'Departamentos, seu acesso, tabelas de apoio, prescrição, conta, licenças, permissões, funcionalidades, serviços do Onvio e os nomes da equipe ativa do escritório. Sem tokens.', pessoal: false, padrao: true },
     { id: 'documentos', nome: 'Documentos', ajuda: 'Árvore de pastas do Onvio Drive (nomes, contagens, datas, quem leu).', pessoal: false, padrao: true },
     { id: 'noticias', nome: 'Notícias', ajuda: 'Artigos compartilhados com os clientes.', pessoal: false, padrao: true },
-    { id: 'pessoais', nome: 'Dados pessoais', ajuda: 'CPF, salário, nomes de empregados, a lista completa de empregados de cada empresa (uma leitura por empresa), assunto e descrição de todas as solicitações, dados completos e trâmites das pendentes, comunicações e os contribuintes de cada mês na folha (Extrato Mensal do portal de documentos: código, nome e vínculo). Fica no banco do Hub, visível a quem acessa o Hub.', pessoal: true, padrao: false }
+    { id: 'pessoais', nome: 'Dados pessoais', ajuda: 'CPF, salário, nomes de empregados, a lista completa de empregados de cada empresa (uma leitura por empresa), assunto e descrição de todas as solicitações, dados completos e trâmites das pendentes, comunicações e os contribuintes de cada mês na folha (Extrato Mensal do portal de documentos: código, nome e vínculo). Fica no banco do Hub, visível a quem acessa o Hub.', pessoal: true, padrao: true }
   ];
   const HUB_PARTE_CHARS = 140000;        // o Hub aceita até 150 mil por parte
   const HUB_PARTES_MAX = 1000;   // 0.93.0 (Josué, 10/11/2026: "pode deixar sem limite, bote pra ler tudo que tiver"): era 80; 1.000 partes (~140 MB) só protege de um envio sem fim

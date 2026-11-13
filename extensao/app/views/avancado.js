@@ -121,8 +121,6 @@ function parteHub(corpo, d, el) {
       '</section>' +
     '</div>' +
     '<section class="cfg-card adv-card"><h3><svg class="ic"><use href="#i-layers"/></svg>O que vai no envio completo</h3><div class="adv-cats" id="adv-cats"></div>' +
-      '<div class="adv-alerta" id="adv-pessoais-aviso" hidden><b>Dados pessoais no Hub.</b> Com esta opção vão para o banco do Hub (no claude.ai) CPF, salário, nomes de empregados, assunto e descrição de todas as solicitações, dados completos e trâmites das pendentes, a folha (contribuintes por competência) e comunicações. Quem acessa o Hub passa a poder ver. Só ligue se o escritório decidiu isso.' +
-        '<div class="adv-acoes"><button type="button" class="btn btn-primary btn-sm" id="adv-pessoais-sim">Entendi, enviar dados pessoais</button><button type="button" class="btn btn-sm" id="adv-pessoais-nao">Cancelar</button></div></div>' +
     '</section>' +
     '<section class="cfg-card adv-card"><h3><svg class="ic"><use href="#i-clock"/></svg>Último envio</h3><div id="adv-envio-cab"></div>' +
       '<h4 class="adv-fonte">Onvio</h4><div id="adv-envio"></div><h4 class="adv-fonte">Gestta</h4><div id="adv-gestta-envio"></div></section>' +
@@ -162,11 +160,8 @@ function parteHub(corpo, d, el) {
   cats.addEventListener('change', async e => {
     const inp = e.target.closest('input[data-cat]'); if (!inp) return;
     const k = OC.HUB_CATEGORIAS.find(x => x.id === inp.dataset.cat);
-    if (k.pessoal && inp.checked) { inp.checked = false; $('#adv-pessoais-aviso', corpo).hidden = false; $('#adv-pessoais-aviso', corpo).scrollIntoView({ block: 'nearest' }); return; }   // pede confirmação antes de ligar
     await gravarEnvio(k.id, inp.checked); toast(inp.checked ? '“' + k.nome + '” vai no envio completo' : '“' + k.nome + '” fora do envio completo');
   });
-  $('#adv-pessoais-sim', corpo).onclick = async () => { await gravarEnvio('pessoais', true); $('#adv-pessoais-aviso', corpo).hidden = true; const i = $('input[data-cat="pessoais"]', corpo); if (i) i.checked = true; toast('Dados pessoais vão no envio completo'); };
-  $('#adv-pessoais-nao', corpo).onclick = () => { $('#adv-pessoais-aviso', corpo).hidden = true; };
   $('#adv-conectar', corpo).onclick = async () => {
     const token = await salvar();
     if (!token) { msg(OP.MOTIVOS_HUB['sem-codigo'], true); $('#adv-hubCodigo', corpo).focus(); return; }

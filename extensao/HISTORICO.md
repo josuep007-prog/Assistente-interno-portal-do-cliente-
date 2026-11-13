@@ -2,6 +2,60 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.115.1 (13/11/2026): a lista de falhas de e-mail como a tela do Gestta faz
+
+- Josué subiu o resultado do roteiro de mapeamento (passos 0 a 4). Três coisas mudaram em relação à 0.115.0:
+  - **Sem datas.** A busca da tela "falha na entrega do e-mail" não manda `start_date` nem `end_date` (as 60 do painel têm meta de 16/10 a 28/11); com a janela de 30 dias que eu tinha posto, o total dava 65, não 60. A extensão agora manda o corpo da tela, sem datas e sem os filtros de setor e pessoa; a guarda de leitura abre exceção só para essa busca (precisa de `email_not_sent` ligado e até 200 por página). O analista leva só o id dele e a extensão ainda descarta o que não for dele.
+  - **Devolvidos (BOUNCE).** Os e-mails que o servidor do cliente devolveu aparecem como "Voltou" e agrupados com os demais. O texto livre que o servidor do cliente manda como motivo **nunca é mostrado nem guardado** (pode trazer o endereço dele): vira a frase "o servidor do cliente devolveu o e-mail (endereço que não existe, caixa cheia ou bloqueio)"; `BOUNCE_LIMIT` vira "o endereço do cliente devolveu e-mails demais (o Gestta parou de enviar)".
+  - **Remetente com os valores reais** (domínio não verificado, DKIM falhou): o aviso foi testado com eles.
+- Ficou sem fazer, esperando o Josué: Ver o arquivo do item, Excluir o arquivo e incluir ou tirar template (mapeados, ver o mapa do Gestta).
+
+## Novidades da v0.115.0 (13/11/2026): Saúde com a lista direta de falhas de e-mail e o aviso do remetente
+
+- Josué subiu o mapeamento do Gestta de 13/11/2026 (`mapeamento/gestta-2026-11-04.md`, seção "Leitura de 13/11/2026"). O que ele liberou entrou:
+  - **Lista direta das falhas de e-mail.** A busca de tarefas do Gestta tem o filtro `email_not_sent`; a extensão manda o **corpo da própria tela** (status concluída, os quatro marcadores, os últimos 30 dias, a mesma janela do painel) e a lista chega sozinha ao abrir a Saúde: empresa, tarefa, setor, responsável e data de conclusão. Isso troca a varredura que lia o histórico de até 150 tarefas para descobrir quais falharam. A coordenação lê todas; o analista só as dele.
+  - **Motivo pelo botão.** A lista do Gestta não traz o motivo; "Ler o motivo" lê o histórico de cada tarefa da lista (uma por vez, até 150), mostra o motivo em cada linha e agrupa as falhas por motivo. Nada do `email_log` é lido, guardado ou mostrado.
+  - **Aviso do remetente do escritório** (só coordenação): o Gestta usa um endereço único, não há remetente por setor nem por usuário; a Saúde lê `GET admin/company/email/domain` e avisa quando o domínio não está verificado ou a verificação de DKIM falhou (o e-mail ao cliente pode cair no spam ou não sair). Da resposta só saem o estado do domínio e do DKIM (nunca o registro TXT nem o e-mail do remetente). O SMTP, que guarda senha, continua proibido.
+- Os mapas (`mapeamento/gestta-2026-11-04.md` e o roteiro `prompt-gestta-saude-2026-11-13.md`) foram atualizados com o que foi achado e o que continua travado.
+- **Continua travado:** anexar, abrir e excluir o arquivo do item, e incluir ou tirar um template de uma empresa, porque o template de teste "TESTE MAPEAMENTO - NAO USAR" não existe. Precisa de uma decisão do Josué: criar esse template (Configure > Tarefas recorrentes) ou autorizar o "TESTE CONTROL ONVIO" da empresa 9999.
+
+## Novidades da v0.114.0 (13/11/2026): leituras do Gestta mais rápidas
+
+- Josué ("pode aplicar") sobre a análise de eficiência das leituras do Gestta:
+  - **Memórias que não se perdem:** o service worker do Chrome dorme depois de uns 30 s parado e levava as memórias de 6 horas (lista de clientes, CNPJs, contatos, empresa 9999, templates, equipe) e de 30 minutos ("avisa o cliente"). Agora elas ficam também na memória do Chrome (`chrome.storage.session`, chave `gtMemo`: some ao fechar o navegador, nunca no disco; só ids, nome e CNPJ de empresa, sim/não e contagens, nunca nome, e-mail ou telefone de pessoa).
+  - **Envios ao portal:** as tarefas que o relatório do mês (já lido pela Saúde ou pelo Fechamento) diz que avisam o cliente não são mais abertas uma a uma; o "não avisa", que decide o que sai da lista de erros, continua vindo do detalhe da tarefa. A empresa 9999 sai da mesma lista de clientes dos CNPJs (uma leitura só).
+  - **Fechamento e Saúde dividem o relatório do mês** (uma leitura por hora por mês, em vez de duas).
+  - **Equipe** guardada por 30 minutos e **"quem está logado"** por 3 minutos (só se o token da aba for o mesmo; outra pessoa que entra na aba tem outro token e a pergunta é refeita).
+  - **Detalhe da tarefa:** enquanto você vê uma tarefa, a seguinte da fila já é lida (só na memória da tela, 1 minuto; descartada depois de qualquer ação), então passar para a próxima abre na hora.
+  - **Releitura de 10 em 10 minutos mais leve:** relê só a parte da aba aberta; a outra é lida quando você troca para a aba que a usa e ela está velha.
+  - **Pausa entre leituras que se ajusta**, sempre uma leitura por vez: resposta rápida, metade da pausa (mínimo 120 ms); lenta, erro 429/5xx ou falha, o dobro (máximo 3 s).
+- Ficaram de fora: o compartilhamento dos contatos do envio ao Hub com a Saúde (a Saúde guarda só contagens, nunca nome nem e-mail, e dividir obrigaria a guardar os e-mails) e a busca direta por competência (depende da conferência no seu Chrome).
+
+## Novidades da v0.113.0 (13/11/2026): dados pessoais ligados de fábrica no envio ao Hub (Hub 355)
+
+- Josué confirmou a decisão de 06/11/2026 ("Ligar de fábrica, todos veem"): a categoria **Dados pessoais** do envio completo ao Hub vem **ligada de fábrica** e o aviso de confirmação saiu (em Configurações › Avançado e na página de opções). Quem já tinha escolhido desligar continua desligado; dá para desligar e ligar como as outras categorias.
+- No Hub (355), os dados pessoais passam a valer para **analista ou coordenação de qualquer módulo** (DP, Contábil, Fiscal ou Portal), não só do DP; quem é só consulta continua sem eles. O Hub pede a extensão 0.113.0 ou mais nova (`ING_VERSAO_MIN`).
+- O painel de desempenho por módulo ficou para depois (Josué, 13/11/2026: "Não por agora").
+
+## Novidades da v0.112.0 (13/11/2026): Saúde e Fechamento aparecem aos poucos
+
+- Josué escolheu "Mostrar aos poucos" para as Tarefas do Gestta (aprovado em 13/11/2026); a 0.111.0 fez isso nas tarefas e esta versão faz na **Saúde** e no **Fechamento**.
+  - **Saúde:** primeiro o relatório do mês atual e do próximo (com as contagens do topo), e a carga e a prioridade já aparecem; depois os 2 meses anteriores, que trazem o ritmo de cada pessoa. Até ele chegar, a grade diz "calculando o ritmo…" no lugar da capacidade. As linhas se juntam sem repetir tarefa; o relatório de cada mês continua 1 hora na memória do Chrome.
+  - **Fechamento:** o progresso geral e por empresa aparecem assim que a busca das tarefas da competência chega; setor e analista vêm do relatório de cada mês de meta, e até lá a tela avisa "Setor e analista estão chegando". A tela se completa a cada relatório; o resultado final continua guardado 1 hora (`gtFechC-AAAA-MM`).
+- O manual lista o que ainda depende do roteiro da Saúde (Ver o arquivo, e as escritas Excluir o arquivo e aplicar ou tirar template, só com aprovação) e a ideia futura dos documentos pedidos ao cliente sem resposta.
+
+## Novidades da v0.111.3 (13/11/2026): De quem numa janela por cima
+
+- Josué: "eu quero que isso seja uma janela que abre por cima pra fazer as seleções". O De quem das Tarefas do Gestta deixou de ser um menu pendurado no botão: abre uma janela no meio da tela, com o fundo escurecido, título "De quem são as tarefas", busca e lista maiores, e fecha pelo ×, por Esc ou clicando fora. Os passos continuam os mesmos (setor > uma ou mais pessoas).
+
+## Novidades da v0.111.2 (13/11/2026): a Saúde não cai mais com o erro 400
+
+- Josué (captura da aba Saúde: "Não consegui ler a saúde da operação. O relatório do Gestta não veio (erro 400)"). A Saúde pedia o relatório de 4 meses (2 meses atrás até o próximo), e o Gestta recusa com 400 os meses fora do período que ele aceita. Agora só o mês corrente é obrigatório: o mês recusado fica de fora (lembrado por 1 hora, sem repetir as tentativas), a tela diz qual ficou de fora e o ritmo e a carga usam os meses que vieram.
+
+## Novidades da v0.111.1 (13/11/2026): Meu dia em números não fica preso no erro
+
+- Josué (com a captura do Meu dia em "Equipe toda" mostrando "Não deu para ler as concluídas: Tentativas: página do Onvio: HTTP 401…"): "sempre abre assim". Ao abrir o Hoje, a leitura das concluídas podia falhar porque o Onvio ainda não tinha dado a autorização à página, e a falha ficava guardada por 10 minutos. Agora ela tenta de novo sozinha (15 s, 30 s, 1 min, 2 min e depois a cada 5 min), o texto técnico some da tela (fica só na dica) e, depois de 3 falhas, aparece "As concluídas não carregaram agora. Vou tentar de novo sozinho." com **Tentar agora**. Quando o Onvio responde, o número entra sem recarregar.
+
 ## Novidades da v0.111.0 (13/11/2026): Gestta mais rápido, cada parte aparece quando chega
 
 - Josué: "tá demorando muito pra ler, na real muita coisa da parte do Gestta tá demorando pra terminar de ler"; "não depender de rodar toda leitura pra aparecer alguma coisa". Escolheu três das quatro saídas propostas (a de abrir com a última leitura guardada ficou de fora):

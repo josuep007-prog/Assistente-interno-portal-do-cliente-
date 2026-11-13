@@ -221,7 +221,7 @@ export function render(el, ctx) {
     // destaque: as concluídas de hoje contra a média por dia útil (o anel enche ao chegar na média)
     const ch = md.concluidasHoje, med = md.media;
     const pct = ch == null ? null : med ? Math.min(100, ch / med * 100) : ch ? 100 : 0;
-    const ritmo = esc2 ? (cd && cd.erro ? 'não deu para ler' : 'lendo no Onvio…') : 'sem analista: não se aplica';      // só enquanto não há número
+    const ritmo = esc2 ? (cd && cd.erro ? 'tentando de novo…' : 'lendo no Onvio…') : 'sem analista: não se aplica';      // só enquanto não há número
     const destaque = '<a class="hj-md-k hj-md-dest" href="' + esc(linkFila({ escopo: 'concluidas' })) + '" data-md="concluidas">' +
       anelProgresso(pct, (ch == null ? '<b>…</b>' : '<b data-conta="' + ch + '">' + num(ch) + '</b>') + '<small>hoje</small>', { tam: 112 }) +
       '<span class="hj-md-tx"><span>concluídas hoje</span><small>' + (med != null ? 'média de ' + vg(med) + ' por dia útil' : '') + '</small>' + (ch == null ? '<small>' + ritmo + '</small>' : '') + '</span></a>';
@@ -237,7 +237,7 @@ export function render(el, ctx) {
           tile('paradas', md.paradas, 'paradas há mais de 3 dias', 'de ' + num(md.comEscritorio) + ' com o escritório', linkFila({ idade: '4-' }), 'clock', 'c', md.paradas ? 'alerta' : '') +
           tile('lembretes', lems.length, lems.length === 1 ? 'lembrete para hoje' : 'lembretes para hoje', lems.some(l => OC.situacaoLembrete(l) === 'atrasado') ? 'tem atrasado' : 'nada atrasado', '#/lembretes', 'bell', 'd') +
         '</div>' +
-        '<figure class="hj-md-graf" aria-label="Concluídas por dia útil"><figcaption><span>Concluídas por dia útil</span>' + (total10 != null ? '<b>' + num(total10) + ' em 10 dias' + (md.media ? ' · <i class="hj-md-leg" aria-hidden="true"></i>média ' + vg(md.media) : '') + '</b>' : '') + '</figcaption>' + (md.serie ? barrasDia(md.serie, md.media) : '<div class="hj-md-vazio">' + (lendo ? 'Lendo as concluídas no Onvio…' : cd && cd.erro ? 'Não deu para ler as concluídas: ' + esc(cd.erro) : 'Sem analista: as concluídas não se aplicam.') + '</div>') + '</figure>' +
+        '<figure class="hj-md-graf" aria-label="Concluídas por dia útil"><figcaption><span>Concluídas por dia útil</span>' + (total10 != null ? '<b>' + num(total10) + ' em 10 dias' + (md.media ? ' · <i class="hj-md-leg" aria-hidden="true"></i>média ' + vg(md.media) : '') + '</b>' : '') + '</figcaption>' + (md.serie ? barrasDia(md.serie, md.media) : '<div class="hj-md-vazio">' + (lendo ? 'Lendo as concluídas no Onvio…' : cd && cd.erro ? (cd.tent < 3 ? 'Lendo as concluídas no Onvio… (tentando de novo)' : '<span title="' + esc(cd.erro) + '">As concluídas não carregaram agora. Vou tentar de novo sozinho.</span><button type="button" class="btn btn-sm" data-md-reler>Tentar agora</button>') : 'Sem analista: as concluídas não se aplicam.') + '</div>') + '</figure>' +
       '</div></section>';
   }
   // barras finas com degradê, uma por dia útil; a de hoje cheia, com o número, e a linha tracejada da média
@@ -270,16 +270,28 @@ export function render(el, ctx) {
 
   // ---------- interações ----------
   const redesenhar = () => render(el, ctx);
-  // 0.108.0: lê as concluídas dos últimos 30 dias para o Meu dia (uma leitura por vez, 10 min na memória)
+  // 0.108.0: lê as concluídas dos últimos 30 dias para o Meu dia (uma leitura por vez, 10 min na memória).
+  // 0.111.1: a falha não fica gravada por 10 min (ao abrir, o Onvio ainda pode estar sem a autorização da página): tenta de novo
+  // sozinho em 15 s, 30 s, 1 min, 2 min e depois a cada 5 min; "Tentar agora" refaz na hora.
   const escMd = cart === MINHA ? 'mine' : cart === SEM ? '' : 'equipe';
-  if (escMd && estado.snap && !concDiaLendo[escMd] && (!concDia[escMd] || Date.now() - concDia[escMd].em > 10 * 60000)) {
-    concDiaLendo[escMd] = true;
-    enviar({ cmd: 'concluidas', equipe: escMd === 'equipe' }).then(r => {
-      concDiaLendo[escMd] = false;
-      concDia[escMd] = r && r.ok ? { itens: r.itens || [], em: Date.now() } : { itens: null, erro: (r && r.erro) || 'a leitura não respondeu', em: Date.now() };
-      if (el.isConnected && location.hash.startsWith('#/inicio')) { const av = $('#aviso-sessao', el); render(el, ctx); if (av && !$('#aviso-sessao', el)) el.prepend(av); }      // a faixa de sessão fica
-    });
+  const tentarMd = (c, quando) => { clearTimeout(tentarMd.t); tentarMd.t = setTimeout(() => { if (el.isConnected && location.hash.startsWith('#/inicio')) { const av = $('#aviso-sessao', el); render(el, ctx); if (av && !$('#aviso-sessao', el)) el.prepend(av); } }, Math.max(300, quando - Date.now() + 200)); };
+  if (escMd && estado.snap && !concDiaLendo[escMd]) {
+    const c0 = concDia[escMd], agora = Date.now();
+    if (!c0 || (c0.erro ? agora >= c0.prox : agora - c0.em > 10 * 60000)) {
+      concDiaLendo[escMd] = true;
+      enviar({ cmd: 'concluidas', equipe: escMd === 'equipe' }).then(r => {
+        concDiaLendo[escMd] = false;
+        if (r && r.ok) concDia[escMd] = { itens: r.itens || [], em: Date.now() };
+        else {
+          const tent = ((c0 && c0.tent) || 0) + 1;
+          concDia[escMd] = { itens: null, erro: (r && r.erro) || 'a leitura não respondeu', tent, em: Date.now(), prox: Date.now() + Math.min((window.__mdBaseMs || 15000) * Math.pow(2, tent - 1), 300000) };
+          tentarMd(concDia[escMd], concDia[escMd].prox);
+        }
+        if (el.isConnected && location.hash.startsWith('#/inicio')) { const av = $('#aviso-sessao', el); render(el, ctx); if (av && !$('#aviso-sessao', el)) el.prepend(av); }      // a faixa de sessão fica
+      });
+    } else if (c0.erro) tentarMd(c0, c0.prox);
   }
+  $$('[data-md-reler]', el).forEach(b => b.onclick = () => { delete concDia[escMd]; render(el, ctx); });
   $$('#hj-tipos-l [data-tipo]', el).forEach(b => b.onclick = () => {
     const xs = base.filter(i => i.type === b.dataset.tipo);
     const soCliente = xs.length && xs.every(i => i.lado === 'cli');
