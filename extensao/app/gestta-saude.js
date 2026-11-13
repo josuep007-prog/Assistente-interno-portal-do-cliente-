@@ -10,7 +10,7 @@ import { LOTE, marcarGrupo, barraGrupo, ligarGrupo, grupoEmLote } from './gestta
 
 const G = window.OCG;
 const S = { dados: null, tarefas: [], carregando: false, erro: null, feriados: null,
-  contatos: {}, lendoCont: null, erroCont: '', emails: {}, lendoEm: null, erroEm: '', config: null, porTemplate: {}, lendoCfg: null, erroCfg: '',
+  contatos: {}, lendoCont: null, erroCont: '', emails: {}, lendoEm: null, erroEm: '', falhas: null, lendoFalhas: false, erroFalhas: '', remetente: null, config: null, porTemplate: {}, lendoCfg: null, erroCfg: '',
   fechados: new Set(lerPref('gt.saude.fechados', '').split(',').filter(Boolean)), cel: null, cap: lerCap(), editCap: false, extra: '' };
 let enviarFn = null, aoMudar = () => {}, paraPaiFn = () => {};
 const pausa = ms => new Promise(r => setTimeout(r, ms));
@@ -59,6 +59,10 @@ export async function lerSaude(enviar, redesenhar, forcar) {
     S.dados.daMemoria = !!(S.dados.daMemoria && x.daMemoria);
   } else S.erroRitmo = (x && x.erro) || 'sem resposta';
   S.ritmoPronto = true; aoMudar();
+  // 0.115.0: a lista de falhas de e-mail (uma busca) e o remetente do escritório (um GET), depois das tarefas, uma leitura por vez
+  if (lerSaude.vez !== vez) return;
+  S.falhas = null; S.emails = {}; await lerFalhas();
+  if (lerSaude.vez === vez) await lerRemetente();
 }
 
 /* ---------- leituras sob demanda (uma por vez, com o andamento na tela) ---------- */
@@ -81,8 +85,24 @@ async function lerContatos() {
   S.lendoCont = null; aoMudar();
 }
 const MAX_EMAILS = 150;
+// 0.115.0 (mapeamento de 13/11/2026): a lista vem direto do Gestta (a busca com o filtro "falha na entrega do e-mail", últimos 30 dias, os
+// mesmos números do painel). Ela não traz o motivo: esse sai do histórico de cada tarefa, pelo botão, uma por vez.
+const falhaComoTarefa = (f) => { const t = S.tarefas.find(x => x._id === f.id); return { _id: f.id, name: nome(f.nome), customer: { name: nome(f.cliente.nome), cnpj: t ? t.customer.cnpj : '', code: f.cliente.code }, setor: t ? t.setor : '', responsavel: f.responsavel, conclusion_date: f.conclusao || (t && t.conclusion_date) || '' }; };
+async function lerFalhas() {
+  if (S.lendoFalhas || !enviarFn) return;
+  S.lendoFalhas = true; S.erroFalhas = ''; aoMudar();
+  const r = await enviarFn({ cmd: 'gesttaSaude', parte: 'emailLista' });
+  if (r && r.ok) S.falhas = { lista: (r.tarefas || []).map(falhaComoTarefa).sort((a, b) => String(b.conclusion_date).localeCompare(String(a.conclusion_date))), total: r.total, lidoEm: r.lidoEm };
+  else S.erroFalhas = (r && r.erro) || 'sem resposta';
+  S.lendoFalhas = false; aoMudar();
+}
+async function lerRemetente() {
+  if (!enviarFn || !S.dados || !S.dados.perfil.total) return;
+  const r = await enviarFn({ cmd: 'gesttaSaude', parte: 'remetente' });
+  if (r && r.ok) { S.remetente = r.aviso || { nivel: 'sem', texto: '' }; aoMudar(); }
+}
 async function lerEmails() {
-  const l = G.tarefasParaEmail(S.tarefas, hojeD(), 7).slice(0, MAX_EMAILS), faltam = l.filter(t => !(t._id in S.emails));
+  const l = ((S.falhas && S.falhas.lista) || []).slice(0, MAX_EMAILS), faltam = l.filter(t => !(t._id in S.emails));
   S.lendoEm = { feitos: l.length - faltam.length, total: l.length }; S.erroEm = ''; aoMudar();
   for (let i = 0; i < faltam.length; i += 10) {
     const pedaco = faltam.slice(i, i + 10);
@@ -139,21 +159,29 @@ function blocoContatos() {
   return { h, n: lidos ? an.casos.length : null };
 }
 function blocoEmails() {
-  const l = G.tarefasParaEmail(S.tarefas, hojeD(), 7), alvo = l.slice(0, MAX_EMAILS), lidos = alvo.filter(t => t._id in S.emails);
-  const falhas = lidos.filter(t => S.emails[t._id].v === 'naoSaiu');
-  const n = S.dados.emailNaoSaiu;
-  let h = '<p class="gte-dica">' + (n != null ? 'No painel do Gestta, <b>' + plural(n, 'e-mail não saiu', 'e-mails não saíram') + '</b> neste mês. ' : '') + 'A lista sai do histórico das tarefas que avisam o cliente e foram concluídas nos últimos 7 dias (' + plural(l.length, 'tarefa', 'tarefas') + (l.length > MAX_EMAILS ? ', as ' + MAX_EMAILS + ' mais novas' : '') + ').</p>';
-  if (S.lendoEm) h += barra(S.lendoEm);
-  else if (lidos.length < alvo.length) h += '<p><button type="button" class="btn btn-primary btn-sm" data-gsa-ler="emails">' + ic('search') + 'Ler as falhas (' + plural(alvo.length - lidos.length, 'tarefa', 'tarefas') + ')</button> <small class="fraco">Uma tarefa por vez. Só a situação do e-mail, o motivo e a data.</small></p>';
-  if (S.erroEm) h += '<div class="faixa warn"><svg class="ic"><use href="#i-alert"/></svg><div>' + esc(S.erroEm) + '</div></div>';
-  if (lidos.length) {
-    const conta = (v) => lidos.filter(t => S.emails[t._id].v === v).length;
-    h += '<p class="gsa-pills"><span class="gte-tag gte-erro">' + plural(falhas.length, 'não saiu', 'não saíram') + '</span><span class="gte-tag gte-ok">' + plural(conta('entregue'), 'entregue', 'entregues') + '</span><span class="gte-tag gte-neutro">' + plural(conta('saiu'), 'saiu', 'saíram') + ' sem confirmação</span><span class="gte-tag gte-neutro">' + conta('semEmail') + ' sem e-mail registrado</span></p>';
-    h += falhas.length ? '<div class="gte-tab-wrap"><table class="gte-tab gsa-tab"><thead><tr><th>Empresa</th><th>Tarefa</th><th>Setor</th><th>Motivo</th><th>Quando</th></tr></thead><tbody>' +
-      falhas.map(t => { const v = S.emails[t._id]; return '<tr><td><b>' + esc(t.customer.name || '—') + '</b><small>' + esc(cnpjFmt(t.customer.cnpj)) + '</small></td><td>' + btnTarefa(t) + '</td><td>' + esc(t.setor) + '</td><td>' + esc(v.motivo || '') + '</td><td>' + esc(ddmm(v.quando) || ddmm(t.conclusion_date)) + '</td></tr>'; }).join('') + '</tbody></table></div>'
-      : '<p class="gte-vazio">' + ic('check') + 'Nenhum e-mail que deixou de sair nas tarefas lidas.</p>';
+  const n = S.dados.emailNaoSaiu, F = S.falhas, rem = S.remetente;
+  let h = '';
+  if (rem && rem.nivel === 'aviso') h += '<div class="faixa warn gsa-rem"><svg class="ic"><use href="#i-alert"/></svg><div><b>Remetente do escritório.</b> ' + esc(rem.texto) + '</div></div>';
+  else if (rem && rem.nivel === 'ok') h += '<p class="fraco gsa-memo">' + ic('check') + esc(rem.texto) + ' O Gestta usa um remetente só para todos os setores.</p>';
+  if (!F) {
+    h += '<p class="gte-dica">' + (n != null ? 'No painel do Gestta, <b>' + plural(n, 'e-mail não saiu', 'e-mails não saíram') + '</b> neste mês. ' : '') + 'A lista sai direto do Gestta (o filtro de falha na entrega do e-mail, dos últimos 30 dias).</p>';
+    if (S.lendoFalhas) h += '<p class="fraco gsa-memo" role="status">' + ic('clock') + ' Lendo a lista do Gestta…</p>';
+    else h += '<p><button type="button" class="btn btn-primary btn-sm" data-gsa-ler="falhas">' + ic('search') + 'Ler a lista de falhas</button></p>';
+    if (S.erroFalhas) h += '<div class="faixa warn"><svg class="ic"><use href="#i-alert"/></svg><div>' + esc(S.erroFalhas) + '</div></div>';
+    return { h, n: n != null ? n : null };
   }
-  return { h, n: lidos.length ? falhas.length : (n != null ? n : null) };
+  const l = F.lista, alvo = l.slice(0, MAX_EMAILS), lidos = alvo.filter(t => t._id in S.emails), faltam = alvo.length - lidos.length;
+  const porMotivo = new Map(); lidos.forEach(t => { const v = S.emails[t._id]; if (v && v.v === 'naoSaiu') porMotivo.set(v.motivo || 'Motivo não informado', (porMotivo.get(v.motivo || 'Motivo não informado') || 0) + 1); });
+  h += '<p class="gte-dica"><b>' + plural(l.length, 'tarefa concluída teve', 'tarefas concluídas tiveram') + ' falha de e-mail ao cliente</b> nos últimos 30 dias' + (n != null ? ' (o painel do Gestta conta ' + num(n) + ' neste mês)' : '') + '. A lista não traz o motivo: ' + (lidos.length ? 'ele vem do histórico de cada tarefa.' : 'leia o histórico para saber o porquê.') + '</p>';
+  if (S.lendoEm) h += barra(S.lendoEm);
+  else if (faltam > 0) h += '<p><button type="button" class="btn btn-primary btn-sm" data-gsa-ler="emails">' + ic('search') + 'Ler o motivo (' + plural(faltam, 'tarefa', 'tarefas') + ')</button> <small class="fraco">Uma tarefa por vez. Só a situação do e-mail, o motivo e a data' + (l.length > MAX_EMAILS ? '; as ' + MAX_EMAILS + ' mais novas' : '') + '.</small></p>';
+  if (S.erroEm) h += '<div class="faixa warn"><svg class="ic"><use href="#i-alert"/></svg><div>' + esc(S.erroEm) + '</div></div>';
+  if (porMotivo.size) h += '<p class="gsa-pills">' + [...porMotivo].sort((a, b) => b[1] - a[1]).map(([m, k]) => '<span class="gte-tag gte-erro">' + esc(m) + ': ' + num(k) + '</span>').join('') + '</p>';
+  h += l.length ? '<div class="gte-tab-wrap"><table class="gte-tab gsa-tab"><thead><tr><th>Empresa</th><th>Tarefa</th><th>Setor</th><th>Responsável</th><th>Motivo</th><th>Concluída</th></tr></thead><tbody>' +
+    l.map(t => { const v = S.emails[t._id]; const mot = v ? (v.v === 'naoSaiu' ? v.motivo || '' : v.rot) : '<span class="fraco">—</span>';
+      return '<tr><td><b>' + esc(t.customer.name || '—') + '</b><small>' + esc(cnpjFmt(t.customer.cnpj) || t.customer.code) + '</small></td><td>' + btnTarefa(t) + '</td><td>' + esc(t.setor || '—') + '</td><td>' + esc(nome(t.responsavel) || '—') + '</td><td>' + (v ? esc(mot) : mot) + '</td><td>' + esc(ddmm(t.conclusion_date)) + '</td></tr>'; }).join('') + '</tbody></table></div>'
+    : '<p class="gte-vazio">' + ic('check') + 'Nenhuma tarefa com falha de e-mail nos últimos 30 dias.</p>';
+  return { h, n: l.length };
 }
 function blocoCarga(carga, prio) {
   const fer = S.feriados;
@@ -227,7 +255,7 @@ export function desenharSaude(v, sub) {
   sub('Saúde da operação · ' + (total ? 'equipe toda' : 'as suas tarefas') + ' · lido às ' + new Date(D.lidoEm).toTimeString().slice(0, 5));
   const kpi = (n, rot, alvo, cls, dica) => '<button type="button" class="gte-kpi ' + cls + '" data-gsa-ir="' + alvo + '" title="' + esc(dica) + '"><b>' + (n == null ? '—' : num(n)) + '</b><span>' + esc(rot) + '</span></button>';
   let h = '<section class="gte-topo cfg-card gsa-topo"><div class="gte-tit"><h2>Saúde da operação</h2><p' + (simples() ? ' class="ajuda"' : '') + '>O que o Gestta não mostra direito: o e-mail que não chega ao cliente, a tarefa que avisa sem contato no setor, quando não vai dar tempo e o que vem primeiro' + (total ? ', e a configuração das tarefas de cada empresa' : '') + '. Só leitura; ' + (total ? 'a equipe toda.' : 'só as suas tarefas.') + '</p></div>' +
-    '<div class="gte-kpis">' + kpi(D.emailNaoSaiu, 'e-mails não saíram no mês', 'emails', 'gte-k-erro', 'Do painel do Gestta (atenção: e-mail não enviado)') +
+    '<div class="gte-kpis">' + kpi(S.falhas ? S.falhas.lista.length : D.emailNaoSaiu, S.falhas ? 'tarefas com falha de e-mail' : 'e-mails não saíram no mês', 'emails', 'gte-k-erro', S.falhas ? 'Tarefas concluídas nos últimos 30 dias com falha na entrega do e-mail (a lista do Gestta)' : 'Do painel do Gestta (atenção: e-mail não enviado)') +
     kpi(bC.n, 'empresas × setor sem contato', 'contatos', 'gte-k-erro', 'Tarefas que avisam o cliente e o setor não tem contato com e-mail (confira os contatos)') +
     kpi(carga.alertas.length, 'dias acima do ritmo', 'carga', 'gte-k-erro', 'Pessoa × dia em que a carga passa da capacidade') +
     kpi(ex.semDono.length, 'abertas sem responsável', 'extras:semDono', 'gte-k-neutro', 'Tarefas abertas sem responsável') +
@@ -250,6 +278,7 @@ export function ligarSaude(v, redesenhar, paraPai) {
     if (t.dataset.gsaReler != null) { if (enviarFn) lerSaude(enviarFn, aoMudar, true); return; }
     if (t.dataset.gsaSec) { const k = t.dataset.gsaSec; S.fechados.has(k) ? S.fechados.delete(k) : S.fechados.add(k); gravarPref('gt.saude.fechados', [...S.fechados].join(',')); aoMudar(); return; }
     if (t.dataset.gsaLer === 'contatos') { if (!S.lendoCont) lerContatos(); return; }
+    if (t.dataset.gsaLer === 'falhas') { lerFalhas(); return; }
     if (t.dataset.gsaLer === 'emails') { if (!S.lendoEm) lerEmails(); return; }
     if (t.dataset.gsaLer === 'config') { if (!S.lendoCfg) lerConfig(); return; }
     if (t.dataset.gsaIr) {

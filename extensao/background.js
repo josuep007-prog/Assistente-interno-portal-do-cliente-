@@ -518,6 +518,27 @@ async function gesttaSaude(msg, sender) {
     }
     return { ok: true, porCnpj, ids };
   }
+  if (parte === 'emailLista') {   // 0.115.0: a lista direta das tarefas com falha de e-mail (a busca do próprio Gestta, filtro email_not_sent), últimos 30 dias
+    const tarefas = []; let total = null;
+    for (let pg = 1; pg <= 10; pg++) {
+      const { r } = await lerGestta([OCG.PEDIDOS.emailFalhou({ page: pg, limit: 100, companyUser: pf.total ? '' : pf.id })], { tab });
+      const x = r && r.resultados && r.resultados[0];
+      if (!x || x.status === 401) return { ok: false, erro: 'A sessão do Gestta acabou: faça login de novo na aba.' };
+      if (x.status !== 200 || !x.dados) return { ok: false, erro: 'O Gestta recusou a busca das tarefas com falha de e-mail' + (x.status ? ' (erro ' + x.status + ')' : '') + '.' };
+      const itens = x.dados.itens || []; total = typeof x.dados.total === 'number' ? x.dados.total : total;
+      itens.forEach(t => { if (t && /^[0-9a-f]{24}$/i.test(String(t._id || ''))) tarefas.push({ id: t._id, nome: String(t.name || ''), cliente: { id: String(t.customer && t.customer._id || ''), nome: String(t.customer && t.customer.name || ''), code: String(t.customer && t.customer.code || '') }, tipo: String(t.type || ''), responsavel: String(t.owner && t.owner.name || ''), meta: t.due_date || '', conclusao: t.conclusion_date || '' }); });
+      if (!itens.length || (x.dados.paginas && pg >= x.dados.paginas) || (!x.dados.paginas && itens.length < 100)) break;
+    }
+    return { ok: true, tarefas, total: total != null ? total : tarefas.length, lidoEm: new Date().toISOString() };
+  }
+  if (parte === 'remetente') {   // 0.115.0: o remetente do escritório (verificado? DKIM?): só a coordenação; sem acesso vira "sem leitura", nunca erro
+    if (!pf.total) return { ok: true, remetente: null, aviso: { nivel: 'sem', texto: '' } };
+    const { r } = await lerGestta([OCG.PEDIDOS.dominioEmail()], { tab });
+    const x = r && r.resultados && r.resultados[0];
+    if (x && x.status === 401) return { ok: false, erro: 'A sessão do Gestta acabou: faça login de novo na aba.' };
+    if (!x || x.status !== 200 || !x.dados) return { ok: true, remetente: null, aviso: { nivel: 'sem', texto: '' } };
+    return { ok: true, remetente: x.dados, aviso: OCG.avisoRemetente(x.dados) };
+  }
   if (parte === 'emails') {   // { ids: [até 15 tarefas] } → { porTarefa: { id: [{ status, reason, quando }] } }
     const ids = [...new Set((Array.isArray(msg.ids) ? msg.ids : []).map(String).filter(x => /^[0-9a-f]{24}$/i.test(x)))].slice(0, 15);
     const porTarefa = {};

@@ -2,6 +2,15 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.115.0 (13/11/2026): Saúde com a lista direta de falhas de e-mail e o aviso do remetente
+
+- Josué subiu o mapeamento do Gestta de 13/11/2026 (`mapeamento/gestta-2026-11-04.md`, seção "Leitura de 13/11/2026"). O que ele liberou entrou:
+  - **Lista direta das falhas de e-mail.** A busca de tarefas do Gestta tem o filtro `email_not_sent`; a extensão manda o **corpo da própria tela** (status concluída, os quatro marcadores, os últimos 30 dias, a mesma janela do painel) e a lista chega sozinha ao abrir a Saúde: empresa, tarefa, setor, responsável e data de conclusão. Isso troca a varredura que lia o histórico de até 150 tarefas para descobrir quais falharam. A coordenação lê todas; o analista só as dele.
+  - **Motivo pelo botão.** A lista do Gestta não traz o motivo; "Ler o motivo" lê o histórico de cada tarefa da lista (uma por vez, até 150), mostra o motivo em cada linha e agrupa as falhas por motivo. Nada do `email_log` é lido, guardado ou mostrado.
+  - **Aviso do remetente do escritório** (só coordenação): o Gestta usa um endereço único, não há remetente por setor nem por usuário; a Saúde lê `GET admin/company/email/domain` e avisa quando o domínio não está verificado ou a verificação de DKIM falhou (o e-mail ao cliente pode cair no spam ou não sair). Da resposta só saem o estado do domínio e do DKIM (nunca o registro TXT nem o e-mail do remetente). O SMTP, que guarda senha, continua proibido.
+- Os mapas (`mapeamento/gestta-2026-11-04.md` e o roteiro `prompt-gestta-saude-2026-11-13.md`) foram atualizados com o que foi achado e o que continua travado.
+- **Continua travado:** anexar, abrir e excluir o arquivo do item, e incluir ou tirar um template de uma empresa, porque o template de teste "TESTE MAPEAMENTO - NAO USAR" não existe. Precisa de uma decisão do Josué: criar esse template (Configure > Tarefas recorrentes) ou autorizar o "TESTE CONTROL ONVIO" da empresa 9999.
+
 ## Novidades da v0.114.0 (13/11/2026): leituras do Gestta mais rápidas
 
 - Josué ("pode aplicar") sobre a análise de eficiência das leituras do Gestta:

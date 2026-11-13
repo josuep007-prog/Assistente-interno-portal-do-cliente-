@@ -2852,6 +2852,9 @@ function gtSaude(total) {
   return {
     'gesttaSaude:tarefas': { ok: true, perfil: { nome: 'Eu Mesmo', papelNome: total ? 'Administrador' : 'Analista', total, setores: [] }, colunas: COL, linhas: total ? linhas : linhas.filter(l => l[4] === 'Eu Mesmo' || l[15] === 'Eu Mesmo'), meses: ['Out/2026', 'Nov/2026', 'Dez/2026'], mesesFaltam: ['Set/2026'], emailNaoSaiu: 4, semTarefa: total ? 12 : null, lidoEm: new Date().toISOString() },
     'gesttaSaude:contatos': { ok: true, porCnpj: { '11222333000181': [{ setor: 'Fiscal', ativo: true, temEmail: true }], '22333444000190': [{ setor: 'Pessoal', ativo: false, temEmail: true }] } },
+    // 0.115.0: a lista direta do Gestta (sem motivo) e o remetente do escritório (DKIM falhou)
+    'gesttaSaude:emailLista': { ok: true, total: 2, lidoEm: dia(0), tarefas: [{ id: id(8), nome: 'GUIA DO FGTS', cliente: { id: cli(1), nome: 'CLIENTE ALFA LTDA', code: '101' }, tipo: 'RECURRENT', responsavel: 'Eu Mesmo', meta: dia(-3), conclusao: dia(-2) }, { id: id(9), nome: 'DAS DO SIMPLES', cliente: { id: cli(1), nome: 'CLIENTE ALFA LTDA', code: '101' }, tipo: 'RECURRENT', responsavel: 'Eu Mesmo', meta: dia(-2), conclusao: dia(-1) }] },
+    'gesttaSaude:remetente': total ? { ok: true, remetente: { verified: true, domain: 'exemplo.com' }, aviso: { nivel: 'aviso', texto: 'A verificação de DKIM falhou. O e-mail ao cliente pode cair no spam ou não sair: confira em Configure › E-mail e WhatsApp › Endereço customizado.' } } : { ok: true, remetente: null, aviso: { nivel: 'sem', texto: '' } },
     'gesttaSaude:emails': { ok: true, porTarefa: { [id(8)]: [{ status: 'SENT', reason: '', quando: dia(-3) }, { status: 'NOT_SENT', reason: 'NOT_SENT_NO_CUSTOMER_ACCOUNTABLE', quando: dia(-2) }], [id(9)]: [{ status: 'DELIVERY', reason: '', quando: dia(-1) }] } },
     'gesttaSaude:config': { ok: true, templates: [{ id: T1, nome: 'DCTF WEB', setor: 'Fiscal' }, { id: T2, nome: 'APURAÇÃO DO ICMS', setor: 'Fiscal' }], clientes: [1, 2, 3, 4, 5, 6].map(n => ({ id: cli(n), nome: 'EMPRESA EXEMPLO ' + n, cnpj: '0000000000000' + n })) },
     'gesttaSaude:configClientes': { ok: true, porTemplate: { [T1]: [1, 2, 3, 4, 5, 6].map(cli), [T2]: [1, 2, 3, 4, 5].map(cli) } }
@@ -3352,10 +3355,10 @@ await passo('Gestta · Saúde (0.110.0): carga por dia com o ritmo, prioridade, 
   await fr.press('body', '8');
   await fr.waitForSelector('.gsa-topo');
   const sm = () => fr.evaluate(() => (window.__msgs || []).filter(m => m.cmd === 'gesttaSaude').map(m => m.parte));
-  await fr.waitForFunction(() => (window.__msgs || []).filter(m => m.cmd === 'gesttaSaude').length >= 2 && !/calculando o ritmo/.test(document.querySelector('#vista').textContent));
-  assert.deepEqual(await sm(), ['tarefas', 'tarefas'], 'ao abrir, só o relatório (0.112.0: em duas partes); contatos, e-mails e configuração esperam o botão');
+  await fr.waitForFunction(() => (window.__msgs || []).filter(m => m.cmd === 'gesttaSaude').length >= 4 && !/calculando o ritmo/.test(document.querySelector('#vista').textContent));
+  assert.deepEqual(await sm(), ['tarefas', 'tarefas', 'emailLista', 'remetente'], 'ao abrir, o relatório (0.112.0: em duas partes), a lista de falhas de e-mail e o remetente (0.115.0); contatos, motivos e configuração esperam o botão');
   assert.match(await fr.textContent('#vista'), /O Gestta não entregou o relatório de Set\/2026: o ritmo e a carga usam só Out\/2026, Nov\/2026, Dez\/2026\./, '0.111.2: o mês recusado aparece, sem derrubar a tela');
-  assert.match(await fr.textContent('.gsa-topo'), /4\s*e-mails não saíram no mês[\s\S]*1\s*abertas sem responsável[\s\S]*1\s*empresas atrasadas \+15 dias/);
+  assert.match(await fr.textContent('.gsa-topo'), /2\s*tarefas com falha de e-mail[\s\S]*1\s*abertas sem responsável[\s\S]*1\s*empresas atrasadas \+15 dias/);
   // carga: Ana tem 5 no próximo dia útil e ritmo 0,5 (22 concluídas em ~42 dias úteis): não vai dar tempo
   const ana = await fr.$eval('.gsa-grade', t => [...t.querySelectorAll('tbody tr')].find(r => /Ana Teste/.test(r.textContent)).textContent);
   assert.match(ana, /Ana Teste.*1 dia acima/s);
@@ -3376,10 +3379,16 @@ await passo('Gestta · Saúde (0.110.0): carga por dia com o ritmo, prioridade, 
   assert.doesNotMatch(ct, /Cliente Alfa Ltda/i, 'Alfa tem contato ativo com e-mail no Fiscal');
   const pc = await fr.evaluate(() => window.__msgs.filter(m => m.parte === 'contatos').map(m => m.cnpjs));
   assert.deepEqual(pc[0].sort(), ['11222333000181', '22333444000190'], 'só os CNPJs das tarefas que avisam o cliente');
-  // e-mails: só as que avisam e foram concluídas nos últimos 7 dias
+  // e-mails (0.115.0): a lista direta do Gestta chega sozinha; o motivo só pelo botão, uma tarefa por vez
+  await fr.waitForFunction(() => /tiveram falha de e-mail/.test(document.querySelector('#gsa-emails').textContent));
+  const em0 = await fr.textContent('#gsa-emails');
+  assert.match(em0, /2 tarefas concluídas tiveram falha de e-mail[\s\S]*Das do Simples[\s\S]*Guia do Fgts/i, 'da mais nova à mais velha');
+  assert.match(em0, /Remetente do escritório[\s\S]*DKIM falhou/i, 'o aviso do remetente na Saúde');
+  assert.match(await fr.textContent('[data-gsa-ir="emails"]'), /^2tarefas com falha de e-mail/, 'o número do topo é o da lista');
+  assert.equal(await fr.evaluate(() => window.__msgs.filter(m => m.parte === 'emails').length), 0, 'o histórico não é lido sozinho');
   await fr.click('[data-gsa-ler="emails"]');
-  await fr.waitForFunction(() => /não tem usuário neste setor/.test(document.querySelector('#gsa-emails').textContent));
-  assert.match(await fr.textContent('#gsa-emails'), /1 não saiu[\s\S]*1 entregue[\s\S]*0 sem e-mail[\s\S]*Guia do Fgts[\s\S]*o cliente não tem usuário neste setor/i);
+  await fr.waitForFunction(() => /não tem usuário neste setor: 1/.test(document.querySelector('#gsa-emails').textContent));
+  assert.match(await fr.textContent('#gsa-emails'), /Das do Simples[\s\S]*Entregue[\s\S]*Guia do Fgts[\s\S]*o cliente não tem usuário neste setor/i);
   assert.deepEqual((await fr.evaluate(() => window.__msgs.filter(m => m.parte === 'emails').map(m => m.ids)))[0].sort(), ['f00000000000000000000008', 'f00000000000000000000009']);
   // configuração: a empresa 6 não recebe a Apuração do ICMS, que 83% das parecidas recebem
   await fr.click('[data-gsa-ler="config"]');

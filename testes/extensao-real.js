@@ -368,6 +368,8 @@ assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br
     if (p === '/admin/customer/' + ID + '/responsible') return json([{ company_department: { _id: ID, name: 'Pessoal' }, company_user: { _id: ID2, name: 'Pessoa Ficticia', phone_number: '(27) 90000-0000' } }]);
     if (p === '/core/customer/task/search') {
       const c = JSON.parse(q.postData() || '{}'); gBuscas.push(c);
+      // 0.115.0: a lista direta das tarefas com falha de e-mail (o corpo da tela); a lista não traz o motivo
+      if (c.email_not_sent) return json({ docs: [{ _id: ID, name: 'GUIA DO FGTS', status: 'DONE', type: 'RECURRENT', customer: { _id: ID, name: 'EMPRESA FICTICIA LTDA', code: '9999', cnpj: '12.345.678/0001-90' }, owner: { _id: ID2, name: 'Pessoa Ficticia', email: 'dono@exemplo.com', picture: 'https://x.exemplo/f.png' }, due_date: '2026-11-10T03:00:00Z', conclusion_date: '2026-11-11T12:00:00Z', value: 77, protocol: 'PROTO-SEGREDO' }], totalDocs: 1, totalPages: 1, page: 1, limit: c.limit });
       if (c.limit === 1) return json({ docs: [{ _id: ID, name: 'TAREFA', status: 'OPEN' }], total: 6833, pages: 6833, page: 1, limit: 1 });
       // 0.85.0: com gCompOk o Gestta filtra pela competência; sem, recusa date_type COMPETENCE_DATE (400) e a meta de M é da competência M-1
       if (c.date_type === 'COMPETENCE_DATE' && !gCompOk) return json({ message: 'invalid date_type' }, 400);
@@ -393,6 +395,7 @@ assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br
     // 0.110.0 · aba Saúde
     if (p === '/core/dashboard/attention/email-not-sent/all') return json({ email_not_sent: 3 });
     if (p === '/admin/customer/count-without-task') return json({ count: 5 });
+    if (p === '/admin/company/email/domain') return json({ _id: ID, verified: true, email: 'escritorio@exemplo.com', domain: 'exemplo.com', company: ID, domain_status: 'VERIFIED', domain_txt_value: 'SEGREDO-DNS', domain_txt_name: 'txt', dkim_status: 'FAILED' });
     if (p === '/admin/customer/' + ID + '/accountable') return json([{ company_department: { _id: ID, name: 'Pessoal' }, customer_user: { _id: ID2, name: 'Contato Ficticio', email: 'contato@exemplo.com', active: true, phone_number: '(27) 90000-0000' } }]);
     if (p === '/admin/company/task') return json({ docs: [{ _id: ID, name: 'DCTF WEB', active: true, type: 'RECURRENT', frequency: 'MONTHLY', company_department: { _id: ID2, name: 'Fiscal' }, score: 9 }], totalDocs: 1, totalPages: 1 });
     if (p === '/admin/company/task/' + ID + '/customer') return json([{ customer: { _id: ID2, name: 'EMPRESA FICTICIA LTDA', cnpj: '12.345.678/0001-90' } }]);
@@ -542,9 +545,19 @@ assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br
   assert.ok(s4.ok, 'config: ' + (s4.erro || '')); assert.deepEqual(s4.templates, [{ id: ID, nome: 'DCTF WEB', setor: 'Fiscal', frequencia: 'MONTHLY', tipo: 'RECURRENT' }]);
   const s5 = await tt({ cmd: 'gesttaSaude', parte: 'configClientes', ids: [ID] });
   assert.ok(s5.ok); assert.deepEqual(s5.porTemplate[ID], [ID2]);
+  // 0.115.0: a lista direta das falhas de e-mail (uma busca com o corpo da tela) e o aviso do remetente (um GET do domínio)
+  const nBuscaS = gBuscas.length;
+  const sL = await tt({ cmd: 'gesttaSaude', parte: 'emailLista' });
+  assert.ok(sL.ok, 'emailLista: ' + (sL.erro || '')); assert.equal(sL.total, 1);
+  assert.deepEqual(sL.tarefas.map(t => [t.id, t.nome, t.cliente.nome, t.responsavel]), [[ID, 'GUIA DO FGTS', 'EMPRESA FICTICIA LTDA', 'Pessoa Ficticia']]);
+  { const c = gBuscas[nBuscaS]; assert.ok(c.email_not_sent === true && c.status.join() === 'DONE' && c.limit === 100 && Array.isArray(c.company_user) && c.company_user.length === 0, 'corpo da tela, sem filtrar pessoa na coordenação');
+    assert.ok((new Date(c.end_date) - new Date(c.start_date)) / 864e5 <= 31, 'a busca vai um mês por chamada'); }
+  const sR = await tt({ cmd: 'gesttaSaude', parte: 'remetente' });
+  assert.ok(sR.ok && sR.aviso.nivel === 'aviso' && /DKIM falhou/.test(sR.aviso.texto), 'remetente: ' + JSON.stringify(sR.aviso));
+  assert.deepEqual(Object.keys(sR.remetente).sort(), ['dkim_status', 'domain', 'domain_status', 'verified'], 'do domínio, só o estado');
   const novasS = gChamadas.slice(antesS);
   assert.ok(novasS.every(c => c.startsWith('GET ') || c === 'POST /core/customer/task/report' || c === 'POST /core/customer/task/search'), 'a Saúde só lê: ' + novasS.filter(c => !c.startsWith('GET ')).join(', '));
-  for (const v of ['contato@exemplo', '(27)', 'Contato Ficticio', 'destino@exemplo', 'smtp.exemplo', '"score"', 'SEGREDO', 'eyJ']) assert.ok(!JSON.stringify([s1, s2, s3, s4, s5]).includes(v), 'Saúde vazou: ' + v);
+  for (const v of ['contato@exemplo', '(27)', 'Contato Ficticio', 'destino@exemplo', 'smtp.exemplo', '"score"', 'SEGREDO', 'eyJ', 'dono@exemplo', 'escritorio@exemplo', 'PROTO']) assert.ok(!JSON.stringify([s1, s2, s3, s4, s5, sL, sR]).includes(v), 'Saúde vazou: ' + v);
   const sessS = await pagina.evaluate(() => chrome.storage.session.get(null)), locS = JSON.stringify(await pagina.evaluate(() => chrome.storage.local.get(null)));
   assert.ok(Object.keys(sessS).some(k => /^gtSaude-\d{4}-\d{2}$/.test(k)), 'relatório da Saúde na memória do Chrome');
   assert.ok(!locS.includes('gtSaude') && !locS.includes('accountable'), 'nada da Saúde no disco');
@@ -601,6 +614,10 @@ assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br
   gBuscas.length = 0;
   const t3 = await tt({ cmd: 'gesttaTarefas', quem: '6a5b4c3d2e1f00112233aabc' });
   assert.equal(t3.quem, 'eu', 'o analista não vê as tarefas de outra pessoa'); assert.ok(gBuscas.every(c => JSON.stringify(c.company_user) === JSON.stringify([ID2])));
+  { const nB = gBuscas.length, nC = gChamadas.length;
+    const a1 = await tt({ cmd: 'gesttaSaude', parte: 'emailLista' }), a2 = await tt({ cmd: 'gesttaSaude', parte: 'remetente' });
+    assert.ok(a1.ok && JSON.stringify(gBuscas[nB].company_user) === JSON.stringify([ID2]), '0.115.0: o analista só pede as falhas das tarefas dele');
+    assert.ok(a2.ok && a2.aviso.nivel === 'sem' && a2.remetente === null && !gChamadas.slice(nC).some(c => /email\/domain/.test(c)), '0.115.0: o remetente é só da coordenação'); }
   // sem sessão: não pede nada e diz o que fazer
   const antes = gChamadas.length;
   await gAba.evaluate(() => localStorage.removeItem('ngStorage-jwt'));
