@@ -360,6 +360,122 @@ async function gesttaFechamento(msg, sender) {
   try { await chrome.storage.session.set({ [chave]: dados }); } catch (e) { naMemoria = false; }       // grande demais para a memória: vale só nesta resposta
   return Object.assign({ ok: true, naMemoria, podeEm: 60 }, dados);
 }
+// 0.110.0 · aba Saúde da operação (Josué, 13/11/2026). Só leituras: o relatório do mês (o mesmo POST de leitura do Fechamento, no máximo
+// um por hora por mês, só no chrome.storage.session), os contatos de cada cliente (só setor, ativo e se tem e-mail; 6 h na memória do service
+// worker), o histórico de e-mail das tarefas (só situação, motivo e data), as contagens do painel e, para a coordenação, os templates de tarefa
+// e as empresas de cada um (6 h na memória). Sem acesso total: só as tarefas da própria pessoa e nada da configuração.
+const SAUDE_MESES = (h) => { const l = []; for (let i = -2; i <= 1; i++) { const d = new Date(h.getFullYear(), h.getMonth() + i, 1); l.push({ ano: d.getFullYear(), mes: d.getMonth() + 1 }); } return l; };
+const contatosCache = new Map(), clientesTplCache = new Map(); let templatesSaudeCache = null;
+async function perfilGestta(tab) {
+  const { r: r1 } = await lerGestta([OCG.PEDIDOS.me()], { tab });
+  if (!r1 || !r1.ok) return { ok: false, semSessao: !!(r1 && r1.semSessao), erro: (r1 && r1.motivo) || 'A aba do Gestta não respondeu (recarregue com F5).' };
+  const pf = r1.resultados[0] && r1.resultados[0].dados ? OCG.perfil(r1.resultados[0].dados) : null;
+  return pf && pf.ok ? { ok: true, pf } : { ok: false, erro: 'Não consegui saber quem está logado no Gestta.' };
+}
+async function relatorioSaude(tab, ano, mes, forcar) {
+  const chave = 'gtSaude-' + ano + '-' + String(mes).padStart(2, '0');
+  const g = (await chrome.storage.session.get(chave).catch(() => ({})))[chave];
+  if (g && (!forcar || Date.now() - new Date(g.lidoEm).getTime() < FECH_INTERVALO_MS)) return Object.assign({ ok: true, daMemoria: true }, g);
+  let x = null;
+  for (const filtro of OCG.filtrosRelatorio({ ano, mes })) {
+    const { r } = await lerGestta([OCG.PEDIDOS.saude({ ano, mes, filtro })], { tab });
+    x = r && r.resultados && r.resultados[0];
+    if (!x || x.status !== 400) { if (x && x.status === 200) OCG.lembrarFiltroRel(filtro); break; }
+  }
+  if (!x) return { ok: false, erro: 'A aba do Gestta não respondeu ao relatório.' };
+  if (x.status !== 200 || !x.dados) return { ok: false, erro: x.status === 403 ? 'Seu acesso do Gestta não inclui o relatório de tarefas.' : x.status === 401 ? 'A sessão do Gestta acabou: faça login de novo na aba.' : 'O relatório do Gestta não veio (' + (x.erro || x.recusado || x.status) + ').' };
+  const d = { colunas: x.dados.colunas, linhas: x.dados.linhas, lidoEm: new Date().toISOString() };
+  try { await chrome.storage.session.set({ [chave]: d }); } catch (e) {}
+  return Object.assign({ ok: true }, d);
+}
+async function gesttaSaude(msg, sender) {
+  const tab = await tabDoGestta(sender);
+  if (!tab) return { ok: false, semAba: true, erro: 'Abra o Gestta numa aba, já logado.' };
+  const p = await perfilGestta(tab); if (!p.ok) return p;
+  const pf = p.pf, parte = String(msg.parte || 'tarefas');
+  if (parte === 'tarefas') {
+    const h = new Date(), meses = SAUDE_MESES(h); let colunas = null, linhas = [], daMemoria = true;
+    for (const m of meses) {
+      const rel = await relatorioSaude(tab, m.ano, m.mes, !!msg.forcar);
+      if (!rel.ok) return { ok: false, erro: rel.erro };
+      if (!rel.daMemoria) daMemoria = false;
+      colunas = colunas || rel.colunas;
+      const ids = new Set(linhas.map(l => l[0]));
+      linhas = linhas.concat((rel.linhas || []).filter(l => !ids.has(l[0])));
+    }
+    // sem acesso total: só as tarefas da pessoa (responsável ou quem concluiu)
+    if (!pf.total) {
+      const iR = (colunas || []).indexOf('owner.name'), iC = (colunas || []).indexOf('concluded_by.name'), eu = String(pf.nome || '').trim().toLowerCase();
+      linhas = eu ? linhas.filter(l => String(l[iR] || '').trim().toLowerCase() === eu || String(l[iC] || '').trim().toLowerCase() === eu) : [];
+    }
+    const conta = async (ped) => { const { r } = await lerGestta([ped], { tab }); const x = r && r.resultados && r.resultados[0]; return x && x.status === 200 && x.dados ? x.dados : null; };
+    const em = await conta(OCG.PEDIDOS.emailNaoSaiu({ ano: h.getFullYear(), mes: h.getMonth() + 1 }));
+    const st = pf.total ? await conta(OCG.PEDIDOS.semTarefa()) : null;
+    return { ok: true, perfil: { nome: pf.nome, papelNome: pf.papelNome, total: pf.total, setores: pf.setores }, colunas: colunas || OCG.COLUNAS_SAUDE, linhas, meses: meses.map(m => OCG.mesTexto(m.ano, m.mes)),
+      emailNaoSaiu: em && typeof em.email_not_sent === 'number' ? em.email_not_sent : null, semTarefa: st && typeof st.n === 'number' ? st.n : null, daMemoria, lidoEm: new Date().toISOString() };
+  }
+  if (parte === 'contatos') {   // { cnpjs: [até 40] } → { porCnpj: { cnpj: [{ setor, ativo, temEmail }] } }
+    const cnpjs = [...new Set((Array.isArray(msg.cnpjs) ? msg.cnpjs : []).map(c => String(c || '').replace(/\D/g, '')).filter(c => c.length === 14))].slice(0, 40);
+    const c = await clientesGestta(tab); if (!c.ok) return c;
+    const porCnpj = {}, idDe = new Map(c.l.map(x => [x.cnpj, x.id])), ids = {};
+    for (const cnpj of cnpjs) {
+      const id = idDe.get(cnpj); if (!id) { porCnpj[cnpj] = null; continue; }
+      ids[cnpj] = id;
+      const k = contatosCache.get(id);
+      if (k && Date.now() - k.em < 6 * 3600e3) { porCnpj[cnpj] = k.l; continue; }
+      const { r } = await lerGestta([OCG.PEDIDOS.contatos({ cliente: id })], { tab });
+      const x = r && r.resultados && r.resultados[0];
+      if (!x || x.status === 401) return { ok: false, erro: 'A sessão do Gestta acabou: faça login de novo na aba.' };
+      if (x.status === 403) return { ok: false, erro: 'Seu acesso do Gestta não inclui os contatos dos clientes.' };
+      if (x.status !== 200 || !x.dados) { porCnpj[cnpj] = null; continue; }
+      const l = (x.dados.itens || []).map(v => ({ setor: String(v && v.company_department && v.company_department.name || ''), ativo: !(v && v.customer_user && v.customer_user.active === false), temEmail: !!(v && v.customer_user && String(v.customer_user.email || '').includes('@')) }));
+      contatosCache.set(id, { l, em: Date.now() }); porCnpj[cnpj] = l;
+    }
+    return { ok: true, porCnpj, ids };
+  }
+  if (parte === 'emails') {   // { ids: [até 15 tarefas] } → { porTarefa: { id: [{ status, reason, quando }] } }
+    const ids = [...new Set((Array.isArray(msg.ids) ? msg.ids : []).map(String).filter(x => /^[0-9a-f]{24}$/i.test(x)))].slice(0, 15);
+    const porTarefa = {};
+    for (const id of ids) {
+      const { r } = await lerGestta([OCG.PEDIDOS.historico({ id, types: 'EMAIL' })], { tab });
+      const x = r && r.resultados && r.resultados[0];
+      if (!x || x.status === 401) return { ok: false, erro: 'A sessão do Gestta acabou: faça login de novo na aba.', porTarefa };
+      if (x.status !== 200 || !x.dados) { porTarefa[id] = null; continue; }
+      porTarefa[id] = (x.dados.itens || []).filter(e => e && e.type === 'EMAIL').map(e => ({ status: e.status || '', reason: e.reason || '', quando: e.accomplished_at || e.created_at || '' }));
+    }
+    return { ok: true, porTarefa };
+  }
+  if (!pf.total) return { ok: false, erro: 'A configuração das empresas é só da coordenação (acesso total no Gestta).' };
+  if (parte === 'config') {   // os templates de tarefa ativos (nome, setor, frequência) e os clientes (id, nome, CNPJ)
+    if (!templatesSaudeCache || Date.now() - templatesSaudeCache.em > 6 * 3600e3) {
+      const l = [];
+      for (let pg = 1; pg <= 10; pg++) {
+        const { r } = await lerGestta([OCG.PEDIDOS.templatesTarefa({ limit: 200, page: pg })], { tab });
+        const x = r && r.resultados && r.resultados[0];
+        if (!x || x.status !== 200 || !x.dados) return { ok: false, erro: x && x.status === 403 ? 'Seu acesso do Gestta não inclui os templates de tarefa.' : 'Não consegui ler os templates de tarefa.' };
+        (x.dados.itens || []).forEach(t => { if (t && t._id && t.active !== false) l.push({ id: t._id, nome: String(t.name || ''), setor: String(t.company_department && t.company_department.name || ''), frequencia: String(t.frequency || ''), tipo: String(t.type || '') }); });
+        if (!(x.dados.itens || []).length || (x.dados.paginas && pg >= x.dados.paginas)) break;
+      }
+      templatesSaudeCache = { l, em: Date.now() };
+    }
+    const c = await clientesGestta(tab);
+    return { ok: true, templates: templatesSaudeCache.l, clientes: c.ok ? c.l.map(x => ({ id: x.id, nome: x.nome, cnpj: x.cnpj })) : [] };
+  }
+  if (parte === 'configClientes') {   // { ids: [até 20 templates] } → { porTemplate: { id: [ids de cliente] } }
+    const ids = [...new Set((Array.isArray(msg.ids) ? msg.ids : []).map(String).filter(x => /^[0-9a-f]{24}$/i.test(x)))].slice(0, 20), porTemplate = {};
+    for (const id of ids) {
+      const k = clientesTplCache.get(id);
+      if (k && Date.now() - k.em < 6 * 3600e3) { porTemplate[id] = k.ids; continue; }
+      const { r } = await lerGestta([OCG.PEDIDOS.clientesDoTemplate({ id })], { tab });
+      const x = r && r.resultados && r.resultados[0];
+      if (!x || x.status === 401) return { ok: false, erro: 'A sessão do Gestta acabou: faça login de novo na aba.', porTemplate };
+      if (x.status !== 200 || !x.dados) { porTemplate[id] = null; continue; }
+      clientesTplCache.set(id, { ids: x.dados.ids, em: Date.now() }); porTemplate[id] = x.dados.ids;
+    }
+    return { ok: true, porTemplate };
+  }
+  return { ok: false, erro: 'parte desconhecida' };
+}
 // Detalhe de uma tarefa para o painel lateral: um GET, id conferido; nada é guardado.
 async function gesttaTarefa(msg, sender) {
   const id = String(msg.id || '');
@@ -1559,6 +1675,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'gesttaClientesCnpj') { reply(await gesttaClientesCnpj(msg, sender)); }
       else if (msg.cmd === 'gesttaTirar') { reply(await gesttaTirar(msg, sender)); }
       else if (msg.cmd === 'gesttaFechamento') { reply(await gesttaFechamento(msg, sender)); }
+      else if (msg.cmd === 'gesttaSaude') { reply(await gesttaSaude(msg, sender)); }
       else if (msg.cmd === 'gesttaTarefa') { reply(await gesttaTarefa(msg, sender)); }
       else if (msg.cmd === 'gesttaHistorico') { reply(await gesttaHistorico(msg, sender)); }
       else if (msg.cmd === 'gesttaAcao') { reply(await gesttaAcao(msg, sender)); }

@@ -125,9 +125,9 @@
       customer_task_file: { _id: true, company_document: REF, file_name: true } },
     contagem: { fine: true, approve: true, email_not_sent: true, count: true },
     templateUm: null,
-    templateTarefa: { _id: true, name: true, active: true, subtype: true },   // 0.100.6: os templates de tarefa, para saber quais documentos estão em tarefa ativa
+    templateTarefa: { _id: true, name: true, active: true, subtype: true, type: true, frequency: true, company_department: SETOR },   // 0.110.0: frequência e setor (Saúde › Configuração)   // 0.100.6: os templates de tarefa, para saber quais documentos estão em tarefa ativa
     docsTemplateTarefa: { _id: true },
-    contagemFila: { n: true },   // definido logo abaixo (o mesmo molde do templateDoc)
+    contagemFila: { n: true }, numero: { n: true },   // definido logo abaixo (o mesmo molde do templateDoc)
     // 0.79.0: template de documento com o destino no portal (só nomes de pasta; nunca o arquivo modelo)
     templateDoc: { _id: true, name: true, automation_type: true, valid: true, bypass: true, send_documents_due_date: true,
       documents_integration: { customer_id: true, id: true, path: [true], pathName: [true] } },   // 0.97.0: a pasta inteira, para usar a mesma num template parecido
@@ -163,6 +163,11 @@
   function limpar(tipo, dados) {
     if (tipo === 'relatorio') return limparRelatorio(dados);
     if (tipo === 'fechamento') return limparRelatorio(dados, COLUNAS_FECHAMENTO);
+    if (tipo === 'relSaude') return limparRelatorio(dados, COLUNAS_SAUDE);
+    if (tipo === 'clientesDoTemplate') {   // 0.110.0: só os ids das empresas que recebem o template de tarefa
+      const l = Array.isArray(dados) ? dados : lista(dados);
+      return { ids: [...new Set(l.map(x => x && (x.customer && typeof x.customer === 'object' ? x.customer._id : typeof x.customer === 'string' ? x.customer : x._id)).filter(v => /^[0-9a-f]{24}$/i.test(String(v || ''))))] };
+    }
     const molde = MOLDES[tipo];
     if (!molde) return null;
     if (tipo === 'tarefaDetalhe') {
@@ -172,7 +177,7 @@
       return t;
     }
     if (tipo === 'me' || tipo === 'contagem' || tipo === 'templateUm') return escolher(dados, molde) || null;
-    if (tipo === 'contagemFila') {   // 0.100.7: o número de pendentes da fila do portal (número solto ou { count | total })
+    if (tipo === 'contagemFila' || tipo === 'numero') {   // 0.100.7: o número de pendentes da fila do portal (número solto ou { count | total })
       const n = typeof dados === 'number' ? dados : dados && typeof dados === 'object' ? [dados.count, dados.total, dados.onvio, dados.pending].find(v => typeof v === 'number') : undefined;
       return typeof n === 'number' && n >= 0 ? { n } : null;
     }
@@ -188,6 +193,8 @@
   // O relatório chega como lista de linhas planas (chaves com ponto) ou como objetos: sai só com as colunas permitidas.
   // Colunas que o Fechamento do mês usa (0.73.0): a tela guarda só estas, em linhas compactas, na memória do Chrome.
   const COLUNAS_FECHAMENTO = ['id', 'name', 'status', 'company_department.name', 'owner.name', '_due_date', 'legal_date', 'conclusion_date', 'on_time', 'fine', 'overdue', 'customer.code', 'customer.name', 'customer.cnpj'];
+  // 0.110.0 (aba Saúde): mais quem concluiu (o ritmo de cada pessoa) e se a tarefa avisa o cliente (contato no setor, e-mails)
+  const COLUNAS_SAUDE = COLUNAS_FECHAMENTO.concat(['notify_customer', 'concluded_by.name']);
   // A resposta do relatório vem em fluxo e o formato exato ainda é "a confirmar" no Gestta real: aceita lista JSON,
   // { docs | data | rows | records }, ou uma linha JSON por registro (NDJSON). Formato desconhecido devolve null
   // (a leitura vira "formato desconhecido", visível), nunca uma lista vazia em silêncio.
@@ -221,6 +228,7 @@
       return { _id: String(v(l, 'id') || ''), name: String(v(l, 'name') || ''), status: String(v(l, 'status') || '').toUpperCase(), fine: sim(v(l, 'fine')), overdue: sim(v(l, 'overdue')),
         due_date: v(l, '_due_date') || '', legal_date: v(l, 'legal_date') || '', conclusion_date: v(l, 'conclusion_date') || '', no_prazo: v(l, 'on_time') === '' ? null : sim(v(l, 'on_time')),
         setor: String(v(l, 'company_department.name') || ''), responsavel: String(v(l, 'owner.name') || ''),
+        notifica: i.notify_customer == null ? null : sim(v(l, 'notify_customer')), concluidoPor: String(v(l, 'concluded_by.name') || ''),
         customer: { _id: String(code || cnpj || v(l, 'customer.name') || '?'), name: String(v(l, 'customer.name') || ''), code: code === '' ? '' : String(code), cnpj: String(cnpj || '') } };
     });
   }
@@ -259,7 +267,7 @@
     const papel = String(me.role || '');
     const setores = (me.company_departments || []).filter(s => s && s._id).map(s => ({ id: s._id, nome: String(s.name || '') }));
     const total = papel === 'ROLE_ADMIN' || papel === 'ROLE_MANAGER' || me.root === true;
-    return { ok: true, id: me._id, papel, papelNome: PAPEIS[papel] || (papel ? 'Papel desconhecido (' + papel + ')' : 'Sem papel'), total, setores, ativo: me.active !== false };
+    return { ok: true, id: me._id, nome: String(me.name || ''), papel, papelNome: PAPEIS[papel] || (papel ? 'Papel desconhecido (' + papel + ')' : 'Sem papel'), total, setores, ativo: me.active !== false };
   }
 
   // Validade da sessão: só o campo exp do JWT, lido dentro da página. O token nunca é devolvido.
@@ -304,9 +312,14 @@
     buscaTarefas: (o) => ({ id: 'buscaTarefas', tipo: 'tarefa', metodo: 'POST', url: url('/core/customer/task/search'),
       corpo: Object.assign({ page: o.page || 1, limit: o.limit || 100, type: o.type || ['RECURRENT', 'SERVICE_ORDER', 'ACCOUNTING'], status: o.status || ['OPEN', 'IMPEDIMENT'], date_type: o.dataTipo === 'COMPETENCE_DATE' ? 'COMPETENCE_DATE' : 'DUE_DATE' }, janelaDoMes(o.ano, o.mes), o.companyUsers && o.companyUsers.length ? { company_user: o.companyUsers.slice(0, 300) } : o.companyUser ? { company_user: [o.companyUser] } : {}, o.semDono ? { no_owner: true } : {}) }),
     tarefa: (o) => ({ id: 'tarefa', tipo: 'tarefaDetalhe', metodo: 'GET', url: url('/core/customer/task/' + encodeURIComponent(o.id)) }),
-    historico: (o) => ({ id: 'historico', tipo: 'historico', metodo: 'GET', url: url('/core/customer/task/' + encodeURIComponent(o.id) + '/history', { page: o.page || 1 }) }),
+    historico: (o) => ({ id: 'historico', tipo: 'historico', metodo: 'GET', url: url('/core/customer/task/' + encodeURIComponent(o.id) + '/history', { page: o.page || 1, types: o.types }) }),
     relatorio: (o) => { const j = janelaDoMes(o.ano, o.mes); return { id: 'relatorio', tipo: 'relatorio', metodo: 'POST', url: url('/core/customer/task/report'), corpo: { type: 'CUSTOMER_TASK', filter: o.filtro != null ? String(o.filtro) : filtroRelOk, dates: { startDate: j.start_date, endDate: j.end_date } } }; },
     fechamento: (o) => Object.assign(PEDIDOS.relatorio(o), { id: 'fechamento', tipo: 'fechamento' }),
+    // 0.110.0 · aba Saúde (todas GET, menos o relatório, que é o mesmo POST de leitura do Fechamento)
+    saude: (o) => Object.assign(PEDIDOS.relatorio(o), { id: 'saude', tipo: 'relSaude' }),
+    emailNaoSaiu: (o) => ({ id: 'emailNaoSaiu', tipo: 'contagem', metodo: 'GET', url: url('/core/dashboard/attention/email-not-sent/all', janelaDoMes(o.ano, o.mes)) }),
+    semTarefa: () => ({ id: 'semTarefa', tipo: 'numero', metodo: 'GET', url: url('/admin/customer/count-without-task') }),
+    clientesDoTemplate: (o) => ({ id: 'clientesDoTemplate', tipo: 'clientesDoTemplate', metodo: 'GET', url: url('/admin/company/task/' + encodeURIComponent(o.id) + '/customer') }),
     filaOnvioTela: (o) => ({ id: 'filaOnvioTela', tipo: 'filaOnvioTela', metodo: 'GET', url: url('/es/file/onvio', { status: 'ERROR', limit: (o && o.limit) || 50, skip: (o && o.skip) || 0 }) }),
     filaOnvioErro: (o) => ({ id: 'filaOnvioErro', tipo: 'filaOnvio', metodo: 'GET', url: url('/es/file/onvio', { status: 'ERROR', limit: (o && o.limit) || 50, skip: (o && o.skip) || 0 }) }),
     multas: (o) => { const j = janelaDoMes(o.ano, o.mes); return { id: 'multas', tipo: 'contagem', metodo: 'GET', url: url('/core/dashboard/attention/fine/all', j) }; },
@@ -647,12 +660,21 @@
   const ddmm = d => d ? p2(d.getDate()) + '/' + p2(d.getMonth() + 1) : '';
   const util = d => d.getDay() !== 0 && d.getDay() !== 6;
   // dias úteis (seg a sex) de hoje (exclusive) até o alvo (inclusive); negativo para trás
-  function diasUteis(hoje, alvo) {
+  // 0.110.0: com os feriados do escritório (lista ou Set de 'AAAA-MM-DD'), quando vierem
+  const ehFeriado = (d, fer) => !!fer && (typeof fer.has === 'function' ? fer.has(ymd(d)) : Array.isArray(fer) && fer.includes(ymd(d)));
+  const diaUtil = (d, fer) => util(d) && !ehFeriado(d, fer);
+  function diasUteis(hoje, alvo, feriados) {
     const a = diaLocal(hoje), b = diaLocal(alvo); if (!a || !b) return null;
     if (+a === +b) return 0;
     const passo = b > a ? 1 : -1; let n = 0;
-    for (let d = new Date(a); +d !== +b;) { d.setDate(d.getDate() + passo); if (util(d)) n += passo; }
+    for (let d = new Date(a); +d !== +b;) { d.setDate(d.getDate() + passo); if (diaUtil(d, feriados)) n += passo; }
     return n;
+  }
+  // os próximos n dias úteis a partir de hoje (hoje entra se for útil), em 'AAAA-MM-DD'
+  function proximosDiasUteis(hoje, n, feriados) {
+    const out = [], d = diaLocal(hoje || new Date()); if (!d) return out;
+    for (let i = 0; out.length < n && i < 60; i++) { if (diaUtil(d, feriados)) out.push(ymd(d)); d.setDate(d.getDate() + 1); }
+    return out;
   }
   const diasCorridos = (hoje, alvo) => { const a = diaLocal(hoje), b = diaLocal(alvo); return a && b ? Math.round((b - a) / 864e5) : null; };
   // Ordem na tela: do que mais pesa ao que pode esperar
@@ -1260,7 +1282,155 @@
       templatesSemPasta: semPasta.length, naoVai: semPasta.filter(g => g.classe === 'naoVai').length, semNotificar: itens.filter(i => i.notifica === false).length, conferidas: itens.filter(i => i.notifica !== null).length, deve: semPasta.filter(g => g.classe === 'deve').length, risco: risco.length, templatesComPasta: comPasta.length } };
   }
 
-  g.OCG = { arquivosDoItem, setoresAtivos, lerQuemSetor, grupoTela, GRUPOS_TELA, SITUACOES_FILTRO, situacaoDe, fimCnpj, cnpjFormatado, enviosPortal, lerExpress, cnpjsDoTexto, cnpjValido, competenciasDoTexto, notaDocumento, sugerirDestinos, pastaForaDe, urlTemplate: (id) => /^[0-9a-f]{24}$/i.test(String(id || '')) ? 'https://app.gestta.com.br/admin/#/sidebar/document/edit/' + id + '/details' : '', semelhanca, parecidoComPasta, palavrasNome, ERROS_ENVIO, API, APP, PAUSA_MS, LIMITE_BUSCA, JANELA_MAX_DIAS, POST_LEITURA, RELATORIO_TIPOS, COLUNAS_RELATORIO, MOLDES, APPS,
+  /* ---------- 0.110.0 · aba Saúde da operação (Josué, 13/11/2026): o que o Gestta não mostra direito ----------
+     Tudo puro: as tarefas vêm do relatório do mês (tarefasDoRelatorio, com notifica e concluidoPor), os contatos só como
+     { setor, ativo, temEmail } (nunca nome, e-mail ou telefone) e o histórico de e-mail só como situação, motivo e data. */
+  const MOTIVO_EMAIL = { NOT_SENT_NO_CUSTOMER_ACCOUNTABLE: 'o cliente não tem usuário neste setor', NO_CUSTOMER_ACCOUNTABLE: 'o cliente não tem usuário neste setor', NO_EMAIL: 'o contato não tem e-mail', INVALID_EMAIL: 'o e-mail do contato é inválido', BOUNCE: 'o e-mail voltou (endereço não existe ou caixa cheia)', BOUNCED: 'o e-mail voltou (endereço não existe ou caixa cheia)', SPAM: 'o e-mail foi marcado como spam', BLOCKED: 'o servidor do cliente bloqueou o e-mail' };
+  const motivoEmail = (r) => r ? (MOTIVO_EMAIL[String(r).toUpperCase()] || 'motivo do Gestta: ' + String(r).toLowerCase().replace(/_/g, ' ')) : 'o Gestta não disse o motivo';
+  const chaveCli = (c) => c ? String(c.cnpj || '').replace(/\D/g, '') || (c.code ? 'cod:' + c.code : '') : '';
+  // 1 · tarefas que avisam o cliente, por empresa × setor, onde o setor não tem contato que receba
+  // contatos: { [cnpj]: [{ setor, ativo, temEmail }] } (cliente não lido = ausente: fica fora e conta em naoLidos)
+  function semContatoNoSetor(tarefas, contatos) {
+    const grupos = new Map(); let naoLidos = 0; const vistosNaoLidos = new Set();
+    for (const t of tarefas || []) {
+      if (!t || t.notifica !== true || !t.customer || !t.setor || ['IGNORED', 'DISCONSIDERED'].includes(t.status)) continue;
+      const k = chaveCli(t.customer); if (!k) continue;
+      const lista = contatos && contatos[k];
+      if (!Array.isArray(lista)) { if (!vistosNaoLidos.has(k)) { vistosNaoLidos.add(k); naoLidos++; } continue; }
+      const g = k + '|' + semAcento(t.setor);
+      if (!grupos.has(g)) {
+        const doSetor = lista.filter(c => c && semAcento(c.setor) === semAcento(t.setor));
+        const ativos = doSetor.filter(c => c.ativo !== false), comEmail = ativos.filter(c => c.temEmail);
+        const motivo = !doSetor.length ? 'nenhum' : !ativos.length ? 'inativo' : !comEmail.length ? 'semEmail' : '';
+        grupos.set(g, { cnpj: k.startsWith('cod:') ? '' : k, cliente: t.customer.name || '', code: t.customer.code || '', setor: t.setor, motivo, tarefas: [] });
+      }
+      grupos.get(g).tarefas.push({ id: t._id, nome: t.name, status: t.status, meta: t.due_date });
+    }
+    const ROT = { nenhum: 'Nenhum contato no setor', inativo: 'Os contatos do setor estão inativos', semEmail: 'Os contatos do setor não têm e-mail' };
+    const casos = [...grupos.values()].filter(g => g.motivo).map(g => Object.assign(g, { rot: ROT[g.motivo], n: g.tarefas.length }))
+      .sort((a, b) => b.n - a.n || String(a.cliente).localeCompare(String(b.cliente), 'pt-BR'));
+    return { casos, naoLidos, tarefasAfetadas: casos.reduce((n, c) => n + c.n, 0) };
+  }
+  // 2 · o que aconteceu com o e-mail ao cliente de uma tarefa, pelos eventos EMAIL do histórico ({ status, reason, quando })
+  function vereditoEmail(eventos) {
+    const l = (eventos || []).filter(e => e && e.status).sort((a, b) => String(b.quando).localeCompare(String(a.quando)));
+    if (!l.length) return { v: 'semEmail', rot: 'Nenhum e-mail registrado', quando: '' };
+    const ult = l[0], st = String(ult.status).toUpperCase();
+    if (st === 'NOT_SENT') return { v: 'naoSaiu', rot: 'Não saiu', motivo: motivoEmail(ult.reason), quando: ult.quando };
+    if (st === 'DELIVERY' || st === 'DELIVERED') return { v: 'entregue', rot: 'Entregue', quando: ult.quando };
+    if (st === 'SENT') return { v: 'saiu', rot: 'Saiu (sem confirmação de entrega)', quando: ult.quando };
+    return { v: 'outro', rot: 'Situação do Gestta: ' + st.toLowerCase(), quando: ult.quando };
+  }
+  // tarefas que avisam o cliente e foram concluídas nos últimos n dias (as que vale conferir o e-mail), da mais nova à mais velha
+  function tarefasParaEmail(tarefas, hoje, dias) {
+    const h = diaLocal(hoje || new Date()), lim = new Date(h); lim.setDate(lim.getDate() - (dias || 7));
+    return (tarefas || []).filter(t => t && t.notifica === true && t.status === 'DONE' && t.conclusion_date && diaLocal(t.conclusion_date) >= lim)
+      .sort((a, b) => String(b.conclusion_date).localeCompare(String(a.conclusion_date)));
+  }
+  // 3 · ritmo: concluídas por dia útil nos 2 meses anteriores ao de hoje, por quem concluiu (sem isso, o responsável)
+  function ritmoPorPessoa(tarefas, hoje, feriados) {
+    const h = diaLocal(hoje || new Date()), ini = new Date(h.getFullYear(), h.getMonth() - 2, 1), fim = new Date(h.getFullYear(), h.getMonth(), 0);
+    let dias = 0; for (const d = new Date(ini); d <= fim; d.setDate(d.getDate() + 1)) if (diaUtil(d, feriados)) dias++;
+    const m = new Map();
+    for (const t of tarefas || []) {
+      if (!t || t.status !== 'DONE' || !t.conclusion_date) continue;
+      const c = diaLocal(t.conclusion_date); if (!c || c < ini || c > fim) continue;
+      const quem = String(t.concluidoPor || t.responsavel || '').trim(); if (!quem) continue;
+      m.set(quem, (m.get(quem) || 0) + 1);
+    }
+    const out = {}; for (const [nome, feitas] of m) out[nome] = { nome, feitas, dias, ritmo: dias ? Math.round(feitas / dias * 10) / 10 : 0 };
+    return out;
+  }
+  // carga por pessoa × próximos dias úteis (pela meta), com a capacidade = ritmo da pessoa ou o número que o gestor pôs
+  function cargaPorDia(tarefas, hoje, o) {
+    o = o || {};
+    const h = diaLocal(hoje || new Date()), dias = proximosDiasUteis(h, o.dias || 10, o.feriados), ultimo = dias[dias.length - 1];
+    const ritmo = o.ritmo || {}, cap = o.cap || {}, pessoas = new Map();
+    const pessoa = (nome) => {
+      if (!pessoas.has(nome)) {
+        const manual = Number(cap[nome]) > 0 ? Number(cap[nome]) : null, r = ritmo[nome] && ritmo[nome].ritmo > 0 ? ritmo[nome].ritmo : null;
+        pessoas.set(nome, { nome, cap: manual || r || null, origemCap: manual ? 'manual' : r ? 'ritmo' : 'sem', atrasadas: [], porDia: new Map(dias.map(d => [d, []])) });
+      }
+      return pessoas.get(nome);
+    };
+    for (const t of tarefas || []) {
+      if (!t || !ABERTA.has(t.status) || !t.due_date) continue;
+      const nome = String(t.responsavel || '').trim() || 'Sem responsável', d = diaLocal(t.due_date); if (!d) continue;
+      const k = ymd(d);
+      if (d < h) pessoa(nome).atrasadas.push(t._id);
+      else if (k <= ultimo) { const p = pessoa(nome), dia = dias.includes(k) ? k : dias.find(x => x >= k); if (dia) p.porDia.get(dia).push(t._id); }
+    }
+    const alertas = [];
+    const lista = [...pessoas.values()].map(p => {
+      const celulas = dias.map((d, i) => {
+        const ids = p.porDia.get(d), n = ids.length + (i === 0 ? p.atrasadas.length : 0);
+        const acima = p.cap ? Math.max(0, Math.ceil(n - p.cap)) : 0;
+        if (acima > 0) alertas.push({ nome: p.nome, dia: d, n, cap: p.cap, acima });
+        return { dia: d, ids, n: ids.length, carga: n, acima };
+      });
+      return { nome: p.nome, cap: p.cap, origemCap: p.origemCap, atrasadas: p.atrasadas, celulas, total: celulas.reduce((s, c) => s + c.n, 0) + p.atrasadas.length, diasAcima: celulas.filter(c => c.acima).length };
+    }).sort((a, b) => (a.nome === 'Sem responsável') - (b.nome === 'Sem responsável') || b.diasAcima - a.diasAcima || b.total - a.total || a.nome.localeCompare(b.nome, 'pt-BR'));
+    return { dias, pessoas: lista, alertas };
+  }
+  // a fila do que fazer primeiro: 1 multa ou data legal vencida · 2 data legal em até 1 dia útil · 3 meta vencida ·
+  // 4 num dia acima do ritmo · 5 o resto pela data legal (sem ela, pela meta)
+  const NIVEIS_PRIORIDADE = ['', 'Multa ou data legal vencida', 'Data legal em até 1 dia útil', 'Meta vencida', 'Dia acima do ritmo', 'Pela data legal'];
+  function prioridade(tarefas, hoje, o) {
+    o = o || {};
+    const h = diaLocal(hoje || new Date()), sobre = o.sobrecarregadas && typeof o.sobrecarregadas.has === 'function' ? o.sobrecarregadas : new Set(o.sobrecarregadas || []);
+    return (tarefas || []).filter(t => t && ABERTA.has(t.status)).map(t => {
+      const leg = t.legal_date ? diaLocal(t.legal_date) : null, meta = t.due_date ? diaLocal(t.due_date) : null;
+      const du = leg ? diasUteis(h, leg, o.feriados) : null;
+      const nivel = t.fine || (leg && leg < h) ? 1 : du != null && du <= 1 ? 2 : meta && meta < h ? 3 : sobre.has(t._id) ? 4 : 5;
+      return { t, nivel, motivo: NIVEIS_PRIORIDADE[nivel], ref: ymd(leg || meta) || '9999' };
+    }).sort((a, b) => a.nivel - b.nivel || a.ref.localeCompare(b.ref) || String(a.t.name).localeCompare(String(b.t.name), 'pt-BR'));
+  }
+  // 4 · configuração das empresas pela demanda: as empresas com o mesmo conjunto de setores formam um perfil; dentro do perfil,
+  // "falta" = template que ≥ 80 % das parecidas recebem e esta não; "sobra" = template que ≤ 10 % das parecidas recebem.
+  // templates: [{ id, nome, setor }]; porTemplate: { idTemplate: [idCliente] }; clientes: { idCliente: { nome, cnpj } }
+  function sugestoesConfig(templates, porTemplate, clientes, o) {
+    o = o || {};
+    const minGrupo = o.minGrupo || 5, falta = o.falta || 0.8, sobra = o.sobra || 0.1;
+    const tpl = new Map((templates || []).filter(t => t && t.id).map(t => [t.id, t]));
+    const doCliente = new Map();
+    for (const [tid, ids] of Object.entries(porTemplate || {})) { if (!tpl.has(tid)) continue; for (const c of ids || []) { if (!doCliente.has(c)) doCliente.set(c, new Set()); doCliente.get(c).add(tid); } }
+    const perfis = new Map();
+    for (const [c, ts] of doCliente) {
+      const setores = [...new Set([...ts].map(t => semAcento(tpl.get(t).setor || '')).filter(Boolean))].sort();
+      const k = setores.join('+') || '(sem setor)';
+      if (!perfis.has(k)) perfis.set(k, { chave: k, setores: [...new Set([...ts].map(t => tpl.get(t).setor).filter(Boolean))], clientes: [] });
+      perfis.get(k).clientes.push(c);
+    }
+    const out = { falta: [], sobra: [], perfis: [] };
+    for (const p of perfis.values()) {
+      const n = p.clientes.length;
+      out.perfis.push({ setores: p.setores, n });
+      if (n < minGrupo) continue;
+      const conta = new Map();
+      p.clientes.forEach(c => doCliente.get(c).forEach(t => conta.set(t, (conta.get(t) || 0) + 1)));
+      for (const [tid, k] of conta) {
+        const pct = k / n, t = tpl.get(tid);
+        if (pct >= falta && pct < 1) p.clientes.filter(c => !doCliente.get(c).has(tid)).forEach(c => out.falta.push({ cliente: c, nomeCliente: (clientes && clientes[c] && clientes[c].nome) || '', cnpj: (clientes && clientes[c] && clientes[c].cnpj) || '', template: tid, nomeTemplate: t.nome, setor: t.setor || '', pct: Math.round(pct * 100), grupo: n }));
+        if (pct <= sobra && n >= minGrupo * 2) p.clientes.filter(c => doCliente.get(c).has(tid)).forEach(c => out.sobra.push({ cliente: c, nomeCliente: (clientes && clientes[c] && clientes[c].nome) || '', cnpj: (clientes && clientes[c] && clientes[c].cnpj) || '', template: tid, nomeTemplate: t.nome, setor: t.setor || '', pct: Math.round(pct * 100), grupo: n }));
+      }
+    }
+    const ord = (a, b) => b.pct - a.pct || String(a.nomeCliente).localeCompare(String(b.nomeCliente), 'pt-BR');
+    out.falta.sort(ord); out.sobra.sort((a, b) => a.pct - b.pct || String(a.nomeCliente).localeCompare(String(b.nomeCliente), 'pt-BR'));
+    out.perfis.sort((a, b) => b.n - a.n);
+    return out;
+  }
+  // extras: as abertas sem responsável e as empresas com tarefa atrasada há mais de n dias
+  function extrasSaude(tarefas, hoje, dias) {
+    const h = diaLocal(hoje || new Date()), lim = new Date(h); lim.setDate(lim.getDate() - (dias || 15));
+    const abertas = (tarefas || []).filter(t => t && ABERTA.has(t.status));
+    const semDono = abertas.filter(t => !String(t.responsavel || '').trim());
+    const velhas = abertas.filter(t => t.due_date && diaLocal(t.due_date) < lim), emp = new Map();
+    velhas.forEach(t => { const k = chaveCli(t.customer) || t.customer && t.customer.name || '?'; if (!emp.has(k)) emp.set(k, { cliente: t.customer && t.customer.name || '', cnpj: t.customer && t.customer.cnpj || '', tarefas: [] }); emp.get(k).tarefas.push(t); });
+    return { semDono, atrasoLongo: [...emp.values()].sort((a, b) => b.tarefas.length - a.tarefas.length || a.cliente.localeCompare(b.cliente, 'pt-BR')), velhas };
+  }
+  const urlCliente = (id) => /^[0-9a-f]{24}$/i.test(String(id || '')) ? APP + '/admin/#/sidebar/customer/edit/' + id + '/details' : '';
+
+  g.OCG = { semContatoNoSetor, vereditoEmail, tarefasParaEmail, ritmoPorPessoa, cargaPorDia, prioridade, NIVEIS_PRIORIDADE, sugestoesConfig, extrasSaude, urlCliente, proximosDiasUteis, motivoEmail, COLUNAS_SAUDE, arquivosDoItem, setoresAtivos, lerQuemSetor, grupoTela, GRUPOS_TELA, SITUACOES_FILTRO, situacaoDe, fimCnpj, cnpjFormatado, enviosPortal, lerExpress, cnpjsDoTexto, cnpjValido, competenciasDoTexto, notaDocumento, sugerirDestinos, pastaForaDe, urlTemplate: (id) => /^[0-9a-f]{24}$/i.test(String(id || '')) ? 'https://app.gestta.com.br/admin/#/sidebar/document/edit/' + id + '/details' : '', semelhanca, parecidoComPasta, palavrasNome, ERROS_ENVIO, API, APP, PAUSA_MS, LIMITE_BUSCA, JANELA_MAX_DIAS, POST_LEITURA, RELATORIO_TIPOS, COLUNAS_RELATORIO, MOLDES, APPS,
     caminhoDe, leituraPermitida, escritaPermitida, pedidoAcao, agirNaPagina, ARQ_MAX, appDe, escolher, limpar, limparRelatorio, perfil, expiraEm, janelaDoMes, PEDIDOS, lerNaPagina, linhasDoTeste,
     GRUPOS, TIPOS_TAREFA, SITUACOES_TAREFA, MAX_PAGINAS_TAREFAS, diasUteis, grupoTarefa, prazoTexto, contarGrupos, porEmpresa, porDia, filtrarTarefas, urlTarefa, ymd, diaLocal,
     COLUNAS_FECHAMENTO, linhasDoRelatorio, tarefasDoRelatorio, trilhaDaEmpresa, fechamento, ESTADOS, setorDe, respDe, ehEscritorioProprio,
