@@ -239,9 +239,9 @@ function blocoExtras(ex) {
 
 export function desenharSaude(v, sub) {
   if (!S.dados) {
-    sub('Saúde da operação');
-    v.innerHTML = S.erro ? '<div class="faixa"><svg class="ic"><use href="#i-alert"/></svg><div style="flex:1;min-width:240px"><b>Não consegui ler a saúde da operação.</b> ' + esc(S.erro.erro || '') + '</div><button type="button" class="btn btn-sm" data-gsa-reler>Tentar de novo</button></div>'
-      : '<div class="gt-esq-tela" role="status" aria-label="Lendo a saúde da operação"><p class="fraco">Lendo no Gestta o relatório de tarefas dos últimos meses…</p></div>';
+    sub('Gestão da operação');
+    v.innerHTML = S.erro ? '<div class="faixa"><svg class="ic"><use href="#i-alert"/></svg><div style="flex:1;min-width:240px"><b>Não consegui ler a gestão da operação.</b> ' + esc(S.erro.erro || '') + '</div><button type="button" class="btn btn-sm" data-gsa-reler>Tentar de novo</button></div>'
+      : '<div class="gt-esq-tela" role="status" aria-label="Lendo a gestão da operação"><p class="fraco">Lendo no Gestta o relatório de tarefas dos últimos meses…</p></div>';
     return;
   }
   const D = S.dados, total = !!D.perfil.total, hoje = hojeD(), fer = S.feriados;
@@ -252,9 +252,9 @@ export function desenharSaude(v, sub) {
   const ex = G.extrasSaude(S.tarefas, hoje, 15);
   S._celTarefas = null;
   const bC = blocoContatos(), bE = blocoEmails(), bK = blocoCarga(carga, prio), bG = total ? blocoConfig() : null;
-  sub('Saúde da operação · ' + (total ? 'equipe toda' : 'as suas tarefas') + ' · lido às ' + new Date(D.lidoEm).toTimeString().slice(0, 5));
+  sub('Gestão da operação · ' + (total ? 'equipe toda' : 'as suas tarefas') + ' · lido às ' + new Date(D.lidoEm).toTimeString().slice(0, 5));
   const kpi = (n, rot, alvo, cls, dica) => '<button type="button" class="gte-kpi ' + cls + '" data-gsa-ir="' + alvo + '" title="' + esc(dica) + '"><b>' + (n == null ? '—' : num(n)) + '</b><span>' + esc(rot) + '</span></button>';
-  let h = '<section class="gte-topo cfg-card gsa-topo"><div class="gte-tit"><h2>Saúde da operação</h2><p' + (simples() ? ' class="ajuda"' : '') + '>O que o Gestta não mostra direito: o e-mail que não chega ao cliente, a tarefa que avisa sem contato no setor, quando não vai dar tempo e o que vem primeiro' + (total ? ', e a configuração das tarefas de cada empresa' : '') + '. Só leitura; ' + (total ? 'a equipe toda.' : 'só as suas tarefas.') + '</p></div>' +
+  let h = '<section class="gte-topo cfg-card gsa-topo"><div class="gte-tit"><h2>Gestão da operação</h2><p' + (simples() ? ' class="ajuda"' : '') + '>O que o Gestta não mostra direito: o e-mail que não chega ao cliente, a tarefa que avisa sem contato no setor, quando não vai dar tempo e o que vem primeiro' + (total ? ', e a configuração das tarefas de cada empresa' : '') + '. Só leitura; ' + (total ? 'a equipe toda.' : 'só as suas tarefas.') + '</p></div>' +
     '<div class="gte-kpis">' + kpi(S.falhas ? S.falhas.lista.length : D.emailNaoSaiu, S.falhas ? 'tarefas com falha de e-mail' : 'e-mails não saíram no mês', 'emails', 'gte-k-erro', S.falhas ? 'Tarefas concluídas com falha na entrega do e-mail (a lista do Gestta)' : 'Do painel do Gestta (atenção: e-mail não enviado)') +
     kpi(bC.n, 'empresas × setor sem contato', 'contatos', 'gte-k-erro', 'Tarefas que avisam o cliente e o setor não tem contato com e-mail (confira os contatos)') +
     kpi(carga.alertas.length, 'dias acima do ritmo', 'carga', 'gte-k-erro', 'Pessoa × dia em que a carga passa da capacidade') +

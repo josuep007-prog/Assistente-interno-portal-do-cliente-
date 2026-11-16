@@ -275,11 +275,11 @@ function aoVivo() {
   }
   if (E.aba === 'saude') {   // 0.110.0
     const S = estadoSaude(); $('#btn-atualizar').classList.toggle('girando', S.carregando);
-    if (S.carregando) { tx.textContent = 'Lendo a saúde…'; return; }
+    if (S.carregando) { tx.textContent = 'Lendo a gestão…'; return; }
     if (S.erro) { el.classList.add('erro'); tx.textContent = 'Falha na leitura'; return; }
     if (!S.dados) { tx.textContent = 'Aguardando'; return; }
     const he = new Date(S.dados.lidoEm), hme = String(he.getHours()).padStart(2, '0') + ':' + String(he.getMinutes()).padStart(2, '0');
-    el.classList.add('ok'); tx.textContent = simples() ? hme : 'Lido às ' + hme; el.title = 'Saúde da operação lida às ' + hme; return;
+    el.classList.add('ok'); tx.textContent = simples() ? hme : 'Lido às ' + hme; el.title = 'Gestão da operação lida às ' + hme; return;
   }
   if (E.aba === 'envios') {   // 0.96.0
     const S = estadoEnvios(); $('#btn-atualizar').classList.toggle('girando', S.carregando);
