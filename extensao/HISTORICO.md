@@ -2,6 +2,14 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.117.0 (16/11/2026): Tarefas do Gestta mais rápidas, setores à vista e só Pessoal, Contábil e Fiscal
+
+- Josué: "ainda demora muito pra carregar as seleções, precisamos também melhorar os filtros de analista/setor e deixá-los mais intuitivos … e limite também a extensão aos setores pessoal, contábil e fiscal".
+  - **Só os três setores:** a busca de tarefas leva o filtro de setor do próprio Gestta (`company_department`, como a tela do Gestta faz) com os setores Pessoal, Contábil e Fiscal, achados pelo nome no cadastro de setores. Fechamento, Saúde, Guias da folha e a contagem dos setores usam só as linhas desses setores. Outros setores (Recepção, Societário, Financeiro…) não aparecem nas Tarefas do Gestta. O envio ao Hub não mudou.
+  - **Setores à vista:** no topo, "Ver tarefas de" com **Minhas**, um botão por setor (com as abertas do mês) e **Sem responsável**: um clique troca a visão, sem abrir janela. O botão ao lado escolhe **as pessoas** do setor e, já num setor, abre direto a lista delas.
+  - **Mais rápido:** escolher um setor faz uma busca só, filtrada pelo setor no próprio Gestta. Antes a extensão lia as tarefas de todas as pessoas do setor e depois o relatório do mês para separar pelo setor (o que mais demorava). As últimas 8 visões (competência × de quem) ficam 10 minutos na memória desta tela: voltar a uma delas mostra na hora e a releitura acontece por trás.
+  - Se o Gestta recusar o filtro de setor (400), a busca volta a ir sem ele e a tela separa pelo relatório, como antes.
+
 ## Novidades da v0.116.0 (16/11/2026): Guias da folha, fase 1 (só leitura)
 
 - Aba nova **Guias da folha** nas Tarefas do Gestta (tecla 9), pedida pelo Josué em 13/11/2026, com o escopo de 16/11/2026 (só FGTS; DCTFWeb pausada). Mapa em `mapeamento/guias-fgts-dctfweb.md`, desenho em `guias-fgts-dctfweb-desenho.md`.
