@@ -1,6 +1,6 @@
 # Mapeamento · guias de FGTS e DCTFWeb (16/11/2026)
 
-Resultado do roteiro de 13/11/2026, executado em 16/11/2026 numa empresa de teste (competência 09/2026 para leitura; 10/2026 para o teste de emissão no FGTS Digital). Nenhum token, cookie, CPF, nome, CNPJ, número de guia nem valor em reais: ids, CNPJs, números de guia e competências aparecem como `{id}`, `{cnpj}`, `{numero}`, `{competencia}`.
+**Empresa de teste das guias: código 985 no Gestta** (confirmado pelo Josué em 16/11/2026). Resultado do roteiro de 13/11/2026, executado em 16/11/2026 numa empresa de teste (competência 09/2026 para leitura; 10/2026 para o teste de emissão no FGTS Digital). Nenhum token, cookie, CPF, nome, CNPJ, número de guia nem valor em reais: ids, CNPJs, números de guia e competências aparecem como `{id}`, `{cnpj}`, `{numero}`, `{competencia}`.
 
 **Escopo atual: só FGTS (FGTS Digital).** O e-CAC/DCTFWeb ficou de lado por decisão do Josué (o site está em mudança e o captcha complica); o que foi observado dele está na seção 4, parcial. Não testado: validade da URL assinada do PDF; se emitir de novo a mesma competência gera outra guia ou devolve a mesma.
 
