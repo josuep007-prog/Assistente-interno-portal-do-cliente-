@@ -277,7 +277,7 @@
   // (da equipe do Gestta; quem tem tarefa aberta no setor primeiro, com a quantidade).
   function setoresAtivos(tarefasRel, equipe) {
     const sem = s => semAcento(String(s || '')).trim();
-    const abertas = (tarefasRel || []).filter(t => t && (t.status === 'OPEN' || t.status === 'IMPEDIMENT') && t.setor);
+    const abertas = (tarefasRel || []).filter(t => t && (t.status === 'OPEN' || t.status === 'IMPEDIMENT') && t.setor && setorPermitido(t.setor));
     const m = new Map();
     for (const t of abertas) {
       const k = sem(t.setor);
@@ -294,8 +294,18 @@
   // 0.111.0: os setores do cadastro de equipe, para o De quem aparecer na hora (abertas: null = ainda sem o relatório do mês)
   function setoresDaEquipe(equipe) {
     const sem = s => semAcento(String(s || '')).trim(), m = new Map();
-    for (const p of equipe || []) for (const nome of p.setores || []) { const k = sem(nome); if (!k) continue; if (!m.has(k)) m.set(k, { nome, abertas: null, pessoas: [] }); m.get(k).pessoas.push({ id: p.id, nome: p.nome, abertas: 0 }); }
+    for (const p of equipe || []) for (const nome of p.setores || []) { const k = sem(nome); if (!k || !setorPermitido(nome)) continue; if (!m.has(k)) m.set(k, { nome, abertas: null, pessoas: [] }); m.get(k).pessoas.push({ id: p.id, nome: p.nome, abertas: 0 }); }
     return [...m.values()].map(x => Object.assign(x, { pessoas: x.pessoas.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')) })).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  }
+  // 0.117.0 (Josué, 16/11/2026: "limite também a extensão aos setores pessoal, contábil e fiscal"): só estes três módulos, pelo nome do setor
+  // do Gestta (o mesmo jeito do Hub: Pessoal/DP, Contábil, Fiscal). Setor com outro nome não aparece nas Tarefas do Gestta.
+  const MODULOS_SETOR = [['Pessoal', /pessoal|(^|[^a-z])dp([^a-z]|$)|folha/], ['Contábil', /contab/], ['Fiscal', /fiscal/]];
+  const moduloDoSetor = (nome) => { const n = semAcento(String(nome || '')).trim(); if (!n) return ''; const m = MODULOS_SETOR.find(([, re]) => re.test(n)); return m ? m[0] : ''; };
+  const setorPermitido = (nome) => !!moduloDoSetor(nome);
+  // linhas do relatório (colunas com 'company_department.name') só dos setores permitidos; linha sem setor fica (não dá para julgar)
+  function soSetoresPermitidos(colunas, linhas) {
+    const i = (colunas || []).indexOf('company_department.name'); if (i < 0) return linhas || [];
+    return (linhas || []).filter(l => !String(l[i] || '').trim() || setorPermitido(l[i]));
   }
   // "setor:Fiscal" (todas as pessoas do setor) ou "setor:Fiscal|id1,id2" (só essas)
   function lerQuemSetor(q) {
@@ -357,7 +367,7 @@
     cartela: (o) => ({ id: 'cartela', tipo: 'cartela', metodo: 'GET', url: url('/admin/customer/' + encodeURIComponent(o.cliente) + '/responsible') }),
     contatos: (o) => ({ id: 'contatos', tipo: 'contatos', metodo: 'GET', url: url('/admin/customer/' + encodeURIComponent(o.cliente) + '/accountable') }),
     buscaTarefas: (o) => ({ id: 'buscaTarefas', tipo: 'tarefa', metodo: 'POST', url: url('/core/customer/task/search'),
-      corpo: Object.assign({ page: o.page || 1, limit: o.limit || 100, type: o.type || ['RECURRENT', 'SERVICE_ORDER', 'ACCOUNTING'], status: o.status || ['OPEN', 'IMPEDIMENT'], date_type: o.dataTipo === 'COMPETENCE_DATE' ? 'COMPETENCE_DATE' : 'DUE_DATE' }, janelaDoMes(o.ano, o.mes), o.companyUsers && o.companyUsers.length ? { company_user: o.companyUsers.slice(0, 300) } : o.companyUser ? { company_user: [o.companyUser] } : {}, o.semDono ? { no_owner: true } : {}) }),
+      corpo: Object.assign({ page: o.page || 1, limit: o.limit || 100, type: o.type || ['RECURRENT', 'SERVICE_ORDER', 'ACCOUNTING'], status: o.status || ['OPEN', 'IMPEDIMENT'], date_type: o.dataTipo === 'COMPETENCE_DATE' ? 'COMPETENCE_DATE' : 'DUE_DATE' }, janelaDoMes(o.ano, o.mes), o.companyDepartments && o.companyDepartments.length ? { company_department: o.companyDepartments.slice(0, 30) } : {}, o.companyUsers && o.companyUsers.length ? { company_user: o.companyUsers.slice(0, 300) } : o.companyUser ? { company_user: [o.companyUser] } : {}, o.semDono ? { no_owner: true } : {}) }),
     tarefa: (o) => ({ id: 'tarefa', tipo: 'tarefaDetalhe', metodo: 'GET', url: url('/core/customer/task/' + encodeURIComponent(o.id)) }),
     historico: (o) => ({ id: 'historico', tipo: 'historico', metodo: 'GET', url: url('/core/customer/task/' + encodeURIComponent(o.id) + '/history', { page: o.page || 1, types: o.types }) }),
     relatorio: (o) => { const j = janelaDoMes(o.ano, o.mes); return { id: 'relatorio', tipo: 'relatorio', metodo: 'POST', url: url('/core/customer/task/report'), corpo: { type: 'CUSTOMER_TASK', filter: o.filtro != null ? String(o.filtro) : filtroRelOk, dates: { startDate: j.start_date, endDate: j.end_date } } }; },
@@ -1511,7 +1521,7 @@
   }
   const urlCliente = (id) => /^[0-9a-f]{24}$/i.test(String(id || '')) ? APP + '/admin/#/sidebar/customer/edit/' + id + '/details' : '';
 
-  g.OCG = { tarefasGuiaFgts, itensGuiaFgts, mesDaMeta, avisoRemetente, pausaSeguinte, setoresDaEquipe, modoRel, restaurarModoRel, semContatoNoSetor, vereditoEmail, tarefasParaEmail, ritmoPorPessoa, cargaPorDia, prioridade, NIVEIS_PRIORIDADE, sugestoesConfig, extrasSaude, urlCliente, proximosDiasUteis, motivoEmail, COLUNAS_SAUDE, arquivosDoItem, setoresAtivos, lerQuemSetor, grupoTela, GRUPOS_TELA, SITUACOES_FILTRO, situacaoDe, fimCnpj, cnpjFormatado, enviosPortal, lerExpress, cnpjsDoTexto, cnpjValido, competenciasDoTexto, notaDocumento, sugerirDestinos, pastaForaDe, urlTemplate: (id) => /^[0-9a-f]{24}$/i.test(String(id || '')) ? 'https://app.gestta.com.br/admin/#/sidebar/document/edit/' + id + '/details' : '', semelhanca, parecidoComPasta, palavrasNome, ERROS_ENVIO, API, APP, PAUSA_MS, LIMITE_BUSCA, JANELA_MAX_DIAS, POST_LEITURA, RELATORIO_TIPOS, COLUNAS_RELATORIO, MOLDES, APPS,
+  g.OCG = { moduloDoSetor, setorPermitido, soSetoresPermitidos, tarefasGuiaFgts, itensGuiaFgts, mesDaMeta, avisoRemetente, pausaSeguinte, setoresDaEquipe, modoRel, restaurarModoRel, semContatoNoSetor, vereditoEmail, tarefasParaEmail, ritmoPorPessoa, cargaPorDia, prioridade, NIVEIS_PRIORIDADE, sugestoesConfig, extrasSaude, urlCliente, proximosDiasUteis, motivoEmail, COLUNAS_SAUDE, arquivosDoItem, setoresAtivos, lerQuemSetor, grupoTela, GRUPOS_TELA, SITUACOES_FILTRO, situacaoDe, fimCnpj, cnpjFormatado, enviosPortal, lerExpress, cnpjsDoTexto, cnpjValido, competenciasDoTexto, notaDocumento, sugerirDestinos, pastaForaDe, urlTemplate: (id) => /^[0-9a-f]{24}$/i.test(String(id || '')) ? 'https://app.gestta.com.br/admin/#/sidebar/document/edit/' + id + '/details' : '', semelhanca, parecidoComPasta, palavrasNome, ERROS_ENVIO, API, APP, PAUSA_MS, LIMITE_BUSCA, JANELA_MAX_DIAS, POST_LEITURA, RELATORIO_TIPOS, COLUNAS_RELATORIO, MOLDES, APPS,
     caminhoDe, leituraPermitida, escritaPermitida, pedidoAcao, agirNaPagina, ARQ_MAX, appDe, escolher, limpar, limparRelatorio, perfil, expiraEm, janelaDoMes, PEDIDOS, lerNaPagina, linhasDoTeste,
     GRUPOS, TIPOS_TAREFA, SITUACOES_TAREFA, MAX_PAGINAS_TAREFAS, diasUteis, grupoTarefa, prazoTexto, contarGrupos, porEmpresa, porDia, filtrarTarefas, urlTarefa, ymd, diaLocal,
     COLUNAS_FECHAMENTO, linhasDoRelatorio, tarefasDoRelatorio, trilhaDaEmpresa, fechamento, ESTADOS, setorDe, respDe, ehEscritorioProprio,

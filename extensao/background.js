@@ -312,6 +312,24 @@ async function tarefasDaCompetencia(tab, base, ano, mes) {
   const itens = [...vistos.values()];
   return { ok: true, itens, total: itens.length, cortado, modo: 'meta' };
 }
+// 0.117.0 (Josué, 16/11/2026): só os setores Pessoal, Contábil e Fiscal. Os ids saem do cadastro de setores do Gestta (coordenação) ou
+// dos setores de quem está logado; a busca leva company_department com eles (o Gestta já filtra no servidor, como a própria tela dele faz),
+// o que também deixa a leitura menor. Se o Gestta recusar o filtro (400), a busca volta a ir sem ele e o relatório separa pelo setor.
+let deptCache = null, deptFiltroRecusado = false;
+async function departamentosGestta(tab, pf) {
+  if (deptCache && Date.now() - deptCache.em < 6 * 3600e3) return deptCache.l;
+  let l = [];
+  if (pf.total) {
+    const { r } = await lerGestta([OCG.PEDIDOS.setores()], { tab });
+    const x = r && r.resultados && r.resultados[0];
+    if (x && x.status === 200 && x.dados) l = (x.dados.itens || []).map(d => ({ id: String(d && d._id || ''), nome: String(d && d.name || '') }));
+  }
+  if (!l.length) l = (pf.setores || []).map(d => ({ id: String(d.id || ''), nome: String(d.nome || '') }));
+  l = l.filter(d => /^[0-9a-f]{24}$/i.test(d.id) && OCG.setorPermitido(d.nome)).map(d => Object.assign(d, { modulo: OCG.moduloDoSetor(d.nome) }));
+  deptCache = { l, em: Date.now() };
+  return l;
+}
+const semAcSw = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 async function gesttaTarefas(msg, sender) {
   const tab = await tabDoGestta(sender);
   if (!tab) return { ok: false, semAba: true, erro: 'Abra o Gestta numa aba, já logado.' };
@@ -323,8 +341,17 @@ async function gesttaTarefas(msg, sender) {
   if (!pf.total || !(quem === 'eu' || quem === 'sem' || /^[0-9a-f]{24}$/i.test(quem) || OCG.lerQuemSetor(quem))) quem = 'eu';
   // 0.103.0: as desconsideradas (IGNORED/DISCONSIDERED) só são lidas quando a pessoa pede essa situação
   const base = { limit: OCG.LIMITE_BUSCA, status: ['OPEN', 'IMPEDIMENT', 'DONE'].concat(msg.desconsideradas ? ['IGNORED', 'DISCONSIDERED'] : []) };
-  let setorPessoas = 0;
-  if (quem.startsWith('setor:')) {
+  let setorPessoas = 0, porDepartamento = false;
+  const depts = deptFiltroRecusado ? [] : await departamentosGestta(tab, pf);
+  if (depts.length) { base.companyDepartments = depts.map(d => d.id); porDepartamento = true; }
+  const qsDep = OCG.lerQuemSetor(quem), depDoSetor = qsDep && depts.find(d => semAcSw(d.nome) === semAcSw(qsDep.setor));
+  if (qsDep && !OCG.setorPermitido(qsDep.setor)) return { ok: false, erro: 'O setor ' + qsDep.setor + ' não faz parte da extensão (só Pessoal, Contábil e Fiscal).' };
+  if (qsDep && depDoSetor) {
+    // 0.117.0: o setor vai como filtro do próprio Gestta (company_department): todas as tarefas do setor numa busca só, sem depender de
+    // ler o relatório para separar; com pessoas escolhidas, só as delas dentro do setor
+    base.companyDepartments = [depDoSetor.id];
+    if (qsDep.ids.length) { base.companyUsers = qsDep.ids; setorPessoas = qsDep.ids.length; }
+  } else if (quem.startsWith('setor:')) {
     // 0.103.0 (Josué, 12/11/2026: "filtrar todas as tarefas de um determinado setor"): a busca não traz o setor, então lê as tarefas
     // de todas as pessoas do setor de uma vez (company_user[], já usado pela busca); a tela separa pelo setor quando o relatório está lido
     const qs = OCG.lerQuemSetor(quem), nome = qs.setor, eq = await lerEquipeGestta(tab);
@@ -339,11 +366,28 @@ async function gesttaTarefas(msg, sender) {
   // 0.111.0 (Josué, 13/11/2026: "não depender de rodar toda leitura pra aparecer alguma coisa"): parte 'dia' ou 'comp' lê só um
   // dos dois, e a tela mostra o que chegar primeiro; sem parte, os dois (como antes)
   const parte = msg.parte === 'dia' || msg.parte === 'comp' ? msg.parte : '';
-  const comum = { ok: true, parte, ano, mes, quem, setorPessoas, desconsideradas: !!msg.desconsideradas, perfil: { id: pf.id, papelNome: pf.papelNome, total: pf.total, setores: pf.setores }, validade: r1.validade || null, lidoEm: new Date().toISOString() };
+  const comum = { ok: true, parte, ano, mes, quem, setorPessoas, porDepartamento: porDepartamento && !(qsDep && !depDoSetor), desconsideradas: !!msg.desconsideradas, perfil: { id: pf.id, papelNome: pf.papelNome, total: pf.total, setores: pf.setores }, validade: r1.validade || null, lidoEm: new Date().toISOString() };
   let comp = null, dia = null;
-  if (parte !== 'dia') { comp = await tarefasDaCompetencia(tab, base, ano, mes); if (!comp.ok) return { ok: false, erro: comp.erro }; }
+  await modosProntos; const modoAntes = gesttaModoComp;
+  if (parte !== 'dia') {
+    comp = await tarefasDaCompetencia(tab, base, ano, mes);
+    if (!comp.ok && comp.status === 400 && base.companyDepartments) {     // o Gestta recusou o filtro de setor: volta sem ele (lembrado)
+      deptFiltroRecusado = true; delete base.companyDepartments; comum.porDepartamento = false;
+      if (gesttaModoComp !== modoAntes) { gesttaModoComp = modoAntes; lembrarModos(); }     // o 400 era do filtro, não da busca por competência
+      if (qsDep) return gesttaTarefas(msg, sender);
+      comp = await tarefasDaCompetencia(tab, base, ano, mes);
+    }
+    if (!comp.ok) return { ok: false, erro: comp.erro };
+  }
   // Meu dia: pelo vencimento (escolha do Josué em 06/11/2026), as metas do mês corrente, de qualquer competência
-  if (parte !== 'comp') { const h = new Date(); dia = await buscarTodasGestta(tab, Object.assign({}, base, { ano: h.getFullYear(), mes: h.getMonth() + 1 })); }
+  if (parte !== 'comp') {
+    const h = new Date(); dia = await buscarTodasGestta(tab, Object.assign({}, base, { ano: h.getFullYear(), mes: h.getMonth() + 1 }));
+    if (!dia.ok && dia.status === 400 && base.companyDepartments) {
+      deptFiltroRecusado = true; delete base.companyDepartments; comum.porDepartamento = false;
+      if (qsDep) return gesttaTarefas(msg, sender);
+      dia = await buscarTodasGestta(tab, Object.assign({}, base, { ano: h.getFullYear(), mes: h.getMonth() + 1 }));
+    }
+  }
   return Object.assign(comum, comp ? { itens: comp.itens, total: comp.total, cortado: comp.cortado, modoCompetencia: comp.modo } : {},
     dia ? { dia: dia.ok ? dia.itens : null, diaErro: dia.ok ? '' : dia.erro, diaCortado: !!dia.cortado } : {}, { lidoEm: new Date().toISOString() });
 }
@@ -358,7 +402,8 @@ async function relatorioDoMes(tab, ano, mes, forcar) {
   const rel = await relatorioSaude(tab, ano, mes, !!forcar);
   if (!rel.ok) return { ok: false, erro: rel.erro };
   const idx = OCG.COLUNAS_FECHAMENTO.map(c => (rel.colunas || []).indexOf(c));
-  return { ok: true, colunas: OCG.COLUNAS_FECHAMENTO.slice(), linhas: (rel.linhas || []).map(l => idx.map(i => i < 0 ? '' : l[i])), total: (rel.linhas || []).length, formato: rel.formato || 'ndjson' };
+  const ls = OCG.soSetoresPermitidos(rel.colunas, rel.linhas);      // 0.117.0: só Pessoal, Contábil e Fiscal
+  return { ok: true, colunas: OCG.COLUNAS_FECHAMENTO.slice(), linhas: ls.map(l => idx.map(i => i < 0 ? '' : l[i])), total: ls.length, formato: rel.formato || 'ndjson' };
 }
 // 0.85.0: o Fechamento é da competência. O relatório só sabe a meta, então: as tarefas da competência (a busca, todas as que o
 // acesso alcança), os meses em que elas vencem, o relatório de cada um desses meses e só as linhas dessas tarefas.
@@ -410,7 +455,8 @@ async function gesttaFechamento(msg, sender) {
   const eu = await meGestta(tab); if (!eu.ok) return eu;
   const pf = eu.pf;
   const t0 = Date.now();
-  const comp = await tarefasDaCompetencia(tab, { limit: OCG.LIMITE_BUSCA, status: ['OPEN', 'IMPEDIMENT', 'DONE'] }, ano, mes);
+  const deptsF = deptFiltroRecusado ? [] : await departamentosGestta(tab, pf);
+  const comp = await tarefasDaCompetencia(tab, Object.assign({ limit: OCG.LIMITE_BUSCA, status: ['OPEN', 'IMPEDIMENT', 'DONE'] }, deptsF.length ? { companyDepartments: deptsF.map(d => d.id) } : {}), ano, mes);
   if (!comp.ok) return { ok: false, erro: comp.erro };
   const p = { ids: new Set(comp.itens.map(t => t && t._id).filter(Boolean)), meses: OCG.mesesDeMeta(comp.itens).slice(0, 6), pf, t0, forcar: !!msg.forcar, cortado: !!comp.cortado, colunas: null, formato: '', linhas: [], feitos: new Set() };
   if (msg.parte === 'busca') {
@@ -463,7 +509,7 @@ async function gesttaSetores(msg, sender) {
   if (!rel.ok) return { ok: false, erro: rel.erro };
   const cols = rel.colunas || [], iSt = cols.indexOf('status'), iSet = cols.indexOf('company_department.name'), iR = cols.indexOf('owner.name');
   // só o que o De quem precisa: setor, situação e responsável de cada tarefa aberta (nada de empresa)
-  const linhas = (rel.linhas || []).filter(l => /^(OPEN|IMPEDIMENT)$/i.test(String(l[iSt] || ''))).map(l => [String(l[iSt] || '').toUpperCase(), String(l[iSet] || ''), String(l[iR] || '')]);
+  const linhas = OCG.soSetoresPermitidos(cols, rel.linhas).filter(l => /^(OPEN|IMPEDIMENT)$/i.test(String(l[iSt] || ''))).map(l => [String(l[iSt] || '').toUpperCase(), String(l[iSet] || ''), String(l[iR] || '')]);
   return { ok: true, linhas, daMemoria: !!rel.daMemoria, lidoEm: rel.lidoEm };
 }
 /* ---------- Guias da folha (0.116.0, fase 1: só leitura) ----------
@@ -508,7 +554,7 @@ async function guiasFolha(msg, sender) {
     if (!(ano > 2000 && mes >= 1 && mes <= 12)) return { ok: false, erro: 'Competência inválida.' };
     const m = OCG.mesDaMeta(ano, mes), rel = await relatorioSaude(tab, m.ano, m.mes, !!msg.forcar);
     if (!rel.ok) return { ok: false, erro: rel.erro || 'O relatório do Gestta não veio.' };
-    let tarefas = OCG.tarefasDoRelatorio(rel.colunas, rel.linhas);
+    let tarefas = OCG.tarefasDoRelatorio(rel.colunas, OCG.soSetoresPermitidos(rel.colunas, rel.linhas));
     if (!pf.total) { const eu = String(pf.nome || '').trim().toLowerCase(); tarefas = eu ? tarefas.filter(t => t.responsavel.trim().toLowerCase() === eu) : []; }
     return { ok: true, tarefas: OCG.tarefasGuiaFgts(tarefas), perfil: { nome: pf.nome, total: pf.total }, daMemoria: !!rel.daMemoria, lidoEm: new Date().toISOString() };
   }
@@ -544,7 +590,7 @@ async function gesttaSaude(msg, sender) {
       if (!rel.daMemoria) daMemoria = false;
       colunas = colunas || rel.colunas;
       const ids = new Set(linhas.map(l => l[0]));
-      linhas = linhas.concat((rel.linhas || []).filter(l => !ids.has(l[0])));
+      linhas = linhas.concat(OCG.soSetoresPermitidos(rel.colunas, rel.linhas).filter(l => !ids.has(l[0])));      // 0.117.0: só os três setores
     }
     // sem acesso total: só as tarefas da pessoa (responsável ou quem concluiu)
     if (!pf.total) {

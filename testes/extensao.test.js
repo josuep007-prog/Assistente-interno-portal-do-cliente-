@@ -4878,3 +4878,17 @@ test('Guias da folha: as tarefas FGTS DIGITAL do relatório (uma por empresa, se
   assert.deepEqual(plano(it), { guia: { id: 'a', nome: 'FGTS Guia', temArquivo: false, desconsiderado: false }, demonstrativo: { id: 'b', nome: 'Demonstrativo FGTS', temArquivo: true, desconsiderado: false }, consignado: { id: 'c', nome: 'Demonstrativo e-consignado', temArquivo: false, desconsiderado: false } });
   assert.equal(OCG.itensGuiaFgts({ company_documents: [] }).guia, null, 'item que não existe no template: null');
 });
+test('Gestta (0.117.0): só os setores Pessoal, Contábil e Fiscal; a busca leva o filtro de setor do próprio Gestta', () => {
+  assert.equal(OCG.moduloDoSetor('PESSOAL'), 'Pessoal'); assert.equal(OCG.moduloDoSetor('Departamento Pessoal'), 'Pessoal'); assert.equal(OCG.moduloDoSetor('DP'), 'Pessoal');
+  assert.equal(OCG.moduloDoSetor('Contabilidade'), 'Contábil'); assert.equal(OCG.moduloDoSetor('Contábil'), 'Contábil'); assert.equal(OCG.moduloDoSetor('FISCAL'), 'Fiscal');
+  for (const s of ['Recepção', 'Societário', 'Financeiro', 'Legalização', 'Comercial', '']) assert.equal(OCG.setorPermitido(s), false, s);
+  const cols = ['id', 'company_department.name'], l = OCG.soSetoresPermitidos(cols, [['1', 'Fiscal'], ['2', 'Recepção'], ['3', ''], ['4', 'Pessoal']]);
+  assert.deepEqual(plano(l.map(x => x[0])), ['1', '3', '4'], 'sem setor fica (não dá para julgar)');
+  const eq = [{ id: 'a', nome: 'Ana', setores: ['Fiscal', 'Recepção'] }, { id: 'b', nome: 'Bia', setores: ['Societário'] }];
+  assert.deepEqual(plano(OCG.setoresDaEquipe(eq).map(x => x.nome)), ['Fiscal']);
+  assert.deepEqual(plano(OCG.setoresAtivos([{ status: 'OPEN', setor: 'Recepção', responsavel: 'Ana' }, { status: 'OPEN', setor: 'Fiscal', responsavel: 'Ana' }], eq).map(x => x.nome)), ['Fiscal']);
+  const ped = OCG.PEDIDOS.buscaTarefas({ ano: 2026, mes: 11, companyDepartments: ['d1', 'd2'], companyUsers: ['u1'] });
+  assert.deepEqual(plano(ped.corpo.company_department), ['d1', 'd2']); assert.deepEqual(plano(ped.corpo.company_user), ['u1']);
+  assert.equal(OCG.leituraPermitida(ped.metodo, ped.url, ped.corpo).ok, true);
+  assert.ok(!('company_department' in OCG.PEDIDOS.buscaTarefas({ ano: 2026, mes: 11 }).corpo), 'sem setores conhecidos, sem o filtro');
+});

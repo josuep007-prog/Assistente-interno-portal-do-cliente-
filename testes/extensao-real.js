@@ -447,6 +447,13 @@ assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br
   assert.ok(!gBuscas.some(c => c.date_type === 'COMPETENCE_DATE'), 'lembra que a busca pela competência não serve');
   gCompOk = true;
   assert.ok(gBuscas.every(c => c.limit === 1000 && JSON.stringify(c.company_user) === JSON.stringify([ID2]) && c.status.includes('DONE') && !c.status.includes('IGNORED')), 'só as da pessoa logada, um mês');
+  assert.ok(gBuscas.every(c => JSON.stringify(c.company_department) === JSON.stringify([ID, ID2])), '0.117.0: a busca leva só os setores Pessoal e Fiscal (o filtro do próprio Gestta)');
+  { gBuscas.length = 0;
+    const ts = await tt({ cmd: 'gesttaTarefas', quem: 'setor:Fiscal', parte: 'comp' });
+    assert.ok(ts.ok && ts.porDepartamento, 'setor pelo filtro do Gestta: ' + (ts.erro || ''));
+    assert.ok(gBuscas.length && gBuscas.every(c => JSON.stringify(c.company_department) === JSON.stringify([ID2]) && !c.company_user), '0.117.0: o setor vai como company_department, sem a lista de pessoas');
+    const tr = await tt({ cmd: 'gesttaTarefas', quem: 'setor:Recepção', parte: 'comp' });
+    assert.equal(tr.ok, false); assert.match(tr.erro, /só Pessoal, Contábil e Fiscal/); }
   assert.equal(t1.itens[0].value, undefined, 'valor da tarefa não sai da página'); assert.equal(t1.itens[0].owner, undefined);
   gBuscas.length = 0;
   const t2 = await tt({ cmd: 'gesttaTarefas', quem: 'sem' });

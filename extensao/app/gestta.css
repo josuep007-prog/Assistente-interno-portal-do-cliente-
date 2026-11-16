@@ -934,3 +934,11 @@
 .ggu-seg button:focus-visible{outline:2px solid var(--blue-deep); outline-offset:-2px}
 .ggu-rodape{display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:space-between}
 .ggu-acoes{display:flex; flex-wrap:wrap; gap:8px}
+
+/* 0.117.0 · setores à vista ("Ver tarefas de"), só Pessoal, Contábil e Fiscal; o botão ao lado escolhe as pessoas do setor */
+.gt-quem{flex-wrap:wrap}
+.gt-quem-chips{display:flex; flex-wrap:wrap; align-items:center; gap:6px}
+.gt-quem-rot{font-size:12px; font-weight:600; color:var(--ink-2); margin-right:2px}
+.gt-quem-chip{--gc:var(--blue-deep)}
+.gt-quem-chip b{font-size:12px}
+.gt-quem-lendo{font-size:12px}
