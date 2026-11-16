@@ -555,6 +555,15 @@ assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br
   const sR = await tt({ cmd: 'gesttaSaude', parte: 'remetente' });
   assert.ok(sR.ok && sR.aviso.nivel === 'aviso' && /DKIM falhou/.test(sR.aviso.texto), 'remetente: ' + JSON.stringify(sR.aviso));
   assert.deepEqual(Object.keys(sR.remetente).sort(), ['dkim_status', 'domain', 'domain_status', 'verified'], 'do domínio, só o estado');
+  // 0.116.0 · Guias da folha: a lista sai do relatório do mês da META (competência + 1) e os itens do detalhe; só leituras
+  { const h = new Date(), comp = new Date(h.getFullYear(), h.getMonth() - 1, 1), nR = gRel.length;
+    const gl = await tt({ cmd: 'guiasFolha', parte: 'lista', ano: comp.getFullYear(), mes: comp.getMonth() + 1, forcar: true });
+    assert.ok(gl.ok, 'guiasFolha lista: ' + (gl.erro || '')); assert.deepEqual(gl.tarefas, [], 'sem tarefa FGTS DIGITAL no relatório simulado');
+    if (gRel.length > nR) assert.equal(new Date(gRel[gRel.length - 1].dates.startDate).getUTCMonth(), h.getMonth(), 'relatório do mês da meta (competência + 1)');
+    const gi = await tt({ cmd: 'guiasFolha', parte: 'itens', ids: [ID, '../x'] });
+    assert.ok(gi.ok); assert.deepEqual(Object.keys(gi.porTarefa), [ID], 'id inválido fica de fora');
+    assert.deepEqual(gi.porTarefa[ID], { guia: null, demonstrativo: null, consignado: null }, 'tarefa sem os itens do FGTS');
+    assert.ok(!JSON.stringify(gi).includes('segredo.pdf'), 'o endereço do arquivo nunca sai'); }
   const novasS = gChamadas.slice(antesS);
   assert.ok(novasS.every(c => c.startsWith('GET ') || c === 'POST /core/customer/task/report' || c === 'POST /core/customer/task/search'), 'a Saúde só lê: ' + novasS.filter(c => !c.startsWith('GET ')).join(', '));
   for (const v of ['contato@exemplo', '(27)', 'Contato Ficticio', 'destino@exemplo', 'smtp.exemplo', '"score"', 'SEGREDO', 'eyJ', 'dono@exemplo', 'escritorio@exemplo', 'PROTO']) assert.ok(!JSON.stringify([s1, s2, s3, s4, s5, sL, sR]).includes(v), 'Saúde vazou: ' + v);

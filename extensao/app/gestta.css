@@ -908,3 +908,29 @@
 .gt-quem .gt-quem-lista{max-height:calc(76vh - 140px)}
 .gt-quem .gt-quem-lista button, .gt-quem .gt-quem-ck{padding:9px 10px; font-size:14px}
 @media (max-width:900px){ .gt-quem .gt-quem-pop{top:6vh; left:50%; right:auto} }
+
+/* 0.116.0 · Guias da folha */
+.ggu-topo .gte-kpi{cursor:default}
+.ggu-passos{list-style:none; margin:0 0 12px; padding:0; display:flex; flex-wrap:wrap; background:var(--surface); border:1px solid var(--rule); border-radius:var(--r)}
+.ggu-passos li{flex:1 1 160px; min-width:0; display:flex; gap:9px; align-items:center; padding:9px 12px; border-right:1px solid var(--rule); color:var(--ink-2)}
+.ggu-passos li:last-child{border-right:0}
+.ggu-passos b{display:block; font-size:13px; color:var(--ink)}
+.ggu-passos small{display:block; font-size:12px; color:var(--ink-2)}
+.ggu-n{flex:none; width:24px; height:24px; border-radius:50%; display:grid; place-items:center; font-size:12px; font-weight:700; border:1px solid var(--rule-strong); color:var(--ink)}
+.ggu-passos li.atual{box-shadow:inset 0 -3px 0 var(--blue-deep)}
+.ggu-passos li.atual .ggu-n{border:2px solid var(--blue-deep)}
+.ggu-passos li.depois b{font-weight:600}
+.ggu-memo{margin:-4px 0 10px; font-size:12px}
+.ggu-lista, .ggu-rodape{margin-bottom:12px}
+.ggu-tab td small{display:block; font-size:12px; color:var(--ink-2)}
+.ggu-tab tr.on td{background:var(--surface-2, transparent)}
+.ggu-valor{font-variant-numeric:tabular-nums; color:var(--ink)}
+.ggu-motivo{display:inline-flex; gap:5px; align-items:flex-start; font-size:12px; color:var(--ink); text-align:left; max-width:280px}
+.ggu-seg{display:inline-flex; border:1px solid var(--rule); border-radius:var(--r); overflow:hidden}
+.ggu-seg button{all:unset; cursor:pointer; padding:4px 9px; font-size:12px; color:var(--ink-2); background:var(--surface)}
+.ggu-seg button + button{border-left:1px solid var(--rule)}
+.ggu-seg button[aria-pressed="true"]{color:var(--ink); font-weight:700; box-shadow:inset 0 -2px 0 var(--blue-deep)}
+.ggu-seg button:disabled{cursor:not-allowed; color:var(--ink-2); text-decoration:line-through}
+.ggu-seg button:focus-visible{outline:2px solid var(--blue-deep); outline-offset:-2px}
+.ggu-rodape{display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:space-between}
+.ggu-acoes{display:flex; flex-wrap:wrap; gap:8px}

@@ -243,6 +243,35 @@
     });
   }
 
+  // 0.116.0 · Guias da folha (Josué, 13/11 e 16/11/2026; mapa em mapeamento/guias-fgts-dctfweb.md): a guia do FGTS fica na tarefa
+  // "FGTS DIGITAL", em itens próprios. A competência é o mês anterior ao da meta: as tarefas da competência M saem do relatório do mês M+1.
+  const semAc = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const TAREFA_GUIA_FGTS = /fgts\s*digital/;
+  const mesDaMeta = (ano, mes) => mes === 12 ? { ano: ano + 1, mes: 1 } : { ano, mes: mes + 1 };
+  // as tarefas FGTS DIGITAL do relatório (uma por empresa; a mais recente se houver duas), das sem guia às concluídas
+  function tarefasGuiaFgts(tarefas) {
+    const por = new Map();
+    for (const t of tarefas || []) {
+      if (!t || !TAREFA_GUIA_FGTS.test(semAc(t.name)) || /^(IGNORED|DISCONSIDERED)$/.test(t.status)) continue;
+      const k = (t.customer && (t.customer.cnpj || t.customer.code || t.customer.name)) || t._id, ja = por.get(k);
+      if (!ja || String(t.due_date) > String(ja.due_date)) por.set(k, t);
+    }
+    const ordem = { OPEN: 0, IMPEDIMENT: 1, DONE: 2 };
+    return [...por.values()].map(t => ({ id: t._id, nome: t.name, status: t.status, meta: t.due_date, responsavel: t.responsavel || '',
+      empresa: { nome: (t.customer && t.customer.name) || '', code: (t.customer && t.customer.code) || '', cnpj: String((t.customer && t.customer.cnpj) || '').replace(/\D/g, '') } }))
+      .sort((a, b) => (ordem[a.status] ?? 3) - (ordem[b.status] ?? 3) || a.empresa.nome.localeCompare(b.empresa.nome, 'pt-BR'));
+  }
+  // os três itens do pacote do FGTS no detalhe da tarefa (nomes mapeados em 16/11/2026): só se existem e se já têm arquivo
+  const ITENS_FGTS = { guia: /^fgts\s*guia\b|guia\s*(do\s*)?fgts/, demonstrativo: /demonstrativo\s*(do\s*)?fgts/, consignado: /consignado/ };
+  function itensGuiaFgts(t) {
+    const docs = (t && Array.isArray(t.company_documents)) ? t.company_documents : [], out = {};
+    for (const [k, re] of Object.entries(ITENS_FGTS)) {
+      const d = docs.find(x => x && re.test(semAc(x.name)) && (k !== 'demonstrativo' || !/consignado/.test(semAc(x.name))));
+      out[k] = d ? { id: String(d._id || ''), nome: String(d.name || ''), temArquivo: !!d.temArquivo, desconsiderado: !!d.disconsidered } : null;
+    }
+    return out;
+  }
+
   // 0.106.0 (Josué, 13/11/2026: "quero apenas setores com tarefas ativas e o fluxo tem que ser: clicar no botão > escolher o setor >
   // escolher uma ou mais pessoas"): os setores com tarefa aberta ou com impedimento no relatório do mês, e as pessoas de cada um
   // (da equipe do Gestta; quem tem tarefa aberta no setor primeiro, com a quantidade).
@@ -1482,7 +1511,7 @@
   }
   const urlCliente = (id) => /^[0-9a-f]{24}$/i.test(String(id || '')) ? APP + '/admin/#/sidebar/customer/edit/' + id + '/details' : '';
 
-  g.OCG = { avisoRemetente, pausaSeguinte, setoresDaEquipe, modoRel, restaurarModoRel, semContatoNoSetor, vereditoEmail, tarefasParaEmail, ritmoPorPessoa, cargaPorDia, prioridade, NIVEIS_PRIORIDADE, sugestoesConfig, extrasSaude, urlCliente, proximosDiasUteis, motivoEmail, COLUNAS_SAUDE, arquivosDoItem, setoresAtivos, lerQuemSetor, grupoTela, GRUPOS_TELA, SITUACOES_FILTRO, situacaoDe, fimCnpj, cnpjFormatado, enviosPortal, lerExpress, cnpjsDoTexto, cnpjValido, competenciasDoTexto, notaDocumento, sugerirDestinos, pastaForaDe, urlTemplate: (id) => /^[0-9a-f]{24}$/i.test(String(id || '')) ? 'https://app.gestta.com.br/admin/#/sidebar/document/edit/' + id + '/details' : '', semelhanca, parecidoComPasta, palavrasNome, ERROS_ENVIO, API, APP, PAUSA_MS, LIMITE_BUSCA, JANELA_MAX_DIAS, POST_LEITURA, RELATORIO_TIPOS, COLUNAS_RELATORIO, MOLDES, APPS,
+  g.OCG = { tarefasGuiaFgts, itensGuiaFgts, mesDaMeta, avisoRemetente, pausaSeguinte, setoresDaEquipe, modoRel, restaurarModoRel, semContatoNoSetor, vereditoEmail, tarefasParaEmail, ritmoPorPessoa, cargaPorDia, prioridade, NIVEIS_PRIORIDADE, sugestoesConfig, extrasSaude, urlCliente, proximosDiasUteis, motivoEmail, COLUNAS_SAUDE, arquivosDoItem, setoresAtivos, lerQuemSetor, grupoTela, GRUPOS_TELA, SITUACOES_FILTRO, situacaoDe, fimCnpj, cnpjFormatado, enviosPortal, lerExpress, cnpjsDoTexto, cnpjValido, competenciasDoTexto, notaDocumento, sugerirDestinos, pastaForaDe, urlTemplate: (id) => /^[0-9a-f]{24}$/i.test(String(id || '')) ? 'https://app.gestta.com.br/admin/#/sidebar/document/edit/' + id + '/details' : '', semelhanca, parecidoComPasta, palavrasNome, ERROS_ENVIO, API, APP, PAUSA_MS, LIMITE_BUSCA, JANELA_MAX_DIAS, POST_LEITURA, RELATORIO_TIPOS, COLUNAS_RELATORIO, MOLDES, APPS,
     caminhoDe, leituraPermitida, escritaPermitida, pedidoAcao, agirNaPagina, ARQ_MAX, appDe, escolher, limpar, limparRelatorio, perfil, expiraEm, janelaDoMes, PEDIDOS, lerNaPagina, linhasDoTeste,
     GRUPOS, TIPOS_TAREFA, SITUACOES_TAREFA, MAX_PAGINAS_TAREFAS, diasUteis, grupoTarefa, prazoTexto, contarGrupos, porEmpresa, porDia, filtrarTarefas, urlTarefa, ymd, diaLocal,
     COLUNAS_FECHAMENTO, linhasDoRelatorio, tarefasDoRelatorio, trilhaDaEmpresa, fechamento, ESTADOS, setorDe, respDe, ehEscritorioProprio,

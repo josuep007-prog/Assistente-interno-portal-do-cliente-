@@ -4836,3 +4836,45 @@ test('Gestta (0.111.0): setores da equipe na hora para o De quem; o jeito do rel
   OCG.restaurarModoRel('qualquer coisa'); assert.equal(OCG.modoRel(), 'CUSTOM', 'só os jeitos conhecidos');
   OCG.restaurarModoRel(antes);
 });
+
+/* ---------- Guias da folha (0.116.0) ---------- */
+test('Guias da folha: valores do FGTS do Extrato Mensal (último valor de cada rótulo), competência e CNPJ do texto', () => {
+  const t = 'Empresa: EMPRESA EXEMPLO\nCNPJ: 11.222.333/0001-81   Cálculo: Folha Mensal   Competência: 10/2026\n' +
+    '001 FULANO DE TAL  Valor do FGTS 80,00\n' +                        // uma linha de pessoa no meio: o total do fim vence
+    'FGTS, PIS e ISS\nBase do FGTS 10.000,00   Valor do FGTS 1.800,50\nBase do FGTS Aprendiz 500,00  Valor do FGTS Aprendiz 10,00\n' +
+    'Base FGTS Rescisório 1.000,00  Valor FGTS Rescisório 150,00  Valor FGTS Resc. mês ant. 1,00\n';
+  const v = OC.valoresFgtsDoExtrato(t);
+  assert.deepEqual(plano(v), { competencia: '2026-10', cnpj: '11222333000181', calculo: 'Folha Mensal', fgts: 1800.5, aprendiz: 10, rescisorio: 150 });
+  const nada = OC.valoresFgtsDoExtrato('Competência: 10/2026\nsem os totais');
+  assert.equal(nada.fgts, null, 'sem o rótulo: null (a tela avisa, nunca zero em silêncio)');
+});
+test('Guias da folha: o extrato da competência certa, da empresa certa, sem guardar valor', async () => {
+  const API = OC.API, pastas = { [API + 'storage/v1/projects?primaryAssociationId=c1&primaryAssociationType=Client&getScheduleItems=true']: { data: [{ id: 'p1', name: 'Pessoal' }] } };
+  const filhos = (id, itens) => { pastas[API + 'storage/v2/' + id + '/children?from=1&pageSize=100&sort=name:asc&containersOnly=false&trashed=false&countDocuments=false&calculateLocks=true'] = { data: itens, hasMore: false }; };
+  filhos('Projects/p1', [{ id: 'f1', name: 'Extrato Mensal', itemType: 'Folder' }]);
+  filhos('Folders/f1', [{ id: 'd09', name: 'Extrato 09-2026.pdf', mimeType: 'application/pdf' }, { id: 'd10', name: 'Extrato 10-2026.pdf', mimeType: 'application/pdf' }, { id: 'd10b', name: 'Extrato pro labore 10-2026.pdf', mimeType: 'application/pdf' }]);
+  const fetcher = async u => { if (!(u in pastas)) throw new Error('fora do mapa: ' + u); return pastas[u]; };
+  const textos = { d10: 'CNPJ: 11.222.333/0001-81 Competência: 10/2026 Cálculo: Folha Mensal\nValor do FGTS 1.000,00', d10b: 'CNPJ: 11.222.333/0001-81 Competência: 10/2026 Cálculo: Pró-labore\nsem fgts', d09: 'Competência: 09/2026\nValor do FGTS 9,00' };
+  const lidos = [], textoPdf = async u => { const id = u.split('/').pop(); lidos.push(id); return textos[id]; };
+  const clientes = new Map([['c1', { id: 'c1', codigo: '0101', nome: 'Empresa Exemplo' }]]);
+  const r = await OC.extratoDaCompetencia(fetcher, { code: '101', nome: 'EMPRESA EXEMPLO', cnpj: '11222333000181' }, '2026-10', { textoPdf, clientes, folhaPastas: {} });
+  assert.equal(r.ok, true, r.motivo); assert.equal(r.fgts, 1000); assert.equal(r.extratos.length, 2, 'os dois extratos da competência (folha e pró-labore)');
+  assert.ok(!lidos.includes('d09'), 'o da outra competência nem é lido');
+  assert.equal(r.novoCaminho.pastas.length, 1, 'o caminho das pastas volta para ser guardado (só ids)'); assert.ok(!JSON.stringify(r.novoCaminho).includes('1.000'));
+  // CNPJ de outra empresa no texto: recusado
+  textos.d10 = textos.d10.replace('11.222.333', '99.888.777'); textos.d10b = textos.d10b.replace('11.222.333', '99.888.777');
+  const r2 = await OC.extratoDaCompetencia(fetcher, { code: '101', nome: 'x', cnpj: '11222333000181' }, '2026-10', { textoPdf, clientes, folhaPastas: { c1: r.novoCaminho } });
+  assert.equal(r2.ok, false); assert.match(r2.motivo, /outro CNPJ/);
+  const r3 = await OC.extratoDaCompetencia(fetcher, { code: '555', nome: 'Outra', cnpj: '' }, '2026-10', { textoPdf, clientes, folhaPastas: {} });
+  assert.match(r3.motivo, /não achada/);
+});
+test('Guias da folha: as tarefas FGTS DIGITAL do relatório (uma por empresa, sem guia primeiro) e os três itens do pacote', () => {
+  const t = (id, name, status, cnpj, due) => ({ _id: id, name, status, due_date: due || '2026-11-07', responsavel: 'Ana', customer: { name: 'EMPRESA ' + cnpj, code: cnpj.slice(-3), cnpj } });
+  const l = OCG.tarefasGuiaFgts([t('1', 'FGTS DIGITAL', 'DONE', '11222333000181'), t('2', 'Fgts Digital', 'OPEN', '22333444000190'), t('3', 'PESSOAL | FOLHA MENSAL', 'OPEN', '33444555000101'),
+    t('4', 'FGTS DIGITAL', 'IGNORED', '44555666000101'), t('5', 'FGTS DIGITAL', 'OPEN', '22333444000190', '2026-11-08')]);
+  assert.deepEqual(plano(l.map(x => [x.id, x.status])), [['5', 'OPEN'], ['1', 'DONE']], 'só FGTS DIGITAL, uma por empresa, abertas antes, desconsiderada fora');
+  assert.deepEqual(plano(OCG.mesDaMeta(2026, 12)), { ano: 2027, mes: 1 }, 'a competência de dezembro tem meta em janeiro');
+  const it = OCG.itensGuiaFgts({ company_documents: [{ _id: 'a', name: 'FGTS Guia', temArquivo: false }, { _id: 'b', name: 'Demonstrativo FGTS', temArquivo: true }, { _id: 'c', name: 'Demonstrativo e-consignado' }] });
+  assert.deepEqual(plano(it), { guia: { id: 'a', nome: 'FGTS Guia', temArquivo: false, desconsiderado: false }, demonstrativo: { id: 'b', nome: 'Demonstrativo FGTS', temArquivo: true, desconsiderado: false }, consignado: { id: 'c', nome: 'Demonstrativo e-consignado', temArquivo: false, desconsiderado: false } });
+  assert.equal(OCG.itensGuiaFgts({ company_documents: [] }).guia, null, 'item que não existe no template: null');
+});

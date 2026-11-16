@@ -12,12 +12,13 @@ import { ligarSoltar } from './gestta-soltar.js';
 import { vistaDia, vistaEmpresas, vistaLista, vistaQuadro } from './gestta-vistas.js';
 import { desenharEnvios, lerEnvios, ligarEnvios, estadoEnvios } from './gestta-envios.js';
 import { desenharSaude, lerSaude, ligarSaude, estadoSaude } from './gestta-saude.js';
+import { desenharGuias, lerGuias, ligarGuias, estadoGuias } from './gestta-guias.js';
 const G = window.OCG;
 const enviar = msg => new Promise(res => { try { chrome.runtime.sendMessage(msg, r => res(r || { ok: false, erro: (chrome.runtime.lastError && chrome.runtime.lastError.message) || 'sem resposta' })); } catch (e) { res({ ok: false, erro: String(e.message || e) }); } });
 const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 const SEMANA = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
 const ATUALIZA_MIN = 10;
-const ABAS = ['dia', 'empresas', 'lista', 'quadro', 'calendario', 'fech', 'envios', 'saude'];               // com a camada aberta e visível, relê sozinho a cada 10 minutos
+const ABAS = ['dia', 'empresas', 'lista', 'quadro', 'calendario', 'fech', 'envios', 'saude', 'guias'];               // com a camada aberta e visível, relê sozinho a cada 10 minutos
 
 const hoje0 = new Date(), comp0 = G.competenciaPadrao(hoje0);
 // 0.85.0 (Josué, 06/11/2026): a tela é da competência (de fábrica a do mês anterior, a que está sendo fechada); o Meu dia segue o vencimento
@@ -230,6 +231,14 @@ function aoVivo() {
   const el = $('#aovivo'), tx = $('#aovivo-tx');
   el.classList.remove('ok', 'parado', 'erro');
   $('#btn-atualizar').classList.toggle('girando', E.carregando);
+  if (E.aba === 'guias') {   // 0.116.0
+    const S = estadoGuias(); $('#btn-atualizar').classList.toggle('girando', S.carregando);
+    if (S.carregando) { tx.textContent = 'Lendo as guias…'; return; }
+    if (S.erro) { el.classList.add('erro'); tx.textContent = 'Falha na leitura'; return; }
+    if (!S.dados) { tx.textContent = 'Aguardando'; return; }
+    const he = new Date(S.dados.lidoEm), hme = String(he.getHours()).padStart(2, '0') + ':' + String(he.getMinutes()).padStart(2, '0');
+    el.classList.add('ok'); tx.textContent = simples() ? hme : 'Lido às ' + hme; el.title = 'Tarefas FGTS DIGITAL lidas às ' + hme; return;
+  }
   if (E.aba === 'saude') {   // 0.110.0
     const S = estadoSaude(); $('#btn-atualizar').classList.toggle('girando', S.carregando);
     if (S.carregando) { tx.textContent = 'Lendo a saúde…'; return; }
@@ -366,11 +375,17 @@ const esqueleto = rot => '<div class="gt-esq-tela" role="status" aria-label="' +
 /* ---------- desenho ---------- */
 function abas() {
   $$('#abas [data-aba]').forEach(b => { const on = b.dataset.aba === E.aba; b.classList.toggle('on', on); b.setAttribute('aria-selected', String(on)); });
-  const qw = $('#gt-quem-wrap'); if (qw) qw.classList.toggle('gt-so-minhas', E.aba === 'fech' || E.aba === 'envios' || E.aba === 'saude');
+  const qw = $('#gt-quem-wrap'); if (qw) qw.classList.toggle('gt-so-minhas', E.aba === 'fech' || E.aba === 'envios' || E.aba === 'saude' || E.aba === 'guias');
 }
 function desenhar() {
   abas();
   if (E.aba === 'fech') return desenharFech();
+  if (E.aba === 'guias') {   // 0.116.0: Guias da folha, pela competência do topo (lidas na hora, só na memória da tela)
+    const S = estadoGuias(), v = $('#vista'), topo = v.scrollTop, k = E.ano + '-' + String(E.mes).padStart(2, '0');
+    if (S.comp !== k && !S.carregando) { lerGuias(enviar, () => { aoVivo(); desenhar(); }, { ano: E.ano, mes: E.mes }); return; }
+    desenharGuias(v, t => { $('#subtitulo').textContent = t; }); v.scrollTop = topo;
+    return;
+  }
   if (E.aba === 'saude') {   // 0.110.0: Saúde da operação (lida na hora, só na memória da tela)
     const S = estadoSaude(), v = $('#vista'), topo = v.scrollTop; desenharSaude(v, t => { $('#subtitulo').textContent = t; }); v.scrollTop = topo;
     if (!S.dados && !S.carregando && !S.erro) lerSaude(enviar, () => { aoVivo(); desenhar(); });
@@ -545,9 +560,10 @@ addEventListener('storage', e => {
   clearTimeout(avisoCfg); avisoCfg = setTimeout(() => toast('Configurações atualizadas: já valem nesta tela'), 400);
 });
 $('#vista').addEventListener('scroll', () => salvarEstado(), { passive: true });
-$('#btn-atualizar').onclick = () => E.aba === 'fech' ? lerFech(true) : E.aba === 'envios' ? lerEnvios(enviar, () => { aoVivo(); desenhar(); }) : E.aba === 'saude' ? lerSaude(enviar, () => { aoVivo(); desenhar(); }, true) : ler();
+$('#btn-atualizar').onclick = () => E.aba === 'guias' ? lerGuias(enviar, () => { aoVivo(); desenhar(); }, { ano: E.ano, mes: E.mes }, true) : E.aba === 'fech' ? lerFech(true) : E.aba === 'envios' ? lerEnvios(enviar, () => { aoVivo(); desenhar(); }) : E.aba === 'saude' ? lerSaude(enviar, () => { aoVivo(); desenhar(); }, true) : ler();
 ligarEnvios($('#vista'), () => { aoVivo(); desenhar(); }, paraPai);
 ligarSaude($('#vista'), () => { aoVivo(); desenhar(); }, paraPai);
+ligarGuias($('#vista'), () => { aoVivo(); desenhar(); }, paraPai);
 // 0.102.0: soltar documentos fora de um item da tarefa vai para o Express (e, se ele não achar, a sugestão da extensão)
 ligarSoltar({ enviar, atual: () => painelTarefa() || null, tarefas: () => ((E.dados && E.dados.itens) || []).concat((E.dados && E.dados.dia) || []) });
 function trocarAba(a) {
@@ -618,8 +634,8 @@ addEventListener('keydown', e => {
   if (e.key === '?' && !digitando) { e.preventDefault(); atalhos(true); return; }
   if (painelAberto()) { if (e.key === 'Escape') { e.preventDefault(); fecharPainel(); return; } if (!digitando && e.key === 'ArrowLeft') { passarPainel(-1); return; } if (!digitando && e.key === 'ArrowRight') { passarPainel(1); return; } }
   if (e.key === '/' && !digitando) { const q = $('#gt-q') || $('#gt-fq'); if (q) { e.preventDefault(); q.focus(); } return; }
-  if (!digitando && !e.ctrlKey && !e.metaKey && !e.altKey && teclaVista && E.aba !== 'fech' && E.aba !== 'envios' && E.aba !== 'saude' && teclaVista(e)) { e.preventDefault(); return; }
-  const n = '12345678'.indexOf(e.key);
+  if (!digitando && !e.ctrlKey && !e.metaKey && !e.altKey && teclaVista && E.aba !== 'fech' && E.aba !== 'envios' && E.aba !== 'saude' && E.aba !== 'guias' && teclaVista(e)) { e.preventDefault(); return; }
+  const n = '123456789'.indexOf(e.key);
   if (!digitando && n >= 0 && !e.ctrlKey && !e.metaKey && !e.altKey) { trocarAba(ABAS[n]); return; }
   if (e.key === 'Escape') { if (digitando && e.target.id === 'gt-q' && E.q) { E.q = ''; desenhar(); return; } if (!digitando) paraPai({ controlGestta: 'fechar' }); }
 });

@@ -466,6 +466,64 @@ async function gesttaSetores(msg, sender) {
   const linhas = (rel.linhas || []).filter(l => /^(OPEN|IMPEDIMENT)$/i.test(String(l[iSt] || ''))).map(l => [String(l[iSt] || '').toUpperCase(), String(l[iSet] || ''), String(l[iR] || '')]);
   return { ok: true, linhas, daMemoria: !!rel.daMemoria, lidoEm: rel.lidoEm };
 }
+/* ---------- Guias da folha (0.116.0, fase 1: só leitura) ----------
+ * Josué, 13/11 e 16/11/2026 (mapa em mapeamento/guias-fgts-dctfweb.md, desenho em guias-fgts-dctfweb-desenho.md). Partes:
+ *  lista  { ano, mes } = competência → as tarefas FGTS DIGITAL do relatório do mês da meta (o mesmo relatorioSaude de 1 h)
+ *  itens  { ids ≤ 15 } → os três itens do pacote (FGTS Guia, Demonstrativo FGTS, Demonstrativo e-consignado): existe e tem arquivo?
+ *  extrato { ano, mes, empresas ≤ 3 } → o "Valor do FGTS" do Extrato Mensal no portal de documentos do Onvio (aba do Onvio aberta).
+ * Os valores só voltam para a tela: nada disso é guardado (só o caminho das pastas da folha, ids, como já era). */
+let clientesFolhaCache = null;      // { m: Map, em } · lista de clientes da folha do Onvio, 6 h na memória do service worker (ids, código, nome)
+async function guiasFolha(msg, sender) {
+  const parte = String(msg.parte || ''), ano = Number(msg.ano), mes = Number(msg.mes);
+  if (parte === 'extrato') {
+    if (!(ano > 2000 && mes >= 1 && mes <= 12)) return { ok: false, erro: 'Competência inválida.' };
+    const empresas = (Array.isArray(msg.empresas) ? msg.empresas : []).slice(0, 3).map(e => ({ code: String(e && e.code || '').slice(0, 20), nome: String(e && e.nome || '').slice(0, 120), cnpj: String(e && e.cnpj || '').replace(/\D/g, '').slice(0, 14) }));
+    let f;
+    try { f = emSegundoPlano((await escolherFetcher()).f); }
+    catch (e) { return { ok: false, semOnvio: true, erro: 'Abra o Portal do Cliente do Onvio numa aba, logado com o acesso do escritório, para ler os extratos.' }; }
+    const pausa = ms => new Promise(r => setTimeout(r, ms)), comp = ano + '-' + String(mes).padStart(2, '0'), porCodigo = {};
+    try {
+      if (!clientesFolhaCache || Date.now() - clientesFolhaCache.em > 6 * 3600e3) clientesFolhaCache = { m: await OC.lerClientesFolha(f, pausa), em: Date.now() };
+      const { folhaPastas } = await chrome.storage.local.get('folhaPastas'), novos = {};
+      for (const e of empresas) {
+        const k = e.cnpj || e.code || e.nome;
+        try {
+          const r = await OC.extratoDaCompetencia(f, e, comp, { pausa, textoPdf: textoDoPdf, clientes: clientesFolhaCache.m, folhaPastas: Object.assign({}, folhaPastas, novos) });
+          if (r.novoCaminho && r.cliente) novos[r.cliente] = r.novoCaminho;
+          porCodigo[k] = r.ok ? { ok: true, fgts: r.fgts, aprendiz: r.aprendiz, rescisorio: r.rescisorio, extratos: r.extratos.map(x => ({ calculo: x.calculo, fgts: x.fgts, aprendiz: x.aprendiz, filial: x.filial })), semValor: r.semValor } : { ok: false, motivo: r.motivo };
+        } catch (er) {
+          if (er && er.auth) return { ok: false, erro: 'A sessão do Onvio acabou: entre de novo no Portal do Cliente.', porCodigo };
+          porCodigo[k] = { ok: false, motivo: 'Não consegui ler: ' + String(er && er.message || er).slice(0, 90) };
+        }
+      }
+      if (Object.keys(novos).length) await guardarFolha({ pastas: novos });
+    } finally { fecharOffscreen(); }
+    return { ok: true, porCodigo };
+  }
+  const tab = await tabDoGestta(sender);
+  if (!tab) return { ok: false, semAba: true, erro: 'Abra o Gestta numa aba, já logado.' };
+  const p = await perfilGestta(tab); if (!p.ok) return p;
+  const pf = p.pf;
+  if (parte === 'lista') {
+    if (!(ano > 2000 && mes >= 1 && mes <= 12)) return { ok: false, erro: 'Competência inválida.' };
+    const m = OCG.mesDaMeta(ano, mes), rel = await relatorioSaude(tab, m.ano, m.mes, !!msg.forcar);
+    if (!rel.ok) return { ok: false, erro: rel.erro || 'O relatório do Gestta não veio.' };
+    let tarefas = OCG.tarefasDoRelatorio(rel.colunas, rel.linhas);
+    if (!pf.total) { const eu = String(pf.nome || '').trim().toLowerCase(); tarefas = eu ? tarefas.filter(t => t.responsavel.trim().toLowerCase() === eu) : []; }
+    return { ok: true, tarefas: OCG.tarefasGuiaFgts(tarefas), perfil: { nome: pf.nome, total: pf.total }, daMemoria: !!rel.daMemoria, lidoEm: new Date().toISOString() };
+  }
+  if (parte === 'itens') {
+    const ids = [...new Set((Array.isArray(msg.ids) ? msg.ids : []).map(String).filter(x => /^[0-9a-f]{24}$/i.test(x)))].slice(0, 15), porTarefa = {};
+    for (const id of ids) {
+      const { r } = await lerGestta([OCG.PEDIDOS.tarefa({ id })], { tab });
+      const x = r && r.resultados && r.resultados[0];
+      if (!x || x.status === 401) return { ok: false, erro: 'A sessão do Gestta acabou: faça login de novo na aba.', porTarefa };
+      porTarefa[id] = x.status === 200 && x.dados ? OCG.itensGuiaFgts(x.dados) : null;
+    }
+    return { ok: true, porTarefa };
+  }
+  return { ok: false, erro: 'Parte desconhecida.' };
+}
 async function gesttaSaude(msg, sender) {
   const tab = await tabDoGestta(sender);
   if (!tab) return { ok: false, semAba: true, erro: 'Abra o Gestta numa aba, já logado.' };
@@ -1816,6 +1874,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'gesttaTirar') { await memoriaPronta; reply(await gesttaTirar(msg, sender)); }
       else if (msg.cmd === 'gesttaFechamento') { await memoriaPronta; reply(await gesttaFechamento(msg, sender)); }
       else if (msg.cmd === 'gesttaSaude') { await memoriaPronta; reply(await gesttaSaude(msg, sender)); }
+      else if (msg.cmd === 'guiasFolha') { await memoriaPronta; reply(await guiasFolha(msg, sender)); }
       else if (msg.cmd === 'gesttaSetores') { await memoriaPronta; reply(await gesttaSetores(msg, sender)); }
       else if (msg.cmd === 'gesttaTarefa') { await memoriaPronta; reply(await gesttaTarefa(msg, sender)); }
       else if (msg.cmd === 'gesttaHistorico') { await memoriaPronta; reply(await gesttaHistorico(msg, sender)); }

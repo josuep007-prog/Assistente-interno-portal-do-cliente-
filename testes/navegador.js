@@ -2860,6 +2860,19 @@ function gtSaude(total) {
     'gesttaSaude:configClientes': { ok: true, porTemplate: { [T1]: [1, 2, 3, 4, 5, 6].map(cli), [T2]: [1, 2, 3, 4, 5].map(cli) } }
   };
 }
+// 0.116.0 · Guias da folha: três empresas com tarefa FGTS DIGITAL aberta (duas sem guia) e uma concluída
+function gtGuias() {
+  const id = n => 'a' + String(n).padStart(23, '0'), E = (n, nome, cnpj) => ({ nome, code: String(100 + n), cnpj });
+  const t = (n, status, emp) => ({ id: id(n), nome: 'FGTS DIGITAL', status, meta: '2026-11-07T03:00:00Z', responsavel: 'Eu Mesmo', empresa: emp });
+  const A = E(1, 'CLIENTE ALFA LTDA', '11222333000181'), B = E(2, 'CLIENTE BETA ME', '22333444000190'), C = E(3, 'CLIENTE GAMA SA', '33444555000101'), D = E(4, 'CLIENTE DELTA LTDA', '44555666000101');
+  const it = (guia) => ({ guia: { id: 'g', nome: 'FGTS Guia', temArquivo: guia, desconsiderado: false }, demonstrativo: { id: 'd', nome: 'Demonstrativo FGTS', temArquivo: guia, desconsiderado: false }, consignado: null });
+  return {
+    'guiasFolha:lista': { ok: true, tarefas: [t(1, 'OPEN', A), t(2, 'OPEN', B), t(3, 'IMPEDIMENT', C), t(4, 'DONE', D)], perfil: { nome: 'Eu Mesmo', total: true }, lidoEm: new Date().toISOString() },
+    'guiasFolha:itens': { ok: true, porTarefa: { [id(1)]: it(false), [id(2)]: it(false), [id(3)]: it(true) } },
+    'guiasFolha:extrato': { ok: true, porCodigo: { '11222333000181': { ok: true, fgts: 1800.5, aprendiz: 10, rescisorio: 150, extratos: [{ calculo: 'Folha Mensal', fgts: 1800.5, aprendiz: 10, filial: false }], semValor: false },
+      '22333444000190': { ok: false, motivo: 'Nenhum Extrato Mensal da competência 10/2026 publicado.' } } }
+  };
+}
 function gtTarefas() {
   const dia = n => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + n); return new Date(d.getTime() + 3 * 36e5).toISOString(); };
   const util = n => { const d = new Date(); d.setHours(0, 0, 0, 0); let k = 0; while (k < n) { d.setDate(d.getDate() + 1); if (d.getDay() % 6) k++; } return new Date(d.getTime() + 3 * 36e5).toISOString(); };
@@ -3349,6 +3362,38 @@ await passo('Gestta · 0.111.0: a tela mostra cada parte assim que chega (Meu di
   assert.deepEqual(p.erros, []);
   await p.context().close();
 });
+await passo('Gestta · Guias da folha (0.116.0): tarefas FGTS DIGITAL da competência, sem guia em destaque, escolher e ler o extrato; nada é escrito', async () => {
+  const { p, fr } = await abrirGestta(Object.assign(gtResp(true), gtGuias()));
+  await fr.waitForSelector('.gt-topo');
+  await fr.press('body', '9');
+  await fr.waitForFunction(() => /Guia anexada/.test((document.querySelector('.ggu-tab') || {}).textContent || ''));
+  const gm = () => fr.evaluate(() => (window.__msgs || []).filter(m => m.cmd === 'guiasFolha').map(m => m.parte));
+  assert.deepEqual(await gm(), ['lista', 'itens'], 'ao abrir: a lista e os itens das tarefas abertas; o extrato espera o botão');
+  const ids = await fr.evaluate(() => window.__msgs.find(m => m.cmd === 'guiasFolha' && m.parte === 'itens').ids);
+  assert.equal(ids.length, 3, 'a concluída não é aberta');
+  const topo = await fr.textContent('.ggu-topo');
+  assert.match(topo, /4\s*tarefas FGTS DIGITAL[\s\S]*2\s*sem a guia anexada/);
+  assert.match(await fr.textContent('.ggu-passos'), /Escolher[\s\S]*Conferir[\s\S]*chega nas próximas versões/);
+  assert.match(await fr.textContent('.ggu-tab'), /Cliente Alfa Ltda[\s\S]*Sem guia[\s\S]*Cliente Gama S\.A\.[\s\S]*Guia anexada/i);
+  assert.ok(await fr.$('[data-ggu-modo$="|filial"][disabled]'), 'por filial ainda desligado (não mapeado)');
+  assert.ok(await fr.$('[data-ggu-ler-ext][disabled]'), 'sem escolha, nada para ler');
+  // escolher todas as sem guia e ler o extrato
+  await fr.check('[data-ggu-todas]');
+  await fr.waitForFunction(() => /2 empresas escolhidas/.test(document.querySelector('.ggu-rodape').textContent));
+  await fr.click('[data-ggu-ler-ext]');
+  await fr.waitForFunction(() => /1\.800,50/.test(document.querySelector('.ggu-tab').textContent));
+  const ex = (await fr.evaluate(() => window.__msgs.filter(m => m.cmd === 'guiasFolha' && m.parte === 'extrato')))[0];
+  assert.deepEqual(ex.empresas.map(e => e.cnpj).sort(), ['11222333000181', '22333444000190'], 'só as escolhidas, com código, nome e CNPJ');
+  assert.deepEqual([ex.ano, ex.mes].map(Number).every(n => n > 0), true);
+  assert.match(await fr.textContent('.ggu-tab'), /R\$ 1\.800,50[\s\S]*aprendiz R\$ 10,00[\s\S]*Nenhum Extrato Mensal da competência 10\/2026 publicado/);
+  // a concluída aparece recolhida
+  await fr.click('[data-ggu-feitas]'); await fr.waitForFunction(() => /Cliente Delta Ltda/i.test(document.querySelector('#vista').textContent));
+  // nada foi escrito e nada ficou guardado
+  const cmds = await fr.evaluate(() => [...new Set(window.__msgs.map(m => m.cmd))]);
+  assert.ok(!cmds.some(c => /acao|Acao|anexar|emitir/.test(c)), 'só leituras: ' + cmds.join(', '));
+  assert.ok(!JSON.stringify(await fr.evaluate(() => Object.assign({}, localStorage))).includes('1800'), 'valor nunca guardado no navegador');
+  await p.close();
+});
 await passo('Gestta · Saúde (0.110.0): carga por dia com o ritmo, prioridade, contatos e e-mails só pelo botão, configuração só para a coordenação; nada é escrito', async () => {
   const { p, fr } = await abrirGestta(Object.assign(gtResp(true), gtSaude(true)));
   await fr.waitForSelector('.gt-topo');
@@ -3502,8 +3547,8 @@ await passo('Gestta · Tarefas: no Meu dia, Enter abre a tarefa escolhida no Ges
   const s = await abrirGestta({ gesttaTarefas: { ok: false, semSessao: true, erro: 'sem sessão do Gestta nesta aba (faça login)' } });
   assert.match(await s.fr.textContent('.faixa'), /Sem sessão no Gestta\..*faça login/s);
   const medir = require('./contraste-lib.js'), ruins = [];
-  for (const estilo of ['simples', 'atual']) for (const tema of ['light', 'dark']) for (const modo of ['dia', 'historico', 'empresas', 'tempo', 'lista', 'painel', 'quadro', 'calendario', 'fechamento', 'quem', 'mespop', 'atalhos', 'saude']) {
-    const { p, fr } = await abrirGestta(Object.assign(gtResp(true), gtSaude(true)), { estilo });
+  for (const estilo of ['simples', 'atual']) for (const tema of ['light', 'dark']) for (const modo of ['dia', 'historico', 'empresas', 'tempo', 'lista', 'painel', 'quadro', 'calendario', 'fechamento', 'quem', 'mespop', 'atalhos', 'saude', 'guias']) {
+    const { p, fr } = await abrirGestta(Object.assign(gtResp(true), gtSaude(true), gtGuias()), { estilo });
     await p.emulateMedia({ reducedMotion: 'reduce' });
     await fr.evaluate(t => document.documentElement.setAttribute('data-theme', t), tema);
     const aba = { historico: 'dia', tempo: 'empresas', painel: 'lista', fechamento: 'fech', quem: 'dia', mespop: 'dia', atalhos: 'dia' }[modo] || modo;
@@ -3518,6 +3563,7 @@ await passo('Gestta · Tarefas: no Meu dia, Enter abre a tarefa escolhida no Ges
     if (modo === 'mespop') await fr.click('#gt-mes-rot');
     if (modo === 'atalhos') { await fr.waitForSelector('.gd-it'); await fr.press('body', '?'); }
     if (modo === 'lista') await fr.check('#gt-feitas');
+    if (modo === 'guias') { await fr.waitForSelector('.ggu-tab'); await fr.waitForFunction(() => /Guia anexada/.test(document.querySelector('.ggu-tab').textContent)); await fr.check('[data-ggu-todas]'); await fr.click('[data-ggu-ler-ext]'); await fr.waitForFunction(() => /1\.800,50/.test(document.querySelector('.ggu-tab').textContent)); }
     if (modo === 'saude') {   // 0.110.0: com os blocos lidos e uma célula aberta
       await fr.waitForSelector('.gsa-topo');
       await fr.click('[data-gsa-ler="contatos"]'); await fr.waitForSelector('#gsa-contatos table');
@@ -3526,6 +3572,7 @@ await passo('Gestta · Tarefas: no Meu dia, Enter abre a tarefa escolhida no Ges
       await fr.click('.gsa-cel.acima'); await fr.waitForSelector('.gsa-cel-lista');
     }
     await fr.waitForTimeout(400);
+    if (process.env.CAP && modo === 'guias') await p.screenshot({ path: path.join(process.env.CAP, 'gestta-guias-' + estilo + '-' + tema + '.png'), fullPage: true });
     if (process.env.CAP && modo === 'saude') await p.screenshot({ path: path.join(process.env.CAP, 'gestta-saude-' + estilo + '-' + tema + '.png'), fullPage: true });
     if (process.env.CAP && ['dia', 'empresas', 'quadro', 'lista', 'fechamento', 'quem', 'mespop', 'atalhos'].includes(modo)) await p.screenshot({ path: path.join(process.env.CAP, 'gestta-' + modo + '-' + estilo + '-' + tema + '.png') });
     const r = await fr.evaluate(([m, min]) => eval('(' + m + ')')(min), [medir.toString(), 4.5]);
