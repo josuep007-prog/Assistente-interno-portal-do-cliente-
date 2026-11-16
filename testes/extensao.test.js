@@ -5003,3 +5003,13 @@ test('Gestta (0.121.0): o endereço do arquivo do item só sai do detalhe se for
   const lp = OCG.PEDIDOS.vinculosEmpresa({ cliente: S }); assert.equal(OCG.leituraPermitida(lp.metodo, lp.url).ok, true);
   const la = OCG.PEDIDOS.arquivoDoItem({ id: T, documento: S }); assert.equal(OCG.leituraPermitida(la.metodo, la.url).ok, true); assert.equal(la.doc, S);
 });
+test('Gestta (0.122.0): só os setores que SÃO Pessoal, Contábil ou Fiscal; nome que só contém a palavra (Contábil1, Fiscal Conexos…) fica de fora', () => {
+  for (const [s, m] of [['Pessoal', 'Pessoal'], ['PESSOAL', 'Pessoal'], ['Departamento Pessoal', 'Pessoal'], ['DP', 'Pessoal'], ['Contábil', 'Contábil'], ['CONTABIL', 'Contábil'], ['Fiscal', 'Fiscal'], ['  Departamento   Fiscal ', 'Fiscal']]) assert.equal(OCG.moduloDoSetor(s), m, s);
+  for (const s of ['Contábil1', 'Contábil2', 'Fiscal Conexos', 'Fiscal Dominio', 'Fiscal Simples Nacional', 'Consultoria Fiscal', 'Atendimento Pessoal', 'Folha de Pagamento', 'Recepção', '']) assert.equal(OCG.setorPermitido(s), false, s);
+  const col = ['id', 'company_department.name'], l = [['1', 'Fiscal'], ['2', 'Fiscal Conexos'], ['3', 'Contábil1'], ['4', ''], ['5', 'Pessoal']];
+  assert.deepEqual(plano(OCG.soSetoresPermitidos(col, l).map(x => x[0])), ['1', '4', '5'], 'a tela só tem os três setores (linha sem setor não dá para julgar)');
+  const eq = [{ id: 'a'.repeat(24), nome: 'Ana', setores: ['Fiscal Conexos', 'Fiscal'] }, { id: 'b'.repeat(24), nome: 'Bia', setores: ['Contábil2'] }];
+  assert.deepEqual(plano(OCG.setoresDaEquipe(eq).map(x => x.nome)), ['Fiscal']);
+  const rel = [{ status: 'OPEN', setor: 'Fiscal Conexos', responsavel: 'Ana' }, { status: 'OPEN', setor: 'Fiscal', responsavel: 'Ana' }];
+  assert.deepEqual(plano(OCG.setoresAtivos(rel, eq).map(x => x.nome)), ['Fiscal']);
+});

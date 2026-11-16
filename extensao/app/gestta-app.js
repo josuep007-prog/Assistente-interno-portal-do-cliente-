@@ -171,7 +171,6 @@ async function lerSetores() {
   E.setoresLendo = false;
   if (r && r.ok) E.setoresRel = (r.linhas || []).map(l => ({ status: l[0], setor: l[1], responsavel: G.nomeLegivel(l[2]) }));
   else E.setoresErro = (r && r.erro) || 'sem resposta';
-  quemChips();
   if ($('#gt-quem-pop') && !$('#gt-quem-pop').hidden) quemLista($('#gt-quem-busca').value);
 }
 async function carregarEquipe() {
@@ -193,71 +192,58 @@ const quemNome = () => {
   const q = qsVisao(); if (!q) return nomeDaPessoa(E.quem);
   return 'Setor ' + q.setor + (q.ids.length === 1 ? ' · ' + nomeDaPessoa(q.ids[0]) : q.ids.length ? ' · ' + q.ids.length + ' pessoas' : '');
 };
-// 0.117.0 (Josué, 16/11/2026: "melhorar os filtros de analista/setor e deixá-los mais intuitivos"): os setores ficam à vista, um clique
-// troca a visão; o botão ao lado escolhe as pessoas do setor. Só Pessoal, Contábil e Fiscal.
-function setoresDosChips() {
+// 0.122.0 (Josué, 16/11/2026: "quero que seja um botão que ao clicar abra uma janela bem intuitiva onde a pessoa possa selecionar ou o
+// setor inteiro ou um analista em específico diretamente"): um botão só; a janela mostra Pessoal, Contábil e Fiscal lado a lado, cada um com
+// "Todo o setor" e os analistas embaixo; um clique escolhe e fecha. Só estes três setores, pelo nome exato.
+function setoresParaEscolher() {
   const base = E.equipe ? G.setoresDaEquipe(E.equipe) : [], fonte = E.setoresRel || (E.setorPorId ? E.fechTarefas : null);
-  const at = fonte ? G.setoresAtivos(fonte, E.equipe) : [];
-  const l = base.map(x => Object.assign({}, x, { abertas: ((at.find(a => semAc(a.nome) === semAc(x.nome)) || {}).abertas) ?? null }));
-  at.forEach(a => { if (!l.some(x => semAc(x.nome) === semAc(a.nome))) l.push(a); });
+  const at = fonte ? G.setoresAtivos(fonte, E.equipe) : [], m = new Map();
+  [...base, ...at].forEach(x => {
+    const k = semAc(x.nome), s = m.get(k) || { nome: x.nome, abertas: null, pessoas: new Map() };
+    if (x.abertas != null) s.abertas = x.abertas;
+    (x.pessoas || []).forEach(p => { const o = s.pessoas.get(p.id); s.pessoas.set(p.id, { id: p.id, nome: p.nome, abertas: p.abertas != null ? p.abertas : o ? o.abertas : null }); });
+    m.set(k, s);
+  });
   const ordem = { 'Pessoal': 0, 'Contábil': 1, 'Fiscal': 2 };
-  return l.sort((a, b) => (ordem[G.moduloDoSetor(a.nome)] ?? 9) - (ordem[G.moduloDoSetor(b.nome)] ?? 9) || a.nome.localeCompare(b.nome, 'pt-BR'));
-}
-function quemChips() {
-  const w = $('#gt-quem-wrap'); if (!w) return;
-  let c = $('#gt-quem-chips');
-  if (!c) { c = document.createElement('div'); c.id = 'gt-quem-chips'; c.className = 'gt-quem-chips'; c.setAttribute('role', 'group'); c.setAttribute('aria-label', 'Ver as tarefas de'); w.insertBefore(c, w.firstChild); }
-  const sv = setorDaVisao(), chip = (attrs, rot, on, n, dica) => '<button type="button" class="gt-sit gt-quem-chip' + (on ? ' on' : '') + '" ' + attrs + ' aria-pressed="' + !!on + '"' + (dica ? ' title="' + esc(dica) + '"' : '') + '>' + esc(rot) + (n != null ? ' <b>' + num(n) + '</b>' : '') + '</button>';
-  const st = setoresDosChips();
-  c.innerHTML = '<span class="gt-quem-rot">Ver tarefas de</span>' + chip('data-quem="eu"', 'Minhas', E.quem === 'eu') +
-    (st.length ? st.map(x => chip('data-gt-setor-chip="' + esc(x.nome) + '"', x.nome, sv === x.nome, x.abertas, 'Todas as tarefas do setor ' + x.nome + (x.abertas != null ? ' (' + x.abertas + ' abertas no mês)' : ''))).join('') : '<span class="fraco gt-quem-lendo">' + (E.setoresErro ? 'setores indisponíveis' : 'lendo os setores…') + '</span>') +
-    chip('data-quem="sem"', 'Sem responsável', E.quem === 'sem');
+  return [...m.values()].map(x => Object.assign(x, { pessoas: [...x.pessoas.values()].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')) }))
+    .sort((a, b) => (ordem[G.moduloDoSetor(a.nome)] ?? 9) - (ordem[G.moduloDoSetor(b.nome)] ?? 9));
 }
 function quemRot() {
-  const b = $('#gt-quem-btn'), q = qsVisao();
-  // com um setor escolhido, o botão diz quem do setor está na tela e abre direto a lista de pessoas; sem setor, abre a escolha completa
-  const rot = q ? (q.ids.length === 1 ? nomeDaPessoa(q.ids[0]) : q.ids.length ? q.ids.length + ' pessoas' : 'Todas as pessoas') : 'Escolher pessoas';
-  if (b) { b.innerHTML = '<span class="gt-quem-av" aria-hidden="true">' + esc(q ? (q.ids.length === 1 ? iniciais(rot) : '▦') : '+') + '</span><span>' + esc(rot) + '</span><svg class="ic ic-sm"><use href="#i-chev-d"/></svg>'; b.title = q ? 'Escolher pessoas do setor ' + q.setor : 'Escolher um setor e as pessoas'; }
-  quemChips();
+  const b = $('#gt-quem-btn'), q = qsVisao(); if (!b) return;
+  const rot = quemNome(), av = E.quem === 'eu' ? 'Eu' : E.quem === 'sem' ? '—' : q ? (q.ids.length === 1 ? iniciais(nomeDaPessoa(q.ids[0])) : '▦') : iniciais(rot);
+  b.innerHTML = '<span class="gt-quem-av" aria-hidden="true">' + esc(av) + '</span><span>' + esc(rot) + '</span><svg class="ic ic-sm"><use href="#i-chev-d"/></svg>';
 }
-const QP = { passo: 'inicio', setor: '', marcados: new Set() };
 const semAc = t => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 function quemLista(f) {
-  const n = semAc(f), ul = $('#gt-quem-lista'), bt = (attrs, av, rot, extra, on) => '<li><button type="button" role="option" ' + attrs + ' aria-selected="' + !!on + '" class="' + (on ? 'on' : '') + '"><span class="gt-quem-av" aria-hidden="true">' + esc(av) + '</span><span class="gt-quem-nome">' + esc(rot) + '</span>' + (extra || '') + '</button></li>';
-  const sec = rot => '<li class="gt-quem-sec" role="presentation">' + esc(rot) + '</li>';
+  const n = semAc(f).trim(), el = $('#gt-quem-lista'); if (!el) return;
+  const atual = E.quem, q = qsVisao();
+  const op = (attrs, av, rot, extra, on, cls) => '<button type="button" ' + attrs + ' aria-pressed="' + !!on + '" class="gt-quem-op' + (cls ? ' ' + cls : '') + (on ? ' on' : '') + '"><span class="gt-quem-av" aria-hidden="true">' + esc(av) + '</span><span class="gt-quem-nome">' + esc(rot) + '</span>' + (extra || '') + '</button>';
   const conta = k => k ? '<small class="gt-quem-n">' + num(k) + (k === 1 ? ' aberta' : ' abertas') + '</small>' : '';
-  const fonte = E.setoresRel || (E.setorPorId ? E.fechTarefas : null);
-  const setores = fonte ? G.setoresAtivos(fonte, E.equipe) : E.equipe ? G.setoresDaEquipe(E.equipe) : null, provisorio = !fonte && !!setores;
-  $('#gt-quem-busca').placeholder = QP.passo === 'setor' ? 'Buscar pessoa do setor' : 'Buscar setor';
-  if (QP.passo === 'setor') {
-    const st = (setores || []).find(x => x.nome === QP.setor) || { nome: QP.setor, pessoas: (E.equipe || []).filter(p => (p.setores || []).includes(QP.setor)).map(p => ({ id: p.id, nome: p.nome, abertas: 0 })) };
-    const ps = st.pessoas.filter(p => !n || semAc(p.nome).includes(n));
-    const k = QP.marcados.size;
-    ul.innerHTML = '<li class="gt-quem-topo" role="presentation"><button type="button" class="gt-quem-voltar" data-gt-voltar aria-label="Voltar aos setores"><svg class="ic ic-sm"><use href="#i-chev-l"/></svg>Setores</button><b>Setor ' + esc(st.nome) + '</b></li>' +
-      sec('Escolha uma ou mais pessoas') +
-      (ps.length ? ps.map(p => '<li><label class="gt-quem-ck"><input type="checkbox" data-gt-pessoa="' + esc(p.id) + '"' + (QP.marcados.has(p.id) ? ' checked' : '') + '><span class="gt-quem-av" aria-hidden="true">' + esc(iniciais(p.nome)) + '</span><span class="gt-quem-nome">' + esc(p.nome) + '</span>' + conta(p.abertas) + '</label></li>').join('') : '<li class="fraco gt-quem-nada">Ninguém com esse nome no setor</li>') +
-      '<li class="gt-quem-pe" role="presentation"><button type="button" class="btn btn-sm btn-primary" data-gt-aplicar>' + (k ? 'Ver as tarefas de ' + (k === 1 ? '1 pessoa' : k + ' pessoas') : 'Ver todas as tarefas do setor') + '</button></li>';
-    return;
-  }
-  let h = bt('data-quem="eu"', 'Eu', 'Minhas', '', E.quem === 'eu') + bt('data-quem="sem"', '—', 'Sem responsável', '', E.quem === 'sem') + sec(provisorio ? 'Setores da equipe' : 'Setores com tarefas abertas');
-  if (provisorio) h += '<li class="fraco gt-quem-nada">' + (E.setoresErro ? 'Não consegui conferir as tarefas abertas: ' + esc(E.setoresErro) + '. Mostrando os setores do cadastro de equipe.' : 'Conferindo quais têm tarefa aberta…') + '</li>';
-  if (!setores) h += '<li class="fraco gt-quem-nada">' + (E.setoresErro ? 'Não consegui ler os setores: ' + esc(E.setoresErro) : 'Lendo a equipe do Gestta…') + '</li>';
-  else { const l = setores.filter(x => !n || semAc(x.nome).includes(n)); h += l.length ? l.map(x => bt('data-gt-setor="' + esc(x.nome) + '"', '▦', 'Setor ' + x.nome, conta(x.abertas) + '<svg class="ic ic-sm gt-quem-seta" aria-hidden="true"><use href="#i-chev-r"/></svg>', setorDaVisao() === x.nome)).join('') : '<li class="fraco gt-quem-nada">Nenhum setor com tarefa aberta' + (n ? ' com esse nome' : '') + '</li>'; }
-  ul.innerHTML = h;
+  const setores = setoresParaEscolher(), fonte = E.setoresRel || (E.setorPorId ? E.fechTarefas : null);
+  let h = '<div class="gt-quem-atalhos">' + (!n || semAc('minhas eu').includes(n) ? op('data-quem="eu"', 'Eu', 'Minhas', '', atual === 'eu') : '') + (!n || semAc('sem responsável').includes(n) ? op('data-quem="sem"', '—', 'Sem responsável', '', atual === 'sem') : '') + '</div>';
+  const colunas = setores.map(s => {
+    const todo = !n || semAc(s.nome).includes(n), ps = s.pessoas.filter(p => todo || semAc(p.nome).includes(n));
+    if (!todo && !ps.length) return '';
+    const dentro = q && semAc(q.setor) === semAc(s.nome);
+    return '<section class="gt-quem-col"' + (todo ? ' data-todo="1"' : '') + ' aria-label="Setor ' + esc(s.nome) + '"><h3 class="gt-quem-cabsec">' + esc(s.nome) + '</h3>' +
+      op('data-gt-setor="' + esc(s.nome) + '"', '▦', 'Todo o setor', conta(s.abertas) + '<svg class="ic ic-sm gt-quem-seta" aria-hidden="true"><use href="#i-chev-r"/></svg>', dentro && !q.ids.length, 'gt-quem-todo') +
+      (ps.length ? '<ul class="gt-quem-pessoas">' + ps.map(p => '<li>' + op('data-gt-pessoa="' + esc(p.id) + '" data-gt-de="' + esc(s.nome) + '"', iniciais(p.nome), p.nome, conta(p.abertas), dentro && q.ids.length === 1 && q.ids[0] === p.id) + '</li>').join('') + '</ul>'
+        : '<p class="fraco gt-quem-nada">' + (E.equipe ? 'Nenhum analista cadastrado neste setor.' : 'Lendo a equipe…') + '</p>') + '</section>';
+  }).join('');
+  if (!setores.length) h += '<p class="fraco gt-quem-nada">' + (E.setoresErro ? 'Não consegui ler os setores: ' + esc(E.setoresErro) : 'Lendo a equipe do Gestta…') + '</p>';
+  else if (!colunas) h += '<p class="fraco gt-quem-nada">Nenhum analista ou setor com “' + esc(f) + '”.</p>';
+  else h += '<div class="gt-quem-colunas">' + colunas + '</div>' + (!fonte ? '<p class="fraco gt-quem-nada">Conferindo quantas tarefas abertas cada um tem…</p>' : '');
+  el.innerHTML = h;
 }
 function quemAbrir(abrir) {
   const pop = $('#gt-quem-pop'), b = $('#gt-quem-btn'); if (!pop) return;
   pop.hidden = !abrir; b.setAttribute('aria-expanded', String(abrir));
   const veu = $('#gt-quem-veu'); if (veu) veu.hidden = !abrir;      // 0.111.3: janela por cima, com o fundo escurecido
   if (abrir) {
-    const q = qsVisao(); QP.passo = 'inicio'; QP.setor = ''; QP.marcados = new Set(q ? q.ids : []);
     if (E.dados && E.dados.perfil && E.dados.perfil.total) { if (!E.equipe) carregarEquipe(); lerSetores(); }   // 0.111.0: setores na hora (equipe) e conferidos pelo relatório do mês corrente
-    if (q) { quemPasso(q.setor); return; }      // 0.117.0: já num setor, abre direto as pessoas dele
     $('#gt-quem-busca').value = ''; quemLista(''); setTimeout(() => $('#gt-quem-busca').focus(), 20);
   }
 }
-function quemPasso(setor) { const q = qsVisao(); QP.passo = setor ? 'setor' : 'inicio'; QP.setor = setor || ''; QP.marcados = new Set(q && q.setor === setor ? q.ids : []); $('#gt-quem-busca').value = ''; quemLista(''); setTimeout(() => $('#gt-quem-busca').focus(), 20); }
-function quemAplicar() { trocarQuem('setor:' + QP.setor + (QP.marcados.size ? '|' + [...QP.marcados].join(',') : '')); }
 function trocarQuem(id) { if (!id || id === E.quem) { quemAbrir(false); return; } E.quem = id; E.abertas.clear(); quemAbrir(false); quemRot(); salvarEstado(); ler(); }
 
 /* ---------- cabeçalho, trilho e "ao vivo" ---------- */
@@ -636,22 +622,17 @@ $('#gt-mes-pop').addEventListener('click', e => {
   if (e.target.closest('[data-mp-atual]')) { const c = G.competenciaPadrao(new Date()); E.ano = c.ano; E.mes = c.mes; mesAbrir(false); trocouMes(); }
 });
 $('#gt-quem-btn').onclick = () => quemAbrir($('#gt-quem-pop').hidden);
-$('#gt-quem-wrap').addEventListener('click', e => { const b = e.target.closest('#gt-quem-chips [data-quem], #gt-quem-chips [data-gt-setor-chip]'); if (!b) return; trocarQuem(b.dataset.quem || 'setor:' + b.dataset.gtSetorChip); });      // 0.117.0: um clique no setor
 if ($('#gt-quem-x')) $('#gt-quem-x').onclick = () => { quemAbrir(false); $('#gt-quem-btn').focus(); };
 $('#gt-quem-busca').oninput = e => quemLista(e.target.value);
 $('#gt-quem-busca').onkeydown = e => {
   if (e.key !== 'Enter') return;
-  if (QP.passo === 'setor') { quemAplicar(); return; }
-  const b = $('#gt-quem-lista [data-gt-setor]') || $('#gt-quem-lista [data-quem]'); if (b) b.click();
+  // Enter escolhe o primeiro resultado: o setor inteiro se a busca bateu no nome do setor, senão o primeiro analista achado
+  const col = $('#gt-quem-lista .gt-quem-col'), b = col ? (col.dataset.todo ? col.querySelector('[data-gt-setor]') : col.querySelector('[data-gt-pessoa]')) : $('#gt-quem-lista [data-quem]'); if (b) b.click();
 };
 $('#gt-quem-lista').addEventListener('click', e => {
-  const b = e.target.closest('[data-quem],[data-gt-setor],[data-gt-voltar],[data-gt-aplicar]'); if (!b) return;
-  if (b.dataset.quem) trocarQuem(b.dataset.quem);
-  else if (b.dataset.gtSetor) quemPasso(b.dataset.gtSetor);
-  else if (b.dataset.gtVoltar != null) quemPasso('');
-  else quemAplicar();
+  const b = e.target.closest('[data-quem],[data-gt-setor],[data-gt-pessoa]'); if (!b) return;
+  trocarQuem(b.dataset.quem || (b.dataset.gtPessoa ? 'setor:' + b.dataset.gtDe + '|' + b.dataset.gtPessoa : 'setor:' + b.dataset.gtSetor));      // 0.122.0: um clique escolhe e fecha
 });
-$('#gt-quem-lista').addEventListener('change', e => { const c = e.target.closest('[data-gt-pessoa]'); if (!c) return; if (c.checked) QP.marcados.add(c.dataset.gtPessoa); else QP.marcados.delete(c.dataset.gtPessoa); const ap = $('#gt-quem-lista [data-gt-aplicar]'); if (ap) ap.textContent = QP.marcados.size ? 'Ver as tarefas de ' + (QP.marcados.size === 1 ? '1 pessoa' : QP.marcados.size + ' pessoas') : 'Ver todas as tarefas do setor'; });
 document.addEventListener('click', e => {
   if (!$('#gt-mes-pop').hidden && !e.target.closest('#gt-mes-pop, #gt-mes-rot')) mesAbrir(false);
   if (!$('#gt-quem-pop').hidden && e.target.isConnected && !e.target.closest('#gt-quem-pop, #gt-quem-btn')) quemAbrir(false);   // clicar num passo redesenha a lista: o alvo some e o popover fica
