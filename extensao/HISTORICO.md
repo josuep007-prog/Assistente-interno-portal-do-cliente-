@@ -2,6 +2,13 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.120.0 (16/11/2026): Guias da folha, fases 4 e 5: anexar no Gestta e baixar a pasta
+
+- Josué: "pode terminar tudo que falta".
+- **Anexar no Gestta:** depois de emitir, **Anexar no Gestta** leva cada PDF ao seu item da tarefa FGTS DIGITAL: a guia em "FGTS Guia", o demonstrativo em "Demonstrativo FGTS" e o consignado em "Demonstrativo e-consignado", com os nomes `MM-AAAA …`. Só vai o que passou na conferência do conteúdo e só em item vazio; o resto aparece na confirmação como "fica de fora" e o porquê. Uma confirmação para o lote, um arquivo por vez, pelo envio já aprovado. **Concluir a tarefa depois de anexar** é uma caixa à parte, desligada de fábrica (usa o concluir já aprovado: marca as etapas e desconsidera os itens sem arquivo; o Gestta avisa o cliente por e-mail).
+- **Baixar a pasta:** salva em `Downloads/Guias da folha/MM-AAAA/` uma subpasta por empresa com os PDFs no nome do servidor (`DARF FGTS MM-AAAA.pdf`, `DEMONSTRATIVO FGTS MM-AAAA.pdf`, `DEMONSTRATIVO E-CONSIGNADO MM-AAAA.pdf`) e o **relatório da competência** em CSV: empresa, código, CNPJ, FGTS do extrato, FGTS no FGTS Digital, diferença, situação (bateu, não bateu, emitida, já existia, sem extrato) e o número da guia. A permissão de downloads é opcional e pedida na hora; nada fica guardado na extensão.
+- Com isso o trilho das Guias da folha tem os cinco passos funcionando (a DCTFWeb continua pausada).
+
 ## Novidades da v0.119.0 (16/11/2026): Guias da folha, fase 3: emitir a guia do FGTS
 
 - Josué escolheu a **Guia Rápida** (a guia mensal da folha) e que a pergunta do FGTS Digital apareça na extensão. Mapa completo em `mapeamento/fgts-digital-emissao-2026-11-16.md`.
