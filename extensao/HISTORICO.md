@@ -2,6 +2,18 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.119.0 (16/11/2026): Guias da folha, fase 3: emitir a guia do FGTS
+
+- Josué escolheu a **Guia Rápida** (a guia mensal da folha) e que a pergunta do FGTS Digital apareça na extensão. Mapa completo em `mapeamento/fgts-digital-emissao-2026-11-16.md`.
+- **Emitir guias** na aba Guias da folha: só as escolhidas que **bateram** na conferência e ainda não têm guia, depois de **uma confirmação para o lote** (empresa, competência e valor). Uma empresa por vez:
+  - lê de novo o resumo da competência e **só emite se o FGTS mensal bate com o extrato** (até R$ 0,05);
+  - com **guia existente** válida, baixa a existente em vez de emitir outra; débitos que já têm guia ou guia em processamento = não emite e manda conferir no site;
+  - aviso COB0027 ou mais de um agrupamento mensal = "emita no FGTS Digital";
+  - **pergunta do site** volta para a linha da empresa: **Sim, emitir** segue; **Não emitir** encerra;
+  - emite com um identificador gerado uma vez e **repete a mesma chamada** enquanto o site diz que está gerando (2 s, 4 s… até 30 s); passou de alguns minutos, para e manda conferir na Consulta de Guias (nunca emite de novo);
+  - traz a **guia**, o **demonstrativo** (Detalhe da Guia Emitida) e, se houver, o **consignado**, conferidos pelo **conteúdo** do PDF (a guia tem de trazer a raiz do CNPJ e a competência) e nomeados `MM-AAAA DARF FGTS.pdf`, `MM-AAAA DEMONSTRATIVO FGTS.pdf`, `MM-AAAA DEMONSTRATIVO E-CONSIGNADO.pdf`. **Ver** abre cada um; ficam só na memória da tela.
+- Segurança: a única escrita no FGTS Digital é `POST /cobranca/api/guia-rapida/gerar-guia/{valorFiltro}` do tipo **mensal**, corpo `{}`, numa lista separada da leitura (`OCF.escritaPermitida`), conferida no service worker e de novo dentro da página, e só aceita de uma tela da extensão. O cabeçalho anti-falsificação do site é lido do cookie dentro da página e nunca sai dela. Nada é pago.
+
 ## Novidades da v0.118.0 (16/11/2026): Guias da folha, fase 2: conferir no FGTS Digital (só leitura)
 
 - Com o mapa de 16/11/2026 (leitura de ponta a ponta no FGTS Digital), a aba **Guias da folha** ganha **Conferir no FGTS Digital** para as empresas escolhidas com o extrato lido.
