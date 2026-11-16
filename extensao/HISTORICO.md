@@ -2,6 +2,10 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.117.1 (16/11/2026): a aba Saúde passa a se chamar Gestão
+
+- Josué: "troque saúde por gestão". A aba das Tarefas do Gestta que mostra carga, prioridade, falhas de e-mail, contatos e configuração passa a se chamar **Gestão** ("Gestão da operação" no título). A tecla continua a 8; nada mudou no que ela lê. A lista de atalhos (?) passou a citar as 9 abas.
+
 ## Novidades da v0.117.0 (16/11/2026): Tarefas do Gestta mais rápidas, setores à vista e só Pessoal, Contábil e Fiscal
 
 - Josué: "ainda demora muito pra carregar as seleções, precisamos também melhorar os filtros de analista/setor e deixá-los mais intuitivos … e limite também a extensão aos setores pessoal, contábil e fiscal".
