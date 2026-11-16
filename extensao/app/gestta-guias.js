@@ -1,13 +1,13 @@
 /* Tarefas do Gestta · aba Guias da folha (0.116.0, fase 1: só leitura).
    Josué, 13/11 e 16/11/2026 (mapa em mapeamento/guias-fgts-dctfweb.md; desenho em guias-fgts-dctfweb-desenho.md): a extensão lista as
    tarefas FGTS DIGITAL da competência, mostra quais ainda estão sem a guia anexada, o analista escolhe as empresas e a extensão lê o
-   "Valor do FGTS" do Extrato Mensal publicado no portal de documentos do Onvio. A conferência no FGTS Digital, a emissão e o anexo são as
-   fases seguintes (aparecem no trilho, ainda sem ação). Tudo só na memória desta tela: os valores nunca são guardados. */
+   "Valor do FGTS" do Extrato Mensal publicado no portal de documentos do Onvio; desde a 0.118.0 confere esse valor no FGTS Digital (só
+   leitura). A emissão e o anexo são as fases seguintes (aparecem no trilho, ainda sem ação). Tudo só na memória desta tela: os valores nunca são guardados. */
 import { esc, num, plural, simples } from './util.js';
 import { abrirPainel } from './gestta-trilha.js';
 
 const S = { comp: '', dados: null, carregando: false, erro: null, itens: {}, lendoItens: null, extratos: {}, lendoExt: null, erroExt: '',
-  sel: new Set(), modo: {}, verFeitas: false };
+  sel: new Set(), modo: {}, verFeitas: false, fgts: {}, conf: null, erroConf: '', parar: false };
 let enviarFn = null, aoMudar = () => {}, paraPaiFn = () => {};
 const ic = (n) => '<svg class="ic ic-sm" aria-hidden="true"><use href="#i-' + n + '"/></svg>';
 const nomeLeg = (t) => window.OCG && OCG.nomeLegivel ? OCG.nomeLegivel(t) : t;
@@ -20,7 +20,7 @@ export function estadoGuias() { return S; }
 export async function lerGuias(enviar, redesenhar, comp, forcar) {
   enviarFn = enviar; aoMudar = redesenhar || aoMudar;
   const k = comp.ano + '-' + String(comp.mes).padStart(2, '0');
-  if (S.comp !== k) { S.comp = k; S.dados = null; S.itens = {}; S.extratos = {}; S.sel.clear(); }
+  if (S.comp !== k) { S.comp = k; S.dados = null; S.itens = {}; S.extratos = {}; S.fgts = {}; S.sel.clear(); }
   const vez = (lerGuias.vez = (lerGuias.vez || 0) + 1);
   S.carregando = true; S.erro = null; aoMudar();
   const r = await enviar({ cmd: 'guiasFolha', parte: 'lista', ano: comp.ano, mes: comp.mes, forcar: !!forcar });
@@ -60,10 +60,44 @@ async function lerExtratos() {
   S.lendoExt = null; aoMudar();
 }
 
+// 0.118.0 · fase 2: conferir no FGTS Digital, uma empresa por vez (troca o perfil para a matriz, lê os débitos e soma o principal).
+// A permissão do site é pedida aqui, no clique (o Chrome mostra o pedido). Parar vale para a próxima empresa.
+const HOST_FGTS = 'https://fgtsdigital.sistema.gov.br/*';
+const esperadoDe = (x) => x && x.ok && typeof x.fgts === 'number' ? Math.round((x.fgts + (x.aprendiz || 0)) * 100) / 100 : null;
+const prontasParaConferir = () => S.dados ? S.dados.tarefas.filter(t => S.sel.has(t.id) && esperadoDe(S.extratos[chave(t)]) != null) : [];
+async function conferirFgts() {
+  const alvo = prontasParaConferir().filter(t => !(S.fgts[chave(t)] && S.fgts[chave(t)].ok));
+  if (!alvo.length || S.conf) return;
+  try { if (chrome.permissions && chrome.permissions.request && !(await chrome.permissions.request({ origins: [HOST_FGTS] }))) { S.erroConf = 'Sem a permissão do FGTS Digital a extensão não consegue conferir.'; aoMudar(); return; } }
+  catch (e) { S.erroConf = 'Não consegui pedir a permissão do FGTS Digital: ' + (e && e.message || e); aoMudar(); return; }
+  const [ano, mes] = S.comp.split('-').map(Number);
+  S.conf = { feitos: 0, total: alvo.length, atual: '' }; S.erroConf = ''; S.parar = false; aoMudar();
+  for (const t of alvo) {
+    if (S.parar) break;
+    S.conf.atual = nomeLeg(t.empresa.nome); aoMudar();
+    const r = await enviarFn({ cmd: 'guiasFolha', parte: 'fgts', ano, mes, empresa: t.empresa, esperado: esperadoDe(S.extratos[chave(t)]) });
+    S.fgts[chave(t)] = r || { ok: false, erro: 'sem resposta' };
+    if (r && (r.semAba || r.semSessao || r.semPermissao)) { S.erroConf = r.erro; break; }      // vale para todas: para e mostra o que fazer
+    S.conf.feitos++; aoMudar();
+  }
+  S.conf = null; aoMudar();
+}
+function celulaFgts(t) {
+  const x = S.fgts[chave(t)];
+  if (!x) return S.conf && S.conf.atual === nomeLeg(t.empresa.nome) ? '<span class="gte-tag gte-neutro">' + ic('clock') + 'conferindo…</span>' : '<span class="fraco">—</span>';
+  if (!x.ok) return '<span class="ggu-motivo">' + ic('alert') + esc(x.erro || 'Não consegui conferir') + '</span>';
+  if (!x.debitos) return '<span class="gte-tag gte-neutro">Sem débito na competência</span>';
+  const ja = x.guias && x.guias.length && !x.semGuia ? '<small class="fraco">já tem guia ' + esc(x.guias.join(', ')) + '</small>' : '';
+  const enc = x.encargos ? '<small class="fraco">+ encargos ' + esc(reais(x.encargos)) + '</small>' : '';
+  if (x.bate === true) return '<span class="gte-tag gte-ok">' + ic('check') + 'Bate</span> <b class="ggu-valor">' + esc(reais(x.principal)) + '</b>' + enc + ja;
+  if (x.bate === false) return '<span class="gte-tag gte-erro">Não bate</span> <b class="ggu-valor">' + esc(reais(x.principal)) + '</b><small>diferença ' + esc(reais(x.diferenca)) + ' (limite R$ 0,05)</small>' + ja;
+  return '<b class="ggu-valor">' + esc(reais(x.principal)) + '</b>' + enc + ja;
+}
+
 /* ---------- desenho ---------- */
 const PASSOS = [['Escolher', 'empresas e o modo do FGTS'], ['Conferir', 'extrato × FGTS Digital'], ['Emitir', 'guia e demonstrativos'], ['Anexar', 'nas tarefas do Gestta'], ['Baixar', 'a pasta para o servidor']];
 function trilho(atual) {
-  return '<ol class="ggu-passos" aria-label="Passos das guias da folha">' + PASSOS.map((p, i) => '<li class="' + (i < atual ? 'feito' : i === atual ? 'atual' : 'depois') + '"' + (i === atual ? ' aria-current="step"' : '') + '><span class="ggu-n">' + (i < atual ? '✓' : i + 1) + '</span><span><b>' + p[0] + '</b><small>' + (i > 0 ? 'chega nas próximas versões' : p[1]) + '</small></span></li>').join('') + '</ol>';
+  return '<ol class="ggu-passos" aria-label="Passos das guias da folha">' + PASSOS.map((p, i) => '<li class="' + (i < atual ? 'feito' : i === atual ? 'atual' : 'depois') + '"' + (i === atual ? ' aria-current="step"' : '') + '><span class="ggu-n">' + (i < atual ? '✓' : i + 1) + '</span><span><b>' + p[0] + '</b><small>' + (i > 1 ? 'chega nas próximas versões' : p[1]) + '</small></span></li>').join('') + '</ol>';
 }
 function situacaoGuia(t) {
   if (t.status === 'DONE') return '<span class="gte-tag gte-ok">' + ic('check') + 'Concluída</span>';
@@ -95,7 +129,7 @@ function linha(t) {
   return '<tr' + (S.sel.has(t.id) ? ' class="on"' : '') + '><td>' + (marcavel ? '<input type="checkbox" data-ggu-sel="' + esc(t.id) + '"' + (S.sel.has(t.id) ? ' checked' : '') + ' aria-label="Escolher ' + esc(nomeLeg(t.empresa.nome)) + '">' : '') + '</td>' +
     '<td><b>' + esc(nomeLeg(t.empresa.nome) || '—') + '</b><small>' + esc([t.empresa.code && 'cód. ' + t.empresa.code, t.empresa.cnpj && '…' + t.empresa.cnpj.slice(-6)].filter(Boolean).join(' · ')) + '</small></td>' +
     '<td><button type="button" class="gte-link" data-ggu-tarefa="' + esc(t.id) + '">' + esc(nomeLeg(t.nome)) + '</button><small>' + esc(t.responsavel ? nomeLeg(t.responsavel) : 'sem responsável') + '</small></td>' +
-    '<td>' + situacaoGuia(t) + '</td><td class="num">' + celulaExtrato(t) + '</td><td>' + (marcavel ? modoFgts(t) : '') + '</td></tr>';
+    '<td>' + situacaoGuia(t) + '</td><td class="num">' + celulaExtrato(t) + '</td><td class="num">' + celulaFgts(t) + '</td><td>' + (marcavel ? modoFgts(t) : '') + '</td></tr>';
 }
 export function desenharGuias(v, sub) {
   const [ano, mes] = (S.comp || '').split('-').map(Number), rotComp = mes ? MESES[mes - 1] + ' de ' + ano : '';
@@ -108,13 +142,16 @@ export function desenharGuias(v, sub) {
   const kpi = (n, rot, cls) => '<div class="gte-kpi ' + cls + '"><b>' + (n == null ? '—' : num(n)) + '</b><span>' + esc(rot) + '</span></div>';
   let h = '<section class="gte-topo cfg-card ggu-topo"><div class="gte-tit"><h2>Guias da folha</h2><p' + (simples() ? ' class="ajuda"' : '') + '>Escolha as empresas com a folha publicada e a guia do FGTS ainda sem anexar. A extensão lê o “Valor do FGTS” do Extrato Mensal no portal de documentos do Onvio para conferir com o FGTS Digital. Os valores ficam só nesta tela.</p></div>' +
     '<div class="gte-kpis">' + kpi(todas.length, 'tarefas FGTS DIGITAL', 'gte-k-neutro') + kpi(S.lendoItens ? null : nSem, 'sem a guia anexada', 'gte-k-erro') + kpi(nSel, 'escolhidas', 'gte-k-neutro') + kpi(lidos, 'extratos lidos', 'gte-k-neutro') + '</div></section>' +
-    trilho(0);
+    trilho(S.conf || Object.keys(S.fgts).length ? 1 : 0);
   if (S.dados.daMemoria) h += '<p class="fraco ggu-memo">Relatório do Gestta lido há pouco (vale por 1 hora).</p>';
   if (S.lendoItens) h += '<p class="fraco ggu-memo" role="status">' + ic('clock') + ' Conferindo os itens das tarefas: ' + S.lendoItens.feitos + ' de ' + S.lendoItens.total + '.</p>';
   if (S.erroItens) h += '<div class="faixa warn"><svg class="ic"><use href="#i-alert"/></svg><div>' + esc(S.erroItens) + '</div></div>';
   if (S.erroExt) h += '<div class="faixa warn"><svg class="ic"><use href="#i-alert"/></svg><div>' + esc(S.erroExt) + '</div></div>';
+  if (S.conf) h += '<div class="cfg-card ggu-and" role="status"><div><b>Conferindo no FGTS Digital: ' + S.conf.feitos + ' de ' + S.conf.total + '</b><div class="fraco">' + esc(S.conf.atual) + ' · troca o perfil para a matriz (até 30 s) e lê os débitos da competência. Se o site pedir o certificado ou um captcha, resolva na aba do FGTS Digital.</div>' +
+    '<div class="gsa-prog"><span style="width:' + Math.round(100 * S.conf.feitos / Math.max(1, S.conf.total)) + '%"></span></div></div><button type="button" class="btn btn-sm" data-ggu-parar' + (S.parar ? ' disabled' : '') + '>' + (S.parar ? 'Parando…' : 'Parar') + '</button></div>';
+  if (S.erroConf) h += '<div class="faixa warn"><svg class="ic"><use href="#i-alert"/></svg><div>' + esc(S.erroConf) + '</div></div>';
   if (!todas.length) { v.innerHTML = h + '<div class="vazio"><b>Nenhuma tarefa FGTS DIGITAL nesta competência</b>' + (S.dados.perfil && !S.dados.perfil.total ? 'Você vê só as tarefas em que é responsável.' : 'Troque a competência no topo.') + '</div>'; return; }
-  const cab = '<thead><tr><th><input type="checkbox" data-ggu-todas aria-label="Escolher todas as sem guia"' + (abertas.length && abertas.filter(semGuia).every(t => S.sel.has(t.id)) && nSem ? ' checked' : '') + '></th><th>Empresa</th><th>Tarefa</th><th>Guia no Gestta</th><th class="num">FGTS do extrato</th><th>FGTS emitido como</th></tr></thead>';
+  const cab = '<thead><tr><th><input type="checkbox" data-ggu-todas aria-label="Escolher todas as sem guia"' + (abertas.length && abertas.filter(semGuia).every(t => S.sel.has(t.id)) && nSem ? ' checked' : '') + '></th><th>Empresa</th><th>Tarefa</th><th>Guia no Gestta</th><th class="num">FGTS do extrato</th><th class="num">No FGTS Digital</th><th>FGTS emitido como</th></tr></thead>';
   h += '<div class="cfg-card ggu-lista"><div class="gte-tab-wrap"><table class="gte-tab ggu-tab">' + cab + '<tbody>' + abertas.map(linha).join('') + '</tbody></table></div>' +
     '<p class="fraco">A DCTFWeb fica para depois. O FGTS sai da matriz, que traz todos os estabelecimentos; a guia por filial entra quando for mapeada.</p></div>';
   if (feitas.length) h += '<div class="cfg-card"><button type="button" class="gte-link" data-ggu-feitas aria-expanded="' + S.verFeitas + '">' + ic(S.verFeitas ? 'chev-d' : 'chev-r') + plural(feitas.length, 'tarefa concluída', 'tarefas concluídas') + ' (já com a guia)</button>' +
@@ -123,14 +160,17 @@ export function desenharGuias(v, sub) {
   h += '<div class="cfg-card ggu-rodape"><div><b>' + (nSel ? plural(nSel, 'empresa escolhida', 'empresas escolhidas') : 'Escolha as empresas na lista') + '</b><div class="fraco">' +
     (S.lendoExt ? 'Lendo os extratos: ' + S.lendoExt.feitos + ' de ' + S.lendoExt.total + ' (um por vez; precisa de uma aba do Portal do Cliente do Onvio aberta).' : 'O extrato é lido no portal de documentos do Onvio (uma aba do Portal do Cliente aberta).') + '</div></div>' +
     '<div class="ggu-acoes"><button type="button" class="btn btn-primary" data-ggu-ler-ext' + (!faltaLer || S.lendoExt ? ' disabled' : '') + '>' + ic('search') + 'Ler o extrato' + (faltaLer ? ' (' + faltaLer + ')' : '') + '</button>' +
-    '<button type="button" class="btn" disabled title="Chega na próxima versão">Conferir no FGTS Digital</button></div></div>';
+    (() => { const n = prontasParaConferir().filter(t => !(S.fgts[chave(t)] && S.fgts[chave(t)].ok)).length;
+      return '<button type="button" class="btn btn-primary" data-ggu-conferir' + (!n || S.conf ? ' disabled' : '') + ' title="Só as escolhidas com o extrato lido. Precisa de uma aba do FGTS Digital aberta e logada.">' + ic('check') + 'Conferir no FGTS Digital' + (n ? ' (' + n + ')' : '') + '</button>'; })() + '</div></div>';
   v.innerHTML = h;
 }
 export function ligarGuias(v, redesenhar, paraPai) {
   aoMudar = redesenhar || aoMudar; paraPaiFn = paraPai || paraPaiFn;
   v.addEventListener('click', (e) => {
     if (!v.querySelector('.ggu-topo, [data-ggu-reler]')) return;
-    const t = e.target.closest('[data-ggu-reler],[data-ggu-feitas],[data-ggu-ler-ext],[data-ggu-modo],[data-ggu-tarefa]'); if (!t) return;
+    const t = e.target.closest('[data-ggu-reler],[data-ggu-feitas],[data-ggu-ler-ext],[data-ggu-conferir],[data-ggu-parar],[data-ggu-modo],[data-ggu-tarefa]'); if (!t) return;
+    if (t.dataset.gguConferir != null) { conferirFgts(); return; }
+    if (t.dataset.gguParar != null) { S.parar = true; aoMudar(); return; }
     if (t.dataset.gguReler != null) { S.erro = null; S.dados = null; if (enviarFn) { const [ano, mes] = S.comp.split('-').map(Number); lerGuias(enviarFn, aoMudar, { ano, mes }, true); } return; }
     if (t.dataset.gguFeitas != null) { S.verFeitas = !S.verFeitas; aoMudar(); return; }
     if (t.dataset.gguLerExt != null) { if (!S.lendoExt) lerExtratos(); return; }

@@ -942,3 +942,7 @@
 .gt-quem-chip{--gc:var(--blue-deep)}
 .gt-quem-chip b{font-size:12px}
 .gt-quem-lendo{font-size:12px}
+/* 0.118.0 · conferência no FGTS Digital */
+.ggu-and{display:flex; gap:12px; align-items:center; justify-content:space-between; border-left:3px solid var(--blue-deep); margin-bottom:12px}
+.ggu-and > div{flex:1 1 auto; min-width:0}
+.ggu-tab td.num small{display:block}

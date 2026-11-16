@@ -2870,7 +2870,9 @@ function gtGuias() {
     'guiasFolha:lista': { ok: true, tarefas: [t(1, 'OPEN', A), t(2, 'OPEN', B), t(3, 'IMPEDIMENT', C), t(4, 'DONE', D)], perfil: { nome: 'Eu Mesmo', total: true }, lidoEm: new Date().toISOString() },
     'guiasFolha:itens': { ok: true, porTarefa: { [id(1)]: it(false), [id(2)]: it(false), [id(3)]: it(true) } },
     'guiasFolha:extrato': { ok: true, porCodigo: { '11222333000181': { ok: true, fgts: 1800.5, aprendiz: 10, rescisorio: 150, extratos: [{ calculo: 'Folha Mensal', fgts: 1800.5, aprendiz: 10, filial: false }], semValor: false },
-      '22333444000190': { ok: false, motivo: 'Nenhum Extrato Mensal da competência 10/2026 publicado.' } } }
+      '22333444000190': { ok: false, motivo: 'Nenhum Extrato Mensal da competência 10/2026 publicado.' } } },
+    // 0.118.0: a conferência no FGTS Digital (o principal dos débitos mensais bate com o extrato + aprendiz)
+    'guiasFolha:fgts': { ok: true, competencia: '2026-10', debitos: 6, principal: 1810.5, encargos: 0, total: 1810.5, semGuia: 6, guias: [], filial: false, esperado: 1810.5, bate: true, diferenca: 0 }
   };
 }
 function gtTarefas() {
@@ -3364,6 +3366,25 @@ await passo('Gestta · 0.111.0: a tela mostra cada parte assim que chega (Meu di
   assert.deepEqual(p.erros, []);
   await p.context().close();
 });
+await passo('FGTS Digital (0.118.0): a leitura de dentro da aba vai com o cookie da página, volta sem dado de trabalhador, recusa o que não é leitura e reconhece a sessão caída', async () => {
+  const p = await pagina('https://fgtsdigital.sistema.gov.br/cobranca/', '<!doctype html><title>FGTS Digital</title><body>FGTS simulado</body>', true);
+  let sessao = true; const pedidos = [];
+  await p.route('https://fgtsdigital.sistema.gov.br/cobranca/api/**', r => {
+    pedidos.push(r.request().method() + ' ' + new URL(r.request().url()).pathname);
+    if (!sessao) return r.fulfill({ status: 200, contentType: 'text/html', body: '<html>gov.br</html>' });
+    return r.fulfill({ contentType: 'application/json', body: JSON.stringify({ qtdeTotalDebitos: 1, debitos: [{ competenciaApuracao: '202610', vlPrincipal: 10.5, vlTotal: 10.5, cpfTrabalhador: '111.222.333-44', nomeTrabalhador: 'FULANO DE TAL', matricula: '9', estabalecimentoRemuneracao: '11222333000181', guiasRelacionadas: [] }] }) });
+  });
+  await p.addScriptTag({ content: lerExt('fgts.js') });
+  const r = await p.evaluate(() => OCF.lerNaPagina([OCF.PEDIDOS.debitos('2026-10', 1)], { pausa: 1 }));
+  assert.ok(r.ok); assert.equal(r.resultados[0].status, 200); assert.equal(r.resultados[0].dados.itens[0].principal, 10.5);
+  for (const v of ['111.222', 'FULANO', 'matricula']) assert.ok(!JSON.stringify(r).includes(v), 'vazou ' + v);
+  const rec = await p.evaluate(() => OCF.lerNaPagina([{ id: 'x', metodo: 'POST', url: OCF.HOST + '/cobranca/api/guia-parametrizada/gerar-guia' }], { pausa: 1 }));
+  assert.match(rec.resultados[0].recusado, /escrita/); assert.equal(pedidos.length, 1, 'a escrita nem sai da página');
+  sessao = false;
+  const s = await p.evaluate(() => OCF.lerNaPagina([OCF.PEDIDOS.dadosFiltro()], { pausa: 1 }));
+  assert.equal(s.semSessao, true, 'sem sessão a API devolve a página de login: vira semSessao');
+  await p.close();
+});
 await passo('Gestta · Guias da folha (0.116.0): tarefas FGTS DIGITAL da competência, sem guia em destaque, escolher e ler o extrato; nada é escrito', async () => {
   const { p, fr } = await abrirGestta(Object.assign(gtResp(true), gtGuias()));
   await fr.waitForSelector('.gt-topo');
@@ -3388,11 +3409,20 @@ await passo('Gestta · Guias da folha (0.116.0): tarefas FGTS DIGITAL da compet�
   assert.deepEqual(ex.empresas.map(e => e.cnpj).sort(), ['11222333000181', '22333444000190'], 'só as escolhidas, com código, nome e CNPJ');
   assert.deepEqual([ex.ano, ex.mes].map(Number).every(n => n > 0), true);
   assert.match(await fr.textContent('.ggu-tab'), /R\$ 1\.800,50[\s\S]*aprendiz R\$ 10,00[\s\S]*Nenhum Extrato Mensal da competência 10\/2026 publicado/);
+  // 0.118.0: conferir no FGTS Digital só as escolhidas com o extrato lido (a Beta ficou sem extrato), uma por vez
+  assert.match(await fr.textContent('[data-ggu-conferir]'), /Conferir no FGTS Digital \(1\)/);
+  await fr.click('[data-ggu-conferir]');
+  await fr.waitForFunction(() => /Bate/.test(document.querySelector('.ggu-tab').textContent));
+  const cf = await fr.evaluate(() => window.__msgs.filter(m => m.cmd === 'guiasFolha' && m.parte === 'fgts'));
+  assert.equal(cf.length, 1); assert.equal(cf[0].empresa.cnpj, '11222333000181'); assert.equal(cf[0].esperado, 1810.5, 'esperado = FGTS + aprendiz do extrato');
+  assert.match(await fr.textContent('.ggu-tab'), /Bate[\s\S]*R\$ 1\.810,50/);
+  assert.match(await fr.textContent('.ggu-passos li.atual'), /Conferir/, 'o trilho passa ao passo 2');
   // a concluída aparece recolhida
   await fr.click('[data-ggu-feitas]'); await fr.waitForFunction(() => /Cliente Delta Ltda/i.test(document.querySelector('#vista').textContent));
   // nada foi escrito e nada ficou guardado
   const cmds = await fr.evaluate(() => [...new Set(window.__msgs.map(m => m.cmd))]);
   assert.ok(!cmds.some(c => /acao|Acao|anexar|emitir/.test(c)), 'só leituras: ' + cmds.join(', '));
+  assert.ok(!(await fr.evaluate(() => window.__msgs.some(m => m.cmd === 'guiasFolha' && /emit|gerar/.test(m.parte)))), 'nada de emissão');
   assert.ok(!JSON.stringify(await fr.evaluate(() => Object.assign({}, localStorage))).includes('1800'), 'valor nunca guardado no navegador');
   await p.close();
 });
@@ -3565,7 +3595,7 @@ await passo('Gestta · Tarefas: no Meu dia, Enter abre a tarefa escolhida no Ges
     if (modo === 'mespop') await fr.click('#gt-mes-rot');
     if (modo === 'atalhos') { await fr.waitForSelector('.gd-it'); await fr.press('body', '?'); }
     if (modo === 'lista') await fr.check('#gt-feitas');
-    if (modo === 'guias') { await fr.waitForSelector('.ggu-tab'); await fr.waitForFunction(() => /Guia anexada/.test(document.querySelector('.ggu-tab').textContent)); await fr.check('[data-ggu-todas]'); await fr.click('[data-ggu-ler-ext]'); await fr.waitForFunction(() => /1\.800,50/.test(document.querySelector('.ggu-tab').textContent)); }
+    if (modo === 'guias') { await fr.waitForSelector('.ggu-tab'); await fr.waitForFunction(() => /Guia anexada/.test(document.querySelector('.ggu-tab').textContent)); await fr.check('[data-ggu-todas]'); await fr.click('[data-ggu-ler-ext]'); await fr.waitForFunction(() => /1\.800,50/.test(document.querySelector('.ggu-tab').textContent)); await fr.click('[data-ggu-conferir]'); await fr.waitForFunction(() => /Bate/.test(document.querySelector('.ggu-tab').textContent)); }
     if (modo === 'saude') {   // 0.110.0: com os blocos lidos e uma célula aberta
       await fr.waitForSelector('.gsa-topo');
       await fr.click('[data-gsa-ler="contatos"]'); await fr.waitForSelector('#gsa-contatos table');

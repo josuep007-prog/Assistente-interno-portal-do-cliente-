@@ -571,6 +571,11 @@ assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br
     assert.ok(gi.ok); assert.deepEqual(Object.keys(gi.porTarefa), [ID], 'id inválido fica de fora');
     assert.deepEqual(gi.porTarefa[ID], { guia: null, demonstrativo: null, consignado: null }, 'tarefa sem os itens do FGTS');
     assert.ok(!JSON.stringify(gi).includes('segredo.pdf'), 'o endereço do arquivo nunca sai'); }
+  // 0.118.0: sem a permissão do FGTS Digital (pedida na hora, pela tela), a conferência para antes de qualquer chamada
+  { const gf = await tt({ cmd: 'guiasFolha', parte: 'fgts', ano: 2026, mes: 10, empresa: { cnpj: '11222333000181', nome: 'X', code: '1' }, esperado: 10 });
+    assert.equal(gf.ok, false); assert.equal(gf.semPermissao, true, 'sem permissão: ' + JSON.stringify(gf));
+    const gx = await tt({ cmd: 'guiasFolha', parte: 'fgts', ano: 2026, mes: 10, empresa: { cnpj: '123' } });
+    assert.equal(gx.ok, false, 'CNPJ inválido'); }
   const novasS = gChamadas.slice(antesS);
   assert.ok(novasS.every(c => c.startsWith('GET ') || c === 'POST /core/customer/task/report' || c === 'POST /core/customer/task/search'), 'a Saúde só lê: ' + novasS.filter(c => !c.startsWith('GET ')).join(', '));
   for (const v of ['contato@exemplo', '(27)', 'Contato Ficticio', 'destino@exemplo', 'smtp.exemplo', '"score"', 'SEGREDO', 'eyJ', 'dono@exemplo', 'escritorio@exemplo', 'PROTO']) assert.ok(!JSON.stringify([s1, s2, s3, s4, s5, sL, sR]).includes(v), 'Saúde vazou: ' + v);

@@ -4892,3 +4892,37 @@ test('Gestta (0.117.0): só os setores Pessoal, Contábil e Fiscal; a busca leva
   assert.equal(OCG.leituraPermitida(ped.metodo, ped.url, ped.corpo).ok, true);
   assert.ok(!('company_department' in OCG.PEDIDOS.buscaTarefas({ ano: 2026, mes: 11 }).corpo), 'sem setores conhecidos, sem o filtro');
 });
+
+/* ---------- 0.118.0 · FGTS Digital (só leitura) ---------- */
+function carregarFgts() { const ctx = { console, URL, URLSearchParams }; ctx.self = ctx; vm.createContext(ctx); vm.runInContext(src('fgts.js'), ctx); return ctx.OCF; }
+const OCF = carregarFgts();
+test('FGTS Digital: só as leituras mapeadas; emitir, adicionar à guia, consignado, pagar e outro site são recusados', () => {
+  const P = OCF.leituraPermitida, H = OCF.HOST;
+  for (const k of ['dadosFiltro', 'debitos', 'totalizador', 'perfil']) { const p = OCF.PEDIDOS[k](k === 'debitos' ? '2026-10' : k === 'totalizador' ? '0126100765850000-2' : '11222333000181', 1); assert.equal(P(p.metodo, p.url, null).ok, true, k); }
+  assert.match(OCF.PEDIDOS.debitos('2026-10', 2).url, /competenciaApuracaoInicial=202610&competenciaApuracaoFinal=202610&numPagina=2/);
+  assert.ok(!/debitosSemGuia/.test(OCF.PEDIDOS.debitos('2026-10').url), 'sem o filtro "sem guia": a competência com guia volta com guiasRelacionadas');
+  for (const [m, u] of [['POST', H + '/cobranca/api/guia-parametrizada/gerar-guia?dtPagamento=2026-11-07'], ['GET', H + '/cobranca/api/guia-rapida/confirma'], ['POST', H + '/cobranca/api/guia-parametrizada/debitos'],
+    ['POST', H + '/cobranca/api/guia-parametrizada/consignados:batch-create'], ['GET', H + '/arrecadacao/emissao/reimprimirGuia/123'], ['GET', 'https://outro.gov.br/cobranca/api/guia-parametrizada/debitos'],
+    ['GET', H + '/cobranca/api/guia-parametrizada/debitos?x=1'], ['GET', H.replace('https://', 'https://u:p@') + '/cobranca/api/guia-parametrizada/dados-filtro']])
+    assert.equal(P(m, u, null).ok, false, m + ' ' + u);
+  assert.equal(P('GET', H + '/cobranca/api/guia-parametrizada/dados-filtro', {}).ok, false, 'leitura sem corpo');
+});
+test('FGTS Digital: a resposta sai sem CPF, nome ou matrícula; soma do principal por estabelecimento; matriz pelo CNPJ; bate até 5 centavos', () => {
+  const d = OCF.limpar('debitos', { qtdeTotalDebitos: 3, debitos: [
+    { competenciaApuracao: '202610', vlPrincipal: 800.1, vlTotal: 800.1, vlMulta: 0, vlJuros: 0, vlAtualizacaoMonetaria: 0, estabalecimentoRemuneracao: '11.222.333/0001-81', cpfTrabalhador: '123.456.789-00', nomeTrabalhador: 'FULANO', matricula: '77', guiasRelacionadas: [] },
+    { competenciaApuracao: '202610', vlPrincipal: 200.25, vlTotal: 210.25, vlMulta: 4, vlJuros: 6, estabalecimentoRemuneracao: '11222333000262', cpfTrabalhador: '1', nomeTrabalhador: 'X' },
+    { competenciaApuracao: '202610', vlPrincipal: 100, vlTotal: 100, estabalecimentoRemuneracao: '11222333000181', guiasRelacionadas: [{ numeroFormatado: '0126-2', linkGuiaPdf: 'x', idGuia: 9 }] }] });
+  const txt = JSON.stringify(d);
+  for (const v of ['123.456', 'FULANO', 'matricula', 'nomeTrabalhador', '"77"', 'linkGuiaPdf']) assert.ok(!txt.includes(v), 'vazou ' + v);
+  assert.equal(d.qtdeTotal, 3); assert.equal(d.itens[1].encargos, 10);
+  const m = OCF.somarDebitos(d.itens, '11222333000181');
+  assert.deepEqual(plano(m), { quantos: 3, principal: 1100.35, encargos: 10, total: 1110.35, semGuia: 2, guias: ['0126-2'], filial: false }, 'matriz: todos os estabelecimentos');
+  const f = OCF.somarDebitos(d.itens, '11222333000262');
+  assert.equal(f.quantos, 1); assert.equal(f.principal, 200.25); assert.equal(f.filial, true, 'filial: só o estabelecimento dela');
+  assert.equal(OCF.cnpjMatriz('11222333000262'), '11222333000181', 'dígitos da matriz calculados');
+  assert.deepEqual(plano(OCF.comparar(1000, 1000.05)), { bate: true, diferenca: 0.05 });
+  assert.deepEqual(plano(OCF.comparar(1000, 1000.06)), { bate: false, diferenca: 0.06 });
+  assert.equal(OCF.comparar(null, 10).bate, null, 'sem extrato, sem veredito');
+  const tz = OCF.limpar('totalizador', { competencia: '10/2026', numero: 'N', vlMensal: 1, vlTotal: 2, vlEncargos: 1, tpSituacao: 'AGUARDANDO_PAGAMENTO', urlPdf: 'https://x/segredo', gerouPdfConsignado: false });
+  assert.ok(!JSON.stringify(tz).includes('segredo'));
+});

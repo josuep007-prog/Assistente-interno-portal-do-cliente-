@@ -2,7 +2,7 @@
  * Lê o Onvio de tempos em tempos, guarda um resumo e avisa o usuário.
  * Fase 1: somente leitura. Nada é gravado no Onvio.
  */
-importScripts('core.js', 'gestta.js', 'mediador.js');
+importScripts('core.js', 'gestta.js', 'mediador.js', 'fgts.js');
 
 const ALARME = 'controlOnvio.coleta';
 const ALARME_DIST = 'controlOnvio.distribuicao';
@@ -519,8 +519,61 @@ async function gesttaSetores(msg, sender) {
  *  extrato { ano, mes, empresas ≤ 3 } → o "Valor do FGTS" do Extrato Mensal no portal de documentos do Onvio (aba do Onvio aberta).
  * Os valores só voltam para a tela: nada disso é guardado (só o caminho das pastas da folha, ids, como já era). */
 let clientesFolhaCache = null;      // { m: Map, em } · lista de clientes da folha do Onvio, 6 h na memória do service worker (ids, código, nome)
+/* 0.118.0 · Guias da folha, fase 2: conferir no FGTS Digital (só leitura; mapa de 16/11/2026, fase 2). A aba do FGTS Digital tem de estar
+ * aberta e logada pelo gov.br com o certificado da ControlTax (o analista escolhe o certificado uma vez); a permissão do site é pedida
+ * na hora, pela tela. Uma empresa por chamada: troca o perfil de procurador para a MATRIZ (o site recusa filial; leva uns 25 s, e só é
+ * feita se o perfil aberto for outro), lê os débitos mensais da competência e soma o principal. Nada é escrito; só números voltam. */
+async function abaFgts() {
+  const l = await chrome.tabs.query({ url: OCF.HOST + '/*' }).catch(() => []);
+  return l.find(t => t.active) || l[0] || null;
+}
+async function naPaginaFgts(tabId, acao, args) {
+  const rodar = () => chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN', args: [NUCLEO_V, acao, args],
+    func: (v, ac, a) => !self.OCF || self.OCF.__v !== v ? { __semNucleo: true } : ac === 'perfil' ? { mesmo: self.OCF.perfilAtualE(a[0]) } : self.OCF.lerNaPagina(a[0], { pausa: a[1] }) });
+  let [res] = await rodar();
+  if (res && res.result && res.result.__semNucleo) {
+    await chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN', files: ['fgts.js'] });
+    await chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN', args: [NUCLEO_V], func: (v) => { if (self.OCF) self.OCF.__v = v; } });
+    [res] = await rodar();
+  }
+  return (res && res.result) || null;
+}
+async function lerFgts(tab, pedidos) {
+  if ((pedidos || []).some(p => !OCF.leituraPermitida(p.metodo, p.url, p.corpo == null ? null : p.corpo).ok)) throw new Error('pedido ao FGTS Digital fora da lista permitida');
+  return naPaginaFgts(tab.id, 'ler', [pedidos, 400]);
+}
+async function conferirFgts(msg) {
+  const ano = Number(msg.ano), mes = Number(msg.mes), e = msg.empresa || {}, cnpj = String(e.cnpj || '').replace(/\D/g, '');
+  if (!(ano > 2000 && mes >= 1 && mes <= 12) || cnpj.length !== 14) return { ok: false, erro: 'Empresa ou competência inválida.' };
+  if (!(await chrome.permissions.contains({ origins: [OCF.HOST + '/*'] }).catch(() => false))) return { ok: false, semPermissao: true, erro: 'A extensão ainda não tem permissão para o FGTS Digital.' };
+  const tab = await abaFgts();
+  if (!tab) return { ok: false, semAba: true, erro: 'Abra o FGTS Digital numa aba e entre pelo gov.br com o certificado da ControlTax.' };
+  const matriz = OCF.cnpjMatriz(cnpj), comp = ano + '-' + String(mes).padStart(2, '0');
+  const sessao = r => r && r.semSessao ? { ok: false, semSessao: true, erro: 'A sessão do FGTS Digital não está aberta: entre pelo gov.br na aba do FGTS Digital.' } : null;
+  const p0 = await naPaginaFgts(tab.id, 'perfil', [matriz]);
+  if (!(p0 && p0.mesmo)) {
+    const rp = await lerFgts(tab, [OCF.PEDIDOS.perfil(matriz)]); const s1 = sessao(rp); if (s1) return s1;
+    const x = rp && rp.resultados && rp.resultados[0];
+    if (!x || x.status !== 200) return { ok: false, erro: 'O FGTS Digital não aceitou o perfil de procurador da matriz' + (x && x.status ? ' (erro ' + x.status + ')' : '') + '. Confira a procuração da empresa.' };
+  }
+  const itens = []; let total = null;
+  for (let pg = 1; pg <= 50; pg++) {
+    const r = await lerFgts(tab, [OCF.PEDIDOS.debitos(comp, pg)]); const s2 = sessao(r); if (s2) return s2;
+    const x = r && r.resultados && r.resultados[0];
+    if (!x) return { ok: false, erro: 'A aba do FGTS Digital não respondeu.' };
+    if (x.negocio && /COB0003/.test(x.negocio.codigo)) break;                 // "Não há débitos de interesse"
+    if (x.status !== 200 || !x.dados) return { ok: false, erro: 'O FGTS Digital não devolveu os débitos' + (x.negocio ? ': ' + x.negocio.titulo : x.status ? ' (erro ' + x.status + ')' : '') + '.' };
+    total = x.dados.qtdeTotal; itens.push(...x.dados.itens);
+    if (!x.dados.itens.length || (total && itens.length >= total)) break;
+  }
+  const soma = OCF.somarDebitos(itens, cnpj), esperado = typeof msg.esperado === 'number' ? msg.esperado : null;
+  const cmp = OCF.comparar(esperado, soma.principal);
+  return { ok: true, competencia: comp, matriz: matriz.slice(-6), debitos: soma.quantos, principal: soma.principal, encargos: soma.encargos, total: soma.total,
+    semGuia: soma.semGuia, guias: soma.guias, filial: soma.filial, esperado, bate: soma.quantos ? cmp.bate : null, diferenca: soma.quantos ? cmp.diferenca : null };
+}
 async function guiasFolha(msg, sender) {
   const parte = String(msg.parte || ''), ano = Number(msg.ano), mes = Number(msg.mes);
+  if (parte === 'fgts') return conferirFgts(msg);      // 0.118.0
   if (parte === 'extrato') {
     if (!(ano > 2000 && mes >= 1 && mes <= 12)) return { ok: false, erro: 'Competência inválida.' };
     const empresas = (Array.isArray(msg.empresas) ? msg.empresas : []).slice(0, 3).map(e => ({ code: String(e && e.code || '').slice(0, 20), nome: String(e && e.nome || '').slice(0, 120), cnpj: String(e && e.cnpj || '').replace(/\D/g, '').slice(0, 14) }));
