@@ -165,11 +165,33 @@
       return { id: /^[0-9a-f]{24}$/i.test(String(x._id || '')) ? String(x._id) : '', nome: nomeDe(x.original_name || x.originalName || x.file_name || x.filename || x.name || ''), quando: typeof x.created_at === 'string' ? x.created_at : typeof x.date === 'string' ? x.date : '' };
     }).filter(x => x.nome).slice(0, 20);
   }
+  // 0.121.0: o endereço assinado do arquivo de um item vem no detalhe da tarefa (company_documents[].file, um texto; validade de 600 s).
+  // Só endereço https do S3 em us-east-1, sem usuário nem senha. Devolve { url, nome, status, temArquivo } ou { temArquivo: false }.
+  function arquivoS3(u) {
+    let x; try { x = new URL(String(u || '')); } catch (e) { return false; }
+    return x.protocol === 'https:' && !x.username && !x.password && !x.port && /(^|\.)s3\.us-east-1\.amazonaws\.com$/i.test(x.hostname) && x.pathname.length > 1;
+  }
+  function arquivoDoDetalhe(dados, doc) {
+    if (!dados || typeof dados !== 'object' || !/^[0-9a-f]{24}$/i.test(String(doc || ''))) return null;
+    const d = (Array.isArray(dados.company_documents) ? dados.company_documents : []).find(x => x && String(x._id) === String(doc));
+    const status = String(dados.status || '');
+    if (!d) return { status, existe: false, temArquivo: false };
+    const f = typeof d.file === 'string' ? d.file : '';
+    if (!f) return { status, existe: true, temArquivo: false };
+    const a = arquivosDoItem(d)[0];
+    return arquivoS3(f) ? { status, existe: true, temArquivo: true, url: f, nome: (a && a.nome) || 'arquivo' } : { status, existe: true, temArquivo: true, foraDoS3: true };
+  }
   // tipo: o molde a aplicar. Listas (com ou sem invólucro de paginação) viram { itens, total, paginas, pagina }.
   function limpar(tipo, dados) {
     if (tipo === 'relatorio') return limparRelatorio(dados);
     if (tipo === 'fechamento') return limparRelatorio(dados, COLUNAS_FECHAMENTO);
     if (tipo === 'relSaude') return limparRelatorio(dados, COLUNAS_SAUDE);
+    if (tipo === 'vinculosEmpresa') {   // 0.121.0: { itens: [{ id, template, ativo }] }; nada do responsável nem do cliente
+      const l = Array.isArray(dados) ? dados : lista(dados);
+      if (!Array.isArray(dados) && !(dados && Array.isArray(dados.docs))) return null;
+      return { itens: l.map(x => x && { id: String(x._id || ''), template: String(x.company_task && typeof x.company_task === 'object' ? x.company_task._id || '' : x.company_task || ''), ativo: x.active !== false })
+        .filter(x => x && /^[0-9a-f]{24}$/i.test(x.id) && /^[0-9a-f]{24}$/i.test(x.template)) };
+    }
     if (tipo === 'clientesDoTemplate') {   // 0.110.0: só os ids das empresas que recebem o template de tarefa
       const l = Array.isArray(dados) ? dados : lista(dados);
       return { ids: [...new Set(l.map(x => x && (x.customer && typeof x.customer === 'object' ? x.customer._id : typeof x.customer === 'string' ? x.customer : x._id)).filter(v => /^[0-9a-f]{24}$/i.test(String(v || ''))))] };
@@ -384,6 +406,10 @@
         onvio_documents_error: false }, o && o.companyUser ? { company_user: [o.companyUser] } : {}) }),
     dominioEmail: () => ({ id: 'dominioEmail', tipo: 'dominioEmail', metodo: 'GET', url: url('/admin/company/email/domain') }),
     semTarefa: () => ({ id: 'semTarefa', tipo: 'numero', metodo: 'GET', url: url('/admin/customer/count-without-task') }),
+    // 0.121.0: os templates ligados a uma empresa (só o id do vínculo, o do template e se está ativo) e o endereço do arquivo de um item
+    // (só dentro do service worker, para o "Ver"; nunca vai à tela nem ao armazenamento)
+    vinculosEmpresa: (o) => ({ id: 'vinculosEmpresa', tipo: 'vinculosEmpresa', metodo: 'GET', url: url('/admin/customer/' + encodeURIComponent(o.cliente) + '/company/task') }),
+    arquivoDoItem: (o) => ({ id: 'arquivoDoItem', tipo: 'arquivoDoItem', doc: String(o.documento || ''), metodo: 'GET', url: url('/core/customer/task/' + encodeURIComponent(o.id)) }),
     clientesDoTemplate: (o) => ({ id: 'clientesDoTemplate', tipo: 'clientesDoTemplate', metodo: 'GET', url: url('/admin/company/task/' + encodeURIComponent(o.id) + '/customer') }),
     filaOnvioTela: (o) => ({ id: 'filaOnvioTela', tipo: 'filaOnvioTela', metodo: 'GET', url: url('/es/file/onvio', { status: 'ERROR', limit: (o && o.limit) || 50, skip: (o && o.skip) || 0 }) }),
     filaOnvioErro: (o) => ({ id: 'filaOnvioErro', tipo: 'filaOnvio', metodo: 'GET', url: url('/es/file/onvio', { status: 'ERROR', limit: (o && o.limit) || 50, skip: (o && o.skip) || 0 }) }),
@@ -426,7 +452,14 @@
     // empresa de teste no mesmo dia, mapeamento/gestta-2026-11-04.md, "Express"): mandar o arquivo para o Express ler (multipart só com
     // `file`; devolve EXPRESS_AUTOMATIC com a tarefa e o item, ou EXPRESS_NEGATIVE) e confirmar o vínculo (só os dois ids).
     { acao: 'expressLer', metodo: 'POST', re: /^\/es\/file\/upload\/automatic$/ },
-    { acao: 'expressConfirmar', metodo: 'POST', re: /^\/es\/file\/[0-9a-f]{24}\/confirm$/i }
+    { acao: 'expressConfirmar', metodo: 'POST', re: /^\/es\/file\/[0-9a-f]{24}\/confirm$/i },
+    // 0.121.0 (Josué, 16/11/2026: "pode fazer"; mapeado na empresa de teste 985 no mesmo dia, mapeamento/gestta-2026-11-04.md,
+    // "Roteiro único"): excluir o arquivo de um item (os dois ids são o da tarefa e o do item; corpo vazio, 200 "OK"; nunca em tarefa
+    // concluída), incluir um template de tarefa numa empresa (um por vez, 201) e tirar (o id é o do vínculo empresa × template, lido na
+    // hora em GET /admin/customer/{id}/company/task; 200 "OK"). Incluir e tirar só pelo cmd gesttaTemplateEmpresa, que relê o vínculo.
+    { acao: 'excluirArquivo', metodo: 'DELETE', re: /^\/core\/customer\/task\/[0-9a-f]{24}\/document\/[0-9a-f]{24}\/file$/i },
+    { acao: 'incluirTemplate', metodo: 'POST', re: /^\/admin\/customer\/[0-9a-f]{24}\/company\/task$/i },
+    { acao: 'tirarTemplate', metodo: 'DELETE', re: /^\/admin\/group\/customer$/ }
   ];
   const REENVIO_MAX = 50, PASTA_ITENS_MAX = 10;
   const textoCurto = (v, n) => typeof v === 'string' && v.trim().length > 0 && v.length <= n;
@@ -471,6 +504,9 @@
       return tamanhoB64(a.base64) > ARQ_MAX ? { ok: false, motivo: 'Express: arquivo acima de 15 MB' } : ok;
     }
     if (e.acao === 'desconsiderarItem') return soChaves(c, []) ? ok : { ok: false, motivo: 'desconsiderar: corpo vazio' };
+    if (e.acao === 'excluirArquivo') return soChaves(c, []) ? ok : { ok: false, motivo: 'excluir o arquivo: corpo vazio' };
+    if (e.acao === 'incluirTemplate') return soChaves(c, ['company_task']) && Array.isArray(c.company_task) && c.company_task.length === 1 && ID24.test(String(c.company_task[0])) ? ok : { ok: false, motivo: 'incluir template: um template por vez' };
+    if (e.acao === 'tirarTemplate') return soChaves(c, ['ids']) && Array.isArray(c.ids) && c.ids.length === 1 && ID24.test(String(c.ids[0])) ? ok : { ok: false, motivo: 'tirar template: um vínculo por vez' };
     if (e.acao === 'etapa') return soChaves(c, ['done']) && typeof c.done === 'boolean' ? ok : { ok: false, motivo: 'etapa: só { done }' };
     if (e.acao === 'situacao') {
       if (c.status === 'IMPEDIMENT') return soChaves(c, ['status', 'justification']) && textoOk(c.justification) ? ok : { ok: false, motivo: 'impedimento pede o motivo' };
@@ -580,6 +616,16 @@
       if (!ID24.test(e) || !ID24.test(t) || !ID24.test(d)) return { erro: 'Express: arquivo, tarefa ou documento inválido' };
       return { id: 'expressConfirmar', acao: 'expressConfirmar', metodo: 'POST', url: url('/es/file/' + e + '/confirm'), corpo: { company_document: d, customer_task: t } };
     }
+    if (x.acao === 'incluirTemplate') {   // 0.121.0: { cliente, template }
+      const cl = String(x.cliente || ''), t = String(x.template || '');
+      if (!ID24.test(cl) || !ID24.test(t)) return { erro: 'empresa ou template inválido' };
+      return { id: 'incluirTemplate', acao: 'incluirTemplate', metodo: 'POST', url: url('/admin/customer/' + cl + '/company/task'), corpo: { company_task: [t] } };
+    }
+    if (x.acao === 'tirarTemplate') {     // 0.121.0: { vinculo } (o _id do vínculo empresa × template, relido na hora)
+      const v = String(x.vinculo || '');
+      if (!ID24.test(v)) return { erro: 'vínculo inválido' };
+      return { id: 'tirarTemplate', acao: 'tirarTemplate', metodo: 'DELETE', url: url('/admin/group/customer'), corpo: { ids: [v] } };
+    }
     if (x.acao === 'templateSalvar') {
       const t = String(x.template || '');
       if (!ID24.test(t)) return { erro: 'template inválido' };
@@ -598,6 +644,8 @@
         return base('comentario', 'POST', '/core/customer/task/' + id + '/history/comment', { message: String(x.texto).trim(), external: false, mentions: [], cc_mentions: [], files: [] });
       case 'desconsiderar': if (!ID24.test(String(x.documento || ''))) return { erro: 'item inválido' };
         return base('desconsiderarItem', 'PUT', '/es/task/' + id + '/document/' + x.documento + '/file/disconsider', {});
+      case 'excluirArquivo': if (!ID24.test(String(x.documento || ''))) return { erro: 'item inválido' };
+        return base('excluirArquivo', 'DELETE', '/core/customer/task/' + id + '/document/' + x.documento + '/file', {});
       case 'documento': { if (!ID24.test(String(x.documento || ''))) return { erro: 'documento inválido' };
         const a = x.arquivo || {};
         return base('documento', 'POST', '/es/upload/direct', { customer_task: id, company_document: String(x.documento), arquivo: { nome: String(a.nome || '').slice(0, 200), tipo: String(a.tipo || ''), base64: String(a.base64 || '') } }); }
@@ -635,7 +683,7 @@
         return { ok: false, status: r.status, erro: msg || ('erro ' + r.status) };
       }
       if (perm.acao === 'reenviar') { const d = dados && typeof dados === 'object' ? dados : {}; return { ok: true, status: r.status, acao: perm.acao, resumo: { success: Number(d.success) || 0, failed: Number(d.failed) || 0, blocked: Number(d.blocked) || 0 } }; }
-      if (perm.acao === 'pasta' || perm.acao === 'tirarPasta' || perm.acao === 'expressConfirmar') return { ok: true, status: r.status, acao: perm.acao };
+      if (perm.acao === 'pasta' || perm.acao === 'tirarPasta' || perm.acao === 'expressConfirmar' || perm.acao === 'excluirArquivo' || perm.acao === 'incluirTemplate' || perm.acao === 'tirarTemplate') return { ok: true, status: r.status, acao: perm.acao };
       if (perm.acao === 'expressLer') return { ok: true, status: r.status, acao: perm.acao, express: lerExpress(dados) };
       if (perm.acao === 'tirarDaLista') { const d = dados && typeof dados === 'object' ? dados : {}; return { ok: true, status: r.status, acao: perm.acao, resumo: { success: Number(d.success) || 0, failed: Number(d.failed) || 0 } }; }
       if (perm.acao === 'template') return { ok: true, status: r.status, acao: perm.acao, template: dados && typeof dados === 'object' ? escolher(dados, MOLDES.templateDoc) : null };
@@ -680,7 +728,7 @@
         let dados = null, texto = '';
         try { texto = await r.text(); dados = texto ? JSON.parse(texto) : null; } catch (e) { dados = null; }
         if (r.ok) {
-          const limpo = p.tipo === 'relatorio' || p.tipo === 'fechamento' || p.tipo === 'relSaude' ? limpar(p.tipo, texto) : limpar(p.tipo, dados);
+          const limpo = p.tipo === 'relatorio' || p.tipo === 'fechamento' || p.tipo === 'relSaude' ? limpar(p.tipo, texto) : p.tipo === 'arquivoDoItem' ? arquivoDoDetalhe(dados, p.doc) : limpar(p.tipo, dados);
           resultados.push(limpo == null ? { id: p.id, status: r.status, erro: 'resposta em formato desconhecido' } : { id: p.id, status: r.status, dados: limpo });
         } else {
           const msg = dados && typeof dados === 'object' ? String(dados.message || dados.error || '').slice(0, 160) : '';
@@ -1521,7 +1569,7 @@
   }
   const urlCliente = (id) => /^[0-9a-f]{24}$/i.test(String(id || '')) ? APP + '/admin/#/sidebar/customer/edit/' + id + '/details' : '';
 
-  g.OCG = { moduloDoSetor, setorPermitido, soSetoresPermitidos, tarefasGuiaFgts, itensGuiaFgts, mesDaMeta, avisoRemetente, pausaSeguinte, setoresDaEquipe, modoRel, restaurarModoRel, semContatoNoSetor, vereditoEmail, tarefasParaEmail, ritmoPorPessoa, cargaPorDia, prioridade, NIVEIS_PRIORIDADE, sugestoesConfig, extrasSaude, urlCliente, proximosDiasUteis, motivoEmail, COLUNAS_SAUDE, arquivosDoItem, setoresAtivos, lerQuemSetor, grupoTela, GRUPOS_TELA, SITUACOES_FILTRO, situacaoDe, fimCnpj, cnpjFormatado, enviosPortal, lerExpress, cnpjsDoTexto, cnpjValido, competenciasDoTexto, notaDocumento, sugerirDestinos, pastaForaDe, urlTemplate: (id) => /^[0-9a-f]{24}$/i.test(String(id || '')) ? 'https://app.gestta.com.br/admin/#/sidebar/document/edit/' + id + '/details' : '', semelhanca, parecidoComPasta, palavrasNome, ERROS_ENVIO, API, APP, PAUSA_MS, LIMITE_BUSCA, JANELA_MAX_DIAS, POST_LEITURA, RELATORIO_TIPOS, COLUNAS_RELATORIO, MOLDES, APPS,
+  g.OCG = { arquivoS3, arquivoDoDetalhe, moduloDoSetor, setorPermitido, soSetoresPermitidos, tarefasGuiaFgts, itensGuiaFgts, mesDaMeta, avisoRemetente, pausaSeguinte, setoresDaEquipe, modoRel, restaurarModoRel, semContatoNoSetor, vereditoEmail, tarefasParaEmail, ritmoPorPessoa, cargaPorDia, prioridade, NIVEIS_PRIORIDADE, sugestoesConfig, extrasSaude, urlCliente, proximosDiasUteis, motivoEmail, COLUNAS_SAUDE, arquivosDoItem, setoresAtivos, lerQuemSetor, grupoTela, GRUPOS_TELA, SITUACOES_FILTRO, situacaoDe, fimCnpj, cnpjFormatado, enviosPortal, lerExpress, cnpjsDoTexto, cnpjValido, competenciasDoTexto, notaDocumento, sugerirDestinos, pastaForaDe, urlTemplate: (id) => /^[0-9a-f]{24}$/i.test(String(id || '')) ? 'https://app.gestta.com.br/admin/#/sidebar/document/edit/' + id + '/details' : '', semelhanca, parecidoComPasta, palavrasNome, ERROS_ENVIO, API, APP, PAUSA_MS, LIMITE_BUSCA, JANELA_MAX_DIAS, POST_LEITURA, RELATORIO_TIPOS, COLUNAS_RELATORIO, MOLDES, APPS,
     caminhoDe, leituraPermitida, escritaPermitida, pedidoAcao, agirNaPagina, ARQ_MAX, appDe, escolher, limpar, limparRelatorio, perfil, expiraEm, janelaDoMes, PEDIDOS, lerNaPagina, linhasDoTeste,
     GRUPOS, TIPOS_TAREFA, SITUACOES_TAREFA, MAX_PAGINAS_TAREFAS, diasUteis, grupoTarefa, prazoTexto, contarGrupos, porEmpresa, porDia, filtrarTarefas, urlTarefa, ymd, diaLocal,
     COLUNAS_FECHAMENTO, linhasDoRelatorio, tarefasDoRelatorio, trilhaDaEmpresa, fechamento, ESTADOS, setorDe, respDe, ehEscritorioProprio,

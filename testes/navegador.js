@@ -3184,6 +3184,28 @@ await passo('Gestta · Tarefas (0.93.0): no detalhe, marcar etapa, impedimento c
     // 0.110.0: o nome do arquivo já anexado aparece embaixo do documento (só o nome e o dia; nunca o endereço)
     assert.match(await fr.textContent('#gd-det .gp-doc .gp-doc-arqs'), /recibo-anterior\.pdf.*10\/11/s);
     assert.equal(await fr.$$eval('#gd-det .gp-doc-arqs a[href]', l => l.length), 0, 'o nome do arquivo não vira link');
+    // 0.121.0: Ver abre o arquivo dentro da extensão (o service worker devolve só o conteúdo); PDF num quadro, Baixar e Fechar
+    assert.match(await fr.textContent('#gd-det .gp-doc-arqs'), /recibo-anterior\.pdf[\s\S]*Ver[\s\S]*Excluir/);
+    await fr.evaluate(() => { window.__respostas.gesttaArquivo = { ok: true, nome: 'recibo-anterior.pdf', tipo: 'binary/octet-stream', base64: btoa('%PDF-1.4 teste') }; });
+    await fr.click('#gd-det [data-gp-ver="d00000000000000000000001"]');
+    await fr.waitForSelector('.gp-visor iframe.gp-visor-doc');
+    assert.deepEqual(await fr.evaluate(() => window.__msgs.filter(m => m.cmd === 'gesttaArquivo')), [{ cmd: 'gesttaArquivo', id: 'f00000000000000000000001', documento: 'd00000000000000000000001' }]);
+    assert.match(await fr.$eval('.gp-visor iframe', f => f.src), /^blob:/, 'o arquivo fica só na memória da tela');
+    assert.equal(await fr.$eval('#gp-visor-baixar', a => a.getAttribute('download')), 'recibo-anterior.pdf');
+    if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/gestta-visor-' + estilo + '.png' });
+    await fr.press('.gp-visor', 'Escape'); await fr.waitForFunction(() => !document.querySelector('.gp-visor'));
+    // o que não é PDF nem imagem (pelos primeiros bytes) nunca é desenhado dentro da extensão: só Baixar
+    await fr.evaluate(() => { window.__respostas.gesttaArquivo = { ok: true, nome: 'pagina.pdf', tipo: 'text/html', base64: btoa('<html><script>parent.__xss=1</script></html>') }; });
+    await fr.click('#gd-det [data-gp-ver="d00000000000000000000001"]');
+    await fr.waitForSelector('.gp-visor .gp-visor-nada');
+    assert.equal(await fr.$('.gp-visor iframe, .gp-visor img'), null); assert.equal(await fr.evaluate(() => window.__xss), undefined);
+    await fr.click('#gp-visor-x'); await fr.waitForFunction(() => !document.querySelector('.gp-visor'));
+    // erro do service worker (sem permissão, endereço vencido) aparece no painel
+    await fr.evaluate(() => { window.__respostas.gesttaArquivo = { ok: false, semPermissao: true, erro: 'Falta a permissão para abrir os arquivos do Gestta (servidor de arquivos da Amazon).' }; });
+    await fr.click('#gd-det [data-gp-ver="d00000000000000000000001"]');
+    await fr.waitForSelector('#gd-det .gp-aviso.erro');
+    assert.match(await fr.textContent('#gd-det .gp-aviso.erro'), /Falta a permissão/);
+    await fr.click('#gd-det #gp-aviso-x');
     const [fc] = await Promise.all([p.waitForEvent('filechooser'), fr.click('#gd-det [data-gp-doc="d00000000000000000000001"]')]);
     await fc.setFiles({ name: 'recibo.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 teste') });
     await fr.waitForSelector('#gd-det .gp-conf');
@@ -3213,6 +3235,15 @@ await passo('Gestta · Tarefas (0.93.0): no detalhe, marcar etapa, impedimento c
     assert.deepEqual((await acoes()).slice(4).map(m => [m.acao, m.documento, m.arquivo.nome]), [['documento', 'd00000000000000000000001', 'guia-1.pdf'], ['documento', 'd00000000000000000000001', 'guia-2.pdf']]);
     await fr.waitForSelector('#gd-det .gp-aviso.ok');
     assert.match(await fr.textContent('#gd-det .gp-aviso.ok'), /2 arquivos enviados no documento “Recibo”/);
+    // 0.121.0: Excluir o arquivo do item pede confirmação com o nome e só então vai ao Gestta
+    await fr.click('#gd-det [data-gp-excluir="d00000000000000000000001"]');
+    await fr.waitForSelector('#gd-det .gp-conf.perigo');
+    assert.match(await fr.textContent('#gd-det .gp-conf'), /Excluir “recibo-anterior\.pdf” do documento “Recibo”\?[\s\S]*histórico da tarefa registra a remoção/);
+    assert.equal((await acoes()).length, 6, 'nada sai antes de confirmar');
+    await fr.click('#gd-det #gp-conf-ok');
+    await fr.waitForFunction(() => (window.__msgs || []).filter(m => m.cmd === 'gesttaAcao').length === 7);
+    assert.deepEqual((await acoes())[6], { cmd: 'gesttaAcao', id: 'f00000000000000000000001', acao: 'excluirArquivo', documento: 'd00000000000000000000001' });
+    await fr.waitForSelector('#gd-det .gp-aviso.ok'); assert.match(await fr.textContent('#gd-det .gp-aviso.ok'), /Arquivo excluído no Gestta/);
     // soltar fora de um item não abre o arquivo na tela: vai para o Express (0.102.0), que pergunta antes de ler
     assert.equal(await fr.evaluate(() => { const ev = new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: window.__dt }); document.body.dispatchEvent(ev); return ev.defaultPrevented; }), true);
     await fr.waitForSelector('#gs-dlg:not([hidden]) [data-gs="ler"]');
@@ -3477,7 +3508,7 @@ await passo('Gestta · Guias da folha (0.116.0): tarefas FGTS DIGITAL da compet�
   assert.ok(!JSON.stringify(await fr.evaluate(() => Object.assign({}, localStorage))).includes('1800'), 'valor nunca guardado no navegador');
   await p.close();
 });
-await passo('Gestta · Saúde (0.110.0): carga por dia com o ritmo, prioridade, contatos e e-mails só pelo botão, configuração só para a coordenação; nada é escrito', async () => {
+await passo('Gestta · Saúde (0.110.0): carga por dia com o ritmo, prioridade, contatos e e-mails só pelo botão, configuração só para a coordenação; incluir template só depois de confirmar', async () => {
   const { p, fr } = await abrirGestta(Object.assign(gtResp(true), gtSaude(true)));
   await fr.waitForSelector('.gt-topo');
   await fr.press('body', '8');
@@ -3531,6 +3562,21 @@ await passo('Gestta · Saúde (0.110.0): carga por dia com o ritmo, prioridade, 
   await fr.waitForSelector('#gt-painel.aberto');
   const escritas = await fr.evaluate(() => (window.__msgs || []).filter(m => /gesttaAcao|gesttaTirar|gesttaPasta/.test(m.cmd)).length);
   assert.equal(escritas, 0, 'a aba Saúde não escreve nada');
+  // 0.121.0: incluir o template que falta, pelo lote, com uma confirmação; vai uma empresa por vez e a linha sai da lista
+  await fr.press('#gt-painel', 'Escape');
+  await fr.evaluate(() => { window.__respostas.gesttaTemplateEmpresa = { ok: true, confere: true }; });
+  assert.equal(await fr.$eval('#gsa-config [data-gsa-tpl-lote="falta"]', b => b.disabled), true, 'sem marcar, o lote fica desligado');
+  await fr.click('#gsa-config [data-gsa-sel^="falta|"]');
+  await fr.click('#gsa-config [data-gsa-tpl-lote="falta"]');
+  await fr.waitForSelector('#gsa-config .gsa-tpl-conf');
+  assert.match(await fr.textContent('#gsa-config .gsa-tpl-conf'), /Incluir 1 template nas empresas no Gestta\? Vai uma empresa por vez\.[\s\S]*Empresa Exemplo 6 · Apuração do Icms/i);
+  assert.equal(await fr.evaluate(() => window.__msgs.filter(m => m.cmd === 'gesttaTemplateEmpresa').length), 0, 'nada sai antes de confirmar');
+  if (process.env.CAP) { await fr.evaluate(() => document.querySelector('#gsa-config').scrollIntoView()); await p.screenshot({ path: process.env.CAP + '/gestta-saude-template.png' }); }
+  await fr.click('[data-gsa-tpl-ok]');
+  await fr.waitForFunction(() => /1 template incluído/.test(document.querySelector('#gsa-config').textContent));
+  const tm = await fr.evaluate(() => window.__msgs.filter(m => m.cmd === 'gesttaTemplateEmpresa'));
+  assert.equal(tm.length, 1); assert.equal(tm[0].acao, 'incluir'); assert.match(tm[0].cliente, /^[0-9a-f]{24}$/); assert.match(tm[0].template, /^[0-9a-f]{24}$/);
+  assert.match(await fr.textContent('#gsa-config'), /Nenhuma empresa deixa de receber/, 'a sugestão atendida sai da lista');
   if (process.env.CAP) {
     await fr.press('#gt-painel', 'Escape'); await p.screenshot({ path: process.env.CAP + '/gestta-saude-gestor.png' });
     await fr.evaluate(() => document.querySelector('#gsa-contatos').scrollIntoView()); await p.screenshot({ path: process.env.CAP + '/gestta-saude-gestor-2.png' });
@@ -3630,14 +3676,15 @@ await passo('Gestta · Tarefas: no Meu dia, Enter abre a tarefa escolhida no Ges
   const s = await abrirGestta({ gesttaTarefas: { ok: false, semSessao: true, erro: 'sem sessão do Gestta nesta aba (faça login)' } });
   assert.match(await s.fr.textContent('.faixa'), /Sem sessão no Gestta\..*faça login/s);
   const medir = require('./contraste-lib.js'), ruins = [];
-  for (const estilo of ['simples', 'atual']) for (const tema of ['light', 'dark']) for (const modo of ['dia', 'historico', 'empresas', 'tempo', 'lista', 'painel', 'quadro', 'calendario', 'fechamento', 'quem', 'mespop', 'atalhos', 'saude', 'guias']) {
-    const { p, fr } = await abrirGestta(Object.assign(gtResp(true), gtSaude(true), gtGuias()), { estilo });
+  for (const estilo of ['simples', 'atual']) for (const tema of ['light', 'dark']) for (const modo of ['dia', 'historico', 'empresas', 'tempo', 'lista', 'painel', 'quadro', 'calendario', 'fechamento', 'quem', 'mespop', 'atalhos', 'saude', 'guias', 'visor']) {
+    const { p, fr } = await abrirGestta(Object.assign(gtResp(true), gtSaude(true), gtGuias(), { gesttaArquivo: { ok: true, nome: 'planilha.xlsx', tipo: '', base64: Buffer.from('PK planilha').toString('base64') } }), { estilo });
     await p.emulateMedia({ reducedMotion: 'reduce' });
     await fr.evaluate(t => document.documentElement.setAttribute('data-theme', t), tema);
-    const aba = { historico: 'dia', tempo: 'empresas', painel: 'lista', fechamento: 'fech', quem: 'dia', mespop: 'dia', atalhos: 'dia' }[modo] || modo;
+    const aba = { visor: 'dia', historico: 'dia', tempo: 'empresas', painel: 'lista', fechamento: 'fech', quem: 'dia', mespop: 'dia', atalhos: 'dia' }[modo] || modo;
     await fr.click('#abas [data-aba="' + aba + '"]');
     if (modo === 'dia' || modo === 'historico') await fr.waitForSelector('#gd-det .gp-passos');
     if (modo === 'historico') { await fr.click('#gd-det [data-gp-aba="tempo"]'); await fr.waitForSelector('#gd-det .gp-tl'); }
+    if (modo === 'visor') { await fr.waitForSelector('#gd-det [data-gp-ver]'); await fr.click('#gd-det [data-gp-ver]'); await fr.waitForSelector('.gp-visor .gp-visor-nada'); }   // 0.121.0
     if (modo === 'tempo') await fr.click('[data-gf-trilha="tempo"]');
     if (modo === 'painel') { await fr.click('.gl-r'); await fr.waitForSelector('#gt-painel.aberto .gp-passos'); }
     if (modo === 'calendario') await fr.click('.gt-dia.hoje');
@@ -3653,9 +3700,11 @@ await passo('Gestta · Tarefas: no Meu dia, Enter abre a tarefa escolhida no Ges
       await fr.click('[data-gsa-ler="emails"]'); await fr.waitForSelector('#gsa-emails table');
       await fr.click('[data-gsa-ler="config"]'); await fr.waitForSelector('#gsa-config table');
       await fr.click('.gsa-cel.acima'); await fr.waitForSelector('.gsa-cel-lista');
+      await fr.click('#gsa-config [data-gsa-sel^="falta|"]'); await fr.click('#gsa-config [data-gsa-tpl-lote="falta"]'); await fr.waitForSelector('.gsa-tpl-conf');   // 0.121.0
     }
     await fr.waitForTimeout(400);
     if (process.env.CAP && modo === 'guias') await p.screenshot({ path: path.join(process.env.CAP, 'gestta-guias-' + estilo + '-' + tema + '.png'), fullPage: true });
+    if (process.env.CAP && modo === 'visor') await p.screenshot({ path: path.join(process.env.CAP, 'gestta-visor-' + estilo + '-' + tema + '.png') });
     if (process.env.CAP && modo === 'saude') await p.screenshot({ path: path.join(process.env.CAP, 'gestta-saude-' + estilo + '-' + tema + '.png'), fullPage: true });
     if (process.env.CAP && ['dia', 'empresas', 'quadro', 'lista', 'fechamento', 'quem', 'mespop', 'atalhos'].includes(modo)) await p.screenshot({ path: path.join(process.env.CAP, 'gestta-' + modo + '-' + estilo + '-' + tema + '.png') });
     const r = await fr.evaluate(([m, min]) => eval('(' + m + ')')(min), [medir.toString(), 4.5]);

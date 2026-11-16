@@ -882,12 +882,21 @@ async function gesttaAcao(msg, sender) {
   // tirar da lista de erros só pelo gesttaTirar, que relê a fila e confere cada documento antes
   if (msg.acao === 'tirarDaLista') return { ok: false, erro: 'Ação recusada: tirar da lista passa pela conferência dos envios.' };
   if (['tirarPasta', 'pasta', 'templateSalvar'].includes(msg.acao)) return { ok: false, erro: 'Ação recusada: a pasta do template passa pela conferência dos envios.' };   // 0.100.4
+  if (['incluirTemplate', 'tirarTemplate'].includes(msg.acao)) return { ok: false, erro: 'Ação recusada: o template da empresa passa pela conferência do vínculo.' };   // 0.121.0
   const p = OCG.pedidoAcao(msg);
   if (p.erro) return { ok: false, erro: p.erro.charAt(0).toUpperCase() + p.erro.slice(1) + '.' };
   const perm = OCG.escritaPermitida(p.metodo, p.url, p.corpo);
   if (!perm.ok) return { ok: false, erro: 'A extensão recusou a ação (' + perm.motivo + ').' };
   const tab = await tabDoGestta(sender);
   if (!tab) return { ok: false, erro: 'Abra o Gestta numa aba, já logado.' };
+  // 0.121.0: excluir o arquivo do item relê a tarefa na hora: só com a tarefa aberta e o item com arquivo
+  if (msg.acao === 'excluirArquivo') {
+    const { r } = await lerGestta([OCG.PEDIDOS.arquivoDoItem({ id: msg.id, documento: msg.documento })], { tab });
+    const a = r && r.resultados && r.resultados[0];
+    if (!a || a.status !== 200 || !a.dados) return { ok: false, erro: a && a.status === 401 ? 'A sessão do Gestta acabou: faça login de novo na aba e tente outra vez.' : 'Não consegui reler a tarefa no Gestta: nada foi excluído.' };
+    if (['DONE', 'IGNORED', 'DISCONSIDERED'].includes(String(a.dados.status).toUpperCase())) return { ok: false, erro: 'A tarefa está concluída ou desconsiderada: reabra no Gestta antes de excluir o arquivo. Nada foi excluído.' };
+    if (!a.dados.temArquivo) return { ok: false, erro: 'Este item já está sem arquivo no Gestta: nada foi excluído.' };
+  }
   let x = null;
   try {
     const res = await naPaginaGestta(tab.id, 'agir', [p]);
@@ -935,6 +944,72 @@ async function gesttaPasta(msg, sender) {
 // 0.100.4: tirar a pasta de um template montada fora da empresa 9999 (Josué, 12/11/2026; mapeado no mesmo dia: DELETE
 // admin/company/document/integration/documents/{id do template}, 204, só aquele template; depois o Salvar do template, como a tela).
 // Relê o template na hora e só tira se ele ainda tem pasta e ela não é da 9999 (com a 9999 conhecida); confere no fim.
+// 0.121.0 (Josué, 16/11/2026: "pode fazer"): ver o arquivo de um item dentro da extensão. O endereço assinado (S3, 600 s) é lido do
+// detalhe da tarefa na hora, usado só aqui e descartado; à tela vão só o nome, o tipo e o conteúdo (até 15 MB), que ficam na memória dela.
+// Nunca pelo visualizador do Google (o endereço sairia para fora). Pede a permissão do S3 (us-east-1), que a tela solicita no clique.
+const S3_ORIGEM = 'https://*.s3.us-east-1.amazonaws.com/*';
+async function gesttaArquivo(msg, sender) {
+  if (!String((sender && sender.url) || '').startsWith(chrome.runtime.getURL('app/'))) return { ok: false, erro: 'Só a tela das Tarefas do Gestta pode pedir.' };
+  const id = String(msg.id || ''), doc = String(msg.documento || '');
+  if (!/^[0-9a-f]{24}$/i.test(id) || !/^[0-9a-f]{24}$/i.test(doc)) return { ok: false, erro: 'Tarefa ou item inválido.' };
+  let temPerm = false; try { temPerm = await chrome.permissions.contains({ origins: [S3_ORIGEM] }); } catch (e) { temPerm = false; }
+  if (!temPerm) return { ok: false, semPermissao: true, erro: 'Falta a permissão para abrir os arquivos do Gestta (servidor de arquivos da Amazon).' };
+  const tab = await tabDoGestta(sender);
+  if (!tab) return { ok: false, erro: 'Abra o Gestta numa aba, já logado.' };
+  const { r } = await lerGestta([OCG.PEDIDOS.arquivoDoItem({ id, documento: doc })], { tab });
+  const a = r && r.resultados && r.resultados[0];
+  if (!a || a.status !== 200 || !a.dados) return { ok: false, erro: a && a.status === 401 ? 'A sessão do Gestta acabou: faça login de novo na aba.' : 'Não consegui ler a tarefa no Gestta.' };
+  if (!a.dados.temArquivo) return { ok: false, erro: 'Este item está sem arquivo no Gestta.' };
+  if (a.dados.foraDoS3 || !OCG.arquivoS3(a.dados.url)) return { ok: false, erro: 'O arquivo está num endereço que a extensão não reconhece: abra no Gestta.' };
+  let u = a.dados.url; a.dados.url = null;
+  try {
+    const resp = await fetch(u, { credentials: 'omit', redirect: 'error', cache: 'no-store' });
+    u = null;
+    if (!resp.ok) return { ok: false, erro: resp.status === 403 ? 'O endereço do arquivo venceu: tente de novo.' : 'O servidor de arquivos respondeu ' + resp.status + '.' };
+    const tam = Number(resp.headers.get('content-length')) || 0;
+    if (tam > 15 * 1024 * 1024) return { ok: false, erro: 'O arquivo passa de 15 MB: abra no Gestta.' };
+    const buf = new Uint8Array(await resp.arrayBuffer());
+    if (buf.length > 15 * 1024 * 1024) return { ok: false, erro: 'O arquivo passa de 15 MB: abra no Gestta.' };
+    let bin = ''; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+    const tipo = String(resp.headers.get('content-type') || '').split(';')[0].trim().toLowerCase().slice(0, 100);
+    return { ok: true, nome: String(a.dados.nome || 'arquivo').slice(0, 200), tipo, tamanho: buf.length, base64: btoa(bin) };
+  } catch (e) { return { ok: false, erro: 'Não consegui baixar o arquivo (' + String(e && e.message || e).slice(0, 80) + ').' }; }
+  finally { u = null; }
+}
+// 0.121.0 (Josué, 16/11/2026: "pode fazer"; mapeado na 985): incluir ou tirar UM template de tarefa de UMA empresa. Só a coordenação
+// (acesso total). Relê na hora os templates da empresa: incluir só se ainda não está; tirar só o vínculo daquele template (o id do
+// vínculo vem da leitura, nunca da tela). Depois relê e confere. Nada é guardado.
+async function gesttaTemplateEmpresa(msg, sender) {
+  if (!String((sender && sender.url) || '').startsWith(chrome.runtime.getURL('app/'))) return { ok: false, erro: 'Ação recusada: só a tela das Tarefas do Gestta pode pedir.' };
+  const cliente = String(msg.cliente || ''), template = String(msg.template || ''), acao = msg.acao === 'tirar' ? 'tirar' : msg.acao === 'incluir' ? 'incluir' : '';
+  if (!acao || !/^[0-9a-f]{24}$/i.test(cliente) || !/^[0-9a-f]{24}$/i.test(template)) return { ok: false, erro: 'Empresa, template ou ação inválida.' };
+  const tab = await tabDoGestta(sender);
+  if (!tab) return { ok: false, erro: 'Abra o Gestta numa aba, já logado.' };
+  const pe = await perfilGestta(tab);
+  if (!pe.ok) return { ok: false, erro: pe.erro || 'Não consegui saber quem está logado no Gestta.' };
+  if (!pe.pf.total) return { ok: false, erro: 'Incluir ou tirar template de uma empresa é só da coordenação (acesso total no Gestta).' };
+  const ler = async () => { const { r } = await lerGestta([OCG.PEDIDOS.vinculosEmpresa({ cliente })], { tab }); const x = r && r.resultados && r.resultados[0]; return x && x.status === 200 && x.dados ? x.dados.itens : null; };
+  const antes = await ler();
+  if (!antes) return { ok: false, erro: 'Não consegui ler os templates da empresa no Gestta: nada foi mudado.' };
+  const v = antes.find(x => x.template === template);
+  if (acao === 'incluir' && v) return { ok: true, jaEstava: true };
+  if (acao === 'tirar' && !v) return { ok: true, jaEstava: true };
+  const p = OCG.pedidoAcao(acao === 'incluir' ? { acao: 'incluirTemplate', cliente, template } : { acao: 'tirarTemplate', vinculo: v.id });
+  if (p.erro) return { ok: false, erro: p.erro };
+  const perm = OCG.escritaPermitida(p.metodo, p.url, p.corpo);
+  if (!perm.ok) return { ok: false, erro: 'A extensão recusou a ação (' + perm.motivo + ').' };
+  let x = null;
+  try { const res = await naPaginaGestta(tab.id, 'agir', [p]); x = res && res.result; }
+  catch (e) { return { ok: false, erro: 'A aba do Gestta não respondeu (' + String(e && e.message || e).slice(0, 80) + ').' }; }
+  if (!x || !x.ok) {
+    const st = x && x.status;
+    return { ok: false, status: st, erro: x && x.recusado ? 'A extensão recusou a ação (' + x.recusado + ').' : st === 401 ? 'A sessão do Gestta acabou: faça login de novo na aba.' : st === 403 ? 'Seu acesso do Gestta não permite mudar os templates desta empresa.' : 'O Gestta não aceitou (' + ((x && x.erro) || 'sem resposta') + ').' };
+  }
+  clientesTplCache.delete(template); salvarMemo();
+  const depois = await ler();
+  const confere = depois ? (acao === 'incluir') === depois.some(y => y.template === template) : null;
+  return { ok: true, confere };
+}
 async function gesttaTirarPasta(msg, sender) {
   if (!String((sender && sender.url) || '').startsWith(chrome.runtime.getURL('app/'))) return { ok: false, erro: 'Ação recusada: só a tela das Tarefas do Gestta pode pedir.' };
   const t = String(msg.template || '');
@@ -2073,6 +2148,8 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'gesttaTarefa') { await memoriaPronta; reply(await gesttaTarefa(msg, sender)); }
       else if (msg.cmd === 'gesttaHistorico') { await memoriaPronta; reply(await gesttaHistorico(msg, sender)); }
       else if (msg.cmd === 'gesttaAcao') { reply(await gesttaAcao(msg, sender)); }
+      else if (msg.cmd === 'gesttaArquivo') { reply(await gesttaArquivo(msg, sender)); }
+      else if (msg.cmd === 'gesttaTemplateEmpresa') { await memoriaPronta; reply(await gesttaTemplateEmpresa(msg, sender)); }
       else if (msg.cmd === 'irPara') { reply(await irPara(msg.destino)); }
       else if (msg.cmd === 'abrirConfig') { reply(await abrirGuiaConfig(msg.params)); }
       else if (msg.cmd === 'fecharPainel') { if (sender.tab && sender.tab.id != null) await mensagemParaPainel(sender.tab.id, 'fechar').catch(() => {}); reply({ ok: true }); }

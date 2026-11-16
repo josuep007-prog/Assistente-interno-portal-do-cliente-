@@ -11,6 +11,7 @@ import { LOTE, marcarGrupo, barraGrupo, ligarGrupo, grupoEmLote } from './gestta
 const G = window.OCG;
 const S = { dados: null, tarefas: [], carregando: false, erro: null, feriados: null,
   contatos: {}, lendoCont: null, erroCont: '', emails: {}, lendoEm: null, erroEm: '', falhas: null, lendoFalhas: false, erroFalhas: '', remetente: null, config: null, porTemplate: {}, lendoCfg: null, erroCfg: '',
+  tplSel: { falta: new Set(), sobra: new Set() }, tplConf: null, tplAgindo: null, tplAviso: null, tplParar: false,
   fechados: new Set(lerPref('gt.saude.fechados', '').split(',').filter(Boolean)), cel: null, cap: lerCap(), editCap: false, extra: '' };
 let enviarFn = null, aoMudar = () => {}, paraPaiFn = () => {};
 const pausa = ms => new Promise(r => setTimeout(r, ms));
@@ -214,18 +215,59 @@ function blocoCarga(carga, prio) {
     : '<p class="gte-vazio">' + ic('check') + 'Nada passou da data legal, da meta ou do ritmo.</p>');
   return { h, n: carga.alertas.length };
 }
+// 0.121.0 (Josué, 16/11/2026: "pode fazer"): incluir o template que falta e tirar o que sobra, em lote, com uma confirmação para o lote
+// e uma empresa por vez (cmd gesttaTemplateEmpresa, que relê os templates da empresa antes e confere depois). Só a coordenação vê o bloco.
+const chaveTpl = (x) => x.cliente + '|' + x.template;
+async function aplicarTemplates(tipo, itens) {
+  if (S.tplAgindo || !itens.length) return;
+  const acao = tipo === 'falta' ? 'incluir' : 'tirar';
+  S.tplConf = null; S.tplParar = false; S.tplAviso = null; S.tplAgindo = { tipo, feitos: 0, total: itens.length, atual: '' }; aoMudar();
+  let ok = 0, ja = 0; const falhas = [];
+  for (const x of itens) {
+    if (S.tplParar) break;
+    S.tplAgindo.atual = nome(x.nomeCliente) || cnpjFmt(x.cnpj); aoMudar();
+    const r = await enviarFn({ cmd: 'gesttaTemplateEmpresa', acao, cliente: x.cliente, template: x.template });
+    S.tplAgindo.feitos++;
+    if (r && r.ok) {
+      if (r.jaEstava) ja++; else ok++;
+      const l = (S.porTemplate[x.template] || []).filter(c => c !== x.cliente);
+      S.porTemplate[x.template] = acao === 'incluir' ? l.concat(x.cliente) : l;
+      S.tplSel[tipo].delete(chaveTpl(x));
+      if (r.confere === false) falhas.push((nome(x.nomeCliente) || cnpjFmt(x.cnpj)) + ': o Gestta aceitou, mas a releitura não mostrou a mudança');
+    } else {
+      falhas.push((nome(x.nomeCliente) || cnpjFmt(x.cnpj)) + ': ' + ((r && r.erro) || 'o Gestta não respondeu'));
+      if (r && (r.status === 401 || r.status === 403 || /sess[aã]o|coordena/i.test(r.erro || ''))) break;
+    }
+  }
+  const verbo = acao === 'incluir' ? 'incluído' : 'tirado';
+  S.tplAviso = { ok: !falhas.length, texto: (ok ? plural(ok, 'template ' + verbo, 'templates ' + verbo + 's') : 'Nada foi mudado') + (ja ? ' · ' + plural(ja, 'já estava assim', 'já estavam assim') : '') + (S.tplParar ? ' · parado a pedido' : '') + '.', falhas };
+  S.tplAgindo = null; aoMudar();
+}
 function blocoConfig() {
-  let h = '<p class="gte-dica">As empresas com os mesmos setores formam um perfil. Dentro dele, <b>falta</b> é um template de tarefa que 80% ou mais das parecidas recebem e esta não; <b>sobra</b> é um que quase nenhuma parecida recebe. Só leitura: confira e ajuste no Gestta.</p>';
+  let h = '<p class="gte-dica">As empresas com os mesmos setores formam um perfil. Dentro dele, <b>falta</b> é um template de tarefa que 80% ou mais das parecidas recebem e esta não; <b>sobra</b> é um que quase nenhuma parecida recebe. Marque as que quer ajustar e use <b>Incluir</b> ou <b>Tirar</b>: vai uma empresa por vez, depois de uma confirmação.</p>';
   if (S.dados.semTarefa != null) h += '<p class="gsa-pills"><span class="gte-tag gte-neutro">' + plural(S.dados.semTarefa, 'cliente ativo sem nenhuma tarefa', 'clientes ativos sem nenhuma tarefa') + ' no Gestta</span></p>';
   if (S.lendoCfg) h += '<p class="fraco">' + (S.lendoCfg.fase === 'templates' ? 'Lendo os templates de tarefa…' : 'Lendo as empresas de cada template…') + '</p>' + barra(S.lendoCfg.total ? S.lendoCfg : null);
   else if (!S.config || S.config.templates.some(t => !(t.id in S.porTemplate))) h += '<p><button type="button" class="btn btn-primary btn-sm" data-gsa-ler="config">' + ic('search') + (S.config ? 'Continuar a leitura' : 'Ler a configuração das empresas') + '</button> <small class="fraco">Os templates de tarefa ativos e as empresas de cada um, um template por vez.</small></p>';
   if (S.erroCfg) h += '<div class="faixa warn"><svg class="ic"><use href="#i-alert"/></svg><div>' + esc(S.erroCfg) + '</div></div>';
   if (!S.config || S.lendoCfg) return { h, n: null };
   const sg = G.sugestoesConfig(S.config.templates, S.porTemplate, S.config.clientes);
-  const linha = (x) => '<tr><td><b>' + esc(nome(x.nomeCliente) || '—') + '</b><small>' + esc(cnpjFmt(x.cnpj)) + '</small></td><td>' + esc(nome(x.nomeTemplate)) + '<small>' + esc(x.setor) + '</small></td><td class="num">' + x.pct + '%<small>de ' + x.grupo + ' parecidas</small></td><td class="gsa-acoes">' + linkFora(G.urlCliente(x.cliente), 'Abrir a empresa') + copiar(cnpjFmt(x.cnpj), 'Copiar CNPJ') + '</td></tr>';
-  const tab = (l, vazio) => l.length ? '<div class="gte-tab-wrap"><table class="gte-tab gsa-tab"><thead><tr><th>Empresa</th><th>Template</th><th class="num">Parecidas com ele</th><th></th></tr></thead><tbody>' + l.slice(0, 200).map(linha).join('') + '</tbody></table></div>' + (l.length > 200 ? '<p class="fraco">e mais ' + num(l.length - 200) + '.</p>' : '') : '<p class="gte-vazio">' + ic('check') + esc(vazio) + '</p>';
-  h += '<h4 class="gsa-h4">Falta <span class="gte-n">' + num(sg.falta.length) + '</span></h4>' + tab(sg.falta, 'Nenhuma empresa deixa de receber o que as parecidas recebem.') +
-    '<h4 class="gsa-h4">Sobra <span class="gte-n">' + num(sg.sobra.length) + '</span></h4>' + tab(sg.sobra, 'Nenhum template fora do padrão das parecidas.') +
+  S._sg = sg;
+  const ocupado = !!(S.tplAgindo || S.tplConf);
+  if (S.tplAgindo) h += '<div class="gsa-tpl-and" role="status"><b>' + (S.tplAgindo.tipo === 'falta' ? 'Incluindo' : 'Tirando') + ' templates · ' + S.tplAgindo.feitos + ' de ' + S.tplAgindo.total + '</b>' + (S.tplAgindo.atual ? '<small>' + esc(S.tplAgindo.atual) + '</small>' : '') + barra({ feitos: S.tplAgindo.feitos, total: S.tplAgindo.total }) + '<button type="button" class="btn btn-sm" data-gsa-tpl-parar' + (S.tplParar ? ' disabled' : '') + '>' + (S.tplParar ? 'Parando…' : 'Parar depois desta') + '</button></div>';
+  if (S.tplAviso) h += '<div class="faixa ' + (S.tplAviso.ok ? 'ok' : 'warn') + '" role="status"><svg class="ic"><use href="#i-' + (S.tplAviso.ok ? 'check' : 'alert') + '"/></svg><div>' + esc(S.tplAviso.texto) + (S.tplAviso.falhas.length ? '<ul class="gsa-falhas">' + S.tplAviso.falhas.map(f => '<li>' + esc(f) + '</li>').join('') + '</ul>' : '') + '</div><button type="button" class="btn btn-sm" data-gsa-tpl-aviso-x>' + ic('x') + 'Fechar</button></div>';
+  const linha = (tipo) => (x) => { const k = chaveTpl(x), on = S.tplSel[tipo].has(k);
+    return '<tr' + (on ? ' class="on"' : '') + '><td class="gsa-ck"><input type="checkbox" data-gsa-sel="' + esc(tipo + '|' + k) + '"' + (on ? ' checked' : '') + (ocupado ? ' disabled' : '') + ' aria-label="Marcar ' + esc(nome(x.nomeCliente) || 'empresa') + ' · ' + esc(nome(x.nomeTemplate)) + '"></td><td><b>' + esc(nome(x.nomeCliente) || '—') + '</b><small>' + esc(cnpjFmt(x.cnpj)) + '</small></td><td>' + esc(nome(x.nomeTemplate)) + '<small>' + esc(x.setor) + '</small></td><td class="num">' + x.pct + '%<small>de ' + x.grupo + ' parecidas</small></td><td class="gsa-acoes">' +
+      '<button type="button" class="btn btn-sm" data-gsa-tpl="' + esc(tipo + '|' + k) + '"' + (ocupado ? ' disabled' : '') + '>' + ic(tipo === 'falta' ? 'plus' : 'trash') + (tipo === 'falta' ? 'Incluir' : 'Tirar') + '</button>' + linkFora(G.urlCliente(x.cliente), 'Abrir a empresa') + copiar(cnpjFmt(x.cnpj), 'Copiar CNPJ') + '</td></tr>'; };
+  const conf = (tipo) => { const c = S.tplConf; if (!c || c.tipo !== tipo) return ''; const inc = tipo === 'falta';
+    return '<div class="gp-conf' + (inc ? '' : ' perigo') + ' gsa-tpl-conf" role="alertdialog" aria-label="Confirmar no Gestta"><p class="gp-conf-tx">' + (inc ? 'Incluir ' : 'Tirar ') + plural(c.itens.length, 'template', 'templates') + (inc ? ' nas empresas' : ' das empresas') + ' no Gestta? Vai uma empresa por vez.</p><ul class="gp-conf-extra">' +
+      c.itens.slice(0, 8).map(x => '<li>' + esc(nome(x.nomeCliente) || cnpjFmt(x.cnpj)) + ' · ' + esc(nome(x.nomeTemplate)) + '</li>').join('') + (c.itens.length > 8 ? '<li>e mais ' + num(c.itens.length - 8) + '</li>' : '') +
+      '<li>' + (inc ? 'O Gestta passa a gerar as tarefas deste template para a empresa nas próximas gerações.' : 'O Gestta deixa de gerar as tarefas deste template para a empresa; as tarefas já geradas continuam lá.') + '</li><li>Antes de cada uma, a extensão relê os templates da empresa no Gestta.</li></ul>' +
+      '<div class="gp-conf-bt"><button type="button" class="btn btn-primary" data-gsa-tpl-ok>' + (inc ? 'Incluir ' : 'Tirar ') + plural(c.itens.length, 'template', 'templates') + '</button><button type="button" class="btn" data-gsa-tpl-nao>Cancelar</button></div></div>'; };
+  const barraLote = (tipo, l) => { const n = l.filter(x => S.tplSel[tipo].has(chaveTpl(x))).length, todas = l.length && n === Math.min(l.length, 200);
+    return l.length ? '<div class="gsa-tpl-lote"><label><input type="checkbox" data-gsa-selt="' + tipo + '"' + (todas ? ' checked' : '') + (ocupado ? ' disabled' : '') + '> Marcar todas' + (l.length > 200 ? ' as 200 da tela' : '') + '</label><button type="button" class="btn btn-sm' + (n ? ' btn-primary' : '') + '" data-gsa-tpl-lote="' + tipo + '"' + (n && !ocupado ? '' : ' disabled') + '>' + ic(tipo === 'falta' ? 'plus' : 'trash') + (tipo === 'falta' ? 'Incluir' : 'Tirar') + ' as marcadas' + (n ? ' (' + num(n) + ')' : '') + '</button></div>' : ''; };
+  const tab = (tipo, l, vazio) => l.length ? barraLote(tipo, l) + conf(tipo) + '<div class="gte-tab-wrap"><table class="gte-tab gsa-tab"><thead><tr><th class="gsa-ck"><span class="sr-only">Marcar</span></th><th>Empresa</th><th>Template</th><th class="num">Parecidas com ele</th><th></th></tr></thead><tbody>' + l.slice(0, 200).map(linha(tipo)).join('') + '</tbody></table></div>' + (l.length > 200 ? '<p class="fraco">e mais ' + num(l.length - 200) + '.</p>' : '') : '<p class="gte-vazio">' + ic('check') + esc(vazio) + '</p>';
+  h += '<h4 class="gsa-h4">Falta <span class="gte-n">' + num(sg.falta.length) + '</span></h4>' + tab('falta', sg.falta, 'Nenhuma empresa deixa de receber o que as parecidas recebem.') +
+    '<h4 class="gsa-h4">Sobra <span class="gte-n">' + num(sg.sobra.length) + '</span></h4>' + tab('sobra', sg.sobra, 'Nenhum template fora do padrão das parecidas.') +
     '<p class="fraco">' + plural(sg.perfis.length, 'perfil de demanda', 'perfis de demanda') + ' · ' + plural(S.config.templates.length, 'template ativo', 'templates ativos') + '.</p>';
   return { h, n: sg.falta.length + sg.sobra.length };
 }
@@ -274,7 +316,17 @@ export function ligarSaude(v, redesenhar, paraPai) {
   aoMudar = redesenhar || aoMudar; paraPaiFn = paraPai || paraPaiFn;
   v.addEventListener('click', (e) => {
     if (!v.querySelector('.gsa-topo, [data-gsa-reler]')) return;
-    const t = e.target.closest('[data-gsa-sec],[data-gsa-ler],[data-gsa-reler],[data-gsa-ir],[data-gsa-cel],[data-gsa-cel-fechar],[data-gsa-lote],[data-gsa-tarefa],[data-gsa-copiar],[data-gsa-cap]'); if (!t) return;
+    const t = e.target.closest('[data-gsa-sec],[data-gsa-ler],[data-gsa-reler],[data-gsa-ir],[data-gsa-cel],[data-gsa-cel-fechar],[data-gsa-lote],[data-gsa-tarefa],[data-gsa-copiar],[data-gsa-cap],[data-gsa-sel],[data-gsa-selt],[data-gsa-tpl],[data-gsa-tpl-lote],[data-gsa-tpl-ok],[data-gsa-tpl-nao],[data-gsa-tpl-parar],[data-gsa-tpl-aviso-x]'); if (!t) return;
+    // 0.121.0: incluir e tirar template da empresa (seleção, lote, confirmação)
+    const sg = S._sg || { falta: [], sobra: [] }, achar = (tipo, k) => (sg[tipo] || []).find(x => chaveTpl(x) === k);
+    if (t.dataset.gsaSel) { const [tipo, ...k] = t.dataset.gsaSel.split('|'), kk = k.join('|'); S.tplSel[tipo].has(kk) ? S.tplSel[tipo].delete(kk) : S.tplSel[tipo].add(kk); aoMudar(); return; }
+    if (t.dataset.gsaSelt) { const tipo = t.dataset.gsaSelt, l = (sg[tipo] || []).slice(0, 200), todas = l.every(x => S.tplSel[tipo].has(chaveTpl(x))); S.tplSel[tipo] = todas ? new Set() : new Set(l.map(chaveTpl)); aoMudar(); return; }
+    if (t.dataset.gsaTpl) { const [tipo, ...k] = t.dataset.gsaTpl.split('|'), x = achar(tipo, k.join('|')); if (x && !S.tplAgindo) { S.tplConf = { tipo, itens: [x] }; S.tplAviso = null; aoMudar(); } return; }
+    if (t.dataset.gsaTplLote) { const tipo = t.dataset.gsaTplLote, itens = (sg[tipo] || []).filter(x => S.tplSel[tipo].has(chaveTpl(x))); if (itens.length && !S.tplAgindo) { S.tplConf = { tipo, itens }; S.tplAviso = null; aoMudar(); } return; }
+    if (t.dataset.gsaTplOk != null) { const c = S.tplConf; if (c) aplicarTemplates(c.tipo, c.itens); return; }
+    if (t.dataset.gsaTplNao != null) { S.tplConf = null; aoMudar(); return; }
+    if (t.dataset.gsaTplParar != null) { S.tplParar = true; aoMudar(); return; }
+    if (t.dataset.gsaTplAvisoX != null) { S.tplAviso = null; aoMudar(); return; }
     if (t.dataset.gsaReler != null) { if (enviarFn) lerSaude(enviarFn, aoMudar, true); return; }
     if (t.dataset.gsaSec) { const k = t.dataset.gsaSec; S.fechados.has(k) ? S.fechados.delete(k) : S.fechados.add(k); gravarPref('gt.saude.fechados', [...S.fechados].join(',')); aoMudar(); return; }
     if (t.dataset.gsaLer === 'contatos') { if (!S.lendoCont) lerContatos(); return; }

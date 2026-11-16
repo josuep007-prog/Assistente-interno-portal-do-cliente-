@@ -4954,3 +4954,52 @@ test('FGTS Digital (0.119.0): a única escrita é emitir a guia MENSAL pela Guia
   assert.deepEqual(plano(OCF.limpar('gerar', { gerouGuia: true, dadosGuia: { id: 9, numero: '0126-2', linkPdf: '/arrecadacao/emissao/reimprimirGuia/1262' } })), { gerou: true, guia: { id: '9', numero: '0126-2', linkPdf: '/arrecadacao/emissao/reimprimirGuia/1262' } });
   assert.equal(OCF.limpar('relatorio', { gerouDetalheGuia: true, url: 'https://evil.example/x.pdf' }).url, '', 'endereço de arquivo fora do serpro é descartado');
 });
+/* ---------- Gestta (0.121.0): ver e excluir o arquivo do item, incluir e tirar template de uma empresa (Josué, 16/11/2026) ---------- */
+test('Gestta (0.121.0): excluir arquivo, incluir e tirar template só na forma do mapeamento da 985; o resto é recusado', () => {
+  const E = OCG.escritaPermitida, A = 'https://api.gestta.com.br', T = '5f1e2d3c4b5a69788796a5b4', S = '6a5b4c3d2e1f00112233aabb', C = '0123456789abcdef01234567';
+  const ex = OCG.pedidoAcao({ acao: 'excluirArquivo', id: T, documento: S });
+  assert.equal(ex.metodo, 'DELETE'); assert.equal(new URL(ex.url).pathname, '/core/customer/task/' + T + '/document/' + S + '/file'); assert.deepEqual(plano(ex.corpo), {});
+  assert.equal(E(ex.metodo, ex.url, ex.corpo).ok, true, 'excluir o arquivo do item');
+  const inc = OCG.pedidoAcao({ acao: 'incluirTemplate', cliente: C, template: S });
+  assert.equal(inc.metodo, 'POST'); assert.equal(new URL(inc.url).pathname, '/admin/customer/' + C + '/company/task'); assert.deepEqual(plano(inc.corpo), { company_task: [S] });
+  assert.equal(E(inc.metodo, inc.url, inc.corpo).ok, true, 'incluir template');
+  const tir = OCG.pedidoAcao({ acao: 'tirarTemplate', vinculo: T });
+  assert.equal(tir.metodo, 'DELETE'); assert.equal(new URL(tir.url).pathname, '/admin/group/customer'); assert.deepEqual(plano(tir.corpo), { ids: [T] });
+  assert.equal(E(tir.metodo, tir.url, tir.corpo).ok, true, 'tirar template');
+  for (const p of [ex, inc, tir]) assert.equal(OCG.leituraPermitida(p.metodo, p.url, p.corpo).ok, false, 'a leitura continua recusando: ' + p.acao);
+  const nao = [
+    ['DELETE', A + '/core/customer/task/' + T + '/document/' + S + '/file', { file: 'x' }],
+    ['DELETE', A + '/core/customer/task/' + T + '/document/' + S, {}], ['DELETE', A + '/core/customer/task/' + T + '/document/x/file', {}],
+    ['DELETE', A + '/core/customer/task/' + T + '/document/' + S + '/file?x=1', {}], ['PUT', A + '/core/customer/task/' + T + '/document/' + S + '/file', {}],
+    ['POST', A + '/admin/customer/' + C + '/company/task', { company_task: [S, T] }], ['POST', A + '/admin/customer/' + C + '/company/task', { company_task: S }],
+    ['POST', A + '/admin/customer/' + C + '/company/task', { company_task: [S], active: true }], ['POST', A + '/admin/customer/' + C + '/company/task', { company_task: ['x'] }],
+    ['DELETE', A + '/admin/customer/' + C + '/company/task', { company_task: [S] }], ['PUT', A + '/admin/customer/' + C + '/company/task', { company_task: [S] }],
+    ['DELETE', A + '/admin/group/customer', { ids: [S, T] }], ['DELETE', A + '/admin/group/customer', { ids: [] }], ['DELETE', A + '/admin/group/customer', { ids: [S], customer: C }],
+    ['DELETE', A + '/admin/group/customer/' + S, {}], ['POST', A + '/admin/group/customer', { ids: [S] }], ['DELETE', A + '/admin/customer/' + C, {}],
+    ['POST', A + '/admin/company/task', { name: 'x' }]
+  ];
+  for (const [m, u, c] of nao) assert.equal(E(m, u, c).ok, false, 'recusa: ' + m + ' ' + u + ' ' + JSON.stringify(c));
+  assert.ok(OCG.pedidoAcao({ acao: 'excluirArquivo', id: T }).erro); assert.ok(OCG.pedidoAcao({ acao: 'incluirTemplate', cliente: 'x', template: S }).erro);
+  assert.ok(OCG.pedidoAcao({ acao: 'tirarTemplate', vinculo: '' }).erro);
+});
+test('Gestta (0.121.0): o endereço do arquivo do item só sai do detalhe se for do S3 em us-east-1; vínculos da empresa só com ids', () => {
+  const T = '5f1e2d3c4b5a69788796a5b4', S = '6a5b4c3d2e1f00112233aabb', S2 = '6a5b4c3d2e1f00112233aabc';
+  const u = 'https://bucket-x.s3.us-east-1.amazonaws.com/pasta/recibo%20teste.pdf?X-Amz-Expires=600&X-Amz-Signature=abc';
+  assert.equal(OCG.arquivoS3(u), true);
+  for (const r of ['http://bucket.s3.us-east-1.amazonaws.com/a.pdf', 'https://bucket.s3.sa-east-1.amazonaws.com/a.pdf', 'https://evil.com/s3.us-east-1.amazonaws.com/a.pdf',
+    'https://user:x@bucket.s3.us-east-1.amazonaws.com/a.pdf', 'https://bucket.s3.us-east-1.amazonaws.com.evil.com/a.pdf', 'https://bucket.s3.us-east-1.amazonaws.com/', 'javascript:alert(1)'])
+    assert.equal(OCG.arquivoS3(r), false, r);
+  const det = { _id: T, status: 'OPEN', company_documents: [{ _id: S, name: 'Guia', file: u }, { _id: S2, name: 'Recibo' }] };
+  assert.deepEqual(plano(OCG.arquivoDoDetalhe(det, S)), { status: 'OPEN', existe: true, temArquivo: true, url: u, nome: 'recibo teste.pdf' });
+  assert.deepEqual(plano(OCG.arquivoDoDetalhe(det, S2)), { status: 'OPEN', existe: true, temArquivo: false });
+  assert.deepEqual(plano(OCG.arquivoDoDetalhe(det, T)), { status: 'OPEN', existe: false, temArquivo: false });
+  assert.deepEqual(plano(OCG.arquivoDoDetalhe({ status: 'OPEN', company_documents: [{ _id: S, file: 'https://outro.com/a.pdf' }] }, S)), { status: 'OPEN', existe: true, temArquivo: true, foraDoS3: true });
+  // o detalhe que vai à tela continua sem o endereço
+  const tela = OCG.limpar('tarefaDetalhe', det);
+  assert.ok(!JSON.stringify(tela).includes('amazonaws'), 'nunca o endereço na tela');
+  assert.equal(tela.company_documents[0].arquivos[0].nome, 'recibo teste.pdf');
+  const vin = OCG.limpar('vinculosEmpresa', [{ _id: T, company: 'c', company_task: { _id: S, name: 'X' }, customer: 'z', company_user: { name: 'Pessoa', login_attempts: 3 }, active: true }, { _id: S2, company_task: T, active: false }, { _id: 'x', company_task: S }]);
+  assert.deepEqual(plano(vin), { itens: [{ id: T, template: S, ativo: true }, { id: S2, template: T, ativo: false }] });
+  const lp = OCG.PEDIDOS.vinculosEmpresa({ cliente: S }); assert.equal(OCG.leituraPermitida(lp.metodo, lp.url).ok, true);
+  const la = OCG.PEDIDOS.arquivoDoItem({ id: T, documento: S }); assert.equal(OCG.leituraPermitida(la.metodo, la.url).ok, true); assert.equal(la.doc, S);
+});
