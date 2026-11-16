@@ -2,6 +2,14 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.121.0 (16/11/2026): arquivo do item e templates da empresa no Gestta
+
+- Josué: "Arquivo do item no Gestta: ver e excluir o arquivo, e incluir ou tirar template de uma empresa, já estão mapeados e esperam sua aprovação. pode fazer". Mapa da empresa de teste 985 em `mapeamento/gestta-2026-11-04.md` ("Roteiro único").
+- **Ver o arquivo** no painel da tarefa, embaixo do nome do arquivo do item: abre **dentro da extensão** (PDF num quadro, imagem na tela, o resto só **Baixar**). A permissão do servidor de arquivos do Gestta (Amazon S3, us-east-1) é pedida uma vez, no clique. O service worker lê o endereço assinado do arquivo na hora (ele vale 10 minutos), baixa e devolve só o conteúdo, até 15 MB; o endereço nunca vai à tela nem ao armazenamento, e o arquivo some ao fechar. Nada passa pelo visualizador do Google. O tipo é decidido pelos primeiros bytes: HTML ou SVG nunca são desenhados dentro da extensão.
+- **Excluir o arquivo** do item: só com a tarefa aberta, depois da confirmação com o nome do arquivo; a extensão relê a tarefa antes (concluída ou item já sem arquivo = nada é excluído) e o Gestta registra a remoção no histórico.
+- **Incluir e tirar template de uma empresa**, na aba Gestão › Configuração das empresas pela demanda (só a coordenação): **Incluir** na linha do que falta, **Tirar** na do que sobra, ou marque várias e use o lote; uma confirmação para o lote e uma empresa por vez. Antes de cada uma a extensão relê os templates da empresa: incluir o que já está ou tirar o que não está não muda nada; para tirar, usa o id do vínculo relido (nunca o da tela). Depois relê e diz se não conferiu. Tirar não apaga as tarefas já geradas.
+- Segurança: as três escritas entram na lista fechada `OCG.escritaPermitida` com o método, o endereço e o corpo exatos do mapa (`DELETE /core/customer/task/{id}/document/{doc}/file` `{}`; `POST /admin/customer/{id}/company/task` `{company_task:[um id]}`; `DELETE /admin/group/customer` `{ids:[um id]}`). Incluir e tirar só pelo cmd `gesttaTemplateEmpresa` (o `gesttaAcao` recusa); todas só de uma tela da extensão.
+
 ## Novidades da v0.120.0 (16/11/2026): Guias da folha, fases 4 e 5: anexar no Gestta e baixar a pasta
 
 - Josué: "pode terminar tudo que falta".
