@@ -2,6 +2,14 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.116.0 (16/11/2026): Guias da folha, fase 1 (só leitura)
+
+- Aba nova **Guias da folha** nas Tarefas do Gestta (tecla 9), pedida pelo Josué em 13/11/2026, com o escopo de 16/11/2026 (só FGTS; DCTFWeb pausada). Mapa em `mapeamento/guias-fgts-dctfweb.md`, desenho em `guias-fgts-dctfweb-desenho.md`.
+  - **Lista:** as tarefas `FGTS DIGITAL` da competência escolhida no topo, tiradas do relatório do Gestta do mês da meta (a competência é o mês anterior ao da meta), uma por empresa. Para cada tarefa aberta, a extensão abre o detalhe e diz se o item "FGTS Guia" já tem arquivo ("Sem guia" × "Guia anexada"); as concluídas ficam recolhidas.
+  - **Escolher e ler o extrato:** o analista marca as empresas e **Ler o extrato** traz o "Valor do FGTS" (e o do aprendiz) do Extrato Mensal publicado no portal de documentos do Onvio, pelo mesmo caminho da folha mensal. Confere a competência e o CNPJ (raiz) no texto; o que não acha aparece com o motivo.
+  - Trilho dos cinco passos (Escolher, Conferir, Emitir, Anexar, Baixar) com os quatro últimos marcados para as próximas versões; a escolha "Matriz única × Por filial" já aparece, com Por filial desligado até ser mapeado.
+- Nada é escrito no Gestta, no Onvio nem em site do governo. Os valores ficam só na memória da tela (só o caminho das pastas da folha, com ids, é guardado, como já era).
+
 ## Novidades da v0.115.1 (13/11/2026): a lista de falhas de e-mail como a tela do Gestta faz
 
 - Josué subiu o resultado do roteiro de mapeamento (passos 0 a 4). Três coisas mudaram em relação à 0.115.0:

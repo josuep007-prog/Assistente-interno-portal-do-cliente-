@@ -17,6 +17,12 @@ Função pedida pelo Josué em 13/11/2026. O mapa dos sites (FGTS Digital e e-CA
 - **FGTS: o analista escolhe por empresa** entre uma guia só para a matriz (traz todos os estabelecimentos) ou uma guia por filial.
 - **Pacote do FGTS = três PDFs**, todos emitidos, conferidos e anexados na tarefa: a guia, o relatório do valor da guia (detalhe) e o relatório do empréstimo consignado. Mais o DARF da DCTFWeb: **quatro arquivos por empresa**.
 
+## Confirmado em 16/11/2026 (Josué: "confirmo 1, 3 e 4")
+- Nomes no Gestta: `MM-AAAA DARF FGTS.pdf`, `MM-AAAA DEMONSTRATIVO FGTS.pdf`, `MM-AAAA DEMONSTRATIVO E-CONSIGNADO.pdf`.
+- O extrato vem do portal de documentos do Onvio.
+- Comparação: "Valor do FGTS" do extrato × soma do principal dos débitos mensais da competência; juros e multa à parte.
+- Fase 1 feita na 0.116.0 (aba Guias da folha, só leitura).
+
 ## Em aberto (precisa do Josué ou do mapa)
 1. Nome dos dois relatórios do FGTS no Gestta (sugestão: `MM-AAAA DETALHE GUIA FGTS.pdf` e `MM-AAAA CONSIGNADO FGTS.pdf`) e do DARF (`MM-AAAA DARF DCTFWEB.pdf`).
 2. O que significa "conferido" em cada relatório: o detalhe tem de fechar com o valor da guia? o consignado tem de bater com a linha de consignado do extrato?
