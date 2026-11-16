@@ -1,5 +1,7 @@
 # Guias da folha · decisões e desenho (16/11/2026)
 
+> **Atualização de 16/11/2026 (mapa do FGTS Digital recebido, `guias-fgts-dctfweb.md`):** o escopo agora é **só FGTS**; a DCTFWeb ficou pausada por decisão do Josué (site em mudança, captcha). O pacote do FGTS são os três itens que já existem na tarefa `FGTS DIGITAL` do Gestta: **FGTS Guia**, **Demonstrativo FGTS** e **Demonstrativo e-consignado**. As partes sobre DCTFWeb e DARF abaixo valem para quando ela voltar.
+
 Função pedida pelo Josué em 13/11/2026. O mapa dos sites (FGTS Digital e e-CAC) sai do roteiro `prompt-guias-fgts-dctfweb-2026-11-13.md` (PR #208) e do complemento `prompt-guias-fgts-complemento-2026-11-16.md`; vira `guias-fgts-dctfweb.md` quando o resultado chegar. Este arquivo guarda o que já está decidido e o desenho da tela.
 
 ## Decidido (Josué, 13/11/2026 e 16/11/2026)
