@@ -2872,7 +2872,9 @@ function gtGuias() {
     'guiasFolha:extrato': { ok: true, porCodigo: { '11222333000181': { ok: true, fgts: 1800.5, aprendiz: 10, rescisorio: 150, extratos: [{ calculo: 'Folha Mensal', fgts: 1800.5, aprendiz: 10, filial: false }], semValor: false },
       '22333444000190': { ok: false, motivo: 'Nenhum Extrato Mensal da competência 10/2026 publicado.' } } },
     // 0.118.0: a conferência no FGTS Digital (o principal dos débitos mensais bate com o extrato + aprendiz)
-    'guiasFolha:fgts': { ok: true, competencia: '2026-10', debitos: 6, principal: 1810.5, encargos: 0, total: 1810.5, semGuia: 6, guias: [], filial: false, esperado: 1810.5, bate: true, diferenca: 0 }
+    'guiasFolha:fgts': { ok: true, competencia: '2026-10', debitos: 6, principal: 1810.5, encargos: 0, total: 1810.5, semGuia: 6, guias: [], filial: false, esperado: 1810.5, bate: true, diferenca: 0 },
+    // 0.119.0: a primeira tentativa volta com a pergunta do FGTS Digital; o teste troca a resposta para a emitida depois do "Sim"
+    'guiasFolha:emitir': { ok: true, perguntas: ['Existem débitos de competências anteriores. Deseja continuar?'], alertas: [], mensal: 1810.5, pagamentoAte: '2026-11-07' }
   };
 }
 function gtTarefas() {
@@ -3374,12 +3376,25 @@ await passo('FGTS Digital (0.118.0): a leitura de dentro da aba vai com o cookie
     if (!sessao) return r.fulfill({ status: 200, contentType: 'text/html', body: '<html>gov.br</html>' });
     return r.fulfill({ contentType: 'application/json', body: JSON.stringify({ qtdeTotalDebitos: 1, debitos: [{ competenciaApuracao: '202610', vlPrincipal: 10.5, vlTotal: 10.5, cpfTrabalhador: '111.222.333-44', nomeTrabalhador: 'FULANO DE TAL', matricula: '9', estabalecimentoRemuneracao: '11222333000181', guiasRelacionadas: [] }] }) });
   });
+  await p.goto('https://fgtsdigital.sistema.gov.br/cobranca/');
   await p.addScriptTag({ content: lerExt('fgts.js') });
   const r = await p.evaluate(() => OCF.lerNaPagina([OCF.PEDIDOS.debitos('2026-10', 1)], { pausa: 1 }));
   assert.ok(r.ok); assert.equal(r.resultados[0].status, 200); assert.equal(r.resultados[0].dados.itens[0].principal, 10.5);
   for (const v of ['111.222', 'FULANO', 'matricula']) assert.ok(!JSON.stringify(r).includes(v), 'vazou ' + v);
   const rec = await p.evaluate(() => OCF.lerNaPagina([{ id: 'x', metodo: 'POST', url: OCF.HOST + '/cobranca/api/guia-parametrizada/gerar-guia' }], { pausa: 1 }));
   assert.match(rec.resultados[0].recusado, /escrita/); assert.equal(pedidos.length, 1, 'a escrita nem sai da página');
+  // 0.119.0: emitir leva o cabeçalho anti-falsificação lido do cookie da própria página (o valor nunca volta) e corpo {}; o PDF vem em binário
+  let cab = null, corpoPost = null;
+  await p.route('https://fgtsdigital.sistema.gov.br/cobranca/api/guia-rapida/gerar-guia/**', r => { cab = r.request().headers()['x-xsrf-token']; corpoPost = r.request().postData(); return r.fulfill({ contentType: 'application/json', body: JSON.stringify({ gerouGuia: true, dadosGuia: { id: 7, numero: '0126-2', linkPdf: '/arrecadacao/emissao/reimprimirGuia/1262000000' } }) }); });
+  await p.route('https://fgtsdigital.sistema.gov.br/arrecadacao/**', r => r.fulfill({ contentType: 'application/pdf', body: '%PDF-1.4 guia de teste' }));
+  await p.evaluate(() => { document.cookie = 'XSRF-TOKEN=valor-secreto-xsrf; path=/'; });
+  const em = await p.evaluate(() => OCF.lerNaPagina([OCF.PEDIDOS.gerar('202610,mensal,12345678901,2026-11-07,false', '3f2b8c4e-1d2a-4b6c-9e8f-0a1b2c3d4e5f', true), OCF.PEDIDOS.pdfGuia('/arrecadacao/emissao/reimprimirGuia/1262000000')], { pausa: 1 }));
+  assert.equal(cab, 'valor-secreto-xsrf'); assert.equal(corpoPost, '{}');
+  assert.deepEqual(em.resultados[0].dados, { gerou: true, guia: { id: '7', numero: '0126-2', linkPdf: '/arrecadacao/emissao/reimprimirGuia/1262000000' } });
+  assert.equal(Buffer.from(em.resultados[1].dados.b64, 'base64').toString(), '%PDF-1.4 guia de teste');
+  assert.ok(!JSON.stringify(em).includes('valor-secreto'), 'o token nunca sai da página');
+  const outra = await p.evaluate(() => OCF.lerNaPagina([Object.assign(OCF.PEDIDOS.gerar('202610,rescisorio,12345678901,2026-11-07,false', '3f2b8c4e-1d2a-4b6c-9e8f-0a1b2c3d4e5f', true))], { pausa: 1 }));
+  assert.match(outra.resultados[0].recusado, /mensal/, 'rescisória recusada dentro da página');
   sessao = false;
   const s = await p.evaluate(() => OCF.lerNaPagina([OCF.PEDIDOS.dadosFiltro()], { pausa: 1 }));
   assert.equal(s.semSessao, true, 'sem sessão a API devolve a página de login: vira semSessao');
@@ -3417,12 +3432,29 @@ await passo('Gestta · Guias da folha (0.116.0): tarefas FGTS DIGITAL da compet�
   assert.equal(cf.length, 1); assert.equal(cf[0].empresa.cnpj, '11222333000181'); assert.equal(cf[0].esperado, 1810.5, 'esperado = FGTS + aprendiz do extrato');
   assert.match(await fr.textContent('.ggu-tab'), /Bate[\s\S]*R\$ 1\.810,50/);
   assert.match(await fr.textContent('.ggu-passos li.atual'), /Conferir/, 'o trilho passa ao passo 2');
+  // 0.119.0: emitir só a que bateu, depois da confirmação do lote; a pergunta do site aparece na linha e só segue com o Sim
+  assert.match(await fr.textContent('[data-ggu-emitir]'), /Emitir guias \(1\)/);
+  await fr.click('[data-ggu-emitir]');
+  await fr.waitForSelector('.ggu-confirma');
+  assert.match(await fr.textContent('.ggu-confirma'), /Emitir 1 guia do FGTS[\s\S]*Cliente Alfa Ltda[\s\S]*10\/2026[\s\S]*R\$ 1\.810,50[\s\S]*não paga nada/);
+  assert.equal(await fr.evaluate(() => window.__msgs.filter(m => m.parte === 'emitir').length), 0, 'nada sai antes de confirmar');
+  await fr.click('[data-ggu-emitir-ok]');
+  await fr.waitForSelector('.ggu-pergunta');
+  assert.match(await fr.textContent('.ggu-pergunta'), /Deseja continuar\?/);
+  assert.equal((await fr.evaluate(() => window.__msgs.filter(m => m.parte === 'emitir')))[0].confirmado, false);
+  await fr.evaluate(() => { window.__respostas['guiasFolha:emitir'] = { ok: true, emitida: true, numero: '0126100000000000-2', pagamentoAte: '2026-11-07', mensal: 1810.5, totalGuia: 1810.5,
+    arquivos: [{ tipo: 'guia', nome: '10-2026 DARF FGTS.pdf', b64: btoa('%PDF-1.4 guia'), confere: true }, { tipo: 'detalhe', nome: '10-2026 DEMONSTRATIVO FGTS.pdf', b64: btoa('%PDF-1.4 det'), confere: false, motivo: 'o PDF não é o "Detalhe da Guia Emitida"' }] }; });
+  await fr.click('[data-ggu-sim]');
+  await fr.waitForFunction(() => /Emitida/.test(document.querySelector('.ggu-tab').textContent));
+  assert.equal((await fr.evaluate(() => window.__msgs.filter(m => m.parte === 'emitir'))).slice(-1)[0].confirmado, true, 'o Sim vai como confirmado');
+  assert.match(await fr.textContent('.ggu-tab'), /Emitida[\s\S]*nº 0126100000000000-2 · vence 07\/11\/2026[\s\S]*Ver guia[\s\S]*Ver demonstrativo[\s\S]*Detalhe da Guia Emitida/);
+  assert.match(await fr.textContent('.ggu-passos li.atual'), /Emitir/);
+  assert.ok(!(await fr.$('[data-ggu-emitir]:not([disabled])')), 'a emitida não pode ser emitida de novo');
   // a concluída aparece recolhida
   await fr.click('[data-ggu-feitas]'); await fr.waitForFunction(() => /Cliente Delta Ltda/i.test(document.querySelector('#vista').textContent));
   // nada foi escrito e nada ficou guardado
   const cmds = await fr.evaluate(() => [...new Set(window.__msgs.map(m => m.cmd))]);
-  assert.ok(!cmds.some(c => /acao|Acao|anexar|emitir/.test(c)), 'só leituras: ' + cmds.join(', '));
-  assert.ok(!(await fr.evaluate(() => window.__msgs.some(m => m.cmd === 'guiasFolha' && /emit|gerar/.test(m.parte)))), 'nada de emissão');
+  assert.ok(!cmds.some(c => /acao|Acao|anexar/.test(c)), 'nada escrito no Gestta: ' + cmds.join(', '));
   assert.ok(!JSON.stringify(await fr.evaluate(() => Object.assign({}, localStorage))).includes('1800'), 'valor nunca guardado no navegador');
   await p.close();
 });
@@ -3595,7 +3627,7 @@ await passo('Gestta · Tarefas: no Meu dia, Enter abre a tarefa escolhida no Ges
     if (modo === 'mespop') await fr.click('#gt-mes-rot');
     if (modo === 'atalhos') { await fr.waitForSelector('.gd-it'); await fr.press('body', '?'); }
     if (modo === 'lista') await fr.check('#gt-feitas');
-    if (modo === 'guias') { await fr.waitForSelector('.ggu-tab'); await fr.waitForFunction(() => /Guia anexada/.test(document.querySelector('.ggu-tab').textContent)); await fr.check('[data-ggu-todas]'); await fr.click('[data-ggu-ler-ext]'); await fr.waitForFunction(() => /1\.800,50/.test(document.querySelector('.ggu-tab').textContent)); await fr.click('[data-ggu-conferir]'); await fr.waitForFunction(() => /Bate/.test(document.querySelector('.ggu-tab').textContent)); }
+    if (modo === 'guias') { await fr.waitForSelector('.ggu-tab'); await fr.waitForFunction(() => /Guia anexada/.test(document.querySelector('.ggu-tab').textContent)); await fr.check('[data-ggu-todas]'); await fr.click('[data-ggu-ler-ext]'); await fr.waitForFunction(() => /1\.800,50/.test(document.querySelector('.ggu-tab').textContent)); await fr.click('[data-ggu-conferir]'); await fr.waitForFunction(() => /Bate/.test(document.querySelector('.ggu-tab').textContent)); await fr.click('[data-ggu-emitir]'); await fr.waitForSelector('.ggu-confirma'); }
     if (modo === 'saude') {   // 0.110.0: com os blocos lidos e uma célula aberta
       await fr.waitForSelector('.gsa-topo');
       await fr.click('[data-gsa-ler="contatos"]'); await fr.waitForSelector('#gsa-contatos table');

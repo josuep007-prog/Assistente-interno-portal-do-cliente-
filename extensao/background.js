@@ -539,23 +539,114 @@ async function naPaginaFgts(tabId, acao, args) {
   return (res && res.result) || null;
 }
 async function lerFgts(tab, pedidos) {
-  if ((pedidos || []).some(p => !OCF.leituraPermitida(p.metodo, p.url, p.corpo == null ? null : p.corpo).ok)) throw new Error('pedido ao FGTS Digital fora da lista permitida');
+  const ok = p => p.escrita ? OCF.escritaPermitida(p.metodo, p.url, p.corpo).ok : p.externo ? OCF.arquivoPermitido(p.url) : OCF.leituraPermitida(p.metodo, p.url, p.corpo == null ? null : p.corpo).ok;
+  if ((pedidos || []).some(p => !ok(p))) throw new Error('pedido ao FGTS Digital fora da lista permitida');
   return naPaginaFgts(tab.id, 'ler', [pedidos, 400]);
 }
-async function conferirFgts(msg) {
+// comum à conferência e à emissão: permissão, aba, sessão e perfil de procurador da matriz
+async function prepararFgts(msg) {
   const ano = Number(msg.ano), mes = Number(msg.mes), e = msg.empresa || {}, cnpj = String(e.cnpj || '').replace(/\D/g, '');
   if (!(ano > 2000 && mes >= 1 && mes <= 12) || cnpj.length !== 14) return { ok: false, erro: 'Empresa ou competência inválida.' };
   if (!(await chrome.permissions.contains({ origins: [OCF.HOST + '/*'] }).catch(() => false))) return { ok: false, semPermissao: true, erro: 'A extensão ainda não tem permissão para o FGTS Digital.' };
   const tab = await abaFgts();
   if (!tab) return { ok: false, semAba: true, erro: 'Abra o FGTS Digital numa aba e entre pelo gov.br com o certificado da ControlTax.' };
   const matriz = OCF.cnpjMatriz(cnpj), comp = ano + '-' + String(mes).padStart(2, '0');
-  const sessao = r => r && r.semSessao ? { ok: false, semSessao: true, erro: 'A sessão do FGTS Digital não está aberta: entre pelo gov.br na aba do FGTS Digital.' } : null;
   const p0 = await naPaginaFgts(tab.id, 'perfil', [matriz]);
   if (!(p0 && p0.mesmo)) {
-    const rp = await lerFgts(tab, [OCF.PEDIDOS.perfil(matriz)]); const s1 = sessao(rp); if (s1) return s1;
+    const rp = await lerFgts(tab, [OCF.PEDIDOS.perfil(matriz)]); const s1 = semSessaoFgts(rp); if (s1) return s1;
     const x = rp && rp.resultados && rp.resultados[0];
-    if (!x || x.status !== 200) return { ok: false, erro: 'O FGTS Digital não aceitou o perfil de procurador da matriz' + (x && x.status ? ' (erro ' + x.status + ')' : '') + '. Confira a procuração da empresa.' };
+    if (!x || x.status !== 200 || (x.dados && x.dados.valido === false)) return { ok: false, erro: 'O FGTS Digital não aceitou o perfil de procurador da matriz' + (x && x.dados && x.dados.mensagem ? ': ' + x.dados.mensagem : x && x.status ? ' (erro ' + x.status + ')' : '') + '. Confira a procuração da empresa.' };
   }
+  return { ok: true, tab, cnpj, matriz, comp, ano, mes };
+}
+const semSessaoFgts = r => r && r.semSessao ? { ok: false, semSessao: true, erro: 'A sessão do FGTS Digital não está aberta: entre pelo gov.br na aba do FGTS Digital.' } : null;
+const dormir = ms => new Promise(r => setTimeout(r, ms));
+async function textoDeB64(b64) {
+  await garantirOffscreen(); let r = null;
+  for (let i = 0; i < 12 && !r; i++) { r = await chrome.runtime.sendMessage({ alvo: 'offscreen', cmd: 'pdfTexto', b64 }).catch(() => null); if (!r) await dormir(250); }
+  return r && r.ok ? String(r.texto || '') : '';
+}
+/* 0.119.0 · Guias da folha, fase 3: emitir a guia MENSAL pela Guia Rápida (Josué, 16/11/2026: "Guia Rápida" e "Mostra a pergunta na extensão";
+ * mapa em mapeamento/fgts-digital-emissao-2026-11-16.md). Só depois da confirmação na tela, uma empresa por vez. Travas: só emite se o valor
+ * mensal da guia bate com o extrato; com guia existente baixa a existente; débito que já tem guia ou guia em processamento = não emite;
+ * alerta COB0027 = no site; perguntas do FGTS Digital voltam para a tela e só seguem com o "sim" do analista. O uuid é um só por emissão,
+ * repetido nas novas tentativas (nunca uma segunda emissão). Os PDFs (guia, demonstrativo e, se houver, o consignado) voltam para a tela,
+ * conferidos pelo conteúdo, e não ficam guardados. */
+async function emitirFgts(msg) {
+  const pr = await prepararFgts(msg); if (!pr.ok) return pr;
+  const { tab, comp, cnpj } = pr;
+  const r = await lerFgts(tab, [OCF.PEDIDOS.rapida(comp)]); const s0 = semSessaoFgts(r); if (s0) return s0;
+  const x = r && r.resultados && r.resultados[0];
+  if (!x || x.status !== 200 || !x.dados) return { ok: false, erro: 'O FGTS Digital não devolveu a guia da competência' + (x && x.negocio ? ': ' + x.negocio.titulo : x && x.status ? ' (erro ' + x.status + ')' : '') + '.' };
+  const ags = x.dados.agrupamentos.filter(a => /mensal/i.test(a.tipo));
+  if (!ags.length) return { ok: false, erro: 'Não há guia mensal a emitir nesta competência no FGTS Digital.' };
+  if (ags.length > 1) return { ok: false, precisaSite: true, erro: 'A competência tem mais de um agrupamento mensal: emita esta no próprio FGTS Digital.' };
+  const a = ags[0], cmp = OCF.comparar(typeof msg.esperado === 'number' ? msg.esperado : null, a.mensal);
+  if (cmp.bate !== true) return { ok: false, naoBate: true, mensal: a.mensal, diferenca: cmp.diferenca, erro: 'O FGTS mensal da guia não bate com o extrato (diferença de R$ ' + String(cmp.diferenca == null ? '?' : cmp.diferenca.toFixed(2)).replace('.', ',') + '): não emiti.' };
+  if (a.emProcessamento) return { ok: false, erro: 'O FGTS Digital diz que já há uma guia desta competência sendo gerada: confira na Consulta de Guias antes de emitir de novo.' };
+  if (a.guiaExistente) {
+    const rv = await lerFgts(tab, [OCF.PEDIDOS.existente(a.valorFiltro)]); const s1 = semSessaoFgts(rv); if (s1) return s1;
+    const v = rv && rv.resultados && rv.resultados[0];
+    if (!(v && v.dados && v.dados.valor)) return { ok: false, precisaSite: true, erro: 'Há uma guia desta competência, mas os débitos mudaram: confira no FGTS Digital.' };
+    const arquivos = await baixarArquivosGuia(tab, a.guiaExistente, a.contemConsignado, comp, cnpj);
+    return { ok: true, jaExistia: true, numero: a.guiaExistente.numero, pagamentoAte: a.pagamentoAte, mensal: a.mensal, totalGuia: a.totalGuia, arquivos };
+  }
+  if (a.temGuiasRelacionadas) return { ok: false, precisaSite: true, erro: 'Os débitos desta competência já têm guia emitida: veja na Consulta de Guias do FGTS Digital (a extensão não emite de novo).' };
+  const bloqueio = a.alertas.find(al => al.codigo === 'COB0027');
+  if (bloqueio) return { ok: false, precisaSite: true, erro: 'O FGTS Digital mostrou um aviso que precisa ser tratado no site: ' + (bloqueio.titulo || bloqueio.codigo) + '.' };
+  if (a.confirmacoes.length && msg.confirmado !== true) return { ok: true, perguntas: a.confirmacoes, alertas: a.alertas.map(al => al.titulo || al.codigo), mensal: a.mensal, pagamentoAte: a.pagamentoAte };
+  const rc = await lerFgts(tab, [OCF.PEDIDOS.confirma()]); const s2 = semSessaoFgts(rc); if (s2) return s2;
+  const c = rc && rc.resultados && rc.resultados[0];
+  if (!c || c.status < 200 || c.status >= 300) return { ok: false, erro: 'O FGTS Digital não confirmou o acesso para emitir' + (c && c.negocio ? ': ' + c.negocio.titulo : '') + '.' };
+  const uuid = crypto.randomUUID(); let guia = null, espera = 2000;
+  for (let i = 0; i < 12 && !guia; i++) {
+    const rg = await lerFgts(tab, [OCF.PEDIDOS.gerar(a.valorFiltro, uuid, i === 0)]); const s3 = semSessaoFgts(rg); if (s3) return Object.assign(s3, i ? { emProcessamento: true } : {});
+    const g = rg && rg.resultados && rg.resultados[0];
+    if (!g || g.recusado) return { ok: false, erro: 'A extensão recusou o pedido de emissão (' + ((g && g.recusado) || 'sem resposta') + ').' };
+    if (g.negocio) return { ok: false, erro: 'O FGTS Digital recusou a emissão: ' + (g.negocio.titulo || g.negocio.codigo) + (g.negocio.descricao ? ' (' + g.negocio.descricao + ')' : '') + '.', emProcessamento: i > 0 };
+    if (g.status >= 400 || g.status === 0) return { ok: false, erro: 'O FGTS Digital não emitiu (erro ' + g.status + ').', emProcessamento: i > 0 };
+    if (g.dados && g.dados.gerou && g.dados.guia && g.dados.guia.numero) guia = g.dados.guia;
+    else { await dormir(espera); espera = Math.min(30000, espera + 2000); }
+  }
+  if (!guia) return { ok: false, emProcessamento: true, erro: 'A guia ainda estava sendo gerada depois de alguns minutos. A extensão não emite de novo: confira na Consulta de Guias do FGTS Digital.' };
+  const arquivos = await baixarArquivosGuia(tab, guia, a.contemConsignado, comp, cnpj);
+  return { ok: true, emitida: true, numero: guia.numero, pagamentoAte: a.pagamentoAte, mensal: a.mensal, totalGuia: a.totalGuia, arquivos };
+}
+// a guia, o demonstrativo (Detalhe da Guia Emitida) e, se houver, o consignado. O tipo é conferido pelo CONTEÚDO do PDF, nunca pelo nome.
+async function baixarArquivosGuia(tab, guia, consignado, comp, cnpj) {
+  const [ano, mes] = comp.split('-'), mm = mes + '-' + ano, out = [];
+  const numero = String(guia.numero || '').replace(/\D/g, '').replace(/^0+/, '');
+  const confere = async (b64, tipo) => {
+    const t = (await textoDeB64(b64)).replace(/\s+/g, ' ');
+    if (!t) return { confere: false, motivo: 'não consegui ler o texto do PDF' };
+    if (tipo === 'guia') return /guia do fgts digital/i.test(t) && t.includes(cnpj.slice(0, 8)) && t.includes(mes + '/' + ano) ? { confere: true } : { confere: false, motivo: 'o PDF não parece a guia do FGTS desta empresa e competência' };
+    if (tipo === 'detalhe') return /detalhe da guia emitida/i.test(t) ? { confere: true } : { confere: false, motivo: 'o PDF não é o "Detalhe da Guia Emitida"' };
+    return /consignad/i.test(t) ? { confere: true } : { confere: false, motivo: 'o PDF não parece o demonstrativo do consignado' };
+  };
+  try {
+    const rp = await lerFgts(tab, [OCF.PEDIDOS.pdfGuia(guia.linkPdf || ('/arrecadacao/emissao/reimprimirGuia/' + numero))]);
+    const pg = rp && rp.resultados && rp.resultados[0];
+    if (pg && pg.dados) out.push(Object.assign({ tipo: 'guia', nome: mm + ' DARF FGTS.pdf', b64: pg.dados.b64 }, await confere(pg.dados.b64, 'guia')));
+    else out.push({ tipo: 'guia', nome: mm + ' DARF FGTS.pdf', erro: 'Não consegui baixar a guia.' });
+    for (const [qual, tipo, nome] of [['detalhe', 'detalhe', mm + ' DEMONSTRATIVO FGTS.pdf']].concat(consignado ? [['consignado', 'consignado', mm + ' DEMONSTRATIVO E-CONSIGNADO.pdf']] : [])) {
+      const uuid = crypto.randomUUID(); let url = '', espera = 2000;
+      for (let i = 0; i < 10 && !url; i++) {
+        const rr = await lerFgts(tab, [OCF.PEDIDOS.relatorio(qual, numero, uuid, i === 0)]);
+        const x = rr && rr.resultados && rr.resultados[0];
+        if (!x || x.status >= 400 || x.negocio) break;
+        if (x.dados && x.dados.gerou && x.dados.url) url = x.dados.url; else { await dormir(espera); espera = Math.min(30000, espera + 2000); }
+      }
+      if (!url) { out.push({ tipo, nome, erro: 'O FGTS Digital não gerou o ' + (tipo === 'detalhe' ? 'demonstrativo' : 'demonstrativo do consignado') + ' a tempo.' }); continue; }
+      const ra = await lerFgts(tab, [OCF.PEDIDOS.arquivo(url)]); const ar = ra && ra.resultados && ra.resultados[0];
+      if (ar && ar.dados) out.push(Object.assign({ tipo, nome, b64: ar.dados.b64 }, await confere(ar.dados.b64, tipo)));
+      else out.push({ tipo, nome, erro: 'Não consegui baixar o ' + (tipo === 'detalhe' ? 'demonstrativo' : 'demonstrativo do consignado') + '.' });
+    }
+  } finally { fecharOffscreen(); }
+  return out;
+}
+async function conferirFgts(msg) {
+  const pr = await prepararFgts(msg); if (!pr.ok) return pr;
+  const { tab, cnpj, matriz, comp } = pr, sessao = semSessaoFgts;
   const itens = []; let total = null;
   for (let pg = 1; pg <= 50; pg++) {
     const r = await lerFgts(tab, [OCF.PEDIDOS.debitos(comp, pg)]); const s2 = sessao(r); if (s2) return s2;
@@ -574,6 +665,10 @@ async function conferirFgts(msg) {
 async function guiasFolha(msg, sender) {
   const parte = String(msg.parte || ''), ano = Number(msg.ano), mes = Number(msg.mes);
   if (parte === 'fgts') return conferirFgts(msg);      // 0.118.0
+  if (parte === 'emitir') {      // 0.119.0: escrita no FGTS Digital, só pedida por uma tela da extensão
+    if (!(sender && sender.url && sender.url.startsWith(chrome.runtime.getURL('app/')))) return { ok: false, erro: 'A emissão só pode ser pedida pela tela da extensão.' };
+    return emitirFgts(msg);
+  }
   if (parte === 'extrato') {
     if (!(ano > 2000 && mes >= 1 && mes <= 12)) return { ok: false, erro: 'Competência inválida.' };
     const empresas = (Array.isArray(msg.empresas) ? msg.empresas : []).slice(0, 3).map(e => ({ code: String(e && e.code || '').slice(0, 20), nome: String(e && e.nome || '').slice(0, 120), cnpj: String(e && e.cnpj || '').replace(/\D/g, '').slice(0, 14) }));
@@ -2566,7 +2661,6 @@ function hubCancelarEnvio() {
   hubCancelar = true;
   return { ok: true };
 }
-const dormir = ms => new Promise(r => setTimeout(r, ms));
 async function esperarAte(f, ms, passo) { const fim = Date.now() + ms; for (;;) { try { if (await f()) return true; } catch (e) { if (e && e.cliente) throw e; /* ainda não */ } if (Date.now() >= fim || hubCancelar) return false; await dormir(passo || 1500); } }
 // Abre uma aba sem tirar o foco (numa janela normal; sem janela, numa janela minimizada) e espera carregar.
 async function abrirEmSegundoPlano(url) {

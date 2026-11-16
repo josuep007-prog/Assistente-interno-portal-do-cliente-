@@ -4901,7 +4901,7 @@ test('FGTS Digital: só as leituras mapeadas; emitir, adicionar à guia, consign
   for (const k of ['dadosFiltro', 'debitos', 'totalizador', 'perfil']) { const p = OCF.PEDIDOS[k](k === 'debitos' ? '2026-10' : k === 'totalizador' ? '0126100765850000-2' : '11222333000181', 1); assert.equal(P(p.metodo, p.url, null).ok, true, k); }
   assert.match(OCF.PEDIDOS.debitos('2026-10', 2).url, /competenciaApuracaoInicial=202610&competenciaApuracaoFinal=202610&numPagina=2/);
   assert.ok(!/debitosSemGuia/.test(OCF.PEDIDOS.debitos('2026-10').url), 'sem o filtro "sem guia": a competência com guia volta com guiasRelacionadas');
-  for (const [m, u] of [['POST', H + '/cobranca/api/guia-parametrizada/gerar-guia?dtPagamento=2026-11-07'], ['GET', H + '/cobranca/api/guia-rapida/confirma'], ['POST', H + '/cobranca/api/guia-parametrizada/debitos'],
+  for (const [m, u] of [['POST', H + '/cobranca/api/guia-parametrizada/gerar-guia?dtPagamento=2026-11-07'], ['POST', H + '/cobranca/api/guia-rapida/gerar-guia/x'], ['POST', H + '/cobranca/api/guia-parametrizada/debitos'],
     ['POST', H + '/cobranca/api/guia-parametrizada/consignados:batch-create'], ['GET', H + '/arrecadacao/emissao/reimprimirGuia/123'], ['GET', 'https://outro.gov.br/cobranca/api/guia-parametrizada/debitos'],
     ['GET', H + '/cobranca/api/guia-parametrizada/debitos?x=1'], ['GET', H.replace('https://', 'https://u:p@') + '/cobranca/api/guia-parametrizada/dados-filtro']])
     assert.equal(P(m, u, null).ok, false, m + ' ' + u);
@@ -4925,4 +4925,32 @@ test('FGTS Digital: a resposta sai sem CPF, nome ou matrícula; soma do principa
   assert.equal(OCF.comparar(null, 10).bate, null, 'sem extrato, sem veredito');
   const tz = OCF.limpar('totalizador', { competencia: '10/2026', numero: 'N', vlMensal: 1, vlTotal: 2, vlEncargos: 1, tpSituacao: 'AGUARDANDO_PAGAMENTO', urlPdf: 'https://x/segredo', gerouPdfConsignado: false });
   assert.ok(!JSON.stringify(tz).includes('segredo'));
+});
+
+test('FGTS Digital (0.119.0): a única escrita é emitir a guia MENSAL pela Guia Rápida, com corpo {} e o uuid da extensão', () => {
+  const VF = '202610,mensal,12345678901,2026-11-07,false', U = '3f2b8c4e-1d2a-4b6c-9e8f-0a1b2c3d4e5f';
+  const ok = OCF.PEDIDOS.gerar(VF, U, true);
+  assert.equal(OCF.escritaPermitida(ok.metodo, ok.url, ok.corpo).ok, true, OCF.escritaPermitida(ok.metodo, ok.url, ok.corpo).motivo);
+  assert.equal(OCF.leituraPermitida(ok.metodo, ok.url, null).ok, false, 'emitir nunca passa como leitura');
+  const P = (u, c, m) => OCF.escritaPermitida(m || 'POST', u, c === undefined ? {} : c).ok;
+  assert.equal(P(OCF.PEDIDOS.gerar(VF.replace('mensal', 'rescisorio'), U, true).url), false, 'só a mensal');
+  assert.equal(P(ok.url, { x: 1 }), false, 'corpo sempre {}');
+  assert.equal(P(ok.url.replace(U, 'abc')), false, 'uuid v4');
+  assert.equal(P(ok.url + '&extra=1'), false, 'parâmetro a mais');
+  assert.equal(P(ok.url, {}, 'PUT'), false);
+  assert.equal(P(ok.url.replace('guia-rapida/gerar-guia', 'guia-parametrizada/gerar-guia')), false, 'a parametrizada não');
+  assert.equal(P(ok.url.replace(OCF.HOST, 'https://outro.gov.br')), false);
+  // as leituras da emissão
+  for (const p of [OCF.PEDIDOS.rapida('2026-10'), OCF.PEDIDOS.confirma(), OCF.PEDIDOS.existente(VF), OCF.PEDIDOS.relatorio('detalhe', '0126100765850000-2', U, true), OCF.PEDIDOS.relatorio('consignado', '1261007658500002', U, false), OCF.PEDIDOS.pdfGuia('/arrecadacao/emissao/reimprimirGuia/1261007658500002')])
+    assert.equal(OCF.leituraPermitida(p.metodo, p.url, null).ok, true, p.url);
+  assert.match(OCF.PEDIDOS.rapida('2026-10').url, /guia-rapida\/v2\/202610\?mensal=true&rescisorio=false&processoTrabalhista=false&consignado=true$/);
+  assert.equal(OCF.arquivoPermitido('https://storagegw.estaleiro.serpro.gov.br/cobrafgtsd-detalhe-guia-pdf-p/11222333_01261.pdf?X-Amz-Expires=600'), true);
+  assert.equal(OCF.arquivoPermitido('https://storagegw.estaleiro.serpro.gov.br/outra-coisa/x.pdf'), false);
+  assert.equal(OCF.arquivoPermitido('https://evil.example/cobrafgtsd-detalhe-guia-pdf-p/x.pdf'), false);
+  // o resumo sai só com o que a emissão precisa
+  const r = OCF.limpar('rapida', { resumo: { status: 'Aberta' }, agrupamentos: [{ valorFiltro: VF, tipo: 'Mensal', pagamentoAte: '2026-11-07', totalizador: { vlMensal: 1810.5, vlEncargos: 0, vlTotal: 1810.5 }, totalGuia: 1810.5,
+    temGuiasRelacionadas: false, guiaExistente: null, alertas: [{ tipo: 'warn', codigo: 'COB0099', titulo: 'Aviso', descricao: 'texto' }], confirmacoes: ['Confirma?'], detalhamentos: [{ cpf: '123' }] }] });
+  assert.deepEqual(plano(r.agrupamentos[0]), { valorFiltro: VF, tipo: 'Mensal', pagamentoAte: '2026-11-07', mensal: 1810.5, encargos: 0, total: 1810.5, totalGuia: 1810.5, totalConsignado: 0, contemConsignado: false, temGuiasRelacionadas: false, emProcessamento: '', guiaExistente: null, alertas: [{ codigo: 'COB0099', titulo: 'Aviso', descricao: 'texto' }], confirmacoes: ['Confirma?'] });
+  assert.deepEqual(plano(OCF.limpar('gerar', { gerouGuia: true, dadosGuia: { id: 9, numero: '0126-2', linkPdf: '/arrecadacao/emissao/reimprimirGuia/1262' } })), { gerou: true, guia: { id: '9', numero: '0126-2', linkPdf: '/arrecadacao/emissao/reimprimirGuia/1262' } });
+  assert.equal(OCF.limpar('relatorio', { gerouDetalheGuia: true, url: 'https://evil.example/x.pdf' }).url, '', 'endereço de arquivo fora do serpro é descartado');
 });
