@@ -2,6 +2,16 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.118.0 (16/11/2026): Guias da folha, fase 2: conferir no FGTS Digital (só leitura)
+
+- Com o mapa de 16/11/2026 (leitura de ponta a ponta no FGTS Digital), a aba **Guias da folha** ganha **Conferir no FGTS Digital** para as empresas escolhidas com o extrato lido.
+  - Precisa de uma aba do FGTS Digital aberta e logada pelo gov.br com o certificado da ControlTax. A permissão do site é pedida uma vez, no clique.
+  - Uma empresa por vez: troca o perfil de procurador para a **matriz** (o site recusa filial; leva até 30 s e só acontece se o perfil aberto for outro), lê os débitos mensais da competência e soma o principal.
+  - Mostra **Bate** (diferença de até R$ 0,05 contra o "Valor do FGTS" + aprendiz do extrato) ou **Não bate** com a diferença; juros e multa aparecem à parte; diz quando a competência já tem guia (com o número).
+  - Para na hora, com o que fazer, se a aba não está aberta, se a sessão caiu ou se falta a permissão; **Parar** interrompe na próxima empresa.
+- Novo núcleo `fgts.js`: lista fechada só com as leituras mapeadas (débitos, filtros, totalizador da guia e a troca de perfil). Emitir, adicionar à guia, consignado e pagar são recusados no código. Da resposta só saem números, competências e números de guia: **nunca CPF, nome ou matrícula** do trabalhador; o cookie nunca é lido.
+- A emissão continua sem mapa (a empresa de teste não tinha competência com débito sem guia).
+
 ## Novidades da v0.117.1 (16/11/2026): a aba Saúde passa a se chamar Gestão
 
 - Josué: "troque saúde por gestão". A aba das Tarefas do Gestta que mostra carga, prioridade, falhas de e-mail, contatos e configuração passa a se chamar **Gestão** ("Gestão da operação" no título). A tecla continua a 8; nada mudou no que ela lê. A lista de atalhos (?) passou a citar as 9 abas.
