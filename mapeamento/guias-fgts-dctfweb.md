@@ -116,3 +116,11 @@ Quatro etapas: 1 Selecionar Débitos FGTS · 2 Selecionar Débitos Consignado ·
 - Item com arquivo mostra olho e lixeira; sem arquivo, só o ícone de restaurar.
 - O olho abre o arquivo no **visualizador do Google Docs** (`drive.google.com/viewerng/viewer`), sem chamada à API; "Download" é um link direto para `gestta-prod.s3.us-east-1.amazonaws.com`. **A extensão não deve usar o visualizador do Google** (mandaria o endereço do arquivo para fora).
 - **Incluir template:** `POST /admin/customer/{id}/company/task` `{company_task:[id do template no catálogo]}`, 201, toast "Ação realizada". **Tirar:** `DELETE /admin/group/customer` `{ids:[…]}`, 200 texto puro; o id é o `_id` de nível raiz do item de `GET /admin/customer/{id}/company/task` (confirmado duas vezes; não é o `company_task._id`). Aviso: "Realmente deseja remover 1 tarefas do cliente {nome}?"; toast "1 tarefa removida do cliente {nome}". O aviso para template com tarefa gerada não foi visto.
+
+## Emissão: rotas e campos completos (16/11/2026)
+
+O fluxo inteiro da emissão (Guia Rápida e Guia Parametrizada), lido do código da página e observado até antes de emitir, está em **`fgts-digital-emissao-2026-11-16.md`**. O mais importante para a extensão:
+- **A guia mensal da folha é a Guia Rápida** (`/cobranca/#/gestao-guias/emissao-guia-rapida`): `GET /cobranca/api/guia-rapida/v2/{competencia}?mensal&rescisorio&processoTrabalhista&consignado` devolve o resumo, os agrupamentos (com `valorFiltro`, totalizador e `vlMensal`), `guiaExistente`, `alertas` e `confirmacoes`. Emitir = `GET .../guia-rapida/confirma` e `POST .../guia-rapida/gerar-guia/{valorFiltro}?uuid&primeiraChamada&noloading` com corpo `{}`, repetido com o mesmo uuid enquanto `gerouGuia` for falso (2 s, +2 s, até 30 s); pronto, vem `dadosGuia {id, numero, linkPdf}`.
+- **Guia Parametrizada:** carrinho (`POST .../debitos` com `{filtro, inclusao, excecao}`), consignado (`consignados:batch-create`), revisão e `agrupamentos-carrinho` (que traz o `hash`), e `POST .../guia-parametrizada/gerar-guia?dtPagamento&uuid&tag&hash&noloading`.
+- POST, PUT e DELETE levam o cabeçalho `X-XSRF-TOKEN` com o cookie `XSRF-TOKEN` (proteção padrão do Angular). Sem captcha no código. O `uuid` é gerado no navegador (v4).
+- Não visto em execução: a resposta real do POST de emitir e os corpos reais do carrinho.
