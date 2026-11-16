@@ -5,10 +5,12 @@
    leitura). A emissão e o anexo são as fases seguintes (aparecem no trilho, ainda sem ação). Tudo só na memória desta tela: os valores nunca são guardados. */
 import { esc, num, plural, simples } from './util.js';
 import { abrirPainel } from './gestta-trilha.js';
+import { concluirComEtapas } from './gestta-concluir.js';
 
 const S = { comp: '', dados: null, carregando: false, erro: null, itens: {}, lendoItens: null, extratos: {}, lendoExt: null, erroExt: '',
   sel: new Set(), modo: {}, verFeitas: false, fgts: {}, conf: null, erroConf: '', parar: false,
-  guias: {}, emis: null, confirmarEmissao: false, erroEmis: '' };
+  guias: {}, emis: null, confirmarEmissao: false, erroEmis: '',
+  anexos: {}, anexando: null, confirmarAnexo: false, concluirDepois: false, erroAnexo: '', pasta: null };
 let enviarFn = null, aoMudar = () => {}, paraPaiFn = () => {};
 const ic = (n) => '<svg class="ic ic-sm" aria-hidden="true"><use href="#i-' + n + '"/></svg>';
 const nomeLeg = (t) => window.OCG && OCG.nomeLegivel ? OCG.nomeLegivel(t) : t;
@@ -21,7 +23,7 @@ export function estadoGuias() { return S; }
 export async function lerGuias(enviar, redesenhar, comp, forcar) {
   enviarFn = enviar; aoMudar = redesenhar || aoMudar;
   const k = comp.ano + '-' + String(comp.mes).padStart(2, '0');
-  if (S.comp !== k) { S.comp = k; S.dados = null; S.itens = {}; S.extratos = {}; S.fgts = {}; S.guias = {}; S.sel.clear(); }
+  if (S.comp !== k) { S.comp = k; S.dados = null; S.itens = {}; S.extratos = {}; S.fgts = {}; S.guias = {}; S.anexos = {}; S.pasta = null; S.sel.clear(); }
   const vez = (lerGuias.vez = (lerGuias.vez || 0) + 1);
   S.carregando = true; S.erro = null; aoMudar();
   const r = await enviar({ cmd: 'guiasFolha', parte: 'lista', ano: comp.ano, mes: comp.mes, forcar: !!forcar });
@@ -107,7 +109,7 @@ async function emitirUma(t, confirmado) {
   if (r && r.ok && r.perguntas) { S.guias[k] = { estado: 'pergunta', perguntas: r.perguntas, alertas: r.alertas || [] }; return r; }
   if (r && r.ok && (r.emitida || r.jaExistia)) {
     S.guias[k] = { estado: r.emitida ? 'emitida' : 'jaExistia', numero: r.numero, pagamentoAte: r.pagamentoAte, mensal: r.mensal,
-      arquivos: (r.arquivos || []).map(a => Object.assign({ tipo: a.tipo, nome: a.nome, confere: a.confere, motivo: a.motivo || '', erro: a.erro || '' }, a.b64 ? { url: deB64(a.b64) } : {})) };
+      arquivos: (r.arquivos || []).map(a => Object.assign({ tipo: a.tipo, nome: a.nome, confere: a.confere, motivo: a.motivo || '', erro: a.erro || '' }, a.b64 ? { url: deB64(a.b64), b64: a.b64 } : {})) };
     return r;
   }
   S.guias[k] = { estado: r && r.emProcessamento ? 'processando' : 'erro', erro: (r && r.erro) || 'sem resposta' };
@@ -135,13 +137,93 @@ function celulaGuia(t) {
   if (g.estado === 'naoEmitir') return '<span class="gte-tag gte-neutro">Não emitida (você respondeu não)</span>';
   if (g.estado === 'erro' || g.estado === 'processando') return '<span class="ggu-motivo">' + ic('alert') + esc(g.erro) + '</span>';
   const arq = (g.arquivos || []).map((a, i) => a.url ? '<button type="button" class="gte-link" data-ggu-ver="' + esc(chave(t)) + '|' + i + '">' + esc(ROT_ARQ[a.tipo] || a.nome) + '</button>' + (a.confere === false ? '<small class="ggu-motivo">' + ic('alert') + esc(a.motivo) + '</small>' : '') : '<small class="ggu-motivo">' + ic('alert') + esc(a.erro || 'não veio') + '</small>').join('');
-  return '<span class="gte-tag gte-ok">' + ic('check') + (g.estado === 'emitida' ? 'Emitida' : 'Já existia') + '</span> <small>nº ' + esc(g.numero) + (g.pagamentoAte ? ' · vence ' + esc(String(g.pagamentoAte).slice(0, 10).split('-').reverse().join('/')) : '') + '</small><span class="ggu-arqs">' + arq + '</span>';
+  return '<span class="gte-tag gte-ok">' + ic('check') + (g.estado === 'emitida' ? 'Emitida' : 'Já existia') + '</span> <small>nº ' + esc(g.numero) + (g.pagamentoAte ? ' · vence ' + esc(String(g.pagamentoAte).slice(0, 10).split('-').reverse().join('/')) : '') + '</small><span class="ggu-arqs">' + arq + '</span>' + celulaAnexo(t);
+}
+
+// 0.120.0 · fase 4: anexar os PDFs emitidos na tarefa FGTS DIGITAL do Gestta (o envio de arquivo já aprovado, POST /es/upload/direct),
+// cada um no seu item: guia → "FGTS Guia", detalhe → "Demonstrativo FGTS", consignado → "Demonstrativo e-consignado". Só o que passou na
+// conferência do conteúdo, só em item vazio, uma confirmação para o lote e um arquivo por vez. Concluir a tarefa depois é opcional
+// (desligado de fábrica) e usa o concluir já aprovado (etapas e itens sem anexo antes).
+const ITEM_DO_TIPO = { guia: 'guia', detalhe: 'demonstrativo', consignado: 'consignado' };
+function planoAnexo(t) {
+  const g = S.guias[chave(t)], it = S.itens[t.id] || {}, vao = [], fora = [];
+  if (!g || !/emitida|jaExistia/.test(g.estado)) return null;
+  for (const a of g.arquivos || []) {
+    const item = it[ITEM_DO_TIPO[a.tipo]];
+    if (!a.b64) fora.push(a.nome + ': não veio');
+    else if (a.confere === false) fora.push(a.nome + ': não passou na conferência (' + a.motivo + ')');
+    else if (!item || !item.id) fora.push(a.nome + ': a tarefa não tem o item');
+    else if (item.temArquivo) fora.push(a.nome + ': o item “' + item.nome + '” já tem arquivo');
+    else vao.push({ a, item });
+  }
+  return { vao, fora };
+}
+const podeAnexar = (t) => { const p = planoAnexo(t), x = S.anexos[chave(t)]; return !!p && p.vao.length > 0 && !(x && /anexando|anexado/.test(x.estado)); };
+async function anexarLote() {
+  const alvo = S.dados.tarefas.filter(podeAnexar); if (!alvo.length || S.anexando) return;
+  S.confirmarAnexo = false; S.anexando = { feitos: 0, total: alvo.length, atual: '' }; S.erroAnexo = ''; S.parar = false; aoMudar();
+  for (const t of alvo) {
+    if (S.parar) break;
+    const k = chave(t), pl = planoAnexo(t); S.anexando.atual = nomeLeg(t.empresa.nome); S.anexos[k] = { estado: 'anexando', enviados: [], falhas: pl.fora.slice() }; aoMudar();
+    let parou = false;
+    for (const { a, item } of pl.vao) {
+      const r = await enviarFn({ cmd: 'gesttaAcao', acao: 'documento', id: t.id, documento: item.id, arquivo: { nome: a.nome, tipo: 'application/pdf', base64: a.b64 } });
+      if (r && r.ok) { S.anexos[k].enviados.push(a.nome); item.temArquivo = true; }
+      else { S.anexos[k].falhas.push(a.nome + ': ' + ((r && r.erro) || 'o Gestta não respondeu')); if (r && (r.status === 401 || /sess[aã]o/i.test(r.erro || ''))) { S.erroAnexo = r.erro; parou = true; break; } }
+    }
+    if (S.concluirDepois && !parou && S.anexos[k].enviados.length && !S.anexos[k].falhas.some(f => !/não veio|já tem arquivo|não tem o item/.test(f))) {
+      const c = await concluirComEtapas(enviarFn, t.id);
+      S.anexos[k].concluida = !!(c && c.ok); if (!(c && c.ok)) S.anexos[k].falhas.push('Concluir: ' + ((c && c.erro) || 'o Gestta não respondeu'));
+    }
+    S.anexos[k].estado = S.anexos[k].enviados.length ? 'anexado' : 'erro';
+    S.anexando.feitos++; aoMudar();
+    if (parou) break;
+  }
+  S.anexando = null; aoMudar();
+  try { window.dispatchEvent(new CustomEvent('gt-tarefa-mudou', { detail: {} })); } catch (e) {}
+}
+function celulaAnexo(t) {
+  const x = S.anexos[chave(t)];
+  if (!x) return '';
+  if (x.estado === 'anexando') return '<small class="fraco">' + ic('clock') + ' anexando no Gestta…</small>';
+  return (x.enviados.length ? '<small class="ggu-ok">' + ic('check') + ' No Gestta: ' + esc(x.enviados.join(', ')) + (x.concluida ? ' · tarefa concluída' : '') + '</small>' : '') +
+    (x.falhas.length ? '<small class="ggu-motivo">' + ic('alert') + esc(x.falhas.join(' · ')) + '</small>' : '');
+}
+// 0.120.0 · fase 5: baixar a pasta para o servidor (Josué, 16/11/2026: subpastas por competência e empresa; o nome do servidor,
+// "DARF FGTS MM-AAAA.pdf"), com o relatório da competência (o que bateu, o que não bateu com os dois valores e a diferença, e o que foi
+// emitido). A permissão de downloads é pedida na hora. Nada fica guardado na extensão.
+const NOME_SERVIDOR = { guia: 'DARF FGTS', detalhe: 'DEMONSTRATIVO FGTS', consignado: 'DEMONSTRATIVO E-CONSIGNADO' };
+const pastaSegura = (t) => String(t || 'Empresa').normalize('NFC').replace(/[\\/:*?"<>|\u0000-\u001f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Empresa';
+function relatorioCsv() {
+  const [ano, mes] = S.comp.split('-'), lin = [['Empresa', 'Código', 'CNPJ', 'FGTS do extrato', 'FGTS no FGTS Digital', 'Diferença', 'Situação', 'Guia']];
+  const brl = n => typeof n === 'number' ? n.toFixed(2).replace('.', ',') : '';
+  for (const t of S.dados.tarefas.filter(x => S.sel.has(x.id) || S.guias[chave(x)] || S.fgts[chave(x)])) {
+    const k = chave(t), e = S.extratos[k], f = S.fgts[k], g = S.guias[k];
+    const sit = g && /emitida|jaExistia/.test(g.estado) ? (g.estado === 'emitida' ? 'Emitida' : 'Já existia') : f && f.ok ? (f.bate === true ? 'Bateu' : f.bate === false ? 'Não bateu' : 'Sem débito') : f ? 'Erro: ' + f.erro : e && !e.ok ? 'Sem extrato: ' + e.motivo : 'Não conferida';
+    lin.push([nomeLeg(t.empresa.nome), t.empresa.code, t.empresa.cnpj, brl(esperadoDe(e)), brl(f && f.principal), brl(f && f.diferenca), sit, g && g.numero || '']);
+  }
+  return '\ufeff' + lin.map(l => l.map(c => /[;"\n]/.test(String(c)) ? '"' + String(c).replace(/"/g, '""') + '"' : String(c)).join(';')).join('\r\n') + '\r\n';
+}
+async function baixarPasta() {
+  try { if (!(chrome.permissions && chrome.permissions.request && await chrome.permissions.request({ permissions: ['downloads'] }))) { S.pasta = { erro: 'Sem a permissão de downloads a extensão não consegue salvar a pasta.' }; aoMudar(); return; } }
+  catch (e) { S.pasta = { erro: 'Não consegui pedir a permissão de downloads: ' + (e && e.message || e) }; aoMudar(); return; }
+  const [ano, mes] = S.comp.split('-'), mm = mes + '-' + ano, base = 'Guias da folha/' + mm + '/';
+  let n = 0; const falhas = [];
+  const salvar = (url, filename) => new Promise(ok => chrome.downloads.download({ url, filename, conflictAction: 'uniquify', saveAs: false }, id => ok(id != null && !chrome.runtime.lastError)));
+  for (const t of S.dados.tarefas) {
+    const g = S.guias[chave(t)]; if (!g || !g.arquivos) continue;
+    for (const a of g.arquivos) if (a.url && a.confere !== false) { if (await salvar(a.url, base + pastaSegura(nomeLeg(t.empresa.nome)) + '/' + NOME_SERVIDOR[a.tipo] + ' ' + mm + '.pdf')) n++; else falhas.push(a.nome); }
+  }
+  const rel = URL.createObjectURL(new Blob([relatorioCsv()], { type: 'text/csv;charset=utf-8' }));
+  if (await salvar(rel, base + 'Relatório das guias ' + mm + '.csv')) n++; else falhas.push('relatório');
+  setTimeout(() => URL.revokeObjectURL(rel), 60e3);
+  S.pasta = { n, falhas, caminho: 'Downloads/' + base }; aoMudar();
 }
 
 /* ---------- desenho ---------- */
 const PASSOS = [['Escolher', 'empresas e o modo do FGTS'], ['Conferir', 'extrato × FGTS Digital'], ['Emitir', 'guia e demonstrativos'], ['Anexar', 'nas tarefas do Gestta'], ['Baixar', 'a pasta para o servidor']];
 function trilho(atual) {
-  return '<ol class="ggu-passos" aria-label="Passos das guias da folha">' + PASSOS.map((p, i) => '<li class="' + (i < atual ? 'feito' : i === atual ? 'atual' : 'depois') + '"' + (i === atual ? ' aria-current="step"' : '') + '><span class="ggu-n">' + (i < atual ? '✓' : i + 1) + '</span><span><b>' + p[0] + '</b><small>' + (i > 2 ? 'chega nas próximas versões' : p[1]) + '</small></span></li>').join('') + '</ol>';
+  return '<ol class="ggu-passos" aria-label="Passos das guias da folha">' + PASSOS.map((p, i) => '<li class="' + (i < atual ? 'feito' : i === atual ? 'atual' : 'depois') + '"' + (i === atual ? ' aria-current="step"' : '') + '><span class="ggu-n">' + (i < atual ? '✓' : i + 1) + '</span><span><b>' + p[0] + '</b><small>' + p[1] + '</small></span></li>').join('') + '</ol>';
 }
 function situacaoGuia(t) {
   if (t.status === 'DONE') return '<span class="gte-tag gte-ok">' + ic('check') + 'Concluída</span>';
@@ -186,7 +268,7 @@ export function desenharGuias(v, sub) {
   const kpi = (n, rot, cls) => '<div class="gte-kpi ' + cls + '"><b>' + (n == null ? '—' : num(n)) + '</b><span>' + esc(rot) + '</span></div>';
   let h = '<section class="gte-topo cfg-card ggu-topo"><div class="gte-tit"><h2>Guias da folha</h2><p' + (simples() ? ' class="ajuda"' : '') + '>Escolha as empresas com a folha publicada e a guia do FGTS ainda sem anexar. A extensão lê o “Valor do FGTS” do Extrato Mensal no portal de documentos do Onvio para conferir com o FGTS Digital. Os valores ficam só nesta tela.</p></div>' +
     '<div class="gte-kpis">' + kpi(todas.length, 'tarefas FGTS DIGITAL', 'gte-k-neutro') + kpi(S.lendoItens ? null : nSem, 'sem a guia anexada', 'gte-k-erro') + kpi(nSel, 'escolhidas', 'gte-k-neutro') + kpi(lidos, 'extratos lidos', 'gte-k-neutro') + '</div></section>' +
-    trilho(S.emis || Object.keys(S.guias).length ? 2 : S.conf || Object.keys(S.fgts).length ? 1 : 0);
+    trilho(S.pasta && !S.pasta.erro ? 5 : S.anexando || Object.keys(S.anexos).length ? 3 : S.emis || Object.keys(S.guias).length ? 2 : S.conf || Object.keys(S.fgts).length ? 1 : 0);
   if (S.dados.daMemoria) h += '<p class="fraco ggu-memo">Relatório do Gestta lido há pouco (vale por 1 hora).</p>';
   if (S.lendoItens) h += '<p class="fraco ggu-memo" role="status">' + ic('clock') + ' Conferindo os itens das tarefas: ' + S.lendoItens.feitos + ' de ' + S.lendoItens.total + '.</p>';
   if (S.erroItens) h += '<div class="faixa warn"><svg class="ic"><use href="#i-alert"/></svg><div>' + esc(S.erroItens) + '</div></div>';
@@ -197,6 +279,17 @@ export function desenharGuias(v, sub) {
   if (S.emis) h += '<div class="cfg-card ggu-and" role="status"><div><b>Emitindo no FGTS Digital: ' + S.emis.feitos + ' de ' + S.emis.total + '</b><div class="fraco">' + esc(S.emis.atual) + ' · a geração da guia pode levar até 1 minuto; depois vêm a guia e o demonstrativo.</div>' +
     '<div class="gsa-prog"><span style="width:' + Math.round(100 * S.emis.feitos / Math.max(1, S.emis.total)) + '%"></span></div></div><button type="button" class="btn btn-sm" data-ggu-parar' + (S.parar ? ' disabled' : '') + '>' + (S.parar ? 'Parando…' : 'Parar') + '</button></div>';
   if (S.erroEmis) h += '<div class="faixa warn"><svg class="ic"><use href="#i-alert"/></svg><div>' + esc(S.erroEmis) + '</div></div>';
+  if (S.anexando) h += '<div class="cfg-card ggu-and" role="status"><div><b>Anexando no Gestta: ' + S.anexando.feitos + ' de ' + S.anexando.total + '</b><div class="fraco">' + esc(S.anexando.atual) + ' · um arquivo por vez.</div>' +
+    '<div class="gsa-prog"><span style="width:' + Math.round(100 * S.anexando.feitos / Math.max(1, S.anexando.total)) + '%"></span></div></div><button type="button" class="btn btn-sm" data-ggu-parar' + (S.parar ? ' disabled' : '') + '>' + (S.parar ? 'Parando…' : 'Parar') + '</button></div>';
+  if (S.erroAnexo) h += '<div class="faixa warn"><svg class="ic"><use href="#i-alert"/></svg><div>' + esc(S.erroAnexo) + '</div></div>';
+  if (S.confirmarAnexo) { const l = S.dados.tarefas.filter(podeAnexar);
+    h += '<div class="cfg-card ggu-confirma" role="dialog" aria-labelledby="ggu-anx-tit"><b id="ggu-anx-tit">Anexar no Gestta os arquivos de ' + plural(l.length, 'empresa', 'empresas') + '?</b><ul>' +
+      l.map(t => { const p = planoAnexo(t); return '<li>' + esc(nomeLeg(t.empresa.nome)) + ': ' + esc(p.vao.map(x => x.a.nome + ' → ' + x.item.nome).join(' · ')) + (p.fora.length ? ' <small class="fraco">(fica de fora: ' + esc(p.fora.join(' · ')) + ')</small>' : '') + '</li>'; }).join('') + '</ul>' +
+      '<label class="ggu-chk"><input type="checkbox" data-ggu-concluir' + (S.concluirDepois ? ' checked' : '') + '> Concluir a tarefa depois de anexar (marca as etapas e desconsidera os itens sem arquivo; o Gestta avisa o cliente por e-mail)</label>' +
+      '<p class="fraco">Um arquivo por vez, cada um no seu item. Os itens com integração vão ao Portal do Cliente.</p>' +
+      '<span class="ggu-acoes"><button type="button" class="btn btn-primary" data-ggu-anexar-ok>Anexar</button><button type="button" class="btn" data-ggu-anexar-cancelar>Cancelar</button></span></div>'; }
+  if (S.pasta) h += S.pasta.erro ? '<div class="faixa warn"><svg class="ic"><use href="#i-alert"/></svg><div>' + esc(S.pasta.erro) + '</div></div>'
+    : '<div class="faixa"><svg class="ic"><use href="#i-check"/></svg><div><b>' + plural(S.pasta.n, 'arquivo salvo', 'arquivos salvos') + '</b> em ' + esc(S.pasta.caminho) + ' (uma subpasta por empresa e o relatório da competência).' + (S.pasta.falhas.length ? ' Não salvos: ' + esc(S.pasta.falhas.join(', ')) + '.' : '') + '</div></div>';
   if (S.confirmarEmissao) { const l = S.dados.tarefas.filter(podeEmitir);
     h += '<div class="cfg-card ggu-confirma" role="dialog" aria-labelledby="ggu-conf-tit"><b id="ggu-conf-tit">Emitir ' + plural(l.length, 'guia', 'guias') + ' do FGTS no FGTS Digital?</b><ul>' +
       l.map(t => '<li>' + esc(nomeLeg(t.empresa.nome)) + ' · competência ' + esc(S.comp.slice(5) + '/' + S.comp.slice(0, 4)) + ' · ' + esc(reais(S.fgts[chave(t)].principal)) + '</li>').join('') + '</ul>' +
@@ -215,16 +308,23 @@ export function desenharGuias(v, sub) {
     (() => { const n = prontasParaConferir().filter(t => !(S.fgts[chave(t)] && S.fgts[chave(t)].ok)).length;
       const ne = S.dados.tarefas.filter(podeEmitir).length;
       return '<button type="button" class="btn btn-primary" data-ggu-conferir' + (!n || S.conf ? ' disabled' : '') + ' title="Só as escolhidas com o extrato lido. Precisa de uma aba do FGTS Digital aberta e logada.">' + ic('check') + 'Conferir no FGTS Digital' + (n ? ' (' + n + ')' : '') + '</button>' +
-        '<button type="button" class="btn btn-primary" data-ggu-emitir' + (!ne || S.emis || S.conf ? ' disabled' : '') + ' title="Só as que bateram e ainda não têm guia. Pede uma confirmação antes.">' + ic('upload') + 'Emitir guias' + (ne ? ' (' + ne + ')' : '') + '</button>'; })() + '</div></div>';
+        '<button type="button" class="btn btn-primary" data-ggu-emitir' + (!ne || S.emis || S.conf ? ' disabled' : '') + ' title="Só as que bateram e ainda não têm guia. Pede uma confirmação antes.">' + ic('upload') + 'Emitir guias' + (ne ? ' (' + ne + ')' : '') + '</button>' +
+        (() => { const na = S.dados.tarefas.filter(podeAnexar).length, temArq = Object.values(S.guias).some(g => g && g.arquivos && g.arquivos.some(a => a.url));
+          return '<button type="button" class="btn btn-primary" data-ggu-anexar' + (!na || S.anexando || S.emis ? ' disabled' : '') + ' title="Os PDFs emitidos vão aos itens da tarefa FGTS DIGITAL. Pede uma confirmação antes.">' + ic('paperclip') + 'Anexar no Gestta' + (na ? ' (' + na + ')' : '') + '</button>' +
+            '<button type="button" class="btn" data-ggu-pasta' + (!temArq || S.emis ? ' disabled' : '') + ' title="Salva uma subpasta por empresa em Downloads/Guias da folha/MM-AAAA, com o relatório da competência">' + ic('download') + 'Baixar a pasta</button>'; })(); })() + '</div></div>';
   v.innerHTML = h;
 }
 export function ligarGuias(v, redesenhar, paraPai) {
   aoMudar = redesenhar || aoMudar; paraPaiFn = paraPai || paraPaiFn;
   v.addEventListener('click', (e) => {
     if (!v.querySelector('.ggu-topo, [data-ggu-reler]')) return;
-    const t = e.target.closest('[data-ggu-reler],[data-ggu-feitas],[data-ggu-ler-ext],[data-ggu-conferir],[data-ggu-parar],[data-ggu-modo],[data-ggu-tarefa],[data-ggu-emitir],[data-ggu-emitir-ok],[data-ggu-emitir-cancelar],[data-ggu-sim],[data-ggu-nao],[data-ggu-ver]'); if (!t) return;
+    const t = e.target.closest('[data-ggu-reler],[data-ggu-feitas],[data-ggu-ler-ext],[data-ggu-conferir],[data-ggu-parar],[data-ggu-modo],[data-ggu-tarefa],[data-ggu-emitir],[data-ggu-emitir-ok],[data-ggu-emitir-cancelar],[data-ggu-sim],[data-ggu-nao],[data-ggu-ver],[data-ggu-anexar],[data-ggu-anexar-ok],[data-ggu-anexar-cancelar],[data-ggu-pasta]'); if (!t) return;
     if (t.dataset.gguConferir != null) { conferirFgts(); return; }
     if (t.dataset.gguEmitir != null) { S.confirmarEmissao = true; aoMudar(); return; }
+    if (t.dataset.gguAnexar != null) { S.confirmarAnexo = true; aoMudar(); return; }
+    if (t.dataset.gguAnexarCancelar != null) { S.confirmarAnexo = false; aoMudar(); return; }
+    if (t.dataset.gguAnexarOk != null) { anexarLote(); return; }
+    if (t.dataset.gguPasta != null) { baixarPasta(); return; }
     if (t.dataset.gguEmitirCancelar != null) { S.confirmarEmissao = false; aoMudar(); return; }
     if (t.dataset.gguEmitirOk != null) { emitirLote(); return; }
     if (t.dataset.gguSim) { const x = S.dados.tarefas.find(y => y.id === t.dataset.gguSim); if (x && !S.emis) emitirUma(x, true).then(() => aoMudar()); return; }
@@ -242,6 +342,7 @@ export function ligarGuias(v, redesenhar, paraPai) {
   });
   v.addEventListener('change', (e) => {
     const t = e.target; if (!v.querySelector('.ggu-topo')) return;
+    if (t.dataset.gguConcluir != null) { S.concluirDepois = t.checked; return; }
     if (t.dataset.gguSel) { t.checked ? S.sel.add(t.dataset.gguSel) : S.sel.delete(t.dataset.gguSel); aoMudar(); return; }
     if (t.dataset.gguTodas != null) { S.dados.tarefas.filter(semGuia).forEach(x => t.checked ? S.sel.add(x.id) : S.sel.delete(x.id)); aoMudar(); }
   });

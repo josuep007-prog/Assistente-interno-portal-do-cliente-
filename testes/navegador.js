@@ -3411,7 +3411,7 @@ await passo('Gestta · Guias da folha (0.116.0): tarefas FGTS DIGITAL da compet�
   assert.equal(ids.length, 3, 'a concluída não é aberta');
   const topo = await fr.textContent('.ggu-topo');
   assert.match(topo, /4\s*tarefas FGTS DIGITAL[\s\S]*2\s*sem a guia anexada/);
-  assert.match(await fr.textContent('.ggu-passos'), /Escolher[\s\S]*Conferir[\s\S]*chega nas próximas versões/);
+  assert.match(await fr.textContent('.ggu-passos'), /Escolher[\s\S]*Conferir[\s\S]*Emitir[\s\S]*Anexar[\s\S]*Baixar/);
   assert.match(await fr.textContent('.ggu-tab'), /Cliente Alfa Ltda[\s\S]*Sem guia[\s\S]*Cliente Gama S\.A\.[\s\S]*Guia anexada/i);
   assert.ok(await fr.$('[data-ggu-modo$="|filial"][disabled]'), 'por filial ainda desligado (não mapeado)');
   assert.ok(await fr.$('[data-ggu-ler-ext][disabled]'), 'sem escolha, nada para ler');
@@ -3450,11 +3450,30 @@ await passo('Gestta · Guias da folha (0.116.0): tarefas FGTS DIGITAL da compet�
   assert.match(await fr.textContent('.ggu-tab'), /Emitida[\s\S]*nº 0126100000000000-2 · vence 07\/11\/2026[\s\S]*Ver guia[\s\S]*Ver demonstrativo[\s\S]*Detalhe da Guia Emitida/);
   assert.match(await fr.textContent('.ggu-passos li.atual'), /Emitir/);
   assert.ok(!(await fr.$('[data-ggu-emitir]:not([disabled])')), 'a emitida não pode ser emitida de novo');
+  // 0.120.0 · fase 4: anexar no Gestta só o que passou na conferência, no item certo, depois da confirmação; concluir é opcional (desligado)
+  await fr.click('[data-ggu-anexar]');
+  await fr.waitForSelector('.ggu-confirma');
+  const ca = await fr.textContent('.ggu-confirma');
+  assert.match(ca, /10-2026 DARF FGTS\.pdf → FGTS Guia/); assert.match(ca, /fica de fora: 10-2026 DEMONSTRATIVO FGTS\.pdf: não passou na conferência/);
+  assert.equal(await fr.$eval('[data-ggu-concluir]', c => c.checked), false, 'concluir vem desligado');
+  await fr.click('[data-ggu-anexar-ok]');
+  await fr.waitForFunction(() => /No Gestta: 10-2026 DARF FGTS\.pdf/.test(document.querySelector('.ggu-tab').textContent));
+  const ac = await fr.evaluate(() => window.__msgs.filter(m => m.cmd === 'gesttaAcao'));
+  assert.equal(ac.length, 1, 'um arquivo, nenhuma conclusão'); assert.equal(ac[0].acao, 'documento'); assert.equal(ac[0].documento, 'g'); assert.equal(ac[0].arquivo.nome, '10-2026 DARF FGTS.pdf');
+  assert.equal(atob(ac[0].arquivo.base64), '%PDF-1.4 guia');
+  assert.match(await fr.textContent('.ggu-passos li.atual'), /Anexar/);
+  // 0.120.0 · fase 5: a pasta com subpasta por empresa e o relatório da competência (permissão de downloads pedida na hora)
+  await fr.evaluate(() => { window.__downs = []; window.__pedidas = []; chrome.permissions = { request: async (o) => { window.__pedidas.push(o); return true; } }; chrome.downloads = { download: (o, cb) => { window.__downs.push(o.filename); setTimeout(() => cb(window.__downs.length), 0); } }; });
+  await fr.click('[data-ggu-pasta]');
+  await fr.waitForFunction(() => /arquivo/.test((document.querySelector('.faixa') || {}).textContent || '') && window.__downs.length >= 2);
+  const downs = await fr.evaluate(() => window.__downs);
+  assert.deepEqual(downs, ['Guias da folha/10-2026/Cliente Alfa Ltda/DARF FGTS 10-2026.pdf', 'Guias da folha/10-2026/Relatório das guias 10-2026.csv'], 'o demonstrativo que não conferiu fica de fora');
+  assert.deepEqual(await fr.evaluate(() => window.__pedidas), [{ permissions: ['downloads'] }]);
   // a concluída aparece recolhida
   await fr.click('[data-ggu-feitas]'); await fr.waitForFunction(() => /Cliente Delta Ltda/i.test(document.querySelector('#vista').textContent));
   // nada foi escrito e nada ficou guardado
   const cmds = await fr.evaluate(() => [...new Set(window.__msgs.map(m => m.cmd))]);
-  assert.ok(!cmds.some(c => /acao|Acao|anexar/.test(c)), 'nada escrito no Gestta: ' + cmds.join(', '));
+  assert.ok(!cmds.some(c => /^(gesttaTirar|gesttaPasta|gesttaTirarPasta)$/.test(c)), 'só o anexo aprovado: ' + cmds.join(', '));
   assert.ok(!JSON.stringify(await fr.evaluate(() => Object.assign({}, localStorage))).includes('1800'), 'valor nunca guardado no navegador');
   await p.close();
 });
