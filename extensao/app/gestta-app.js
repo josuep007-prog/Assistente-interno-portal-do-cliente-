@@ -12,12 +12,13 @@ import { ligarSoltar } from './gestta-soltar.js';
 import { vistaDia, vistaEmpresas, vistaLista, vistaQuadro } from './gestta-vistas.js';
 import { desenharEnvios, lerEnvios, ligarEnvios, estadoEnvios } from './gestta-envios.js';
 import { desenharSaude, lerSaude, ligarSaude, estadoSaude } from './gestta-saude.js';
+import { desenharGuias, lerGuias, ligarGuias, estadoGuias } from './gestta-guias.js';
 const G = window.OCG;
 const enviar = msg => new Promise(res => { try { chrome.runtime.sendMessage(msg, r => res(r || { ok: false, erro: (chrome.runtime.lastError && chrome.runtime.lastError.message) || 'sem resposta' })); } catch (e) { res({ ok: false, erro: String(e.message || e) }); } });
 const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 const SEMANA = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
 const ATUALIZA_MIN = 10;
-const ABAS = ['dia', 'empresas', 'lista', 'quadro', 'calendario', 'fech', 'envios', 'saude'];               // com a camada aberta e visível, relê sozinho a cada 10 minutos
+const ABAS = ['dia', 'empresas', 'lista', 'quadro', 'calendario', 'fech', 'envios', 'saude', 'guias'];               // com a camada aberta e visível, relê sozinho a cada 10 minutos
 
 const hoje0 = new Date(), comp0 = G.competenciaPadrao(hoje0);
 // 0.85.0 (Josué, 06/11/2026): a tela é da competência (de fábrica a do mês anterior, a que está sendo fechada); o Meu dia segue o vencimento
@@ -72,7 +73,7 @@ const salvo = restaurar();
 // as tarefas da busca ganham o setor quando o relatório do mês já está na memória (cruzando pelo id)
 const comSetor = l => E.setorPorId ? l.map(t => Object.assign({}, t, { setor: E.setorPorId.get(t._id) || '' })) : l;
 // 0.103.0: na visão de um setor, sai a tarefa cujo setor (do relatório) é outro; a que o relatório não conhece fica
-const doSetor = l => { const q = G.lerQuemSetor(E.quem), s = q ? q.setor : ''; return s && E.setorPorId ? l.filter(t => !t.setor || t.setor === s) : l; };
+const doSetor = l => { const q = G.lerQuemSetor(E.quem), s = q ? q.setor : ''; const x = (l || []).filter(t => !t.setor || G.setorPermitido(t.setor)); return s && E.setorPorId && !(E.dados && E.dados.porDepartamento) ? x.filter(t => !t.setor || t.setor === s) : x; };      // 0.117.0: só Pessoal, Contábil e Fiscal
 const lista = () => doSetor(comSetor((E.dados && E.dados.itens) || []));
 const listaDia = () => doSetor(comSetor((E.dados && E.dados.dia) || []));          // o que vence no mês corrente, de qualquer competência
 const nomeMes = () => 'Competência ' + MESES[E.mes - 1] + ' de ' + E.ano;
@@ -96,11 +97,17 @@ const faltaParte = () => !!E.dados && E.falta.has(parteDaAba()) && E.dados[parte
 // 0.114.0: a releitura sozinha (a cada 10 min) lê só a parte da aba aberta (soParte); a outra é lida quando a pessoa troca para a aba que
 // a usa e ela está velha (E.parteEm), em vez de refazer as duas a cada 10 minutos
 const parteEm = { dia: 0, comp: 0 };
+// 0.117.0 (Josué, 16/11/2026: "ainda demora muito pra carregar as seleções"): as últimas visões (competência × de quem) ficam só na memória
+// desta tela por 10 minutos; voltar a uma delas mostra na hora o que já foi lido e a releitura acontece por trás, sem apagar a tela
+const VISOES = new Map(), VISAO_MS = 10 * 60e3;
+const guardarVisao = (k, d) => { VISOES.delete(k); VISOES.set(k, { d, em: Date.now() }); while (VISOES.size > 8) VISOES.delete(VISOES.keys().next().value); };
 async function ler(silencioso, soParte) {
   const meu = ++pedido, ordem = soParte ? [soParte] : parteDaAba() === 'dia' ? ['dia', 'comp'] : ['comp', 'dia'];
   const chave = [E.ano, E.mes, E.quem, E.sits.has('desconsiderada')].join('|');
   // outra competência ou outra pessoa: a leitura anterior sai da tela (não se misturam as partes); atualizar a mesma mantém o que está à vista
-  E.carregando = true; E.falta = new Set(ordem); if (!silencioso) E.erro = null; if (E.dados && E.dados.__chave !== chave) E.dados = null;
+  let quieto = !!silencioso;
+  if (!E.dados || E.dados.__chave !== chave) { const v = VISOES.get(chave); if (v && Date.now() - v.em < VISAO_MS) { E.dados = v.d; quieto = true; } else E.dados = null; }
+  E.carregando = true; E.falta = new Set(ordem); if (!quieto) E.erro = null;
   aoVivo(); desenhar();
   for (const parte of ordem) {
     const r = await enviar({ cmd: 'gesttaTarefas', ano: E.ano, mes: E.mes, quem: E.quem, desconsideradas: E.sits.has('desconsiderada'), parte });
@@ -108,15 +115,15 @@ async function ler(silencioso, soParte) {
     E.falta.delete(parte); if (r && r.ok) parteEm[parte] = Date.now();
     if (!(r && r.ok)) {
       E.erro = r || { erro: 'sem resposta' }; E.falta.clear(); E.carregando = false;
-      if (!silencioso) E.dados = null;                 // como antes: numa leitura nova que falha, a tela mostra o erro
+      if (!quieto) E.dados = null;                 // como antes: numa leitura nova que falha, a tela mostra o erro (a visão guardada fica)
       aoVivo(); desenhar(); return;
     }
     if (r.itens) r.itens = r.itens.map(legivel); if (r.dia) r.dia = r.dia.map(legivel);
     const ant = E.dados, novo = Object.assign({}, r);
     if (ant) for (const [pt, campos] of Object.entries(PARTE_CAMPOS)) if (pt !== parte) campos.forEach(c => { if (ant[c] !== undefined) novo[c] = ant[c]; });
     delete novo.parte; novo.__chave = chave;
-    E.dados = novo; E.erro = null; E.lidoEm = r.lidoEm || new Date().toISOString(); aplicarCnpjs(); carregarCnpjs();
-    if (setorDaVisao() && !E.setorPorId && !E.fechCarregando) lerFech(false);      // 0.103.0: o setor de cada tarefa sai do relatório
+    E.dados = novo; E.erro = null; E.lidoEm = r.lidoEm || new Date().toISOString(); aplicarCnpjs(); carregarCnpjs(); guardarVisao(chave, novo);
+    if (setorDaVisao() && !r.porDepartamento && !E.setorPorId && !E.fechCarregando) lerFech(false);      // 0.103.0: o setor de cada tarefa sai do relatório (0.117.0: só se o Gestta não filtrou pelo setor)
     if (r.perfil && r.perfil.total && !E.equipe) carregarEquipe();
     if (parte === 'dia' && E.quem === 'eu' && r.dia) { const c = G.contarGrupos(r.dia, new Date()).n; paraPai({ controlGestta: 'contagem', atencao: c.multa + c.atrasada + c.hoje, multa: c.multa, atrasada: c.atrasada, hoje: c.hoje }); }
     if (!E.falta.size) { E.carregando = false; if (r.perfil && r.perfil.total) setTimeout(lerSetores, 1500); }   // 0.111.0: os setores já ficam prontos para o De quem
@@ -164,6 +171,7 @@ async function lerSetores() {
   E.setoresLendo = false;
   if (r && r.ok) E.setoresRel = (r.linhas || []).map(l => ({ status: l[0], setor: l[1], responsavel: G.nomeLegivel(l[2]) }));
   else E.setoresErro = (r && r.erro) || 'sem resposta';
+  quemChips();
   if ($('#gt-quem-pop') && !$('#gt-quem-pop').hidden) quemLista($('#gt-quem-busca').value);
 }
 async function carregarEquipe() {
@@ -185,7 +193,33 @@ const quemNome = () => {
   const q = qsVisao(); if (!q) return nomeDaPessoa(E.quem);
   return 'Setor ' + q.setor + (q.ids.length === 1 ? ' · ' + nomeDaPessoa(q.ids[0]) : q.ids.length ? ' · ' + q.ids.length + ' pessoas' : '');
 };
-function quemRot() { const b = $('#gt-quem-btn'); if (b) b.innerHTML = '<span class="gt-quem-av" aria-hidden="true">' + esc(E.quem === 'eu' ? 'Eu' : E.quem === 'sem' ? '—' : setorDaVisao() ? '▦' : iniciais(quemNome())) + '</span><span>' + esc(quemNome()) + '</span><svg class="ic ic-sm"><use href="#i-chev-d"/></svg>'; }
+// 0.117.0 (Josué, 16/11/2026: "melhorar os filtros de analista/setor e deixá-los mais intuitivos"): os setores ficam à vista, um clique
+// troca a visão; o botão ao lado escolhe as pessoas do setor. Só Pessoal, Contábil e Fiscal.
+function setoresDosChips() {
+  const base = E.equipe ? G.setoresDaEquipe(E.equipe) : [], fonte = E.setoresRel || (E.setorPorId ? E.fechTarefas : null);
+  const at = fonte ? G.setoresAtivos(fonte, E.equipe) : [];
+  const l = base.map(x => Object.assign({}, x, { abertas: ((at.find(a => semAc(a.nome) === semAc(x.nome)) || {}).abertas) ?? null }));
+  at.forEach(a => { if (!l.some(x => semAc(x.nome) === semAc(a.nome))) l.push(a); });
+  const ordem = { 'Pessoal': 0, 'Contábil': 1, 'Fiscal': 2 };
+  return l.sort((a, b) => (ordem[G.moduloDoSetor(a.nome)] ?? 9) - (ordem[G.moduloDoSetor(b.nome)] ?? 9) || a.nome.localeCompare(b.nome, 'pt-BR'));
+}
+function quemChips() {
+  const w = $('#gt-quem-wrap'); if (!w) return;
+  let c = $('#gt-quem-chips');
+  if (!c) { c = document.createElement('div'); c.id = 'gt-quem-chips'; c.className = 'gt-quem-chips'; c.setAttribute('role', 'group'); c.setAttribute('aria-label', 'Ver as tarefas de'); w.insertBefore(c, w.firstChild); }
+  const sv = setorDaVisao(), chip = (attrs, rot, on, n, dica) => '<button type="button" class="gt-sit gt-quem-chip' + (on ? ' on' : '') + '" ' + attrs + ' aria-pressed="' + !!on + '"' + (dica ? ' title="' + esc(dica) + '"' : '') + '>' + esc(rot) + (n != null ? ' <b>' + num(n) + '</b>' : '') + '</button>';
+  const st = setoresDosChips();
+  c.innerHTML = '<span class="gt-quem-rot">Ver tarefas de</span>' + chip('data-quem="eu"', 'Minhas', E.quem === 'eu') +
+    (st.length ? st.map(x => chip('data-gt-setor-chip="' + esc(x.nome) + '"', x.nome, sv === x.nome, x.abertas, 'Todas as tarefas do setor ' + x.nome + (x.abertas != null ? ' (' + x.abertas + ' abertas no mês)' : ''))).join('') : '<span class="fraco gt-quem-lendo">' + (E.setoresErro ? 'setores indisponíveis' : 'lendo os setores…') + '</span>') +
+    chip('data-quem="sem"', 'Sem responsável', E.quem === 'sem');
+}
+function quemRot() {
+  const b = $('#gt-quem-btn'), q = qsVisao();
+  // com um setor escolhido, o botão diz quem do setor está na tela e abre direto a lista de pessoas; sem setor, abre a escolha completa
+  const rot = q ? (q.ids.length === 1 ? nomeDaPessoa(q.ids[0]) : q.ids.length ? q.ids.length + ' pessoas' : 'Todas as pessoas') : 'Escolher pessoas';
+  if (b) { b.innerHTML = '<span class="gt-quem-av" aria-hidden="true">' + esc(q ? (q.ids.length === 1 ? iniciais(rot) : '▦') : '+') + '</span><span>' + esc(rot) + '</span><svg class="ic ic-sm"><use href="#i-chev-d"/></svg>'; b.title = q ? 'Escolher pessoas do setor ' + q.setor : 'Escolher um setor e as pessoas'; }
+  quemChips();
+}
 const QP = { passo: 'inicio', setor: '', marcados: new Set() };
 const semAc = t => String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 function quemLista(f) {
@@ -218,6 +252,7 @@ function quemAbrir(abrir) {
   if (abrir) {
     const q = qsVisao(); QP.passo = 'inicio'; QP.setor = ''; QP.marcados = new Set(q ? q.ids : []);
     if (E.dados && E.dados.perfil && E.dados.perfil.total) { if (!E.equipe) carregarEquipe(); lerSetores(); }   // 0.111.0: setores na hora (equipe) e conferidos pelo relatório do mês corrente
+    if (q) { quemPasso(q.setor); return; }      // 0.117.0: já num setor, abre direto as pessoas dele
     $('#gt-quem-busca').value = ''; quemLista(''); setTimeout(() => $('#gt-quem-busca').focus(), 20);
   }
 }
@@ -230,13 +265,21 @@ function aoVivo() {
   const el = $('#aovivo'), tx = $('#aovivo-tx');
   el.classList.remove('ok', 'parado', 'erro');
   $('#btn-atualizar').classList.toggle('girando', E.carregando);
-  if (E.aba === 'saude') {   // 0.110.0
-    const S = estadoSaude(); $('#btn-atualizar').classList.toggle('girando', S.carregando);
-    if (S.carregando) { tx.textContent = 'Lendo a saúde…'; return; }
+  if (E.aba === 'guias') {   // 0.116.0
+    const S = estadoGuias(); $('#btn-atualizar').classList.toggle('girando', S.carregando);
+    if (S.carregando) { tx.textContent = 'Lendo as guias…'; return; }
     if (S.erro) { el.classList.add('erro'); tx.textContent = 'Falha na leitura'; return; }
     if (!S.dados) { tx.textContent = 'Aguardando'; return; }
     const he = new Date(S.dados.lidoEm), hme = String(he.getHours()).padStart(2, '0') + ':' + String(he.getMinutes()).padStart(2, '0');
-    el.classList.add('ok'); tx.textContent = simples() ? hme : 'Lido às ' + hme; el.title = 'Saúde da operação lida às ' + hme; return;
+    el.classList.add('ok'); tx.textContent = simples() ? hme : 'Lido às ' + hme; el.title = 'Tarefas FGTS DIGITAL lidas às ' + hme; return;
+  }
+  if (E.aba === 'saude') {   // 0.110.0
+    const S = estadoSaude(); $('#btn-atualizar').classList.toggle('girando', S.carregando);
+    if (S.carregando) { tx.textContent = 'Lendo a gestão…'; return; }
+    if (S.erro) { el.classList.add('erro'); tx.textContent = 'Falha na leitura'; return; }
+    if (!S.dados) { tx.textContent = 'Aguardando'; return; }
+    const he = new Date(S.dados.lidoEm), hme = String(he.getHours()).padStart(2, '0') + ':' + String(he.getMinutes()).padStart(2, '0');
+    el.classList.add('ok'); tx.textContent = simples() ? hme : 'Lido às ' + hme; el.title = 'Gestão da operação lida às ' + hme; return;
   }
   if (E.aba === 'envios') {   // 0.96.0
     const S = estadoEnvios(); $('#btn-atualizar').classList.toggle('girando', S.carregando);
@@ -366,11 +409,17 @@ const esqueleto = rot => '<div class="gt-esq-tela" role="status" aria-label="' +
 /* ---------- desenho ---------- */
 function abas() {
   $$('#abas [data-aba]').forEach(b => { const on = b.dataset.aba === E.aba; b.classList.toggle('on', on); b.setAttribute('aria-selected', String(on)); });
-  const qw = $('#gt-quem-wrap'); if (qw) qw.classList.toggle('gt-so-minhas', E.aba === 'fech' || E.aba === 'envios' || E.aba === 'saude');
+  const qw = $('#gt-quem-wrap'); if (qw) qw.classList.toggle('gt-so-minhas', E.aba === 'fech' || E.aba === 'envios' || E.aba === 'saude' || E.aba === 'guias');
 }
 function desenhar() {
   abas();
   if (E.aba === 'fech') return desenharFech();
+  if (E.aba === 'guias') {   // 0.116.0: Guias da folha, pela competência do topo (lidas na hora, só na memória da tela)
+    const S = estadoGuias(), v = $('#vista'), topo = v.scrollTop, k = E.ano + '-' + String(E.mes).padStart(2, '0');
+    if (S.comp !== k && !S.carregando) { lerGuias(enviar, () => { aoVivo(); desenhar(); }, { ano: E.ano, mes: E.mes }); return; }
+    desenharGuias(v, t => { $('#subtitulo').textContent = t; }); v.scrollTop = topo;
+    return;
+  }
   if (E.aba === 'saude') {   // 0.110.0: Saúde da operação (lida na hora, só na memória da tela)
     const S = estadoSaude(), v = $('#vista'), topo = v.scrollTop; desenharSaude(v, t => { $('#subtitulo').textContent = t; }); v.scrollTop = topo;
     if (!S.dados && !S.carregando && !S.erro) lerSaude(enviar, () => { aoVivo(); desenhar(); });
@@ -545,9 +594,10 @@ addEventListener('storage', e => {
   clearTimeout(avisoCfg); avisoCfg = setTimeout(() => toast('Configurações atualizadas: já valem nesta tela'), 400);
 });
 $('#vista').addEventListener('scroll', () => salvarEstado(), { passive: true });
-$('#btn-atualizar').onclick = () => E.aba === 'fech' ? lerFech(true) : E.aba === 'envios' ? lerEnvios(enviar, () => { aoVivo(); desenhar(); }) : E.aba === 'saude' ? lerSaude(enviar, () => { aoVivo(); desenhar(); }, true) : ler();
+$('#btn-atualizar').onclick = () => E.aba === 'guias' ? lerGuias(enviar, () => { aoVivo(); desenhar(); }, { ano: E.ano, mes: E.mes }, true) : E.aba === 'fech' ? lerFech(true) : E.aba === 'envios' ? lerEnvios(enviar, () => { aoVivo(); desenhar(); }) : E.aba === 'saude' ? lerSaude(enviar, () => { aoVivo(); desenhar(); }, true) : ler();
 ligarEnvios($('#vista'), () => { aoVivo(); desenhar(); }, paraPai);
 ligarSaude($('#vista'), () => { aoVivo(); desenhar(); }, paraPai);
+ligarGuias($('#vista'), () => { aoVivo(); desenhar(); }, paraPai);
 // 0.102.0: soltar documentos fora de um item da tarefa vai para o Express (e, se ele não achar, a sugestão da extensão)
 ligarSoltar({ enviar, atual: () => painelTarefa() || null, tarefas: () => ((E.dados && E.dados.itens) || []).concat((E.dados && E.dados.dia) || []) });
 function trocarAba(a) {
@@ -586,6 +636,7 @@ $('#gt-mes-pop').addEventListener('click', e => {
   if (e.target.closest('[data-mp-atual]')) { const c = G.competenciaPadrao(new Date()); E.ano = c.ano; E.mes = c.mes; mesAbrir(false); trocouMes(); }
 });
 $('#gt-quem-btn').onclick = () => quemAbrir($('#gt-quem-pop').hidden);
+$('#gt-quem-wrap').addEventListener('click', e => { const b = e.target.closest('#gt-quem-chips [data-quem], #gt-quem-chips [data-gt-setor-chip]'); if (!b) return; trocarQuem(b.dataset.quem || 'setor:' + b.dataset.gtSetorChip); });      // 0.117.0: um clique no setor
 if ($('#gt-quem-x')) $('#gt-quem-x').onclick = () => { quemAbrir(false); $('#gt-quem-btn').focus(); };
 $('#gt-quem-busca').oninput = e => quemLista(e.target.value);
 $('#gt-quem-busca').onkeydown = e => {
@@ -618,8 +669,8 @@ addEventListener('keydown', e => {
   if (e.key === '?' && !digitando) { e.preventDefault(); atalhos(true); return; }
   if (painelAberto()) { if (e.key === 'Escape') { e.preventDefault(); fecharPainel(); return; } if (!digitando && e.key === 'ArrowLeft') { passarPainel(-1); return; } if (!digitando && e.key === 'ArrowRight') { passarPainel(1); return; } }
   if (e.key === '/' && !digitando) { const q = $('#gt-q') || $('#gt-fq'); if (q) { e.preventDefault(); q.focus(); } return; }
-  if (!digitando && !e.ctrlKey && !e.metaKey && !e.altKey && teclaVista && E.aba !== 'fech' && E.aba !== 'envios' && E.aba !== 'saude' && teclaVista(e)) { e.preventDefault(); return; }
-  const n = '12345678'.indexOf(e.key);
+  if (!digitando && !e.ctrlKey && !e.metaKey && !e.altKey && teclaVista && E.aba !== 'fech' && E.aba !== 'envios' && E.aba !== 'saude' && E.aba !== 'guias' && teclaVista(e)) { e.preventDefault(); return; }
+  const n = '123456789'.indexOf(e.key);
   if (!digitando && n >= 0 && !e.ctrlKey && !e.metaKey && !e.altKey) { trocarAba(ABAS[n]); return; }
   if (e.key === 'Escape') { if (digitando && e.target.id === 'gt-q' && E.q) { E.q = ''; desenhar(); return; } if (!digitando) paraPai({ controlGestta: 'fechar' }); }
 });

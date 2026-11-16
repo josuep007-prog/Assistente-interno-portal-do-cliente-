@@ -2,6 +2,63 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.121.0 (16/11/2026): arquivo do item e templates da empresa no Gestta
+
+- Josué: "Arquivo do item no Gestta: ver e excluir o arquivo, e incluir ou tirar template de uma empresa, já estão mapeados e esperam sua aprovação. pode fazer". Mapa da empresa de teste 985 em `mapeamento/gestta-2026-11-04.md` ("Roteiro único").
+- **Ver o arquivo** no painel da tarefa, embaixo do nome do arquivo do item: abre **dentro da extensão** (PDF num quadro, imagem na tela, o resto só **Baixar**). A permissão do servidor de arquivos do Gestta (Amazon S3, us-east-1) é pedida uma vez, no clique. O service worker lê o endereço assinado do arquivo na hora (ele vale 10 minutos), baixa e devolve só o conteúdo, até 15 MB; o endereço nunca vai à tela nem ao armazenamento, e o arquivo some ao fechar. Nada passa pelo visualizador do Google. O tipo é decidido pelos primeiros bytes: HTML ou SVG nunca são desenhados dentro da extensão.
+- **Excluir o arquivo** do item: só com a tarefa aberta, depois da confirmação com o nome do arquivo; a extensão relê a tarefa antes (concluída ou item já sem arquivo = nada é excluído) e o Gestta registra a remoção no histórico.
+- **Incluir e tirar template de uma empresa**, na aba Gestão › Configuração das empresas pela demanda (só a coordenação): **Incluir** na linha do que falta, **Tirar** na do que sobra, ou marque várias e use o lote; uma confirmação para o lote e uma empresa por vez. Antes de cada uma a extensão relê os templates da empresa: incluir o que já está ou tirar o que não está não muda nada; para tirar, usa o id do vínculo relido (nunca o da tela). Depois relê e diz se não conferiu. Tirar não apaga as tarefas já geradas.
+- Segurança: as três escritas entram na lista fechada `OCG.escritaPermitida` com o método, o endereço e o corpo exatos do mapa (`DELETE /core/customer/task/{id}/document/{doc}/file` `{}`; `POST /admin/customer/{id}/company/task` `{company_task:[um id]}`; `DELETE /admin/group/customer` `{ids:[um id]}`). Incluir e tirar só pelo cmd `gesttaTemplateEmpresa` (o `gesttaAcao` recusa); todas só de uma tela da extensão.
+
+## Novidades da v0.120.0 (16/11/2026): Guias da folha, fases 4 e 5: anexar no Gestta e baixar a pasta
+
+- Josué: "pode terminar tudo que falta".
+- **Anexar no Gestta:** depois de emitir, **Anexar no Gestta** leva cada PDF ao seu item da tarefa FGTS DIGITAL: a guia em "FGTS Guia", o demonstrativo em "Demonstrativo FGTS" e o consignado em "Demonstrativo e-consignado", com os nomes `MM-AAAA …`. Só vai o que passou na conferência do conteúdo e só em item vazio; o resto aparece na confirmação como "fica de fora" e o porquê. Uma confirmação para o lote, um arquivo por vez, pelo envio já aprovado. **Concluir a tarefa depois de anexar** é uma caixa à parte, desligada de fábrica (usa o concluir já aprovado: marca as etapas e desconsidera os itens sem arquivo; o Gestta avisa o cliente por e-mail).
+- **Baixar a pasta:** salva em `Downloads/Guias da folha/MM-AAAA/` uma subpasta por empresa com os PDFs no nome do servidor (`DARF FGTS MM-AAAA.pdf`, `DEMONSTRATIVO FGTS MM-AAAA.pdf`, `DEMONSTRATIVO E-CONSIGNADO MM-AAAA.pdf`) e o **relatório da competência** em CSV: empresa, código, CNPJ, FGTS do extrato, FGTS no FGTS Digital, diferença, situação (bateu, não bateu, emitida, já existia, sem extrato) e o número da guia. A permissão de downloads é opcional e pedida na hora; nada fica guardado na extensão.
+- Com isso o trilho das Guias da folha tem os cinco passos funcionando (a DCTFWeb continua pausada).
+
+## Novidades da v0.119.0 (16/11/2026): Guias da folha, fase 3: emitir a guia do FGTS
+
+- Josué escolheu a **Guia Rápida** (a guia mensal da folha) e que a pergunta do FGTS Digital apareça na extensão. Mapa completo em `mapeamento/fgts-digital-emissao-2026-11-16.md`.
+- **Emitir guias** na aba Guias da folha: só as escolhidas que **bateram** na conferência e ainda não têm guia, depois de **uma confirmação para o lote** (empresa, competência e valor). Uma empresa por vez:
+  - lê de novo o resumo da competência e **só emite se o FGTS mensal bate com o extrato** (até R$ 0,05);
+  - com **guia existente** válida, baixa a existente em vez de emitir outra; débitos que já têm guia ou guia em processamento = não emite e manda conferir no site;
+  - aviso COB0027 ou mais de um agrupamento mensal = "emita no FGTS Digital";
+  - **pergunta do site** volta para a linha da empresa: **Sim, emitir** segue; **Não emitir** encerra;
+  - emite com um identificador gerado uma vez e **repete a mesma chamada** enquanto o site diz que está gerando (2 s, 4 s… até 30 s); passou de alguns minutos, para e manda conferir na Consulta de Guias (nunca emite de novo);
+  - traz a **guia**, o **demonstrativo** (Detalhe da Guia Emitida) e, se houver, o **consignado**, conferidos pelo **conteúdo** do PDF (a guia tem de trazer a raiz do CNPJ e a competência) e nomeados `MM-AAAA DARF FGTS.pdf`, `MM-AAAA DEMONSTRATIVO FGTS.pdf`, `MM-AAAA DEMONSTRATIVO E-CONSIGNADO.pdf`. **Ver** abre cada um; ficam só na memória da tela.
+- Segurança: a única escrita no FGTS Digital é `POST /cobranca/api/guia-rapida/gerar-guia/{valorFiltro}` do tipo **mensal**, corpo `{}`, numa lista separada da leitura (`OCF.escritaPermitida`), conferida no service worker e de novo dentro da página, e só aceita de uma tela da extensão. O cabeçalho anti-falsificação do site é lido do cookie dentro da página e nunca sai dela. Nada é pago.
+
+## Novidades da v0.118.0 (16/11/2026): Guias da folha, fase 2: conferir no FGTS Digital (só leitura)
+
+- Com o mapa de 16/11/2026 (leitura de ponta a ponta no FGTS Digital), a aba **Guias da folha** ganha **Conferir no FGTS Digital** para as empresas escolhidas com o extrato lido.
+  - Precisa de uma aba do FGTS Digital aberta e logada pelo gov.br com o certificado da ControlTax. A permissão do site é pedida uma vez, no clique.
+  - Uma empresa por vez: troca o perfil de procurador para a **matriz** (o site recusa filial; leva até 30 s e só acontece se o perfil aberto for outro), lê os débitos mensais da competência e soma o principal.
+  - Mostra **Bate** (diferença de até R$ 0,05 contra o "Valor do FGTS" + aprendiz do extrato) ou **Não bate** com a diferença; juros e multa aparecem à parte; diz quando a competência já tem guia (com o número).
+  - Para na hora, com o que fazer, se a aba não está aberta, se a sessão caiu ou se falta a permissão; **Parar** interrompe na próxima empresa.
+- Novo núcleo `fgts.js`: lista fechada só com as leituras mapeadas (débitos, filtros, totalizador da guia e a troca de perfil). Emitir, adicionar à guia, consignado e pagar são recusados no código. Da resposta só saem números, competências e números de guia: **nunca CPF, nome ou matrícula** do trabalhador; o cookie nunca é lido.
+- A emissão continua sem mapa (a empresa de teste não tinha competência com débito sem guia).
+
+## Novidades da v0.117.1 (16/11/2026): a aba Saúde passa a se chamar Gestão
+
+- Josué: "troque saúde por gestão". A aba das Tarefas do Gestta que mostra carga, prioridade, falhas de e-mail, contatos e configuração passa a se chamar **Gestão** ("Gestão da operação" no título). A tecla continua a 8; nada mudou no que ela lê. A lista de atalhos (?) passou a citar as 9 abas.
+
+## Novidades da v0.117.0 (16/11/2026): Tarefas do Gestta mais rápidas, setores à vista e só Pessoal, Contábil e Fiscal
+
+- Josué: "ainda demora muito pra carregar as seleções, precisamos também melhorar os filtros de analista/setor e deixá-los mais intuitivos … e limite também a extensão aos setores pessoal, contábil e fiscal".
+  - **Só os três setores:** a busca de tarefas leva o filtro de setor do próprio Gestta (`company_department`, como a tela do Gestta faz) com os setores Pessoal, Contábil e Fiscal, achados pelo nome no cadastro de setores. Fechamento, Saúde, Guias da folha e a contagem dos setores usam só as linhas desses setores. Outros setores (Recepção, Societário, Financeiro…) não aparecem nas Tarefas do Gestta. O envio ao Hub não mudou.
+  - **Setores à vista:** no topo, "Ver tarefas de" com **Minhas**, um botão por setor (com as abertas do mês) e **Sem responsável**: um clique troca a visão, sem abrir janela. O botão ao lado escolhe **as pessoas** do setor e, já num setor, abre direto a lista delas.
+  - **Mais rápido:** escolher um setor faz uma busca só, filtrada pelo setor no próprio Gestta. Antes a extensão lia as tarefas de todas as pessoas do setor e depois o relatório do mês para separar pelo setor (o que mais demorava). As últimas 8 visões (competência × de quem) ficam 10 minutos na memória desta tela: voltar a uma delas mostra na hora e a releitura acontece por trás.
+  - Se o Gestta recusar o filtro de setor (400), a busca volta a ir sem ele e a tela separa pelo relatório, como antes.
+
+## Novidades da v0.116.0 (16/11/2026): Guias da folha, fase 1 (só leitura)
+
+- Aba nova **Guias da folha** nas Tarefas do Gestta (tecla 9), pedida pelo Josué em 13/11/2026, com o escopo de 16/11/2026 (só FGTS; DCTFWeb pausada). Mapa em `mapeamento/guias-fgts-dctfweb.md`, desenho em `guias-fgts-dctfweb-desenho.md`.
+  - **Lista:** as tarefas `FGTS DIGITAL` da competência escolhida no topo, tiradas do relatório do Gestta do mês da meta (a competência é o mês anterior ao da meta), uma por empresa. Para cada tarefa aberta, a extensão abre o detalhe e diz se o item "FGTS Guia" já tem arquivo ("Sem guia" × "Guia anexada"); as concluídas ficam recolhidas.
+  - **Escolher e ler o extrato:** o analista marca as empresas e **Ler o extrato** traz o "Valor do FGTS" (e o do aprendiz) do Extrato Mensal publicado no portal de documentos do Onvio, pelo mesmo caminho da folha mensal. Confere a competência e o CNPJ (raiz) no texto; o que não acha aparece com o motivo.
+  - Trilho dos cinco passos (Escolher, Conferir, Emitir, Anexar, Baixar) com os quatro últimos marcados para as próximas versões; a escolha "Matriz única × Por filial" já aparece, com Por filial desligado até ser mapeado.
+- Nada é escrito no Gestta, no Onvio nem em site do governo. Os valores ficam só na memória da tela (só o caminho das pastas da folha, com ids, é guardado, como já era).
+
 ## Novidades da v0.115.1 (13/11/2026): a lista de falhas de e-mail como a tela do Gestta faz
 
 - Josué subiu o resultado do roteiro de mapeamento (passos 0 a 4). Três coisas mudaram em relação à 0.115.0:

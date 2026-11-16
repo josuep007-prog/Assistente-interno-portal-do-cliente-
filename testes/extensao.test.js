@@ -4836,3 +4836,170 @@ test('Gestta (0.111.0): setores da equipe na hora para o De quem; o jeito do rel
   OCG.restaurarModoRel('qualquer coisa'); assert.equal(OCG.modoRel(), 'CUSTOM', 'só os jeitos conhecidos');
   OCG.restaurarModoRel(antes);
 });
+
+/* ---------- Guias da folha (0.116.0) ---------- */
+test('Guias da folha: valores do FGTS do Extrato Mensal (último valor de cada rótulo), competência e CNPJ do texto', () => {
+  const t = 'Empresa: EMPRESA EXEMPLO\nCNPJ: 11.222.333/0001-81   Cálculo: Folha Mensal   Competência: 10/2026\n' +
+    '001 FULANO DE TAL  Valor do FGTS 80,00\n' +                        // uma linha de pessoa no meio: o total do fim vence
+    'FGTS, PIS e ISS\nBase do FGTS 10.000,00   Valor do FGTS 1.800,50\nBase do FGTS Aprendiz 500,00  Valor do FGTS Aprendiz 10,00\n' +
+    'Base FGTS Rescisório 1.000,00  Valor FGTS Rescisório 150,00  Valor FGTS Resc. mês ant. 1,00\n';
+  const v = OC.valoresFgtsDoExtrato(t);
+  assert.deepEqual(plano(v), { competencia: '2026-10', cnpj: '11222333000181', calculo: 'Folha Mensal', fgts: 1800.5, aprendiz: 10, rescisorio: 150 });
+  const nada = OC.valoresFgtsDoExtrato('Competência: 10/2026\nsem os totais');
+  assert.equal(nada.fgts, null, 'sem o rótulo: null (a tela avisa, nunca zero em silêncio)');
+});
+test('Guias da folha: o extrato da competência certa, da empresa certa, sem guardar valor', async () => {
+  const API = OC.API, pastas = { [API + 'storage/v1/projects?primaryAssociationId=c1&primaryAssociationType=Client&getScheduleItems=true']: { data: [{ id: 'p1', name: 'Pessoal' }] } };
+  const filhos = (id, itens) => { pastas[API + 'storage/v2/' + id + '/children?from=1&pageSize=100&sort=name:asc&containersOnly=false&trashed=false&countDocuments=false&calculateLocks=true'] = { data: itens, hasMore: false }; };
+  filhos('Projects/p1', [{ id: 'f1', name: 'Extrato Mensal', itemType: 'Folder' }]);
+  filhos('Folders/f1', [{ id: 'd09', name: 'Extrato 09-2026.pdf', mimeType: 'application/pdf' }, { id: 'd10', name: 'Extrato 10-2026.pdf', mimeType: 'application/pdf' }, { id: 'd10b', name: 'Extrato pro labore 10-2026.pdf', mimeType: 'application/pdf' }]);
+  const fetcher = async u => { if (!(u in pastas)) throw new Error('fora do mapa: ' + u); return pastas[u]; };
+  const textos = { d10: 'CNPJ: 11.222.333/0001-81 Competência: 10/2026 Cálculo: Folha Mensal\nValor do FGTS 1.000,00', d10b: 'CNPJ: 11.222.333/0001-81 Competência: 10/2026 Cálculo: Pró-labore\nsem fgts', d09: 'Competência: 09/2026\nValor do FGTS 9,00' };
+  const lidos = [], textoPdf = async u => { const id = u.split('/').pop(); lidos.push(id); return textos[id]; };
+  const clientes = new Map([['c1', { id: 'c1', codigo: '0101', nome: 'Empresa Exemplo' }]]);
+  const r = await OC.extratoDaCompetencia(fetcher, { code: '101', nome: 'EMPRESA EXEMPLO', cnpj: '11222333000181' }, '2026-10', { textoPdf, clientes, folhaPastas: {} });
+  assert.equal(r.ok, true, r.motivo); assert.equal(r.fgts, 1000); assert.equal(r.extratos.length, 2, 'os dois extratos da competência (folha e pró-labore)');
+  assert.ok(!lidos.includes('d09'), 'o da outra competência nem é lido');
+  assert.equal(r.novoCaminho.pastas.length, 1, 'o caminho das pastas volta para ser guardado (só ids)'); assert.ok(!JSON.stringify(r.novoCaminho).includes('1.000'));
+  // CNPJ de outra empresa no texto: recusado
+  textos.d10 = textos.d10.replace('11.222.333', '99.888.777'); textos.d10b = textos.d10b.replace('11.222.333', '99.888.777');
+  const r2 = await OC.extratoDaCompetencia(fetcher, { code: '101', nome: 'x', cnpj: '11222333000181' }, '2026-10', { textoPdf, clientes, folhaPastas: { c1: r.novoCaminho } });
+  assert.equal(r2.ok, false); assert.match(r2.motivo, /outro CNPJ/);
+  const r3 = await OC.extratoDaCompetencia(fetcher, { code: '555', nome: 'Outra', cnpj: '' }, '2026-10', { textoPdf, clientes, folhaPastas: {} });
+  assert.match(r3.motivo, /não achada/);
+});
+test('Guias da folha: as tarefas FGTS DIGITAL do relatório (uma por empresa, sem guia primeiro) e os três itens do pacote', () => {
+  const t = (id, name, status, cnpj, due) => ({ _id: id, name, status, due_date: due || '2026-11-07', responsavel: 'Ana', customer: { name: 'EMPRESA ' + cnpj, code: cnpj.slice(-3), cnpj } });
+  const l = OCG.tarefasGuiaFgts([t('1', 'FGTS DIGITAL', 'DONE', '11222333000181'), t('2', 'Fgts Digital', 'OPEN', '22333444000190'), t('3', 'PESSOAL | FOLHA MENSAL', 'OPEN', '33444555000101'),
+    t('4', 'FGTS DIGITAL', 'IGNORED', '44555666000101'), t('5', 'FGTS DIGITAL', 'OPEN', '22333444000190', '2026-11-08')]);
+  assert.deepEqual(plano(l.map(x => [x.id, x.status])), [['5', 'OPEN'], ['1', 'DONE']], 'só FGTS DIGITAL, uma por empresa, abertas antes, desconsiderada fora');
+  assert.deepEqual(plano(OCG.mesDaMeta(2026, 12)), { ano: 2027, mes: 1 }, 'a competência de dezembro tem meta em janeiro');
+  const it = OCG.itensGuiaFgts({ company_documents: [{ _id: 'a', name: 'FGTS Guia', temArquivo: false }, { _id: 'b', name: 'Demonstrativo FGTS', temArquivo: true }, { _id: 'c', name: 'Demonstrativo e-consignado' }] });
+  assert.deepEqual(plano(it), { guia: { id: 'a', nome: 'FGTS Guia', temArquivo: false, desconsiderado: false }, demonstrativo: { id: 'b', nome: 'Demonstrativo FGTS', temArquivo: true, desconsiderado: false }, consignado: { id: 'c', nome: 'Demonstrativo e-consignado', temArquivo: false, desconsiderado: false } });
+  assert.equal(OCG.itensGuiaFgts({ company_documents: [] }).guia, null, 'item que não existe no template: null');
+});
+test('Gestta (0.117.0): só os setores Pessoal, Contábil e Fiscal; a busca leva o filtro de setor do próprio Gestta', () => {
+  assert.equal(OCG.moduloDoSetor('PESSOAL'), 'Pessoal'); assert.equal(OCG.moduloDoSetor('Departamento Pessoal'), 'Pessoal'); assert.equal(OCG.moduloDoSetor('DP'), 'Pessoal');
+  assert.equal(OCG.moduloDoSetor('Contabilidade'), 'Contábil'); assert.equal(OCG.moduloDoSetor('Contábil'), 'Contábil'); assert.equal(OCG.moduloDoSetor('FISCAL'), 'Fiscal');
+  for (const s of ['Recepção', 'Societário', 'Financeiro', 'Legalização', 'Comercial', '']) assert.equal(OCG.setorPermitido(s), false, s);
+  const cols = ['id', 'company_department.name'], l = OCG.soSetoresPermitidos(cols, [['1', 'Fiscal'], ['2', 'Recepção'], ['3', ''], ['4', 'Pessoal']]);
+  assert.deepEqual(plano(l.map(x => x[0])), ['1', '3', '4'], 'sem setor fica (não dá para julgar)');
+  const eq = [{ id: 'a', nome: 'Ana', setores: ['Fiscal', 'Recepção'] }, { id: 'b', nome: 'Bia', setores: ['Societário'] }];
+  assert.deepEqual(plano(OCG.setoresDaEquipe(eq).map(x => x.nome)), ['Fiscal']);
+  assert.deepEqual(plano(OCG.setoresAtivos([{ status: 'OPEN', setor: 'Recepção', responsavel: 'Ana' }, { status: 'OPEN', setor: 'Fiscal', responsavel: 'Ana' }], eq).map(x => x.nome)), ['Fiscal']);
+  const ped = OCG.PEDIDOS.buscaTarefas({ ano: 2026, mes: 11, companyDepartments: ['d1', 'd2'], companyUsers: ['u1'] });
+  assert.deepEqual(plano(ped.corpo.company_department), ['d1', 'd2']); assert.deepEqual(plano(ped.corpo.company_user), ['u1']);
+  assert.equal(OCG.leituraPermitida(ped.metodo, ped.url, ped.corpo).ok, true);
+  assert.ok(!('company_department' in OCG.PEDIDOS.buscaTarefas({ ano: 2026, mes: 11 }).corpo), 'sem setores conhecidos, sem o filtro');
+});
+
+/* ---------- 0.118.0 · FGTS Digital (só leitura) ---------- */
+function carregarFgts() { const ctx = { console, URL, URLSearchParams }; ctx.self = ctx; vm.createContext(ctx); vm.runInContext(src('fgts.js'), ctx); return ctx.OCF; }
+const OCF = carregarFgts();
+test('FGTS Digital: só as leituras mapeadas; emitir, adicionar à guia, consignado, pagar e outro site são recusados', () => {
+  const P = OCF.leituraPermitida, H = OCF.HOST;
+  for (const k of ['dadosFiltro', 'debitos', 'totalizador', 'perfil']) { const p = OCF.PEDIDOS[k](k === 'debitos' ? '2026-10' : k === 'totalizador' ? '0126100765850000-2' : '11222333000181', 1); assert.equal(P(p.metodo, p.url, null).ok, true, k); }
+  assert.match(OCF.PEDIDOS.debitos('2026-10', 2).url, /competenciaApuracaoInicial=202610&competenciaApuracaoFinal=202610&numPagina=2/);
+  assert.ok(!/debitosSemGuia/.test(OCF.PEDIDOS.debitos('2026-10').url), 'sem o filtro "sem guia": a competência com guia volta com guiasRelacionadas');
+  for (const [m, u] of [['POST', H + '/cobranca/api/guia-parametrizada/gerar-guia?dtPagamento=2026-11-07'], ['POST', H + '/cobranca/api/guia-rapida/gerar-guia/x'], ['POST', H + '/cobranca/api/guia-parametrizada/debitos'],
+    ['POST', H + '/cobranca/api/guia-parametrizada/consignados:batch-create'], ['GET', H + '/arrecadacao/emissao/reimprimirGuia/123'], ['GET', 'https://outro.gov.br/cobranca/api/guia-parametrizada/debitos'],
+    ['GET', H + '/cobranca/api/guia-parametrizada/debitos?x=1'], ['GET', H.replace('https://', 'https://u:p@') + '/cobranca/api/guia-parametrizada/dados-filtro']])
+    assert.equal(P(m, u, null).ok, false, m + ' ' + u);
+  assert.equal(P('GET', H + '/cobranca/api/guia-parametrizada/dados-filtro', {}).ok, false, 'leitura sem corpo');
+});
+test('FGTS Digital: a resposta sai sem CPF, nome ou matrícula; soma do principal por estabelecimento; matriz pelo CNPJ; bate até 5 centavos', () => {
+  const d = OCF.limpar('debitos', { qtdeTotalDebitos: 3, debitos: [
+    { competenciaApuracao: '202610', vlPrincipal: 800.1, vlTotal: 800.1, vlMulta: 0, vlJuros: 0, vlAtualizacaoMonetaria: 0, estabalecimentoRemuneracao: '11.222.333/0001-81', cpfTrabalhador: '123.456.789-00', nomeTrabalhador: 'FULANO', matricula: '77', guiasRelacionadas: [] },
+    { competenciaApuracao: '202610', vlPrincipal: 200.25, vlTotal: 210.25, vlMulta: 4, vlJuros: 6, estabalecimentoRemuneracao: '11222333000262', cpfTrabalhador: '1', nomeTrabalhador: 'X' },
+    { competenciaApuracao: '202610', vlPrincipal: 100, vlTotal: 100, estabalecimentoRemuneracao: '11222333000181', guiasRelacionadas: [{ numeroFormatado: '0126-2', linkGuiaPdf: 'x', idGuia: 9 }] }] });
+  const txt = JSON.stringify(d);
+  for (const v of ['123.456', 'FULANO', 'matricula', 'nomeTrabalhador', '"77"', 'linkGuiaPdf']) assert.ok(!txt.includes(v), 'vazou ' + v);
+  assert.equal(d.qtdeTotal, 3); assert.equal(d.itens[1].encargos, 10);
+  const m = OCF.somarDebitos(d.itens, '11222333000181');
+  assert.deepEqual(plano(m), { quantos: 3, principal: 1100.35, encargos: 10, total: 1110.35, semGuia: 2, guias: ['0126-2'], filial: false }, 'matriz: todos os estabelecimentos');
+  const f = OCF.somarDebitos(d.itens, '11222333000262');
+  assert.equal(f.quantos, 1); assert.equal(f.principal, 200.25); assert.equal(f.filial, true, 'filial: só o estabelecimento dela');
+  assert.equal(OCF.cnpjMatriz('11222333000262'), '11222333000181', 'dígitos da matriz calculados');
+  assert.deepEqual(plano(OCF.comparar(1000, 1000.05)), { bate: true, diferenca: 0.05 });
+  assert.deepEqual(plano(OCF.comparar(1000, 1000.06)), { bate: false, diferenca: 0.06 });
+  assert.equal(OCF.comparar(null, 10).bate, null, 'sem extrato, sem veredito');
+  const tz = OCF.limpar('totalizador', { competencia: '10/2026', numero: 'N', vlMensal: 1, vlTotal: 2, vlEncargos: 1, tpSituacao: 'AGUARDANDO_PAGAMENTO', urlPdf: 'https://x/segredo', gerouPdfConsignado: false });
+  assert.ok(!JSON.stringify(tz).includes('segredo'));
+});
+
+test('FGTS Digital (0.119.0): a única escrita é emitir a guia MENSAL pela Guia Rápida, com corpo {} e o uuid da extensão', () => {
+  const VF = '202610,mensal,12345678901,2026-11-07,false', U = '3f2b8c4e-1d2a-4b6c-9e8f-0a1b2c3d4e5f';
+  const ok = OCF.PEDIDOS.gerar(VF, U, true);
+  assert.equal(OCF.escritaPermitida(ok.metodo, ok.url, ok.corpo).ok, true, OCF.escritaPermitida(ok.metodo, ok.url, ok.corpo).motivo);
+  assert.equal(OCF.leituraPermitida(ok.metodo, ok.url, null).ok, false, 'emitir nunca passa como leitura');
+  const P = (u, c, m) => OCF.escritaPermitida(m || 'POST', u, c === undefined ? {} : c).ok;
+  assert.equal(P(OCF.PEDIDOS.gerar(VF.replace('mensal', 'rescisorio'), U, true).url), false, 'só a mensal');
+  assert.equal(P(ok.url, { x: 1 }), false, 'corpo sempre {}');
+  assert.equal(P(ok.url.replace(U, 'abc')), false, 'uuid v4');
+  assert.equal(P(ok.url + '&extra=1'), false, 'parâmetro a mais');
+  assert.equal(P(ok.url, {}, 'PUT'), false);
+  assert.equal(P(ok.url.replace('guia-rapida/gerar-guia', 'guia-parametrizada/gerar-guia')), false, 'a parametrizada não');
+  assert.equal(P(ok.url.replace(OCF.HOST, 'https://outro.gov.br')), false);
+  // as leituras da emissão
+  for (const p of [OCF.PEDIDOS.rapida('2026-10'), OCF.PEDIDOS.confirma(), OCF.PEDIDOS.existente(VF), OCF.PEDIDOS.relatorio('detalhe', '0126100765850000-2', U, true), OCF.PEDIDOS.relatorio('consignado', '1261007658500002', U, false), OCF.PEDIDOS.pdfGuia('/arrecadacao/emissao/reimprimirGuia/1261007658500002')])
+    assert.equal(OCF.leituraPermitida(p.metodo, p.url, null).ok, true, p.url);
+  assert.match(OCF.PEDIDOS.rapida('2026-10').url, /guia-rapida\/v2\/202610\?mensal=true&rescisorio=false&processoTrabalhista=false&consignado=true$/);
+  assert.equal(OCF.arquivoPermitido('https://storagegw.estaleiro.serpro.gov.br/cobrafgtsd-detalhe-guia-pdf-p/11222333_01261.pdf?X-Amz-Expires=600'), true);
+  assert.equal(OCF.arquivoPermitido('https://storagegw.estaleiro.serpro.gov.br/outra-coisa/x.pdf'), false);
+  assert.equal(OCF.arquivoPermitido('https://evil.example/cobrafgtsd-detalhe-guia-pdf-p/x.pdf'), false);
+  // o resumo sai só com o que a emissão precisa
+  const r = OCF.limpar('rapida', { resumo: { status: 'Aberta' }, agrupamentos: [{ valorFiltro: VF, tipo: 'Mensal', pagamentoAte: '2026-11-07', totalizador: { vlMensal: 1810.5, vlEncargos: 0, vlTotal: 1810.5 }, totalGuia: 1810.5,
+    temGuiasRelacionadas: false, guiaExistente: null, alertas: [{ tipo: 'warn', codigo: 'COB0099', titulo: 'Aviso', descricao: 'texto' }], confirmacoes: ['Confirma?'], detalhamentos: [{ cpf: '123' }] }] });
+  assert.deepEqual(plano(r.agrupamentos[0]), { valorFiltro: VF, tipo: 'Mensal', pagamentoAte: '2026-11-07', mensal: 1810.5, encargos: 0, total: 1810.5, totalGuia: 1810.5, totalConsignado: 0, contemConsignado: false, temGuiasRelacionadas: false, emProcessamento: '', guiaExistente: null, alertas: [{ codigo: 'COB0099', titulo: 'Aviso', descricao: 'texto' }], confirmacoes: ['Confirma?'] });
+  assert.deepEqual(plano(OCF.limpar('gerar', { gerouGuia: true, dadosGuia: { id: 9, numero: '0126-2', linkPdf: '/arrecadacao/emissao/reimprimirGuia/1262' } })), { gerou: true, guia: { id: '9', numero: '0126-2', linkPdf: '/arrecadacao/emissao/reimprimirGuia/1262' } });
+  assert.equal(OCF.limpar('relatorio', { gerouDetalheGuia: true, url: 'https://evil.example/x.pdf' }).url, '', 'endereço de arquivo fora do serpro é descartado');
+});
+/* ---------- Gestta (0.121.0): ver e excluir o arquivo do item, incluir e tirar template de uma empresa (Josué, 16/11/2026) ---------- */
+test('Gestta (0.121.0): excluir arquivo, incluir e tirar template só na forma do mapeamento da 985; o resto é recusado', () => {
+  const E = OCG.escritaPermitida, A = 'https://api.gestta.com.br', T = '5f1e2d3c4b5a69788796a5b4', S = '6a5b4c3d2e1f00112233aabb', C = '0123456789abcdef01234567';
+  const ex = OCG.pedidoAcao({ acao: 'excluirArquivo', id: T, documento: S });
+  assert.equal(ex.metodo, 'DELETE'); assert.equal(new URL(ex.url).pathname, '/core/customer/task/' + T + '/document/' + S + '/file'); assert.deepEqual(plano(ex.corpo), {});
+  assert.equal(E(ex.metodo, ex.url, ex.corpo).ok, true, 'excluir o arquivo do item');
+  const inc = OCG.pedidoAcao({ acao: 'incluirTemplate', cliente: C, template: S });
+  assert.equal(inc.metodo, 'POST'); assert.equal(new URL(inc.url).pathname, '/admin/customer/' + C + '/company/task'); assert.deepEqual(plano(inc.corpo), { company_task: [S] });
+  assert.equal(E(inc.metodo, inc.url, inc.corpo).ok, true, 'incluir template');
+  const tir = OCG.pedidoAcao({ acao: 'tirarTemplate', vinculo: T });
+  assert.equal(tir.metodo, 'DELETE'); assert.equal(new URL(tir.url).pathname, '/admin/group/customer'); assert.deepEqual(plano(tir.corpo), { ids: [T] });
+  assert.equal(E(tir.metodo, tir.url, tir.corpo).ok, true, 'tirar template');
+  for (const p of [ex, inc, tir]) assert.equal(OCG.leituraPermitida(p.metodo, p.url, p.corpo).ok, false, 'a leitura continua recusando: ' + p.acao);
+  const nao = [
+    ['DELETE', A + '/core/customer/task/' + T + '/document/' + S + '/file', { file: 'x' }],
+    ['DELETE', A + '/core/customer/task/' + T + '/document/' + S, {}], ['DELETE', A + '/core/customer/task/' + T + '/document/x/file', {}],
+    ['DELETE', A + '/core/customer/task/' + T + '/document/' + S + '/file?x=1', {}], ['PUT', A + '/core/customer/task/' + T + '/document/' + S + '/file', {}],
+    ['POST', A + '/admin/customer/' + C + '/company/task', { company_task: [S, T] }], ['POST', A + '/admin/customer/' + C + '/company/task', { company_task: S }],
+    ['POST', A + '/admin/customer/' + C + '/company/task', { company_task: [S], active: true }], ['POST', A + '/admin/customer/' + C + '/company/task', { company_task: ['x'] }],
+    ['DELETE', A + '/admin/customer/' + C + '/company/task', { company_task: [S] }], ['PUT', A + '/admin/customer/' + C + '/company/task', { company_task: [S] }],
+    ['DELETE', A + '/admin/group/customer', { ids: [S, T] }], ['DELETE', A + '/admin/group/customer', { ids: [] }], ['DELETE', A + '/admin/group/customer', { ids: [S], customer: C }],
+    ['DELETE', A + '/admin/group/customer/' + S, {}], ['POST', A + '/admin/group/customer', { ids: [S] }], ['DELETE', A + '/admin/customer/' + C, {}],
+    ['POST', A + '/admin/company/task', { name: 'x' }]
+  ];
+  for (const [m, u, c] of nao) assert.equal(E(m, u, c).ok, false, 'recusa: ' + m + ' ' + u + ' ' + JSON.stringify(c));
+  assert.ok(OCG.pedidoAcao({ acao: 'excluirArquivo', id: T }).erro); assert.ok(OCG.pedidoAcao({ acao: 'incluirTemplate', cliente: 'x', template: S }).erro);
+  assert.ok(OCG.pedidoAcao({ acao: 'tirarTemplate', vinculo: '' }).erro);
+});
+test('Gestta (0.121.0): o endereço do arquivo do item só sai do detalhe se for do S3 em us-east-1; vínculos da empresa só com ids', () => {
+  const T = '5f1e2d3c4b5a69788796a5b4', S = '6a5b4c3d2e1f00112233aabb', S2 = '6a5b4c3d2e1f00112233aabc';
+  const u = 'https://bucket-x.s3.us-east-1.amazonaws.com/pasta/recibo%20teste.pdf?X-Amz-Expires=600&X-Amz-Signature=abc';
+  assert.equal(OCG.arquivoS3(u), true);
+  for (const r of ['http://bucket.s3.us-east-1.amazonaws.com/a.pdf', 'https://bucket.s3.sa-east-1.amazonaws.com/a.pdf', 'https://evil.com/s3.us-east-1.amazonaws.com/a.pdf',
+    'https://user:x@bucket.s3.us-east-1.amazonaws.com/a.pdf', 'https://bucket.s3.us-east-1.amazonaws.com.evil.com/a.pdf', 'https://bucket.s3.us-east-1.amazonaws.com/', 'javascript:alert(1)'])
+    assert.equal(OCG.arquivoS3(r), false, r);
+  const det = { _id: T, status: 'OPEN', company_documents: [{ _id: S, name: 'Guia', file: u }, { _id: S2, name: 'Recibo' }] };
+  assert.deepEqual(plano(OCG.arquivoDoDetalhe(det, S)), { status: 'OPEN', existe: true, temArquivo: true, url: u, nome: 'recibo teste.pdf' });
+  assert.deepEqual(plano(OCG.arquivoDoDetalhe(det, S2)), { status: 'OPEN', existe: true, temArquivo: false });
+  assert.deepEqual(plano(OCG.arquivoDoDetalhe(det, T)), { status: 'OPEN', existe: false, temArquivo: false });
+  assert.deepEqual(plano(OCG.arquivoDoDetalhe({ status: 'OPEN', company_documents: [{ _id: S, file: 'https://outro.com/a.pdf' }] }, S)), { status: 'OPEN', existe: true, temArquivo: true, foraDoS3: true });
+  // o detalhe que vai à tela continua sem o endereço
+  const tela = OCG.limpar('tarefaDetalhe', det);
+  assert.ok(!JSON.stringify(tela).includes('amazonaws'), 'nunca o endereço na tela');
+  assert.equal(tela.company_documents[0].arquivos[0].nome, 'recibo teste.pdf');
+  const vin = OCG.limpar('vinculosEmpresa', [{ _id: T, company: 'c', company_task: { _id: S, name: 'X' }, customer: 'z', company_user: { name: 'Pessoa', login_attempts: 3 }, active: true }, { _id: S2, company_task: T, active: false }, { _id: 'x', company_task: S }]);
+  assert.deepEqual(plano(vin), { itens: [{ id: T, template: S, ativo: true }, { id: S2, template: T, ativo: false }] });
+  const lp = OCG.PEDIDOS.vinculosEmpresa({ cliente: S }); assert.equal(OCG.leituraPermitida(lp.metodo, lp.url).ok, true);
+  const la = OCG.PEDIDOS.arquivoDoItem({ id: T, documento: S }); assert.equal(OCG.leituraPermitida(la.metodo, la.url).ok, true); assert.equal(la.doc, S);
+});

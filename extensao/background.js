@@ -2,7 +2,7 @@
  * Lê o Onvio de tempos em tempos, guarda um resumo e avisa o usuário.
  * Fase 1: somente leitura. Nada é gravado no Onvio.
  */
-importScripts('core.js', 'gestta.js', 'mediador.js');
+importScripts('core.js', 'gestta.js', 'mediador.js', 'fgts.js');
 
 const ALARME = 'controlOnvio.coleta';
 const ALARME_DIST = 'controlOnvio.distribuicao';
@@ -312,6 +312,24 @@ async function tarefasDaCompetencia(tab, base, ano, mes) {
   const itens = [...vistos.values()];
   return { ok: true, itens, total: itens.length, cortado, modo: 'meta' };
 }
+// 0.117.0 (Josué, 16/11/2026): só os setores Pessoal, Contábil e Fiscal. Os ids saem do cadastro de setores do Gestta (coordenação) ou
+// dos setores de quem está logado; a busca leva company_department com eles (o Gestta já filtra no servidor, como a própria tela dele faz),
+// o que também deixa a leitura menor. Se o Gestta recusar o filtro (400), a busca volta a ir sem ele e o relatório separa pelo setor.
+let deptCache = null, deptFiltroRecusado = false;
+async function departamentosGestta(tab, pf) {
+  if (deptCache && Date.now() - deptCache.em < 6 * 3600e3) return deptCache.l;
+  let l = [];
+  if (pf.total) {
+    const { r } = await lerGestta([OCG.PEDIDOS.setores()], { tab });
+    const x = r && r.resultados && r.resultados[0];
+    if (x && x.status === 200 && x.dados) l = (x.dados.itens || []).map(d => ({ id: String(d && d._id || ''), nome: String(d && d.name || '') }));
+  }
+  if (!l.length) l = (pf.setores || []).map(d => ({ id: String(d.id || ''), nome: String(d.nome || '') }));
+  l = l.filter(d => /^[0-9a-f]{24}$/i.test(d.id) && OCG.setorPermitido(d.nome)).map(d => Object.assign(d, { modulo: OCG.moduloDoSetor(d.nome) }));
+  deptCache = { l, em: Date.now() };
+  return l;
+}
+const semAcSw = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 async function gesttaTarefas(msg, sender) {
   const tab = await tabDoGestta(sender);
   if (!tab) return { ok: false, semAba: true, erro: 'Abra o Gestta numa aba, já logado.' };
@@ -323,8 +341,17 @@ async function gesttaTarefas(msg, sender) {
   if (!pf.total || !(quem === 'eu' || quem === 'sem' || /^[0-9a-f]{24}$/i.test(quem) || OCG.lerQuemSetor(quem))) quem = 'eu';
   // 0.103.0: as desconsideradas (IGNORED/DISCONSIDERED) só são lidas quando a pessoa pede essa situação
   const base = { limit: OCG.LIMITE_BUSCA, status: ['OPEN', 'IMPEDIMENT', 'DONE'].concat(msg.desconsideradas ? ['IGNORED', 'DISCONSIDERED'] : []) };
-  let setorPessoas = 0;
-  if (quem.startsWith('setor:')) {
+  let setorPessoas = 0, porDepartamento = false;
+  const depts = deptFiltroRecusado ? [] : await departamentosGestta(tab, pf);
+  if (depts.length) { base.companyDepartments = depts.map(d => d.id); porDepartamento = true; }
+  const qsDep = OCG.lerQuemSetor(quem), depDoSetor = qsDep && depts.find(d => semAcSw(d.nome) === semAcSw(qsDep.setor));
+  if (qsDep && !OCG.setorPermitido(qsDep.setor)) return { ok: false, erro: 'O setor ' + qsDep.setor + ' não faz parte da extensão (só Pessoal, Contábil e Fiscal).' };
+  if (qsDep && depDoSetor) {
+    // 0.117.0: o setor vai como filtro do próprio Gestta (company_department): todas as tarefas do setor numa busca só, sem depender de
+    // ler o relatório para separar; com pessoas escolhidas, só as delas dentro do setor
+    base.companyDepartments = [depDoSetor.id];
+    if (qsDep.ids.length) { base.companyUsers = qsDep.ids; setorPessoas = qsDep.ids.length; }
+  } else if (quem.startsWith('setor:')) {
     // 0.103.0 (Josué, 12/11/2026: "filtrar todas as tarefas de um determinado setor"): a busca não traz o setor, então lê as tarefas
     // de todas as pessoas do setor de uma vez (company_user[], já usado pela busca); a tela separa pelo setor quando o relatório está lido
     const qs = OCG.lerQuemSetor(quem), nome = qs.setor, eq = await lerEquipeGestta(tab);
@@ -339,11 +366,28 @@ async function gesttaTarefas(msg, sender) {
   // 0.111.0 (Josué, 13/11/2026: "não depender de rodar toda leitura pra aparecer alguma coisa"): parte 'dia' ou 'comp' lê só um
   // dos dois, e a tela mostra o que chegar primeiro; sem parte, os dois (como antes)
   const parte = msg.parte === 'dia' || msg.parte === 'comp' ? msg.parte : '';
-  const comum = { ok: true, parte, ano, mes, quem, setorPessoas, desconsideradas: !!msg.desconsideradas, perfil: { id: pf.id, papelNome: pf.papelNome, total: pf.total, setores: pf.setores }, validade: r1.validade || null, lidoEm: new Date().toISOString() };
+  const comum = { ok: true, parte, ano, mes, quem, setorPessoas, porDepartamento: porDepartamento && !(qsDep && !depDoSetor), desconsideradas: !!msg.desconsideradas, perfil: { id: pf.id, papelNome: pf.papelNome, total: pf.total, setores: pf.setores }, validade: r1.validade || null, lidoEm: new Date().toISOString() };
   let comp = null, dia = null;
-  if (parte !== 'dia') { comp = await tarefasDaCompetencia(tab, base, ano, mes); if (!comp.ok) return { ok: false, erro: comp.erro }; }
+  await modosProntos; const modoAntes = gesttaModoComp;
+  if (parte !== 'dia') {
+    comp = await tarefasDaCompetencia(tab, base, ano, mes);
+    if (!comp.ok && comp.status === 400 && base.companyDepartments) {     // o Gestta recusou o filtro de setor: volta sem ele (lembrado)
+      deptFiltroRecusado = true; delete base.companyDepartments; comum.porDepartamento = false;
+      if (gesttaModoComp !== modoAntes) { gesttaModoComp = modoAntes; lembrarModos(); }     // o 400 era do filtro, não da busca por competência
+      if (qsDep) return gesttaTarefas(msg, sender);
+      comp = await tarefasDaCompetencia(tab, base, ano, mes);
+    }
+    if (!comp.ok) return { ok: false, erro: comp.erro };
+  }
   // Meu dia: pelo vencimento (escolha do Josué em 06/11/2026), as metas do mês corrente, de qualquer competência
-  if (parte !== 'comp') { const h = new Date(); dia = await buscarTodasGestta(tab, Object.assign({}, base, { ano: h.getFullYear(), mes: h.getMonth() + 1 })); }
+  if (parte !== 'comp') {
+    const h = new Date(); dia = await buscarTodasGestta(tab, Object.assign({}, base, { ano: h.getFullYear(), mes: h.getMonth() + 1 }));
+    if (!dia.ok && dia.status === 400 && base.companyDepartments) {
+      deptFiltroRecusado = true; delete base.companyDepartments; comum.porDepartamento = false;
+      if (qsDep) return gesttaTarefas(msg, sender);
+      dia = await buscarTodasGestta(tab, Object.assign({}, base, { ano: h.getFullYear(), mes: h.getMonth() + 1 }));
+    }
+  }
   return Object.assign(comum, comp ? { itens: comp.itens, total: comp.total, cortado: comp.cortado, modoCompetencia: comp.modo } : {},
     dia ? { dia: dia.ok ? dia.itens : null, diaErro: dia.ok ? '' : dia.erro, diaCortado: !!dia.cortado } : {}, { lidoEm: new Date().toISOString() });
 }
@@ -358,7 +402,8 @@ async function relatorioDoMes(tab, ano, mes, forcar) {
   const rel = await relatorioSaude(tab, ano, mes, !!forcar);
   if (!rel.ok) return { ok: false, erro: rel.erro };
   const idx = OCG.COLUNAS_FECHAMENTO.map(c => (rel.colunas || []).indexOf(c));
-  return { ok: true, colunas: OCG.COLUNAS_FECHAMENTO.slice(), linhas: (rel.linhas || []).map(l => idx.map(i => i < 0 ? '' : l[i])), total: (rel.linhas || []).length, formato: rel.formato || 'ndjson' };
+  const ls = OCG.soSetoresPermitidos(rel.colunas, rel.linhas);      // 0.117.0: só Pessoal, Contábil e Fiscal
+  return { ok: true, colunas: OCG.COLUNAS_FECHAMENTO.slice(), linhas: ls.map(l => idx.map(i => i < 0 ? '' : l[i])), total: ls.length, formato: rel.formato || 'ndjson' };
 }
 // 0.85.0: o Fechamento é da competência. O relatório só sabe a meta, então: as tarefas da competência (a busca, todas as que o
 // acesso alcança), os meses em que elas vencem, o relatório de cada um desses meses e só as linhas dessas tarefas.
@@ -410,7 +455,8 @@ async function gesttaFechamento(msg, sender) {
   const eu = await meGestta(tab); if (!eu.ok) return eu;
   const pf = eu.pf;
   const t0 = Date.now();
-  const comp = await tarefasDaCompetencia(tab, { limit: OCG.LIMITE_BUSCA, status: ['OPEN', 'IMPEDIMENT', 'DONE'] }, ano, mes);
+  const deptsF = deptFiltroRecusado ? [] : await departamentosGestta(tab, pf);
+  const comp = await tarefasDaCompetencia(tab, Object.assign({ limit: OCG.LIMITE_BUSCA, status: ['OPEN', 'IMPEDIMENT', 'DONE'] }, deptsF.length ? { companyDepartments: deptsF.map(d => d.id) } : {}), ano, mes);
   if (!comp.ok) return { ok: false, erro: comp.erro };
   const p = { ids: new Set(comp.itens.map(t => t && t._id).filter(Boolean)), meses: OCG.mesesDeMeta(comp.itens).slice(0, 6), pf, t0, forcar: !!msg.forcar, cortado: !!comp.cortado, colunas: null, formato: '', linhas: [], feitos: new Set() };
   if (msg.parte === 'busca') {
@@ -463,8 +509,214 @@ async function gesttaSetores(msg, sender) {
   if (!rel.ok) return { ok: false, erro: rel.erro };
   const cols = rel.colunas || [], iSt = cols.indexOf('status'), iSet = cols.indexOf('company_department.name'), iR = cols.indexOf('owner.name');
   // só o que o De quem precisa: setor, situação e responsável de cada tarefa aberta (nada de empresa)
-  const linhas = (rel.linhas || []).filter(l => /^(OPEN|IMPEDIMENT)$/i.test(String(l[iSt] || ''))).map(l => [String(l[iSt] || '').toUpperCase(), String(l[iSet] || ''), String(l[iR] || '')]);
+  const linhas = OCG.soSetoresPermitidos(cols, rel.linhas).filter(l => /^(OPEN|IMPEDIMENT)$/i.test(String(l[iSt] || ''))).map(l => [String(l[iSt] || '').toUpperCase(), String(l[iSet] || ''), String(l[iR] || '')]);
   return { ok: true, linhas, daMemoria: !!rel.daMemoria, lidoEm: rel.lidoEm };
+}
+/* ---------- Guias da folha (0.116.0, fase 1: só leitura) ----------
+ * Josué, 13/11 e 16/11/2026 (mapa em mapeamento/guias-fgts-dctfweb.md, desenho em guias-fgts-dctfweb-desenho.md). Partes:
+ *  lista  { ano, mes } = competência → as tarefas FGTS DIGITAL do relatório do mês da meta (o mesmo relatorioSaude de 1 h)
+ *  itens  { ids ≤ 15 } → os três itens do pacote (FGTS Guia, Demonstrativo FGTS, Demonstrativo e-consignado): existe e tem arquivo?
+ *  extrato { ano, mes, empresas ≤ 3 } → o "Valor do FGTS" do Extrato Mensal no portal de documentos do Onvio (aba do Onvio aberta).
+ * Os valores só voltam para a tela: nada disso é guardado (só o caminho das pastas da folha, ids, como já era). */
+let clientesFolhaCache = null;      // { m: Map, em } · lista de clientes da folha do Onvio, 6 h na memória do service worker (ids, código, nome)
+/* 0.118.0 · Guias da folha, fase 2: conferir no FGTS Digital (só leitura; mapa de 16/11/2026, fase 2). A aba do FGTS Digital tem de estar
+ * aberta e logada pelo gov.br com o certificado da ControlTax (o analista escolhe o certificado uma vez); a permissão do site é pedida
+ * na hora, pela tela. Uma empresa por chamada: troca o perfil de procurador para a MATRIZ (o site recusa filial; leva uns 25 s, e só é
+ * feita se o perfil aberto for outro), lê os débitos mensais da competência e soma o principal. Nada é escrito; só números voltam. */
+async function abaFgts() {
+  const l = await chrome.tabs.query({ url: OCF.HOST + '/*' }).catch(() => []);
+  return l.find(t => t.active) || l[0] || null;
+}
+async function naPaginaFgts(tabId, acao, args) {
+  const rodar = () => chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN', args: [NUCLEO_V, acao, args],
+    func: (v, ac, a) => !self.OCF || self.OCF.__v !== v ? { __semNucleo: true } : ac === 'perfil' ? { mesmo: self.OCF.perfilAtualE(a[0]) } : self.OCF.lerNaPagina(a[0], { pausa: a[1] }) });
+  let [res] = await rodar();
+  if (res && res.result && res.result.__semNucleo) {
+    await chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN', files: ['fgts.js'] });
+    await chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN', args: [NUCLEO_V], func: (v) => { if (self.OCF) self.OCF.__v = v; } });
+    [res] = await rodar();
+  }
+  return (res && res.result) || null;
+}
+async function lerFgts(tab, pedidos) {
+  const ok = p => p.escrita ? OCF.escritaPermitida(p.metodo, p.url, p.corpo).ok : p.externo ? OCF.arquivoPermitido(p.url) : OCF.leituraPermitida(p.metodo, p.url, p.corpo == null ? null : p.corpo).ok;
+  if ((pedidos || []).some(p => !ok(p))) throw new Error('pedido ao FGTS Digital fora da lista permitida');
+  return naPaginaFgts(tab.id, 'ler', [pedidos, 400]);
+}
+// comum à conferência e à emissão: permissão, aba, sessão e perfil de procurador da matriz
+async function prepararFgts(msg) {
+  const ano = Number(msg.ano), mes = Number(msg.mes), e = msg.empresa || {}, cnpj = String(e.cnpj || '').replace(/\D/g, '');
+  if (!(ano > 2000 && mes >= 1 && mes <= 12) || cnpj.length !== 14) return { ok: false, erro: 'Empresa ou competência inválida.' };
+  if (!(await chrome.permissions.contains({ origins: [OCF.HOST + '/*'] }).catch(() => false))) return { ok: false, semPermissao: true, erro: 'A extensão ainda não tem permissão para o FGTS Digital.' };
+  const tab = await abaFgts();
+  if (!tab) return { ok: false, semAba: true, erro: 'Abra o FGTS Digital numa aba e entre pelo gov.br com o certificado da ControlTax.' };
+  const matriz = OCF.cnpjMatriz(cnpj), comp = ano + '-' + String(mes).padStart(2, '0');
+  const p0 = await naPaginaFgts(tab.id, 'perfil', [matriz]);
+  if (!(p0 && p0.mesmo)) {
+    const rp = await lerFgts(tab, [OCF.PEDIDOS.perfil(matriz)]); const s1 = semSessaoFgts(rp); if (s1) return s1;
+    const x = rp && rp.resultados && rp.resultados[0];
+    if (!x || x.status !== 200 || (x.dados && x.dados.valido === false)) return { ok: false, erro: 'O FGTS Digital não aceitou o perfil de procurador da matriz' + (x && x.dados && x.dados.mensagem ? ': ' + x.dados.mensagem : x && x.status ? ' (erro ' + x.status + ')' : '') + '. Confira a procuração da empresa.' };
+  }
+  return { ok: true, tab, cnpj, matriz, comp, ano, mes };
+}
+const semSessaoFgts = r => r && r.semSessao ? { ok: false, semSessao: true, erro: 'A sessão do FGTS Digital não está aberta: entre pelo gov.br na aba do FGTS Digital.' } : null;
+const dormir = ms => new Promise(r => setTimeout(r, ms));
+async function textoDeB64(b64) {
+  await garantirOffscreen(); let r = null;
+  for (let i = 0; i < 12 && !r; i++) { r = await chrome.runtime.sendMessage({ alvo: 'offscreen', cmd: 'pdfTexto', b64 }).catch(() => null); if (!r) await dormir(250); }
+  return r && r.ok ? String(r.texto || '') : '';
+}
+/* 0.119.0 · Guias da folha, fase 3: emitir a guia MENSAL pela Guia Rápida (Josué, 16/11/2026: "Guia Rápida" e "Mostra a pergunta na extensão";
+ * mapa em mapeamento/fgts-digital-emissao-2026-11-16.md). Só depois da confirmação na tela, uma empresa por vez. Travas: só emite se o valor
+ * mensal da guia bate com o extrato; com guia existente baixa a existente; débito que já tem guia ou guia em processamento = não emite;
+ * alerta COB0027 = no site; perguntas do FGTS Digital voltam para a tela e só seguem com o "sim" do analista. O uuid é um só por emissão,
+ * repetido nas novas tentativas (nunca uma segunda emissão). Os PDFs (guia, demonstrativo e, se houver, o consignado) voltam para a tela,
+ * conferidos pelo conteúdo, e não ficam guardados. */
+async function emitirFgts(msg) {
+  const pr = await prepararFgts(msg); if (!pr.ok) return pr;
+  const { tab, comp, cnpj } = pr;
+  const r = await lerFgts(tab, [OCF.PEDIDOS.rapida(comp)]); const s0 = semSessaoFgts(r); if (s0) return s0;
+  const x = r && r.resultados && r.resultados[0];
+  if (!x || x.status !== 200 || !x.dados) return { ok: false, erro: 'O FGTS Digital não devolveu a guia da competência' + (x && x.negocio ? ': ' + x.negocio.titulo : x && x.status ? ' (erro ' + x.status + ')' : '') + '.' };
+  const ags = x.dados.agrupamentos.filter(a => /mensal/i.test(a.tipo));
+  if (!ags.length) return { ok: false, erro: 'Não há guia mensal a emitir nesta competência no FGTS Digital.' };
+  if (ags.length > 1) return { ok: false, precisaSite: true, erro: 'A competência tem mais de um agrupamento mensal: emita esta no próprio FGTS Digital.' };
+  const a = ags[0], cmp = OCF.comparar(typeof msg.esperado === 'number' ? msg.esperado : null, a.mensal);
+  if (cmp.bate !== true) return { ok: false, naoBate: true, mensal: a.mensal, diferenca: cmp.diferenca, erro: 'O FGTS mensal da guia não bate com o extrato (diferença de R$ ' + String(cmp.diferenca == null ? '?' : cmp.diferenca.toFixed(2)).replace('.', ',') + '): não emiti.' };
+  if (a.emProcessamento) return { ok: false, erro: 'O FGTS Digital diz que já há uma guia desta competência sendo gerada: confira na Consulta de Guias antes de emitir de novo.' };
+  if (a.guiaExistente) {
+    const rv = await lerFgts(tab, [OCF.PEDIDOS.existente(a.valorFiltro)]); const s1 = semSessaoFgts(rv); if (s1) return s1;
+    const v = rv && rv.resultados && rv.resultados[0];
+    if (!(v && v.dados && v.dados.valor)) return { ok: false, precisaSite: true, erro: 'Há uma guia desta competência, mas os débitos mudaram: confira no FGTS Digital.' };
+    const arquivos = await baixarArquivosGuia(tab, a.guiaExistente, a.contemConsignado, comp, cnpj);
+    return { ok: true, jaExistia: true, numero: a.guiaExistente.numero, pagamentoAte: a.pagamentoAte, mensal: a.mensal, totalGuia: a.totalGuia, arquivos };
+  }
+  if (a.temGuiasRelacionadas) return { ok: false, precisaSite: true, erro: 'Os débitos desta competência já têm guia emitida: veja na Consulta de Guias do FGTS Digital (a extensão não emite de novo).' };
+  const bloqueio = a.alertas.find(al => al.codigo === 'COB0027');
+  if (bloqueio) return { ok: false, precisaSite: true, erro: 'O FGTS Digital mostrou um aviso que precisa ser tratado no site: ' + (bloqueio.titulo || bloqueio.codigo) + '.' };
+  if (a.confirmacoes.length && msg.confirmado !== true) return { ok: true, perguntas: a.confirmacoes, alertas: a.alertas.map(al => al.titulo || al.codigo), mensal: a.mensal, pagamentoAte: a.pagamentoAte };
+  const rc = await lerFgts(tab, [OCF.PEDIDOS.confirma()]); const s2 = semSessaoFgts(rc); if (s2) return s2;
+  const c = rc && rc.resultados && rc.resultados[0];
+  if (!c || c.status < 200 || c.status >= 300) return { ok: false, erro: 'O FGTS Digital não confirmou o acesso para emitir' + (c && c.negocio ? ': ' + c.negocio.titulo : '') + '.' };
+  const uuid = crypto.randomUUID(); let guia = null, espera = 2000;
+  for (let i = 0; i < 12 && !guia; i++) {
+    const rg = await lerFgts(tab, [OCF.PEDIDOS.gerar(a.valorFiltro, uuid, i === 0)]); const s3 = semSessaoFgts(rg); if (s3) return Object.assign(s3, i ? { emProcessamento: true } : {});
+    const g = rg && rg.resultados && rg.resultados[0];
+    if (!g || g.recusado) return { ok: false, erro: 'A extensão recusou o pedido de emissão (' + ((g && g.recusado) || 'sem resposta') + ').' };
+    if (g.negocio) return { ok: false, erro: 'O FGTS Digital recusou a emissão: ' + (g.negocio.titulo || g.negocio.codigo) + (g.negocio.descricao ? ' (' + g.negocio.descricao + ')' : '') + '.', emProcessamento: i > 0 };
+    if (g.status >= 400 || g.status === 0) return { ok: false, erro: 'O FGTS Digital não emitiu (erro ' + g.status + ').', emProcessamento: i > 0 };
+    if (g.dados && g.dados.gerou && g.dados.guia && g.dados.guia.numero) guia = g.dados.guia;
+    else { await dormir(espera); espera = Math.min(30000, espera + 2000); }
+  }
+  if (!guia) return { ok: false, emProcessamento: true, erro: 'A guia ainda estava sendo gerada depois de alguns minutos. A extensão não emite de novo: confira na Consulta de Guias do FGTS Digital.' };
+  const arquivos = await baixarArquivosGuia(tab, guia, a.contemConsignado, comp, cnpj);
+  return { ok: true, emitida: true, numero: guia.numero, pagamentoAte: a.pagamentoAte, mensal: a.mensal, totalGuia: a.totalGuia, arquivos };
+}
+// a guia, o demonstrativo (Detalhe da Guia Emitida) e, se houver, o consignado. O tipo é conferido pelo CONTEÚDO do PDF, nunca pelo nome.
+async function baixarArquivosGuia(tab, guia, consignado, comp, cnpj) {
+  const [ano, mes] = comp.split('-'), mm = mes + '-' + ano, out = [];
+  const numero = String(guia.numero || '').replace(/\D/g, '').replace(/^0+/, '');
+  const confere = async (b64, tipo) => {
+    const t = (await textoDeB64(b64)).replace(/\s+/g, ' ');
+    if (!t) return { confere: false, motivo: 'não consegui ler o texto do PDF' };
+    if (tipo === 'guia') return /guia do fgts digital/i.test(t) && t.includes(cnpj.slice(0, 8)) && t.includes(mes + '/' + ano) ? { confere: true } : { confere: false, motivo: 'o PDF não parece a guia do FGTS desta empresa e competência' };
+    if (tipo === 'detalhe') return /detalhe da guia emitida/i.test(t) ? { confere: true } : { confere: false, motivo: 'o PDF não é o "Detalhe da Guia Emitida"' };
+    return /consignad/i.test(t) ? { confere: true } : { confere: false, motivo: 'o PDF não parece o demonstrativo do consignado' };
+  };
+  try {
+    const rp = await lerFgts(tab, [OCF.PEDIDOS.pdfGuia(guia.linkPdf || ('/arrecadacao/emissao/reimprimirGuia/' + numero))]);
+    const pg = rp && rp.resultados && rp.resultados[0];
+    if (pg && pg.dados) out.push(Object.assign({ tipo: 'guia', nome: mm + ' DARF FGTS.pdf', b64: pg.dados.b64 }, await confere(pg.dados.b64, 'guia')));
+    else out.push({ tipo: 'guia', nome: mm + ' DARF FGTS.pdf', erro: 'Não consegui baixar a guia.' });
+    for (const [qual, tipo, nome] of [['detalhe', 'detalhe', mm + ' DEMONSTRATIVO FGTS.pdf']].concat(consignado ? [['consignado', 'consignado', mm + ' DEMONSTRATIVO E-CONSIGNADO.pdf']] : [])) {
+      const uuid = crypto.randomUUID(); let url = '', espera = 2000;
+      for (let i = 0; i < 10 && !url; i++) {
+        const rr = await lerFgts(tab, [OCF.PEDIDOS.relatorio(qual, numero, uuid, i === 0)]);
+        const x = rr && rr.resultados && rr.resultados[0];
+        if (!x || x.status >= 400 || x.negocio) break;
+        if (x.dados && x.dados.gerou && x.dados.url) url = x.dados.url; else { await dormir(espera); espera = Math.min(30000, espera + 2000); }
+      }
+      if (!url) { out.push({ tipo, nome, erro: 'O FGTS Digital não gerou o ' + (tipo === 'detalhe' ? 'demonstrativo' : 'demonstrativo do consignado') + ' a tempo.' }); continue; }
+      const ra = await lerFgts(tab, [OCF.PEDIDOS.arquivo(url)]); const ar = ra && ra.resultados && ra.resultados[0];
+      if (ar && ar.dados) out.push(Object.assign({ tipo, nome, b64: ar.dados.b64 }, await confere(ar.dados.b64, tipo)));
+      else out.push({ tipo, nome, erro: 'Não consegui baixar o ' + (tipo === 'detalhe' ? 'demonstrativo' : 'demonstrativo do consignado') + '.' });
+    }
+  } finally { fecharOffscreen(); }
+  return out;
+}
+async function conferirFgts(msg) {
+  const pr = await prepararFgts(msg); if (!pr.ok) return pr;
+  const { tab, cnpj, matriz, comp } = pr, sessao = semSessaoFgts;
+  const itens = []; let total = null;
+  for (let pg = 1; pg <= 50; pg++) {
+    const r = await lerFgts(tab, [OCF.PEDIDOS.debitos(comp, pg)]); const s2 = sessao(r); if (s2) return s2;
+    const x = r && r.resultados && r.resultados[0];
+    if (!x) return { ok: false, erro: 'A aba do FGTS Digital não respondeu.' };
+    if (x.negocio && /COB0003/.test(x.negocio.codigo)) break;                 // "Não há débitos de interesse"
+    if (x.status !== 200 || !x.dados) return { ok: false, erro: 'O FGTS Digital não devolveu os débitos' + (x.negocio ? ': ' + x.negocio.titulo : x.status ? ' (erro ' + x.status + ')' : '') + '.' };
+    total = x.dados.qtdeTotal; itens.push(...x.dados.itens);
+    if (!x.dados.itens.length || (total && itens.length >= total)) break;
+  }
+  const soma = OCF.somarDebitos(itens, cnpj), esperado = typeof msg.esperado === 'number' ? msg.esperado : null;
+  const cmp = OCF.comparar(esperado, soma.principal);
+  return { ok: true, competencia: comp, matriz: matriz.slice(-6), debitos: soma.quantos, principal: soma.principal, encargos: soma.encargos, total: soma.total,
+    semGuia: soma.semGuia, guias: soma.guias, filial: soma.filial, esperado, bate: soma.quantos ? cmp.bate : null, diferenca: soma.quantos ? cmp.diferenca : null };
+}
+async function guiasFolha(msg, sender) {
+  const parte = String(msg.parte || ''), ano = Number(msg.ano), mes = Number(msg.mes);
+  if (parte === 'fgts') return conferirFgts(msg);      // 0.118.0
+  if (parte === 'emitir') {      // 0.119.0: escrita no FGTS Digital, só pedida por uma tela da extensão
+    if (!(sender && sender.url && sender.url.startsWith(chrome.runtime.getURL('app/')))) return { ok: false, erro: 'A emissão só pode ser pedida pela tela da extensão.' };
+    return emitirFgts(msg);
+  }
+  if (parte === 'extrato') {
+    if (!(ano > 2000 && mes >= 1 && mes <= 12)) return { ok: false, erro: 'Competência inválida.' };
+    const empresas = (Array.isArray(msg.empresas) ? msg.empresas : []).slice(0, 3).map(e => ({ code: String(e && e.code || '').slice(0, 20), nome: String(e && e.nome || '').slice(0, 120), cnpj: String(e && e.cnpj || '').replace(/\D/g, '').slice(0, 14) }));
+    let f;
+    try { f = emSegundoPlano((await escolherFetcher()).f); }
+    catch (e) { return { ok: false, semOnvio: true, erro: 'Abra o Portal do Cliente do Onvio numa aba, logado com o acesso do escritório, para ler os extratos.' }; }
+    const pausa = ms => new Promise(r => setTimeout(r, ms)), comp = ano + '-' + String(mes).padStart(2, '0'), porCodigo = {};
+    try {
+      if (!clientesFolhaCache || Date.now() - clientesFolhaCache.em > 6 * 3600e3) clientesFolhaCache = { m: await OC.lerClientesFolha(f, pausa), em: Date.now() };
+      const { folhaPastas } = await chrome.storage.local.get('folhaPastas'), novos = {};
+      for (const e of empresas) {
+        const k = e.cnpj || e.code || e.nome;
+        try {
+          const r = await OC.extratoDaCompetencia(f, e, comp, { pausa, textoPdf: textoDoPdf, clientes: clientesFolhaCache.m, folhaPastas: Object.assign({}, folhaPastas, novos) });
+          if (r.novoCaminho && r.cliente) novos[r.cliente] = r.novoCaminho;
+          porCodigo[k] = r.ok ? { ok: true, fgts: r.fgts, aprendiz: r.aprendiz, rescisorio: r.rescisorio, extratos: r.extratos.map(x => ({ calculo: x.calculo, fgts: x.fgts, aprendiz: x.aprendiz, filial: x.filial })), semValor: r.semValor } : { ok: false, motivo: r.motivo };
+        } catch (er) {
+          if (er && er.auth) return { ok: false, erro: 'A sessão do Onvio acabou: entre de novo no Portal do Cliente.', porCodigo };
+          porCodigo[k] = { ok: false, motivo: 'Não consegui ler: ' + String(er && er.message || er).slice(0, 90) };
+        }
+      }
+      if (Object.keys(novos).length) await guardarFolha({ pastas: novos });
+    } finally { fecharOffscreen(); }
+    return { ok: true, porCodigo };
+  }
+  const tab = await tabDoGestta(sender);
+  if (!tab) return { ok: false, semAba: true, erro: 'Abra o Gestta numa aba, já logado.' };
+  const p = await perfilGestta(tab); if (!p.ok) return p;
+  const pf = p.pf;
+  if (parte === 'lista') {
+    if (!(ano > 2000 && mes >= 1 && mes <= 12)) return { ok: false, erro: 'Competência inválida.' };
+    const m = OCG.mesDaMeta(ano, mes), rel = await relatorioSaude(tab, m.ano, m.mes, !!msg.forcar);
+    if (!rel.ok) return { ok: false, erro: rel.erro || 'O relatório do Gestta não veio.' };
+    let tarefas = OCG.tarefasDoRelatorio(rel.colunas, OCG.soSetoresPermitidos(rel.colunas, rel.linhas));
+    if (!pf.total) { const eu = String(pf.nome || '').trim().toLowerCase(); tarefas = eu ? tarefas.filter(t => t.responsavel.trim().toLowerCase() === eu) : []; }
+    return { ok: true, tarefas: OCG.tarefasGuiaFgts(tarefas), perfil: { nome: pf.nome, total: pf.total }, daMemoria: !!rel.daMemoria, lidoEm: new Date().toISOString() };
+  }
+  if (parte === 'itens') {
+    const ids = [...new Set((Array.isArray(msg.ids) ? msg.ids : []).map(String).filter(x => /^[0-9a-f]{24}$/i.test(x)))].slice(0, 15), porTarefa = {};
+    for (const id of ids) {
+      const { r } = await lerGestta([OCG.PEDIDOS.tarefa({ id })], { tab });
+      const x = r && r.resultados && r.resultados[0];
+      if (!x || x.status === 401) return { ok: false, erro: 'A sessão do Gestta acabou: faça login de novo na aba.', porTarefa };
+      porTarefa[id] = x.status === 200 && x.dados ? OCG.itensGuiaFgts(x.dados) : null;
+    }
+    return { ok: true, porTarefa };
+  }
+  return { ok: false, erro: 'Parte desconhecida.' };
 }
 async function gesttaSaude(msg, sender) {
   const tab = await tabDoGestta(sender);
@@ -486,7 +738,7 @@ async function gesttaSaude(msg, sender) {
       if (!rel.daMemoria) daMemoria = false;
       colunas = colunas || rel.colunas;
       const ids = new Set(linhas.map(l => l[0]));
-      linhas = linhas.concat((rel.linhas || []).filter(l => !ids.has(l[0])));
+      linhas = linhas.concat(OCG.soSetoresPermitidos(rel.colunas, rel.linhas).filter(l => !ids.has(l[0])));      // 0.117.0: só os três setores
     }
     // sem acesso total: só as tarefas da pessoa (responsável ou quem concluiu)
     if (!pf.total) {
@@ -630,12 +882,21 @@ async function gesttaAcao(msg, sender) {
   // tirar da lista de erros só pelo gesttaTirar, que relê a fila e confere cada documento antes
   if (msg.acao === 'tirarDaLista') return { ok: false, erro: 'Ação recusada: tirar da lista passa pela conferência dos envios.' };
   if (['tirarPasta', 'pasta', 'templateSalvar'].includes(msg.acao)) return { ok: false, erro: 'Ação recusada: a pasta do template passa pela conferência dos envios.' };   // 0.100.4
+  if (['incluirTemplate', 'tirarTemplate'].includes(msg.acao)) return { ok: false, erro: 'Ação recusada: o template da empresa passa pela conferência do vínculo.' };   // 0.121.0
   const p = OCG.pedidoAcao(msg);
   if (p.erro) return { ok: false, erro: p.erro.charAt(0).toUpperCase() + p.erro.slice(1) + '.' };
   const perm = OCG.escritaPermitida(p.metodo, p.url, p.corpo);
   if (!perm.ok) return { ok: false, erro: 'A extensão recusou a ação (' + perm.motivo + ').' };
   const tab = await tabDoGestta(sender);
   if (!tab) return { ok: false, erro: 'Abra o Gestta numa aba, já logado.' };
+  // 0.121.0: excluir o arquivo do item relê a tarefa na hora: só com a tarefa aberta e o item com arquivo
+  if (msg.acao === 'excluirArquivo') {
+    const { r } = await lerGestta([OCG.PEDIDOS.arquivoDoItem({ id: msg.id, documento: msg.documento })], { tab });
+    const a = r && r.resultados && r.resultados[0];
+    if (!a || a.status !== 200 || !a.dados) return { ok: false, erro: a && a.status === 401 ? 'A sessão do Gestta acabou: faça login de novo na aba e tente outra vez.' : 'Não consegui reler a tarefa no Gestta: nada foi excluído.' };
+    if (['DONE', 'IGNORED', 'DISCONSIDERED'].includes(String(a.dados.status).toUpperCase())) return { ok: false, erro: 'A tarefa está concluída ou desconsiderada: reabra no Gestta antes de excluir o arquivo. Nada foi excluído.' };
+    if (!a.dados.temArquivo) return { ok: false, erro: 'Este item já está sem arquivo no Gestta: nada foi excluído.' };
+  }
   let x = null;
   try {
     const res = await naPaginaGestta(tab.id, 'agir', [p]);
@@ -683,6 +944,72 @@ async function gesttaPasta(msg, sender) {
 // 0.100.4: tirar a pasta de um template montada fora da empresa 9999 (Josué, 12/11/2026; mapeado no mesmo dia: DELETE
 // admin/company/document/integration/documents/{id do template}, 204, só aquele template; depois o Salvar do template, como a tela).
 // Relê o template na hora e só tira se ele ainda tem pasta e ela não é da 9999 (com a 9999 conhecida); confere no fim.
+// 0.121.0 (Josué, 16/11/2026: "pode fazer"): ver o arquivo de um item dentro da extensão. O endereço assinado (S3, 600 s) é lido do
+// detalhe da tarefa na hora, usado só aqui e descartado; à tela vão só o nome, o tipo e o conteúdo (até 15 MB), que ficam na memória dela.
+// Nunca pelo visualizador do Google (o endereço sairia para fora). Pede a permissão do S3 (us-east-1), que a tela solicita no clique.
+const S3_ORIGEM = 'https://*.s3.us-east-1.amazonaws.com/*';
+async function gesttaArquivo(msg, sender) {
+  if (!String((sender && sender.url) || '').startsWith(chrome.runtime.getURL('app/'))) return { ok: false, erro: 'Só a tela das Tarefas do Gestta pode pedir.' };
+  const id = String(msg.id || ''), doc = String(msg.documento || '');
+  if (!/^[0-9a-f]{24}$/i.test(id) || !/^[0-9a-f]{24}$/i.test(doc)) return { ok: false, erro: 'Tarefa ou item inválido.' };
+  let temPerm = false; try { temPerm = await chrome.permissions.contains({ origins: [S3_ORIGEM] }); } catch (e) { temPerm = false; }
+  if (!temPerm) return { ok: false, semPermissao: true, erro: 'Falta a permissão para abrir os arquivos do Gestta (servidor de arquivos da Amazon).' };
+  const tab = await tabDoGestta(sender);
+  if (!tab) return { ok: false, erro: 'Abra o Gestta numa aba, já logado.' };
+  const { r } = await lerGestta([OCG.PEDIDOS.arquivoDoItem({ id, documento: doc })], { tab });
+  const a = r && r.resultados && r.resultados[0];
+  if (!a || a.status !== 200 || !a.dados) return { ok: false, erro: a && a.status === 401 ? 'A sessão do Gestta acabou: faça login de novo na aba.' : 'Não consegui ler a tarefa no Gestta.' };
+  if (!a.dados.temArquivo) return { ok: false, erro: 'Este item está sem arquivo no Gestta.' };
+  if (a.dados.foraDoS3 || !OCG.arquivoS3(a.dados.url)) return { ok: false, erro: 'O arquivo está num endereço que a extensão não reconhece: abra no Gestta.' };
+  let u = a.dados.url; a.dados.url = null;
+  try {
+    const resp = await fetch(u, { credentials: 'omit', redirect: 'error', cache: 'no-store' });
+    u = null;
+    if (!resp.ok) return { ok: false, erro: resp.status === 403 ? 'O endereço do arquivo venceu: tente de novo.' : 'O servidor de arquivos respondeu ' + resp.status + '.' };
+    const tam = Number(resp.headers.get('content-length')) || 0;
+    if (tam > 15 * 1024 * 1024) return { ok: false, erro: 'O arquivo passa de 15 MB: abra no Gestta.' };
+    const buf = new Uint8Array(await resp.arrayBuffer());
+    if (buf.length > 15 * 1024 * 1024) return { ok: false, erro: 'O arquivo passa de 15 MB: abra no Gestta.' };
+    let bin = ''; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+    const tipo = String(resp.headers.get('content-type') || '').split(';')[0].trim().toLowerCase().slice(0, 100);
+    return { ok: true, nome: String(a.dados.nome || 'arquivo').slice(0, 200), tipo, tamanho: buf.length, base64: btoa(bin) };
+  } catch (e) { return { ok: false, erro: 'Não consegui baixar o arquivo (' + String(e && e.message || e).slice(0, 80) + ').' }; }
+  finally { u = null; }
+}
+// 0.121.0 (Josué, 16/11/2026: "pode fazer"; mapeado na 985): incluir ou tirar UM template de tarefa de UMA empresa. Só a coordenação
+// (acesso total). Relê na hora os templates da empresa: incluir só se ainda não está; tirar só o vínculo daquele template (o id do
+// vínculo vem da leitura, nunca da tela). Depois relê e confere. Nada é guardado.
+async function gesttaTemplateEmpresa(msg, sender) {
+  if (!String((sender && sender.url) || '').startsWith(chrome.runtime.getURL('app/'))) return { ok: false, erro: 'Ação recusada: só a tela das Tarefas do Gestta pode pedir.' };
+  const cliente = String(msg.cliente || ''), template = String(msg.template || ''), acao = msg.acao === 'tirar' ? 'tirar' : msg.acao === 'incluir' ? 'incluir' : '';
+  if (!acao || !/^[0-9a-f]{24}$/i.test(cliente) || !/^[0-9a-f]{24}$/i.test(template)) return { ok: false, erro: 'Empresa, template ou ação inválida.' };
+  const tab = await tabDoGestta(sender);
+  if (!tab) return { ok: false, erro: 'Abra o Gestta numa aba, já logado.' };
+  const pe = await perfilGestta(tab);
+  if (!pe.ok) return { ok: false, erro: pe.erro || 'Não consegui saber quem está logado no Gestta.' };
+  if (!pe.pf.total) return { ok: false, erro: 'Incluir ou tirar template de uma empresa é só da coordenação (acesso total no Gestta).' };
+  const ler = async () => { const { r } = await lerGestta([OCG.PEDIDOS.vinculosEmpresa({ cliente })], { tab }); const x = r && r.resultados && r.resultados[0]; return x && x.status === 200 && x.dados ? x.dados.itens : null; };
+  const antes = await ler();
+  if (!antes) return { ok: false, erro: 'Não consegui ler os templates da empresa no Gestta: nada foi mudado.' };
+  const v = antes.find(x => x.template === template);
+  if (acao === 'incluir' && v) return { ok: true, jaEstava: true };
+  if (acao === 'tirar' && !v) return { ok: true, jaEstava: true };
+  const p = OCG.pedidoAcao(acao === 'incluir' ? { acao: 'incluirTemplate', cliente, template } : { acao: 'tirarTemplate', vinculo: v.id });
+  if (p.erro) return { ok: false, erro: p.erro };
+  const perm = OCG.escritaPermitida(p.metodo, p.url, p.corpo);
+  if (!perm.ok) return { ok: false, erro: 'A extensão recusou a ação (' + perm.motivo + ').' };
+  let x = null;
+  try { const res = await naPaginaGestta(tab.id, 'agir', [p]); x = res && res.result; }
+  catch (e) { return { ok: false, erro: 'A aba do Gestta não respondeu (' + String(e && e.message || e).slice(0, 80) + ').' }; }
+  if (!x || !x.ok) {
+    const st = x && x.status;
+    return { ok: false, status: st, erro: x && x.recusado ? 'A extensão recusou a ação (' + x.recusado + ').' : st === 401 ? 'A sessão do Gestta acabou: faça login de novo na aba.' : st === 403 ? 'Seu acesso do Gestta não permite mudar os templates desta empresa.' : 'O Gestta não aceitou (' + ((x && x.erro) || 'sem resposta') + ').' };
+  }
+  clientesTplCache.delete(template); salvarMemo();
+  const depois = await ler();
+  const confere = depois ? (acao === 'incluir') === depois.some(y => y.template === template) : null;
+  return { ok: true, confere };
+}
 async function gesttaTirarPasta(msg, sender) {
   if (!String((sender && sender.url) || '').startsWith(chrome.runtime.getURL('app/'))) return { ok: false, erro: 'Ação recusada: só a tela das Tarefas do Gestta pode pedir.' };
   const t = String(msg.template || '');
@@ -1816,10 +2143,13 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       else if (msg.cmd === 'gesttaTirar') { await memoriaPronta; reply(await gesttaTirar(msg, sender)); }
       else if (msg.cmd === 'gesttaFechamento') { await memoriaPronta; reply(await gesttaFechamento(msg, sender)); }
       else if (msg.cmd === 'gesttaSaude') { await memoriaPronta; reply(await gesttaSaude(msg, sender)); }
+      else if (msg.cmd === 'guiasFolha') { await memoriaPronta; reply(await guiasFolha(msg, sender)); }
       else if (msg.cmd === 'gesttaSetores') { await memoriaPronta; reply(await gesttaSetores(msg, sender)); }
       else if (msg.cmd === 'gesttaTarefa') { await memoriaPronta; reply(await gesttaTarefa(msg, sender)); }
       else if (msg.cmd === 'gesttaHistorico') { await memoriaPronta; reply(await gesttaHistorico(msg, sender)); }
       else if (msg.cmd === 'gesttaAcao') { reply(await gesttaAcao(msg, sender)); }
+      else if (msg.cmd === 'gesttaArquivo') { reply(await gesttaArquivo(msg, sender)); }
+      else if (msg.cmd === 'gesttaTemplateEmpresa') { await memoriaPronta; reply(await gesttaTemplateEmpresa(msg, sender)); }
       else if (msg.cmd === 'irPara') { reply(await irPara(msg.destino)); }
       else if (msg.cmd === 'abrirConfig') { reply(await abrirGuiaConfig(msg.params)); }
       else if (msg.cmd === 'fecharPainel') { if (sender.tab && sender.tab.id != null) await mensagemParaPainel(sender.tab.id, 'fechar').catch(() => {}); reply({ ok: true }); }
@@ -2408,7 +2738,6 @@ function hubCancelarEnvio() {
   hubCancelar = true;
   return { ok: true };
 }
-const dormir = ms => new Promise(r => setTimeout(r, ms));
 async function esperarAte(f, ms, passo) { const fim = Date.now() + ms; for (;;) { try { if (await f()) return true; } catch (e) { if (e && e.cliente) throw e; /* ainda não */ } if (Date.now() >= fim || hubCancelar) return false; await dormir(passo || 1500); } }
 // Abre uma aba sem tirar o foco (numa janela normal; sem janela, numa janela minimizada) e espera carregar.
 async function abrirEmSegundoPlano(url) {

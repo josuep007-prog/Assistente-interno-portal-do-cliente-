@@ -3428,6 +3428,61 @@
     pessoas.forEach(p => { if (p.bloco != null) { p.contribuinte = FOLHA_CONTRIB_VINC.test(p.vinculo) || FOLHA_CONTRIB_EVT.test(p.bloco); if (p.contribuinte) p.vinculo = vinculoContribuinte(p.vinculo, p.bloco); delete p.bloco; } });
     return { competencia, pessoas };
   }
+  /* ----- Guias da folha (0.116.0, Josué 13/11 e 16/11/2026; mapa em mapeamento/guias-fgts-dctfweb.md) -----
+   * O valor esperado da guia do FGTS sai do Extrato Mensal do Domínio publicado no portal de documentos (o mesmo caminho da folha mensal).
+   * Bloco "FGTS, PIS e ISS" da última página: "Valor do FGTS" (= "Valor a recolher" da guia mensal), "Valor do FGTS Aprendiz" e
+   * "Valor FGTS Rescisório" (guia própria, não soma com a mensal). Os valores só passam pela memória: nunca são guardados. */
+  const VALOR_BR = '(\\d{1,3}(?:\\.\\d{3})*,\\d{2}|\\d+,\\d{2})';
+  const numBR = t => { const n = Number(String(t || '').replace(/\./g, '').replace(',', '.')); return isFinite(n) ? n : null; };
+  // o último valor depois do rótulo (os totais ficam no fim do extrato); null quando o rótulo não aparece
+  function ultimoValor(texto, rotulo) {
+    const re = new RegExp(rotulo + '\\s*:?\\s*(?:R\\$\\s*)?' + VALOR_BR, 'gi'); let m, v = null;
+    while ((m = re.exec(texto))) v = numBR(m[1]);
+    return v;
+  }
+  function valoresFgtsDoExtrato(texto) {
+    const t = String(texto || '');
+    const cm = t.match(/compet[eê]ncia\s*:?\s*(0?[1-9]|1[0-2])\s*\/\s*(\d{4})/i), cn = t.match(/cnpj\s*:?\s*(\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2})/i);
+    return {
+      competencia: cm ? cm[2] + '-' + String(cm[1]).padStart(2, '0') : '',
+      cnpj: cn ? cn[1].replace(/\D/g, '') : '',
+      calculo: tipoCalculo(t),
+      fgts: ultimoValor(t, 'valor\\s+do\\s+fgts(?!\\s*(?:aprendiz|resc))'),
+      aprendiz: ultimoValor(t, 'valor\\s+do\\s+fgts\\s+aprendiz'),
+      rescisorio: ultimoValor(t, 'valor\\s+(?:do\\s+)?fgts\\s+rescis[oó]rio')
+    };
+  }
+  // O Extrato Mensal de UMA empresa numa competência ('AAAA-MM'). alvo: { code, nome, cnpj } do Gestta; ctx: { pausa, textoPdf,
+  // clientes (Map do lerClientesFolha), folhaPastas }. Acha o cliente pelo código (depois pelo nome), as pastas do extrato e lê só os PDFs
+  // daquela competência (pelo nome do arquivo ou pela data de publicação). Confere a competência e o CNPJ (raiz) no próprio texto.
+  async function extratoDaCompetencia(fetcher, alvo, competencia, ctx) {
+    const c = ctx || {}, clientes = [...((c.clientes && c.clientes.values) ? c.clientes.values() : [])];
+    const cod = String((alvo && alvo.code) || '').replace(/^0+/, ''), nomeA = semAcento((alvo && alvo.nome) || '').replace(/\s+/g, ' ').trim();
+    const cli = clientes.find(x => cod && String(x.codigo).replace(/^0+/, '') === cod) || clientes.find(x => nomeA && semAcento(x.nome).replace(/\s+/g, ' ').trim() === nomeA);
+    if (!cli) return { ok: false, motivo: 'Empresa não achada na lista de clientes da folha do Onvio (pelo código nem pelo nome).' };
+    let pc = (c.folhaPastas || {})[cli.id], novoCaminho = null;
+    if (!pc || !pc.pastas || !pc.pastas.length || pc.v !== FOLHA_PASTAS_V) { const r = await pastasDaFolha(fetcher, [cli.id], c.pausa); pc = novoCaminho = { em: Date.now(), pastas: r.pastas, via: r.usado, v: FOLHA_PASTAS_V }; }
+    if (!pc.pastas.length) return { ok: false, motivo: 'Nenhuma pasta com o Extrato Mensal no portal de documentos.', cliente: cli.id, novoCaminho };
+    const [ano, mes] = String(competencia).split('-').map(Number), depois = (k) => { const d = new Date(ano, mes - 1 + k, 1); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); };
+    const itens = [];
+    for (const pa of pc.pastas) { itens.push(...(await filhosDe(fetcher, pa.tipo, pa.id, c.pausa)).filter(x => extratoNaPasta(x, pa.ext)).map(x => Object.assign({ pasta: pa.id }, x))); }
+    const candidatos = itens.filter(x => { const cn = competenciaDoNome(x.name); if (cn) return cn === competencia; const cd = (dataIso(String(x.createdDate || '')) || '').slice(0, 7); return cd >= competencia && cd <= depois(2); })
+      .sort((a, b) => String(b.createdDate || '').localeCompare(String(a.createdDate || ''))).slice(0, 6);
+    if (!candidatos.length) return { ok: false, motivo: 'Nenhum Extrato Mensal da competência ' + competencia.slice(5) + '/' + competencia.slice(0, 4) + ' publicado.', cliente: cli.id, novoCaminho };
+    const extratos = []; let outraEmpresa = 0;
+    for (const x of candidatos) {
+      if (c.pausa) await c.pausa(300);
+      const v = valoresFgtsDoExtrato(await c.textoPdf(URL_DOCUMENTO(x.containerId || x.parentId || x.pasta, x.id)));
+      if (v.competencia !== competencia) continue;
+      const cnpjA = String((alvo && alvo.cnpj) || '').replace(/\D/g, '');
+      if (cnpjA && v.cnpj && v.cnpj.slice(0, 8) !== cnpjA.slice(0, 8)) { outraEmpresa++; continue; }
+      extratos.push({ doc: String(x.id), calculo: v.calculo, fgts: v.fgts, aprendiz: v.aprendiz, rescisorio: v.rescisorio, filial: !!(cnpjA && v.cnpj && v.cnpj !== cnpjA) });
+    }
+    if (!extratos.length) return { ok: false, motivo: outraEmpresa ? 'O extrato achado é de outro CNPJ: confira a pasta no portal.' : 'Nenhum extrato com a competência ' + competencia.slice(5) + '/' + competencia.slice(0, 4) + ' no texto.', cliente: cli.id, novoCaminho };
+    const soma = k => { const l = extratos.map(e => e[k]).filter(n => typeof n === 'number'); return l.length ? Math.round(l.reduce((a, b) => a + b, 0) * 100) / 100 : null; };
+    return { ok: true, cliente: cli.id, novoCaminho, extratos, fgts: soma('fgts'), aprendiz: soma('aprendiz'), rescisorio: soma('rescisorio'),
+      semValor: extratos.every(e => e.fgts == null) };
+  }
   // Lê os extratos novos de todas as empresas. ctx: { pausa, textoPdf(url) -> texto, folhaLidos {docId: competência}, folhaPastas {clienteId: {...}}, hoje }.
   async function lerFolhaContribuintes(fetcher, ctx) {
     const hoje = ctx.hoje || new Date(), minima = competenciaMinima(hoje, FOLHA_MESES), minimaQuadro = competenciaMinima(hoje, FOLHA_MESES_QUADRO), lidos = Object.assign({}, ctx.folhaLidos || {}), pastasCache = Object.assign({}, ctx.folhaPastas || {});
@@ -4112,5 +4167,5 @@
     return resultados;
   }
 
-  g.OC = { hubAlimenta, hubAlvo, hubDiagnostico, hubUrlValida, hubEnvioPainel, hubEnvioEstado, hubTarefaDoConjunto, hubParaReenviar, testarEmpregadosEmpresa, extratoContribuintes, lerFolhaContribuintes, resumoFolha, tipoCalculo, competenciaMinima, FOLHA_V, FOLHA_MESES_QUADRO, testarFolhaEmpresa, PASTA_PESSOAL, testarFolha, competenciaDoNome, FOLHA_COLUNAS, negritoUnicode, aplicarDestaques, ehEscritorioProprio, sondarEmpregados, montarLoteHub, HUB_CATEGORIAS, tabelaAnaliseSolicitacoes, tabelaAnaliseEquipe, hubPlano, hubExecutar, hubPartesDe, partirTabela, tabelaLista, tabelaPessoais, tabelaCnd, tabelaNfe, lerEscritorio, lerDocumentos, lerNoticias, slugHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, SETOR_NOMES, setoresVistos, filtrarVisao, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, dentroDoHorario, planoDistribuicaoAuto, acaoConcluir, agruparSugestoes, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, acaoAnalise, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, mensagensProntas, marcadoresPendentes, observacoesFaltantes, avisosResposta, situacaoEquivalente, despersonalizar, previsaoPorEmpresa, lerMovimentadas, soConcluidas, grupoConclusao, meuDia, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
+  g.OC = { valoresFgtsDoExtrato, extratoDaCompetencia, lerClientesFolha, hubAlimenta, hubAlvo, hubDiagnostico, hubUrlValida, hubEnvioPainel, hubEnvioEstado, hubTarefaDoConjunto, hubParaReenviar, testarEmpregadosEmpresa, extratoContribuintes, lerFolhaContribuintes, resumoFolha, tipoCalculo, competenciaMinima, FOLHA_V, FOLHA_MESES_QUADRO, testarFolhaEmpresa, PASTA_PESSOAL, testarFolha, competenciaDoNome, FOLHA_COLUNAS, negritoUnicode, aplicarDestaques, ehEscritorioProprio, sondarEmpregados, montarLoteHub, HUB_CATEGORIAS, tabelaAnaliseSolicitacoes, tabelaAnaliseEquipe, hubPlano, hubExecutar, hubPartesDe, partirTabela, tabelaLista, tabelaPessoais, tabelaCnd, tabelaNfe, lerEscritorio, lerDocumentos, lerNoticias, slugHub, ORIGIN, API, PORTAL, TYPES, TYPE_BY_KEY, FAMILIAS, DEFAULTS, listUrl, collect, search, evaluate, normalize, parseDate, diasUteis, porAnalista, fmtData, gravidade, primeiroTramiteEsc, urlTramites, abaProvavel, porCliente, atualizarSerie, eventos, clienteRespondeu, MOTIVOS, GRUPOS_SIT, grupoSituacao, perfilSetor, filtrarPorSetor, SETOR_NOMES, setoresVistos, filtrarVisao, prazoPrometido, DEPARTAMENTOS, ROT_DEPARTAMENTO, temAcidente, ordemFila, motivoDe, prioridades, dentroDoHorario, planoDistribuicaoAuto, acaoConcluir, agruparSugestoes, ordenarTipos, PARES_TIPO, contarMotivos, acaoDe, progressoPrazo, tendencias, FAIXAS_IDADE, faixaDe, mapaIdade, cargaEscritorio, sugerirDistribuicao, placarDoDia, novoLembrete, adiarLembrete, situacaoLembrete, perfilDaSessao, formatoSessao, perfilDoAcesso, URL_SO_ESCRITORIO, REPETICOES, proximaOcorrencia, concluirLembrete, urlConsulta, detalheDe, tramitesDe, urlDetalhe, camposDetalhe, datasDe, prazoPagamento, verificarAvisos, assuntoPedirConcluir, textoPedirConcluir, URL_CRIAR_GERAL, modeloCriacao, pedidoCriacao, acharCriada, observacoesCliente, traduzirCampo: k => rotulo(k), traduzirValor: (k, v) => valorDe(k, v), admissoesCriticas, escritorioTramitou, porqueGravidade, moldeDeAnexo, urlAnexo, rotaAnexoFixa, leituraAnexoPermitida, arquivosDe, pedeAlgoAoCliente, vereditoResolvida, vencimentosLegais, malUso, CASOS, planoConclusao, acaoAnalise, analisarCaso, analisarCasos, casosSugeridos, ignorarCaso, intencoesDe, variaveisTramite, preencherModelo, modelosPara, mensagensProntas, marcadoresPendentes, observacoesFaltantes, avisosResposta, situacaoEquivalente, despersonalizar, previsaoPorEmpresa, lerMovimentadas, soConcluidas, grupoConclusao, meuDia, ACOES, podeAcao, situacoesTramite, pedidoAcao, urlNovoTramite, urlAnexoTramite, urlResponsavel, urlExpectativa, idDoLocation, escritaPermitida, equipeDe, distribuirPorCliente, avaliarEquipe, analisarEntrega, analisarEntregas, creditarQuemConcluiu, faixaNota, ADMISSAO, diaDe, uteisAte, somaUteis, ymd, normalizarRegras, combinarSettings, LIMITES, urlSonda, assinaturas, assinaturasDiferem };
 })(typeof self !== 'undefined' ? self : this);

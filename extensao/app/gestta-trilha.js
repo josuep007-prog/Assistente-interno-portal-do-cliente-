@@ -94,7 +94,7 @@ export function abrirPainel(lista, i, paraPai, o) {
   if (P && !P.alvo && alvo) fecharPainel();
   // 0.93.0: reaberto na mesma tarefa (a lista foi relida depois de uma ação): fica o que já foi lido, o aviso, o rascunho e a confirmação
   const ant = P && P.lista[P.i], mesma = !!(ant && lista[i] && ant._id === lista[i]._id);
-  P = { lista, i, paraPai, dados: mesma ? P.dados : null, erro: null, carregando: !(mesma && P.dados), alvo, aba, conf: mesma ? P.conf : null, agindo: mesma ? P.agindo : false, aviso: mesma ? P.aviso : null, rasc: mesma ? P.rasc : { com: '' } };
+  P = { lista, i, paraPai, dados: mesma ? P.dados : null, erro: null, carregando: !(mesma && P.dados), alvo, aba, conf: mesma ? P.conf : null, vendo: null, agindo: mesma ? P.agindo : false, aviso: mesma ? P.aviso : null, rasc: mesma ? P.rasc : { com: '' } };
   if (!alvo) {
     let fundo = $('#gt-painel-fundo'), el = $('#gt-painel');
     if (!el) {
@@ -222,6 +222,48 @@ function confirmarArquivos(doc, lista) {
   if (vao.length === 1) return pedirConfirmacao({ msg: { acao: 'documento', documento: doc._id }, arquivo: vao[0], texto: 'Enviar “' + vao[0].name + '” (' + tamanho(vao[0].size) + ') no documento “' + nome + '”?', extra, botao: 'Enviar arquivo', feito: 'Arquivo enviado no Gestta.' });
   pedirConfirmacao({ msg: { acao: 'documento', documento: doc._id }, arquivos: vao, docNome: nome, texto: 'Enviar ' + vao.length + ' arquivos no documento “' + nome + '”? Vão um por vez.', extra, botao: 'Enviar ' + vao.length + ' arquivos', feito: '' });
 }
+// 0.121.0 (Josué, 16/11/2026): ver o arquivo do item dentro da extensão. A permissão do servidor de arquivos (S3 da Amazon, us-east-1)
+// é pedida no próprio clique; o service worker lê o endereço assinado na hora e devolve só o conteúdo, que fica na memória desta tela.
+// Só PDF e imagem (reconhecidos pelos primeiros bytes) abrem aqui; o resto só baixa. Nunca HTML nem SVG dentro da extensão.
+const S3_ORIGEM = 'https://*.s3.us-east-1.amazonaws.com/*';
+export function tipoPelosBytes(u8) {
+  const b = (i) => u8[i], ini = (s) => [...s].every((c, i) => b(i) === c.charCodeAt(0));
+  if (u8.length >= 5 && ini('%PDF-')) return 'application/pdf';
+  if (u8.length >= 8 && b(0) === 0x89 && ini('\x89PNG')) return 'image/png';
+  if (u8.length >= 3 && b(0) === 0xFF && b(1) === 0xD8 && b(2) === 0xFF) return 'image/jpeg';
+  if (u8.length >= 6 && ini('GIF8')) return 'image/gif';
+  if (u8.length >= 12 && ini('RIFF') && String.fromCharCode(b(8), b(9), b(10), b(11)) === 'WEBP') return 'image/webp';
+  return '';
+}
+async function verArquivo(doc) {
+  if (!P || !doc || P.vendo) return;
+  try { if (chrome.permissions && chrome.permissions.request && !(await chrome.permissions.request({ origins: [S3_ORIGEM] }))) { P.aviso = { ok: false, texto: 'Sem a permissão do servidor de arquivos do Gestta a extensão não consegue abrir o arquivo.' }; desenharPainel(); return; } }
+  catch (e) { /* sem a API (testes): o service worker confere de novo */ }
+  const t = P.lista[P.i], meu = P;
+  P.vendo = doc._id; P.aviso = null; desenharPainel();
+  const r = await enviar({ cmd: 'gesttaArquivo', id: t._id, documento: doc._id });
+  if (P !== meu) return;
+  P.vendo = null;
+  if (!(r && r.ok)) { P.aviso = { ok: false, texto: (r && r.erro) || 'O Gestta não respondeu.' }; desenharPainel(); return; }
+  desenharPainel();
+  abrirVisor(r.nome, r.base64);
+}
+function abrirVisor(nome, b64) {
+  const bin = atob(b64 || ''), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  const tipo = tipoPelosBytes(u8), url = URL.createObjectURL(new Blob([u8], { type: tipo || 'application/octet-stream' }));
+  const antes = document.activeElement, v = document.createElement('div');
+  v.className = 'gp-visor'; v.setAttribute('role', 'dialog'); v.setAttribute('aria-modal', 'true'); v.setAttribute('aria-label', 'Arquivo ' + nome);
+  v.innerHTML = '<div class="gp-visor-cx"><header class="gp-visor-cab"><b title="' + esc(nome) + '">' + esc(nome) + '</b><a class="btn btn-sm" id="gp-visor-baixar" download="' + esc(nome) + '" href="' + url + '"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-download"/></svg>Baixar</a><button type="button" class="btn btn-sm" id="gp-visor-x"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-x"/></svg>Fechar</button></header>' +
+    (tipo === 'application/pdf' ? '<iframe class="gp-visor-doc" title="' + esc(nome) + '" src="' + url + '"></iframe>'
+      : tipo ? '<div class="gp-visor-img"><img alt="' + esc(nome) + '" src="' + url + '"></div>'
+      : '<p class="gp-visor-nada">Este tipo de arquivo não abre dentro da extensão. Use <b>Baixar</b> para abrir no computador.</p>') + '</div>';
+  const fechar = () => { v.remove(); URL.revokeObjectURL(url); document.removeEventListener('keydown', esc_, true); try { antes && antes.focus && antes.focus(); } catch (e) {} };
+  const esc_ = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); fechar(); } };
+  document.addEventListener('keydown', esc_, true);
+  v.addEventListener('click', e => { if (e.target === v) fechar(); });
+  document.body.appendChild(v);
+  v.querySelector('#gp-visor-x').onclick = fechar; v.querySelector('#gp-visor-x').focus();
+}
 // Soltar fora de um item vai para o Express (gestta-soltar.js, 0.102.0)
 const temArquivos = e => !!(e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files'));
 // Relê o detalhe sem o esqueleto (depois de uma ação)
@@ -283,7 +325,10 @@ function desenharPainel() {
         return '<li class="' + (p.done ? 'ok' : '') + '">' + (p._id ? '<button type="button" class="gp-passo" data-gp-etapa="' + esc(p._id) + '" aria-pressed="' + !!p.done + '" title="' + (p.done ? 'Desmarcar esta etapa' : 'Marcar esta etapa como feita') + '">' + conteudo + '</button>' : conteudo) + '</li>';
       }).join('') + '</ul></section>' : '<p class="fraco">Esta tarefa não tem etapas internas.</p>') +
       (docs.length ? '<section class="gp-sec"><h3>Documentos da tarefa</h3>' + (docs.some(x => x._id) && !fechada ? '<p class="gp-dica-arrastar ajuda">Arraste um ou mais arquivos em cima do documento para enviar nele.</p>' : '') + '<ul class="gp-docs">' + docs.map(x => '<li class="gp-doc"' + (x._id && !fechada ? ' data-gp-drop="' + esc(x._id) + '" data-gp-drop-rot="Soltar em “' + esc(x.name || 'Documento') + '”"' : '') + '><span class="gp-doc-nome">' + esc(x.name || 'Documento') + (x.validation_required ? ' <small class="fraco">pede validação</small>' : '') + (x.temArquivo ? ' <small class="gp-doc-ok">✓ com arquivo</small>' : '') + (x.has_documents_integration ? ' <small class="fraco">vai ao Portal do Cliente</small>' : '') + '</span>' +
-        (Array.isArray(x.arquivos) && x.arquivos.length ? '<ul class="gp-doc-arqs" aria-label="Arquivos de ' + esc(x.name || 'Documento') + '">' + x.arquivos.map(a => '<li><svg class="ic ic-sm" aria-hidden="true"><use href="#i-paperclip"/></svg><span class="gp-arq-nome" title="' + esc(a.nome) + '">' + esc(a.nome) + '</span>' + (a.quando ? ' <small class="fraco">' + esc(ddmm(a.quando.slice(0, 10))) + '</small>' : '') + '</li>').join('') + '</ul>' : '') +
+        (Array.isArray(x.arquivos) && x.arquivos.length ? '<ul class="gp-doc-arqs" aria-label="Arquivos de ' + esc(x.name || 'Documento') + '">' + x.arquivos.map(a => '<li><svg class="ic ic-sm" aria-hidden="true"><use href="#i-paperclip"/></svg><span class="gp-arq-nome" title="' + esc(a.nome) + '">' + esc(a.nome) + '</span>' + (a.quando ? ' <small class="fraco">' + esc(ddmm(a.quando.slice(0, 10))) + '</small>' : '') +
+          // 0.121.0: ver dentro da extensão e excluir (só com a tarefa aberta), um arquivo por item
+          (x._id ? '<span class="gp-arq-acoes"><button type="button" class="gp-arq-bt" data-gp-ver="' + esc(x._id) + '" aria-label="Ver ' + esc(a.nome) + '"' + (P.vendo === x._id ? ' disabled' : '') + '><svg class="ic ic-sm" aria-hidden="true"><use href="#i-eye"/></svg>' + (P.vendo === x._id ? 'Abrindo…' : 'Ver') + '</button>' +
+            (!fechada ? '<button type="button" class="gp-arq-bt perigo" data-gp-excluir="' + esc(x._id) + '" aria-label="Excluir ' + esc(a.nome) + '"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-trash"/></svg>Excluir</button>' : '') + '</span>' : '') + '</li>').join('') + '</ul>' : '') +
         (x._id && !fechada ? '<button type="button" class="btn btn-sm" data-gp-doc="' + esc(x._id) + '"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-upload"/></svg>' + (x.temArquivo ? 'Enviar outro arquivo' : 'Enviar arquivo') + '</button>' : '') + '</li>').join('') + '</ul><input type="file" id="gp-arq" multiple hidden></section>' : '') +
       (pedidos.length ? '<section class="gp-sec"><h3>Pedidos ao cliente' + (d.document_request && d.document_request.active ? ' <span class="pill pill-today">cobrança ativa</span>' : '') + '</h3><ul class="gp-docs">' + pedidos.map(x => '<li>' + esc(x.name || 'Documento') + '</li>').join('') + '</ul></section>' : '') +
       // 0.93.0: comentário interno (fica só para a equipe; nunca vai ao cliente)
@@ -348,6 +393,13 @@ function ligarAcoes(el, t, passos, docs) {
   if (com) com.oninput = () => { P.rasc.com = com.value; if (bc) bc.disabled = !com.value.trim(); };
   if (bc) bc.onclick = () => { const tx = P.rasc.com.trim(); if (!tx) return;
     pedirConfirmacao({ msg: { acao: 'comentar', texto: tx }, texto: 'Gravar este comentário na tarefa ' + nomeT + '?', extra: ['“' + (tx.length > 160 ? tx.slice(0, 160) + '…' : tx) + '”', 'Fica só para a equipe: o cliente não vê.'], botao: 'Gravar comentário', feito: 'Comentário gravado no Gestta.' }); };
+  $$('[data-gp-ver]', el).forEach(b => b.onclick = () => verArquivo(docs.find(x => x._id === b.dataset.gpVer)));
+  $$('[data-gp-excluir]', el).forEach(b => b.onclick = () => {
+    const doc = docs.find(x => x._id === b.dataset.gpExcluir); if (!doc) return;
+    const an = (doc.arquivos && doc.arquivos[0] && doc.arquivos[0].nome) || 'o arquivo';
+    pedirConfirmacao({ msg: { acao: 'excluirArquivo', documento: doc._id }, perigo: true, texto: 'Excluir “' + an + '” do documento “' + (doc.name || 'Documento') + '”?',
+      extra: ['O arquivo sai da tarefa no Gestta; o histórico da tarefa registra a remoção.', 'A extensão não desfaz: para voltar, envie o arquivo de novo.'], botao: 'Excluir arquivo', feito: 'Arquivo excluído no Gestta.' });
+  });
   const arq = $('#gp-arq', el);
   $$('[data-gp-doc]', el).forEach(b => b.onclick = () => { if (!arq) return; arq.dataset.doc = b.dataset.gpDoc; arq.value = ''; arq.click(); });
   if (arq) arq.onchange = () => { const doc = docs.find(x => x._id === arq.dataset.doc); if (arq.files && arq.files.length) confirmarArquivos(doc, arq.files); };

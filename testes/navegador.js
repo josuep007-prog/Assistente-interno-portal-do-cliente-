@@ -2860,6 +2860,23 @@ function gtSaude(total) {
     'gesttaSaude:configClientes': { ok: true, porTemplate: { [T1]: [1, 2, 3, 4, 5, 6].map(cli), [T2]: [1, 2, 3, 4, 5].map(cli) } }
   };
 }
+// 0.116.0 · Guias da folha: três empresas com tarefa FGTS DIGITAL aberta (duas sem guia) e uma concluída
+function gtGuias() {
+  const id = n => 'a' + String(n).padStart(23, '0'), E = (n, nome, cnpj) => ({ nome, code: String(100 + n), cnpj });
+  const t = (n, status, emp) => ({ id: id(n), nome: 'FGTS DIGITAL', status, meta: '2026-11-07T03:00:00Z', responsavel: 'Eu Mesmo', empresa: emp });
+  const A = E(1, 'CLIENTE ALFA LTDA', '11222333000181'), B = E(2, 'CLIENTE BETA ME', '22333444000190'), C = E(3, 'CLIENTE GAMA SA', '33444555000101'), D = E(4, 'CLIENTE DELTA LTDA', '44555666000101');
+  const it = (guia) => ({ guia: { id: 'g', nome: 'FGTS Guia', temArquivo: guia, desconsiderado: false }, demonstrativo: { id: 'd', nome: 'Demonstrativo FGTS', temArquivo: guia, desconsiderado: false }, consignado: null });
+  return {
+    'guiasFolha:lista': { ok: true, tarefas: [t(1, 'OPEN', A), t(2, 'OPEN', B), t(3, 'IMPEDIMENT', C), t(4, 'DONE', D)], perfil: { nome: 'Eu Mesmo', total: true }, lidoEm: new Date().toISOString() },
+    'guiasFolha:itens': { ok: true, porTarefa: { [id(1)]: it(false), [id(2)]: it(false), [id(3)]: it(true) } },
+    'guiasFolha:extrato': { ok: true, porCodigo: { '11222333000181': { ok: true, fgts: 1800.5, aprendiz: 10, rescisorio: 150, extratos: [{ calculo: 'Folha Mensal', fgts: 1800.5, aprendiz: 10, filial: false }], semValor: false },
+      '22333444000190': { ok: false, motivo: 'Nenhum Extrato Mensal da competência 10/2026 publicado.' } } },
+    // 0.118.0: a conferência no FGTS Digital (o principal dos débitos mensais bate com o extrato + aprendiz)
+    'guiasFolha:fgts': { ok: true, competencia: '2026-10', debitos: 6, principal: 1810.5, encargos: 0, total: 1810.5, semGuia: 6, guias: [], filial: false, esperado: 1810.5, bate: true, diferenca: 0 },
+    // 0.119.0: a primeira tentativa volta com a pergunta do FGTS Digital; o teste troca a resposta para a emitida depois do "Sim"
+    'guiasFolha:emitir': { ok: true, perguntas: ['Existem débitos de competências anteriores. Deseja continuar?'], alertas: [], mensal: 1810.5, pagamentoAte: '2026-11-07' }
+  };
+}
 function gtTarefas() {
   const dia = n => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + n); return new Date(d.getTime() + 3 * 36e5).toISOString(); };
   const util = n => { const d = new Date(); d.setHours(0, 0, 0, 0); let k = 0; while (k < n) { d.setDate(d.getDate() + 1); if (d.getDay() % 6) k++; } return new Date(d.getTime() + 3 * 36e5).toISOString(); };
@@ -3068,7 +3085,7 @@ await passo('Gestta · Tarefas (0.77.0): Meu dia com o detalhe ao lado e a linha
   if (process.env.CAP) await p.screenshot({ path: path.join(process.env.CAP, 'gestta-calendario.png') });
   // coordenação: escolhe de quem ver (a equipe vem só para quem tem acesso total)
   await fr.waitForSelector('#gt-quem-wrap:not([hidden])');
-  const quem = async v => { await fr.click('#gt-quem-btn'); await fr.waitForSelector('#gt-quem-pop:not([hidden])'); await fr.click('#gt-quem-lista [data-quem="' + v + '"]'); };
+  const quem = async v => { await fr.click('#gt-quem-chips [data-quem="' + v + '"]'); };      // 0.117.0: Minhas e Sem responsável ficam à vista
   await fr.click('#gt-quem-btn');
   // 0.106.0: botão > setor (só os com tarefa aberta) > uma ou mais pessoas
   await fr.waitForSelector('#gt-quem-lista [data-gt-setor]');
@@ -3091,7 +3108,8 @@ await passo('Gestta · Tarefas (0.77.0): Meu dia com o detalhe ao lado e a linha
   await fr.check('#gt-quem-lista [data-gt-pessoa="' + GT_B + '"]');
   await fr.press('#gt-quem-busca', 'Enter');
   await fr.waitForFunction(b => (window.__msgs || []).some(m => m.cmd === 'gesttaTarefas' && m.quem === 'setor:Pessoal|' + b), GT_B);
-  assert.match(await fr.textContent('#gt-quem-btn'), /Setor Pessoal · Pessoa Beta/);
+  assert.match(await fr.textContent('#gt-quem-btn'), /Pessoa Beta/);
+  assert.match(await fr.textContent('#gt-quem-chips .on'), /Pessoal/, '0.117.0: o setor da visão fica marcado nos botões à vista');
   await quem('sem');
   await fr.waitForFunction(() => (window.__msgs || []).some(m => m.cmd === 'gesttaTarefas' && m.quem === 'sem'));
   // Fechamento do mês: geral, por setor e por analista; clicar numa barra filtra; só com pendência; empresa do escritório fora
@@ -3166,6 +3184,28 @@ await passo('Gestta · Tarefas (0.93.0): no detalhe, marcar etapa, impedimento c
     // 0.110.0: o nome do arquivo já anexado aparece embaixo do documento (só o nome e o dia; nunca o endereço)
     assert.match(await fr.textContent('#gd-det .gp-doc .gp-doc-arqs'), /recibo-anterior\.pdf.*10\/11/s);
     assert.equal(await fr.$$eval('#gd-det .gp-doc-arqs a[href]', l => l.length), 0, 'o nome do arquivo não vira link');
+    // 0.121.0: Ver abre o arquivo dentro da extensão (o service worker devolve só o conteúdo); PDF num quadro, Baixar e Fechar
+    assert.match(await fr.textContent('#gd-det .gp-doc-arqs'), /recibo-anterior\.pdf[\s\S]*Ver[\s\S]*Excluir/);
+    await fr.evaluate(() => { window.__respostas.gesttaArquivo = { ok: true, nome: 'recibo-anterior.pdf', tipo: 'binary/octet-stream', base64: btoa('%PDF-1.4 teste') }; });
+    await fr.click('#gd-det [data-gp-ver="d00000000000000000000001"]');
+    await fr.waitForSelector('.gp-visor iframe.gp-visor-doc');
+    assert.deepEqual(await fr.evaluate(() => window.__msgs.filter(m => m.cmd === 'gesttaArquivo')), [{ cmd: 'gesttaArquivo', id: 'f00000000000000000000001', documento: 'd00000000000000000000001' }]);
+    assert.match(await fr.$eval('.gp-visor iframe', f => f.src), /^blob:/, 'o arquivo fica só na memória da tela');
+    assert.equal(await fr.$eval('#gp-visor-baixar', a => a.getAttribute('download')), 'recibo-anterior.pdf');
+    if (process.env.CAP) await p.screenshot({ path: process.env.CAP + '/gestta-visor-' + estilo + '.png' });
+    await fr.press('.gp-visor', 'Escape'); await fr.waitForFunction(() => !document.querySelector('.gp-visor'));
+    // o que não é PDF nem imagem (pelos primeiros bytes) nunca é desenhado dentro da extensão: só Baixar
+    await fr.evaluate(() => { window.__respostas.gesttaArquivo = { ok: true, nome: 'pagina.pdf', tipo: 'text/html', base64: btoa('<html><script>parent.__xss=1</script></html>') }; });
+    await fr.click('#gd-det [data-gp-ver="d00000000000000000000001"]');
+    await fr.waitForSelector('.gp-visor .gp-visor-nada');
+    assert.equal(await fr.$('.gp-visor iframe, .gp-visor img'), null); assert.equal(await fr.evaluate(() => window.__xss), undefined);
+    await fr.click('#gp-visor-x'); await fr.waitForFunction(() => !document.querySelector('.gp-visor'));
+    // erro do service worker (sem permissão, endereço vencido) aparece no painel
+    await fr.evaluate(() => { window.__respostas.gesttaArquivo = { ok: false, semPermissao: true, erro: 'Falta a permissão para abrir os arquivos do Gestta (servidor de arquivos da Amazon).' }; });
+    await fr.click('#gd-det [data-gp-ver="d00000000000000000000001"]');
+    await fr.waitForSelector('#gd-det .gp-aviso.erro');
+    assert.match(await fr.textContent('#gd-det .gp-aviso.erro'), /Falta a permissão/);
+    await fr.click('#gd-det #gp-aviso-x');
     const [fc] = await Promise.all([p.waitForEvent('filechooser'), fr.click('#gd-det [data-gp-doc="d00000000000000000000001"]')]);
     await fc.setFiles({ name: 'recibo.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 teste') });
     await fr.waitForSelector('#gd-det .gp-conf');
@@ -3195,6 +3235,15 @@ await passo('Gestta · Tarefas (0.93.0): no detalhe, marcar etapa, impedimento c
     assert.deepEqual((await acoes()).slice(4).map(m => [m.acao, m.documento, m.arquivo.nome]), [['documento', 'd00000000000000000000001', 'guia-1.pdf'], ['documento', 'd00000000000000000000001', 'guia-2.pdf']]);
     await fr.waitForSelector('#gd-det .gp-aviso.ok');
     assert.match(await fr.textContent('#gd-det .gp-aviso.ok'), /2 arquivos enviados no documento “Recibo”/);
+    // 0.121.0: Excluir o arquivo do item pede confirmação com o nome e só então vai ao Gestta
+    await fr.click('#gd-det [data-gp-excluir="d00000000000000000000001"]');
+    await fr.waitForSelector('#gd-det .gp-conf.perigo');
+    assert.match(await fr.textContent('#gd-det .gp-conf'), /Excluir “recibo-anterior\.pdf” do documento “Recibo”\?[\s\S]*histórico da tarefa registra a remoção/);
+    assert.equal((await acoes()).length, 6, 'nada sai antes de confirmar');
+    await fr.click('#gd-det #gp-conf-ok');
+    await fr.waitForFunction(() => (window.__msgs || []).filter(m => m.cmd === 'gesttaAcao').length === 7);
+    assert.deepEqual((await acoes())[6], { cmd: 'gesttaAcao', id: 'f00000000000000000000001', acao: 'excluirArquivo', documento: 'd00000000000000000000001' });
+    await fr.waitForSelector('#gd-det .gp-aviso.ok'); assert.match(await fr.textContent('#gd-det .gp-aviso.ok'), /Arquivo excluído no Gestta/);
     // soltar fora de um item não abre o arquivo na tela: vai para o Express (0.102.0), que pergunta antes de ler
     assert.equal(await fr.evaluate(() => { const ev = new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: window.__dt }); document.body.dispatchEvent(ev); return ev.defaultPrevented; }), true);
     await fr.waitForSelector('#gs-dlg:not([hidden]) [data-gs="ler"]');
@@ -3339,17 +3388,127 @@ await passo('Gestta · 0.111.0: a tela mostra cada parte assim que chega (Meu di
   // De quem: os setores do cadastro de equipe na hora, enquanto o relatório do mês não chega
   await fr.click('#gt-quem-btn');
   await fr.waitForFunction(() => /Setores da equipe/.test(document.querySelector('#gt-quem-lista').textContent));
-  assert.deepEqual(await fr.$$eval('#gt-quem-lista [data-gt-setor]', l => l.map(x => x.dataset.gtSetor)), ['Fiscal', 'Pessoal', 'Recepção']);
+  assert.deepEqual(await fr.$$eval('#gt-quem-lista [data-gt-setor]', l => l.map(x => x.dataset.gtSetor)), ['Fiscal', 'Pessoal'], '0.117.0: a Recepção não faz parte da extensão');
+  assert.deepEqual(await fr.$$eval('#gt-quem-chips [data-gt-setor-chip]', l => l.map(x => x.dataset.gtSetorChip)), ['Pessoal', 'Fiscal'], 'os setores à vista, na ordem Pessoal, Contábil, Fiscal');
   assert.match(await fr.textContent('#gt-quem-lista'), /Conferindo quais têm tarefa aberta/);
   await fr.waitForFunction(() => window.__presos.setores);
   await fr.evaluate(() => window.__presos.setores());
   await fr.waitForFunction(() => /Setores com tarefas abertas/.test(document.querySelector('#gt-quem-lista').textContent));
-  assert.deepEqual(await fr.$$eval('#gt-quem-lista [data-gt-setor]', l => l.map(x => x.dataset.gtSetor)), ['Fiscal', 'Pessoal'], 'sem tarefa aberta, a Recepção sai');
+  assert.deepEqual(await fr.$$eval('#gt-quem-lista [data-gt-setor]', l => l.map(x => x.dataset.gtSetor)), ['Fiscal', 'Pessoal'], 'só os setores da extensão');
   assert.match(await fr.textContent('#gt-quem-lista [data-gt-setor="Fiscal"]'), /3 abertas/, 'a quantidade vem do relatório');
   assert.deepEqual(p.erros, []);
   await p.context().close();
 });
-await passo('Gestta · Saúde (0.110.0): carga por dia com o ritmo, prioridade, contatos e e-mails só pelo botão, configuração só para a coordenação; nada é escrito', async () => {
+await passo('FGTS Digital (0.118.0): a leitura de dentro da aba vai com o cookie da página, volta sem dado de trabalhador, recusa o que não é leitura e reconhece a sessão caída', async () => {
+  const p = await pagina('https://fgtsdigital.sistema.gov.br/cobranca/', '<!doctype html><title>FGTS Digital</title><body>FGTS simulado</body>', true);
+  let sessao = true; const pedidos = [];
+  await p.route('https://fgtsdigital.sistema.gov.br/cobranca/api/**', r => {
+    pedidos.push(r.request().method() + ' ' + new URL(r.request().url()).pathname);
+    if (!sessao) return r.fulfill({ status: 200, contentType: 'text/html', body: '<html>gov.br</html>' });
+    return r.fulfill({ contentType: 'application/json', body: JSON.stringify({ qtdeTotalDebitos: 1, debitos: [{ competenciaApuracao: '202610', vlPrincipal: 10.5, vlTotal: 10.5, cpfTrabalhador: '111.222.333-44', nomeTrabalhador: 'FULANO DE TAL', matricula: '9', estabalecimentoRemuneracao: '11222333000181', guiasRelacionadas: [] }] }) });
+  });
+  await p.goto('https://fgtsdigital.sistema.gov.br/cobranca/');
+  await p.addScriptTag({ content: lerExt('fgts.js') });
+  const r = await p.evaluate(() => OCF.lerNaPagina([OCF.PEDIDOS.debitos('2026-10', 1)], { pausa: 1 }));
+  assert.ok(r.ok); assert.equal(r.resultados[0].status, 200); assert.equal(r.resultados[0].dados.itens[0].principal, 10.5);
+  for (const v of ['111.222', 'FULANO', 'matricula']) assert.ok(!JSON.stringify(r).includes(v), 'vazou ' + v);
+  const rec = await p.evaluate(() => OCF.lerNaPagina([{ id: 'x', metodo: 'POST', url: OCF.HOST + '/cobranca/api/guia-parametrizada/gerar-guia' }], { pausa: 1 }));
+  assert.match(rec.resultados[0].recusado, /escrita/); assert.equal(pedidos.length, 1, 'a escrita nem sai da página');
+  // 0.119.0: emitir leva o cabeçalho anti-falsificação lido do cookie da própria página (o valor nunca volta) e corpo {}; o PDF vem em binário
+  let cab = null, corpoPost = null;
+  await p.route('https://fgtsdigital.sistema.gov.br/cobranca/api/guia-rapida/gerar-guia/**', r => { cab = r.request().headers()['x-xsrf-token']; corpoPost = r.request().postData(); return r.fulfill({ contentType: 'application/json', body: JSON.stringify({ gerouGuia: true, dadosGuia: { id: 7, numero: '0126-2', linkPdf: '/arrecadacao/emissao/reimprimirGuia/1262000000' } }) }); });
+  await p.route('https://fgtsdigital.sistema.gov.br/arrecadacao/**', r => r.fulfill({ contentType: 'application/pdf', body: '%PDF-1.4 guia de teste' }));
+  await p.evaluate(() => { document.cookie = 'XSRF-TOKEN=valor-secreto-xsrf; path=/'; });
+  const em = await p.evaluate(() => OCF.lerNaPagina([OCF.PEDIDOS.gerar('202610,mensal,12345678901,2026-11-07,false', '3f2b8c4e-1d2a-4b6c-9e8f-0a1b2c3d4e5f', true), OCF.PEDIDOS.pdfGuia('/arrecadacao/emissao/reimprimirGuia/1262000000')], { pausa: 1 }));
+  assert.equal(cab, 'valor-secreto-xsrf'); assert.equal(corpoPost, '{}');
+  assert.deepEqual(em.resultados[0].dados, { gerou: true, guia: { id: '7', numero: '0126-2', linkPdf: '/arrecadacao/emissao/reimprimirGuia/1262000000' } });
+  assert.equal(Buffer.from(em.resultados[1].dados.b64, 'base64').toString(), '%PDF-1.4 guia de teste');
+  assert.ok(!JSON.stringify(em).includes('valor-secreto'), 'o token nunca sai da página');
+  const outra = await p.evaluate(() => OCF.lerNaPagina([Object.assign(OCF.PEDIDOS.gerar('202610,rescisorio,12345678901,2026-11-07,false', '3f2b8c4e-1d2a-4b6c-9e8f-0a1b2c3d4e5f', true))], { pausa: 1 }));
+  assert.match(outra.resultados[0].recusado, /mensal/, 'rescisória recusada dentro da página');
+  sessao = false;
+  const s = await p.evaluate(() => OCF.lerNaPagina([OCF.PEDIDOS.dadosFiltro()], { pausa: 1 }));
+  assert.equal(s.semSessao, true, 'sem sessão a API devolve a página de login: vira semSessao');
+  await p.close();
+});
+await passo('Gestta · Guias da folha (0.116.0): tarefas FGTS DIGITAL da competência, sem guia em destaque, escolher e ler o extrato; nada é escrito', async () => {
+  const { p, fr } = await abrirGestta(Object.assign(gtResp(true), gtGuias()));
+  await fr.waitForSelector('.gt-topo');
+  await fr.press('body', '9');
+  await fr.waitForFunction(() => /Guia anexada/.test((document.querySelector('.ggu-tab') || {}).textContent || ''));
+  const gm = () => fr.evaluate(() => (window.__msgs || []).filter(m => m.cmd === 'guiasFolha').map(m => m.parte));
+  assert.deepEqual(await gm(), ['lista', 'itens'], 'ao abrir: a lista e os itens das tarefas abertas; o extrato espera o botão');
+  const ids = await fr.evaluate(() => window.__msgs.find(m => m.cmd === 'guiasFolha' && m.parte === 'itens').ids);
+  assert.equal(ids.length, 3, 'a concluída não é aberta');
+  const topo = await fr.textContent('.ggu-topo');
+  assert.match(topo, /4\s*tarefas FGTS DIGITAL[\s\S]*2\s*sem a guia anexada/);
+  assert.match(await fr.textContent('.ggu-passos'), /Escolher[\s\S]*Conferir[\s\S]*Emitir[\s\S]*Anexar[\s\S]*Baixar/);
+  assert.match(await fr.textContent('.ggu-tab'), /Cliente Alfa Ltda[\s\S]*Sem guia[\s\S]*Cliente Gama S\.A\.[\s\S]*Guia anexada/i);
+  assert.ok(await fr.$('[data-ggu-modo$="|filial"][disabled]'), 'por filial ainda desligado (não mapeado)');
+  assert.ok(await fr.$('[data-ggu-ler-ext][disabled]'), 'sem escolha, nada para ler');
+  // escolher todas as sem guia e ler o extrato
+  await fr.check('[data-ggu-todas]');
+  await fr.waitForFunction(() => /2 empresas escolhidas/.test(document.querySelector('.ggu-rodape').textContent));
+  await fr.click('[data-ggu-ler-ext]');
+  await fr.waitForFunction(() => /1\.800,50/.test(document.querySelector('.ggu-tab').textContent));
+  const ex = (await fr.evaluate(() => window.__msgs.filter(m => m.cmd === 'guiasFolha' && m.parte === 'extrato')))[0];
+  assert.deepEqual(ex.empresas.map(e => e.cnpj).sort(), ['11222333000181', '22333444000190'], 'só as escolhidas, com código, nome e CNPJ');
+  assert.deepEqual([ex.ano, ex.mes].map(Number).every(n => n > 0), true);
+  assert.match(await fr.textContent('.ggu-tab'), /R\$ 1\.800,50[\s\S]*aprendiz R\$ 10,00[\s\S]*Nenhum Extrato Mensal da competência 10\/2026 publicado/);
+  // 0.118.0: conferir no FGTS Digital só as escolhidas com o extrato lido (a Beta ficou sem extrato), uma por vez
+  assert.match(await fr.textContent('[data-ggu-conferir]'), /Conferir no FGTS Digital \(1\)/);
+  await fr.click('[data-ggu-conferir]');
+  await fr.waitForFunction(() => /Bate/.test(document.querySelector('.ggu-tab').textContent));
+  const cf = await fr.evaluate(() => window.__msgs.filter(m => m.cmd === 'guiasFolha' && m.parte === 'fgts'));
+  assert.equal(cf.length, 1); assert.equal(cf[0].empresa.cnpj, '11222333000181'); assert.equal(cf[0].esperado, 1810.5, 'esperado = FGTS + aprendiz do extrato');
+  assert.match(await fr.textContent('.ggu-tab'), /Bate[\s\S]*R\$ 1\.810,50/);
+  assert.match(await fr.textContent('.ggu-passos li.atual'), /Conferir/, 'o trilho passa ao passo 2');
+  // 0.119.0: emitir só a que bateu, depois da confirmação do lote; a pergunta do site aparece na linha e só segue com o Sim
+  assert.match(await fr.textContent('[data-ggu-emitir]'), /Emitir guias \(1\)/);
+  await fr.click('[data-ggu-emitir]');
+  await fr.waitForSelector('.ggu-confirma');
+  assert.match(await fr.textContent('.ggu-confirma'), /Emitir 1 guia do FGTS[\s\S]*Cliente Alfa Ltda[\s\S]*10\/2026[\s\S]*R\$ 1\.810,50[\s\S]*não paga nada/);
+  assert.equal(await fr.evaluate(() => window.__msgs.filter(m => m.parte === 'emitir').length), 0, 'nada sai antes de confirmar');
+  await fr.click('[data-ggu-emitir-ok]');
+  await fr.waitForSelector('.ggu-pergunta');
+  assert.match(await fr.textContent('.ggu-pergunta'), /Deseja continuar\?/);
+  assert.equal((await fr.evaluate(() => window.__msgs.filter(m => m.parte === 'emitir')))[0].confirmado, false);
+  await fr.evaluate(() => { window.__respostas['guiasFolha:emitir'] = { ok: true, emitida: true, numero: '0126100000000000-2', pagamentoAte: '2026-11-07', mensal: 1810.5, totalGuia: 1810.5,
+    arquivos: [{ tipo: 'guia', nome: '10-2026 DARF FGTS.pdf', b64: btoa('%PDF-1.4 guia'), confere: true }, { tipo: 'detalhe', nome: '10-2026 DEMONSTRATIVO FGTS.pdf', b64: btoa('%PDF-1.4 det'), confere: false, motivo: 'o PDF não é o "Detalhe da Guia Emitida"' }] }; });
+  await fr.click('[data-ggu-sim]');
+  await fr.waitForFunction(() => /Emitida/.test(document.querySelector('.ggu-tab').textContent));
+  assert.equal((await fr.evaluate(() => window.__msgs.filter(m => m.parte === 'emitir'))).slice(-1)[0].confirmado, true, 'o Sim vai como confirmado');
+  assert.match(await fr.textContent('.ggu-tab'), /Emitida[\s\S]*nº 0126100000000000-2 · vence 07\/11\/2026[\s\S]*Ver guia[\s\S]*Ver demonstrativo[\s\S]*Detalhe da Guia Emitida/);
+  assert.match(await fr.textContent('.ggu-passos li.atual'), /Emitir/);
+  assert.ok(!(await fr.$('[data-ggu-emitir]:not([disabled])')), 'a emitida não pode ser emitida de novo');
+  // 0.120.0 · fase 4: anexar no Gestta só o que passou na conferência, no item certo, depois da confirmação; concluir é opcional (desligado)
+  await fr.click('[data-ggu-anexar]');
+  await fr.waitForSelector('.ggu-confirma');
+  const ca = await fr.textContent('.ggu-confirma');
+  assert.match(ca, /10-2026 DARF FGTS\.pdf → FGTS Guia/); assert.match(ca, /fica de fora: 10-2026 DEMONSTRATIVO FGTS\.pdf: não passou na conferência/);
+  assert.equal(await fr.$eval('[data-ggu-concluir]', c => c.checked), false, 'concluir vem desligado');
+  await fr.click('[data-ggu-anexar-ok]');
+  await fr.waitForFunction(() => /No Gestta: 10-2026 DARF FGTS\.pdf/.test(document.querySelector('.ggu-tab').textContent));
+  const ac = await fr.evaluate(() => window.__msgs.filter(m => m.cmd === 'gesttaAcao'));
+  assert.equal(ac.length, 1, 'um arquivo, nenhuma conclusão'); assert.equal(ac[0].acao, 'documento'); assert.equal(ac[0].documento, 'g'); assert.equal(ac[0].arquivo.nome, '10-2026 DARF FGTS.pdf');
+  assert.equal(atob(ac[0].arquivo.base64), '%PDF-1.4 guia');
+  assert.match(await fr.textContent('.ggu-passos li.atual'), /Anexar/);
+  // 0.120.0 · fase 5: a pasta com subpasta por empresa e o relatório da competência (permissão de downloads pedida na hora)
+  await fr.evaluate(() => { window.__downs = []; window.__pedidas = []; chrome.permissions = { request: async (o) => { window.__pedidas.push(o); return true; } }; chrome.downloads = { download: (o, cb) => { window.__downs.push(o.filename); setTimeout(() => cb(window.__downs.length), 0); } }; });
+  await fr.click('[data-ggu-pasta]');
+  await fr.waitForFunction(() => /arquivo/.test((document.querySelector('.faixa') || {}).textContent || '') && window.__downs.length >= 2);
+  const downs = await fr.evaluate(() => window.__downs);
+  assert.deepEqual(downs, ['Guias da folha/10-2026/Cliente Alfa Ltda/DARF FGTS 10-2026.pdf', 'Guias da folha/10-2026/Relatório das guias 10-2026.csv'], 'o demonstrativo que não conferiu fica de fora');
+  assert.deepEqual(await fr.evaluate(() => window.__pedidas), [{ permissions: ['downloads'] }]);
+  // a concluída aparece recolhida
+  await fr.click('[data-ggu-feitas]'); await fr.waitForFunction(() => /Cliente Delta Ltda/i.test(document.querySelector('#vista').textContent));
+  // nada foi escrito e nada ficou guardado
+  const cmds = await fr.evaluate(() => [...new Set(window.__msgs.map(m => m.cmd))]);
+  assert.ok(!cmds.some(c => /^(gesttaTirar|gesttaPasta|gesttaTirarPasta)$/.test(c)), 'só o anexo aprovado: ' + cmds.join(', '));
+  assert.ok(!JSON.stringify(await fr.evaluate(() => Object.assign({}, localStorage))).includes('1800'), 'valor nunca guardado no navegador');
+  await p.close();
+});
+await passo('Gestta · Saúde (0.110.0): carga por dia com o ritmo, prioridade, contatos e e-mails só pelo botão, configuração só para a coordenação; incluir template só depois de confirmar', async () => {
   const { p, fr } = await abrirGestta(Object.assign(gtResp(true), gtSaude(true)));
   await fr.waitForSelector('.gt-topo');
   await fr.press('body', '8');
@@ -3403,6 +3562,21 @@ await passo('Gestta · Saúde (0.110.0): carga por dia com o ritmo, prioridade, 
   await fr.waitForSelector('#gt-painel.aberto');
   const escritas = await fr.evaluate(() => (window.__msgs || []).filter(m => /gesttaAcao|gesttaTirar|gesttaPasta/.test(m.cmd)).length);
   assert.equal(escritas, 0, 'a aba Saúde não escreve nada');
+  // 0.121.0: incluir o template que falta, pelo lote, com uma confirmação; vai uma empresa por vez e a linha sai da lista
+  await fr.press('#gt-painel', 'Escape');
+  await fr.evaluate(() => { window.__respostas.gesttaTemplateEmpresa = { ok: true, confere: true }; });
+  assert.equal(await fr.$eval('#gsa-config [data-gsa-tpl-lote="falta"]', b => b.disabled), true, 'sem marcar, o lote fica desligado');
+  await fr.click('#gsa-config [data-gsa-sel^="falta|"]');
+  await fr.click('#gsa-config [data-gsa-tpl-lote="falta"]');
+  await fr.waitForSelector('#gsa-config .gsa-tpl-conf');
+  assert.match(await fr.textContent('#gsa-config .gsa-tpl-conf'), /Incluir 1 template nas empresas no Gestta\? Vai uma empresa por vez\.[\s\S]*Empresa Exemplo 6 · Apuração do Icms/i);
+  assert.equal(await fr.evaluate(() => window.__msgs.filter(m => m.cmd === 'gesttaTemplateEmpresa').length), 0, 'nada sai antes de confirmar');
+  if (process.env.CAP) { await fr.evaluate(() => document.querySelector('#gsa-config').scrollIntoView()); await p.screenshot({ path: process.env.CAP + '/gestta-saude-template.png' }); }
+  await fr.click('[data-gsa-tpl-ok]');
+  await fr.waitForFunction(() => /1 template incluído/.test(document.querySelector('#gsa-config').textContent));
+  const tm = await fr.evaluate(() => window.__msgs.filter(m => m.cmd === 'gesttaTemplateEmpresa'));
+  assert.equal(tm.length, 1); assert.equal(tm[0].acao, 'incluir'); assert.match(tm[0].cliente, /^[0-9a-f]{24}$/); assert.match(tm[0].template, /^[0-9a-f]{24}$/);
+  assert.match(await fr.textContent('#gsa-config'), /Nenhuma empresa deixa de receber/, 'a sugestão atendida sai da lista');
   if (process.env.CAP) {
     await fr.press('#gt-painel', 'Escape'); await p.screenshot({ path: process.env.CAP + '/gestta-saude-gestor.png' });
     await fr.evaluate(() => document.querySelector('#gsa-contatos').scrollIntoView()); await p.screenshot({ path: process.env.CAP + '/gestta-saude-gestor-2.png' });
@@ -3502,14 +3676,15 @@ await passo('Gestta · Tarefas: no Meu dia, Enter abre a tarefa escolhida no Ges
   const s = await abrirGestta({ gesttaTarefas: { ok: false, semSessao: true, erro: 'sem sessão do Gestta nesta aba (faça login)' } });
   assert.match(await s.fr.textContent('.faixa'), /Sem sessão no Gestta\..*faça login/s);
   const medir = require('./contraste-lib.js'), ruins = [];
-  for (const estilo of ['simples', 'atual']) for (const tema of ['light', 'dark']) for (const modo of ['dia', 'historico', 'empresas', 'tempo', 'lista', 'painel', 'quadro', 'calendario', 'fechamento', 'quem', 'mespop', 'atalhos', 'saude']) {
-    const { p, fr } = await abrirGestta(Object.assign(gtResp(true), gtSaude(true)), { estilo });
+  for (const estilo of ['simples', 'atual']) for (const tema of ['light', 'dark']) for (const modo of ['dia', 'historico', 'empresas', 'tempo', 'lista', 'painel', 'quadro', 'calendario', 'fechamento', 'quem', 'mespop', 'atalhos', 'saude', 'guias', 'visor']) {
+    const { p, fr } = await abrirGestta(Object.assign(gtResp(true), gtSaude(true), gtGuias(), { gesttaArquivo: { ok: true, nome: 'planilha.xlsx', tipo: '', base64: Buffer.from('PK planilha').toString('base64') } }), { estilo });
     await p.emulateMedia({ reducedMotion: 'reduce' });
     await fr.evaluate(t => document.documentElement.setAttribute('data-theme', t), tema);
-    const aba = { historico: 'dia', tempo: 'empresas', painel: 'lista', fechamento: 'fech', quem: 'dia', mespop: 'dia', atalhos: 'dia' }[modo] || modo;
+    const aba = { visor: 'dia', historico: 'dia', tempo: 'empresas', painel: 'lista', fechamento: 'fech', quem: 'dia', mespop: 'dia', atalhos: 'dia' }[modo] || modo;
     await fr.click('#abas [data-aba="' + aba + '"]');
     if (modo === 'dia' || modo === 'historico') await fr.waitForSelector('#gd-det .gp-passos');
     if (modo === 'historico') { await fr.click('#gd-det [data-gp-aba="tempo"]'); await fr.waitForSelector('#gd-det .gp-tl'); }
+    if (modo === 'visor') { await fr.waitForSelector('#gd-det [data-gp-ver]'); await fr.click('#gd-det [data-gp-ver]'); await fr.waitForSelector('.gp-visor .gp-visor-nada'); }   // 0.121.0
     if (modo === 'tempo') await fr.click('[data-gf-trilha="tempo"]');
     if (modo === 'painel') { await fr.click('.gl-r'); await fr.waitForSelector('#gt-painel.aberto .gp-passos'); }
     if (modo === 'calendario') await fr.click('.gt-dia.hoje');
@@ -3518,14 +3693,18 @@ await passo('Gestta · Tarefas: no Meu dia, Enter abre a tarefa escolhida no Ges
     if (modo === 'mespop') await fr.click('#gt-mes-rot');
     if (modo === 'atalhos') { await fr.waitForSelector('.gd-it'); await fr.press('body', '?'); }
     if (modo === 'lista') await fr.check('#gt-feitas');
+    if (modo === 'guias') { await fr.waitForSelector('.ggu-tab'); await fr.waitForFunction(() => /Guia anexada/.test(document.querySelector('.ggu-tab').textContent)); await fr.check('[data-ggu-todas]'); await fr.click('[data-ggu-ler-ext]'); await fr.waitForFunction(() => /1\.800,50/.test(document.querySelector('.ggu-tab').textContent)); await fr.click('[data-ggu-conferir]'); await fr.waitForFunction(() => /Bate/.test(document.querySelector('.ggu-tab').textContent)); await fr.click('[data-ggu-emitir]'); await fr.waitForSelector('.ggu-confirma'); }
     if (modo === 'saude') {   // 0.110.0: com os blocos lidos e uma célula aberta
       await fr.waitForSelector('.gsa-topo');
       await fr.click('[data-gsa-ler="contatos"]'); await fr.waitForSelector('#gsa-contatos table');
       await fr.click('[data-gsa-ler="emails"]'); await fr.waitForSelector('#gsa-emails table');
       await fr.click('[data-gsa-ler="config"]'); await fr.waitForSelector('#gsa-config table');
       await fr.click('.gsa-cel.acima'); await fr.waitForSelector('.gsa-cel-lista');
+      await fr.click('#gsa-config [data-gsa-sel^="falta|"]'); await fr.click('#gsa-config [data-gsa-tpl-lote="falta"]'); await fr.waitForSelector('.gsa-tpl-conf');   // 0.121.0
     }
     await fr.waitForTimeout(400);
+    if (process.env.CAP && modo === 'guias') await p.screenshot({ path: path.join(process.env.CAP, 'gestta-guias-' + estilo + '-' + tema + '.png'), fullPage: true });
+    if (process.env.CAP && modo === 'visor') await p.screenshot({ path: path.join(process.env.CAP, 'gestta-visor-' + estilo + '-' + tema + '.png') });
     if (process.env.CAP && modo === 'saude') await p.screenshot({ path: path.join(process.env.CAP, 'gestta-saude-' + estilo + '-' + tema + '.png'), fullPage: true });
     if (process.env.CAP && ['dia', 'empresas', 'quadro', 'lista', 'fechamento', 'quem', 'mespop', 'atalhos'].includes(modo)) await p.screenshot({ path: path.join(process.env.CAP, 'gestta-' + modo + '-' + estilo + '-' + tema + '.png') });
     const r = await fr.evaluate(([m, min]) => eval('(' + m + ')')(min), [medir.toString(), 4.5]);
@@ -3600,17 +3779,21 @@ await passo('Gestta · 0.103.0: ver todas as tarefas de um setor, filtrar pela s
     assert.equal((await fr.textContent('[data-gt-aplicar]')).trim(), 'Ver as tarefas de 1 pessoa');
     await fr.click('[data-gt-aplicar]');
     await fr.waitForFunction(b => (window.__msgs || []).some(m => m.cmd === 'gesttaTarefas' && m.quem === 'setor:Fiscal|' + b), GT_B);
-    await fr.waitForFunction(() => /Setor Fiscal · Pessoa Beta/.test(document.querySelector('#gt-quem-btn').textContent));
-    // de novo, sem marcar ninguém: todas as tarefas do setor
+    await fr.waitForFunction(() => /Pessoa Beta/.test(document.querySelector('#gt-quem-btn').textContent) && /Fiscal/.test(document.querySelector('#gt-quem-chips .on').textContent));
+    // 0.117.0: já num setor, o botão das pessoas abre direto as pessoas dele
     await fr.click('#gt-quem-btn');
-    await fr.click('#gt-quem-lista [data-gt-setor="Fiscal"]');
     await fr.waitForSelector('#gt-quem-lista [data-gt-pessoa]');
+    assert.match(await fr.textContent('#gt-quem-lista .gt-quem-topo'), /Setor Fiscal/);
     await fr.uncheck('#gt-quem-lista [data-gt-pessoa="' + GT_B + '"]');
     assert.equal((await fr.textContent('[data-gt-aplicar]')).trim(), 'Ver todas as tarefas do setor');
-    await fr.click('[data-gt-aplicar]');
+    await fr.click('#gt-quem-x');
+    // 0.117.0: um clique no setor à vista troca a visão (Minhas e depois Fiscal)
+    await fr.click('#gt-quem-chips [data-quem="eu"]');
+    await fr.waitForFunction(() => /Minhas/.test(document.querySelector('#gt-quem-chips .on').textContent));
+    await fr.click('#gt-quem-chips [data-gt-setor-chip="Fiscal"]');
     await fr.waitForFunction(() => (window.__msgs || []).some(m => m.cmd === 'gesttaTarefas' && m.quem === 'setor:Fiscal'));
     await fr.waitForFunction(() => /todas as tarefas do setor Fiscal/.test(document.querySelector('#vista').textContent) && (window.__msgs || []).some(m => m.cmd === 'gesttaFechamento'));
-    assert.match(await fr.textContent('#gt-quem-btn'), /Setor Fiscal/);
+    assert.match(await fr.textContent('#gt-quem-btn'), /Todas as pessoas/);
     await fr.waitForFunction(() => !/Folha de Pagamento/.test(document.querySelector('#gl-corpo').textContent));
     assert.match(await fr.textContent('#gl-corpo'), /DCTF Web/);
     if (process.env.CAP) await p.screenshot({ path: path.join(process.env.CAP, 'gestta-setor-' + estilo + '.png') });

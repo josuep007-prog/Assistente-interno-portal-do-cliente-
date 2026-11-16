@@ -350,8 +350,11 @@ assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br
 {
   const TOKEN = 'JWT eyJhbGciOiJIUzI1NiJ9.' + Buffer.from(JSON.stringify({ exp: 1893456000 })).toString('base64url') + '.SEGREDO-ASSINATURA';
   const ID = '5f1e2d3c4b5a69788796a5b4', ID2 = '6a5b4c3d2e1f00112233aabb';
-  const CORS = { 'access-control-allow-origin': 'https://app.gestta.com.br', 'access-control-allow-headers': 'authorization,content-type,accept', 'access-control-allow-methods': 'GET,POST,OPTIONS' };
-  const gChamadas = [], gCab = [], gBuscas = [], gRel = [];
+  const CORS = { 'access-control-allow-origin': 'https://app.gestta.com.br', 'access-control-allow-headers': 'authorization,content-type,accept', 'access-control-allow-methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS' };
+  const gChamadas = [], gCab = [], gBuscas = [], gRel = [], gEscritas = [];
+  // 0.121.0: a tarefa com o arquivo no S3, os templates da empresa (vínculos) e as escritas aprovadas em 16/11/2026
+  const ID3 = '7a5b4c3d2e1f00112233aabb', S3URL = 'https://bucket-x.s3.us-east-1.amazonaws.com/a/recibo.pdf?X-Amz-Expires=600&X-Amz-Signature=SEGREDO-S3';
+  let gStatus2 = 'OPEN', gVinc = [{ _id: ID3, company: ID2, company_task: { _id: ID, name: 'DCTF WEB' }, customer: ID, company_user: { _id: ID2, name: 'Pessoa Ficticia', login_attempts: 2 }, active: true }];
   let papel = 'ROLE_ADMIN', adminProibido = false, gCompOk = true;
   await ctx.route('https://app.gestta.com.br/**', r => r.fulfill({ contentType: 'text/html', body: '<!doctype html><title>Gestta</title><body>Tarefas</body>' }));
   await ctx.route('https://api.gestta.com.br/**', async r => {
@@ -400,6 +403,14 @@ assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br
     if (p === '/admin/company/task') return json({ docs: [{ _id: ID, name: 'DCTF WEB', active: true, type: 'RECURRENT', frequency: 'MONTHLY', company_department: { _id: ID2, name: 'Fiscal' }, score: 9 }], totalDocs: 1, totalPages: 1 });
     if (p === '/admin/company/task/' + ID + '/customer') return json([{ customer: { _id: ID2, name: 'EMPRESA FICTICIA LTDA', cnpj: '12.345.678/0001-90' } }]);
     if (p === '/es/file/onvio') return json({ docs: [], totalDocs: 4 });
+    if (p === '/core/customer/task/' + ID2 && q.method() === 'GET') return json({ _id: ID2, name: 'GUIA', status: gStatus2, company_documents: [{ _id: ID, name: 'Guia', file: S3URL }, { _id: ID2, name: 'Recibo' }] });
+    const texto = (t, st) => r.fulfill({ status: st || 200, headers: Object.assign({ 'content-type': 'text/plain' }, CORS), body: t });
+    if (q.method() === 'DELETE' && /^\/core\/customer\/task\/[0-9a-f]{24}\/document\/[0-9a-f]{24}\/file$/.test(p)) { gEscritas.push(['DELETE', p, q.postData() || '']); return texto('OK'); }
+    if (p === '/admin/customer/' + ID + '/company/task') {
+      if (q.method() === 'GET') return json(gVinc);
+      if (q.method() === 'POST') { const c = JSON.parse(q.postData() || '{}'); gEscritas.push(['POST', p, q.postData()]); gVinc.push({ _id: '8a5b4c3d2e1f00112233aabb', company_task: c.company_task[0], customer: ID, active: true }); return json([{}], 201); }
+    }
+    if (p === '/admin/group/customer' && q.method() === 'DELETE') { const c = JSON.parse(q.postData() || '{}'); gEscritas.push(['DELETE', p, q.postData()]); gVinc = gVinc.filter(v => !c.ids.includes(v._id)); return texto('OK'); }
     if (p === '/admin/company/document') return json({ docs: [{ _id: ID, name: 'DAS' }], totalDocs: 1008, documents_without_destination: 31 });
     return json({ message: 'não simulado' }, 404);
   });
@@ -447,6 +458,13 @@ assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br
   assert.ok(!gBuscas.some(c => c.date_type === 'COMPETENCE_DATE'), 'lembra que a busca pela competência não serve');
   gCompOk = true;
   assert.ok(gBuscas.every(c => c.limit === 1000 && JSON.stringify(c.company_user) === JSON.stringify([ID2]) && c.status.includes('DONE') && !c.status.includes('IGNORED')), 'só as da pessoa logada, um mês');
+  assert.ok(gBuscas.every(c => JSON.stringify(c.company_department) === JSON.stringify([ID, ID2])), '0.117.0: a busca leva só os setores Pessoal e Fiscal (o filtro do próprio Gestta)');
+  { gBuscas.length = 0;
+    const ts = await tt({ cmd: 'gesttaTarefas', quem: 'setor:Fiscal', parte: 'comp' });
+    assert.ok(ts.ok && ts.porDepartamento, 'setor pelo filtro do Gestta: ' + (ts.erro || ''));
+    assert.ok(gBuscas.length && gBuscas.every(c => JSON.stringify(c.company_department) === JSON.stringify([ID2]) && !c.company_user), '0.117.0: o setor vai como company_department, sem a lista de pessoas');
+    const tr = await tt({ cmd: 'gesttaTarefas', quem: 'setor:Recepção', parte: 'comp' });
+    assert.equal(tr.ok, false); assert.match(tr.erro, /só Pessoal, Contábil e Fiscal/); }
   assert.equal(t1.itens[0].value, undefined, 'valor da tarefa não sai da página'); assert.equal(t1.itens[0].owner, undefined);
   gBuscas.length = 0;
   const t2 = await tt({ cmd: 'gesttaTarefas', quem: 'sem' });
@@ -555,6 +573,51 @@ assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br
   const sR = await tt({ cmd: 'gesttaSaude', parte: 'remetente' });
   assert.ok(sR.ok && sR.aviso.nivel === 'aviso' && /DKIM falhou/.test(sR.aviso.texto), 'remetente: ' + JSON.stringify(sR.aviso));
   assert.deepEqual(Object.keys(sR.remetente).sort(), ['dkim_status', 'domain', 'domain_status', 'verified'], 'do domínio, só o estado');
+  // 0.116.0 · Guias da folha: a lista sai do relatório do mês da META (competência + 1) e os itens do detalhe; só leituras
+  { const h = new Date(), comp = new Date(h.getFullYear(), h.getMonth() - 1, 1), nR = gRel.length;
+    const gl = await tt({ cmd: 'guiasFolha', parte: 'lista', ano: comp.getFullYear(), mes: comp.getMonth() + 1, forcar: true });
+    assert.ok(gl.ok, 'guiasFolha lista: ' + (gl.erro || '')); assert.deepEqual(gl.tarefas, [], 'sem tarefa FGTS DIGITAL no relatório simulado');
+    if (gRel.length > nR) assert.equal(new Date(gRel[gRel.length - 1].dates.startDate).getUTCMonth(), h.getMonth(), 'relatório do mês da meta (competência + 1)');
+    const gi = await tt({ cmd: 'guiasFolha', parte: 'itens', ids: [ID, '../x'] });
+    assert.ok(gi.ok); assert.deepEqual(Object.keys(gi.porTarefa), [ID], 'id inválido fica de fora');
+    assert.deepEqual(gi.porTarefa[ID], { guia: null, demonstrativo: null, consignado: null }, 'tarefa sem os itens do FGTS');
+    assert.ok(!JSON.stringify(gi).includes('segredo.pdf'), 'o endereço do arquivo nunca sai'); }
+  // 0.118.0: sem a permissão do FGTS Digital (pedida na hora, pela tela), a conferência para antes de qualquer chamada
+  { const gf = await tt({ cmd: 'guiasFolha', parte: 'fgts', ano: 2026, mes: 10, empresa: { cnpj: '11222333000181', nome: 'X', code: '1' }, esperado: 10 });
+    assert.equal(gf.ok, false); assert.equal(gf.semPermissao, true, 'sem permissão: ' + JSON.stringify(gf));
+    const gx = await tt({ cmd: 'guiasFolha', parte: 'fgts', ano: 2026, mes: 10, empresa: { cnpj: '123' } });
+    assert.equal(gx.ok, false, 'CNPJ inválido'); }
+  // 0.121.0: ver o arquivo pede a permissão do S3 antes de qualquer leitura; excluir relê a tarefa; incluir e tirar template relêem os vínculos
+  { // as ações só são aceitas de uma tela da extensão em app/
+    const tela = await ctx.newPage(); await tela.goto('chrome-extension://' + id + '/app/gestta.html'); await sleepMs(1500);
+    const ta = m => tela.evaluate(x => new Promise(res => chrome.runtime.sendMessage(x, res)), m);
+    const n0 = gChamadas.length;
+    const fora = await tt({ cmd: 'gesttaArquivo', id: ID2, documento: ID });
+    assert.equal(fora.ok, false); assert.match(fora.erro, /Só a tela das Tarefas/, 'fora de app/ é recusado');
+    const va = await ta({ cmd: 'gesttaArquivo', id: ID2, documento: ID });
+    assert.equal(va.ok, false); assert.equal(va.semPermissao, true, 'sem a permissão do S3: ' + JSON.stringify(va)); assert.ok(!gChamadas.slice(n0).includes('GET /core/customer/task/' + ID2), 'sem permissão, nada é lido');
+    const e1 = await ta({ cmd: 'gesttaAcao', acao: 'excluirArquivo', id: ID2, documento: ID2 });
+    assert.equal(e1.ok, false); assert.match(e1.erro, /já está sem arquivo/); assert.equal(gEscritas.length, 0, 'item sem arquivo: nada é excluído');
+    gStatus2 = 'DONE';
+    const e2 = await ta({ cmd: 'gesttaAcao', acao: 'excluirArquivo', id: ID2, documento: ID });
+    assert.equal(e2.ok, false); assert.match(e2.erro, /concluída/); assert.equal(gEscritas.length, 0, 'tarefa concluída: nada é excluído');
+    gStatus2 = 'OPEN';
+    const e3 = await ta({ cmd: 'gesttaAcao', acao: 'excluirArquivo', id: ID2, documento: ID });
+    assert.ok(e3.ok, 'excluir: ' + (e3.erro || '')); assert.deepEqual(gEscritas, [['DELETE', '/core/customer/task/' + ID2 + '/document/' + ID + '/file', '{}']]);
+    assert.ok(!JSON.stringify([va, e1, e2, e3]).includes('amazonaws'), 'o endereço do arquivo nunca volta à tela');
+    gEscritas.length = 0;
+    const r1 = await ta({ cmd: 'gesttaAcao', acao: 'incluirTemplate', cliente: ID, template: ID2 });
+    assert.equal(r1.ok, false, 'incluir template só pelo cmd que relê o vínculo'); assert.equal(gEscritas.length, 0);
+    const i1 = await ta({ cmd: 'gesttaTemplateEmpresa', acao: 'incluir', cliente: ID, template: ID });
+    assert.ok(i1.ok && i1.jaEstava, 'já estava: ' + JSON.stringify(i1)); assert.equal(gEscritas.length, 0, 'o que já está não é incluído de novo');
+    const i2 = await ta({ cmd: 'gesttaTemplateEmpresa', acao: 'incluir', cliente: ID, template: ID2 });
+    assert.ok(i2.ok && i2.confere === true, 'incluir: ' + JSON.stringify(i2));
+    const t1 = await ta({ cmd: 'gesttaTemplateEmpresa', acao: 'tirar', cliente: ID, template: ID });
+    assert.ok(t1.ok && t1.confere === true, 'tirar: ' + JSON.stringify(t1));
+    assert.deepEqual(gEscritas, [['POST', '/admin/customer/' + ID + '/company/task', JSON.stringify({ company_task: [ID2] })], ['DELETE', '/admin/group/customer', JSON.stringify({ ids: [ID3] })]], 'só o template pedido e o id do vínculo relido');
+    const loc = JSON.stringify(await pagina.evaluate(() => chrome.storage.local.get(null)));
+    assert.ok(!loc.includes('amazonaws') && !loc.includes(ID3), 'nada disso no disco');
+    await tela.close(); gChamadas.splice(n0); }
   const novasS = gChamadas.slice(antesS);
   assert.ok(novasS.every(c => c.startsWith('GET ') || c === 'POST /core/customer/task/report' || c === 'POST /core/customer/task/search'), 'a Saúde só lê: ' + novasS.filter(c => !c.startsWith('GET ')).join(', '));
   for (const v of ['contato@exemplo', '(27)', 'Contato Ficticio', 'destino@exemplo', 'smtp.exemplo', '"score"', 'SEGREDO', 'eyJ', 'dono@exemplo', 'escritorio@exemplo', 'PROTO']) assert.ok(!JSON.stringify([s1, s2, s3, s4, s5, sL, sR]).includes(v), 'Saúde vazou: ' + v);
@@ -601,6 +664,9 @@ assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br
   papel = 'ROLE_USER'; adminProibido = true;
   const s6 = await tt({ cmd: 'gesttaSaude', parte: 'config' });
   assert.equal(s6.ok, false, 'o analista não lê a configuração'); assert.match(s6.erro, /só da coordenação/);
+  { const tela = await ctx.newPage(); await tela.goto('chrome-extension://' + id + '/app/gestta.html'); await sleepMs(1000);
+    const nE = gEscritas.length, t2 = await tela.evaluate(x => new Promise(res => chrome.runtime.sendMessage(x, res)), { cmd: 'gesttaTemplateEmpresa', acao: 'tirar', cliente: ID, template: ID2 }); await tela.close();
+    assert.equal(t2.ok, false); assert.match(t2.erro, /coordenação/); assert.equal(gEscritas.length, nE, '0.121.0: o analista não muda template'); }
   const s7 = await tt({ cmd: 'gesttaSaude', parte: 'tarefas' });
   assert.ok(s7.ok && s7.perfil.total === false && s7.semTarefa === null, 'analista: sem a contagem da coordenação');
   assert.ok(s7.linhas.every(l => l[s7.colunas.indexOf('owner.name')] === 'Pessoa Ficticia' || l[s7.colunas.indexOf('concluded_by.name')] === 'Pessoa Ficticia'), 'analista: só as dele');
