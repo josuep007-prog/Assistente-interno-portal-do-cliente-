@@ -97,3 +97,22 @@ Quatro etapas: 1 Selecionar Débitos FGTS · 2 Selecionar Débitos Consignado ·
 **Gestta.** Tarefa aberta = os três itens sem arquivo ("0 / 3 documentos"). Em novembro, uma tarefa FGTS DIGITAL por empresa ("Gerada pelo sistema", Pessoal, competência do mês anterior, notifica o cliente). A equipe conclui logo depois de anexar. **Os nomes dos arquivos são escritos à mão** (sem padrão do Domínio): o nome não prova competência nem empresa; valem o item da tarefa, a Tag do PDF e o FGTS Digital.
 
 **Não mapeado:** a emissão (adicionar os débitos à guia, vencimento, o POST de "Emitir Guia" e como chega o número da guia nova); tudo do consignado; filial real; o tamanho de página do servidor. Para fechar a emissão é preciso uma competência com débito sem guia em que emitir não cause problema. Erros de negócio vêm como `{mensagem:{tipo,codigo,titulo,descricao}}` (vistos COB0003 "Não há débitos de interesse", COB0105 "Não há débitos de consignados"). Aviso do levantamento: "Avançar" sem seleção dispara `POST .../consignados:batch-create` com `ids` vazio (204, só estado de sessão).
+
+## Roteiro único · leitura de 16/11/2026 (`prompt-tudo-que-falta-2026-11-16.md`)
+
+**Atenção: boa parte do detalhe se perdeu** (a sessão do mapeamento reiniciou). O que segue é o que ficou; o resto precisa ser refeito (roteiro `prompt-emissao-fgts-2026-11-16.md`).
+
+**Emissão (feita com permissão do Josué numa empresa de cliente, guia sem pagamento).**
+- `POST /cobranca/api/guia-parametrizada/debitos` = **Adicionar à guia**, corpo `{filtro:{…}, inclusao:[], excecao:[]}`, devolve o resumo; depois `GET .../debitos` volta com `incluido=true`. `GET .../debitos/encargos?uuid` devolve o resumo (`recuperouEncargos`, `qtdeTotal`…).
+- Outras rotas vistas no fluxo: `consignados:batch-create`, `dados-filtro`, `dados-filtro-consignado`, `consignados`, `consignados-revisao`, `debitos-revisao`, `agrupamentos-carrinho`, `gerar-guia`, `guia-rapida/confirma`. **Não ficaram:** os corpos e as respostas de cada passo, de onde vêm `uuid`, `tag` e `hash` do `gerar-guia`, de qual resposta sai o número da guia nova, e quantas vezes a tela consulta até ficar pronta.
+- Depois de emitida, a pesquisa sem "Sem guia emitida" traz `guiasRelacionadas` com a guia nova e `incluido=false`.
+- **A tela deixa adicionar de novo à guia débitos que já têm guia**, sem aviso nem código (o resumo voltou igual). **A extensão é que tem de impedir emitir duas vezes:** só emitir com todos os débitos sem `guiasRelacionadas`.
+- PDFs: `download/*-assincrono-pdf` em duas chamadas (cerca de 2 s entre elas) e o arquivo por URL assinada em `storagegw.estaleiro.serpro.gov.br`; a reimpressão aceita `reimprimirGuia/{numero}?isConsignado`. O cabeçalho do relatório é "Detalhe da Guia Emitida" (o PDF não tem `/Title`).
+- Ficou no "carrinho" do FGTS Digital dessa empresa: 3 débitos adicionados à guia, sem emitir (só estado de sessão).
+
+**Consignado e filial.** A cadeia de chamadas do consignado e o formato do estabelecimento foram vistos, mas o detalhe não ficou. Não dá para conferir o consignado nem a filial contra o Extrato Mensal pelo FGTS Digital ou pelo Gestta: o extrato é do Domínio e a extensão já o lê no portal de documentos do Onvio. Numa empresa com filial, a matriz tem tarefas FGTS DIGITAL e a filial não tem nenhuma (o FGTS da filial vai na guia da matriz).
+
+**Gestta (empresa de teste 985).**
+- Item com arquivo mostra olho e lixeira; sem arquivo, só o ícone de restaurar.
+- O olho abre o arquivo no **visualizador do Google Docs** (`drive.google.com/viewerng/viewer`), sem chamada à API; "Download" é um link direto para `gestta-prod.s3.us-east-1.amazonaws.com`. **A extensão não deve usar o visualizador do Google** (mandaria o endereço do arquivo para fora).
+- **Incluir template:** `POST /admin/customer/{id}/company/task` `{company_task:[id do template no catálogo]}`, 201, toast "Ação realizada". **Tirar:** `DELETE /admin/group/customer` `{ids:[…]}`, 200 texto puro; o id é o `_id` de nível raiz do item de `GET /admin/customer/{id}/company/task` (confirmado duas vezes; não é o `company_task._id`). Aviso: "Realmente deseja remover 1 tarefas do cliente {nome}?"; toast "1 tarefa removida do cliente {nome}". O aviso para template com tarefa gerada não foi visto.
