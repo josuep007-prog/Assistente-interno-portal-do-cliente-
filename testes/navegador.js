@@ -413,6 +413,27 @@ const abrirCaixa = async p => { await irTramites(p); await p.waitForSelector('#a
 const sit = async (p, n) => { await p.click('.cmp-int[data-sit="' + n + '"]'); };
 const linhas = (p, sel) => p.$$eval(sel || '#corpo [data-k]', e => e.map(x => x.dataset.k));
 
+await passo('app · 0.123.0: se um arquivo do app não carrega, a tela diz o que houve (com Recarregar e Copiar diagnóstico) em vez de ficar em branco; extensão atualizada com a página aberta dá um aviso claro', async () => {
+  const p = await pagina(URL_APP, '');
+  await p.setViewportSize({ width: 1360, height: 860 });
+  await semear(p, ESTADO_APP);
+  await p.route('**/__ext__/app/views/inicio.js', r => r.abort());
+  await p.goto(URL_APP + '#/inicio');
+  await p.waitForSelector('#vista .faixa[role="alert"]', { timeout: 9000 });
+  const t = await p.textContent('#vista .faixa');
+  assert.match(t, /A tela não carregou\./); assert.match(t, /recarregue a página \(F5\)/);
+  assert.match(t, /inicio\.js|Failed to fetch|não carregou/i, 'o diagnóstico diz o que falhou: ' + t.slice(0, 300));
+  assert.ok(await p.$('#vista .faixa button:has-text("Recarregar a tela")') && await p.$('#vista .faixa button:has-text("Copiar diagnóstico")'));
+  await p.context().close();
+  // tela normal: o guarda não aparece
+  const q = await abrirApp('#/inicio'); await q.waitForTimeout(4800);
+  assert.equal(await q.$('#vista .faixa[role="alert"]'), null, 'com o app no ar, o guarda fica quieto');
+  assert.equal(await q.evaluate(() => window.__appOk), true);
+  // extensão atualizada com a página aberta: sem chrome.runtime, o aviso é claro
+  await q.evaluate(() => { window.chrome.runtime.sendMessage = undefined; });
+  await q.click('#btn-atualizar'); await q.waitForFunction(() => /Recarregue esta página \(F5\)/.test(document.querySelector('#toast').textContent));
+  await q.context().close();
+});
 await passo('app · listas que antes cortavam (Sugestões do Hoje, Sem analista da Equipe): mostram tudo e rolam por dentro, sem "Ver todas", nos dois estilos', async () => {
   const muitas = Array.from({ length: 14 }, (_, n) => ({ k: 'geral:m' + n, type: 'geral', typeLabel: 'Geral', id: 'm' + n, num: 200 + n, status: 'Aguardando resposta', lado: 'esc', nivel: 0, grav: 0, parado: 1, motivos: [], resp: n % 2 ? '' : 'Ana Teste', mine: n % 2 === 0, apelido: 'EMP' + n, cliente: 'EMPRESA ' + n, detalhe: 'Férias ' + n, abaProvavel: { tipo: 'avisoFerias', label: 'Aviso de férias', palavra: 'ferias' }, created: agoraIso(3), last: agoraIso(1) }));
   const extra = { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: muitas }) };

@@ -670,3 +670,4 @@ document.documentElement.dataset.densidade = E.dens;
 quemRot();
 iconeTema();
 ler().then(() => setTimeout(destacarUltima, 150));
+window.__appOk = true;      // 0.123.0: avisa o guarda de arranque (guarda.js) que a tela subiu

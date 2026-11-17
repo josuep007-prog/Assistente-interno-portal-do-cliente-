@@ -2,6 +2,13 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.123.0 (17/11/2026): a tela não fica mais em branco quando algo falha no arranque
+
+- Josué: ao clicar nas Configurações a camada ficava vazia, com "Carregando…", e a extensão não dizia o porquê.
+- **Guarda de arranque** (`app/guarda.js`, nas telas do Onvio e do Gestta): se a tela não subir em 4 segundos, aparece "A tela não carregou." com o que falhou (arquivo que não carregou, erro de script), a dica de recarregar a página (F5) e os botões **Recarregar a tela** e **Copiar diagnóstico** (versão e erros, nenhum dado de cliente).
+- **Arranque protegido:** cada passo do app (ler o que a extensão guardou, desenhar a tela, indicador de leitura, contadores, tema, avisos) falha sozinho e mostra o motivo; os ouvintes (troca de tela, Configurações, tema) são ligados de qualquer jeito, então a engrenagem não fica morta por um erro numa tela.
+- **Extensão atualizada com a página aberta:** os botões que falam com a extensão (engrenagem, Ler agora) passam a dizer "A extensão foi atualizada ou recarregada. Recarregue esta página (F5)" em vez de um erro técnico.
+
 ## Novidades da v0.122.0 (16/11/2026): seletor de setor e analista numa janela só, e só Pessoal, Contábil e Fiscal de verdade
 
 - Josué: "o seletor de departamento está péssimo e ainda tem os setores que eu mandei você tirar" e "quero que seja um botão que ao clicar abra uma janela bem intuitiva onde a pessoa possa selecionar ou o setor inteiro ou um analista em específico diretamente".

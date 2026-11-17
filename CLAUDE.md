@@ -107,6 +107,7 @@ O Hub tem módulos DP, Contábil, Fiscal, Portal do Cliente, Empresas (cadastro 
 - **Gestta** (`app.gestta.com.br/*`): `shell-gestta.js` põe um botão arrastável que abre a camada das Tarefas do Gestta (`app/gestta.html`) só pelo clique ou pelo ícone.
 - **Qualquer outro site:** `botao-geral.js` desenha um botão arrastável com o menu **Onvio · Gestta · Os dois** (cmd `irPara`: reaproveita ou cria a guia; não abre a camada). Não lê nada da página nem usa rede; guarda só `posBotaoGeral`, `botaoGeralOcultos`, `botaoGeralOff` (Configurações › Aparência).
 - **Configurações** abrem numa guia à parte (cmd `abrirConfig`, `app/app.html?janela=config#/config`), pela engrenagem do Onvio ou do Gestta; tema, estilo e setor valem na hora nas outras telas abertas.
+- **Tela nunca muda em branco (0.123.0, Josué 17/11/2026):** `app/guarda.js` (carregado antes do app, no Onvio e no Gestta) mostra "A tela não carregou" com o erro e Recarregar/Copiar diagnóstico se `window.__appOk` não vier em 4 s; o arranque de `app.js` protege cada passo e sempre liga os ouvintes; `enviar` avisa "recarregue (F5)" quando a extensão foi atualizada com a página aberta. Tela nova ou arranque novo mantém isso.
 - Recurso que a página do Onvio carrega da extensão (iframe, logo, fontes, páginas em quadro) tem de estar em `web_accessible_resources`. Abas abertas antes da instalação recebem o `shell.js` por injeção. Scripts órfãos depois de atualizar se desligam e pedem F5.
 
 ## Arquitetura
