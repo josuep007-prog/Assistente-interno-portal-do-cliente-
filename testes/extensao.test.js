@@ -5013,3 +5013,33 @@ test('Gestta (0.122.0): só os setores que SÃO Pessoal, Contábil ou Fiscal; no
   const rel = [{ status: 'OPEN', setor: 'Fiscal Conexos', responsavel: 'Ana' }, { status: 'OPEN', setor: 'Fiscal', responsavel: 'Ana' }];
   assert.deepEqual(plano(OCG.setoresAtivos(rel, eq).map(x => x.nome)), ['Fiscal']);
 });
+/* ---------- Gestta (0.124.0): o leitor contínuo escolhe uma leitura por vez, por prioridade ---------- */
+test('Gestta (0.124.0): proximaLeitura — analista, setor, outros setores e o resto, ttl, aba escondida, urgência e envelhecimento', () => {
+  const m = 60e3, T0 = 1e12;
+  const J = (id, nivel, ttlMin, lidoMin, extra) => Object.assign({ id, nivel, ttl: ttlMin * m, lidoEm: lidoMin == null ? 0 : T0 - lidoMin * m, urgente: false, lendo: false, bloqueadoAte: 0 }, extra || {});
+  const jobs = () => [J('resto', 4, 60, null), J('outros', 3, 10, null), J('setor', 2, 5, null), J('meu', 1, 2, null)];
+  // nada foi lido ainda: o do analista, depois o do setor, depois os outros setores, depois o resto
+  const ordem = []; let l = jobs();
+  for (let i = 0; i < 4; i++) { const j = OCG.proximaLeitura(l, T0); ordem.push(j.id); j.lidoEm = T0; }
+  assert.deepEqual(ordem, ['meu', 'setor', 'outros', 'resto']);
+  // tudo lido agora: nada vencido
+  assert.equal(OCG.proximaLeitura(l, T0 + 1 * m), null);
+  // passados 2 min só o do analista venceu; com 5, o do setor entra depois dele
+  assert.equal(OCG.proximaLeitura(l, T0 + 2 * m).id, 'meu');
+  l.find(x => x.id === 'meu').lidoEm = T0 + 4 * m;      // lido de novo aos 4 min: aos 5 só o setor venceu
+  assert.equal(OCG.proximaLeitura(l, T0 + 5 * m).id, 'setor');
+  // com a aba escondida o ttl vale o dobro
+  assert.equal(OCG.proximaLeitura(jobs().map(j => Object.assign(j, { lidoEm: T0 })), T0 + 3 * m, { escondida: true }), null, 'aos 3 min ainda não: o ttl de 2 min vale 4 com a aba escondida');
+  assert.equal(OCG.proximaLeitura(jobs().map(j => Object.assign(j, { lidoEm: T0 })), T0 + 4 * m, { escondida: true }).id, 'meu');
+  // lendo e bloqueado não entram; urgente passa na frente de tudo (e a ordem entre urgentes é a da aba aberta)
+  l = [J('a', 1, 2, null, { lendo: true }), J('b', 1, 2, null, { bloqueadoAte: T0 + 10 * m }), J('c', 4, 60, 1, { urgente: true, ordem: 2 }), J('d', 4, 60, 1, { urgente: true, ordem: 0 }), J('e', 1, 2, null)];
+  assert.equal(OCG.proximaLeitura(l, T0).id, 'd');
+  l.find(x => x.id === 'd').urgente = false; assert.equal(OCG.proximaLeitura(l, T0).id, 'c');
+  l.find(x => x.id === 'c').urgente = false; assert.equal(OCG.proximaLeitura(l, T0).id, 'e');
+  // leitura muito atrasada sobe de nível: o relatório (nível 4) velho há 4 ttl passa à frente de uma tarefa nível 2 vencida há pouco
+  l = [J('relatorio', 4, 60, 240), J('setor', 2, 5, 6)];
+  assert.equal(OCG.proximaLeitura(l, T0).id, 'relatorio');
+  l = [J('relatorio', 4, 60, 61), J('setor', 2, 5, 6)];
+  assert.equal(OCG.proximaLeitura(l, T0).id, 'setor', 'vencida há pouco não fura a fila');
+  assert.equal(OCG.proximaLeitura([], T0), null);
+});

@@ -37,9 +37,11 @@ async function feriados() {
 // 0.112.0 (Josué, 13/11/2026: "mostrar aos poucos"): primeiro o mês atual e o próximo (carga e prioridade já aparecem), depois os 2 meses
 // anteriores, que trazem o ritmo de cada pessoa; enquanto eles não chegam, a grade diz "calculando o ritmo…". Linhas juntas sem repetir tarefa.
 const mesesRel = (h, de, ate) => { const l = []; for (let i = de; i <= ate; i++) { const d = new Date(h.getFullYear(), h.getMonth() + i, 1); l.push({ ano: d.getFullYear(), mes: d.getMonth() + 1 }); } return l; };
-export async function lerSaude(enviar, redesenhar, forcar) {
+export async function lerSaude(enviar, redesenhar, forcar, silencioso) {
   enviarFn = enviar; aoMudar = redesenhar || aoMudar;
   const vez = (lerSaude.vez = (lerSaude.vez || 0) + 1);
+  // 0.124.0: releitura em segundo plano com a tela já lida: nada pisca nem some; o novo conjunto troca o antigo só quando as duas partes chegaram
+  if (silencioso && S.dados) return lerSaudeCalado(vez, forcar);
   S.carregando = true; S.erro = null; S.ritmoPronto = false; S.erroRitmo = ''; aoMudar();
   await feriados();
   const h = new Date();
@@ -64,6 +66,26 @@ export async function lerSaude(enviar, redesenhar, forcar) {
   if (lerSaude.vez !== vez) return;
   S.falhas = null; S.emails = {}; await lerFalhas();
   if (lerSaude.vez === vez) await lerRemetente();
+}
+
+async function lerSaudeCalado(vez, forcar) {
+  await feriados();
+  const h = new Date(), enviar = enviarFn;
+  const r = await enviar({ cmd: 'gesttaSaude', parte: 'tarefas', meses: mesesRel(h, 0, 1), contagens: true, forcar: !!forcar });
+  if (lerSaude.vez !== vez || !r || !r.ok) return;
+  const x = await enviar({ cmd: 'gesttaSaude', parte: 'tarefas', meses: mesesRel(h, -2, -1), forcar: !!forcar });
+  if (lerSaude.vez !== vez) return;
+  const iId = (r.colunas || []).indexOf('id'), porId = new Map((r.linhas || []).map(l => [String(l[iId]), l]));
+  const dados = Object.assign({}, r, { meses: (r.meses || []).slice(), mesesFaltam: (r.mesesFaltam || []).slice() });
+  if (x && x.ok) {
+    const xi = (x.colunas || []).indexOf('id');
+    (x.linhas || []).forEach(l => { const k = String(l[xi]); if (!porId.has(k)) porId.set(k, (x.colunas || []).join() === (r.colunas || []).join() ? l : (r.colunas || []).map(c => { const j = x.colunas.indexOf(c); return j < 0 ? '' : l[j]; })); });
+    dados.meses = [...new Set((x.meses || []).concat(dados.meses))]; dados.mesesFaltam = [...new Set((x.mesesFaltam || []).concat(dados.mesesFaltam))];
+    dados.daMemoria = !!(dados.daMemoria && x.daMemoria);
+  }
+  S.tarefas = G.tarefasDoRelatorio(r.colunas, [...porId.values()]).map(t => Object.assign(t, { name: nome(t.name), customer: Object.assign({}, t.customer, { name: nome(t.customer.name) }) }));
+  S.dados = dados; S.ritmoPronto = !!(x && x.ok); S.erroRitmo = x && x.ok ? '' : (x && x.erro) || 'sem resposta'; aoMudar();
+  if (lerSaude.vez === vez) await lerFalhas();
 }
 
 /* ---------- leituras sob demanda (uma por vez, com o andamento na tela) ---------- */

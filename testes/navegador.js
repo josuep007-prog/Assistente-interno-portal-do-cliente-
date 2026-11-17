@@ -2979,6 +2979,59 @@ await passo('app · 0.92.0: mudança feita na guia de Configurações vale na ho
   await pg.close();
 });
 
+await passo('Gestta · 0.124.0: a camada nasce escondida sozinha, cada página lida entra na tela na hora (sem esperar as outras) e a releitura troca os itens no lugar', async () => {
+  // pré-carga: sem nenhum clique, a tela do Gestta existe, escondida
+  const p0 = await pagina('https://app.gestta.com.br/', '<!doctype html><title>Gestta</title><body><h1>Gestta simulado</h1></body>');
+  await p0.addInitScript('window.__respostas = ' + JSON.stringify(gtResp(true)) + ';');
+  await p0.goto('https://app.gestta.com.br/');
+  await p0.addScriptTag({ content: lerExt('shell-gestta.js') });
+  let f0 = null;
+  for (let i = 0; i < 80 && !f0; i++) { f0 = p0.frames().find(f => /gestta\.html/.test(f.url())); if (!f0) await p0.waitForTimeout(100); }
+  assert.ok(f0, 'a camada foi criada sozinha, sem clique');
+  assert.equal(await (await f0.frameElement()).isVisible(), false, 'e continua escondida (só o botão aparece)');
+  assert.equal(await p0.evaluate(() => document.documentElement.style.overflow), '', 'a página do Gestta segue rolando: a camada não abriu');
+  await p0.context().close();
+  // leitura por página
+  const T = gtTarefas();
+  const { p, fr } = await abrirGestta(gtResp(true));
+  await fr.waitForSelector('.gt-topo');
+  await fr.click('#abas [data-aba="lista"]');
+  await fr.waitForSelector('.gl-r');
+  await fr.evaluate(([a, b]) => {
+    const orig = chrome.runtime.sendMessage.bind(chrome.runtime); window.__pg = []; window.__fase = 1;
+    const base = { ok: true, parte: 'comp', quem: 'eu', perfil: { id: 'aaaaaaaaaaaaaaaaaaaaaaaa', papelNome: 'Administrador', total: true, setores: [] }, setorPessoas: 0, porDepartamento: true, lidoEm: new Date().toISOString() };
+    chrome.runtime.sendMessage = (m, cb) => {
+      if (m.cmd === 'gesttaTarefas' && m.passo && m.parte === 'comp' && m.quem === 'eu') {
+        if (m.situacoes === 'concluidas') return cb(Object.assign({}, base, { itens: [], total: 0, passo: null, fim: true }));
+        window.__pg.push(JSON.stringify(m.passo));
+        const fase = window.__fase;
+        if (!m.passo.p) return cb(Object.assign({}, base, { itens: fase === 1 ? a : a.map((t, i) => i ? t : Object.assign({}, t, { name: 'DCTF WEB ATUALIZADA' })), total: 3, passo: { p: 2 }, fim: false }));
+        window.__soltar = () => cb(Object.assign({}, base, { itens: fase === 1 ? b : [], total: 3, passo: null, fim: true }));
+        return;
+      }
+      return orig(m, cb);
+    };
+  }, [T.slice(0, 2), T.slice(2, 3)]);
+  await fr.click('#gt-mes-ant');                       // outra competência: visão nova, lida por páginas
+  await fr.waitForFunction(() => window.__soltar);
+  // a 1ª página (2 tarefas) já está na tela; a 2ª ainda não chegou
+  await fr.waitForFunction(() => document.querySelectorAll('.gl-r').length === 2);
+  assert.match(await fr.textContent('#aovivo'), /Lendo… 2 de 3/);
+  await fr.evaluate(() => { const f = window.__soltar; window.__soltar = null; f(); });
+  await fr.waitForFunction(() => document.querySelectorAll('.gl-r').length === 3);
+  assert.deepEqual(await fr.evaluate(() => window.__pg.slice(0, 2)), ['{}', '{"p":2}'], 'o cursor anda de página em página');
+  // releitura (uma ação no painel): a tela não esvazia; o item muda no lugar quando a página dele chega; o que sumiu sai só no fim
+  await fr.waitForFunction(() => !document.querySelector('#aovivo-tx').textContent.startsWith('Lendo'));
+  await fr.evaluate(() => { window.__fase = 2; window.dispatchEvent(new CustomEvent('gt-tarefa-mudou')); });
+  await fr.waitForFunction(() => window.__soltar);
+  await fr.waitForFunction(() => /DCTF Web atualizada/i.test(document.querySelector('#vista').textContent));
+  assert.equal(await fr.evaluate(() => document.querySelectorAll('.gl-r').length), 3, 'durante a releitura nada some');
+  await fr.evaluate(() => { const f = window.__soltar; window.__soltar = null; f(); });
+  await fr.waitForFunction(() => document.querySelectorAll('.gl-r').length === 2);
+  assert.deepEqual(await p.evaluate(() => window.__respostas && 0), 0);
+  await p.context().close();
+});
+
 await passo('Gestta · Tarefas (0.77.0): Meu dia com o detalhe ao lado e a linha do tempo, Empresas com a ficha e a trilha, Lista densa, Obrigações, calendário, Fechamento e abrir no Gestta', async () => {
   const { p, fr } = await abrirGestta(gtResp(true));
   const sit = k => fr.$eval('.gt-sit[data-grupo="' + k + '"] b', e => e.textContent);

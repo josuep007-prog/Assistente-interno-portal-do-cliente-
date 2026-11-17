@@ -19,14 +19,15 @@ const S = { dados: null, analise: null, carregando: false, erro: null, filtro: '
 let enviarFn = null, aoMudar = () => {};
 
 export function estadoEnvios() { return S; }
-export async function lerEnvios(enviar, redesenhar) {
+export async function lerEnvios(enviar, redesenhar, silencioso) {
   enviarFn = enviar; aoMudar = redesenhar || aoMudar;
-  S.carregando = true; S.erro = null; aoMudar();
+  const calado = !!silencioso && !!S.dados;       // 0.124.0: releitura em segundo plano: a tela atual fica como está até a nova chegar (e se falhar, fica)
+  if (!calado) { S.carregando = true; S.erro = null; aoMudar(); }
   const r = await enviar({ cmd: 'gesttaEnvios' });
-  S.carregando = false;
+  if (!calado) S.carregando = false;
   if (r && r.ok) { S.dados = r; S.analise = G.enviosPortal(r.envios, r.templates, r.notifica, r.modelo && r.modelo.id, r.vinculados); }
-  else S.erro = r || { erro: 'sem resposta' };
-  aoMudar();
+  else if (!calado) S.erro = r || { erro: 'sem resposta' };
+  if (!calado || (r && r.ok)) aoMudar();
 }
 const nome = (t) => G.nomeLegivel ? G.nomeLegivel(t) : t;
 const dataCurta = (s) => { const d = s ? new Date(s) : null; return d && !isNaN(d) ? String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear() : '—'; };

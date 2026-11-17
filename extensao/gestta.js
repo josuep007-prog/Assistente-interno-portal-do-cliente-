@@ -313,6 +313,19 @@
         .sort((a, b) => b.abertas - a.abertas || a.nome.localeCompare(b.nome, 'pt-BR')) }))
       .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
   }
+  /* 0.124.0 (Josué, 17/11/2026: leitura contínua por prioridade): qual leitura fazer agora. Uma por vez. jobs: [{ id, nivel (1 = a mais importante),
+   * ttl (ms), lidoEm (ms; 0 = nunca lido), urgente, lendo, bloqueadoAte }]. Vence a que pediram com urgência; senão, a de menor nível entre as
+   * vencidas (nunca lida ou mais velha que o ttl; com a aba escondida o ttl vale o dobro). Uma leitura muito atrasada (mais de 2 ttl) sobe até
+   * 3 níveis, para as de baixo (relatório, Gestão, Envios) não ficarem sem vez atrás das tarefas. */
+  function proximaLeitura(jobs, agora, o) {
+    const fator = o && o.escondida ? 2 : 1;
+    const atraso = (j) => j.lidoEm ? (agora - j.lidoEm) / (j.ttl * fator) : 0;
+    const vencido = (j) => j && !j.lendo && (!j.bloqueadoAte || agora >= j.bloqueadoAte) && (j.urgente || !j.lidoEm || atraso(j) >= 1);
+    const prio = (j) => j.nivel - Math.min(3, Math.max(0, atraso(j) - 2));
+    const c = (jobs || []).filter(vencido);
+    c.sort((a, b) => (b.urgente ? 1 : 0) - (a.urgente ? 1 : 0) || (a.urgente ? (a.ordem || 0) - (b.ordem || 0) : 0) || prio(a) - prio(b) || (a.lidoEm || 0) - (b.lidoEm || 0) || String(a.id).localeCompare(String(b.id)));
+    return c[0] || null;
+  }
   // 0.111.0: os setores do cadastro de equipe, para o De quem aparecer na hora (abertas: null = ainda sem o relatório do mês)
   function setoresDaEquipe(equipe) {
     const sem = s => semAcento(String(s || '')).trim(), m = new Map();
@@ -1571,7 +1584,7 @@
   }
   const urlCliente = (id) => /^[0-9a-f]{24}$/i.test(String(id || '')) ? APP + '/admin/#/sidebar/customer/edit/' + id + '/details' : '';
 
-  g.OCG = { arquivoS3, arquivoDoDetalhe, moduloDoSetor, setorPermitido, soSetoresPermitidos, tarefasGuiaFgts, itensGuiaFgts, mesDaMeta, avisoRemetente, pausaSeguinte, setoresDaEquipe, modoRel, restaurarModoRel, semContatoNoSetor, vereditoEmail, tarefasParaEmail, ritmoPorPessoa, cargaPorDia, prioridade, NIVEIS_PRIORIDADE, sugestoesConfig, extrasSaude, urlCliente, proximosDiasUteis, motivoEmail, COLUNAS_SAUDE, arquivosDoItem, setoresAtivos, lerQuemSetor, grupoTela, GRUPOS_TELA, SITUACOES_FILTRO, situacaoDe, fimCnpj, cnpjFormatado, enviosPortal, lerExpress, cnpjsDoTexto, cnpjValido, competenciasDoTexto, notaDocumento, sugerirDestinos, pastaForaDe, urlTemplate: (id) => /^[0-9a-f]{24}$/i.test(String(id || '')) ? 'https://app.gestta.com.br/admin/#/sidebar/document/edit/' + id + '/details' : '', semelhanca, parecidoComPasta, palavrasNome, ERROS_ENVIO, API, APP, PAUSA_MS, LIMITE_BUSCA, JANELA_MAX_DIAS, POST_LEITURA, RELATORIO_TIPOS, COLUNAS_RELATORIO, MOLDES, APPS,
+  g.OCG = { proximaLeitura, arquivoS3, arquivoDoDetalhe, moduloDoSetor, setorPermitido, soSetoresPermitidos, tarefasGuiaFgts, itensGuiaFgts, mesDaMeta, avisoRemetente, pausaSeguinte, setoresDaEquipe, modoRel, restaurarModoRel, semContatoNoSetor, vereditoEmail, tarefasParaEmail, ritmoPorPessoa, cargaPorDia, prioridade, NIVEIS_PRIORIDADE, sugestoesConfig, extrasSaude, urlCliente, proximosDiasUteis, motivoEmail, COLUNAS_SAUDE, arquivosDoItem, setoresAtivos, lerQuemSetor, grupoTela, GRUPOS_TELA, SITUACOES_FILTRO, situacaoDe, fimCnpj, cnpjFormatado, enviosPortal, lerExpress, cnpjsDoTexto, cnpjValido, competenciasDoTexto, notaDocumento, sugerirDestinos, pastaForaDe, urlTemplate: (id) => /^[0-9a-f]{24}$/i.test(String(id || '')) ? 'https://app.gestta.com.br/admin/#/sidebar/document/edit/' + id + '/details' : '', semelhanca, parecidoComPasta, palavrasNome, ERROS_ENVIO, API, APP, PAUSA_MS, LIMITE_BUSCA, JANELA_MAX_DIAS, POST_LEITURA, RELATORIO_TIPOS, COLUNAS_RELATORIO, MOLDES, APPS,
     caminhoDe, leituraPermitida, escritaPermitida, pedidoAcao, agirNaPagina, ARQ_MAX, appDe, escolher, limpar, limparRelatorio, perfil, expiraEm, janelaDoMes, PEDIDOS, lerNaPagina, linhasDoTeste,
     GRUPOS, TIPOS_TAREFA, SITUACOES_TAREFA, MAX_PAGINAS_TAREFAS, diasUteis, grupoTarefa, prazoTexto, contarGrupos, porEmpresa, porDia, filtrarTarefas, urlTarefa, ymd, diaLocal,
     COLUNAS_FECHAMENTO, linhasDoRelatorio, tarefasDoRelatorio, trilhaDaEmpresa, fechamento, ESTADOS, setorDe, respDe, ehEscritorioProprio,
