@@ -329,6 +329,46 @@ async function departamentosGestta(tab, pf) {
   deptCache = { l, em: Date.now() };
   return l;
 }
+// 0.124.0 (Josué, 17/11/2026: "cada item já lido, sem esperar os demais"): uma PÁGINA da busca por chamada. O cursor volta à tela, que chama de
+// novo até o fim e vai mostrando o que chega; cada chamada é independente (o service worker pode dormir entre uma e outra).
+async function paginaBusca(tab, base) {
+  const { r } = await lerGestta([OCG.PEDIDOS.buscaTarefas(base)], { tab });
+  const x = r && r.resultados && r.resultados[0];
+  if (!r || !r.ok || !x) return { ok: false, erro: 'A leitura das tarefas parou no meio (aba do Gestta sem resposta).' };
+  if (x.status !== 200) return { ok: false, status: x.status, erro: x.status === 403 ? 'Seu acesso do Gestta não inclui essas tarefas.' : x.status === 401 ? 'A sessão do Gestta acabou: faça login de novo na aba.' : 'O Gestta não respondeu às tarefas (' + (x.erro || x.recusado || x.status) + ').' };
+  const d = x.dados || {};
+  return { ok: true, itens: d.itens || [], total: d.total != null ? d.total : null, paginas: Math.max(1, Number(d.paginas) || 1) };
+}
+const maxPaginasPasso = (lim) => OCG.MAX_PAGINAS_TAREFAS * Math.max(1, Math.ceil(OCG.LIMITE_BUSCA / lim));
+async function passoMes(tab, base, ano, mes, cur, lim) {          // as metas de um mês (Meu dia) ou um mês de meta da competência
+  const p = Math.max(1, Number(cur.p) || 1);
+  const x = await paginaBusca(tab, Object.assign({}, base, { ano, mes, page: p }));
+  if (!x.ok) return x;
+  const mais = p < x.paginas && p < maxPaginasPasso(lim);
+  return Object.assign(x, { proximo: mais ? { p: p + 1 } : null });
+}
+async function passoCompetencia(tab, base, ano, mes, cur, lim) {
+  await modosProntos;
+  let modo = cur.modo || '';
+  if (modo !== 'meta') {
+    const p = Math.max(1, Number(cur.p) || 1);
+    const x = await paginaBusca(tab, Object.assign({}, base, { ano, mes, dataTipo: 'COMPETENCE_DATE', page: p }));
+    if (x.ok && (p > 1 || OCG.buscaPorCompetenciaValeu(x.itens, ano, mes))) {      // a 1ª página confere se o Gestta respeitou a competência
+      if (gesttaModoComp !== 'direto') { gesttaModoComp = 'direto'; lembrarModos(); }
+      const mais = p < x.paginas && p < maxPaginasPasso(lim);
+      return Object.assign(x, { modo: 'direto', proximo: mais ? { modo: 'direto', p: p + 1 } : null });
+    }
+    if (!x.ok && x.status !== 400 && x.status !== 422 && x.status !== 500) return x;           // 401, 403, aba sem resposta: o erro é outro
+    if (!x.ok && x.status === 400 && base.companyDepartments) return x;                         // o filtro de setor foi recusado: quem chama refaz sem ele
+    gesttaModoComp = 'meta'; lembrarModos(); modo = 'meta'; cur = {};
+  }
+  const meses = OCG.mesesDaCompetencia(ano, mes), i = Math.min(meses.length - 1, Math.max(0, Number(cur.i) || 0)), p = Math.max(1, Number(cur.p) || 1);
+  const x = await paginaBusca(tab, Object.assign({}, base, { ano: meses[i].ano, mes: meses[i].mes, page: p }));
+  if (!x.ok) return x;
+  const mais = p < x.paginas && p < maxPaginasPasso(lim);
+  const proximo = mais ? { modo: 'meta', i, p: p + 1 } : i + 1 < meses.length ? { modo: 'meta', i: i + 1, p: 1 } : null;
+  return { ok: true, itens: OCG.daCompetencia(x.itens, ano, mes), total: null, paginas: x.paginas, modo: 'meta', proximo };
+}
 const semAcSw = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 async function gesttaTarefas(msg, sender) {
   const tab = await tabDoGestta(sender);
@@ -366,7 +406,24 @@ async function gesttaTarefas(msg, sender) {
   // 0.111.0 (Josué, 13/11/2026: "não depender de rodar toda leitura pra aparecer alguma coisa"): parte 'dia' ou 'comp' lê só um
   // dos dois, e a tela mostra o que chegar primeiro; sem parte, os dois (como antes)
   const parte = msg.parte === 'dia' || msg.parte === 'comp' ? msg.parte : '';
-  const comum = { ok: true, parte, ano, mes, quem, setorPessoas, porDepartamento: porDepartamento && !(qsDep && !depDoSetor), desconsideradas: !!msg.desconsideradas, perfil: { id: pf.id, papelNome: pf.papelNome, total: pf.total, setores: pf.setores }, validade: r1.validade || null, lidoEm: new Date().toISOString() };
+  const porPasso = !!msg.passo && typeof msg.passo === 'object';       // 0.124.0: uma página por chamada
+  const comum = { ok: true, parte, ano, mes, quem, setorPessoas, setoresPermitidos: depts.map(d => d.nome),      // 0.124.0: os nomes dos setores como o Gestta os chama (a tela lê os outros setores em segundo plano)
+     porDepartamento: porDepartamento && !(qsDep && !depDoSetor), desconsideradas: !!msg.desconsideradas, perfil: { id: pf.id, papelNome: pf.papelNome, total: pf.total, setores: pf.setores }, validade: r1.validade || null, lidoEm: new Date().toISOString() };
+  if (porPasso) {
+    const lim = Math.max(50, Math.min(OCG.LIMITE_BUSCA, Number(msg.limite) || 300)), alvo = parte === 'dia' ? 'dia' : 'comp';
+    base.limit = lim;
+    if (msg.situacoes === 'abertas') base.status = ['OPEN', 'IMPEDIMENT'];
+    else if (msg.situacoes === 'concluidas') base.status = ['DONE'].concat(msg.desconsideradas ? ['IGNORED', 'DISCONSIDERED'] : []);
+    const h = new Date();
+    const r = alvo === 'dia' ? await passoMes(tab, base, h.getFullYear(), h.getMonth() + 1, msg.passo, lim) : await passoCompetencia(tab, base, ano, mes, msg.passo, lim);
+    if (!r.ok && r.status === 400 && base.companyDepartments) {         // o Gestta recusou o filtro de setor: recomeça sem ele (a tela descarta o que já tinha acumulado)
+      deptFiltroRecusado = true;
+      return Object.assign(await gesttaTarefas(Object.assign({}, msg, { passo: {} }), sender), { recomecar: true });
+    }
+    if (!r.ok) return { ok: false, status: r.status, erro: r.erro };
+    return Object.assign(comum, { parte: alvo, situacoes: msg.situacoes || '' }, alvo === 'dia' ? { dia: r.itens } : { itens: r.itens },
+      { total: r.total, paginas: r.paginas, passo: r.proximo || null, fim: !r.proximo, modoCompetencia: r.modo || '', lidoEm: new Date().toISOString() });
+  }
   let comp = null, dia = null;
   await modosProntos; const modoAntes = gesttaModoComp;
   if (parte !== 'dia') {
@@ -449,7 +506,7 @@ async function gesttaFechamento(msg, sender) {
   }
   const guardado = (await chrome.storage.session.get(chave).catch(() => ({})))[chave];
   const idade = guardado ? Date.now() - new Date(guardado.lidoEm).getTime() : Infinity;
-  if (guardado && (!msg.forcar || idade < FECH_INTERVALO_MS)) return Object.assign({ ok: true, daMemoria: true, completo: true, podeEm: Math.max(0, Math.ceil((FECH_INTERVALO_MS - idade) / 60e3)) }, guardado);
+  if (guardado && idade < FECH_INTERVALO_MS) return Object.assign({ ok: true, daMemoria: true, completo: true, podeEm: Math.max(0, Math.ceil((FECH_INTERVALO_MS - idade) / 60e3)) }, guardado);
   const tab = await tabDoGestta(sender);
   if (!tab) return { ok: false, semAba: true, erro: 'Abra o Gestta numa aba, já logado.' };
   const eu = await meGestta(tab); if (!eu.ok) return eu;
@@ -479,7 +536,8 @@ async function perfilGestta(tab) { const e = await meGestta(tab); return e.ok ? 
 async function relatorioSaude(tab, ano, mes, forcar) {
   const chave = 'gtSaude-' + ano + '-' + String(mes).padStart(2, '0');
   const g = (await chrome.storage.session.get(chave).catch(() => ({})))[chave];
-  if (g && (!forcar || Date.now() - new Date(g.lidoEm).getTime() < FECH_INTERVALO_MS)) return g.falhou ? { ok: false, status: g.status, erro: g.erro, daMemoria: true } : Object.assign({ ok: true, daMemoria: true }, g);
+  // 0.124.0: o guardado vale por 1 hora, peça ou não o "forcar" (antes, sem "forcar" ele valia até o Chrome fechar)
+  if (g && Date.now() - new Date(g.lidoEm).getTime() < FECH_INTERVALO_MS) return g.falhou ? { ok: false, status: g.status, erro: g.erro, daMemoria: true } : Object.assign({ ok: true, daMemoria: true }, g);
   let x = null;
   await modosProntos;
   for (const filtro of OCG.filtrosRelatorio({ ano, mes })) {

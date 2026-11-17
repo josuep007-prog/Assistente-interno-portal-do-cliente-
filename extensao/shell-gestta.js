@@ -119,4 +119,13 @@
     if (viva()) chrome.storage.local.get('posBotaoGestta', r => { if (r && r.posBotaoGestta) aplicarPos(r.posBotaoGestta); });
   }
   montar();
+
+  /* 0.124.0 (Josué, 17/11/2026: a leitura tem de andar sozinha, sem clicar em nada): a camada nasce ESCONDIDA quando o Gestta abre (fora da
+   * tela de login; se a pessoa entra depois, nasce ao sair do login) e fica lendo em segundo plano. Ela continua só aparecendo pelo botão,
+   * pelo ícone ou por Alt+Shift+O (nunca abre sozinha). Os dados ficam só na memória dela. */
+  const naTelaDeLogin = () => /(^|[#/])login\b/i.test(location.pathname + location.hash);
+  const preCarregar = () => { if (iframe || !viva() || naTelaDeLogin()) return; garantirIframe(); };
+  const agendarPre = () => setTimeout(() => (window.requestIdleCallback || (f => f()))(preCarregar), 1500);
+  agendarPre();
+  addEventListener('hashchange', () => { if (!iframe) agendarPre(); });
 })();

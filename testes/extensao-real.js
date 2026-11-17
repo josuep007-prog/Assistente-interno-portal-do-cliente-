@@ -588,6 +588,22 @@ assert.deepEqual(man.web_accessible_resources[0].matches, ['https://onvio.com.br
     const gx = await tt({ cmd: 'guiasFolha', parte: 'fgts', ano: 2026, mes: 10, empresa: { cnpj: '123' } });
     assert.equal(gx.ok, false, 'CNPJ inválido'); }
   // 0.121.0: ver o arquivo pede a permissão do S3 antes de qualquer leitura; excluir relê a tarefa; incluir e tirar template relêem os vínculos
+  // 0.124.0: uma página por chamada (cursor), só as abertas ou só as concluídas, e o relatório do mês vale 1 hora mesmo sem "forcar"
+  { gBuscas.length = 0;
+    const s1 = await tt({ cmd: 'gesttaTarefas', parte: 'dia', passo: {}, situacoes: 'abertas', limite: 50 });
+    assert.ok(s1.ok, 'passo dia: ' + (s1.erro || '')); assert.equal(typeof s1.fim, 'boolean'); assert.ok(Array.isArray(s1.dia)); assert.equal(s1.parte, 'dia');
+    const c1 = gBuscas[gBuscas.length - 1]; assert.equal(c1.limit, 50); assert.equal(c1.page, 1); assert.deepEqual(c1.status, ['OPEN', 'IMPEDIMENT']);
+    const s2 = await tt({ cmd: 'gesttaTarefas', parte: 'comp', passo: {}, situacoes: 'concluidas', desconsideradas: true, limite: 50 });
+    assert.ok(s2.ok && Array.isArray(s2.itens), 'passo comp: ' + (s2.erro || ''));
+    assert.deepEqual(gBuscas[gBuscas.length - 1].status, ['DONE', 'IGNORED', 'DISCONSIDERED']);
+    assert.ok(Array.isArray(s2.setoresPermitidos), 'a tela recebe os nomes dos setores permitidos');
+    const velho = await pagina.evaluate(async () => { const o = await chrome.storage.session.get(null), up = {}; for (const [k, v] of Object.entries(o)) if (/^gtSaude-\d{4}-\d{2}$/.test(k)) up[k] = Object.assign({}, v, { lidoEm: new Date(Date.now() - 2 * 36e5).toISOString() }); await chrome.storage.session.set(up); return Object.keys(up).length; });
+    assert.ok(velho > 0, 'há relatório guardado para envelhecer');
+    const h = new Date(), antesRel = gRel.length;
+    const rs = await tt({ cmd: 'gesttaSaude', parte: 'tarefas', meses: [{ ano: h.getFullYear(), mes: h.getMonth() + 1 }] });
+    assert.ok(rs.ok && gRel.length > antesRel, 'o relatório com mais de 1 h é relido sem "forcar"');
+    const antesRel2 = gRel.length; await tt({ cmd: 'gesttaSaude', parte: 'tarefas', meses: [{ ano: h.getFullYear(), mes: h.getMonth() + 1 }] });
+    assert.equal(gRel.length, antesRel2, 'e o novo vale por 1 hora'); }
   { // as ações só são aceitas de uma tela da extensão em app/
     const tela = await ctx.newPage(); await tela.goto('chrome-extension://' + id + '/app/gestta.html'); await sleepMs(1500);
     const ta = m => tela.evaluate(x => new Promise(res => chrome.runtime.sendMessage(x, res)), m);

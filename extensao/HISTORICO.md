@@ -2,6 +2,18 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.124.0 (17/11/2026): leitura contínua do Gestta, por prioridade e por página
+
+- Josué: "primeiro deve carregar o que é do analista, depois do setor dele, depois dos outros setores e depois todo o restante; a leitura precisa ser contínua, mesmo que eu não clique em nada"; "cada item já lido, sem esperar os demais, e ir atualizando à medida que o restante for chegando".
+- **A camada do Gestta nasce escondida** quando o Gestta abre (fora do login) e fica lendo em segundo plano; só aparece pelo botão, pelo ícone ou por Alt+Shift+O, como antes. O número de atenção do botão já aparece sem abrir.
+- **Ordem de leitura:** 1) as tarefas do analista, 2) as do setor dele, 3) as dos outros setores (Pessoal, Contábil e Fiscal), 4) todo o resto: equipe, relatório do mês, Fechamento, Gestão, Envios ao portal e o final do CNPJ. Uma leitura por vez. Quem não tem acesso total só tem o nível 1 e as abas dele.
+- **Frequência:** tarefas em aberto a cada 2 min (as do analista), 5 min (setor dele) e 10 min (outros setores); concluídas a cada 15 min; o resto a cada 30 a 61 min. **Com a aba do Gestta fora de foco, o intervalo dobra.** Leitura muito atrasada sobe na fila. Não há mais a releitura de 10 min que rodava em qualquer aba.
+- **Por página:** a tela recebe 300 tarefas por vez, **as em aberto antes das concluídas**, e cada página aparece na hora ("Lendo… 600 de 2.530"); na releitura o item é trocado no lugar, a tela não esvazia e só no fim some o que o Gestta não devolveu mais. Trocar de setor ou de pessoa mostra na hora o que já foi lido.
+- **Gestão e Envios ao portal** se atualizam em segundo plano sem piscar (a tela atual só é trocada quando a nova está pronta); o Fechamento também.
+- **Correção:** o relatório do mês guardado agora vale 1 hora de verdade; antes, sem "Atualizar", ele valia até o Chrome fechar e Fechamento, Gestão, Guias e a contagem do seletor podiam mostrar dados de horas atrás.
+- Fica de fora da leitura de fundo: **Guias da folha** (depende da competência e dos extratos escolhidos). Um F5 na página do Gestta recomeça a leitura (as tarefas ficam só na memória da tela).
+- A conferir no seu Chrome: quanto tempo cada leitura leva com o volume real (Fiscal passa de 2.500 tarefas na competência) e se a carga no Gestta fica aceitável; se pesar, as frequências estão em `TTL` e nas chamadas `registrarGeral` de `gestta-app.js`.
+
 ## Novidades da v0.123.0 (17/11/2026): a tela não fica mais em branco quando algo falha no arranque
 
 - Josué: ao clicar nas Configurações a camada ficava vazia, com "Carregando…", e a extensão não dizia o porquê.

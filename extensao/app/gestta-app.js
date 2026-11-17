@@ -13,6 +13,7 @@ import { vistaDia, vistaEmpresas, vistaLista, vistaQuadro } from './gestta-vista
 import { desenharEnvios, lerEnvios, ligarEnvios, estadoEnvios } from './gestta-envios.js';
 import { desenharSaude, lerSaude, ligarSaude, estadoSaude } from './gestta-saude.js';
 import { desenharGuias, lerGuias, ligarGuias, estadoGuias } from './gestta-guias.js';
+import { obterVisao, chaveDe, armazem, comporDados, estadoDaVisao, iniciarLeitor, definirVisoes, registrarGeral, pedirGeral, urgenteVisao, visaoLendo, diagnostico as diagnosticoLeitor } from './gestta-leitor.js';
 const G = window.OCG;
 const enviar = msg => new Promise(res => { try { chrome.runtime.sendMessage(msg, r => res(r || { ok: false, erro: (chrome.runtime.lastError && chrome.runtime.lastError.message) || 'sem resposta' })); } catch (e) { res({ ok: false, erro: String(e.message || e) }); } });
 const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
@@ -41,15 +42,20 @@ const comCnpj = t => {
   const fim = G.fimCnpj(cnpj);
   return Object.assign({}, t, { customer: Object.assign({}, c, { cnpj, nomeBase: c.name, name: fim ? c.name + ' · ' + fim : c.name }) });
 };
-function aplicarCnpjs() { if (!E.dados) return; if (E.dados.itens) E.dados.itens = E.dados.itens.map(comCnpj); if (E.dados.dia) E.dados.dia = E.dados.dia.map(comCnpj); }
+function idsSemCnpj() {
+  const ids = new Set();
+  for (const v of armazem.values()) for (const k of Object.keys(v.partes)) for (const e of v.partes[k].itens.values()) { const c = e.t && e.t.customer; if (c && c._id && !(c._id in E.cnpjs)) ids.add(c._id); }
+  return [...ids];
+}
+// 0.124.0: o final do CNPJ vai entrando nos nomes à medida que chega; nunca atrasa as tarefas (leitura de nível 4 do leitor)
 async function carregarCnpjs() {
-  const todos = ((E.dados && E.dados.itens) || []).concat((E.dados && E.dados.dia) || []);
-  const faltam = [...new Set(todos.map(t => t.customer && t.customer._id).filter(id => id && !(id in E.cnpjs)))];
-  if (!faltam.length) return;
+  const faltam = idsSemCnpj();
+  if (!faltam.length) return { ok: true };
   const r = await enviar({ cmd: 'gesttaCnpjs', ids: faltam.slice(0, 3000) });
-  if (!r || !r.ok) return;                                  // sem acesso à lista de clientes: fica só o nome
+  if (!r || !r.ok) return { ok: false, r };                 // sem acesso à lista de clientes: fica só o nome
   faltam.forEach(id => { E.cnpjs[id] = (r.cnpjs || {})[id] || ''; });
-  aplicarCnpjs(); desenhar();
+  sincronizar(); desenhar();
+  return { ok: true };
 }
 const MES3 = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 // 0.87.0: voltar ao mesmo ponto quando a camada reabre (aba, competência, pessoa, filtros e rolagem), por 30 minutos, só nesta sessão do navegador
@@ -87,54 +93,68 @@ const filtroAtivo = () => !!(E.q || E.grupos.size || E.tipos.size || E.sits.size
 const paraPai = m => { if (m && m.controlGestta === 'abrirTarefa') { E.ultimaAberta = m.id; salvarEstado(true); } try { window.parent.postMessage(Object.assign({}, m), 'https://app.gestta.com.br'); } catch (e) {} };
 
 /* ---------- leitura ---------- */
-let pedido = 0;
-// 0.111.0 (Josué, 13/11/2026: "não depender de rodar toda leitura pra aparecer alguma coisa"): duas leituras em sequência, a da aba
-// aberta primeiro (Meu dia = os vencimentos do mês; as outras abas = a competência). A tela mostra cada parte assim que chega; numa
-// atualização silenciosa, a parte antiga fica na tela até a nova chegar.
-const PARTE_CAMPOS = { dia: ['dia', 'diaErro', 'diaCortado'], comp: ['itens', 'total', 'cortado', 'modoCompetencia'] };
+// 0.124.0 (Josué, 17/11/2026): a leitura é contínua e por prioridade (gestta-leitor.js): primeiro o que é do analista, depois o setor dele, depois
+// os outros setores, depois todo o resto. Cada página lida entra na tela na hora (o item não espera os demais) e a releitura troca os itens no
+// lugar. Esta tela só PEDE visões (competência × de quem); `E.dados` é a junção das partes já lidas da visão que está à vista.
 const parteDaAba = () => E.aba === 'dia' ? 'dia' : 'comp';
 const faltaParte = () => !!E.dados && E.falta.has(parteDaAba()) && E.dados[parteDaAba() === 'dia' ? 'dia' : 'itens'] === undefined;
-// 0.114.0: a releitura sozinha (a cada 10 min) lê só a parte da aba aberta (soParte); a outra é lida quando a pessoa troca para a aba que
-// a usa e ela está velha (E.parteEm), em vez de refazer as duas a cada 10 minutos
-const parteEm = { dia: 0, comp: 0 };
-// 0.117.0 (Josué, 16/11/2026: "ainda demora muito pra carregar as seleções"): as últimas visões (competência × de quem) ficam só na memória
-// desta tela por 10 minutos; voltar a uma delas mostra na hora o que já foi lido e a releitura acontece por trás, sem apagar a tela
-const VISOES = new Map(), VISAO_MS = 10 * 60e3;
-const guardarVisao = (k, d) => { VISOES.delete(k); VISOES.set(k, { d, em: Date.now() }); while (VISOES.size > 8) VISOES.delete(VISOES.keys().next().value); };
-async function ler(silencioso, soParte) {
-  const meu = ++pedido, ordem = soParte ? [soParte] : parteDaAba() === 'dia' ? ['dia', 'comp'] : ['comp', 'dia'];
-  const chave = [E.ano, E.mes, E.quem, E.sits.has('desconsiderada')].join('|');
-  // outra competência ou outra pessoa: a leitura anterior sai da tela (não se misturam as partes); atualizar a mesma mantém o que está à vista
-  let quieto = !!silencioso;
-  if (!E.dados || E.dados.__chave !== chave) { const v = VISOES.get(chave); if (v && Date.now() - v.em < VISAO_MS) { E.dados = v.d; quieto = true; } else E.dados = null; }
-  E.carregando = true; E.falta = new Set(ordem); if (!quieto) E.erro = null;
-  aoVivo(); desenhar();
-  for (const parte of ordem) {
-    const r = await enviar({ cmd: 'gesttaTarefas', ano: E.ano, mes: E.mes, quem: E.quem, desconsideradas: E.sits.has('desconsiderada'), parte });
-    if (meu !== pedido) return;                       // trocou de mês ou de pessoa no meio: vale a leitura mais nova
-    E.falta.delete(parte); if (r && r.ok) parteEm[parte] = Date.now();
-    if (!(r && r.ok)) {
-      E.erro = r || { erro: 'sem resposta' }; E.falta.clear(); E.carregando = false;
-      if (!quieto) E.dados = null;                 // como antes: numa leitura nova que falha, a tela mostra o erro (a visão guardada fica)
-      aoVivo(); desenhar(); return;
-    }
-    if (r.itens) r.itens = r.itens.map(legivel); if (r.dia) r.dia = r.dia.map(legivel);
-    const ant = E.dados, novo = Object.assign({}, r);
-    if (ant) for (const [pt, campos] of Object.entries(PARTE_CAMPOS)) if (pt !== parte) campos.forEach(c => { if (ant[c] !== undefined) novo[c] = ant[c]; });
-    delete novo.parte; novo.__chave = chave;
-    E.dados = novo; E.erro = null; E.lidoEm = r.lidoEm || new Date().toISOString(); aplicarCnpjs(); carregarCnpjs(); guardarVisao(chave, novo);
-    if (setorDaVisao() && !r.porDepartamento && !E.setorPorId && !E.fechCarregando) lerFech(false);      // 0.103.0: o setor de cada tarefa sai do relatório (0.117.0: só se o Gestta não filtrou pelo setor)
-    if (r.perfil && r.perfil.total && !E.equipe) carregarEquipe();
-    if (parte === 'dia' && E.quem === 'eu' && r.dia) { const c = G.contarGrupos(r.dia, new Date()).n; paraPai({ controlGestta: 'contagem', atencao: c.multa + c.atrasada + c.hoje, multa: c.multa, atrasada: c.atrasada, hoje: c.hoje }); }
-    if (!E.falta.size) { E.carregando = false; if (r.perfil && r.perfil.total) setTimeout(lerSetores, 1500); }   // 0.111.0: os setores já ficam prontos para o De quem
-    aoVivo(); desenhar();
+const descAtual = () => E.sits.has('desconsiderada');
+const chaveAtual = () => chaveDe(E.ano, E.mes, E.quem, descAtual());
+let primeiroDado = true, desenhoT = 0, desenhoPendente = false, perfilLeitor = null;
+// a tela está ocupada (digitando, escolhendo para o lote, confirmando uma ação): não se redesenha por baixo dela; espera um instante
+const ocupada = () => !!(document.activeElement && document.activeElement.matches('input, textarea, select')) || !!document.querySelector('.gp-conf, .gl-lote, .gs-dlg:not([hidden])');
+function sincronizar() {
+  const v = armazem.get(chaveAtual()), est = estadoDaVisao(v);
+  E.dados = comporDados(v, comCnpj);
+  E.carregando = !est.completa && (est.lendo || visaoLendo(chaveAtual()));       // só a 1ª leitura da visão é "Lendo…"; a releitura é em segundo plano
+  E.atualizando = est.completa && (est.lendo || visaoLendo(chaveAtual()));
+  E.falta = est.falta; E.erro = est.erro; E.leitura = est;
+  E.lidoEm = est.lidoEm ? new Date(est.lidoEm).toISOString() : null;
+  if (!E.dados) return;
+  if (v.comum && v.comum.perfil) perfilLeitor = v.comum.perfil;
+  if (E.dados.perfil && E.dados.perfil.total && !E.equipe) carregarEquipe();
+  if (setorDaVisao() && !E.dados.porDepartamento && !E.setorPorId && !E.fechCarregando) lerFech(false);      // 0.103.0: o setor de cada tarefa sai do relatório (0.117.0: só se o Gestta não filtrou pelo setor)
+  if (E.quem === 'eu' && E.dados.dia) { const c = G.contarGrupos(E.dados.dia, new Date()).n; paraPai({ controlGestta: 'contagem', atencao: c.multa + c.atrasada + c.hoje, multa: c.multa, atrasada: c.atrasada, hoje: c.hoje }); }
+  if (primeiroDado) { primeiroDado = false; setTimeout(destacarUltima, 150); }
+}
+// redesenha no máximo ~4 vezes por segundo e nunca por cima de quem está digitando ou confirmando algo
+function agendarDesenho(logo) {
+  desenhoPendente = true;
+  if (desenhoT) return;
+  desenhoT = setTimeout(function fim() {
+    desenhoT = 0;
+    if (ocupada()) { desenhoT = setTimeout(fim, 1500); return; }
+    desenhoPendente = false; aoVivo(); desenhar();
+  }, logo ? 0 : 250);
+}
+// as visões que o leitor mantém quentes, na ordem do Josué: 1 o analista, 2 o setor dele, 3 os outros setores; a visão à vista entra como nível 1
+function sincronizarJobs() {
+  const pf = perfilLeitor, lista = [], desc = descAtual();
+  const add = (quem, nivel, d) => { if (!lista.some(x => x.quem === quem && x.desc === !!d)) lista.push({ ano: E.ano, mes: E.mes, quem, desc: !!d, nivel }); };
+  add('eu', 1);
+  if (pf && pf.total) {
+    const v = armazem.get(chaveDe(E.ano, E.mes, 'eu', desc)), todos = (v && v.comum && v.comum.setoresPermitidos) || [];
+    const meus = ((pf.setores || []).map(x => x.nome)).filter(n => G.setorPermitido(n));
+    meus.forEach(n => add('setor:' + n, 2));
+    todos.filter(n => !meus.some(m => semAc(m) === semAc(n))).forEach(n => add('setor:' + n, 3));
   }
+  add(E.quem, 1, desc);
+  definirVisoes(lista);
+}
+// pede a visão que está à vista: se já foi lida há pouco, aparece na hora; se está velha ou nunca foi lida, passa na frente da fila
+function ler(forcar) {
+  obterVisao(E.ano, E.mes, E.quem, descAtual());
+  sincronizarJobs();
+  urgenteVisao(chaveAtual(), !!forcar, parteDaAba());
+  sincronizar(); aoVivo(); desenhar();
 }
 // 0.112.0 (Josué, 13/11/2026: "mostrar aos poucos"): primeiro a busca (o progresso já aparece), depois o relatório de cada mês de meta
 // completa setor e analista; a tela redesenha a cada mês que chega
-async function lerFech(forcar) {
+async function lerFech(forcar, calado) {
   const vez = (lerFech.vez = (lerFech.vez || 0) + 1), ano = E.ano, mes = E.mes, valida = () => lerFech.vez === vez && E.ano === ano && E.mes === mes;
-  E.fechCarregando = true; E.fechErro = null; aoVivo(); desenhar();
+  // 0.124.0: releitura em segundo plano de um Fechamento já completo: a tela continua com o que tem até o novo ficar pronto
+  const manter = !!calado && !!E.fech && !E.fech.incompleto && E.fech.ano === ano && E.fech.mes === mes;
+  if (!manter) { E.fechCarregando = true; E.fechErro = null; aoVivo(); desenhar(); }
   const fim = (r) => { E.fech = r; E.fechTarefas = G.tarefasDoRelatorio(r.colunas, r.linhas).map(legivel); E.setorPorId = new Map(E.fechTarefas.map(t => [t._id, t.setor])); };
   const r = await enviar({ cmd: 'gesttaFechamento', parte: 'busca', ano, mes, forcar: !!forcar });
   if (!valida()) return;
@@ -145,7 +165,7 @@ async function lerFech(forcar) {
     const iId = (r.colunas || []).indexOf('id'), porId = new Map((r.linhas || []).map(l => [String(l[iId]), l]));
     let colunas = r.colunas;
     const aplicar = () => { E.fechTarefas = G.tarefasDoRelatorio(colunas, [...porId.values()]).map(legivel); };
-    E.fech = Object.assign({}, r, { incompleto: true, mesesLidos: 0, mesesTotal: (r.meses || []).length }); aplicar(); aoVivo(); desenhar();
+    if (!manter) { E.fech = Object.assign({}, r, { incompleto: true, mesesLidos: 0, mesesTotal: (r.meses || []).length }); aplicar(); aoVivo(); desenhar(); }
     for (const m of r.meses || []) {
       const x = await enviar({ cmd: 'gesttaFechamento', parte: 'mes', ano, mes, metaAno: m.ano, metaMes: m.mes });
       if (!valida()) return;
@@ -155,31 +175,35 @@ async function lerFech(forcar) {
       const xi = (x.colunas || []).indexOf('id');
       if (x.colunas && x.colunas.join() !== colunas.join()) { const conv = l => colunas.map(c => { const k = x.colunas.indexOf(c); return k < 0 ? '' : l[k]; }); (x.linhas || []).forEach(l => porId.set(String(l[xi]), conv(l))); }
       else (x.linhas || []).forEach(l => porId.set(String(l[xi]), l));
-      E.fech.mesesLidos++; aplicar(); aoVivo(); desenhar();
+      if (!manter) { E.fech.mesesLidos++; aplicar(); aoVivo(); desenhar(); }
     }
-  } else E.fechErro = r || { erro: 'sem resposta' };
+  } else if (!manter) E.fechErro = r || { erro: 'sem resposta' };
+  const fimOk = !(r && r.ok === false) && !E.fechErro;
   E.fechCarregando = false;
   aoVivo(); desenhar();
+  return fimOk ? { ok: true } : { ok: false, r: E.fechErro || r };
   if ($('#gt-quem-pop') && !$('#gt-quem-pop').hidden) quemLista($('#gt-quem-busca').value);
 }
 // 0.111.0: os setores com tarefa aberta para o De quem saem do relatório do mês corrente (rápido e guardado 1 hora); até ele chegar,
 // os setores do cadastro de equipe aparecem na hora
-async function lerSetores() {
-  if (E.setoresLendo || E.setoresRel) return;
+async function lerSetores(forcar) {
+  if (E.setoresLendo || (E.setoresRel && !forcar)) return { ok: true };
   E.setoresLendo = true;
   const r = await enviar({ cmd: 'gesttaSetores' });
   E.setoresLendo = false;
   if (r && r.ok) E.setoresRel = (r.linhas || []).map(l => ({ status: l[0], setor: l[1], responsavel: G.nomeLegivel(l[2]) }));
   else E.setoresErro = (r && r.erro) || 'sem resposta';
   if ($('#gt-quem-pop') && !$('#gt-quem-pop').hidden) quemLista($('#gt-quem-busca').value);
+  return r && r.ok ? { ok: true } : { ok: false, r };
 }
 async function carregarEquipe() {
   const r = await enviar({ cmd: 'gesttaEquipe' });
-  if (!r || !r.ok) return;
+  if (!r || !r.ok) return { ok: false, r };
   E.equipe = (r.pessoas || []).map(p => Object.assign({}, p, { nome: G.nomeLegivel(p.nome) }));
   $('#gt-quem-wrap').hidden = false;
   quemRot();
   if ($('#gt-quem-pop') && !$('#gt-quem-pop').hidden) quemLista($('#gt-quem-busca').value);
+  return { ok: true };
 }
 // 0.87.0: "De quem" é um botão com o nome e uma lista com busca (iniciais de cada pessoa), no lugar da lista larga
 const iniciais = n => String(n || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
@@ -283,12 +307,12 @@ function aoVivo() {
     const hf = new Date(E.fech.lidoEm), hmf = String(hf.getHours()).padStart(2, '0') + ':' + String(hf.getMinutes()).padStart(2, '0');
     el.classList.add('ok'); tx.textContent = simples() ? hmf : 'Lido às ' + hmf; el.title = 'Relatório lido às ' + hmf + (E.fech.segundos ? ' (levou ' + E.fech.segundos + ' s)' : '') + '. Atualiza no máximo 1 vez por hora.'; return;
   }
-  if (E.carregando) { tx.textContent = E.dados && E.falta.size ? (E.falta.has('comp') ? 'Lendo a competência…' : 'Lendo o Meu dia…') : 'Lendo o Gestta…'; return; }
+  if (E.carregando) { const L = E.leitura; tx.textContent = L && L.lendo && L.lidos ? 'Lendo… ' + num(L.lidos) + (L.total ? ' de ' + num(L.total) : '') : E.dados && E.falta.size ? (E.falta.has('comp') ? 'Lendo a competência…' : 'Lendo o Meu dia…') : 'Lendo o Gestta…'; return; }
   if (E.erro) { el.classList.add('erro'); tx.textContent = E.erro.semSessao ? 'Sem sessão no Gestta' : 'Falha na leitura'; return; }
   if (!E.lidoEm) { tx.textContent = 'Aguardando'; return; }
   const h = new Date(E.lidoEm), hm = String(h.getHours()).padStart(2, '0') + ':' + String(h.getMinutes()).padStart(2, '0');
   el.classList.add(Date.now() - h > (ATUALIZA_MIN + 2) * 60e3 ? 'parado' : 'ok');
-  tx.textContent = simples() ? hm : 'Lido às ' + hm; el.title = 'Lido às ' + hm;
+  tx.textContent = simples() ? hm : 'Lido às ' + hm; el.title = 'Lido às ' + hm + (E.atualizando ? ' · atualizando em segundo plano…' : '');
 }
 function cabecalho(c) {
   $('#gt-mes-rot').innerHTML = rotMes(); $('#gt-mes-rot').setAttribute('aria-label', nomeMes() + ' (escolher outra)');
@@ -421,7 +445,7 @@ function desenhar() {
     cabecalho(null);
     if (E.erro) {
       v.innerHTML = '<div class="faixa"><svg class="ic"><use href="#i-alert"/></svg><div style="flex:1;min-width:240px"><b>' + (E.erro.semSessao ? 'Sem sessão no Gestta.' : E.erro.semAba ? 'Nenhuma aba do Gestta.' : 'Não consegui ler as tarefas.') + '</b> ' + esc(E.erro.erro || '') + '</div><button class="btn btn-sm" id="gt-tentar">Tentar de novo</button></div>';
-      $('#gt-tentar').onclick = () => ler();
+      $('#gt-tentar').onclick = () => ler(true);
     } else v.innerHTML = esqueleto('Lendo as tarefas no Gestta…');
     return;
   }
@@ -588,8 +612,7 @@ ligarGuias($('#vista'), () => { aoVivo(); desenhar(); }, paraPai);
 ligarSoltar({ enviar, atual: () => painelTarefa() || null, tarefas: () => ((E.dados && E.dados.itens) || []).concat((E.dados && E.dados.dia) || []) });
 function trocarAba(a) {
   if (!ABAS.includes(a) || a === E.aba) return; E.aba = a; gravarPref('gt.aba', E.aba); salvarEstado(); fecharPainel(); aoVivo(); desenhar(); $('#vista').scrollTop = 0;
-  const pt = parteDaAba();      // 0.114.0: a parte desta aba ficou velha enquanto a pessoa estava na outra: relê só ela, com a tela à vista
-  if (E.dados && !E.carregando && ABAS.indexOf(a) < 5 && Date.now() - parteEm[pt] > ATUALIZA_MIN * 60e3) ler(true, pt);
+  urgenteVisao(chaveAtual(), false);      // 0.124.0: o que ficou velho enquanto a pessoa estava na outra aba passa na frente da fila
 }
 $$('#abas [data-aba]').forEach(b => b.onclick = () => trocarAba(b.dataset.aba));
 // uma etapa (trilha ou linha do tempo) ou uma tarefa da lista abre o detalhe ao lado
@@ -659,15 +682,35 @@ addEventListener('keydown', e => {
 addEventListener('message', e => {
   if (e.source !== window.parent || e.origin !== 'https://app.gestta.com.br') return;
   const d = e.data || {};
-  if (d.controlGestta === 'visivel') { E.visivel = true; setTimeout(destacarUltima, 120); if (!E.carregando && (!E.lidoEm || Date.now() - new Date(E.lidoEm) > 60e3)) ler(true); }
+  if (d.controlGestta === 'visivel') { E.visivel = true; setTimeout(destacarUltima, 120); urgenteVisao(chaveAtual(), false); }
   else if (d.controlGestta === 'oculto') E.visivel = false;
 });
-setInterval(() => { if (E.visivel && !E.carregando && document.visibilityState === 'visible') ler(true, E.dados && ABAS.indexOf(E.aba) < 5 ? parteDaAba() : undefined); }, ATUALIZA_MIN * 60e3);
+// 0.124.0: sem o intervalo de 10 min; a leitura contínua é o leitor (gestta-leitor.js)
 setInterval(aoVivo, 30e3);
 // 0.93.0: depois de uma ação no painel (etapa, concluir, impedimento, comentário, documento), a lista é relida em silêncio
-addEventListener('gt-tarefa-mudou', () => { if (!E.carregando) ler(true); });
+addEventListener('gt-tarefa-mudou', () => ler(true));
 document.documentElement.dataset.densidade = E.dens;
 quemRot();
 iconeTema();
-ler().then(() => setTimeout(destacarUltima, 150));
+// 0.124.0: o leitor contínuo e as leituras de nível 4 (todo o resto), uma por vez, depois das tarefas
+const redesenharAba = (aba) => () => { if (E.aba === aba) { aoVivo(); agendarDesenho(); } };
+function registrarGerais() {
+  const total = () => !!(perfilLeitor && perfilLeitor.total), SEMANTES = 61 * 60e3;      // 61 min: o relatório do mês no service worker vale 1 h
+  registrarGeral('equipe', 4, 30 * 60e3, () => carregarEquipe(), total);
+  registrarGeral('setores', 4, SEMANTES, () => lerSetores(true), total);
+  registrarGeral('cnpjs', 4, 3 * 60e3, () => carregarCnpjs());
+  registrarGeral('fech', 4, SEMANTES, () => lerFech(false, true));
+  registrarGeral('saude', 4, SEMANTES, async () => { await lerSaude(enviar, redesenharAba('saude'), false, true); return { ok: true }; });
+  registrarGeral('envios', 4, SEMANTES, async () => { await lerEnvios(enviar, redesenharAba('envios'), true); return { ok: true }; });
+}
+iniciarLeitor({
+  enviar, legivel,
+  aoMudar: (chave, o) => {
+    if (o && (o.primeira || o.fim)) sincronizarJobs();        // o perfil e os nomes dos setores chegaram: entram os níveis 2 e 3
+    if (chave === chaveAtual()) { sincronizar(); agendarDesenho(!!(o && (o.primeira || o.fim))); }
+  },
+  aoSemSessao: () => { sincronizar(); agendarDesenho(true); }
+});
+registrarGerais();
+ler(false);
 window.__appOk = true;      // 0.123.0: avisa o guarda de arranque (guarda.js) que a tela subiu
