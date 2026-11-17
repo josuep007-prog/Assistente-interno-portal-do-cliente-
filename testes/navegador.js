@@ -413,6 +413,27 @@ const abrirCaixa = async p => { await irTramites(p); await p.waitForSelector('#a
 const sit = async (p, n) => { await p.click('.cmp-int[data-sit="' + n + '"]'); };
 const linhas = (p, sel) => p.$$eval(sel || '#corpo [data-k]', e => e.map(x => x.dataset.k));
 
+await passo('app · 0.123.0: se um arquivo do app não carrega, a tela diz o que houve (com Recarregar e Copiar diagnóstico) em vez de ficar em branco; extensão atualizada com a página aberta dá um aviso claro', async () => {
+  const p = await pagina(URL_APP, '');
+  await p.setViewportSize({ width: 1360, height: 860 });
+  await semear(p, ESTADO_APP);
+  await p.route('**/__ext__/app/views/inicio.js', r => r.abort());
+  await p.goto(URL_APP + '#/inicio');
+  await p.waitForSelector('#vista .faixa[role="alert"]', { timeout: 9000 });
+  const t = await p.textContent('#vista .faixa');
+  assert.match(t, /A tela não carregou\./); assert.match(t, /recarregue a página \(F5\)/);
+  assert.match(t, /inicio\.js|Failed to fetch|não carregou/i, 'o diagnóstico diz o que falhou: ' + t.slice(0, 300));
+  assert.ok(await p.$('#vista .faixa button:has-text("Recarregar a tela")') && await p.$('#vista .faixa button:has-text("Copiar diagnóstico")'));
+  await p.context().close();
+  // tela normal: o guarda não aparece
+  const q = await abrirApp('#/inicio'); await q.waitForTimeout(4800);
+  assert.equal(await q.$('#vista .faixa[role="alert"]'), null, 'com o app no ar, o guarda fica quieto');
+  assert.equal(await q.evaluate(() => window.__appOk), true);
+  // extensão atualizada com a página aberta: sem chrome.runtime, o aviso é claro
+  await q.evaluate(() => { window.chrome.runtime.sendMessage = undefined; });
+  await q.click('#btn-atualizar'); await q.waitForFunction(() => /Recarregue esta página \(F5\)/.test(document.querySelector('#toast').textContent));
+  await q.context().close();
+});
 await passo('app · listas que antes cortavam (Sugestões do Hoje, Sem analista da Equipe): mostram tudo e rolam por dentro, sem "Ver todas", nos dois estilos', async () => {
   const muitas = Array.from({ length: 14 }, (_, n) => ({ k: 'geral:m' + n, type: 'geral', typeLabel: 'Geral', id: 'm' + n, num: 200 + n, status: 'Aguardando resposta', lado: 'esc', nivel: 0, grav: 0, parado: 1, motivos: [], resp: n % 2 ? '' : 'Ana Teste', mine: n % 2 === 0, apelido: 'EMP' + n, cliente: 'EMPRESA ' + n, detalhe: 'Férias ' + n, abaProvavel: { tipo: 'avisoFerias', label: 'Aviso de férias', palavra: 'ferias' }, created: agoraIso(3), last: agoraIso(1) }));
   const extra = { snapshot: Object.assign({}, ESTADO_APP.snapshot, { items: muitas }) };
@@ -3085,10 +3106,11 @@ await passo('Gestta · Tarefas (0.77.0): Meu dia com o detalhe ao lado e a linha
   if (process.env.CAP) await p.screenshot({ path: path.join(process.env.CAP, 'gestta-calendario.png') });
   // coordenação: escolhe de quem ver (a equipe vem só para quem tem acesso total)
   await fr.waitForSelector('#gt-quem-wrap:not([hidden])');
-  const quem = async v => { await fr.click('#gt-quem-chips [data-quem="' + v + '"]'); };      // 0.117.0: Minhas e Sem responsável ficam à vista
+  const quem = async v => { await fr.click('#gt-quem-btn'); await fr.waitForSelector('#gt-quem-lista [data-quem]'); await fr.click('#gt-quem-lista [data-quem="' + v + '"]'); };
   await fr.click('#gt-quem-btn');
-  // 0.106.0: botão > setor (só os com tarefa aberta) > uma ou mais pessoas
+  // 0.122.0: um botão só; a janela mostra os setores lado a lado, cada um com "Todo o setor" e os analistas; um clique escolhe e fecha
   await fr.waitForSelector('#gt-quem-lista [data-gt-setor]');
+  assert.equal(await fr.$('#gt-quem-chips'), null, 'sem a fileira de botões de setor no topo');
   // 0.111.3: janela no meio da tela, por cima, com o fundo escurecido; o × e o fundo fecham
   const caixa = await fr.evaluate(() => { const r = document.querySelector('#gt-quem-pop').getBoundingClientRect(); return { cx: r.left + r.width / 2, w: r.width, vw: innerWidth, veu: !document.querySelector('#gt-quem-veu').hidden, papel: document.querySelector('#gt-quem-pop').getAttribute('role') }; });
   assert.ok(Math.abs(caixa.cx - caixa.vw / 2) < 4 && caixa.w >= 480 && caixa.veu && caixa.papel === 'dialog', 'janela por cima: ' + JSON.stringify(caixa));
@@ -3099,17 +3121,25 @@ await passo('Gestta · Tarefas (0.77.0): Meu dia com o detalhe ao lado e a linha
   await p.mouse.click(30, 600); await fr.waitForSelector('#gt-quem-pop', { state: 'hidden' });
   await fr.click('#gt-quem-btn'); await fr.waitForSelector('#gt-quem-lista [data-gt-setor]');
   // 0.111.0: os setores vêm do relatório do mês corrente (gesttaSetores), não do Fechamento inteiro
-  await fr.waitForFunction(() => /Setores com tarefas abertas/.test(document.querySelector('#gt-quem-lista').textContent));
+  await fr.waitForFunction(() => /abertas?\b/.test(document.querySelector('#gt-quem-lista [data-gt-setor]').textContent) && !/Conferindo quantas/.test(document.querySelector('#gt-quem-lista').textContent));
   assert.equal(await fr.evaluate(() => (window.__msgs || []).filter(m => m.cmd === 'gesttaFechamento').length), 0, 'o De quem não espera o Fechamento');
   assert.deepEqual(await fr.$$eval('#gt-quem-lista [data-quem]', o => o.map(x => x.textContent.trim())), ['EuMinhas', '—Sem responsável']);
-  await fr.fill('#gt-quem-busca', 'pess'); assert.equal(await fr.locator('#gt-quem-lista [data-gt-setor]').count(), 1, 'a busca filtra os setores');
+  // buscar o setor mostra só ele; Enter escolhe o setor inteiro
+  await fr.fill('#gt-quem-busca', 'pessoal'); assert.equal(await fr.locator('#gt-quem-lista [data-gt-setor]').count(), 1, 'a busca filtra os setores');
   await fr.press('#gt-quem-busca', 'Enter');
-  await fr.waitForSelector('#gt-quem-lista [data-gt-pessoa]');
-  await fr.check('#gt-quem-lista [data-gt-pessoa="' + GT_B + '"]');
-  await fr.press('#gt-quem-busca', 'Enter');
+  await fr.waitForFunction(() => (window.__msgs || []).some(m => m.cmd === 'gesttaTarefas' && m.quem === 'setor:Pessoal'));
+  await fr.waitForSelector('#gt-quem-pop', { state: 'hidden' });
+  assert.match(await fr.textContent('#gt-quem-btn'), /Setor Pessoal/);
+  // um analista direto, sem passo no meio: um clique na pessoa dentro do setor
+  await fr.click('#gt-quem-btn'); await fr.waitForSelector('#gt-quem-lista [data-gt-pessoa]');
+  assert.ok(await fr.$('#gt-quem-lista [data-gt-setor="Pessoal"].on'), 'o setor da visão fica marcado na janela');
+  await fr.click('#gt-quem-lista [data-gt-pessoa="' + GT_B + '"][data-gt-de="Pessoal"]');
   await fr.waitForFunction(b => (window.__msgs || []).some(m => m.cmd === 'gesttaTarefas' && m.quem === 'setor:Pessoal|' + b), GT_B);
+  await fr.waitForSelector('#gt-quem-pop', { state: 'hidden' });
   assert.match(await fr.textContent('#gt-quem-btn'), /Pessoa Beta/);
-  assert.match(await fr.textContent('#gt-quem-chips .on'), /Pessoal/, '0.117.0: o setor da visão fica marcado nos botões à vista');
+  await fr.click('#gt-quem-btn'); await fr.waitForSelector('#gt-quem-lista [data-gt-pessoa]');
+  assert.ok(await fr.$('#gt-quem-lista [data-gt-pessoa="' + GT_B + '"][data-gt-de="Pessoal"].on'), 'o analista da visão fica marcado');
+  await fr.click('#gt-quem-x');
   await quem('sem');
   await fr.waitForFunction(() => (window.__msgs || []).some(m => m.cmd === 'gesttaTarefas' && m.quem === 'sem'));
   // Fechamento do mês: geral, por setor e por analista; clicar numa barra filtra; só com pendência; empresa do escritório fora
@@ -3387,14 +3417,13 @@ await passo('Gestta · 0.111.0: a tela mostra cada parte assim que chega (Meu di
   await fr.waitForSelector('.gl-r');
   // De quem: os setores do cadastro de equipe na hora, enquanto o relatório do mês não chega
   await fr.click('#gt-quem-btn');
-  await fr.waitForFunction(() => /Setores da equipe/.test(document.querySelector('#gt-quem-lista').textContent));
-  assert.deepEqual(await fr.$$eval('#gt-quem-lista [data-gt-setor]', l => l.map(x => x.dataset.gtSetor)), ['Fiscal', 'Pessoal'], '0.117.0: a Recepção não faz parte da extensão');
-  assert.deepEqual(await fr.$$eval('#gt-quem-chips [data-gt-setor-chip]', l => l.map(x => x.dataset.gtSetorChip)), ['Pessoal', 'Fiscal'], 'os setores à vista, na ordem Pessoal, Contábil, Fiscal');
-  assert.match(await fr.textContent('#gt-quem-lista'), /Conferindo quais têm tarefa aberta/);
+  await fr.waitForSelector('#gt-quem-lista [data-gt-setor]');
+  assert.deepEqual(await fr.$$eval('#gt-quem-lista [data-gt-setor]', l => l.map(x => x.dataset.gtSetor)), ['Pessoal', 'Fiscal'], '0.117.0: a Recepção não faz parte da extensão; ordem Pessoal, Contábil, Fiscal');
+  assert.match(await fr.textContent('#gt-quem-lista'), /Conferindo quantas tarefas abertas/);
   await fr.waitForFunction(() => window.__presos.setores);
   await fr.evaluate(() => window.__presos.setores());
-  await fr.waitForFunction(() => /Setores com tarefas abertas/.test(document.querySelector('#gt-quem-lista').textContent));
-  assert.deepEqual(await fr.$$eval('#gt-quem-lista [data-gt-setor]', l => l.map(x => x.dataset.gtSetor)), ['Fiscal', 'Pessoal'], 'só os setores da extensão');
+  await fr.waitForFunction(() => !/Conferindo quantas/.test(document.querySelector('#gt-quem-lista').textContent));
+  assert.deepEqual(await fr.$$eval('#gt-quem-lista [data-gt-setor]', l => l.map(x => x.dataset.gtSetor)), ['Pessoal', 'Fiscal'], 'só os setores da extensão');
   assert.match(await fr.textContent('#gt-quem-lista [data-gt-setor="Fiscal"]'), /3 abertas/, 'a quantidade vem do relatório');
   assert.deepEqual(p.erros, []);
   await p.context().close();
@@ -3763,37 +3792,29 @@ await passo('Gestta · 0.103.0: ver todas as tarefas de um setor, filtrar pela s
     if (process.env.CAP) { await fr.waitForTimeout(700); await p.screenshot({ path: path.join(process.env.CAP, 'gestta-detalhe-cnpj-' + estilo + '.png') }); }
     await p.keyboard.press('Escape');
     await fr.click('#gt-limpar');
-    // 0.106.0: De quem em dois passos: o botão mostra só os setores com tarefa aberta; o setor mostra as pessoas dele para marcar
+    // 0.122.0: um botão abre a janela com os setores lado a lado; "Todo o setor" ou um analista, com um clique
     await fr.waitForSelector('#gt-quem-wrap:not([hidden])');
     await fr.click('#gt-quem-btn');
     await fr.waitForSelector('#gt-quem-lista [data-gt-setor]');
-    assert.deepEqual(await fr.$$eval('#gt-quem-lista [data-quem]', l => l.map(b => b.dataset.quem)), ['eu', 'sem'], 'no 1º passo, sem a lista de pessoas');
-    assert.deepEqual(await fr.$$eval('#gt-quem-lista [data-gt-setor]', l => l.map(b => b.dataset.gtSetor)), ['Fiscal', 'Pessoal'], 'só setores com tarefa aberta (Contábil não tem)');
-    assert.match(await fr.textContent('#gt-quem-lista [data-gt-setor="Fiscal"]'), /3 abertas/);
-    await fr.click('#gt-quem-lista [data-gt-setor="Fiscal"]');
-    await fr.waitForSelector('#gt-quem-lista [data-gt-pessoa]');
-    assert.ok(!(await fr.$('#gt-quem-pop[hidden]')), 'o popover continua aberto no 2º passo');
-    assert.deepEqual(await fr.$$eval('#gt-quem-lista [data-gt-pessoa]', l => l.map(c => c.closest('label').textContent.trim())), ['EMEu Mesmo3 abertas', 'PBPessoa Beta']);
+    assert.deepEqual(await fr.$$eval('#gt-quem-lista [data-quem]', l => l.map(b => b.dataset.quem)), ['eu', 'sem']);
+    assert.deepEqual(await fr.$$eval('#gt-quem-lista [data-gt-setor]', l => l.map(b => b.dataset.gtSetor)), ['Pessoal', 'Contábil', 'Fiscal'], 'só Pessoal, Contábil e Fiscal, nessa ordem (mesmo o setor sem tarefa aberta aparece)');
+    assert.deepEqual(await fr.$$eval('#gt-quem-lista .gt-quem-col h3', l => l.map(h => h.textContent)), ['Pessoal', 'Contábil', 'Fiscal']);
+    await fr.waitForFunction(() => /3 abertas/.test(document.querySelector('#gt-quem-lista [data-gt-setor="Fiscal"]').textContent));
+    assert.deepEqual(await fr.$$eval('#gt-quem-lista [data-gt-pessoa][data-gt-de="Fiscal"]', l => l.map(c => c.textContent.trim())), ['EMEu Mesmo3 abertas', 'PBPessoa Beta']);
+    // cada coluna cabe na janela e a janela não estoura a tela
+    assert.ok(await fr.evaluate(() => { const r = document.querySelector('#gt-quem-pop').getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth && r.bottom <= innerHeight; }), 'a janela cabe na tela');
     if (process.env.CAP) await p.screenshot({ path: path.join(process.env.CAP, 'gestta-dequem-setor-' + estilo + '.png') });
-    await fr.check('#gt-quem-lista [data-gt-pessoa="' + GT_B + '"]');
-    assert.equal((await fr.textContent('[data-gt-aplicar]')).trim(), 'Ver as tarefas de 1 pessoa');
-    await fr.click('[data-gt-aplicar]');
+    await fr.click('#gt-quem-lista [data-gt-pessoa="' + GT_B + '"][data-gt-de="Fiscal"]');
     await fr.waitForFunction(b => (window.__msgs || []).some(m => m.cmd === 'gesttaTarefas' && m.quem === 'setor:Fiscal|' + b), GT_B);
-    await fr.waitForFunction(() => /Pessoa Beta/.test(document.querySelector('#gt-quem-btn').textContent) && /Fiscal/.test(document.querySelector('#gt-quem-chips .on').textContent));
-    // 0.117.0: já num setor, o botão das pessoas abre direto as pessoas dele
-    await fr.click('#gt-quem-btn');
-    await fr.waitForSelector('#gt-quem-lista [data-gt-pessoa]');
-    assert.match(await fr.textContent('#gt-quem-lista .gt-quem-topo'), /Setor Fiscal/);
-    await fr.uncheck('#gt-quem-lista [data-gt-pessoa="' + GT_B + '"]');
-    assert.equal((await fr.textContent('[data-gt-aplicar]')).trim(), 'Ver todas as tarefas do setor');
-    await fr.click('#gt-quem-x');
-    // 0.117.0: um clique no setor à vista troca a visão (Minhas e depois Fiscal)
-    await fr.click('#gt-quem-chips [data-quem="eu"]');
-    await fr.waitForFunction(() => /Minhas/.test(document.querySelector('#gt-quem-chips .on').textContent));
-    await fr.click('#gt-quem-chips [data-gt-setor-chip="Fiscal"]');
+    await fr.waitForSelector('#gt-quem-pop', { state: 'hidden' });
+    await fr.waitForFunction(() => /Pessoa Beta/.test(document.querySelector('#gt-quem-btn').textContent));
+    // trocar para Minhas e depois para o setor inteiro
+    await fr.click('#gt-quem-btn'); await fr.click('#gt-quem-lista [data-quem="eu"]');
+    await fr.waitForFunction(() => /Minhas/.test(document.querySelector('#gt-quem-btn').textContent));
+    await fr.click('#gt-quem-btn'); await fr.click('#gt-quem-lista [data-gt-setor="Fiscal"]');
     await fr.waitForFunction(() => (window.__msgs || []).some(m => m.cmd === 'gesttaTarefas' && m.quem === 'setor:Fiscal'));
     await fr.waitForFunction(() => /todas as tarefas do setor Fiscal/.test(document.querySelector('#vista').textContent) && (window.__msgs || []).some(m => m.cmd === 'gesttaFechamento'));
-    assert.match(await fr.textContent('#gt-quem-btn'), /Todas as pessoas/);
+    assert.match(await fr.textContent('#gt-quem-btn'), /Setor Fiscal/);
     await fr.waitForFunction(() => !/Folha de Pagamento/.test(document.querySelector('#gl-corpo').textContent));
     assert.match(await fr.textContent('#gl-corpo'), /DCTF Web/);
     if (process.env.CAP) await p.screenshot({ path: path.join(process.env.CAP, 'gestta-setor-' + estilo + '.png') });

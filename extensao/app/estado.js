@@ -81,10 +81,12 @@ export async function iniciarEstado() {
 }
 
 // Mensagem ao service worker (ler o Onvio, consultar, abrir no Onvio...).
+const ORFA = 'A extensão foi atualizada ou recarregada. Recarregue esta página (F5) para continuar.';
 export function enviar(msg) {
   return new Promise(res => {
-    try { chrome.runtime.sendMessage(msg, r => res(r || { ok: false, erro: (chrome.runtime.lastError && chrome.runtime.lastError.message) || 'sem resposta' })); }
-    catch (e) { res({ ok: false, erro: e.message }); }
+    if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.sendMessage) return res({ ok: false, orfao: true, erro: ORFA });      // 0.123.0: com a extensão atualizada, a página fica sem chrome.runtime
+    try { chrome.runtime.sendMessage(msg, r => res(r || { ok: false, erro: (chrome.runtime.lastError && /context invalidated|receiving end/i.test(chrome.runtime.lastError.message) ? ORFA : chrome.runtime.lastError && chrome.runtime.lastError.message) || 'sem resposta' })); }
+    catch (e) { res({ ok: false, orfao: /context invalidated/i.test(e.message), erro: /context invalidated/i.test(e.message) ? ORFA : e.message }); }
   });
 }
 

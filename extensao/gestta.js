@@ -321,8 +321,10 @@
   }
   // 0.117.0 (Josué, 16/11/2026: "limite também a extensão aos setores pessoal, contábil e fiscal"): só estes três módulos, pelo nome do setor
   // do Gestta (o mesmo jeito do Hub: Pessoal/DP, Contábil, Fiscal). Setor com outro nome não aparece nas Tarefas do Gestta.
-  const MODULOS_SETOR = [['Pessoal', /pessoal|(^|[^a-z])dp([^a-z]|$)|folha/], ['Contábil', /contab/], ['Fiscal', /fiscal/]];
-  const moduloDoSetor = (nome) => { const n = semAcento(String(nome || '')).trim(); if (!n) return ''; const m = MODULOS_SETOR.find(([, re]) => re.test(n)); return m ? m[0] : ''; };
+  // 0.122.0 (Josué, 16/11/2026: o seletor mostrava Contábil1, Contábil2, Fiscal Conexos, Fiscal Dominio e Fiscal Simples Nacional): o nome do
+  // setor tem de SER Pessoal, Contábil ou Fiscal (com ou sem "Departamento", sem acento ou caixa); nome que só contém a palavra não vale.
+  const MODULOS_SETOR = { 'pessoal': 'Pessoal', 'departamento pessoal': 'Pessoal', 'dp': 'Pessoal', 'contabil': 'Contábil', 'contabilidade': 'Contábil', 'departamento contabil': 'Contábil', 'fiscal': 'Fiscal', 'departamento fiscal': 'Fiscal' };
+  const moduloDoSetor = (nome) => MODULOS_SETOR[semAcento(String(nome || '')).trim().replace(/\s+/g, ' ')] || '';
   const setorPermitido = (nome) => !!moduloDoSetor(nome);
   // linhas do relatório (colunas com 'company_department.name') só dos setores permitidos; linha sem setor fica (não dá para julgar)
   function soSetoresPermitidos(colunas, linhas) {

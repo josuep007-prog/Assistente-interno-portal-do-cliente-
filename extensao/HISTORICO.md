@@ -2,6 +2,21 @@
 
 As novidades de cada versão, da mais nova para a mais antiga, como estavam no `LEIA-ME.md` até 12/11/2026 (sem mudar uma palavra). O manual de uso está em `LEIA-ME.md`; as regras em vigor, no `CLAUDE.md` da raiz.
 
+## Novidades da v0.123.0 (17/11/2026): a tela não fica mais em branco quando algo falha no arranque
+
+- Josué: ao clicar nas Configurações a camada ficava vazia, com "Carregando…", e a extensão não dizia o porquê.
+- **Guarda de arranque** (`app/guarda.js`, nas telas do Onvio e do Gestta): se a tela não subir em 4 segundos, aparece "A tela não carregou." com o que falhou (arquivo que não carregou, erro de script), a dica de recarregar a página (F5) e os botões **Recarregar a tela** e **Copiar diagnóstico** (versão e erros, nenhum dado de cliente).
+- **Arranque protegido:** cada passo do app (ler o que a extensão guardou, desenhar a tela, indicador de leitura, contadores, tema, avisos) falha sozinho e mostra o motivo; os ouvintes (troca de tela, Configurações, tema) são ligados de qualquer jeito, então a engrenagem não fica morta por um erro numa tela.
+- **Extensão atualizada com a página aberta:** os botões que falam com a extensão (engrenagem, Ler agora) passam a dizer "A extensão foi atualizada ou recarregada. Recarregue esta página (F5)" em vez de um erro técnico.
+
+## Novidades da v0.122.0 (16/11/2026): seletor de setor e analista numa janela só, e só Pessoal, Contábil e Fiscal de verdade
+
+- Josué: "o seletor de departamento está péssimo e ainda tem os setores que eu mandei você tirar" e "quero que seja um botão que ao clicar abra uma janela bem intuitiva onde a pessoa possa selecionar ou o setor inteiro ou um analista em específico diretamente".
+- **Setores certos:** a regra reconhecia qualquer nome que *contivesse* "contábil" ou "fiscal", então Contábil1, Contábil2, Fiscal Conexos, Fiscal Dominio e Fiscal Simples Nacional entravam. Agora o nome do setor tem de **ser** Pessoal, Contábil ou Fiscal (com ou sem "Departamento", sem diferença de acento ou caixa). Vale para o seletor, para a busca por setor, para o relatório usado pelas abas e para a equipe.
+- **Um botão só** no topo ("Ver tarefas de" + o que está escolhido: Minhas, Sem responsável, Setor Fiscal ou Fiscal · nome do analista). A fileira de botões de setor saiu.
+- **A janela:** Minhas e Sem responsável em cima; Pessoal, Contábil e Fiscal **lado a lado**, cada um com **Todo o setor** (e quantas tarefas abertas) e os analistas embaixo. **Um clique escolhe e fecha**: no setor para ver todas as pessoas, no nome para ver só aquele analista. A busca filtra por analista ou setor e o Enter escolhe o primeiro resultado. Saiu o segundo passo e a caixa de marcar várias pessoas.
+- O Hub continua recebendo todos os setores do Gestta; a mudança é só da tela da extensão.
+
 ## Novidades da v0.121.0 (16/11/2026): arquivo do item e templates da empresa no Gestta
 
 - Josué: "Arquivo do item no Gestta: ver e excluir o arquivo, e incluir ou tirar template de uma empresa, já estão mapeados e esperam sua aprovação. pode fazer". Mapa da empresa de teste 985 em `mapeamento/gestta-2026-11-04.md` ("Roteiro único").

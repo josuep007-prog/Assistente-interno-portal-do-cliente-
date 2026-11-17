@@ -315,8 +315,12 @@ async function atualizar() {
 (async function iniciar() {
   if (SO_CONFIG) { document.documentElement.classList.add('so-config'); document.title = 'Configurações · Control'; }
   else if (NO_QUADRO && /^#\/?config(\?|$)/.test(location.hash)) { abrirGuiaConfig(Object.fromEntries(new URLSearchParams(location.hash.split('?')[1] || ''))); history.replaceState(null, '', '#/inicio'); }
-  await iniciarEstado();
-  desenhar(); aoVivo(); contadores(); iconeTema(); avisarNovos();
+  // 0.123.0: cada passo do arranque falha sozinho (a tela mostra o motivo, em vez de ficar em branco) e o resto segue: os ouvintes abaixo sempre são ligados
+  const passo = (nome, f) => { try { return f(); } catch (e) { console.error(e); if (window.__mostrarFalha) window.__mostrarFalha([nome + ': ' + (e && e.message || e)]); return false; } };
+  try { await iniciarEstado(); } catch (e) { console.error(e); if (window.__mostrarFalha) window.__mostrarFalha(['ler o que a extensão guardou: ' + (e && e.message || e)]); }
+  const desenhou = passo('desenhar a tela', () => { desenhar(); return true; });
+  passo('indicador de leitura', aoVivo); passo('contadores', contadores); passo('tema', iconeTema); passo('avisos novos', avisarNovos);
+  if (desenhou) window.__appOk = true;
   addEventListener('hashchange', () => {
     // dentro do Onvio, #/config (trilho, links, atalhos) abre a guia das Configurações e a tela de trabalho fica onde estava
     if (NO_QUADRO && !SO_CONFIG && /^#\/?config(\?|$)/.test(location.hash)) {
